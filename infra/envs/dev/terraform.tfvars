@@ -1,0 +1,1 @@
+bucket_name = "lsg-pipeline-aws-bucket-dev"
