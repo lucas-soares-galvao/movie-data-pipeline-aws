@@ -1,6 +1,8 @@
 name: Test Python
 
 on:
+  push:
+    branches: [ develop ]   # branch de desenvolvimento
   pull_request:
     branches: [ release ]   # destino do PR
 
