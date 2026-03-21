@@ -1,9 +1,9 @@
-name: "PROD DEPLOY"
+name: "HOM DEPLOY"
 
 on:
   push:
     branches:
-      - main
+      - release
 
 permissions:
   id-token: write
@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   terraform:
-    uses: ./.github/workflows/terraform.yml
+    uses: ./.github/workflows/tf-01-base.yml
     with:
-      environment: prod
+      environment: hom
     secrets:
       aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
       aws-region: ${{ secrets.AWS_REGION }}
