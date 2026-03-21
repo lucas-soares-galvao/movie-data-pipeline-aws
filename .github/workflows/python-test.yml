@@ -2,7 +2,7 @@ name: Test Python
 
 on:
   pull_request:
-    branches: [ release ]
+    branches: [ develop ]
     types: [opened, synchronize, reopened]
 
 jobs:
