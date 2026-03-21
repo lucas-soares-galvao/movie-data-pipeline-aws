@@ -1,7 +1,7 @@
 name: "Release → Main PR"
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches:
       - release
@@ -37,7 +37,9 @@ jobs:
               --base main \
               --head release \
               --title "Auto PR: release → main" \
-              --body "Promoção para produção\n\nOrigem PR: #${{ github.event.pull_request.number }}\nAutor: ${{ github.actor }}"
+              --body "PR criado automaticamente após validação
+              Origem PR: #${{ github.event.pull_request.number }}
+              Autor: ${{ github.actor }}"
           else
             echo "PR já existe: #$EXISTING_PR"
           fi
