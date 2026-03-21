@@ -1,28 +1,24 @@
-name: Automatic PR
-
-permissions:
-  contents: write # Permissão para criar PRs
-  pull-requests: write # Permissão para criar PRs
+name: Create PR from feature to develop
 
 on:
   push:
     branches:
-      - feature/* # A branch que recebe novos commits (origem)
+      - 'feature/**'
 
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref_name }} # Checkout da branch de origem
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref_name }} # A branch que será enviada
-          base: develop # A branch de destino (ex: main, master, develop)
-          title: "develop <- ${{ github.ref_name }}"
-          body: "PR criado automaticamente a partir de novos commits."
-          labels: automatic, pr
+        run: |
+          gh pr create \
+            --base develop \
+            --head ${{ github.ref_name }} \
+            --title "Auto PR: ${{ github.ref_name }} → develop" \
+            --body "PR criado automaticamente."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
