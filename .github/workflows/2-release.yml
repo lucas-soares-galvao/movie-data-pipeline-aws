@@ -3,7 +3,7 @@ name: "HOM DEPLOY"
 on:
   push:
     branches:
-      - hom
+      - release
 
 permissions:
   id-token: write
