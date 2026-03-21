@@ -20,7 +20,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_GITHUB_TOKEN }} # Token de acesso para criar o PR
           branch: ${{ github.ref_name }} # A branch que será enviada
           base: develop # A branch de destino (ex: main, master, develop)
           title: "develop <- ${{ github.ref_name }}"
