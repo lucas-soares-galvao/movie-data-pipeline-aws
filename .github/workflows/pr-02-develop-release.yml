@@ -21,10 +21,14 @@ jobs:
 
       - name: Create PR develop → release
         run: |
-          gh pr create \
-            --base release \
-            --head develop \
-            --title "Auto PR: develop → release" \
-            --body "Promoção automática."
+          export BASE=release
+          export HEAD=develop
+          PR_NUMBER=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create --base "$BASE" --head "$HEAD" --title "Auto PR: $HEAD → $BASE" --body "Promoção automática."
+          else
+            gh pr edit "$PR_NUMBER" --title "Auto PR: $HEAD → $BASE" --body "Promoção automática."
+            echo "PR já existente: #$PR_NUMBER"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

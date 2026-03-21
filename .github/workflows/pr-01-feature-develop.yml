@@ -24,13 +24,16 @@ jobs:
       - name: Terraform Validate
         run: cd infra && terraform init -backend=false && terraform validate
 
-      # ✅ Criar PR somente se tudo deu certo
-      - name: Create PR to develop
+      - name: Create PR feature → develop
         run: |
-          gh pr create \
-            --base develop \
-            --head ${{ github.ref_name }} \
-            --title "Auto PR: ${{ github.ref_name }} → develop" \
-            --body "PR criado automaticamente após validação."
+          export BASE=develop
+          export HEAD="${{ github.ref_name }}"
+          PR_NUMBER=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create --base "$BASE" --head "$HEAD" --title "Auto PR: $HEAD → $BASE" --body "PR criado automaticamente após validação."
+          else
+            gh pr edit "$PR_NUMBER" --title "Auto PR: $HEAD → $BASE" --body "PR criado automaticamente após validação."
+            echo "PR já existente: #$PR_NUMBER"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
