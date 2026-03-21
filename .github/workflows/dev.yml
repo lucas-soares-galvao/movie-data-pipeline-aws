@@ -8,7 +8,6 @@ on:
 permissions:
   id-token: write
   contents: read
-  pull-requests: write
 
 jobs:
   terraform:
@@ -20,25 +19,3 @@ jobs:
       aws-region: ${{ secrets.AWS_REGION }}
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
-
-  create-pr-to-hom:
-    needs: terraform
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check if PR from dev to hom exists
-        id: check-pr
-        run: |
-          PR_EXISTS=$(gh pr list --head dev --base hom --json number --jq 'length')
-          echo "pr_exists=$PR_EXISTS" >> $GITHUB_OUTPUT
-        env:
-          TOKEN: ${{ secrets.TOKEN }}
-
-      - name: Create PR from dev to hom if not exists
-        if: steps.check-pr.outputs.pr_exists == '0'
-        run: |
-          gh pr create --title "hom <- dev" --body "Auto-generated PR after successful dev deployment" --head dev --base hom
-        env:
-          TOKEN: ${{ secrets.TOKEN }}
