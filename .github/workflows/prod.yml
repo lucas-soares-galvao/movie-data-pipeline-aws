@@ -16,5 +16,5 @@ jobs:
       environment: prod
       aws-assume-role-arn: "arn:aws:iam::022126342808:role/github-actions-lsg-pipeline"
       aws-region: "sa-east-1"
-      aws-statefile-s3-bucket: "lsg-sa-east-1-terraform-statefiles"
+      aws-statefile-s3-bucket: "lsg-sa-east-1-terraform-statefile"
       aws-lock-dynamodb-table: "lsg-sa-east-1-terraform-lock"
