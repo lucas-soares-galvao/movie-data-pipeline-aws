@@ -1,5 +1,9 @@
 name: Automatic PR
 
+permissions:
+  contents: write # Permissão para criar PRs
+  pull-requests: write # Permissão para criar PRs
+
 on:
   push:
     branches:
