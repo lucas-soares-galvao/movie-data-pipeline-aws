@@ -3,7 +3,7 @@ name: "Terraform Workflow"
 on:
   workflow_call:
     inputs:
-      envioronment:
+      environment:
         type: string
         required: true
       aws-assume-role-arn:
