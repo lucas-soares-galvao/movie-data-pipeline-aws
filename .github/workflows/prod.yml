@@ -14,7 +14,8 @@ jobs:
     uses: ./.github/workflows/terraform.yml
     with:
       environment: prod
-      aws-assume-role-arn: "arn:aws:iam::022126342808:role/github-actions-lsg-pipeline"
-      aws-region: "sa-east-1"
-      aws-statefile-s3-bucket: "lsg-sa-east-1-terraform-statefile"
-      aws-lock-dynamodb-table: "lsg-sa-east-1-terraform-lock"
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
+      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
