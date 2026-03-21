@@ -1,7 +1,7 @@
 name: "Release → Main PR"
 
 on:
-  pull_request_target:
+  pull_request:
     types: [closed]
     branches:
       - release
@@ -19,29 +19,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create PR release → main (safe)
+      - name: Create PR release → main
         run: |
-          echo "Verificando se já existe PR aberto release → main..."
-
-          EXISTING_PR=$(gh pr list \
+          gh pr create \
             --base main \
             --head release \
-            --state open \
-            --json number \
-            --jq '.[0].number')
-
-          if [ -z "$EXISTING_PR" ]; then
-            echo "Criando PR..."
-
-            gh pr create \
-              --base main \
-              --head release \
-              --title "Auto PR: release → main" \
-              --body "PR criado automaticamente após validação
-              Origem PR: #${{ github.event.pull_request.number }}
-              Autor: ${{ github.actor }}"
-          else
-            echo "PR já existe: #$EXISTING_PR"
-          fi
+            --title "Auto PR: release → main" \
+            --body "Promoção para produção."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
