@@ -1,7 +1,7 @@
 name: "Develop → Release PR"
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches:
       - develop
@@ -19,12 +19,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create PR develop → release
+      - name: Create PR develop → release (safe)
         run: |
-          gh pr create \
+          echo "Verificando se já existe PR aberto develop → release..."
+
+          EXISTING_PR=$(gh pr list \
             --base release \
             --head develop \
-            --title "Auto PR: develop → release" \
-            --body "Promoção automática."
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$EXISTING_PR" ]; then
+            echo "Criando PR..."
+
+            gh pr create \
+              --base release \
+              --head develop \
+              --title "Auto PR: develop → release [${{ github.sha }}]" \
+              --body "PR criado automaticamente após validação
+              Origem PR: #${{ github.event.pull_request.number }}
+              Autor: ${{ github.actor }}"
+          else
+            echo "PR já existe: #$EXISTING_PR"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
