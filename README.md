@@ -1,2 +1,2 @@
 # Projeto
-Repositório de pipeline AWS com terraform
+Repositório de pipeline AWS
