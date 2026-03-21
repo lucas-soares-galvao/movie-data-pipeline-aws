@@ -1,0 +1,27 @@
+name: "Release → Main PR"
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - release
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create PR release → main
+        run: |
+          gh pr create \
+            --base main \
+            --head release \
+            --title "Auto PR: release → main" \
+            --body "Promoção para produção."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
