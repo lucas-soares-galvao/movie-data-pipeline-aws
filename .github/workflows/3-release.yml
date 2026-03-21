@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   terraform:
-    uses: ./.github/workflows/terraform.yml
+    uses: ./.github/workflows/0-terraform.yml
     with:
       environment: hom
     secrets:
