@@ -19,12 +19,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create PR release → main
+      - name: Create PR release → main (safe)
         run: |
-          gh pr create \
+          echo "Verificando se já existe PR aberto release → main..."
+
+          EXISTING_PR=$(gh pr list \
             --base main \
             --head release \
-            --title "Auto PR: release → main" \
-            --body "Promoção para produção."
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$EXISTING_PR" ]; then
+            echo "Criando PR..."
+
+            gh pr create \
+              --base main \
+              --head release \
+              --title "Auto PR: release → main" \
+              --body "Promoção para produção\n\nOrigem PR: #${{ github.event.pull_request.number }}\nAutor: ${{ github.actor }}"
+          else
+            echo "PR já existe: #$EXISTING_PR"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

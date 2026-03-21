@@ -17,16 +17,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # (Opcional) Rodar Terraform validate
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Validate
         run: cd infra && terraform init -backend=false && terraform validate
 
-      # ✅ Criar PR somente se tudo deu certo
-      - name: Create PR to develop
+      - name: Create PR to develop (safe)
         run: |
+          echo "Verificando se já existe PR aberto feature → develop..."
+
           EXISTING_PR=$(gh pr list \
             --base develop \
             --head ${{ github.ref_name }} \
@@ -35,11 +35,13 @@ jobs:
             --jq '.[0].number')
 
           if [ -z "$EXISTING_PR" ]; then
+            echo "Criando PR..."
+
             gh pr create \
               --base develop \
               --head ${{ github.ref_name }} \
               --title "Auto PR: ${{ github.ref_name }} → develop" \
-              --body "PR criado automaticamente após validação."
+              --body "PR criado automaticamente após validação\n\nBranch: ${{ github.ref_name }}\nAutor: ${{ github.actor }}"
           else
             echo "PR já existe: #$EXISTING_PR"
           fi
