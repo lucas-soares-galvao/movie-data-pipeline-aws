@@ -1,7 +1,7 @@
 name: "Develop → Release PR"
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches:
       - develop
@@ -37,7 +37,9 @@ jobs:
               --base release \
               --head develop \
               --title "Auto PR: develop → release [${{ github.sha }}]" \
-              --body "Promoção automática\n\nOrigem PR: #${{ github.event.pull_request.number }}\nAutor: ${{ github.actor }}"
+              --body "PR criado automaticamente após validação
+              Origem PR: #${{ github.event.pull_request.number }}
+              Autor: ${{ github.actor }}"
           else
             echo "PR já existe: #$EXISTING_PR"
           fi

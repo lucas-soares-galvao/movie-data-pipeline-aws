@@ -41,7 +41,9 @@ jobs:
               --base develop \
               --head ${{ github.ref_name }} \
               --title "Auto PR: ${{ github.ref_name }} → develop" \
-              --body "PR criado automaticamente após validação\n\nBranch: ${{ github.ref_name }}\nAutor: ${{ github.actor }}"
+              --body "PR criado automaticamente após validação
+              Branch: ${{ github.ref_name }}
+              Autor: ${{ github.actor }}"
           else
             echo "PR já existe: #$EXISTING_PR"
           fi
