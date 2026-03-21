@@ -1,0 +1,37 @@
+name: "FEATURE DEPLOY"
+
+on:
+  push:
+    branches:
+      - feature/*
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    uses: ./.github/workflows/0-terraform.yml
+    with:
+      environment: feature
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
+      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref_name }} # Checkout da branch de origem
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref_name }} # A branch que será enviada
+          base: develop # A branch de destino (ex: main, master, develop)
+          title: "develop <- ${{ github.ref_name }}"
+          body: "PR criado automaticamente a partir de novos commits."
+          labels: automatic, pr
