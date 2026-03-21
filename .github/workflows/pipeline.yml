@@ -1,0 +1,37 @@
+name: Main Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - release
+      - main
+      - feature/*
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+
+  test:
+    uses: ./.github/workflows/reusable/ci-test.yml
+
+  terraform-develop:
+    needs: test
+    if: github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/reusable/tf-env.yml
+    with:
+      environment: develop
+
+  terraform-release:
+    needs: test
+    if: github.ref == 'refs/heads/release'
+    uses: ./.github/workflows/reusable/tf-env.yml
+    with:
+      environment: release
+
+  terraform-main:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/reusable/tf-env.yml
+    with:
+      environment: prod
