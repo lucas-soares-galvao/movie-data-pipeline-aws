@@ -21,15 +21,6 @@ permissions:
 
 jobs:
 
-  # 🔹 Auto PR
-  auto-pr:
-    if: github.actor != 'github-actions[bot]'
-    uses: ./.github/workflows/pr-origin-destiny.yml
-    with:
-      github-ref-name: ${{ github.ref_name }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # 🔹 Test
   test:
     if: github.actor != 'github-actions[bot]'
@@ -47,3 +38,10 @@ jobs:
       aws-region: ${{ secrets.AWS_REGION }}
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
+
+  # 🔹 Auto PR
+  auto-pr:
+    if: github.actor != 'github-actions[bot]'
+    uses: ./.github/workflows/pr-origin-destiny.yml
+    with:
+      github-ref-name: ${{ github.ref_name }}
