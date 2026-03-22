@@ -1,37 +1,33 @@
-name: Main Pipeline
-
-on:
-  push:
-    branches:
-      - develop
-      - release
-      - main
-      - feature/*
-  pull_request:
-    types: [opened, synchronize, reopened]
+env:
+  ENVIRONMENT: ${{ 
+    github.ref_name == 'develop' && 'dev' ||
+    github.ref_name == 'release' && 'hom' ||
+    github.ref_name == 'main' && 'prod'
+  }}
 
 jobs:
 
   test:
-    uses: ./.github/workflows/reusable/ci-test.yml
+    uses: ./.github/workflows/ci-test.yml
 
-  terraform-develop:
+  terraform:
     needs: test
-    if: github.ref == 'refs/heads/develop'
-    uses: ./.github/workflows/reusable/tf-env.yml
+    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    uses: ./.github/workflows/tf-infra.yml
     with:
-      environment: develop
+      environment: ${{ env.ENVIRONMENT }}
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ROLE }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-statefile-s3-bucket: ${{ secrets.TF_BUCKET }}
+      aws-lock-dynamodb-table: ${{ secrets.TF_LOCK_TABLE }}
 
-  terraform-release:
-    needs: test
-    if: github.ref == 'refs/heads/release'
-    uses: ./.github/workflows/reusable/tf-env.yml
+  deploy:
+    needs: terraform
+    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    uses: ./.github/workflows/deploy.yml
     with:
-      environment: release
-
-  terraform-main:
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/reusable/tf-env.yml
-    with:
-      environment: prod
+      environment: ${{ env.ENVIRONMENT }}
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ROLE }}
+      aws-region: ${{ secrets.AWS_REGION }}
