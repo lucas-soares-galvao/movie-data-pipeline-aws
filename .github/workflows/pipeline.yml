@@ -1,8 +1,8 @@
 name: Pipeline CI/CD
 
 on:
-  pull_request:
-    branches: [develop, release, main]
+  push:
+    branches: [feature/*, develop, release, main]
 
 permissions:
   id-token: write
@@ -24,3 +24,12 @@ jobs:
       aws-region: ${{ secrets.AWS_REGION }}
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
+
+  auto-pr:
+    needs: test
+    uses: ./.github/workflows/pr-auto.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pull-requests: write

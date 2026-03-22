@@ -1,11 +1,11 @@
-name: Auto PR Pipeline
+name: Auto PR Pipeline (Reusable)
 
 on:
-  push:
-    branches:
-      - 'feature/**'
-      - develop
-      - release
+  workflow_call:
+    inputs:
+      branch_name:
+        required: true
+        type: string
 
 permissions:
   contents: write
