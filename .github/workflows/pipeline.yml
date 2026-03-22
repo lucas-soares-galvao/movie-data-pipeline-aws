@@ -1,0 +1,28 @@
+name: Pipeline CI/CD
+
+on:
+  push:
+    branches: [develop, release, main]
+  pull_request:
+    branches: [develop, release, main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+
+  test:
+    uses: ./.github/workflows/ci-test.yml
+
+  terraform:
+    needs: test
+    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    uses: ./.github/workflows/tf-infra.yml
+    with:
+      environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || github.ref_name == 'main' && 'prod' }}
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
+      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
