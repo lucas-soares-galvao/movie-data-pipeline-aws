@@ -1,8 +1,6 @@
 name: Pipeline CI/CD
 
 on:
-  push:
-    branches: [feature/*, develop, release, main]
   pull_request:
     branches: [develop, release, main]
 
