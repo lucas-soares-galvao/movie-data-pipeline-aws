@@ -1,101 +1,60 @@
-name: Auto PR Pipeline (Reusable)
+- name: Checkout
+  uses: actions/checkout@v4
+  with:
+    fetch-depth: 0 # Necessário para baixar o histórico e comparar as branches
 
-on:
-  workflow_call:
-    inputs:
-      github-ref-name:
-        description: 'Branch atual'
-        required: true
-        type: string
+# ... (mantenha seu step de Define base branch e Terraform aqui)
 
-permissions:
-  contents: write
-  pull-requests: write
+# 🔀 Criar ou atualizar PR com validação de commits
+- name: Create or Update PR (Retry)
+  run: |
+    BASE=${{ steps.branch.outputs.base }}
+    HEAD=${{ inputs.github-ref-name }}
+    
+    # 1. Garantir que as referências locais existam para comparação
+    git fetch origin $BASE --quiet
+    git fetch origin $HEAD --quiet
 
-jobs:
-  promote:
-    runs-on: ubuntu-latest
+    # 2. Verificar se há commits entre HEAD e BASE
+    # O comando rev-list conta quantos commits a HEAD tem a mais que a BASE
+    COMMITS_AHEAD=$(git rev-list --count origin/$BASE..origin/$HEAD)
 
-    steps:
-      # 🔹 Checkout
-      - name: Checkout
-        uses: actions/checkout@v4
+    if [ "$COMMITS_AHEAD" -eq "0" ]; then
+      echo "✅ Nenhuma diferença encontrada entre $HEAD e $BASE. Pulando criação de PR."
+      exit 0
+    fi
 
-      # 🔹 Determinar base branch
-      - name: Define base branch
-        id: branch
-        run: |
-          REF="${{ inputs.github-ref-name }}"
-          BASE=""
+    echo "🚀 Detectados $COMMITS_AHEAD commits novos. Iniciando processo de PR..."
 
-          # Apenas branches válidas
-          if [[ "$REF" == feature/* ]]; then
-            BASE="develop"
-          elif [[ "$REF" == "develop" ]]; then
-            BASE="release"
-          elif [[ "$REF" == "release" ]]; then
-            BASE="main"
-          else
-            echo "Branch '$REF' não suportada, pulando workflow..."
-            exit 0
-          fi
+    RETRIES=3
+    COUNT=0
 
-          echo "base=$BASE" >> $GITHUB_OUTPUT
-          echo "HEAD=$REF, BASE=$BASE"
+    while [ $COUNT -lt $RETRIES ]; do
+      EXISTING_PR=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
 
-      # 🔹 Terraform Validate (opcional)
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      if [ -z "$EXISTING_PR" ]; then
+        echo "No existing PR, creating..."
+        # Capturamos a saída e o erro para tratar casos específicos
+        if gh pr create --base "$BASE" --head "$HEAD" --title "Auto PR: $HEAD → $BASE" --body "PR criado automaticamente."; then
+          echo "PR criado com sucesso!"
+          break
+        fi
+      else
+        echo "PR já existe: #$EXISTING_PR, atualizando..."
+        if gh pr edit "$EXISTING_PR" --title "Auto PR: $HEAD → $BASE" --body "PR atualizado automaticamente."; then
+          echo "PR atualizado com sucesso!"
+          break
+        fi
+      fi
 
-      - name: Terraform Validate
-        run: |
-          cd infra
-          terraform init -backend=false
-          terraform validate
+      COUNT=$((COUNT+1))
+      echo "Falha na tentativa $((COUNT)). Tentando novamente em 5s..."
+      sleep 5
+    done
 
-      # 🔹 Criar ou atualizar PR com verificação de commits
-      - name: Create or Update PR (Retry)
-        run: |
-          BASE=${{ steps.branch.outputs.base }}
-          HEAD=${{ inputs.github-ref-name }}
-          RETRIES=3
-          COUNT=0
-
-          # Verifica se existem commits entre HEAD e BASE
-          DIFF=$(git log "$BASE..$HEAD" --oneline)
-          if [ -z "$DIFF" ]; then
-            echo "Nenhum commit entre $BASE e $HEAD. Pulando criação de PR."
-            exit 0
-          fi
-
-          while [ $COUNT -lt $RETRIES ]; do
-            EXISTING_PR=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
-
-            if [ -z "$EXISTING_PR" ]; then
-              echo "No existing PR, creating..."
-              if gh pr create --base "$BASE" --head "$HEAD" --title "Auto PR: $HEAD → $BASE" --body "PR criado automaticamente."; then
-                echo "PR criado com sucesso!"
-                break
-              else
-                echo "Falha ao criar PR, retry $((COUNT+1))..."
-              fi
-            else
-              echo "PR já existe: #$EXISTING_PR, atualizando..."
-              if gh pr edit "$EXISTING_PR" --title "Auto PR: $HEAD → $BASE" --body "PR atualizado automaticamente."; then
-                echo "PR atualizado com sucesso!"
-                break
-              else
-                echo "Falha ao atualizar PR, retry $((COUNT+1))..."
-              fi
-            fi
-
-            COUNT=$((COUNT+1))
-            sleep 5
-          done
-
-          if [ $COUNT -eq $RETRIES ]; then
-            echo "Não foi possível criar/atualizar PR após $RETRIES tentativas."
-            exit 1
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    if [ $COUNT -eq $RETRIES ]; then
+      echo "❌ Erro: Não foi possível criar/atualizar PR após $RETRIES tentativas."
+      exit 1
+    fi
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
