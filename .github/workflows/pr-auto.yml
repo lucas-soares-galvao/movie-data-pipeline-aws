@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔍 Descobrir destino do PR
+      # Descobrir destino do PR
       - name: Define base branch
         id: branch
         run: |
@@ -44,7 +44,7 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-      # 🔀 Criar ou atualizar PR
+      # Criar ou atualizar PR
       - name: Create or Update PR
         run: |
           BASE=${{ steps.branch.outputs.base }}
@@ -57,11 +57,11 @@ jobs:
               --base "$BASE" \
               --head "$HEAD" \
               --title "Auto PR: $HEAD → $BASE" \
-              --body "PR criado automaticamente."
+              --body "PR criado automaticamente via Pipeline CI/CD."
           else
             gh pr edit "$PR_NUMBER" \
               --title "Auto PR: $HEAD → $BASE" \
-              --body "PR atualizado automaticamente."
+              --body "PR atualizado automaticamente via Pipeline CI/CD."
             echo "PR já existente: #$PR_NUMBER"
           fi
         env:

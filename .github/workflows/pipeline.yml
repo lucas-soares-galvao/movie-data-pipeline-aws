@@ -10,12 +10,14 @@ permissions:
 
 jobs:
 
+  # Testes unitários e de integração
   test:
     uses: ./.github/workflows/ci-test.yml
 
+  # Deploy Terreaform
   terraform:
     needs: test
-    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main') && needs.test.result == 'success'
     uses: ./.github/workflows/tf-infra.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || github.ref_name == 'main' && 'prod' }}
@@ -25,8 +27,21 @@ jobs:
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
 
-  auto-pr:
+  # Chamada para Feature (espera o teste)
+  auto-pr-feature:
     needs: test
+    if: (startsWith(github.ref_name, 'feature/') && needs.test.result == 'success')
+    uses: ./.github/workflows/pr-auto.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+  # Chamada para Develop/Release (espera o terraform)
+  auto-pr-promote:
+    needs: terraform
+    if: (github.ref_name == 'develop' || github.ref_name == 'release') && needs.terraform.result == 'success'
     uses: ./.github/workflows/pr-auto.yml
     with:
       branch_name: ${{ github.ref_name }}
