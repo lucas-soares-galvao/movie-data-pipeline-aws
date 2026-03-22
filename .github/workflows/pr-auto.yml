@@ -66,13 +66,3 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        # Step adicional opcional: Merge automático com título customizado
-      - name: Auto Merge PR
-        run: |
-          BASE=${{ steps.branch.outputs.base }}
-          HEAD=${{ github.ref_name }}
-          # Realiza o merge do PR atual com o título que você deseja
-          gh pr merge --merge --subject "Merge Auto PR: $HEAD -> $BASE" --auto
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
