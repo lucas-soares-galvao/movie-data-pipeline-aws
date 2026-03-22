@@ -35,11 +35,3 @@ jobs:
       aws-region: ${{ secrets.AWS_REGION }}
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
-
-  # 🔹 Auto PR
-  auto-pr:
-    needs: test
-    if: github.actor != 'github-actions[bot]'
-    uses: ./.github/workflows/pr-origin-destiny.yml
-    with:
-      github-ref-name: ${{ github.event.pull_request.head.ref || github.ref_name }}
