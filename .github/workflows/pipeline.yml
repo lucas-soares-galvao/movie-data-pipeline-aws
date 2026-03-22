@@ -38,6 +38,7 @@ jobs:
 
   # 🔹 Auto PR
   auto-pr:
+    needs: terraform
     if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/pr-origin-destiny.yml
     with:
