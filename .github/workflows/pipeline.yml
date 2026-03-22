@@ -2,22 +2,76 @@ name: Pipeline CI/CD
 
 on:
   push:
-    branches: [feature/*, develop, release, main]
+    branches:
+      - 'feature/**'
+      - develop
+      - release
+      - main
   pull_request:
-    branches: [develop, release, main]
+    branches:
+      - develop
+      - release
+      - main
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
 
+  # 🔹 Criar ou atualizar PRs automaticamente
+  auto-pr:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Define base branch
+        id: branch
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == feature/* ]]; then
+            echo "base=develop" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "base=release" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF_NAME}" == "release" ]]; then
+            echo "base=main" >> $GITHUB_OUTPUT
+          else
+            echo "Branch não suportada"
+            exit 1
+          fi
+
+      - name: Create or Update PR
+        run: |
+          BASE=${{ steps.branch.outputs.base }}
+          HEAD=${{ github.ref_name }}
+
+          PR_NUMBER=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
+
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --base "$BASE" \
+              --head "$HEAD" \
+              --title "Auto PR: $HEAD → $BASE" \
+              --body "PR criado automaticamente."
+          else
+            gh pr edit "$PR_NUMBER" \
+              --title "Auto PR: $HEAD → $BASE" \
+              --body "PR atualizado automaticamente."
+            echo "PR já existente: #$PR_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 🔹 Pipeline CI/CD: Test + Terraform
   test:
+    if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/ci-test.yml
 
   terraform:
     needs: test
-    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    if: github.actor != 'github-actions[bot]' && (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main')
     uses: ./.github/workflows/tf-infra.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || github.ref_name == 'main' && 'prod' }}
