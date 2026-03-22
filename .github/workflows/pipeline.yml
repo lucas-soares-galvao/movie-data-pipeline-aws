@@ -2,9 +2,17 @@ name: Pipeline CI/CD
 
 on:
   push:
-    branches: [feature/*, develop, release, main]
+    branches:
+      - 'feature/**'
+      - develop
+      - release
+      - main
   pull_request:
-    branches: [develop, release, main]
+    branches:
+      - develop
+      - release
+      - main
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   id-token: write
@@ -13,14 +21,24 @@ permissions:
 
 jobs:
 
-  # Testes unitários e de integração
+  # 🔹 Auto PR
+  auto-pr:
+    if: github.actor != 'github-actions[bot]'
+    uses: ./.github/workflows/auto-pr-reusable.yml
+    with:
+      github-ref-name: ${{ github.ref_name }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 🔹 Test
   test:
+    if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/ci-test.yml
 
-  # Deploy Terraform
+  # 🔹 Terraform
   terraform:
     needs: test
-    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    if: github.actor != 'github-actions[bot]' && (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main')
     uses: ./.github/workflows/tf-infra.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || github.ref_name == 'main' && 'prod' }}
@@ -29,11 +47,3 @@ jobs:
       aws-region: ${{ secrets.AWS_REGION }}
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
-
-  # Gerenciamento de PRs
-  auto-pr:
-    uses: ./.github/workflows/pr-origin-destiny.yml
-    with:
-      github-ref-name: ${{ github.ref_name }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
