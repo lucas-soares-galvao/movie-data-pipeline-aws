@@ -1,2 +1,2 @@
 # Projeto
-Repositório de pipeline AWS completo d+
+Repositório de pipeline AWS completo
