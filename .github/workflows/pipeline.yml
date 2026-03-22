@@ -39,7 +39,7 @@ jobs:
       pull-requests: write
 
   # Chamada para Develop/Release (espera o terraform)
-  auto-pr-promote:
+  auto-pr-environment:
     needs: terraform
     if: (github.ref_name == 'develop' || github.ref_name == 'release') && needs.terraform.result == 'success'
     uses: ./.github/workflows/pr-auto.yml
