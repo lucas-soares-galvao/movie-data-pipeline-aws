@@ -17,16 +17,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 🔹 Checkout
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔍 Descobrir base branch
+      # 🔹 Determinar base branch
       - name: Define base branch
         id: branch
         run: |
           REF="${{ inputs.github-ref-name }}"
           BASE=""
 
+          # Apenas branches válidas
           if [[ "$REF" == feature/* ]]; then
             BASE="develop"
           elif [[ "$REF" == "develop" ]]; then
@@ -34,13 +36,14 @@ jobs:
           elif [[ "$REF" == "release" ]]; then
             BASE="main"
           else
-            echo "Branch não suportada"
-            exit 1
+            echo "Branch '$REF' não suportada, pulando workflow..."
+            exit 0
           fi
 
           echo "base=$BASE" >> $GITHUB_OUTPUT
+          echo "HEAD=$REF, BASE=$BASE"
 
-      # 🔹 (Opcional) Terraform Validate
+      # 🔹 Terraform Validate (opcional)
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -50,13 +53,20 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-      # 🔀 Criar ou atualizar PR com retries
+      # 🔹 Criar ou atualizar PR com verificação de commits
       - name: Create or Update PR (Retry)
         run: |
           BASE=${{ steps.branch.outputs.base }}
           HEAD=${{ inputs.github-ref-name }}
           RETRIES=3
           COUNT=0
+
+          # Verifica se existem commits entre HEAD e BASE
+          DIFF=$(git log "$BASE..$HEAD" --oneline)
+          if [ -z "$DIFF" ]; then
+            echo "Nenhum commit entre $BASE e $HEAD. Pulando criação de PR."
+            exit 0
+          fi
 
           while [ $COUNT -lt $RETRIES ]; do
             EXISTING_PR=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
