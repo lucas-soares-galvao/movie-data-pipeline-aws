@@ -1,3 +1,11 @@
+name: Pipeline CI/CD
+
+on:
+  push:
+    branches: [develop, release, main]
+  pull_request:
+    branches: [develop, release, main]
+
 env:
   ENVIRONMENT: ${{ 
     github.ref_name == 'develop' && 'dev' ||
