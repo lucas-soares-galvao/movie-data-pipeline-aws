@@ -6,7 +6,6 @@ on:
       - 'feature/**'
       - develop
       - release
-      - main
 
 permissions:
   contents: write
