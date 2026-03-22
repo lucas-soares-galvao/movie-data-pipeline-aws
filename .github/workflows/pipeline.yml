@@ -28,20 +28,14 @@ jobs:
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
 
   # Chamada para Feature (espera o teste)
-  auto-pr-feature:
-    needs: test
-    if: startsWith(github.ref_name, 'feature/')
-    uses: ./.github/workflows/pr-auto.yml
-    with:
-      branch_name: ${{ github.ref_name }}
-    permissions:
-      contents: write
-      pull-requests: write
-
-  # Chamada para Develop/Release (espera o terraform)
-  auto-pr-promote:
-    needs: terraform
-    if: github.ref_name == 'develop' || github.ref_name == 'release'
+  auto-pr:
+    needs: [test, terraform]
+    if: |
+      (startsWith(github.ref_name, 'feature/') && needs.test.result == 'success') ||
+      (
+        (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main')
+        && needs.terraform.result == 'success'
+      )
     uses: ./.github/workflows/pr-auto.yml
     with:
       branch_name: ${{ github.ref_name }}
