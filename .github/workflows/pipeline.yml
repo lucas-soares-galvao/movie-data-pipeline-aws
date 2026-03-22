@@ -22,13 +22,3 @@ jobs:
       aws-region: ${{ secrets.AWS_REGION }}
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
-
-  deploy:
-    needs: terraform
-    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || github.ref_name == 'main' && 'prod' }}
-    secrets:
-      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
-      aws-region: ${{ secrets.AWS_REGION }}
