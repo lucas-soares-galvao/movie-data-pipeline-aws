@@ -1,37 +1,24 @@
-name: Main Pipeline
+name: Pipeline CI/CD
 
 on:
   push:
-    branches:
-      - develop
-      - release
-      - main
-      - feature/*
+    branches: [develop, release, main]
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches: [develop, release, main]
 
 jobs:
 
   test:
-    uses: ./.github/workflows/reusable/ci-test.yml
+    uses: ./.github/workflows/ci-test.yml
 
-  terraform-develop:
+  terraform:
     needs: test
-    if: github.ref == 'refs/heads/develop'
-    uses: ./.github/workflows/reusable/tf-env.yml
+    if: github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main'
+    uses: ./.github/workflows/tf-infra.yml
     with:
-      environment: develop
-
-  terraform-release:
-    needs: test
-    if: github.ref == 'refs/heads/release'
-    uses: ./.github/workflows/reusable/tf-env.yml
-    with:
-      environment: release
-
-  terraform-main:
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/reusable/tf-env.yml
-    with:
-      environment: prod
+      environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || github.ref_name == 'main' && 'prod' }}
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
+      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
