@@ -1,7 +1,11 @@
 name: Auto PR Pipeline
 
 on:
+  push:
+    branches:
+      - 'feature/**'
   pull_request:
+    types: [closed]
     branches:
       - develop
       - release
@@ -12,7 +16,6 @@ permissions:
 
 jobs:
   promote:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
