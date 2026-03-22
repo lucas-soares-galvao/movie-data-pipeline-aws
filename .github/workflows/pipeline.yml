@@ -42,4 +42,4 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/pr-origin-destiny.yml
     with:
-      github-ref-name: ${{ github.ref_name }}
+      github-ref-name: ${{ github.event.pull_request.head.ref || github.ref_name }}
