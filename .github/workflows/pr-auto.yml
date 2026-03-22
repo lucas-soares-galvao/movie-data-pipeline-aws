@@ -57,12 +57,10 @@ jobs:
               --base "$BASE" \
               --head "$HEAD" \
               --title "Auto PR: $HEAD → $BASE" \
-              --subject "Auto PR: $HEAD → $BASE" \
               --body "PR criado automaticamente via Pipeline CI/CD."
           else
             gh pr edit "$PR_NUMBER" \
               --title "Auto PR: $HEAD → $BASE" \
-              --subject "Auto PR: $HEAD → $BASE" \
               --body "PR atualizado automaticamente via Pipeline CI/CD."
             echo "PR já existente: #$PR_NUMBER"
           fi
