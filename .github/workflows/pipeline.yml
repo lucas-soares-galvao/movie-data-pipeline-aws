@@ -1,11 +1,5 @@
 name: Pipeline CI/CD
 
-on:
-  push:
-    branches: [develop, release, main]
-  pull_request:
-    branches: [develop, release, main]
-
 permissions:
   id-token: write
   contents: read
