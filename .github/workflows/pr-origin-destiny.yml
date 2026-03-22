@@ -1,9 +1,6 @@
 name: Auto PR Pipeline
 
 on:
-  push:
-    branches:
-      - 'feature/**'
   pull_request:
     types: [closed]
     branches:
