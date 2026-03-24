@@ -1,0 +1,100 @@
+# Nome do workflow reutilizável para operações de infraestrutura
+name: "Terraform (Reusable)"
+
+# Define que este workflow é chamado por outro (workflow_call)
+on:
+  workflow_call:
+    # Inputs: Parâmetros recebidos do pipeline principal (ex: 'dev', 'hom')
+    inputs:
+      environment:
+        type: string
+        required: true
+    # Secrets: Dados sensíveis necessários para conectar na AWS e no S3 do State
+    secrets:
+      aws-assume-role-arn:
+        required: true
+      aws-region:
+        required: true
+      aws-statefile-s3-bucket:
+        required: true
+      aws-lock-dynamodb-table:
+        required: true
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    # Define que todos os comandos 'run' usarão o shell bash por padrão
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # 1. Baixa o código do repositório
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Instala a versão específica do CLI do Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+
+      # 3. Autenticação na AWS usando OIDC (OpenID Connect)
+      # Isso evita o uso de chaves fixas (Access Keys), usando uma Role temporária mais segura
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-assume-role-arn }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ secrets.aws-region }}
+
+      # 4. Verifica se o ambiente deve ser destruído ou criado
+      # Ele lê um arquivo JSON local para saber se a flag de 'destroy' está ativa para aquele ambiente
+      - name: Read destroy configuration
+        id: read-destroy-config
+        run: |
+          DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
+          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+
+      # 5. Inicializa o Terraform configurando o Backend Remoto dinamicamente
+      # O bucket, a chave (nome do repo), a região e a tabela de lock (DynamoDB) vêm dos secrets
+      - name: Terraform Init
+        run: |
+          cd infra && terraform init \
+            -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="region=${{ secrets.aws-region }}" \
+            -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
+
+      # 6. Valida se a sintaxe do código Terraform está correta
+      - name: Terraform Validate
+        run: cd infra && terraform validate
+
+      # 7. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
+      # O comando 'workspace select || workspace new' garante que o isolamento do ambiente exista
+      - name: Terraform Destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        id: terraform-destroy
+        run: |
+          cd infra
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
+          terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
+
+      # 8. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
+      # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
+      - name: Terraform Plan
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-plan
+        run: |
+          cd infra
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
+          terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
+
+      # 9. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      - name: Terraform Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-apply
+        run: |
+          cd infra
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
+          terraform apply "${{ inputs.environment }}.plan"
