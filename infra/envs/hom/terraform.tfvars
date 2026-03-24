@@ -1,1 +1,0 @@
-bucket_name = "lsg-pipeline-aws-bucket-hom"
