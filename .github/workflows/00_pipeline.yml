@@ -13,17 +13,17 @@ permissions:
 
 jobs:
 
-  # 1. Job de Testes: Chama o workflow reutilizável que criamos (ci-test.yml)
+  # 1. Job de Testes: Chama o workflow reutilizável que criamos (01_test.yml)
   # Roda para todas as branches configuradas no 'on'
   test:
-    uses: ./.github/workflows/ci-test.yml
+    uses: ./.github/workflows/01_test.yml
 
   # 2. Job de Terraform: Realiza o deploy da infraestrutura
   terraform:
     needs: test # Só inicia se o job 'test' terminar com sucesso
     # Condição: Só roda em branches de ambiente (dev, hom, prod) e se o teste passou
     if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main') && needs.test.result == 'success'
-    uses: ./.github/workflows/tf-infra.yml
+    uses: ./.github/workflows/02_terraform.yml
     with:
       # Lógica para decidir o ambiente AWS baseado no nome da branch atual
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
@@ -38,7 +38,7 @@ jobs:
   auto-pr-feature:
     needs: test # Só depende dos testes passarem
     if: (startsWith(github.ref_name, 'feature/') && needs.test.result == 'success')
-    uses: ./.github/workflows/pr-auto.yml
+    uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions: # Permissões extras para criar PR e editar conteúdo
@@ -50,7 +50,7 @@ jobs:
     needs: terraform # Só inicia se o deploy do Terraform (validar infra) deu certo
     # Só roda para develop ou release (main não tem destino posterior para promover)
     if: (github.ref_name == 'develop' || github.ref_name == 'release') && needs.terraform.result == 'success'
-    uses: ./.github/workflows/pr-auto.yml
+    uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions:
