@@ -1,0 +1,257 @@
+# Nome do workflow para comentar Terraform Plan em Pull Requests (Glue Infra)
+name: "Glue Infra Plan Comment (PR)"
+
+# Gatilho: Executa quando há um novo PR aberto ou commit feito em um PR existente
+# Isso permite que revisores vejam o plano antes de fazer merge
+on:
+  pull_request:
+    branches: [develop, release, main]
+    # Caminhos: Só executa se houver mudanças em arquivos Terraform ou variáveis
+    paths:
+      - 'infra/**'
+      - '.github/workflows/04_terraform_plan_pr.yml'
+
+# Permissões necessárias para comentar no PR e acessar AWS
+permissions:
+  id-token: write      # Para OIDC com AWS
+  contents: read       # Para ler o código
+  pull-requests: write # Para comentar no PR
+
+jobs:
+  # Job único para demonstrar o plano Terraform no PR
+  terraform-plan:
+    runs-on: ubuntu-latest
+    
+    # Matriz de ambientes baseado no branch alvo do PR
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          # Se PR é para develop → mostra plan de 'dev'
+          # Se PR é para release → mostra plan de 'hom'
+          # Se PR é para main → mostra plan de 'prod'
+          - ${{ github.base_ref == 'develop' && 'dev' || github.base_ref == 'release' && 'hom' || github.base_ref == 'main' && 'prod' || 'dev' }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # 1. Faz checkout do código do PR
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Garante que pegamos o branch do PR (não o branch base)
+          ref: ${{ github.head_ref }}
+
+      # 2. Instala a versão específica do Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+
+      # 3. Autenticação na AWS usando OIDC (sem chaves hardcoded)
+      # ⚠️ Atenção: Você precisa configurar os secrets no GitHub
+      #    Vá em: Settings → Secrets and variables → Actions → New repository secret
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 4. Inicializa Terraform com backend remoto
+      - name: Terraform Init
+        run: |
+          cd infra
+          terraform init \
+            -backend-config="bucket=${{ secrets.AWS_STATEFILE_S3_BUCKET }}" \
+            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}"
+
+      # 5. Valida sintaxe do Terraform
+      - name: Terraform Validate
+        run: cd infra && terraform validate
+
+      # 6. Executa Plan e salva em arquivo
+      # O plano é salvo em arquivo JSON para ser parseado depois
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd infra
+          
+          # Cria workspace específico do ambiente se não existir
+          terraform workspace select ${{ matrix.environment }} || terraform workspace new ${{ matrix.environment }}
+          
+          # Executa plan e salva em JSON para leitura posterior
+          terraform plan \
+            -var-file="./envs/${{ matrix.environment }}/terraform.tfvars" \
+            -out="tfplan.binary"
+          
+          # Converte plano binário para JSON para leitura legível
+          terraform show -json tfplan.binary > tfplan.json
+          
+          # Também cria versão em texto simples para o comentário
+          terraform show tfplan.binary > tfplan.txt
+        continue-on-error: true
+
+      # 7. Processa o arquivo de plano para criar comentário legível
+      - name: Prepare Plan Comment
+        id: comment
+        run: |
+          cd infra
+          
+          # Lê o arquivo de plano em texto e o armazena em uma variável de saída
+          PLAN_OUTPUT=$(cat tfplan.txt)
+          
+          # Conta o número de mudanças
+          RESOURCES_TO_CREATE=$(echo "$PLAN_OUTPUT" | grep -c "will be created" || echo "0")
+          RESOURCES_TO_CHANGE=$(echo "$PLAN_OUTPUT" | grep -c "will be updated" || echo "0")
+          RESOURCES_TO_DESTROY=$(echo "$PLAN_OUTPUT" | grep -c "will be destroyed" || echo "0")
+          
+          # Escapifica para usar em JSON (importante para multilinhas)
+          PLAN_OUTPUT="${PLAN_OUTPUT//'%'/'%25'}"
+          PLAN_OUTPUT="${PLAN_OUTPUT//$'\n'/'%0A'}"
+          PLAN_OUTPUT="${PLAN_OUTPUT//$'\r'/'%0D'}"
+          
+          echo "plan_output=$PLAN_OUTPUT" >> $GITHUB_OUTPUT
+          echo "resources_create=$RESOURCES_TO_CREATE" >> $GITHUB_OUTPUT
+          echo "resources_change=$RESOURCES_TO_CHANGE" >> $GITHUB_OUTPUT
+          echo "resources_destroy=$RESOURCES_TO_DESTROY" >> $GITHUB_OUTPUT
+
+      # 8. Comenta o plano no PR
+      # GitHub tem limite de 65536 caracteres por comentário
+      - name: Comment PR with Terraform Plan
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Lê o arquivo de plano (limitado a 50000 caracteres para segurança)
+            let planOutput = fs.readFileSync('infra/tfplan.txt', 'utf8');
+            
+            // Se o plano for muito grande, trunca e avisa
+            if (planOutput.length > 50000) {
+              planOutput = planOutput.substring(0, 47000) + '\n\n... [PLANO TRUNCADO - Muito grande para exibir completamente]';
+            }
+            
+            // Define emoji baseado no ambiente
+            const envEmoji = {
+              'dev': '🚀',
+              'hom': '🔄',
+              'prod': '🚨'
+            };
+            
+            const environment = '${{ matrix.environment }}';
+            const emoji = envEmoji[environment] || '📋';
+            
+            // Cria o corpo do comentário com formatação Markdown
+            const comment = `${emoji} **Terraform Plan - Ambiente: \`${environment}\`**
+
+            <details>
+            <summary>Clique para expandir o plano completo</summary>
+
+            \`\`\`
+            ${planOutput}
+            \`\`\`
+
+            </details>
+
+            ---
+
+            ### 📊 Resumo das Mudanças:
+            | Ação | Quantidade |
+            |------|-----------|
+            | ➕ Criar | ${{ steps.comment.outputs.resources_create }} |
+            | 📝 Modificar | ${{ steps.comment.outputs.resources_change }} |
+            | ❌ Destruir | ${{ steps.comment.outputs.resources_destroy }} |
+
+            ---
+
+            **Checklist antes de fazer merge:**
+            - [ ] Revisei as mudanças propostas
+            - [ ] As mudanças estão de acordo com a política de IaC
+            - [ ] Não há destruição de recursos críticos (verificar ❌)
+            - [ ] As tags estão corretas
+            - [ ] Os security groups estão bem definidos
+
+            _Comentário gerado automaticamente por GitHub Actions_`;
+            
+            // Busca por comentários anteriores do bot para atualizar (evitar spam)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Terraform Plan - Ambiente:')
+            );
+            
+            if (botComment) {
+              // Atualiza comentário existente
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+              console.log('✓ Comentário Terraform Plan atualizado no PR');
+            } else {
+              // Cria novo comentário
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+              console.log('✓ Novo comentário Terraform Plan criado no PR');
+            }
+
+      # 9. Comenta erro se Terraform Plan falhar
+      - name: Comment PR with Plan Error
+        if: failure() && steps.plan.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const environment = '${{ matrix.environment }}';
+            
+            const comment = `❌ **Terraform Plan Falhou - Ambiente: \`${environment}\`**
+
+            Houve um erro ao executar \`terraform plan\`. 
+            
+            **Passos para debugar:**
+            1. Verifique a sintaxe dos arquivos Terraform em \`infra/\`
+            2. Confirme que as variáveis em \`infra/envs/${environment}/terraform.tfvars\` estão corretas
+            3. Verifique os logs da pipeline acima para mais detalhes
+
+            _Se o problema persistir, contate o DevOps Team_`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+
+      # 10. Opcional: Cria status check que bloqueia merge se plan falhar
+      - name: Set commit status
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const state = '${{ steps.plan.outcome }}' === 'success' ? 'success' : 'failure';
+            const description = state === 'success' ? 
+              'Terraform plan validado com sucesso' : 
+              'Terraform plan falhou - revisar comentário no PR';
+            
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: state,
+              description: description,
+              context: 'Terraform Plan / ${{ matrix.environment }}'
+            });
