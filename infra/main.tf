@@ -11,7 +11,6 @@ resource "aws_glue_job" "etl_job" {
   timeout           = 2880
   number_of_workers = 2
   worker_type       = "G.1X"
-  connections       = [aws_glue_connection.example.name]
   execution_class   = "STANDARD"
 
   command {
