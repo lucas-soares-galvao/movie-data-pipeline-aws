@@ -173,10 +173,18 @@ jobs:
             exit 1
           fi
 
+          echo "🔁 Obtendo role atual do Glue Job: $GLUE_JOB"
+          CURRENT_ROLE="$(aws glue get-job --job-name "$GLUE_JOB" --query 'Job.Role' --output text)"
+
+          if [ -z "$CURRENT_ROLE" ] || [ "$CURRENT_ROLE" = "None" ]; then
+            echo "ERRO: role do Glue Job está vazia. Verifique a configuração do job e a role associada."
+            exit 1
+          fi
+
           echo "🔁 Atualizando Glue Job: $GLUE_JOB"
           aws glue update-job \
             --job-name "$GLUE_JOB" \
-            --job-update "{\"Command\":{\"Name\":\"glueetl\",\"ScriptLocation\":\"${S3_URI}\"}}"
+            --job-update "{\"Role\":\"${CURRENT_ROLE}\",\"Command\":{\"Name\":\"glueetl\",\"ScriptLocation\":\"${S3_URI}\"}}"
 
           echo "✓ Deploy Glue concluído para $GLUE_JOB"
 
