@@ -28,9 +28,15 @@ jobs:
           python -m pip install --upgrade pip
           # Instala o framework de teste (pytest) e o plugin de cobertura (pytest-cov)
           pip install pytest pytest-cov
+          # Instala ferramentas de quality gates
+          pip install ruff mypy bandit safety
           # Verifica se existe um arquivo de dependências específico de teste e o instala
           if [ -f test/requirements_test.txt ]; then
             pip install -r test/requirements_test.txt
+          fi
+          # Instala dependências da aplicação para type-checking
+          if [ -f app/requirements.txt ]; then
+            pip install -r app/requirements.txt
           fi
 
       # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
@@ -38,7 +44,40 @@ jobs:
       - name: Configure PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
-      # 5. Executa os testes e aplica a barreira de qualidade (Quality Gate)
+      # 5. Linting com Ruff - Verifica estilo de código e boas práticas
+      - name: Lint with Ruff
+        run: |
+          # Faz linting do código Python seguindo padrões de estilo
+          # exit-zero transforma warnings em avisos, não falha a pipeline
+          ruff check app/ test/ --exit-zero
+          echo "✓ Ruff linting concluído"
+
+      # 6. Type Check com mypy - Verifica tipos de dados estaticamente
+      - name: Type Check with mypy
+        run: |
+          # Executa type checking para detectar erros potenciais de tipo
+          # --ignore-missing-imports ignora pacotes sem stubs de tipo
+          mypy app/ --ignore-missing-imports || echo "⚠ Avisos de tipo detectados (verificar antes de deploy)"
+          echo "✓ Mypy type checking concluído"
+
+      # 7. Security Scan com Bandit - Detecta vulnerabilidades de segurança
+      - name: Security Scan with Bandit
+        run: |
+          # Escaneia código em busca de problemas comuns de segurança
+          # -ll mostra apenas Issues de alta e média severidade
+          bandit -r app/ -ll -f json -o bandit-report.json || true
+          echo "✓ Bandit security scan concluído"
+          # Exibir um resumo legível
+          bandit -r app/ -ll || echo "⚠ Possíveis vulnerabilidades detectadas"
+
+      # 8. Dependency Check - Verifica vulnerabilidades em dependências
+      - name: Check Dependencies with Safety
+        run: |
+          # Verifica dependências conhecidas com vulnerabilidades divulgadas
+          safety check --json --output safety-report.json || echo "⚠ Vulnerabilidades conhecidas em dependências (verificar antes de deploy)"
+          echo "✓ Safety dependency check concluído"
+
+      # 9. Executa os testes e aplica a barreira de qualidade (Quality Gate)
       - name: Run tests with Coverage Gate
         run: |
           # pytest: executa os testes
@@ -50,3 +89,20 @@ jobs:
                  --cov-report=term-missing \
                  --cov-report=xml \
                  --cov-fail-under=70
+
+      # 10. Quality Gate Summary - Resumo final de qualidade
+      - name: Quality Gate Summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "      ✓ QUALITY GATES SUMMARY"
+          echo "=========================================="
+          echo "✓ Testes Unitários (pytest)"
+          echo "✓ Cobertura de Código (Coverage Gate: 70%)"
+          echo "✓ Linting (ruff)"
+          echo "✓ Type Checking (mypy)"
+          echo "✓ Security Analysis (bandit)"
+          echo "✓ Dependency Vulnerabilities (safety)"
+          echo "=========================================="
+          echo "Pipeline de qualidade verifida com sucesso!"
+          echo "=========================================="

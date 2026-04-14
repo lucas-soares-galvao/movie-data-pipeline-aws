@@ -1,15 +1,23 @@
 # Nome da Pipeline que aparece no topo da aba Actions do GitHub
-name: Pipeline CI/CD
+name: Glue ETL Pipeline CI/CD
 
 # Define os gatilhos: a esteira roda sempre que houver um push nessas branches específicas
+# ou quando for disparada manualmente para testes/debug.
 on:
   push:
     branches: [feature/*, develop, release, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente de deploy (dev, hom, prod)'
+        required: false
+        default: 'dev'
 
 # Permissões padrão para o token do GitHub (necessário para autenticação OIDC/AWS)
 permissions:
   id-token: write
   contents: read
+  actions: write
 
 jobs:
 
@@ -18,11 +26,21 @@ jobs:
   test:
     uses: ./.github/workflows/01_test.yml
 
-  # 2. Job de Terraform: Realiza o deploy da infraestrutura
+  # 2. Job de Build da App: Cria artifacts Glue ETL
+  build-app:
+    needs: test
+    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.test.result == 'success'
+    uses: ./.github/workflows/05_build_app.yml
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-artifacts-s3-bucket: ${{ secrets.AWS_ARTIFACTS_S3_BUCKET }}
+
+  # 3. Job de Terraform: Realiza o deploy da infraestrutura
   terraform:
     needs: test # Só inicia se o job 'test' terminar com sucesso
-    # Condição: Só roda em branches de ambiente (dev, hom, prod) e se o teste passou
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main') && needs.test.result == 'success'
+    # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
+    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
       # Lógica para decidir o ambiente AWS baseado no nome da branch atual
@@ -34,7 +52,20 @@ jobs:
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
 
-  # 3. Auto PR para Feature: Promove o código de feature/* para develop
+  # 4. Job de Deploy da App: Atualiza Glue ETL depois do build e da infra
+  deploy-app:
+    needs: [build-app, terraform]
+    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.build-app.result == 'success' && needs.terraform.result == 'success'
+    uses: ./.github/workflows/06_deploy_app.yml
+    with:
+      environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
+    secrets:
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      aws-region: ${{ secrets.AWS_REGION }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
+      aws-artifacts-s3-bucket: ${{ secrets.AWS_ARTIFACTS_S3_BUCKET }}
+
+  # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
     needs: test # Só depende dos testes passarem
     if: (startsWith(github.ref_name, 'feature/') && needs.test.result == 'success')
@@ -45,7 +76,7 @@ jobs:
       contents: write
       pull-requests: write
 
-  # 4. Auto PR para Ambientes: Promove develop -> release ou release -> main
+  # 6. Auto PR para Ambientes: Promove develop -> release ou release -> main
   auto-pr-environment:
     needs: terraform # Só inicia se o deploy do Terraform (validar infra) deu certo
     # Só roda para develop ou release (main não tem destino posterior para promover)
