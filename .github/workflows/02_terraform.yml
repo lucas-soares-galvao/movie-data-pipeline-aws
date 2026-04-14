@@ -70,7 +70,53 @@ jobs:
       - name: Terraform Validate
         run: cd infra && terraform validate
 
-      # 7. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
+      # 7. TFLint - Linting para Terraform (detecção de má prática e erros potenciais)
+      - name: Setup and Run TFLint
+        run: |
+          # Instala TFLint
+          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          
+          # Inicializa TFLint com configurações padrão
+          cd infra
+          tflint --init
+          
+          # Executa TFLint com formato legível
+          echo "🔍 Executando TFLint para validações de boas práticas..."
+          tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
+
+      # 8. Format Check - Verifica se o código está formatado corretamente
+      - name: Terraform Format Check
+        run: |
+          cd infra
+          echo "🎨 Verificando formatação do código Terraform..."
+          terraform fmt -check -recursive || {
+            echo "⚠ Código não formatado. Execute: terraform fmt -recursive"
+            exit 0  # Não falha a pipeline, apenas aviso
+          }
+
+      # 9. Checkov - Policy validation (detecção de vulnerabilidades de segurança/compliance)
+      - name: Checkov Security Scan
+        run: |
+          # Instala Checkov
+          pip install checkov
+          
+          cd infra
+          echo "🔒 Executando Checkov para validações de segurança e compliance..."
+          
+          # Executa Checkov com output em JSON para relatório
+          checkov -d . \
+                  --framework terraform \
+                  --quiet \
+                  --output json \
+                  --output-file checkov-report.json || echo "⚠ Problemas de segurança/compliance detectados"
+          
+          # Exibe um resumo em terminal
+          checkov -d . --framework terraform --quiet || {
+            echo "⚠ Verifique os problemas de segurança identificados acima"
+            exit 0  # Não falha a pipeline para permitir correções iterativas
+          }
+
+      # 10. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
       # O comando 'workspace select || workspace new' garante que o isolamento do ambiente exista
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
@@ -80,7 +126,7 @@ jobs:
           terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
 
-      # 8. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
+      # 11. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
       # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
@@ -90,7 +136,7 @@ jobs:
           terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
           terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
 
-      # 9. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 12. Execução (Apply): Aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
