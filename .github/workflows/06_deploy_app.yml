@@ -33,11 +33,11 @@ on:
         type: string
         required: false
     secrets:
-      aws-assume-role-arn:
+      AWS_ASSUME_ROLE_ARN:
         required: true
-      aws-region:
+      AWS_REGION:
         required: true
-      aws-artifacts-s3-bucket:
+      AWS_ARTIFACTS_S3_BUCKET:
         required: true
 
 permissions:
@@ -123,7 +123,7 @@ jobs:
           fi
 
           # Bucket de artifacts para deploy
-          ARTIFACT_BUCKET="${{ secrets.aws-artifacts-s3-bucket }}"
+          ARTIFACT_BUCKET="${{ secrets.AWS_ARTIFACTS_S3_BUCKET }}"
 
           # Prefixo do script Glue se fornecido
           GLUE_SCRIPT_S3_BUCKET="${{ github.event.inputs.glue_script_s3_bucket }}"
