@@ -56,7 +56,7 @@ jobs:
   deploy-app:
     needs: [build-app, terraform]
     if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.build-app.result == 'success' && needs.terraform.result == 'success'
-    uses: ./.github/workflows/06_04_deploy_app.yml
+    uses: ./.github/workflows/04_deploy_app.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
     secrets:
