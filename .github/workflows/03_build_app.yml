@@ -256,7 +256,7 @@ jobs:
 
           Próximos Passos:
           1. Download dos artifacts do GitHub Actions
-          2. Usar em 06_deploy_app.yml para fazer deploy no Glue
+          2. Usar em 06_04_deploy_app.yml para fazer deploy no Glue
           3. Validar integridade dos arquivos com checksums
 
           EOF
