@@ -55,7 +55,7 @@ jobs:
   # 4. Job de Deploy da App: Atualiza Glue ETL depois do build e da infra
   deploy-app:
     needs: [build-app, terraform]
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.build-app.result == 'success' && needs.terraform.result == 'success'
+    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.build-app.result == 'success' && needs.terraform.result == 'success' && needs.terraform.outputs.was_destroyed != 'true'
     uses: ./.github/workflows/04_deploy_app.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
