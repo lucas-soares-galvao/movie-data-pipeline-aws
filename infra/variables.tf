@@ -9,3 +9,9 @@ variable "glue_job_name" {
   type        = string
   default     = "my-glue-etl-job"
 }
+
+variable "iam_role_name" {
+  description = "The name of the IAM role for Glue jobs"
+  type        = string
+  default     = "glue-job-role"
+}

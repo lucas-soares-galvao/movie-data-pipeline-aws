@@ -43,7 +43,7 @@ resource "aws_glue_job" "etl_job" {
 
 # IAM role for Glue jobs
 resource "aws_iam_role" "glue_job_role" {
-  name = "glue-job-role"
+  name = var.iam_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
