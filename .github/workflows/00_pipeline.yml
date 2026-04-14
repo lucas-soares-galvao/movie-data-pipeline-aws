@@ -29,7 +29,9 @@ jobs:
   # 2. Job de Build da App: Cria artifacts Glue ETL
   build-app:
     needs: test
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.test.result == 'success'
+    if: |
+      (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      needs.test.result == 'success'
     uses: ./.github/workflows/03_build_app.yml
     secrets:
       aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
@@ -40,7 +42,9 @@ jobs:
   terraform:
     needs: test # Só inicia se o job 'test' terminar com sucesso
     # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.test.result == 'success'
+    if: |
+      (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
       # Lógica para decidir o ambiente AWS baseado no nome da branch atual
@@ -55,7 +59,9 @@ jobs:
   # 4. Job de Deploy da App: Atualiza Glue ETL depois do build e da infra
   deploy-app:
     needs: [build-app, terraform]
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.build-app.result == 'success' && needs.terraform.result == 'success' && needs.terraform.outputs.was_destroyed != 'true'
+    if: |
+      (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      needs.build-app.result == 'success' && needs.terraform.result == 'success' && needs.terraform.outputs.was_destroyed != 'true'
     uses: ./.github/workflows/04_deploy_app.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
@@ -79,7 +85,10 @@ jobs:
   auto-pr-environment:
     needs: [deploy-app, terraform] # Só inicia se o deploy do app deu certo ou se o terraform indicou que a infraestrutura foi destruída (caso de teste de destroy)
     # Só roda para develop ou release (main não tem destino posterior para promover)
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.event_name == 'workflow_dispatch') && (needs.deploy-app.result == 'success' || needs.terraform.outputs.was_destroyed == 'true')
+    if: |
+      always() &&
+      (github.ref_name == 'develop' || github.ref_name == 'release' || github.event_name == 'workflow_dispatch') &&
+      (needs.deploy-app.result == 'success' || needs.terraform.outputs.was_destroyed == 'true') 
     uses: ./.github/workflows/05_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
