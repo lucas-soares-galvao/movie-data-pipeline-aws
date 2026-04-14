@@ -60,9 +60,9 @@ jobs:
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
     secrets:
-      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
-      aws-region: ${{ secrets.AWS_REGION }}
-      aws-artifacts-s3-bucket: ${{ secrets.AWS_ARTIFACTS_S3_BUCKET }}
+      AWS_ASSUME_ROLE_ARN: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ARTIFACTS_S3_BUCKET: ${{ secrets.AWS_ARTIFACTS_S3_BUCKET }}
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
