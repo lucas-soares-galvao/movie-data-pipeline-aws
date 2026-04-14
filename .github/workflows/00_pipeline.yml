@@ -62,7 +62,6 @@ jobs:
     secrets:
       aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
       aws-region: ${{ secrets.AWS_REGION }}
-      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-artifacts-s3-bucket: ${{ secrets.AWS_ARTIFACTS_S3_BUCKET }}
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop

@@ -44,7 +44,6 @@ permissions:
   id-token: write
   contents: read
   actions: read
-  pull-requests: read
 
 env:
   PYTHON_VERSION: '3.12'
