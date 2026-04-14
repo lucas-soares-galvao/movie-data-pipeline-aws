@@ -77,9 +77,9 @@ jobs:
 
   # 6. Auto PR para Ambientes: Promove develop -> release ou release -> main
   auto-pr-environment:
-    needs: terraform # Só inicia se o deploy do app deu certo
+    needs: deploy-app # Só inicia se o deploy do app deu certo
     # Só roda para develop ou release (main não tem destino posterior para promover)
-    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.event_name == 'workflow_dispatch') && needs.deploy-app.result == 'success' && needs.build-app.result == 'success' && needs.terraform.result == 'success'
+    if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.event_name == 'workflow_dispatch') && needs.deploy-app.result == 'success'
     uses: ./.github/workflows/05_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
