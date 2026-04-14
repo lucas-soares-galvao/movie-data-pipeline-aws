@@ -9,6 +9,11 @@ on:
       environment:
         type: string
         required: true
+    # Outputs: Variáveis que serão passadas para o pipeline principal (ex: se a infraestrutura foi destruída ou não)
+    outputs:
+      was_destroyed:
+        description: "Indica se a infraestrutura foi destruída"
+        value: ${{ jobs.terraform.outputs.destroyed_status }}
     # Secrets: Dados sensíveis necessários para conectar na AWS e no S3 do State
     secrets:
       aws-assume-role-arn:
@@ -23,6 +28,11 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+
+    # Outputs do job: Passa para o pipeline principal se a infraestrutura foi destruída ou não (usado para condicional de deploy da app)
+    outputs:
+      destroyed_status: ${{ steps.read-destroy-config.outputs.destroy }}
+
     # Define que todos os comandos 'run' usarão o shell bash por padrão
     defaults:
       run:
