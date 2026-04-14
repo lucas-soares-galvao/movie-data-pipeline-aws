@@ -30,7 +30,7 @@ jobs:
   build-app:
     needs: test
     if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.test.result == 'success'
-    uses: ./.github/workflows/05_build_app.yml
+    uses: ./.github/workflows/03_build_app.yml
     secrets:
       aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
       aws-region: ${{ secrets.AWS_REGION }}
@@ -56,7 +56,7 @@ jobs:
   deploy-app:
     needs: [build-app, terraform]
     if: (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && needs.build-app.result == 'success' && needs.terraform.result == 'success'
-    uses: ./.github/workflows/06_deploy_app.yml
+    uses: ./.github/workflows/06_04_deploy_app.yml
     with:
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
     secrets:
@@ -68,7 +68,7 @@ jobs:
   auto-pr-feature:
     needs: test # Só depende dos testes passarem
     if: (startsWith(github.ref_name, 'feature/') && needs.test.result == 'success')
-    uses: ./.github/workflows/03_pr_auto.yml
+    uses: ./.github/workflows/05_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions: # Permissões extras para criar PR e editar conteúdo
@@ -80,7 +80,7 @@ jobs:
     needs: terraform # Só inicia se o deploy do app deu certo
     # Só roda para develop ou release (main não tem destino posterior para promover)
     if: (github.ref_name == 'develop' || github.ref_name == 'release') && needs.deploy-app.result == 'success'
-    uses: ./.github/workflows/03_pr_auto.yml
+    uses: ./.github/workflows/05_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions:
