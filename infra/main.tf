@@ -11,11 +11,10 @@ resource "aws_glue_job" "etl_job" {
   timeout           = 2880
   number_of_workers = 2
   worker_type       = "G.1X"
-  connections       = [aws_glue_connection.example.name]
   execution_class   = "STANDARD"
 
   command {
-    script_location = "s3://${aws_s3_bucket.glue_scripts.bucket}/jobs/etl_job.py"
+    script_location = "s3://${aws_s3_bucket.bucket.bucket}/jobs/etl_job.py"
     name            = "glueetl"
     python_version  = "3"
   }
@@ -59,9 +58,3 @@ resource "aws_iam_role" "glue_job_role" {
     ]
   })
 }
-
-# resource "aws_s3_object" "glue_etl_script" {
-#   bucket = aws_s3_bucket.glue_scripts.id
-#   key    = "jobs/etl_job.py"
-#   source = "jobs/etl_job.py" # Make sure this file exists locally
-# }
