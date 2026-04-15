@@ -1,7 +1,16 @@
-variable "bucket_name" {
-  description = "The name of the S3 bucket to create"
+locals {
+  glue_src_path = "${path.root}/../app"
+}
+
+variable "s3_bucket_aux" {
+  description = "The name of the auxiliary S3 bucket for Glue scripts"
   type        = string
-  default     = "my-terraform-bucket"
+  default     = "lsg-sa-east-1-bucket-aux"
+}
+
+variable "env" {
+  description = "The environment for the Glue job (e.g., dev, hom, prod)"
+  type        = string
 }
 
 variable "glue_job_name" {
