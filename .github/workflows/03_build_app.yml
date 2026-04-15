@@ -1,5 +1,5 @@
 # Nome do workflow para buildar artifacts da aplicação Glue
-name: "Build Glue ETL Artifacts"
+name: "Build Glue Artifacts"
 
 # Gatilho: usa workflow_call para ser usado pelo pipeline principal
 on:
@@ -119,7 +119,7 @@ jobs:
           Python Version:  ${{ env.PYTHON_VERSION }}
 
           Artifacts:
-          - glue_script/: Script ETL do Glue
+          - glue_script/: Script do Glue
 
           EOF
 
@@ -242,7 +242,7 @@ jobs:
         run: |
           cat << 'EOF'
 
-          ✅ BUILD COMPLETE - Build Glue ETL Artifacts
+          ✅ BUILD COMPLETE - Build Glue Artifacts
 
           Ambientes Buildados:
           - dev
@@ -250,7 +250,7 @@ jobs:
           - prod
 
           Artifacts Gerados:
-          - script.py (Script ETL do Glue)
+          - script.py (Script do Glue)
           - BUILD_REPORT_{env}.txt (Relatório de build)
           - script.py.sha256 (Checksum para validação)
 
