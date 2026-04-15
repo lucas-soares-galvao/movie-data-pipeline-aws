@@ -1,6 +1,5 @@
 # IAM role for Glue jobs
 resource "aws_iam_role" "glue_job_role" {
-  count = var.create_role ? 1 : 0
   name  = var.iam_role_name
 
   assume_role_policy = jsonencode({
@@ -15,25 +14,21 @@ resource "aws_iam_role" "glue_job_role" {
       }
     ]
   })
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
-data "aws_iam_role" "glue_job_role" {
-  count = var.create_role ? 0 : 1
-  name  = var.iam_role_name
+import {
+  to = aws_iam_role.glue_job_role
+  id = var.iam_role_name
 }
 
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
-  role       = local.glue_role_name
+  role       = aws_iam_role.glue_job_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }
 
 resource "aws_iam_role_policy" "glue_read_code_from_s3" {
   name = "${var.iam_role_name}-read-code"
-  role = local.glue_role_name
+  role = aws_iam_role.glue_job_role.name
 
   policy = jsonencode({
     Version = "2012-10-17"

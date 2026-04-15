@@ -15,12 +15,6 @@ variable "glue_job_name" {
   default     = "my-glue-etl-job"
 }
 
-variable "create_role" {
-  description = "Whether to create the IAM role for Glue jobs (set to false if the role already exists)"
-  type    = bool
-  default = true
-}
-
 variable "iam_role_name" {
   description = "The name of the IAM role for Glue jobs"
   type        = string
