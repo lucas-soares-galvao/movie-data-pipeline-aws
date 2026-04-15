@@ -63,15 +63,21 @@ jobs:
       - name: Read Destroy Configuration
         id: read-destroy-config
         run: |
-          # Caminho absoluto ou relativo correto a partir da raiz do repo
-          CONFIG_FILE="infra/envs/${{ inputs.environment }}/config.txt"
+          CONFIG_FILE="infra/destroy_config.json"
           
           if [ -f "$CONFIG_FILE" ]; then
-            # Extrai o valor e remove espaços
-            DESTROY_VALUE=$(grep "destroy" "$CONFIG_FILE" | cut -d'=' -f2 | xargs || echo "false")
-            echo "destroy=${DESTROY_VALUE:-false}" >> $GITHUB_OUTPUT
+            # Extrai o valor do JSON usando jq
+            DESTROY_VALUE=$(jq -r '.[${{ inputs.environment }}]' "$CONFIG_FILE")
+            
+            # Valida se obteve um valor booleano válido
+            if [ "$DESTROY_VALUE" = "true" ] || [ "$DESTROY_VALUE" = "false" ]; then
+              echo "destroy=$DESTROY_VALUE" >> $GITHUB_OUTPUT
+            else
+              echo "Aviso: Valor inválido em destroy_config.json. Assumindo false."
+              echo "destroy=false" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "Aviso: Ficheiro de configuração não encontrado em $CONFIG_FILE. Assumindo false."
+            echo "Aviso: Arquivo de configuração não encontrado em $CONFIG_FILE. Assumindo false."
             echo "destroy=false" >> $GITHUB_OUTPUT
           fi
 
