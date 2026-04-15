@@ -16,6 +16,7 @@ permissions:
   id-token: write      # Para OIDC com AWS
   contents: read       # Para ler o código
   pull-requests: write # Para comentar no PR
+  issues: write        # Para criar issues se necessário
 
 jobs:
   # Job único para demonstrar o plano Terraform no PR
@@ -242,7 +243,9 @@ jobs:
         if: always()
         with:
           script: |
-            const state = '${{ steps.plan.outcome }}' === 'success' ? 'success' : 'failure';
+            // Usamos o objeto 'steps' do contexto do próprio script para maior segurança
+            const planOutcome = "${{ steps.plan.outcome }}"; 
+            const state = planOutcome === 'success' ? 'success' : 'failure';
             const description = state === 'success' ? 
               'Terraform plan validado com sucesso' : 
               'Terraform plan falhou - revisar comentário no PR';
