@@ -60,11 +60,20 @@ jobs:
 
       # 4. Verifica se o ambiente deve ser destruído ou criado
       # Ele lê um arquivo JSON local para saber se a flag de 'destroy' está ativa para aquele ambiente
-      - name: Read destroy configuration
+      - name: Read Destroy Configuration
         id: read-destroy-config
         run: |
-          DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
-          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+          # Caminho absoluto ou relativo correto a partir da raiz do repo
+          CONFIG_FILE="infra/envs/${{ inputs.environment }}/config.txt"
+          
+          if [ -f "$CONFIG_FILE" ]; then
+            # Extrai o valor e remove espaços
+            DESTROY_VALUE=$(grep "destroy" "$CONFIG_FILE" | cut -d'=' -f2 | xargs || echo "false")
+            echo "destroy=${DESTROY_VALUE:-false}" >> $GITHUB_OUTPUT
+          else
+            echo "Aviso: Ficheiro de configuração não encontrado em $CONFIG_FILE. Assumindo false."
+            echo "destroy=false" >> $GITHUB_OUTPUT
+          fi
 
       # 5. Inicializa o Terraform configurando o Backend Remoto dinamicamente
       # O bucket, a chave (nome do repo), a região e a tabela de lock (DynamoDB) vêm dos secrets
