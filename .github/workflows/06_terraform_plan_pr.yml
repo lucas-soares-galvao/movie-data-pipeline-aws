@@ -9,14 +9,13 @@ on:
     # Caminhos: Só executa se houver mudanças em arquivos Terraform ou variáveis
     paths:
       - 'infra/**'
-      - '.github/workflows/06_terraform_plan_pr.yml'
+      - '.github/workflows/04_terraform_plan_pr.yml'
 
 # Permissões necessárias para comentar no PR e acessar AWS
 permissions:
-  id-token: write      # Obrigatório para a AWS
-  contents: read       # Obrigatório para ler o código
-  pull-requests: write # ESSENCIAL para comentar no PR
-  statuses: write      # OBRIGATÓRIO para criar commit status
+  id-token: write      # Para OIDC com AWS
+  contents: read       # Para ler o código
+  pull-requests: write # Para comentar no PR
 
 jobs:
   # Job único para demonstrar o plano Terraform no PR
@@ -104,17 +103,12 @@ jobs:
           cd infra
           
           # Lê o arquivo de plano em texto e o armazena em uma variável de saída
-          PLAN_OUTPUT=$(cat tfplan.txt 2>/dev/null || echo "")
+          PLAN_OUTPUT=$(cat tfplan.txt)
           
-          # Conta o número de mudanças com verificação de erro
-          RESOURCES_TO_CREATE=$(echo "$PLAN_OUTPUT" | grep -c "will be created" 2>/dev/null || true)
-          RESOURCES_TO_CHANGE=$(echo "$PLAN_OUTPUT" | grep -c "will be updated" 2>/dev/null || true)
-          RESOURCES_TO_DESTROY=$(echo "$PLAN_OUTPUT" | grep -c "will be destroyed" 2>/dev/null || true)
-          
-          # Garante que os valores são numéricos (0 se não for)
-          RESOURCES_TO_CREATE=${RESOURCES_TO_CREATE:-0}
-          RESOURCES_TO_CHANGE=${RESOURCES_TO_CHANGE:-0}
-          RESOURCES_TO_DESTROY=${RESOURCES_TO_DESTROY:-0}
+          # Conta o número de mudanças
+          RESOURCES_TO_CREATE=$(echo "$PLAN_OUTPUT" | grep -c "will be created" || echo "0")
+          RESOURCES_TO_CHANGE=$(echo "$PLAN_OUTPUT" | grep -c "will be updated" || echo "0")
+          RESOURCES_TO_DESTROY=$(echo "$PLAN_OUTPUT" | grep -c "will be destroyed" || echo "0")
           
           # Escapifica para usar em JSON (importante para multilinhas)
           PLAN_OUTPUT="${PLAN_OUTPUT//'%'/'%25'}"
@@ -188,7 +182,7 @@ jobs:
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number
+              issue_number: context.issue.number
             });
             
             const botComment = comments.find(comment => 
@@ -210,7 +204,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
+                issue_number: context.issue.number,
                 body: comment
               });
               console.log('✓ Novo comentário Terraform Plan criado no PR');
@@ -238,7 +232,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
+              issue_number: context.issue.number,
               body: comment
             });
 
@@ -248,15 +242,16 @@ jobs:
         if: always()
         with:
           script: |
-            // Capturamos o valor do step de forma segura
-            const planOutcome = "${{ steps.plan.outcome }}"; 
-            const state = (planOutcome === 'success') ? 'success' : 'failure';
+            const state = '${{ steps.plan.outcome }}' === 'success' ? 'success' : 'failure';
+            const description = state === 'success' ? 
+              'Terraform plan validado com sucesso' : 
+              'Terraform plan falhou - revisar comentário no PR';
             
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.payload.pull_request.head.sha,
               state: state,
-              description: state === 'success' ? 'Plan validado' : 'Plan falhou',
+              description: description,
               context: 'Terraform Plan / ${{ matrix.environment }}'
             });

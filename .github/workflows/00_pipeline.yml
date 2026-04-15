@@ -30,7 +30,7 @@ jobs:
   build-app:
     needs: test
     if: |
-      (startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
       needs.test.result == 'success'
     uses: ./.github/workflows/03_build_app.yml
     secrets:
@@ -43,7 +43,7 @@ jobs:
     needs: test # Só inicia se o job 'test' terminar com sucesso
     # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
     if: |
-      (startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
       needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
