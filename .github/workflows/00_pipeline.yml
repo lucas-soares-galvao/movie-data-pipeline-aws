@@ -12,7 +12,7 @@ on:
         description: 'Ambiente de deploy (dev, hom, prod)'
         required: false
         default: 'dev'
-      app-type:
+      app_type:
         description: 'Tipo de aplicação (glue, lambda)'
         required: false
         default: 'glue'
