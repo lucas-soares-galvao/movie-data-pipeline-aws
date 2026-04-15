@@ -60,9 +60,8 @@ jobs:
     needs: [terraform] # Só inicia se o terraform indicou que a infraestrutura foi destruída (caso de teste de destroy)
     # Só roda para develop ou release (main não tem destino posterior para promover)
     if: |
-      always() &&
       (github.ref_name == 'develop' || github.ref_name == 'release' || github.event_name == 'workflow_dispatch') &&
-      (needs.terraform.outputs.was_destroyed == 'true') 
+      needs.terraform.result == 'success'
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
