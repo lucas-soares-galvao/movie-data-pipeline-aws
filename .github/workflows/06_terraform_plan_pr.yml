@@ -9,7 +9,7 @@ on:
     # Caminhos: Só executa se houver mudanças em arquivos Terraform ou variáveis
     paths:
       - 'infra/**'
-      - '.github/workflows/04_terraform_plan_pr.yml'
+      - '.github/workflows/06_terraform_plan_pr.yml'
 
 # Permissões necessárias para comentar no PR e acessar AWS
 permissions:
