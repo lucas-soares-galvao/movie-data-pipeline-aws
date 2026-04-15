@@ -1,5 +1,5 @@
 # Nome do workflow para deploy da aplicação Glue
-name: "Deploy Glue ETL Job"
+name: "Deploy Glue"
 
 on:
   workflow_dispatch:
@@ -191,7 +191,7 @@ jobs:
       - name: Deployment summary
         run: |
           echo "=========================================="
-          echo "Deploy Glue ETL concluído"
+          echo "Deploy Glue concluído"
           echo "Environment: ${{ steps.determine-env.outputs.environment }}"
           echo "Glue job: ${{ steps.determine-targets.outputs.glue_job_name }}"
           echo "Artifacts source bucket: ${{ steps.determine-targets.outputs.artifact_bucket }}"
