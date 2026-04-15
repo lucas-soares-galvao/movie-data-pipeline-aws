@@ -9,13 +9,14 @@ on:
     # Caminhos: Só executa se houver mudanças em arquivos Terraform ou variáveis
     paths:
       - 'infra/**'
-      - '.github/workflows/04_terraform_plan_pr.yml'
+      - '.github/workflows/06_terraform_plan_pr.yml'
 
 # Permissões necessárias para comentar no PR e acessar AWS
 permissions:
   id-token: write      # Obrigatório para a AWS
   contents: read       # Obrigatório para ler o código
   pull-requests: write # ESSENCIAL para comentar no PR
+  statuses: write      # OBRIGATÓRIO para criar commit status
 
 jobs:
   # Job único para demonstrar o plano Terraform no PR
@@ -187,7 +188,7 @@ jobs:
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              issue_number: context.payload.pull_request.number
             });
             
             const botComment = comments.find(comment => 
@@ -209,7 +210,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: context.payload.pull_request.number,
                 body: comment
               });
               console.log('✓ Novo comentário Terraform Plan criado no PR');
@@ -237,7 +238,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: context.payload.pull_request.number,
               body: comment
             });
 
@@ -248,7 +249,7 @@ jobs:
         with:
           script: |
             // Capturamos o valor do step de forma segura
-            const planOutcome = "${{ steps.terraform-plan.outcome }}"; 
+            const planOutcome = "${{ steps.plan.outcome }}"; 
             const state = (planOutcome === 'success') ? 'success' : 'failure';
             
             await github.rest.repos.createCommitStatus({
