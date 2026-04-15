@@ -1,5 +1,5 @@
 resource "aws_s3_object" "deploy_scripts_bucket" {
-    bucket = "lsg-sa-east-1-bucket-aux"
+    bucket = var.s3_bucket_aux
     key = "${local.glue_src_path}/${var.env}/script.py"
     source = "TestDeployScript.py"
     etag = filemd5("${local.glue_src_path}/${var.env}/script.py")
@@ -17,7 +17,7 @@ resource "aws_glue_job" "etl_job" {
   execution_class   = "STANDARD"
 
   command {
-    script_location = "s3://${aws_s3_bucket.bucket.bucket}/jobs/etl_job.py"
+    script_location = "s3://${var.s3_bucket_aux}/${var.env}/script.py"
     name            = "glueetl"
     python_version  = "3"
   }
@@ -42,22 +42,4 @@ resource "aws_glue_job" "etl_job" {
   tags = {
     "ManagedBy" = "AWS"
   }
-}
-
-# IAM role for Glue jobs
-resource "aws_iam_role" "glue_job_role" {
-  name = var.iam_role_name
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "glue.amazonaws.com"
-        }
-      }
-    ]
-  })
 }
