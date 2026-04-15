@@ -67,7 +67,7 @@ jobs:
           
           if [ -f "$CONFIG_FILE" ]; then
             # Extrai o valor do JSON usando jq
-            DESTROY_VALUE=$(jq -r '.[${{ inputs.environment }}]' "$CONFIG_FILE")
+            DESTROY_VALUE=$(jq -r --arg env "${{ inputs.environment }}" '.[$env] // "false"' "$CONFIG_FILE")
             
             # Valida se obteve um valor booleano válido
             if [ "$DESTROY_VALUE" = "true" ] || [ "$DESTROY_VALUE" = "false" ]; then
