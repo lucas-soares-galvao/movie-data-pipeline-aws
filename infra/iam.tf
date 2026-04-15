@@ -14,6 +14,15 @@ resource "aws_iam_role" "glue_job_role" {
       }
     ]
   })
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+import {
+  to = aws_iam_role.glue_job_role
+  id = var.iam_role_name
 }
 
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
@@ -31,17 +40,11 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
       {
         Sid    = "ListCodePrefix"
         Effect = "Allow"
-        Action = [
-          "s3:ListBucket"
-        ]
-        Resource = [
-          "arn:aws:s3:::${var.s3_bucket_aux}"
-        ]
+        Action = ["s3:ListBucket"]
+        Resource = ["arn:aws:s3:::${var.s3_bucket_aux}"]
         Condition = {
           StringLike = {
-            "s3:prefix" = [
-              "glue/${var.env}/*"
-            ]
+            "s3:prefix" = ["glue/${var.env}/*"]
           }
         }
       },
