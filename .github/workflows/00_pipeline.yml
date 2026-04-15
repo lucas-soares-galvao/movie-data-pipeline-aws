@@ -12,6 +12,10 @@ on:
         description: 'Ambiente de deploy (dev, hom, prod)'
         required: false
         default: 'dev'
+      app-type:
+        description: 'Tipo de aplicação (glue, lambda)'
+        required: false
+        default: 'glue'
 
 # Permissões padrão para o token do GitHub (necessário para autenticação OIDC/AWS)
 permissions:
@@ -33,6 +37,8 @@ jobs:
       (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
       needs.test.result == 'success'
     uses: ./.github/workflows/03_build_app.yml
+    with:
+      app_type: ${{ github.event.inputs.app_type || 'glue' }}
     secrets:
       aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
       aws-region: ${{ secrets.AWS_REGION }}
@@ -47,6 +53,7 @@ jobs:
       needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
+      app_type: ${{ github.event.inputs.app_type || 'glue' }}
       # Lógica para decidir o ambiente AWS baseado no nome da branch atual
       environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
     secrets:
