@@ -1,11 +1,9 @@
-name: Build Generic Artifacts
+# Nome do workflow para buildar artifacts da aplicação Glue
+name: "Build Glue ETL Artifacts"
 
+# Gatilho: usa workflow_call para ser usado pelo pipeline principal
 on:
   workflow_call:
-    inputs:
-      app_type:
-        required: true
-        type: string
     secrets:
       aws-assume-role-arn:
         required: true
@@ -14,47 +12,251 @@ on:
       aws-artifacts-s3-bucket:
         required: true
 
+# Permissões para AWS e GitHub
+permissions:
+  id-token: write   # Para OIDC com AWS
+  contents: read    # Para ler o código
+  actions: write    # Para upload de artifacts
+
+# Variáveis do workflow
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
-  build:
+  # Job para buildar os artifacts
+  build-app:
     runs-on: ubuntu-latest
+    
+    # Matrix para buildar em múltiplos ambientes
     strategy:
+      fail-fast: false
       matrix:
-        environment: [dev, hom, prod]
+        environment:
+          - dev
+          - hom
+          - prod
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      # 1. Faz checkout do código
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
+      # 2. Setup Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Prepare artifacts
+      # 3. Cria structure de diretórios para build
+      - name: Create build directories
         run: |
+          echo "📁 Criando estrutura de diretórios para build..."
+
+          # Diretório principal de build
+          mkdir -p build/glue_script
           mkdir -p artifacts
 
-          case "${{ inputs.app_type }}" in
-            glue)
-              cp app/main.py artifacts/script.py
-              ;;
-            lambda)
-              zip -r artifacts/lambda.zip app/
-              ;;
-            *)
-              cp -r app/* artifacts/
-              ;;
-          esac
+          echo "✓ Estrutura criada em: build/"
 
-      - name: Configure AWS
+      # 4. Copia código da aplicação
+      - name: Copy application code
+        run: |
+          echo "📋 Copiando código da aplicação..."
+          
+          # Copia arquivo principal
+          cp app/main.py build/glue_script/
+          
+          # Copia módulos internos
+          if [ -d "app/src" ]; then
+            cp -r app/src build/glue_script/
+            echo "✓ Módulos em app/src copiados"
+          fi
+          
+          echo "✓ Código da aplicação pronto"
+
+      # 5. Instala dependências Python (apenas para validação)
+      - name: Install Python dependencies
+        run: |
+          echo "📦 Instalando dependências Python para validação..."
+
+          # Atualiza pip
+          python -m pip install --upgrade pip
+
+          # Instala dependências da aplicação para validação
+          if [ -f "app/requirements.txt" ]; then
+            pip install -r app/requirements.txt --no-cache-dir
+            echo "✓ Dependências instaladas para validação"
+          else
+            echo "⚠ Arquivo app/requirements.txt não encontrado"
+          fi
+
+      # 6. Valida código Python antes de empacotar
+      - name: Validate Python code
+        run: |
+          echo "✅ Validando código Python..."
+
+          # Valida sintaxe do script Glue
+          python -m py_compile build/glue_script/main.py
+
+          echo "✓ Validação concluída"
+
+      # 7. Cria arquivo de metadados do build
+      - name: Create build metadata
+        run: |
+          cat > build/BUILD_METADATA.txt << EOF
+          Build Information
+          =================
+
+          Build Date:      $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          Git Commit:      ${{ github.sha }}
+          Git Ref:         ${{ github.ref }}
+          Actor:           ${{ github.actor }}
+          Environment:     ${{ matrix.environment }}
+          Python Version:  ${{ env.PYTHON_VERSION }}
+
+          Artifacts:
+          - glue_script/: Script ETL do Glue
+
+          EOF
+
+          cat build/BUILD_METADATA.txt
+
+      # 8. Prepara script Glue para deploy
+      - name: Prepare Glue script
+        id: prepare-script
+        run: |
+          echo "📦 Preparando script Glue..."
+
+          # Copia o script para artifacts
+          cp build/glue_script/main.py artifacts/script.py
+
+          # Calcula checksum para garantir integridade
+          CHECKSUM=$(sha256sum artifacts/script.py | cut -d' ' -f1)
+          echo "script_checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+
+          echo "✓ Script Glue preparado"
+          ls -lh artifacts/script.py
+
+      # 9. Cria checksum file para validação de integridade
+      - name: Create checksums
+        run: |
+          echo "📝 Criando checksums para integridade..."
+
+          cd artifacts
+          sha256sum script.py > script.py.sha256
+
+          echo "✓ Checksums criados"
+          ls -la *.sha256
+
+      # 10. Cria relatório de build
+      - name: Create build report
+        run: |
+          cat > artifacts/BUILD_REPORT_${{ matrix.environment }}.txt << EOF
+          ========================================
+          BUILD REPORT - Environment: ${{ matrix.environment }}
+          ========================================
+
+          Build Information:
+          - Timestamp:    $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          - Commit:       ${{ github.sha }}
+          - Branch:       ${{ github.ref }}
+          - Python:       ${{ env.PYTHON_VERSION }}
+
+          Artifacts Generated:
+
+          1. Glue Script: script.py
+             Size:      $(ls -lh artifacts/script.py | awk '{print $5}')
+             Checksum:  ${{ steps.prepare-script.outputs.script_checksum }}
+
+          Usage:
+
+          Para usar esse artifact:
+
+          1. Faça upload do script.py para S3
+          2. Configure o Glue Job para usar esse script
+          3. Execute o job via console ou API
+
+          Validation:
+
+          Para validar integridade, execute:
+            sha256sum -c script.py.sha256
+
+          ========================================
+          EOF
+
+          cat artifacts/BUILD_REPORT_${{ matrix.environment }}.txt
+
+      # 11. Upload dos artifacts para GitHub Actions
+      # Esses artifacts podem ser baixados da interface do GitHub por 90 dias
+      - name: Upload artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: glue-artifacts-${{ matrix.environment }}
+          path: artifacts/
+          retention-days: 90
+          if-no-files-found: error
+
+      # Upload para S3 (requer AWS credentials)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.aws-assume-role-arn }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: ${{ secrets.aws-region }}
 
-      - name: Upload to S3
+      - name: Upload artifacts to S3
         run: |
-          BUCKET="${{ secrets.aws-artifacts-s3-bucket }}"
-          REPO="${GITHUB_REPOSITORY##*/}"
-          PATH="s3://$BUCKET/${{ inputs.app_type }}/$REPO/${{ matrix.environment }}/"
+          echo "📤 Upload de artifacts para S3..."
+          
+          # Define bucket e caminho
+          S3_BUCKET="${{ secrets.aws-artifacts-s3-bucket }}"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          S3_PATH="s3://${S3_BUCKET}/glue/${REPO_NAME}/${{ matrix.environment }}/"
 
-          aws s3 cp artifacts/ "$PATH" --recursive
+          # Lista artifacts
+          echo "📂 Artifacts a fazer upload:"
+          ls -lh artifacts/
+
+          # Upload para S3
+          aws s3 cp artifacts/script.py "$S3_PATH" --sse AES256
+
+          echo "✓ Upload concluído em: $S3_PATH"
+
+          # Exibe URLs dos artifacts
+          echo ""
+          echo "📎 URLs dos Artifacts:"
+          aws s3 ls "$S3_PATH" | awk '{print "   s3://'${S3_BUCKET}'/glue/'${REPO_NAME}'/${{ matrix.environment }}/" $4}'
+
+  # Job final para criar resumo
+  build-summary:
+    runs-on: ubuntu-latest
+    needs: build-app
+    if: always()
+
+    steps:
+      - name: Build Summary
+        run: |
+          cat << 'EOF'
+
+          ✅ BUILD COMPLETE - Build Glue ETL Artifacts
+
+          Ambientes Buildados:
+          - dev
+          - hom
+          - prod
+
+          Artifacts Gerados:
+          - script.py (Script ETL do Glue)
+          - BUILD_REPORT_{env}.txt (Relatório de build)
+          - script.py.sha256 (Checksum para validação)
+
+          Próximos Passos:
+          1. Download dos artifacts do GitHub Actions
+          2. Usar em 04_deploy_app.yml para fazer deploy no Glue
+          3. Validar integridade dos arquivos com checksums
+
+          EOF
