@@ -1,8 +1,8 @@
 resource "aws_s3_object" "deploy_scripts_bucket" {
     bucket = var.s3_bucket_aux
-    key = "${local.glue_src_path}/${var.env}/script.py"
-    source = "TestDeployScript.py"
-    etag = filemd5("${local.glue_src_path}/${var.env}/script.py")
+    key = "glue/${var.env}/script.py"
+    source = "${local.glue_src_path}/main.py"
+    etag = filemd5("${local.glue_src_path}/main.py")
 }
 
 resource "aws_glue_job" "etl_job" {
@@ -17,7 +17,7 @@ resource "aws_glue_job" "etl_job" {
   execution_class   = "STANDARD"
 
   command {
-    script_location = "s3://${var.s3_bucket_aux}/${var.env}/script.py"
+    script_location = "s3://${var.s3_bucket_aux}/${var.env}/main.py"
     name            = "glueetl"
     python_version  = "3"
   }
