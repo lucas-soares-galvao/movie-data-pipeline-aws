@@ -1,5 +1,5 @@
 # Nome da Pipeline que aparece no topo da aba Actions do GitHub
-name: Glue ETL Pipeline CI/CD
+name: Glue Pipeline CI/CD
 
 # Define os gatilhos: a esteira roda sempre que houver um push nessas branches específicas
 # ou quando for disparada manualmente para testes/debug.
@@ -26,7 +26,7 @@ jobs:
   test:
     uses: ./.github/workflows/01_test.yml
 
-  # 2. Job de Build da App: Cria artifacts Glue ETL
+  # 2. Job de Build da App: Cria artifacts Glue
   build-app:
     needs: test
     if: |
@@ -56,7 +56,7 @@ jobs:
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
 
-  # 4. Job de Deploy da App: Atualiza Glue ETL depois do build e da infra
+  # 4. Job de Deploy da App: Atualiza Glue depois do build e da infra
   deploy-app:
     needs: [build-app, terraform]
     if: |
