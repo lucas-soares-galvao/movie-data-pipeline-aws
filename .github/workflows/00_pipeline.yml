@@ -5,19 +5,27 @@ name: Glue Pipeline CI/CD
 # ou quando for disparada manualmente para testes/debug.
 on:
   push:
-    branches: [feature/*, develop, release, main]
+    branches: [feature/*, develop, main]
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Ambiente de deploy (dev, hom, prod)'
-        required: false
+        description: 'Ambiente de deploy (dev, prod)'
+        required: true
         default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
 
 # Permissões padrão para o token do GitHub (necessário para autenticação OIDC/AWS)
 permissions:
   id-token: write
   contents: read
   actions: write
+
+# Ambiente alvo calculado uma única vez: manual (input) ou mapeado por branch
+env:
+  DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
 
 jobs:
 
@@ -31,18 +39,17 @@ jobs:
     needs: test # Só inicia se o job 'test' terminar com sucesso
     # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
     if: |
-      (github.ref_name == 'develop' || github.ref_name == 'release' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
       needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
-      # Lógica para decidir o ambiente AWS baseado no nome da branch atual
-      environment: ${{ github.ref_name == 'develop' && 'dev' || github.ref_name == 'release' && 'hom' || 'prod' }}
+      # Usa o ambiente já resolvido no topo do workflow
+      environment: ${{ env.DEPLOY_ENV }}
     secrets:
-      # Passagem de segredos necessários para a autenticação na AWS via OIDC
-      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
-      aws-region: ${{ secrets.AWS_REGION }}
-      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET }}
-      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE }}
+      # Seleção de secrets por ambiente já resolvido em DEPLOY_ENV
+      aws-assume-role-arn: ${{ env.DEPLOY_ENV == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ env.DEPLOY_ENV == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ env.DEPLOY_ENV == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
@@ -55,12 +62,12 @@ jobs:
       contents: write
       pull-requests: write
 
-  # 6. Auto PR para Ambientes: Promove develop -> release ou release -> main
+  # 6. Auto PR para Ambientes: Promove develop -> main
   auto-pr-environment:
     needs: [terraform] # Só inicia se o terraform indicou que a infraestrutura foi destruída (caso de teste de destroy)
-    # Só roda para develop ou release (main não tem destino posterior para promover)
+    # Só roda para develop (main não tem destino posterior para promover)
     if: |
-      (github.ref_name == 'develop' || github.ref_name == 'release' || github.event_name == 'workflow_dispatch') &&
+      github.ref_name == 'develop' &&
       needs.terraform.result == 'success'
     uses: ./.github/workflows/03_pr_auto.yml
     with:
