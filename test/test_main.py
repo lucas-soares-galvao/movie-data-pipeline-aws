@@ -1,7 +1,10 @@
+"""Testes do modulo principal da aplicacao."""
+
 import unittest
 from app.main import processar_numero
 
 class TestMain(unittest.TestCase):
+    """Valida as mensagens retornadas pela funcao processar_numero."""
 
     def test_processar_numero_par(self):
         # Testa a lógica para um número par

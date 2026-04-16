@@ -1,4 +1,6 @@
+# Configuracao basica do Terraform e dos providers usados no projeto.
 terraform {
+  # Backend remoto definido no pipeline via -backend-config.
   backend "s3" {}
 
   required_providers {
@@ -13,5 +15,6 @@ terraform {
 }
 
 provider "aws" {
+  # Regiao padrao para criar/gerenciar os recursos.
   region = "sa-east-1"
 }

@@ -1,3 +1,4 @@
+# Variaveis centralizadas para facilitar reuso entre ambientes (dev/prod).
 variable "s3_bucket_aux" {
   description = "The name of the auxiliary S3 bucket for Glue scripts"
   type        = string
@@ -11,6 +12,7 @@ variable "s3_bucket_sot" {
 }
 
 variable "env" {
+  # Nome logico do ambiente, usado em naming e isolamento de recursos.
   description = "The environment for the Glue job (e.g., dev, prod)"
   type        = string
 }

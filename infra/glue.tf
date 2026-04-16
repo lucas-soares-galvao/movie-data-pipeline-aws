@@ -1,3 +1,4 @@
+# Define o Glue Job responsavel por executar o pipeline de ETL.
 resource "aws_glue_job" "etl_job" {
   name              = var.glue_job_name
   description       = "An example Glue ETL job"
@@ -10,6 +11,7 @@ resource "aws_glue_job" "etl_job" {
   execution_class   = "STANDARD"
 
   command {
+    # Script principal do job no bucket auxiliar.
     script_location = "s3://${var.s3_bucket_aux}/glue/app/main.py"
     name            = "glueetl"
     python_version  = "3"
@@ -21,7 +23,9 @@ resource "aws_glue_job" "etl_job" {
 
   default_arguments = {
     "--job-language"                     = "python"
+    # Bundle com modulos auxiliares importados pelo script principal.
     "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/glue/app_bundle.zip"
+    # Grupo de logs dedicado por job para facilitar observabilidade.
     "--continuous-log-logGroup"          = "/${var.glue_job_name}/jobs"
     "--enable-continuous-cloudwatch-log" = "true"
     "--enable-continuous-log-filter"     = "true"
@@ -29,6 +33,7 @@ resource "aws_glue_job" "etl_job" {
     "--enable-auto-scaling"              = "true"
   }
 
+  # Garante que artefatos e permissoes existam antes da criacao do job.
   depends_on = [
     aws_s3_object.deploy_scripts_bucket,
     aws_s3_object.deploy_app_bundle,
