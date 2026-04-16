@@ -125,13 +125,12 @@ jobs:
           }
 
       # 10. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
-      # O comando 'workspace select || workspace new' garante que o isolamento do ambiente exista
+      # Isolamento entre dev/prod é feito por buckets S3 separados (sem necessidade de workspace)
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
         run: |
           cd infra
-          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
 
       # 11. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
@@ -141,7 +140,6 @@ jobs:
         id: terraform-plan
         run: |
           cd infra
-          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
           terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
 
       # 12. Execução (Apply): Aplica as mudanças planejadas no passo anterior
@@ -150,6 +148,5 @@ jobs:
         id: terraform-apply
         run: |
           cd infra
-          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
           terraform apply "${{ inputs.environment }}.plan"
           
