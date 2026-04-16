@@ -10,7 +10,7 @@ resource "aws_glue_job" "etl_job" {
   execution_class   = "STANDARD"
 
   command {
-    script_location = "s3://${var.s3_bucket_aux}/glue/${var.env}/app/main.py"
+    script_location = "s3://${var.s3_bucket_aux}/glue/app/main.py"
     name            = "glueetl"
     python_version  = "3"
   }
@@ -21,7 +21,7 @@ resource "aws_glue_job" "etl_job" {
 
   default_arguments = {
     "--job-language"                     = "python"
-    "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/glue/${var.env}/app_bundle.zip"
+    "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/glue/app_bundle.zip"
     "--continuous-log-logGroup"          = "/aws-glue/jobs"
     "--enable-continuous-cloudwatch-log" = "true"
     "--enable-continuous-log-filter"     = "true"
