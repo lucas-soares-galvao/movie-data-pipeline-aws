@@ -17,12 +17,6 @@ resource "aws_iam_role" "glue_job_role" {
   })
 }
 
-# Import opcional para adotar uma role existente no estado do Terraform.
-# import {
-#   to = aws_iam_role.glue_job_role
-#   id = var.iam_role_name
-# }
-
 # Anexa a policy gerenciada padrao da AWS necessaria para execucao do Glue.
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
   role       = aws_iam_role.glue_job_role.name
