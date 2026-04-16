@@ -11,7 +11,7 @@ variable "s3_bucket_sot" {
 }
 
 variable "env" {
-  description = "The environment for the Glue job (e.g., dev, hom, prod)"
+  description = "The environment for the Glue job (e.g., dev, prod)"
   type        = string
 }
 
