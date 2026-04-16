@@ -1,7 +1,3 @@
-locals {
-  glue_src_path = "${path.root}/../app"
-}
-
 variable "s3_bucket_aux" {
   description = "The name of the auxiliary S3 bucket for Glue scripts"
   type        = string
