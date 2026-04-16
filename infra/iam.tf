@@ -16,10 +16,10 @@ resource "aws_iam_role" "glue_job_role" {
   })
 }
 
-# import {
-#   to = aws_iam_role.glue_job_role
-#   id = var.iam_role_name
-# }
+import {
+  to = aws_iam_role.glue_job_role
+  id = var.iam_role_name
+}
 
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
   role       = aws_iam_role.glue_job_role.name
@@ -40,7 +40,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         Resource = ["arn:aws:s3:::${var.s3_bucket_aux}"]
         Condition = {
           StringLike = {
-            "s3:prefix" = ["glue/${var.env}/*"]
+            "s3:prefix" = ["glue/*"]
           }
         }
       },
@@ -52,7 +52,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
           "s3:GetObjectVersion"
         ]
         Resource = [
-          "arn:aws:s3:::${var.s3_bucket_aux}/glue/${var.env}/*"
+          "arn:aws:s3:::${var.s3_bucket_aux}/glue/*"
         ]
       }
     ]
