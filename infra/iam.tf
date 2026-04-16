@@ -66,3 +66,28 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
     ]
   })
 }
+
+# Permite que o Glue escreva streams e eventos nos grupos customizados do job.
+resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
+  name = "${var.iam_role_name}-write-logs-custom"
+  role = aws_iam_role.glue_job_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "WriteCustomGlueLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = [
+          "arn:aws:logs:*:*:log-group:/${var.glue_job_name}/*",
+          "arn:aws:logs:*:*:log-group:/${var.glue_job_name}/*:log-stream:*"
+        ]
+      }
+    ]
+  })
+}

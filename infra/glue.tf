@@ -39,6 +39,7 @@ resource "aws_glue_job" "etl_job" {
     aws_s3_object.deploy_app_bundle,
     aws_iam_role_policy_attachment.glue_service_role,
     aws_iam_role_policy.glue_read_code_from_s3,
+    aws_iam_role_policy.glue_write_logs_custom_prefix,
     aws_cloudwatch_log_group.glue_job_error_log_group,
     aws_cloudwatch_log_group.glue_job_output_log_group
   ]
