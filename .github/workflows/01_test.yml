@@ -106,3 +106,4 @@ jobs:
           echo "=========================================="
           echo "Pipeline de qualidade verifida com sucesso!"
           echo "=========================================="
+          
