@@ -25,8 +25,8 @@ resource "aws_glue_job" "etl_job" {
     "--job-language"                     = "python"
     # Bundle com modulos auxiliares importados pelo script principal.
     "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/glue/app_bundle.zip"
-    # Grupo de logs dedicado por job para facilitar observabilidade.
-    "--continuous-log-logGroup"          = "/${var.glue_job_name}/jobs"
+    # Prefixo customizado para criar log groups /<job>/error e /<job>/output.
+    "--custom-logGroup-prefix"           = "/${var.glue_job_name}"
     "--enable-continuous-cloudwatch-log" = "true"
     "--enable-continuous-log-filter"     = "true"
     "--enable-metrics"                   = ""
@@ -39,9 +39,8 @@ resource "aws_glue_job" "etl_job" {
     aws_s3_object.deploy_app_bundle,
     aws_iam_role_policy_attachment.glue_service_role,
     aws_iam_role_policy.glue_read_code_from_s3,
-    aws_cloudwatch_log_group.glue_log_group,
-    aws_cloudwatch_log_group.glue_default_error_log_group,
-    aws_cloudwatch_log_group.glue_default_output_log_group
+    aws_cloudwatch_log_group.glue_job_error_log_group,
+    aws_cloudwatch_log_group.glue_job_output_log_group
   ]
 
   execution_property {
