@@ -1,6 +1,6 @@
 resource "aws_s3_object" "deploy_scripts_bucket" {
   bucket = var.s3_bucket_aux
-  key    = "glue/${var.env}/app/main.py"
+  key    = "glue/app/main.py"
   source = "${local.glue_src_path}/main.py"
   etag   = filemd5("${local.glue_src_path}/main.py")
 }
@@ -20,7 +20,7 @@ data "archive_file" "glue_app_bundle" {
 
 resource "aws_s3_object" "deploy_app_bundle" {
   bucket = var.s3_bucket_aux
-  key    = "glue/${var.env}/app_bundle.zip"
+  key    = "glue/app_bundle.zip"
   source = data.archive_file.glue_app_bundle.output_path
   etag   = filemd5(data.archive_file.glue_app_bundle.output_path)
 }

@@ -4,7 +4,7 @@ name: "Terraform (Reusable)"
 # Define que este workflow é chamado por outro (workflow_call)
 on:
   workflow_call:
-    # Inputs: Parâmetros recebidos do pipeline principal (ex: 'dev', 'hom')
+    # Inputs: Parâmetros recebidos do pipeline principal (ex: 'dev', 'prod')
     inputs:
       environment:
         type: string
@@ -17,8 +17,6 @@ on:
     # Secrets: Dados sensíveis necessários para conectar na AWS e no S3 do State
     secrets:
       aws-assume-role-arn:
-        required: true
-      aws-region:
         required: true
       aws-statefile-s3-bucket:
         required: true
@@ -56,7 +54,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.aws-assume-role-arn }}
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
-          aws-region: ${{ secrets.aws-region }}
+          aws-region: sa-east-1
 
       # 4. Verifica se o ambiente deve ser destruído ou criado
       # Ele lê um arquivo JSON local para saber se a flag de 'destroy' está ativa para aquele ambiente
@@ -73,7 +71,7 @@ jobs:
           cd infra && terraform init \
             -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -backend-config="key=${{ github.event.repository.name }}" \
-            -backend-config="region=${{ secrets.aws-region }}" \
+            -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
       # 6. Valida se a sintaxe do código Terraform está correta

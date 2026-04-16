@@ -16,10 +16,10 @@ resource "aws_iam_role" "glue_job_role" {
   })
 }
 
-import {
-  to = aws_iam_role.glue_job_role
-  id = var.iam_role_name
-}
+# import {
+#   to = aws_iam_role.glue_job_role
+#   id = var.iam_role_name
+# }
 
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
   role       = aws_iam_role.glue_job_role.name
