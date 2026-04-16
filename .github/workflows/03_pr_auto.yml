@@ -80,3 +80,4 @@ jobs:
         env:
           # O GITHUB_TOKEN é gerado automaticamente pelo GitHub para autenticar o comando 'gh'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
