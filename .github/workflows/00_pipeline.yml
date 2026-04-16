@@ -23,10 +23,6 @@ permissions:
   contents: read
   actions: write
 
-# Ambiente alvo calculado uma única vez: manual (input) ou mapeado por branch
-env:
-  DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
-
 jobs:
 
   # 1. Job de Testes: Chama o workflow reutilizável que criamos (01_test.yml)
@@ -43,13 +39,13 @@ jobs:
       needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
-      # Usa o ambiente já resolvido no topo do workflow
-      environment: ${{ env.DEPLOY_ENV }}
+      # Em execução manual usa o input; em push usa mapeamento por branch
+      environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
     secrets:
-      # Seleção de secrets por ambiente já resolvido em DEPLOY_ENV
-      aws-assume-role-arn: ${{ env.DEPLOY_ENV == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
-      aws-statefile-s3-bucket: ${{ env.DEPLOY_ENV == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
-      aws-lock-dynamodb-table: ${{ env.DEPLOY_ENV == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+      # Seleção de secrets por ambiente (manual por input, push por branch)
+      aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
