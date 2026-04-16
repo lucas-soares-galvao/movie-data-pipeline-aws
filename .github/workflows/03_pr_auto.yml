@@ -32,9 +32,7 @@ jobs:
           if [[ "${GITHUB_REF_NAME}" == feature/* ]]; then
             echo "base=develop" >> $GITHUB_OUTPUT    # De Feature para Develop
           elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
-            echo "base=release" >> $GITHUB_OUTPUT    # De Develop para Release
-          elif [[ "${GITHUB_REF_NAME}" == "release" ]]; then
-            echo "base=main" >> $GITHUB_OUTPUT       # De Release para Main (Produção)
+            echo "base=main" >> $GITHUB_OUTPUT       # De Develop para Main (Produção)
           else
             # Caso a branch não siga o padrão, a pipeline interrompe para evitar PRs errados
             echo "Branch não suportada"
