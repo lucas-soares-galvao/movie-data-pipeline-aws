@@ -4,6 +4,12 @@ variable "s3_bucket_aux" {
   default     = "lsg-sa-east-1-bucket-aux"
 }
 
+variable "s3_bucket_sot" {
+  description = "The name of the source S3 bucket for Glue scripts"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-sot"
+}
+
 variable "env" {
   description = "The environment for the Glue job (e.g., dev, hom, prod)"
   type        = string
