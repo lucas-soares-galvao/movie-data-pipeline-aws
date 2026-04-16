@@ -25,10 +25,8 @@ resource "aws_glue_job" "etl_job" {
     "--job-language"                     = "python"
     # Bundle com modulos auxiliares importados pelo script principal.
     "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/glue/app_bundle.zip"
-    # Prefixo customizado para criar log groups /<job>/error e /<job>/output.
+    # Prefixo customizado para os grupos /<job>/error e /<job>/output.
     "--custom-logGroup-prefix"           = "/${var.glue_job_name}"
-    "--enable-continuous-cloudwatch-log" = "true"
-    "--enable-continuous-log-filter"     = "true"
     "--enable-metrics"                   = ""
     "--enable-auto-scaling"              = "true"
   }
