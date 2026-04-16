@@ -5,7 +5,7 @@ resource "aws_glue_job" "etl_job" {
   role_arn          = aws_iam_role.glue_job_role.arn
   glue_version      = "5.0"
   max_retries       = 0
-  timeout           = 2880
+  timeout           = 30
   number_of_workers = 2
   worker_type       = "G.1X"
   execution_class   = "STANDARD"
