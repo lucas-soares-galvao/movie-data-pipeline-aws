@@ -152,3 +152,4 @@ jobs:
           cd infra
           terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
           terraform apply "${{ inputs.environment }}.plan"
+          
