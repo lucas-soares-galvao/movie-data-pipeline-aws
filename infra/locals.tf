@@ -1,4 +1,4 @@
-# Definicoes dos jobs Glue consumidas pelos recursos com for_each.
+# Caminho local da aplicacao Python que sera empacotada e enviada ao S3.
 locals {
-  glue_jobs = var.glue_jobs
+  glue_etl_src_path = "${path.root}/../app/${var.glue_etl_aux}"
 }

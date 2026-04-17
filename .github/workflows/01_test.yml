@@ -85,7 +85,7 @@ jobs:
           # --cov-report=term-missing: lista no terminal quais linhas não foram testadas
           # --cov-report=xml: gera um arquivo técnico (coverage.xml) para ferramentas externas
           # --cov-fail-under=70: interrompe a pipeline com erro se a cobertura for menor que 70%
-          pytest --cov=. \
+             pytest test/ --cov=. \
                  --cov-report=term-missing \
                  --cov-report=xml \
                  --cov-fail-under=70
