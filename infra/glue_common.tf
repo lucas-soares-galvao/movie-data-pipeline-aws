@@ -91,6 +91,27 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
   })
 }
 
+# Permite que o ETL dispare o job de Data Quality ao final da execucao.
+resource "aws_iam_role_policy" "glue_start_data_quality_job" {
+  name = "${var.iam_role_glue}-start-data-quality"
+  role = aws_iam_role.glue_job_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "StartAndReadDataQualityJobRun"
+        Effect = "Allow"
+        Action = [
+          "glue:StartJobRun",
+          "glue:GetJobRun"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Cria grupos de log por job para separar erro e saida com retencao reduzida.
 resource "aws_cloudwatch_log_group" "glue_etl_job_error_log_group" {
   name              = "/${var.glue_etl_job_name}/error"

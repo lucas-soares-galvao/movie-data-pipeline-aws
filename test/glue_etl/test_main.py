@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.glue_etl.main import main, processar_numero
+from app.glue_etl.main import main, obter_arg_data_quality_job_name, processar_numero
 
 class TestMain(unittest.TestCase):
     """Valida as mensagens retornadas pela funcao processar_numero."""
@@ -21,6 +21,7 @@ class TestMain(unittest.TestCase):
         self.assertEqual(resultado, esperado)
 
     @patch("app.glue_etl.main.print")
+    @patch("app.glue_etl.main.sys.argv", ["main.py", "--GLUE_DATA_QUALITY_JOB_NAME", "dq-job"])
     @patch("app.glue_etl.main.chamar_glue_data_quality")
     def test_main_dispara_data_quality_na_ultima_etapa(self, mock_chamar_dq, mock_print):
         mock_chamar_dq.return_value = {
@@ -30,8 +31,16 @@ class TestMain(unittest.TestCase):
 
         main()
 
-        mock_chamar_dq.assert_called_once_with()
+        mock_chamar_dq.assert_called_once_with(data_quality_job_name="dq-job")
         self.assertEqual(mock_print.call_count, 2)
+
+    def test_obter_arg_data_quality_job_name_quando_presente(self):
+        argv = ["main.py", "--GLUE_DATA_QUALITY_JOB_NAME", "dq-job"]
+        self.assertEqual(obter_arg_data_quality_job_name(argv), "dq-job")
+
+    def test_obter_arg_data_quality_job_name_quando_ausente(self):
+        argv = ["main.py", "--outra-flag", "valor"]
+        self.assertIsNone(obter_arg_data_quality_job_name(argv))
 
 if __name__ == '__main__':
     unittest.main()
