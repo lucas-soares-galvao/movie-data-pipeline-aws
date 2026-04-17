@@ -1,6 +1,8 @@
+# Recursos compartilhados entre os jobs de Glue (ETL e Data Quality).
+
 # Role principal assumida pelo servico AWS Glue durante a execucao do job.
 resource "aws_iam_role" "glue_job_role" {
-  name  = var.iam_role_name
+  name = var.iam_role_name
 
   # Trust policy: permite que o servico glue.amazonaws.com assuma esta role.
   assume_role_policy = jsonencode({
@@ -87,4 +89,25 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
       }
     ]
   })
+}
+
+# Cria grupos de log por job para separar erro e saida com retencao reduzida.
+resource "aws_cloudwatch_log_group" "glue_etl_job_error_log_group" {
+  name              = "/${var.glue_etl_job_name}/error"
+  retention_in_days = 1
+}
+
+resource "aws_cloudwatch_log_group" "glue_etl_job_output_log_group" {
+  name              = "/${var.glue_etl_job_name}/output"
+  retention_in_days = 1
+}
+
+resource "aws_cloudwatch_log_group" "glue_data_quality_job_error_log_group" {
+  name              = "/${var.glue_data_quality_job_name}/error"
+  retention_in_days = 1
+}
+
+resource "aws_cloudwatch_log_group" "glue_data_quality_job_output_log_group" {
+  name              = "/${var.glue_data_quality_job_name}/output"
+  retention_in_days = 1
 }
