@@ -5,10 +5,10 @@ variable "s3_bucket_aux" {
   default     = "lsg-sa-east-1-bucket-aux"
 }
 
-variable "s3_bucket_sot" {
+variable "s3_bucket_sor" {
   description = "The name of the source S3 bucket for Glue scripts"
   type        = string
-  default     = "lsg-sa-east-1-bucket-sot"
+  default     = "lsg-sa-east-1-bucket-sor"
 }
 
 variable "env" {
@@ -17,14 +17,36 @@ variable "env" {
   type        = string
 }
 
-variable "glue_job_name" {
-  description = "The name of the Glue job to create"
+variable "lambda" {
+  description = "The service Lambda functions"
   type        = string
-  default     = "my-glue-etl-job"
+  default     = "lambda"
 }
 
-variable "iam_role_name" {
-  description = "The name of the IAM role for Glue jobs"
-  type        = string
-  default     = "glue-job-role"
+variable "glue_jobs" {
+  description = "Glue jobs to provision (etl, data_quality, etc.)"
+  type = map(object({
+    app_folder    = string
+    job_name      = string
+    iam_role_name = string
+    script_file   = optional(string, "main.py")
+    description   = optional(string, "")
+  }))
+
+  default = {
+    etl = {
+      app_folder    = "glue_etl"
+      job_name      = "my-glue-etl-job"
+      iam_role_name = "glue-job-role-etl"
+      script_file   = "main.py"
+      description   = "Glue ETL job"
+    }
+    data_quality = {
+      app_folder    = "glue_data_quality"
+      job_name      = "my-glue-data-quality-job"
+      iam_role_name = "glue-job-role-data-quality"
+      script_file   = "main.py"
+      description   = "Glue Data Quality job"
+    }
+  }
 }
