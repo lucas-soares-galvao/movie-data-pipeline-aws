@@ -28,7 +28,6 @@ jobs:
   # 1. Job de Testes: Chama o workflow reutilizável que criamos (01_test.yml)
   # Roda para todas as branches configuradas no 'on'
   test:
-    if: contains(github.event.repository.name, 'app')
     uses: ./.github/workflows/01_test.yml
 
   # 3. Job de Terraform: Realiza o deploy da infraestrutura
@@ -50,13 +49,10 @@ jobs:
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
-    needs: test # Se for repo app, depende de teste; caso contrário, aceita job skipped
+    needs: test
     if: |
       startsWith(github.ref_name, 'feature/') &&
-      (
-        (contains(github.event.repository.name, 'app') && needs.test.result == 'success') ||
-        (!contains(github.event.repository.name, 'app') && needs.test.result == 'skipped')
-      )
+      needs.test.result == 'success'
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
