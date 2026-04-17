@@ -9,4 +9,6 @@ s3_bucket_spec = "lsg-sa-east-1-bucket-spec-prod"
 lambda_api_name = "lambda-api-prod"
 glue_etl_job_name = "my-glue-etl-prod"
 glue_data_quality_job_name = "my-glue-data-quality-prod"
-iam_role_name = "glue-job-role-etl-prod"
+
+iam_role_glue = "glue-job-role-etl-prod"
+iam_role_lambda = "lambda-role-prod"

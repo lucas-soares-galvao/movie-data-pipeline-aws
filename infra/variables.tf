@@ -65,8 +65,14 @@ variable "glue_data_quality_job_name" {
   default     = "my-glue-data-quality-job"
 }
 
-variable "iam_role_name" {
+variable "iam_role_glue" {
   description = "The name of the IAM role for Glue jobs"
   type        = string
   default     = "glue-job-role"
+}
+
+variable "iam_role_lambda" {
+  description = "The name of the IAM role for lambda functions"
+  type        = string
+  default     = "lambda-role"
 }
