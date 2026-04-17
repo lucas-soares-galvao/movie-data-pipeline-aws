@@ -1,0 +1,1 @@
+"""Subpacote com funcoes utilitarias da aplicacao."""

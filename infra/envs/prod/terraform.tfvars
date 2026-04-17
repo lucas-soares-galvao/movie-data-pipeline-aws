@@ -1,6 +1,12 @@
 # Variaveis especificas do ambiente de producao.
 env = "prod"
-s3_bucket_sor = "lsg-sa-east-1-bucket-sor-prod"
+
 s3_bucket_aux = "lsg-sa-east-1-bucket-aux-prod"
-glue_job_name = "my-glue-etl-prod"
+s3_bucket_sor = "lsg-sa-east-1-bucket-sor-prod"
+s3_bucket_sot = "lsg-sa-east-1-bucket-sot-prod"
+s3_bucket_spec = "lsg-sa-east-1-bucket-spec-prod"
+
+lambda_api_name = "lambda-api-prod"
+glue_etl_job_name = "my-glue-etl-prod"
+glue_data_quality_job_name = "my-glue-data-quality-prod"
 iam_role_name = "glue-job-role-etl-prod"
