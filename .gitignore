@@ -9,17 +9,31 @@ __pycache__/
 *.py[cod]
 *$py.class
 .env
-.venv
+.venv/
 env/
 venv/
 ENV/
 .coverage
 htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
 
 # --- Terraform (Baseado na sua pasta infra/) ---
 .terraform/
 *.tfstate
 *.tfstate.backup
+*.tfplan
+*.plan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+infra/glue_app_bundle*.zip
 # Exceção: se você quiser manter as variáveis de exemplo, 
 # mas geralmente .tfvars contém segredos (senhas, keys).
 # terraform.tfvars
