@@ -1,35 +1,34 @@
 # Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket" {
-  for_each = local.glue_jobs
-
   bucket = var.s3_bucket_aux
-  key    = "${each.value.app_folder}/app/${each.value.script_file}"
-  source = "${path.root}/../app/${each.value.app_folder}/${each.value.script_file}"
-  etag   = filemd5("${path.root}/../app/${each.value.app_folder}/${each.value.script_file}")
+  key    = "${var.glue_etl_aux}/app/main.py"
+  source = "${local.glue_etl_src_path}/main.py"
+  etag   = filemd5("${local.glue_etl_src_path}/main.py")
 }
 
 # Empacota todos os modulos Python da aplicacao em um unico zip reutilizavel.
 data "archive_file" "glue_app_bundle" {
-  for_each = local.glue_jobs
-
   type        = "zip"
-  output_path = "${path.module}/glue_app_bundle_${each.key}.zip"
+  output_path = "${path.module}/glue_app_bundle.zip"
+
+  source {
+    filename = "app/__init__.py"
+    content  = file("${path.root}/../app/__init__.py")
+  }
 
   dynamic "source" {
-    for_each = fileset("${path.root}/../app/${each.value.app_folder}", "**/*.py")
+    for_each = fileset(local.glue_etl_src_path, "**/*.py")
     content {
-      filename = "app/${source.value}"
-      content  = file("${path.root}/../app/${each.value.app_folder}/${source.value}")
+      filename = "app/${var.glue_etl_aux}/${source.value}"
+      content  = file("${local.glue_etl_src_path}/${source.value}")
     }
   }
 }
 
 # Envia o bundle zipado para o S3, usado em --extra-py-files no Glue Job.
 resource "aws_s3_object" "deploy_app_bundle" {
-  for_each = local.glue_jobs
-
   bucket = var.s3_bucket_aux
-  key    = "${each.value.app_folder}/app_bundle.zip"
-  source = data.archive_file.glue_app_bundle[each.key].output_path
-  etag   = filemd5(data.archive_file.glue_app_bundle[each.key].output_path)
+  key    = "${var.glue_etl_aux}/app_bundle.zip"
+  source = data.archive_file.glue_app_bundle.output_path
+  etag   = filemd5(data.archive_file.glue_app_bundle.output_path)
 }

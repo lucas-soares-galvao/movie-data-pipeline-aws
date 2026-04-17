@@ -1,8 +1,6 @@
 # Role principal assumida pelo servico AWS Glue durante a execucao do job.
 resource "aws_iam_role" "glue_job_role" {
-  for_each = local.glue_jobs
-
-  name  = each.value.iam_role_name
+  name  = var.iam_role_name
 
   # Trust policy: permite que o servico glue.amazonaws.com assuma esta role.
   assume_role_policy = jsonencode({
@@ -21,18 +19,14 @@ resource "aws_iam_role" "glue_job_role" {
 
 # Anexa a policy gerenciada padrao da AWS necessaria para execucao do Glue.
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
-  for_each = local.glue_jobs
-
-  role       = aws_iam_role.glue_job_role[each.key].name
+  role       = aws_iam_role.glue_job_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }
 
 # Policy customizada com permissao minima para ler scripts e bundles no S3.
 resource "aws_iam_role_policy" "glue_read_code_from_s3" {
-  for_each = local.glue_jobs
-
-  name = "${each.value.iam_role_name}-read-code"
-  role = aws_iam_role.glue_job_role[each.key].name
+  name = "${var.iam_role_name}-read-code"
+  role = aws_iam_role.glue_job_role.name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -46,7 +40,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         Condition = {
           StringLike = {
             # Restringe a listagem apenas ao prefixo de artefatos do Glue.
-            "s3:prefix" = ["${each.value.app_folder}/*"]
+            "s3:prefix" = ["${var.glue_etl_aux}/*"]
           }
         }
       },
@@ -60,7 +54,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         ]
         Resource = [
           # Escopo limitado aos objetos dentro do prefixo glue/ no bucket auxiliar.
-          "arn:aws:s3:::${var.s3_bucket_aux}/${each.value.app_folder}/*"
+          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_etl_aux}/*"
         ]
       }
     ]
@@ -69,10 +63,8 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
 
 # Permite que o Glue escreva streams e eventos nos grupos customizados do job.
 resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
-  for_each = local.glue_jobs
-
-  name = "${each.value.iam_role_name}-write-logs-custom"
-  role = aws_iam_role.glue_job_role[each.key].name
+  name = "${var.iam_role_name}-write-logs-custom"
+  role = aws_iam_role.glue_job_role.name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -86,8 +78,8 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
           "logs:DescribeLogStreams"
         ]
         Resource = [
-          "arn:aws:logs:*:*:log-group:/${each.value.job_name}/*",
-          "arn:aws:logs:*:*:log-group:/${each.value.job_name}/*:log-stream:*"
+          "arn:aws:logs:*:*:log-group:/${var.glue_job_name}/*",
+          "arn:aws:logs:*:*:log-group:/${var.glue_job_name}/*:log-stream:*"
         ]
       }
     ]
