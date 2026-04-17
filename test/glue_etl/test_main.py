@@ -1,7 +1,7 @@
 """Testes do modulo principal da aplicacao."""
 
 import unittest
-from app.main import processar_numero
+from app.glue_etl.main import processar_numero
 
 class TestMain(unittest.TestCase):
     """Valida as mensagens retornadas pela funcao processar_numero."""

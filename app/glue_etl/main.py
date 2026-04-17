@@ -1,6 +1,6 @@
 """Ponto de entrada da aplicacao usada no job de Glue."""
 
-from app.src.utils import eh_par
+from app.glue_etl.src.utils import eh_par
 
 def processar_numero(numero):
     """Encapsula a regra de negocio para facilitar reutilizacao e testes."""

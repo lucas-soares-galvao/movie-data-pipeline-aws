@@ -1,5 +1,5 @@
 # Nome da Pipeline que aparece no topo da aba Actions do GitHub
-name: Glue Pipeline CI/CD
+name: Pipeline CI/CD
 
 # Define os gatilhos: a esteira roda sempre que houver um push nessas branches específicas
 # ou quando for disparada manualmente para testes/debug.

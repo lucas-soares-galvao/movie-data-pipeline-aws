@@ -1,6 +1,6 @@
 """Testes unitarios das funcoes utilitarias."""
 
-from app.src.utils import eh_par
+from app.glue_etl.src.utils import eh_par
 import unittest
 
 class TestEhPar(unittest.TestCase):
