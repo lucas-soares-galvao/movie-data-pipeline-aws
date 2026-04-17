@@ -6,7 +6,42 @@ on:
   workflow_call:
 
 jobs:
-  test:
+  discover-services:
+    name: Discover test services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.services.outputs.services }}
+
+    steps:
+      # Descobre automaticamente os diretórios de serviço dentro de test/.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build services matrix
+        id: services
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("test")
+          services = sorted(
+              [
+                  item.name
+                  for item in root.iterdir()
+                  if item.is_dir() and not item.name.startswith("__")
+              ]
+          )
+
+          if not services:
+              raise SystemExit("Nenhum diretório de serviço encontrado em test/.")
+
+          with open("$GITHUB_OUTPUT", "a", encoding="utf-8") as github_output:
+              github_output.write(f"services={json.dumps(services)}\n")
+          PY
+
+  quality:
+    name: Quality gates
     # Especifica o ambiente de execução (neste caso, uma máquina virtual Linux zerada)
     runs-on: ubuntu-latest
 
@@ -77,32 +112,80 @@ jobs:
           safety check --json --output safety-report.json || echo "⚠ Vulnerabilidades conhecidas em dependências (verificar antes de deploy)"
           echo "✓ Safety dependency check concluído"
 
-      # 9. Executa os testes e aplica a barreira de qualidade (Quality Gate)
-      - name: Run tests with Coverage Gate
-        run: |
-          # pytest: executa os testes
-          # --cov=.: mede a cobertura de código a partir da raiz
-          # --cov-report=term-missing: lista no terminal quais linhas não foram testadas
-          # --cov-report=xml: gera um arquivo técnico (coverage.xml) para ferramentas externas
-          # --cov-fail-under=70: interrompe a pipeline com erro se a cobertura for menor que 70%
-          pytest --cov=. \
-                 --cov-report=term-missing \
-                 --cov-report=xml \
-                 --cov-fail-under=70
-
-      # 10. Quality Gate Summary - Resumo final de qualidade
+      # 9. Quality Gate Summary - Resumo final de qualidade
       - name: Quality Gate Summary
         if: always()
         run: |
           echo "=========================================="
           echo "      ✓ QUALITY GATES SUMMARY"
           echo "=========================================="
-          echo "✓ Testes Unitários (pytest)"
-          echo "✓ Cobertura de Código (Coverage Gate: 70%)"
           echo "✓ Linting (ruff)"
           echo "✓ Type Checking (mypy)"
           echo "✓ Security Analysis (bandit)"
           echo "✓ Dependency Vulnerabilities (safety)"
+          echo "=========================================="
+          echo "Pipeline de qualidade verifida com sucesso!"
+          echo "=========================================="
+
+  test-services:
+    name: Test - ${{ matrix.service }}
+    needs: [discover-services, quality]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.discover-services.outputs.services) }}
+
+    steps:
+      # 1. Baixa o código do seu repositório para dentro da máquina virtual
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Prepara o ambiente instalando a versão 3.12 do interpretador Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 3. Gerencia as bibliotecas necessárias
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          if [ -f test/requirements_test.txt ]; then
+            pip install -r test/requirements_test.txt
+          fi
+          if [ -f app/requirements.txt ]; then
+            pip install -r app/requirements.txt
+          fi
+
+      # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
+      - name: Configure PYTHONPATH
+        run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
+      # 5. Executa os testes do serviço e aplica cobertura por serviço.
+      - name: Run tests with Coverage Gate
+        run: |
+          # pytest: executa apenas os testes do serviço atual da matriz.
+          # --cov=app: mede a cobertura do código-fonte da aplicação.
+          # --cov-report=xml: gera um arquivo técnico separado por serviço.
+          # --cov-fail-under=70: interrompe a pipeline com erro se a cobertura for menor que 70%.
+          pytest test/${{ matrix.service }} \
+                 --cov=app \
+                 --cov-report=term-missing \
+                 --cov-report=xml:coverage-${{ matrix.service }}.xml \
+                 --cov-fail-under=70
+
+      # 6. Test Summary - Resumo final por serviço.
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "      ✓ TEST SUMMARY"
+          echo "=========================================="
+          echo "✓ Serviço testado: ${{ matrix.service }}"
+          echo "✓ Testes Unitários (pytest)"
+          echo "✓ Cobertura de Código (Coverage Gate: 70%)"
           echo "=========================================="
           echo "Pipeline de qualidade verifida com sucesso!"
           echo "=========================================="
