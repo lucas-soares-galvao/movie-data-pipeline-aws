@@ -17,7 +17,7 @@ variable "env" {
   type        = string
 }
 
-variable "lambda" {
+variable "lambda_aux" {
   description = "The service Lambda functions"
   type        = string
   default     = "lambda"
@@ -29,10 +29,22 @@ variable "glue_etl_aux" {
   default     = "glue_etl"
 }
 
-variable "glue_job_name" {
-  description = "The name of the Glue job to create"
+variable "glue_etl_job_name" {
+  description = "The name of the Glue ETL job to create"
   type        = string
   default     = "my-glue-etl-job"
+}
+
+variable "glue_data_quality_aux" {
+  description = "The service Glue Data Quality"
+  type        = string
+  default     = "glue_data_quality"
+}
+
+variable "glue_data_quality_job_name" {
+  description = "The name of the Glue Data Quality job to create"
+  type        = string
+  default     = "my-glue-data-quality-job"
 }
 
 variable "iam_role_name" {
