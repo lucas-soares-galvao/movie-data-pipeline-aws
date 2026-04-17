@@ -23,30 +23,20 @@ variable "lambda" {
   default     = "lambda"
 }
 
-variable "glue_jobs" {
-  description = "Glue jobs to provision (etl, data_quality, etc.)"
-  type = map(object({
-    app_folder    = string
-    job_name      = string
-    iam_role_name = string
-    script_file   = optional(string, "main.py")
-    description   = optional(string, "")
-  }))
+variable "glue_etl_aux" {
+  description = "The service Glue ETL"
+  type        = string
+  default     = "glue_etl"
+}
 
-  default = {
-    etl = {
-      app_folder    = "glue_etl"
-      job_name      = "my-glue-etl-job"
-      iam_role_name = "glue-job-role-etl"
-      script_file   = "main.py"
-      description   = "Glue ETL job"
-    }
-    data_quality = {
-      app_folder    = "glue_data_quality"
-      job_name      = "my-glue-data-quality-job"
-      iam_role_name = "glue-job-role-data-quality"
-      script_file   = "main.py"
-      description   = "Glue Data Quality job"
-    }
-  }
+variable "glue_job_name" {
+  description = "The name of the Glue job to create"
+  type        = string
+  default     = "my-glue-etl-job"
+}
+
+variable "iam_role_name" {
+  description = "The name of the IAM role for Glue jobs"
+  type        = string
+  default     = "glue-job-role"
 }
