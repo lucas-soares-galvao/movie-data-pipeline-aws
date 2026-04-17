@@ -20,6 +20,25 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 	policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
+	name = "${var.lambda_api_name}-start-glue-jobs-${var.env}"
+	role = aws_iam_role.lambda_role.id
+
+	policy = jsonencode({
+		Version = "2012-10-17"
+		Statement = [
+			{
+				Effect = "Allow"
+				Action = [
+					"glue:StartJobRun",
+					"glue:GetJobRun"
+				]
+				Resource = "*"
+			}
+		]
+	})
+}
+
 data "archive_file" "lambda_bundle" {
 	type        = "zip"
 	output_path = "${path.module}/lambda_bundle.zip"
@@ -52,12 +71,20 @@ resource "aws_lambda_function" "simple_lambda" {
 	runtime       = "python3.11"
 	timeout       = 10
 
+	environment {
+		variables = {
+			GLUE_ETL_JOB_NAME          = var.glue_etl_job_name
+			GLUE_DATA_QUALITY_JOB_NAME = var.glue_data_quality_job_name
+		}
+	}
+
 	s3_bucket        = var.s3_bucket_aux
 	s3_key           = aws_s3_object.lambda_deploy_package.key
 	source_code_hash = data.archive_file.lambda_bundle.output_base64sha256
 
 	depends_on = [
 		aws_iam_role_policy_attachment.lambda_basic_execution,
+		aws_iam_role_policy.lambda_start_glue_jobs,
 		aws_s3_object.lambda_deploy_package,
 		aws_cloudwatch_log_group.lambda_log_group,
 	]

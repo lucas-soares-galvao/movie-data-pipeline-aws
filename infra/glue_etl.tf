@@ -25,6 +25,8 @@ resource "aws_glue_job" "etl_job" {
     "--job-language"                     = "python"
     # Bundle com modulos auxiliares importados pelo script principal.
     "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/${var.glue_etl_job_name}/app_bundle.zip"
+    # Nome do job de Data Quality chamado ao final do ETL.
+    "--GLUE_DATA_QUALITY_JOB_NAME"       = var.glue_data_quality_job_name
     # Prefixo customizado para os grupos /<job>/error e /<job>/output.
     "--custom-logGroup-prefix"           = "/${var.glue_etl_job_name}"
     "--enable-metrics"                   = ""
