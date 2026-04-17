@@ -40,7 +40,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         Condition = {
           StringLike = {
             # Restringe a listagem apenas ao prefixo de artefatos do Glue.
-            "s3:prefix" = ["${var.glue_etl_aux}/*"]
+            "s3:prefix" = ["${var.glue_etl_aux}/*", "${var.glue_data_quality_aux}/*"]
           }
         }
       },
@@ -54,7 +54,8 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         ]
         Resource = [
           # Escopo limitado aos objetos dentro do prefixo glue/ no bucket auxiliar.
-          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_etl_aux}/*"
+          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_etl_aux}/*",
+          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_data_quality_aux}/*"
         ]
       }
     ]
@@ -78,8 +79,10 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
           "logs:DescribeLogStreams"
         ]
         Resource = [
-          "arn:aws:logs:*:*:log-group:/${var.glue_job_name}/*",
-          "arn:aws:logs:*:*:log-group:/${var.glue_job_name}/*:log-stream:*"
+          "arn:aws:logs:*:*:log-group:/${var.glue_etl_job_name}/*",
+          "arn:aws:logs:*:*:log-group:/${var.glue_etl_job_name}/*:log-stream:*",
+          "arn:aws:logs:*:*:log-group:/${var.glue_data_quality_job_name}/*",
+          "arn:aws:logs:*:*:log-group:/${var.glue_data_quality_job_name}/*:log-stream:*"
         ]
       }
     ]
