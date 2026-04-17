@@ -2,7 +2,7 @@
 
 # Role principal assumida pelo servico AWS Glue durante a execucao do job.
 resource "aws_iam_role" "glue_job_role" {
-  name = var.iam_role_name
+  name = var.iam_role_glue
 
   # Trust policy: permite que o servico glue.amazonaws.com assuma esta role.
   assume_role_policy = jsonencode({
@@ -27,7 +27,7 @@ resource "aws_iam_role_policy_attachment" "glue_service_role" {
 
 # Policy customizada com permissao minima para ler scripts e bundles no S3.
 resource "aws_iam_role_policy" "glue_read_code_from_s3" {
-  name = "${var.iam_role_name}-read-code"
+  name = "${var.iam_role_glue}-read-code"
   role = aws_iam_role.glue_job_role.name
 
   policy = jsonencode({
@@ -66,7 +66,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
 
 # Permite que o Glue escreva streams e eventos nos grupos customizados do job.
 resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
-  name = "${var.iam_role_name}-write-logs-custom"
+  name = "${var.iam_role_glue}-write-logs-custom"
   role = aws_iam_role.glue_job_role.name
 
   policy = jsonencode({
