@@ -35,13 +35,13 @@ resource "aws_glue_job" "etl_job" {
 
   # Garante que artefatos e permissoes existam antes da criacao do job.
   depends_on = [
-    aws_s3_object.deploy_scripts_bucket[each.key],
-    aws_s3_object.deploy_app_bundle[each.key],
-    aws_iam_role_policy_attachment.glue_service_role[each.key],
-    aws_iam_role_policy.glue_read_code_from_s3[each.key],
-    aws_iam_role_policy.glue_write_logs_custom_prefix[each.key],
-    aws_cloudwatch_log_group.glue_job_error_log_group[each.key],
-    aws_cloudwatch_log_group.glue_job_output_log_group[each.key]
+    aws_s3_object.deploy_scripts_bucket,
+    aws_s3_object.deploy_app_bundle,
+    aws_iam_role_policy_attachment.glue_service_role,
+    aws_iam_role_policy.glue_read_code_from_s3,
+    aws_iam_role_policy.glue_write_logs_custom_prefix,
+    aws_cloudwatch_log_group.glue_job_error_log_group,
+    aws_cloudwatch_log_group.glue_job_output_log_group
   ]
 
   execution_property {
