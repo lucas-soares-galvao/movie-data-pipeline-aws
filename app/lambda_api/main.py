@@ -1,6 +1,11 @@
 """Ponto de entrada da Lambda de exemplo."""
 
-from .src.utils import eh_par
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from src.utils import eh_par
 
 def processar_numero(numero):
     """Encapsula a regra de negocio para facilitar reutilizacao e testes."""
