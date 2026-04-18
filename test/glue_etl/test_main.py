@@ -27,7 +27,18 @@ class TestMain(unittest.TestCase):
         self.assertEqual(resultado, esperado)
 
     @patch("app.glue_etl.main.print")
-    @patch("app.glue_etl.main.sys.argv", ["main.py", "--GLUE_DATA_QUALITY_JOB_NAME", "dq-job"])
+    @patch(
+        "app.glue_etl.main.sys.argv",
+        [
+            "main.py",
+            "--GLUE_DATA_QUALITY_JOB_NAME",
+            "dq-job",
+            "--S3_BUCKET_SOR",
+            "lsg-sa-east-1-bucket-sor-dev",
+            "--S3_BUCKET_SOT",
+            "lsg-sa-east-1-bucket-sot-dev",
+        ],
+    )
     @patch("app.glue_etl.main.processar_arquivo_sor_para_sot")
     @patch("app.glue_etl.main.chamar_glue_data_quality")
     def test_main_dispara_data_quality_na_ultima_etapa(self, mock_chamar_dq, mock_processar_arquivo, mock_print):
