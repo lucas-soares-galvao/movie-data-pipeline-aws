@@ -63,8 +63,27 @@ def chamar_glue_data_quality(data_quality_job_name=None, glue_client=None, job_a
     if job_arguments:
         kwargs["Arguments"] = job_arguments
 
-    response = glue_client.start_job_run(**kwargs)
+    concurrent_exception = None
+    if hasattr(glue_client, "exceptions"):
+        concurrent_exception = getattr(
+            glue_client.exceptions,
+            "ConcurrentRunsExceededException",
+            None,
+        )
+
+    try:
+        response = glue_client.start_job_run(**kwargs)
+        data_quality_job_run_id = response.get("JobRunId")
+        status = "started"
+    except Exception as exc:
+        if concurrent_exception and isinstance(exc, concurrent_exception):
+            data_quality_job_run_id = None
+            status = "already_running"
+        else:
+            raise
+
     return {
         "data_quality_job_name": data_quality_job_name,
-        "data_quality_job_run_id": response.get("JobRunId"),
+        "data_quality_job_run_id": data_quality_job_run_id,
+        "data_quality_job_status": status,
     }

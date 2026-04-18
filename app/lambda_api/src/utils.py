@@ -34,14 +34,33 @@ def chamar_glue_etl_e_data_quality(
     if not data_quality_job_name:
         raise ValueError("Nome do job Glue Data Quality nao informado.")
 
-    data_quality_response = glue_client.start_job_run(JobName=data_quality_job_name)
-    etl_response = glue_client.start_job_run(JobName=etl_job_name)
+    concurrent_exception = None
+    if hasattr(glue_client, "exceptions"):
+        concurrent_exception = getattr(
+            glue_client.exceptions,
+            "ConcurrentRunsExceededException",
+            None,
+        )
+
+    def iniciar_job(job_name):
+        try:
+            response = glue_client.start_job_run(JobName=job_name)
+            return response.get("JobRunId"), "started"
+        except Exception as exc:
+            if concurrent_exception and isinstance(exc, concurrent_exception):
+                return None, "already_running"
+            raise
+
+    data_quality_job_run_id, data_quality_status = iniciar_job(data_quality_job_name)
+    etl_job_run_id, etl_status = iniciar_job(etl_job_name)
 
     return {
         "data_quality_job_name": data_quality_job_name,
-        "data_quality_job_run_id": data_quality_response.get("JobRunId"),
+        "data_quality_job_run_id": data_quality_job_run_id,
+        "data_quality_job_status": data_quality_status,
         "etl_job_name": etl_job_name,
-        "etl_job_run_id": etl_response.get("JobRunId"),
+        "etl_job_run_id": etl_job_run_id,
+        "etl_job_status": etl_status,
     }
 
 

@@ -35,6 +35,19 @@ class _FakeGlueClient:
         return {"JobRunId": "run-dq"}
 
 
+class _FakeGlueClientConcurrent:
+    class exceptions:
+        class ConcurrentRunsExceededException(Exception):
+            pass
+
+    def __init__(self):
+        self.calls = []
+
+    def start_job_run(self, **kwargs):
+        self.calls.append(kwargs)
+        raise self.exceptions.ConcurrentRunsExceededException()
+
+
 class TestChamarGlueDataQuality(unittest.TestCase):
     def test_dispara_job_com_argumentos(self):
         fake_client = _FakeGlueClient()
@@ -84,6 +97,18 @@ class TestChamarGlueDataQuality(unittest.TestCase):
 
         self.assertEqual(fake_client.calls[0], {"JobName": "dq-job-env"})
         self.assertEqual(result["data_quality_job_name"], "dq-job-env")
+
+    def test_retorna_status_already_running_quando_excede_concorrencia(self):
+        fake_client = _FakeGlueClientConcurrent()
+
+        result = chamar_glue_data_quality(
+            data_quality_job_name="dq-job",
+            glue_client=fake_client,
+        )
+
+        self.assertEqual(fake_client.calls[0], {"JobName": "dq-job"})
+        self.assertIsNone(result["data_quality_job_run_id"])
+        self.assertEqual(result["data_quality_job_status"], "already_running")
 
 
 class TestLerArquivoDoS3(unittest.TestCase):

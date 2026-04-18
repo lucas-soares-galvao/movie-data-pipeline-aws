@@ -33,6 +33,19 @@ class _FakeGlueClient:
         return {"JobRunId": f"run-{JobName}"}
 
 
+class _FakeGlueClientConcurrent:
+    class exceptions:
+        class ConcurrentRunsExceededException(Exception):
+            pass
+
+    def __init__(self):
+        self.calls = []
+
+    def start_job_run(self, JobName):
+        self.calls.append(JobName)
+        raise self.exceptions.ConcurrentRunsExceededException()
+
+
 class TestChamarGlueEtlEDataQuality(unittest.TestCase):
     def test_dispara_data_quality_e_etl_com_nomes_explicitos(self):
         fake_client = _FakeGlueClient()
@@ -84,6 +97,21 @@ class TestChamarGlueEtlEDataQuality(unittest.TestCase):
         self.assertEqual(fake_client.calls, ["dq-job-env", "etl-job-env"])
         self.assertEqual(result["data_quality_job_name"], "dq-job-env")
         self.assertEqual(result["etl_job_name"], "etl-job-env")
+
+    def test_retorna_status_already_running_quando_excede_concorrencia(self):
+        fake_client = _FakeGlueClientConcurrent()
+
+        result = chamar_glue_etl_e_data_quality(
+            etl_job_name="etl-job",
+            data_quality_job_name="dq-job",
+            glue_client=fake_client,
+        )
+
+        self.assertEqual(fake_client.calls, ["dq-job", "etl-job"])
+        self.assertIsNone(result["data_quality_job_run_id"])
+        self.assertIsNone(result["etl_job_run_id"])
+        self.assertEqual(result["data_quality_job_status"], "already_running")
+        self.assertEqual(result["etl_job_status"], "already_running")
 
 
 class TestUploadArquivoParaS3(unittest.TestCase):
