@@ -39,6 +39,25 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
 	})
 }
 
+resource "aws_iam_role_policy" "lambda_s3_policy" {
+	name = "${var.lambda_api_name}-s3-policy-${var.env}"
+	role = aws_iam_role.lambda_role.id
+
+	policy = jsonencode({
+		Version = "2012-10-17"
+		Statement = [
+			{
+				Effect = "Allow"
+				Action = [
+					"s3:PutObject",
+					"s3:GetObject"
+				]
+				Resource = "arn:aws:s3:::${var.s3_bucket_sor}/*"
+			}
+		]
+	})
+}
+
 data "archive_file" "lambda_bundle" {
 	type        = "zip"
 	output_path = "${path.module}/lambda_bundle.zip"
@@ -75,6 +94,7 @@ resource "aws_lambda_function" "simple_lambda" {
 		variables = {
 			GLUE_ETL_JOB_NAME          = var.glue_etl_job_name
 			GLUE_DATA_QUALITY_JOB_NAME = var.glue_data_quality_job_name
+			S3_BUCKET_SOR              = var.s3_bucket_sor
 		}
 	}
 
@@ -85,6 +105,7 @@ resource "aws_lambda_function" "simple_lambda" {
 	depends_on = [
 		aws_iam_role_policy_attachment.lambda_basic_execution,
 		aws_iam_role_policy.lambda_start_glue_jobs,
+		aws_iam_role_policy.lambda_s3_policy,
 		aws_s3_object.lambda_deploy_package,
 		aws_cloudwatch_log_group.lambda_log_group,
 	]

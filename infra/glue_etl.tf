@@ -31,6 +31,9 @@ resource "aws_glue_job" "etl_job" {
     "--custom-logGroup-prefix"           = "/${var.glue_etl_job_name}"
     "--enable-metrics"                   = ""
     "--enable-auto-scaling"              = "true"
+    # Buckets S3 para leitura (SOR) e escrita (SOT)
+    "--S3_BUCKET_SOR"                    = var.s3_bucket_sor
+    "--S3_BUCKET_SOT"                    = var.s3_bucket_sot
   }
 
   # Garante que artefatos e permissoes existam antes da criacao do job.
@@ -40,6 +43,7 @@ resource "aws_glue_job" "etl_job" {
     aws_iam_role_policy_attachment.glue_service_role,
     aws_iam_role_policy.glue_read_code_from_s3,
     aws_iam_role_policy.glue_write_logs_custom_prefix,
+    aws_iam_role_policy.glue_read_sor_write_sot,
     aws_cloudwatch_log_group.glue_etl_job_error_log_group,
     aws_cloudwatch_log_group.glue_etl_job_output_log_group
   ]

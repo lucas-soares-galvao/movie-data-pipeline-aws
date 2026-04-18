@@ -43,3 +43,15 @@ def chamar_glue_etl_e_data_quality(
         "etl_job_name": etl_job_name,
         "etl_job_run_id": etl_response.get("JobRunId"),
     }
+
+
+def upload_arquivo_para_s3(bucket_name, file_path, s3_key, s3_client=None):
+    """Faz upload de um arquivo para o bucket S3 especificado."""
+    if s3_client is None:
+        boto3_module = import_module("boto3")
+        s3_client = boto3_module.client("s3")
+    
+    with open(file_path, 'rb') as f:
+        s3_client.put_object(Bucket=bucket_name, Key=s3_key, Body=f)
+    
+    return {"bucket": bucket_name, "key": s3_key, "status": "uploaded"}

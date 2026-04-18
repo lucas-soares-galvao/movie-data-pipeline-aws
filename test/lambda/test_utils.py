@@ -1,10 +1,15 @@
 """Testes unitarios das funcoes utilitarias."""
 
 import os
+import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
-from app.lambda_api.src.utils import chamar_glue_etl_e_data_quality, eh_par
+from app.lambda_api.src.utils import (
+    chamar_glue_etl_e_data_quality,
+    eh_par,
+    upload_arquivo_para_s3,
+)
 
 class TestEhPar(unittest.TestCase):
     """Garante que a classificacao de numeros pares/impares esteja correta."""
@@ -79,6 +84,71 @@ class TestChamarGlueEtlEDataQuality(unittest.TestCase):
         self.assertEqual(fake_client.calls, ["dq-job-env", "etl-job-env"])
         self.assertEqual(result["data_quality_job_name"], "dq-job-env")
         self.assertEqual(result["etl_job_name"], "etl-job-env")
+
+
+class TestUploadArquivoParaS3(unittest.TestCase):
+    """Testa a funcionalidade de upload de arquivos para S3."""
+
+    def test_upload_arquivo_com_sucesso(self):
+        """Testa o upload bem-sucedido de um arquivo para S3."""
+        # Cria um arquivo temporário para teste
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("conteudo de teste")
+            temp_file = f.name
+
+        try:
+            # Mock do cliente S3
+            mock_s3_client = MagicMock()
+
+            # Executa o upload
+            result = upload_arquivo_para_s3(
+                bucket_name="test-bucket",
+                file_path=temp_file,
+                s3_key="teste.txt",
+                s3_client=mock_s3_client,
+            )
+
+            # Verifica se o método put_object foi chamado com os parâmetros corretos
+            mock_s3_client.put_object.assert_called_once()
+            call_kwargs = mock_s3_client.put_object.call_args[1]
+            self.assertEqual(call_kwargs["Bucket"], "test-bucket")
+            self.assertEqual(call_kwargs["Key"], "teste.txt")
+
+            # Verifica o resultado retornado
+            self.assertEqual(result["bucket"], "test-bucket")
+            self.assertEqual(result["key"], "teste.txt")
+            self.assertEqual(result["status"], "uploaded")
+        finally:
+            # Remove o arquivo temporário
+            os.unlink(temp_file)
+
+    def test_upload_arquivo_sem_cliente_s3(self):
+        """Testa o upload sem passar um cliente S3 (cria automaticamente)."""
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("conteudo de teste")
+            temp_file = f.name
+
+        try:
+            with patch("app.lambda_api.src.utils.import_module") as mock_import:
+                mock_s3_client = MagicMock()
+                mock_boto3 = MagicMock()
+                mock_boto3.client.return_value = mock_s3_client
+                mock_import.return_value = mock_boto3
+
+                result = upload_arquivo_para_s3(
+                    bucket_name="test-bucket",
+                    file_path=temp_file,
+                    s3_key="teste.txt",
+                )
+
+                # Verifica se boto3 foi importado e o cliente foi criado
+                mock_import.assert_called_once_with("boto3")
+                mock_boto3.client.assert_called_once_with("s3")
+
+                # Verifica o resultado
+                self.assertEqual(result["status"], "uploaded")
+        finally:
+            os.unlink(temp_file)
 
 
 if __name__ == "__main__":

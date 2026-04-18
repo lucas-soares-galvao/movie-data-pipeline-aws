@@ -42,7 +42,7 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         Condition = {
           StringLike = {
             # Restringe a listagem apenas ao prefixo de artefatos do Glue.
-            "s3:prefix" = ["${var.glue_etl_aux}/*", "${var.glue_data_quality_aux}/*"]
+            "s3:prefix" = ["${var.glue_etl_job_name}/*", "${var.glue_data_quality_job_name}/*"]
           }
         }
       },
@@ -56,8 +56,8 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
         ]
         Resource = [
           # Escopo limitado aos objetos dentro do prefixo glue/ no bucket auxiliar.
-          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_etl_aux}/*",
-          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_data_quality_aux}/*"
+          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_etl_job_name}/*",
+          "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_data_quality_job_name}/*"
         ]
       }
     ]
@@ -107,6 +107,48 @@ resource "aws_iam_role_policy" "glue_start_data_quality_job" {
           "glue:GetJobRun"
         ]
         Resource = "*"
+      }
+    ]
+  })
+}
+
+# Permite que o Glue leia arquivos do bucket SOR e escreva no bucket SOT.
+resource "aws_iam_role_policy" "glue_read_sor_write_sot" {
+  name = "${var.iam_role_glue}-read-sor-write-sot"
+  role = aws_iam_role.glue_job_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ListSORBucket"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = ["arn:aws:s3:::${var.s3_bucket_sor}"]
+      },
+      {
+        Sid    = "ReadFromSOR"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ]
+        Resource = ["arn:aws:s3:::${var.s3_bucket_sor}/*"]
+      },
+      {
+        Sid    = "ListSOTBucket"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = ["arn:aws:s3:::${var.s3_bucket_sot}"]
+      },
+      {
+        Sid    = "WriteToSOT"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = ["arn:aws:s3:::${var.s3_bucket_sot}/*"]
       }
     ]
   })

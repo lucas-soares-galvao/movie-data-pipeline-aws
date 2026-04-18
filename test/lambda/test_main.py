@@ -1,7 +1,9 @@
 """Testes do modulo principal da aplicacao."""
 
+import os
+import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from app.lambda_api.main import lambda_handler, processar_numero
 
@@ -61,6 +63,60 @@ class TestMain(unittest.TestCase):
             etl_job_name=None,
             data_quality_job_name=None,
         )
+
+    @patch("app.lambda_api.main.chamar_glue_etl_e_data_quality")
+    @patch("app.lambda_api.main.upload_arquivo_para_s3")
+    def test_lambda_handler_faz_upload_do_arquivo(self, mock_upload, mock_chamar_glue):
+        """Testa se a lambda faz upload do arquivo teste.txt para S3."""
+        mock_chamar_glue.return_value = {
+            "data_quality_job_name": "dq-job",
+            "data_quality_job_run_id": "jr-111",
+            "etl_job_name": "etl-job",
+            "etl_job_run_id": "jr-222",
+        }
+        mock_upload.return_value = {
+            "bucket": "lsg-sa-east-1-bucket-sor",
+            "key": "teste.txt",
+            "status": "uploaded",
+        }
+
+        env = {"S3_BUCKET_SOR": "lsg-sa-east-1-bucket-sor"}
+        with patch.dict(os.environ, env):
+            response = lambda_handler(
+                event={
+                    "numero": 5,
+                    "glue_etl_job_name": "etl-job",
+                    "glue_data_quality_job_name": "dq-job",
+                },
+                context=None,
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(response["body"]["s3_upload"]["status"], "uploaded")
+        mock_upload.assert_called_once()
+
+    @patch("app.lambda_api.main.chamar_glue_etl_e_data_quality")
+    def test_lambda_handler_sem_s3_bucket_sor(self, mock_chamar_glue):
+        """Testa lambda quando S3_BUCKET_SOR nao esta configurado."""
+        mock_chamar_glue.return_value = {
+            "data_quality_job_name": "dq-job",
+            "data_quality_job_run_id": "jr-111",
+            "etl_job_name": "etl-job",
+            "etl_job_run_id": "jr-222",
+        }
+
+        with patch.dict(os.environ, {}, clear=True):
+            response = lambda_handler(
+                event={
+                    "numero": 3,
+                    "glue_etl_job_name": "etl-job",
+                    "glue_data_quality_job_name": "dq-job",
+                },
+                context=None,
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIsNone(response["body"]["s3_upload"])
 
 if __name__ == '__main__':
     unittest.main()
