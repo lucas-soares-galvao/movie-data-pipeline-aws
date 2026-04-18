@@ -13,12 +13,18 @@ from app.glue_etl.src.utils import (
 )
 
 
-def obter_arg_data_quality_job_name(argv):
-    """Le o nome do job de Data Quality passado via argumentos do Glue."""
+def obter_valor_argumento(argv, arg_name):
+    """Le um argumento do Glue no formato --ARG_NAME valor."""
+    flag = f"--{arg_name}"
     for index, arg in enumerate(argv):
-        if arg == "--GLUE_DATA_QUALITY_JOB_NAME" and index + 1 < len(argv):
+        if arg == flag and index + 1 < len(argv):
             return argv[index + 1]
     return None
+
+
+def obter_arg_data_quality_job_name(argv):
+    """Le o nome do job de Data Quality passado via argumentos do Glue."""
+    return obter_valor_argumento(argv, "GLUE_DATA_QUALITY_JOB_NAME")
 
 
 def processar_arquivo_sor_para_sot(s3_bucket_sor, s3_bucket_sot, s3_key_entrada, s3_key_saida):
@@ -47,9 +53,12 @@ def main():
     resultado = processar_numero(10)
     print(resultado)
     
-    # Configuracoes dos buckets S3
-    s3_bucket_sor = os.getenv("S3_BUCKET_SOR", "lsg-sa-east-1-bucket-sor")
-    s3_bucket_sot = os.getenv("S3_BUCKET_SOT", "lsg-sa-east-1-bucket-sot")
+    # Configuracoes dos buckets S3 vindas dos argumentos do Glue.
+    s3_bucket_sor = obter_valor_argumento(sys.argv, "S3_BUCKET_SOR") or os.getenv("S3_BUCKET_SOR")
+    s3_bucket_sot = obter_valor_argumento(sys.argv, "S3_BUCKET_SOT") or os.getenv("S3_BUCKET_SOT")
+
+    if not s3_bucket_sor or not s3_bucket_sot:
+        raise ValueError("Buckets S3 do ETL nao informados. Defina --S3_BUCKET_SOR e --S3_BUCKET_SOT.")
     
     # Processa arquivo do SOR e escreve no SOT
     try:
