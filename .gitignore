@@ -34,6 +34,7 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 infra/glue_app_bundle*.zip
+infra/lambda_bundle*.zip
 # Exceção: se você quiser manter as variáveis de exemplo, 
 # mas geralmente .tfvars contém segredos (senhas, keys).
 # terraform.tfvars

@@ -12,7 +12,7 @@ resource "aws_glue_job" "data_quality_job" {
 
   command {
     # Script principal do job no bucket auxiliar.
-    script_location = "s3://${var.s3_bucket_aux}/${var.glue_data_quality_aux}/app/main.py"
+    script_location = "s3://${var.s3_bucket_aux}/${var.glue_data_quality_job_name}/app/main.py"
     name            = "glueetl"
     python_version  = "3"
   }
@@ -24,7 +24,7 @@ resource "aws_glue_job" "data_quality_job" {
   default_arguments = {
     "--job-language"                     = "python"
     # Bundle com modulos auxiliares importados pelo script principal.
-    "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/${var.glue_data_quality_aux}/app_bundle.zip"
+    "--extra-py-files"                   = "s3://${var.s3_bucket_aux}/${var.glue_data_quality_job_name}/app_bundle.zip"
     # Prefixo customizado para os grupos /<job>/error e /<job>/output.
     "--custom-logGroup-prefix"           = "/${var.glue_data_quality_job_name}"
     "--enable-metrics"                   = ""
@@ -43,14 +43,14 @@ resource "aws_glue_job" "data_quality_job" {
   ]
 
   execution_property {
-    max_concurrent_runs = 1
+    max_concurrent_runs = 2
   }
 }
 
 # Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
   bucket = var.s3_bucket_aux
-  key    = "${var.glue_data_quality_aux}/app/main.py"
+  key    = "${var.glue_data_quality_job_name}/app/main.py"
   source = "${local.glue_data_quality_src_path}/main.py"
   etag   = filemd5("${local.glue_data_quality_src_path}/main.py")
 }
@@ -77,7 +77,7 @@ data "archive_file" "glue_app_bundle_data_quality" {
 # Envia o bundle zipado para o S3, usado em --extra-py-files no Glue Job.
 resource "aws_s3_object" "deploy_app_bundle_data_quality" {
   bucket = var.s3_bucket_aux
-  key    = "${var.glue_data_quality_aux}/app_bundle.zip"
+  key    = "${var.glue_data_quality_job_name}/app_bundle.zip"
   source = data.archive_file.glue_app_bundle_data_quality.output_path
   etag   = filemd5(data.archive_file.glue_app_bundle_data_quality.output_path)
 }
