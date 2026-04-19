@@ -58,6 +58,24 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
 	})
 }
 
+resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
+  name = "${var.lambda_api_name}-secrets-manager-${var.env}"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = var.tmdb_secret_arn
+      }
+    ]
+  })
+}
+
 data "archive_file" "lambda_bundle" {
 	type        = "zip"
 	output_path = "${path.module}/lambda_bundle.zip"
@@ -92,6 +110,7 @@ resource "aws_lambda_function" "simple_lambda" {
 
 	environment {
 		variables = {
+			TMDB_SECRET_ARN 		   = var.tmdb_secret_arn
 			GLUE_ETL_JOB_NAME          = var.glue_etl_job_name
 			GLUE_DATA_QUALITY_JOB_NAME = var.glue_data_quality_job_name
 			S3_BUCKET_SOR              = var.s3_bucket_sor
@@ -108,5 +127,6 @@ resource "aws_lambda_function" "simple_lambda" {
 		aws_iam_role_policy.lambda_s3_policy,
 		aws_s3_object.lambda_deploy_package,
 		aws_cloudwatch_log_group.lambda_log_group,
+		aws_iam_role_policy.lambda_secrets_manager_policy,
 	]
 }

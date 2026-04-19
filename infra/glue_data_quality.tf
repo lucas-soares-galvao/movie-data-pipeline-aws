@@ -68,7 +68,7 @@ data "archive_file" "glue_app_bundle_data_quality" {
   dynamic "source" {
     for_each = fileset(local.glue_data_quality_src_path, "**/*.py")
     content {
-      filename = "app/${var.glue_data_quality_aux}/${source.value}"
+      filename = "app/${var.glue_data_quality_path_app}/${source.value}"
       content  = file("${local.glue_data_quality_src_path}/${source.value}")
     }
   }
