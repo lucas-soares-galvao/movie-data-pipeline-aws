@@ -6,6 +6,10 @@ import urllib.parse
 import urllib.request
 from importlib import import_module
 
+
+def _normalizar_nome_chave(nome):
+    return str(nome).strip().lower().replace("-", "_")
+
 def obter_secret(secret_id=None, secrets_client=None):
     """Busca um secret no AWS Secrets Manager."""
     if secrets_client is None:
@@ -28,12 +32,41 @@ def obter_secret(secret_id=None, secrets_client=None):
 
 
 def obter_tmdb_api_key(secret_id=None, secrets_client=None):
-    """Extrai a API key do secret da TMDB."""
+    """Extrai uma credencial da TMDB (API key ou access token)."""
     payload = obter_secret(secret_id=secret_id, secrets_client=secrets_client)
-    api_key = payload.get("api_key") or payload.get("tmdb_api_key")
-    if not api_key:
-        raise ValueError("api_key nao encontrada no secret da TMDB.")
-    return api_key
+    if not isinstance(payload, dict):
+        raise ValueError("Formato invalido do secret da TMDB.")
+
+    credencial = None
+
+    # Campos preferenciais mais comuns.
+    for key in ("api_key", "tmdb_api_key", "access_token", "tmdb_access_token"):
+        valor = payload.get(key)
+        if isinstance(valor, str) and valor.strip():
+            credencial = valor.strip()
+            break
+
+    # Fallback para chaves com sufixos/prefixos, ex.: tmdb_api_key_dev.
+    if not credencial:
+        for key, valor in payload.items():
+            key_normalizada = _normalizar_nome_chave(key)
+            if not (isinstance(valor, str) and valor.strip()):
+                continue
+            if "api_key" in key_normalizada or "access_token" in key_normalizada:
+                credencial = valor.strip()
+                break
+
+    if not credencial:
+        raise ValueError("Credencial da TMDB nao encontrada no secret.")
+    return credencial
+
+
+def _is_bearer_token(credencial):
+    """Identifica token JWT usado como Bearer na TMDB."""
+    if not isinstance(credencial, str):
+        return False
+    token = credencial.strip()
+    return token.count(".") == 2 and token.startswith("eyJ")
 
 
 def buscar_filme_tmdb(query, api_key, timeout=10, urlopen_func=None):
@@ -43,17 +76,31 @@ def buscar_filme_tmdb(query, api_key, timeout=10, urlopen_func=None):
     if not api_key:
         raise ValueError("TMDB API key nao informada.")
 
-    params = urllib.parse.urlencode(
-        {
-            "api_key": api_key,
-            "query": query,
-            "language": "pt-BR",
-        }
-    )
+    params = urllib.parse.urlencode({"query": query, "language": "pt-BR"})
     url = f"https://api.themoviedb.org/3/search/movie?{params}"
+
+    request = url
+    if _is_bearer_token(api_key):
+        request = urllib.request.Request(
+            url,
+            headers={
+                "accept": "application/json",
+                "Authorization": f"Bearer {api_key.strip()}",
+            },
+        )
+    else:
+        params_com_key = urllib.parse.urlencode(
+            {
+                "api_key": api_key,
+                "query": query,
+                "language": "pt-BR",
+            }
+        )
+        request = f"https://api.themoviedb.org/3/search/movie?{params_com_key}"
+
     request_func = urlopen_func or urllib.request.urlopen
 
-    with request_func(url, timeout=timeout) as response:
+    with request_func(request, timeout=timeout) as response:
         body = response.read().decode("utf-8")
     return json.loads(body)
 
