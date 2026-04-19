@@ -1,5 +1,3 @@
-"""Ponto de entrada da Lambda de exemplo."""
-
 import os
 import sys
 
