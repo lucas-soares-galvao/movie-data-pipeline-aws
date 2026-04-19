@@ -1,18 +1,61 @@
 """Funcoes utilitarias compartilhadas pela aplicacao."""
 
+import json
 import os
+import urllib.parse
+import urllib.request
 from importlib import import_module
 
-def eh_par(num):
-    """Retorna True quando o numero informado e par."""
-    return num % 2 == 0
+def obter_secret(secret_id=None, secrets_client=None):
+    """Busca um secret no AWS Secrets Manager."""
+    if secrets_client is None:
+        boto3_module = import_module("boto3")
+        secrets_client = boto3_module.client("secretsmanager")
 
-def processar_numero(numero):
-    """Encapsula a regra de negocio para facilitar reutilizacao e testes."""
-    if eh_par(numero):
-        return f"O número {numero} é par."
-    else:
-        return f"O número {numero} é ímpar."
+    secret_id = secret_id or os.getenv("TMDB_SECRET_ARN")
+    if not secret_id:
+        raise ValueError("ARN do secret TMDB nao informado.")
+
+    response = secrets_client.get_secret_value(SecretId=secret_id)
+    secret_string = response.get("SecretString")
+    if not secret_string:
+        raise ValueError("SecretString nao encontrada no secret informado.")
+
+    try:
+        return json.loads(secret_string)
+    except json.JSONDecodeError:
+        return {"api_key": secret_string}
+
+
+def obter_tmdb_api_key(secret_id=None, secrets_client=None):
+    """Extrai a API key do secret da TMDB."""
+    payload = obter_secret(secret_id=secret_id, secrets_client=secrets_client)
+    api_key = payload.get("api_key") or payload.get("tmdb_api_key")
+    if not api_key:
+        raise ValueError("api_key nao encontrada no secret da TMDB.")
+    return api_key
+
+
+def buscar_filme_tmdb(query, api_key, timeout=10, urlopen_func=None):
+    """Consulta filmes na TMDB via endpoint search/movie."""
+    if not query:
+        raise ValueError("Parametro query nao informado.")
+    if not api_key:
+        raise ValueError("TMDB API key nao informada.")
+
+    params = urllib.parse.urlencode(
+        {
+            "api_key": api_key,
+            "query": query,
+            "language": "pt-BR",
+        }
+    )
+    url = f"https://api.themoviedb.org/3/search/movie?{params}"
+    request_func = urlopen_func or urllib.request.urlopen
+
+    with request_func(url, timeout=timeout) as response:
+        body = response.read().decode("utf-8")
+    return json.loads(body)
 
 
 def chamar_glue_etl_e_data_quality(
