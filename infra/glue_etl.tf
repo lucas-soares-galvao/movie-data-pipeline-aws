@@ -74,7 +74,7 @@ data "archive_file" "glue_app_bundle_etl" {
   dynamic "source" {
     for_each = fileset(local.glue_etl_src_path, "**/*.py")
     content {
-      filename = "app/${var.glue_etl_aux}/${source.value}"
+      filename = "app/${var.glue_etl_path_app}/${source.value}"
       content  = file("${local.glue_etl_src_path}/${source.value}")
     }
   }

@@ -6,23 +6,12 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from app.lambda_api.src.utils import (
+    buscar_filme_tmdb,
     chamar_glue_etl_e_data_quality,
-    eh_par,
+    obter_secret,
+    obter_tmdb_api_key,
     upload_arquivo_para_s3,
 )
-
-class TestEhPar(unittest.TestCase):
-    """Garante que a classificacao de numeros pares/impares esteja correta."""
-
-    def test_numero_par_retorna_true(self):
-        self.assertTrue(eh_par(2))
-        self.assertTrue(eh_par(0))
-        self.assertTrue(eh_par(-4))
-
-    def test_numero_impar_retorna_false(self):
-        self.assertFalse(eh_par(1))
-        self.assertFalse(eh_par(-3))
-
 
 class _FakeGlueClient:
     def __init__(self):
@@ -177,6 +166,57 @@ class TestUploadArquivoParaS3(unittest.TestCase):
                 self.assertEqual(result["status"], "uploaded")
         finally:
             os.unlink(temp_file)
+
+
+class _FakeSecretsManagerClient:
+    def __init__(self, secret_string):
+        self.secret_string = secret_string
+
+    def get_secret_value(self, SecretId):
+        return {"SecretString": self.secret_string}
+
+
+class _FakeUrlOpenResponse:
+    def __init__(self, body):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+    def read(self):
+        return self._body
+
+
+class TestTMDBIntegrationUtils(unittest.TestCase):
+    def test_obter_secret_com_json(self):
+        client = _FakeSecretsManagerClient('{"api_key":"abc123"}')
+        result = obter_secret(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
+        self.assertEqual(result["api_key"], "abc123")
+
+    def test_obter_secret_com_string_pura(self):
+        client = _FakeSecretsManagerClient("abc123")
+        result = obter_secret(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
+        self.assertEqual(result["api_key"], "abc123")
+
+    def test_obter_tmdb_api_key(self):
+        client = _FakeSecretsManagerClient('{"api_key":"abc123"}')
+        result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
+        self.assertEqual(result, "abc123")
+
+    def test_buscar_filme_tmdb(self):
+        payload = b'{"results":[{"title":"Matrix"}]}'
+
+        def fake_urlopen(url, timeout):
+            self.assertIn("api_key=abc123", url)
+            self.assertIn("query=matrix", url)
+            self.assertEqual(timeout, 10)
+            return _FakeUrlOpenResponse(payload)
+
+        result = buscar_filme_tmdb(query="matrix", api_key="abc123", urlopen_func=fake_urlopen)
+        self.assertEqual(result["results"][0]["title"], "Matrix")
 
 
 if __name__ == "__main__":
