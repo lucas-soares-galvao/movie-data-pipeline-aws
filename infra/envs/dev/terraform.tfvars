@@ -9,7 +9,7 @@ s3_bucket_sor = "lsg-sa-east-1-bucket-sor-dev"
 s3_bucket_sot = "lsg-sa-east-1-bucket-sot-dev"
 s3_bucket_spec = "lsg-sa-east-1-bucket-spec-dev"
 
-tmdb_secret_name = "tmdb-api-key-dev"
+tmdb_secret_arn = "arn:aws:secretsmanager:sa-east-1:298984097610:secret:tmdb_api_key_dev-BSZF4M"
 
 lambda_api_name = "lambda-api-dev"
 

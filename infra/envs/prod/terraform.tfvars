@@ -9,7 +9,7 @@ s3_bucket_sor = "lsg-sa-east-1-bucket-sor-prod"
 s3_bucket_sot = "lsg-sa-east-1-bucket-sot-prod"
 s3_bucket_spec = "lsg-sa-east-1-bucket-spec-prod"
 
-tmdb_secret_name = "tmdb-api-key-prod"
+tmdb_secret_arn = "arn:aws:secretsmanager:sa-east-1:216126109924:secret:tmdb_api_key_prod-nSo0db"
 
 lambda_api_name = "lambda-api-prod"
 
