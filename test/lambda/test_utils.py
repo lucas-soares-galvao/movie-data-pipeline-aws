@@ -206,6 +206,17 @@ class TestTMDBIntegrationUtils(unittest.TestCase):
         result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
         self.assertEqual(result, "abc123")
 
+    def test_obter_tmdb_api_key_com_chave_sufixo_ambiente(self):
+        client = _FakeSecretsManagerClient('{"tmdb_api_key_dev":"abc123"}')
+        result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
+        self.assertEqual(result, "abc123")
+
+    def test_obter_tmdb_api_key_com_access_token(self):
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"
+        client = _FakeSecretsManagerClient('{"access_token":"' + token + '"}')
+        result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
+        self.assertEqual(result, token)
+
     def test_buscar_filme_tmdb(self):
         payload = b'{"results":[{"title":"Matrix"}]}'
 
@@ -216,6 +227,23 @@ class TestTMDBIntegrationUtils(unittest.TestCase):
             return _FakeUrlOpenResponse(payload)
 
         result = buscar_filme_tmdb(query="matrix", api_key="abc123", urlopen_func=fake_urlopen)
+        self.assertEqual(result["results"][0]["title"], "Matrix")
+
+    def test_buscar_filme_tmdb_com_bearer_token(self):
+        payload = b'{"results":[{"title":"Matrix"}]}'
+
+        def fake_urlopen(request, timeout):
+            self.assertEqual(timeout, 10)
+            self.assertIn("query=matrix", request.full_url)
+            self.assertNotIn("api_key=", request.full_url)
+            self.assertEqual(request.headers["Authorization"], "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature")
+            return _FakeUrlOpenResponse(payload)
+
+        result = buscar_filme_tmdb(
+            query="matrix",
+            api_key="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
+            urlopen_func=fake_urlopen,
+        )
         self.assertEqual(result["results"][0]["title"], "Matrix")
 
 
