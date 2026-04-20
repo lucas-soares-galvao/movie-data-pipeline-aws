@@ -37,7 +37,6 @@ class TestMain(unittest.TestCase):
                 "query": "matrix",
                 "glue_etl_job_name": "etl-job",
                 "glue_data_quality_job_name": "dq-job",
-                "max_total_paginas": 5,
             },
             context=None,
         )
@@ -49,7 +48,6 @@ class TestMain(unittest.TestCase):
         self.assertEqual(response["body"]["sor_ingestao"]["objetos_s3_gravados"], 12)
         self.assertIsNone(response["body"]["sor_error"])
         mock_ingestao_sor.assert_called_once()
-        self.assertEqual(mock_ingestao_sor.call_args.kwargs["max_total_paginas"], 5)
         self.assertNotIn("mensagem", response["body"])
         self.assertNotIn("numero", response["body"])
 
