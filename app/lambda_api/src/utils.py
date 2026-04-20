@@ -122,7 +122,7 @@ def buscar_filmes_tmdb_por_ano(ano, api_key, page=1, timeout=10, urlopen_func=No
             "primary_release_year": ano,
             "page": page,
             "language": "pt-BR",
-            "sort_by": "primary_release_date.asc",
+            "sort_by": "popularity.desc",
         }
     )
     url = f"https://api.themoviedb.org/3/discover/movie?{params}"
@@ -235,21 +235,6 @@ def _particionar_filmes_por_ano_mes(filmes):
         particoes[(ano, mes)].append(filme)
 
     return particoes
-
-
-def _ordenar_filmes_por_data_e_popularidade(filmes):
-    """Ordena por data de lancamento (antigo->novo) e popularidade (alto->baixo)."""
-
-    def ordenar_por(item):
-        release_date = (item or {}).get("release_date") or "9999-99-99"
-        popularity = (item or {}).get("popularity")
-        try:
-            popularity = float(popularity)
-        except (TypeError, ValueError):
-            popularity = 0.0
-        return (release_date, -popularity)
-
-    return sorted(filmes, key=ordenar_por)
 
 
 def salvar_json_em_s3(bucket_name, s3_key, payload, s3_client=None):
@@ -372,7 +357,6 @@ def carregar_tmdb_por_ano_e_salvar_sor(
         paginas_processadas_por_mes[f"{ano:04d}-{mes:02d}"] = paginas_mes_processadas
 
         if filmes_mes:
-            filmes_mes = _ordenar_filmes_por_data_e_popularidade(filmes_mes)
             filmes_coletados.extend(filmes_mes)
             ano_str = f"{ano:04d}"
             mes_str = f"{mes:02d}"
@@ -380,7 +364,7 @@ def carregar_tmdb_por_ano_e_salvar_sor(
             payload = {
                 "year": ano_str,
                 "month": mes_str,
-                "order": "release_date asc, popularity desc",
+                "order": "popularity desc",
                 "total_movies": len(filmes_mes),
                 "items": filmes_mes,
             }
