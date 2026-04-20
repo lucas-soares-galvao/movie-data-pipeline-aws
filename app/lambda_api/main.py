@@ -35,7 +35,9 @@ def lambda_handler(event, context):
                 ano_inicio=int(event.get("ano_inicio", 2000)),
                 ano_fim=int(event.get("ano_fim", datetime.utcnow().year)),
                 paginas_por_ano=int(event.get("paginas_por_ano", 1)),
+                paginas_por_mes=int(event.get("paginas_por_mes", event.get("paginas_por_ano", 1))),
                 max_total_paginas=max_total_paginas,
+                sort_by=event.get("sort_by", "popularity.desc"),
                 s3_prefix=event.get("s3_prefix", "tmdb/discover_movie"),
             )
     except Exception as exc:
