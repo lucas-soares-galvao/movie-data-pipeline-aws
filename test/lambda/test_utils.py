@@ -7,10 +7,12 @@ from unittest.mock import patch, MagicMock
 
 from app.lambda_api.src.utils import (
     buscar_filme_tmdb,
+    buscar_filmes_tmdb_por_ano,
+    carregar_tmdb_por_ano_e_salvar_sor,
     chamar_glue_etl_e_data_quality,
     obter_secret,
     obter_tmdb_api_key,
-    upload_arquivo_para_s3,
+    salvar_json_em_s3,
 )
 
 class _FakeGlueClient:
@@ -103,71 +105,6 @@ class TestChamarGlueEtlEDataQuality(unittest.TestCase):
         self.assertEqual(result["etl_job_status"], "already_running")
 
 
-class TestUploadArquivoParaS3(unittest.TestCase):
-    """Testa a funcionalidade de upload de arquivos para S3."""
-
-    def test_upload_arquivo_com_sucesso(self):
-        """Testa o upload bem-sucedido de um arquivo para S3."""
-        # Cria um arquivo temporário para teste
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-            f.write("conteudo de teste")
-            temp_file = f.name
-
-        try:
-            # Mock do cliente S3
-            mock_s3_client = MagicMock()
-
-            # Executa o upload
-            result = upload_arquivo_para_s3(
-                bucket_name="test-bucket",
-                file_path=temp_file,
-                s3_key="teste.txt",
-                s3_client=mock_s3_client,
-            )
-
-            # Verifica se o método put_object foi chamado com os parâmetros corretos
-            mock_s3_client.put_object.assert_called_once()
-            call_kwargs = mock_s3_client.put_object.call_args[1]
-            self.assertEqual(call_kwargs["Bucket"], "test-bucket")
-            self.assertEqual(call_kwargs["Key"], "teste.txt")
-
-            # Verifica o resultado retornado
-            self.assertEqual(result["bucket"], "test-bucket")
-            self.assertEqual(result["key"], "teste.txt")
-            self.assertEqual(result["status"], "uploaded")
-        finally:
-            # Remove o arquivo temporário
-            os.unlink(temp_file)
-
-    def test_upload_arquivo_sem_cliente_s3(self):
-        """Testa o upload sem passar um cliente S3 (cria automaticamente)."""
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-            f.write("conteudo de teste")
-            temp_file = f.name
-
-        try:
-            with patch("app.lambda_api.src.utils.import_module") as mock_import:
-                mock_s3_client = MagicMock()
-                mock_boto3 = MagicMock()
-                mock_boto3.client.return_value = mock_s3_client
-                mock_import.return_value = mock_boto3
-
-                result = upload_arquivo_para_s3(
-                    bucket_name="test-bucket",
-                    file_path=temp_file,
-                    s3_key="teste.txt",
-                )
-
-                # Verifica se boto3 foi importado e o cliente foi criado
-                mock_import.assert_called_once_with("boto3")
-                mock_boto3.client.assert_called_once_with("s3")
-
-                # Verifica o resultado
-                self.assertEqual(result["status"], "uploaded")
-        finally:
-            os.unlink(temp_file)
-
-
 class _FakeSecretsManagerClient:
     def __init__(self, secret_string):
         self.secret_string = secret_string
@@ -245,6 +182,74 @@ class TestTMDBIntegrationUtils(unittest.TestCase):
             urlopen_func=fake_urlopen,
         )
         self.assertEqual(result["results"][0]["title"], "Matrix")
+
+    def test_buscar_filmes_tmdb_por_ano(self):
+        payload = b'{"results":[{"title":"Matrix"}]}'
+
+        def fake_urlopen(url, timeout):
+            self.assertIn("primary_release_year=2003", url)
+            self.assertIn("page=1", url)
+            self.assertIn("api_key=abc123", url)
+            self.assertEqual(timeout, 10)
+            return _FakeUrlOpenResponse(payload)
+
+        result = buscar_filmes_tmdb_por_ano(ano=2003, api_key="abc123", urlopen_func=fake_urlopen)
+        self.assertEqual(result["results"][0]["title"], "Matrix")
+
+
+class TestCargaSorParticionada(unittest.TestCase):
+    def test_salvar_json_em_s3(self):
+        mock_s3_client = MagicMock()
+
+        salvar_json_em_s3(
+            bucket_name="bucket-sor",
+            s3_key="tmdb/discover_movie/year=2003/month=05/arquivo.json",
+            payload={"ok": True},
+            s3_client=mock_s3_client,
+        )
+
+        mock_s3_client.put_object.assert_called_once()
+        kwargs = mock_s3_client.put_object.call_args[1]
+        self.assertEqual(kwargs["Bucket"], "bucket-sor")
+        self.assertEqual(kwargs["Key"], "tmdb/discover_movie/year=2003/month=05/arquivo.json")
+
+    def test_carregar_tmdb_por_ano_e_salvar_sor_particiona_year_month(self):
+        def fake_buscar_por_ano_func(ano, api_key, page, timeout, urlopen_func):
+            if ano == 2000:
+                return {
+                    "results": [
+                        {"id": 1, "release_date": "2000-01-10", "title": "A"},
+                        {"id": 2, "release_date": "2000-01-20", "title": "B"},
+                    ]
+                }
+            if ano == 2001:
+                return {
+                    "results": [
+                        {"id": 3, "release_date": "2001-02-14", "title": "C"},
+                    ]
+                }
+            return {"results": []}
+
+        mock_s3_client = MagicMock()
+
+        resumo = carregar_tmdb_por_ano_e_salvar_sor(
+            api_key="abc123",
+            bucket_name="bucket-sor",
+            ano_inicio=2000,
+            ano_fim=2001,
+            paginas_por_ano=1,
+            s3_prefix="tmdb/discover_movie",
+            s3_client=mock_s3_client,
+            buscar_por_ano_func=fake_buscar_por_ano_func,
+        )
+
+        self.assertEqual(resumo["filmes_encontrados"], 3)
+        self.assertEqual(resumo["particoes_geradas"], 2)
+        self.assertEqual(resumo["objetos_s3_gravados"], 2)
+
+        keys = [call.kwargs["Key"] for call in mock_s3_client.put_object.call_args_list]
+        self.assertTrue(any("year=2000/month=01" in key for key in keys))
+        self.assertTrue(any("year=2001/month=02" in key for key in keys))
 
 
 if __name__ == "__main__":

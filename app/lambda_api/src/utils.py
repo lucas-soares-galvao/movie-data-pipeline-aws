@@ -1,5 +1,7 @@
 """Funcoes utilitarias compartilhadas pela aplicacao."""
 
+from collections import defaultdict
+from datetime import datetime
 import json
 import os
 import urllib.parse
@@ -53,7 +55,7 @@ def buscar_filme_tmdb(query, api_key, timeout=10, urlopen_func=None):
         raise ValueError("TMDB API key nao informada.")
 
     params = urllib.parse.urlencode({"query": query, "language": "pt-BR"})
-    url = f"https://api.themoviedb.org/3/account/{account_id}/movies?{params}"
+    url = f"https://api.themoviedb.org/3/search/movie?{params}"
 
     request = url
     if _is_bearer_token(api_key):
@@ -72,13 +74,159 @@ def buscar_filme_tmdb(query, api_key, timeout=10, urlopen_func=None):
                 "language": "pt-BR",
             }
         )
-        request = f"https://api.themoviedb.org/3/account/{account_id}/movies?{params_com_key}"
+        request = f"https://api.themoviedb.org/3/search/movie?{params_com_key}"
 
     request_func = urlopen_func or urllib.request.urlopen
 
     with request_func(request, timeout=timeout) as response:
         body = response.read().decode("utf-8")
     return json.loads(body)
+
+
+def buscar_filmes_tmdb_por_ano(ano, api_key, page=1, timeout=10, urlopen_func=None):
+    """Consulta filmes na TMDB por ano de lancamento via endpoint discover/movie."""
+    if not ano:
+        raise ValueError("Parametro ano nao informado.")
+    if not api_key:
+        raise ValueError("TMDB API key nao informada.")
+
+    params = urllib.parse.urlencode(
+        {
+            "primary_release_year": ano,
+            "page": page,
+            "language": "pt-BR",
+            "sort_by": "primary_release_date.asc",
+        }
+    )
+    url = f"https://api.themoviedb.org/3/discover/movie?{params}"
+
+    request = url
+    if _is_bearer_token(api_key):
+        request = urllib.request.Request(
+            url,
+            headers={
+                "accept": "application/json",
+                "Authorization": f"Bearer {api_key.strip()}",
+            },
+        )
+    else:
+        params_com_key = urllib.parse.urlencode(
+            {
+                "api_key": api_key,
+                "primary_release_year": ano,
+                "page": page,
+                "language": "pt-BR",
+                "sort_by": "primary_release_date.asc",
+            }
+        )
+        request = f"https://api.themoviedb.org/3/discover/movie?{params_com_key}"
+
+    request_func = urlopen_func or urllib.request.urlopen
+
+    with request_func(request, timeout=timeout) as response:
+        body = response.read().decode("utf-8")
+    return json.loads(body)
+
+
+def _particionar_filmes_por_ano_mes(filmes):
+    """Agrupa filmes por particao year=YYYY/month=MM usando release_date."""
+    particoes = defaultdict(list)
+
+    for filme in filmes:
+        release_date = (filme or {}).get("release_date", "")
+        if not isinstance(release_date, str) or len(release_date) < 7:
+            continue
+
+        ano = release_date[0:4]
+        mes = release_date[5:7]
+        if not (ano.isdigit() and mes.isdigit()):
+            continue
+
+        particoes[(ano, mes)].append(filme)
+
+    return particoes
+
+
+def salvar_json_em_s3(bucket_name, s3_key, payload, s3_client=None):
+    """Salva um payload JSON no S3."""
+    if s3_client is None:
+        boto3_module = import_module("boto3")
+        s3_client = boto3_module.client("s3")
+
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=s3_key,
+        Body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+
+def carregar_tmdb_por_ano_e_salvar_sor(
+    api_key,
+    bucket_name,
+    ano_inicio=2000,
+    ano_fim=None,
+    paginas_por_ano=1,
+    s3_prefix="tmdb/discover_movie",
+    timeout=10,
+    urlopen_func=None,
+    s3_client=None,
+    buscar_por_ano_func=None,
+):
+    """Busca filmes por ano na TMDB e grava no S3 em particoes year/month."""
+    if not api_key:
+        raise ValueError("TMDB API key nao informada.")
+    if not bucket_name:
+        raise ValueError("Bucket S3 SOR nao informado.")
+
+    ano_fim = ano_fim or datetime.utcnow().year
+    if ano_inicio > ano_fim:
+        raise ValueError("ano_inicio nao pode ser maior que ano_fim.")
+
+    buscar_func = buscar_por_ano_func or buscar_filmes_tmdb_por_ano
+    filmes_coletados = []
+
+    for ano in range(ano_inicio, ano_fim + 1):
+        for pagina in range(1, paginas_por_ano + 1):
+            response = buscar_func(
+                ano=ano,
+                api_key=api_key,
+                page=pagina,
+                timeout=timeout,
+                urlopen_func=urlopen_func,
+            )
+            filmes_coletados.extend(response.get("results", []))
+
+    particoes = _particionar_filmes_por_ano_mes(filmes_coletados)
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    objetos_gravados = 0
+
+    for (ano, mes), filmes in particoes.items():
+        s3_key = f"{s3_prefix}/year={ano}/month={mes}/movies_{ano}_{mes}_{timestamp}.json"
+        payload = {
+            "year": ano,
+            "month": mes,
+            "total_movies": len(filmes),
+            "items": filmes,
+        }
+        salvar_json_em_s3(
+            bucket_name=bucket_name,
+            s3_key=s3_key,
+            payload=payload,
+            s3_client=s3_client,
+        )
+        objetos_gravados += 1
+
+    return {
+        "bucket": bucket_name,
+        "s3_prefix": s3_prefix,
+        "ano_inicio": ano_inicio,
+        "ano_fim": ano_fim,
+        "paginas_por_ano": paginas_por_ano,
+        "filmes_encontrados": len(filmes_coletados),
+        "particoes_geradas": len(particoes),
+        "objetos_s3_gravados": objetos_gravados,
+    }
 
 
 def chamar_glue_etl_e_data_quality(
@@ -128,15 +276,3 @@ def chamar_glue_etl_e_data_quality(
         "etl_job_run_id": etl_job_run_id,
         "etl_job_status": etl_status,
     }
-
-
-def upload_arquivo_para_s3(bucket_name, file_path, s3_key, s3_client=None):
-    """Faz upload de um arquivo para o bucket S3 especificado."""
-    if s3_client is None:
-        boto3_module = import_module("boto3")
-        s3_client = boto3_module.client("s3")
-    
-    with open(file_path, 'rb') as f:
-        s3_client.put_object(Bucket=bucket_name, Key=s3_key, Body=f)
-    
-    return {"bucket": bucket_name, "key": s3_key, "status": "uploaded"}
