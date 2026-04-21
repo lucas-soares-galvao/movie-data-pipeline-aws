@@ -6,14 +6,41 @@ from datetime import date, datetime, timedelta
 import boto3
 import requests
 
+
+def _extrair_tmdb_credential(secret_string):
+    try:
+        secret_dict = json.loads(secret_string)
+    except json.JSONDecodeError:
+        secret_limpo = secret_string.strip()
+        if not secret_limpo:
+            raise RuntimeError("SecretString da TMDB esta vazio.")
+        return {
+            "tipo": "bearer" if "." in secret_limpo else "api_key",
+            "valor": secret_limpo,
+        }
+
+    for campo in ("TMDB_API_KEY", "api_key"):
+        valor = secret_dict.get(campo)
+        if valor:
+            return {"tipo": "api_key", "valor": valor}
+
+    for campo in ("TMDB_READ_ACCESS_TOKEN", "TMDB_ACCESS_TOKEN", "access_token"):
+        valor = secret_dict.get(campo)
+        if valor:
+            return {"tipo": "bearer", "valor": valor}
+
+    raise RuntimeError(
+        "Secret da TMDB deve conter TMDB_API_KEY ou TMDB_READ_ACCESS_TOKEN."
+    )
+
+
 def obter_tmdb_api_key(secret_arn):
     client = boto3.client("secretsmanager")
 
     try:
         response = client.get_secret_value(SecretId=secret_arn)
         secret = response["SecretString"]
-        secret_dict = json.loads(secret)
-        return secret_dict.get("TMDB_API_KEY")
+        return _extrair_tmdb_credential(secret)
     except Exception as e:
         raise RuntimeError(f"Erro ao obter a chave da TMDB: {str(e)}")
 
@@ -57,6 +84,17 @@ def buscar_filme_por_periodo_de_lancamento(api_key, periodo, limite_paginas=500)
     url_base = "https://api.themoviedb.org/3/discover/movie"
     headers = {"accept": "application/json"}
 
+    if isinstance(api_key, dict):
+        credencial_tmdb = api_key
+    else:
+        credencial_tmdb = {"tipo": "api_key", "valor": api_key}
+
+    if not credencial_tmdb.get("valor"):
+        raise RuntimeError("Credencial da TMDB nao encontrada ou vazia.")
+
+    if credencial_tmdb.get("tipo") == "bearer":
+        headers["Authorization"] = f"Bearer {credencial_tmdb['valor']}"
+
     try:
         filmes = []
         pagina = 1
@@ -64,13 +102,15 @@ def buscar_filme_por_periodo_de_lancamento(api_key, periodo, limite_paginas=500)
 
         while pagina <= total_paginas_disponiveis and pagina <= limite_paginas:
             params = {
-                "api_key": api_key,
                 "primary_release_date.gte": periodo["primeiro_dia"],
                 "primary_release_date.lte": periodo["ultimo_dia"],
                 "language": "pt-BR",
                 "sort_by": "primary_release_date.asc",
                 "page": pagina,
             }
+
+            if credencial_tmdb.get("tipo") == "api_key":
+                params["api_key"] = credencial_tmdb["valor"]
 
             response = requests.get(url_base, headers=headers, params=params, timeout=30)
             response.raise_for_status()

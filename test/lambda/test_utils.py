@@ -21,8 +21,20 @@ class TestObterTmdbApiKey(unittest.TestCase):
 
         result = obter_tmdb_api_key("arn:aws:secretsmanager:tmdb")
 
-        self.assertEqual(result, "abc123")
+        self.assertEqual(result, {"tipo": "api_key", "valor": "abc123"})
         mock_client.get_secret_value.assert_called_once_with(SecretId="arn:aws:secretsmanager:tmdb")
+
+    @patch("app.lambda_api.src.utils.boto3.client")
+    def test_obter_tmdb_api_key_com_read_access_token(self, mock_boto_client):
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            "SecretString": '{"TMDB_READ_ACCESS_TOKEN":"token.tmdb.v4"}'
+        }
+        mock_boto_client.return_value = mock_client
+
+        result = obter_tmdb_api_key("arn:aws:secretsmanager:tmdb")
+
+        self.assertEqual(result, {"tipo": "bearer", "valor": "token.tmdb.v4"})
 
     @patch("app.lambda_api.src.utils.boto3.client")
     def test_obter_tmdb_api_key_lanca_runtime_error(self, mock_boto_client):
@@ -87,6 +99,26 @@ class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
         segundo_params = mock_get.call_args_list[1].kwargs["params"]
         self.assertEqual(primeiro_params["page"], 1)
         self.assertEqual(segundo_params["page"], 2)
+        self.assertEqual(primeiro_params["api_key"], "abc123")
+
+    @patch("app.lambda_api.src.utils.requests.get")
+    def test_buscar_filme_com_bearer_token(self, mock_get):
+        periodo = {"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"}
+
+        resp = MagicMock()
+        resp.json.return_value = {"total_pages": 1, "results": [{"id": 1}]}
+        mock_get.return_value = resp
+
+        payload = buscar_filme_por_periodo_de_lancamento(
+            api_key={"tipo": "bearer", "valor": "token.tmdb.v4"},
+            periodo=periodo,
+            limite_paginas=1,
+        )
+
+        self.assertEqual(payload["total_filmes"], 1)
+        request_kwargs = mock_get.call_args.kwargs
+        self.assertNotIn("api_key", request_kwargs["params"])
+        self.assertEqual(request_kwargs["headers"]["Authorization"], "Bearer token.tmdb.v4")
 
     @patch("app.lambda_api.src.utils.requests.get")
     def test_buscar_filme_lanca_runtime_error(self, mock_get):
