@@ -8,7 +8,7 @@ resource "aws_glue_job" "etl_job" {
   timeout           = 30
   number_of_workers = 2
   worker_type       = "G.1X"
-  execution_class   = "FLEX"
+  execution_class   = "STANDARD"
 
   command {
     # Script principal do job no bucket auxiliar.

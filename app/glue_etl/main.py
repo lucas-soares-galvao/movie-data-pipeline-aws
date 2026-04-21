@@ -3,7 +3,9 @@
 import os
 import sys
 
-from app.glue_etl.src.utils import (
+sys.path.insert(0, os.path.dirname(__file__))
+
+from src.utils import (
     obter_valor_argumento,
     carregar_sor_json_para_tabela_sot,
 )
