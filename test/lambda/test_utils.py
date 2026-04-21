@@ -3,6 +3,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from app.lambda_api.src.utils import (
     buscar_filme_por_periodo_de_lancamento,
     carregar_filmes_tmdb_por_periodo_mensal,
@@ -155,6 +157,34 @@ class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
                 limite_paginas=1,
             )
 
+    @patch("app.lambda_api.src.utils.time.sleep")
+    @patch("app.lambda_api.src.utils.requests.get")
+    def test_buscar_filme_faz_fallback_de_idioma_em_erro_500(self, mock_get, _mock_sleep):
+        periodo = {"primeiro_dia": "2005-07-01", "ultimo_dia": "2005-07-31"}
+
+        resp_500 = MagicMock()
+        erro_500 = requests.exceptions.HTTPError("500 server error")
+        erro_500.response = MagicMock(status_code=500)
+        resp_500.raise_for_status.side_effect = erro_500
+
+        resp_ok = MagicMock()
+        resp_ok.raise_for_status.return_value = None
+        resp_ok.json.return_value = {"total_pages": 1, "results": [{"id": 1}]}
+
+        # 3 tentativas para pt-BR e sucesso no primeiro attempt com en-US.
+        mock_get.side_effect = [resp_500, resp_500, resp_500, resp_ok]
+
+        payload = buscar_filme_por_periodo_de_lancamento(
+            api_key="abc123",
+            periodo=periodo,
+            limite_paginas=1,
+        )
+
+        self.assertEqual(payload["total_filmes"], 1)
+        self.assertEqual(mock_get.call_count, 4)
+        self.assertEqual(mock_get.call_args_list[0].kwargs["params"]["language"], "pt-BR")
+        self.assertEqual(mock_get.call_args_list[3].kwargs["params"]["language"], "en-US")
+
 
 class TestSalvarJsonNoS3(unittest.TestCase):
     @patch("app.lambda_api.src.utils.boto3.client")
@@ -212,6 +242,47 @@ class TestCarregarFilmesTmdbPorPeriodoMensal(unittest.TestCase):
             limite_paginas=500,
         )
         self.assertEqual(mock_salvar.call_count, 2)
+
+    @patch("app.lambda_api.src.utils.salvar_json_no_s3")
+    @patch("app.lambda_api.src.utils.buscar_filme_por_periodo_de_lancamento")
+    @patch("app.lambda_api.src.utils.gerar_intervalos_mensais")
+    def test_carregar_filmes_salva_erros_no_bucket_aux_e_continua(
+        self,
+        mock_gerar_intervalos,
+        mock_buscar,
+        mock_salvar,
+    ):
+        mock_gerar_intervalos.return_value = [
+            {"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"},
+            {"primeiro_dia": "2026-02-01", "ultimo_dia": "2026-02-28"},
+        ]
+        mock_buscar.side_effect = [
+            RuntimeError("tmdb 500"),
+            {"results": [{"id": 2}]},
+        ]
+
+        resumo = carregar_filmes_tmdb_por_periodo_mensal(
+            api_key="abc123",
+            bucket_name="bucket-sor",
+            data_inicio="2000-01-01",
+            limite_paginas=500,
+            error_bucket_name="bucket-aux",
+            error_prefix="lambda_api/error",
+        )
+
+        self.assertEqual(resumo["total_meses_processados"], 2)
+        self.assertEqual(resumo["total_meses_com_sucesso"], 1)
+        self.assertEqual(resumo["total_meses_com_erro"], 1)
+        self.assertEqual(len(resumo["objetos_salvos"]), 1)
+        self.assertEqual(len(resumo["objetos_erro"]), 1)
+
+        primeira_chamada = mock_salvar.call_args_list[0].kwargs
+        segunda_chamada = mock_salvar.call_args_list[1].kwargs
+
+        self.assertEqual(primeira_chamada["bucket_name"], "bucket-aux")
+        self.assertIn("lambda_api/error/year=2026/month=01/", primeira_chamada["object_key"])
+        self.assertEqual(segunda_chamada["bucket_name"], "bucket-sor")
+        self.assertIn("tmdb/discover_movie/year=2026/month=02/", segunda_chamada["object_key"])
 
 
 if __name__ == "__main__":
