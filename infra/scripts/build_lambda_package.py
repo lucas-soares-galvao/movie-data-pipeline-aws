@@ -1,17 +1,25 @@
 """Build lambda package directory with application source and pip dependencies."""
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
+import stat
 from pathlib import Path
+
+
+def _handle_remove_readonly(func, path, exc_info):
+    _ = exc_info
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 
 def build_package(src: Path, requirements: Path, dest: Path) -> None:
     if dest.exists():
-        shutil.rmtree(dest)
+        shutil.rmtree(dest, onerror=_handle_remove_readonly)
 
-    shutil.copytree(src, dest)
+    dest.mkdir(parents=True, exist_ok=True)
 
     subprocess.check_call(
         [
@@ -26,6 +34,8 @@ def build_package(src: Path, requirements: Path, dest: Path) -> None:
             "--upgrade",
         ]
     )
+
+    shutil.copytree(src, dest, dirs_exist_ok=True)
 
 
 def main() -> None:
