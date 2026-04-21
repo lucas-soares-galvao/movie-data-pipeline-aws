@@ -22,7 +22,11 @@ class TestMain(unittest.TestCase):
 
         with patch.dict(
             "os.environ",
-            {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb", "S3_BUCKET_SOR": "bucket-sor"},
+            {
+                "TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb",
+                "S3_BUCKET_SOR": "bucket-sor",
+                "S3_BUCKET_AUX": "bucket-aux",
+            },
             clear=True,
         ):
             response = lambda_handler(event={}, context=None)
@@ -34,7 +38,9 @@ class TestMain(unittest.TestCase):
             api_key="abc123",
             bucket_name="bucket-sor",
             data_inicio="2000-01-01",
-            limite_paginas=500,
+            limite_paginas=5,
+            error_bucket_name="bucket-aux",
+            error_prefix="lambda_api/error",
         )
 
     def test_lambda_handler_falha_sem_secret_arn(self):
@@ -45,11 +51,26 @@ class TestMain(unittest.TestCase):
         self.assertIn("TMDB_SECRET_ARN", response["body"])
 
     def test_lambda_handler_falha_sem_bucket(self):
-        with patch.dict("os.environ", {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb"}, clear=True):
+        with patch.dict(
+            "os.environ",
+            {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb", "S3_BUCKET_AUX": "bucket-aux"},
+            clear=True,
+        ):
             response = lambda_handler(event={}, context=None)
 
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("S3_BUCKET_SOR", response["body"])
+
+    def test_lambda_handler_falha_sem_bucket_aux(self):
+        with patch.dict(
+            "os.environ",
+            {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb", "S3_BUCKET_SOR": "bucket-sor"},
+            clear=True,
+        ):
+            response = lambda_handler(event={}, context=None)
+
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("S3_BUCKET_AUX", response["body"])
 
     @patch("app.lambda_api.main.carregar_filmes_tmdb_por_periodo_mensal")
     @patch("app.lambda_api.main.obter_tmdb_api_key")
@@ -59,7 +80,11 @@ class TestMain(unittest.TestCase):
 
         with patch.dict(
             "os.environ",
-            {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb", "S3_BUCKET_SOR": "bucket-sor"},
+            {
+                "TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb",
+                "S3_BUCKET_SOR": "bucket-sor",
+                "S3_BUCKET_AUX": "bucket-aux",
+            },
             clear=True,
         ):
             response = lambda_handler(event={}, context=None)

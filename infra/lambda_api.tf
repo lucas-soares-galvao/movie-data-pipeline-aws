@@ -52,7 +52,10 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
 					"s3:PutObject",
 					"s3:GetObject"
 				]
-				Resource = "arn:aws:s3:::${var.s3_bucket_sor}/*"
+				Resource = [
+					"arn:aws:s3:::${var.s3_bucket_sor}/*",
+					"arn:aws:s3:::${var.s3_bucket_aux}/lambda_api/error/*"
+				]
 			}
 		]
 	})
@@ -123,6 +126,7 @@ resource "aws_lambda_function" "simple_lambda" {
 			GLUE_ETL_JOB_NAME          = var.glue_etl_job_name
 			GLUE_DATA_QUALITY_JOB_NAME = var.glue_data_quality_job_name
 			S3_BUCKET_SOR              = var.s3_bucket_sor
+			S3_BUCKET_AUX			   = var.s3_bucket_aux
 		}
 	}
 
