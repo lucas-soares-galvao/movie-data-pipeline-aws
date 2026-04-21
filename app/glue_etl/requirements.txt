@@ -1,2 +1,2 @@
-# Dependencias de runtime do Glue ETL
-# Adicionar conforme necessario
+# Dependencias de runtime do Glue ETL (auto-contido)
+boto3

@@ -34,10 +34,6 @@ jobs:
           if [ -f test/requirements_test.txt ]; then
             pip install -r test/requirements_test.txt
           fi
-          # Instala dependências da aplicação para type-checking
-          if [ -f app/requirements.txt ]; then
-            pip install -r app/requirements.txt
-          fi
 
       # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
       # Adicionar o diretório raiz ao GITHUB_ENV resolve erros de "ModuleNotFoundError"
