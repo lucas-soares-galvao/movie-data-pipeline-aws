@@ -1,2 +1,2 @@
-# Dependencias de runtime do Glue Data Quality
-# Adicionar conforme necessario
+# Dependencias de runtime do Glue Data Quality (auto-contido)
+boto3

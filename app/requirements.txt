@@ -1,4 +1,0 @@
-# Dependencias de runtime da aplicacao (base shared).
-# boto3 é incluído no Lambda/Glue runtime, mas necessário para testes/desenvolvimento local
-boto3
-requests

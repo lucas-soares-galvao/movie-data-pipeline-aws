@@ -82,5 +82,5 @@ resource "aws_s3_object" "deploy_app_bundle_data_quality" {
   bucket = var.s3_bucket_aux
   key    = "${var.glue_data_quality_job_name}/app_bundle.zip"
   source = data.archive_file.glue_app_bundle_data_quality.output_path
-  etag   = filemd5(data.archive_file.glue_app_bundle_data_quality.output_path)
+  etag   = data.archive_file.glue_app_bundle_data_quality.output_md5
 }

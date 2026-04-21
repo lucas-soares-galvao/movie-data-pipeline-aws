@@ -88,5 +88,5 @@ resource "aws_s3_object" "deploy_app_bundle_etl" {
   bucket = var.s3_bucket_aux
   key    = "${var.glue_etl_job_name}/app_bundle.zip"
   source = data.archive_file.glue_app_bundle_etl.output_path
-  etag   = filemd5(data.archive_file.glue_app_bundle_etl.output_path)
+  etag   = data.archive_file.glue_app_bundle_etl.output_md5
 }
