@@ -115,11 +115,8 @@ class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
         )
 
         self.assertEqual(mock_get.call_count, 2)
-        self.assertEqual(payload["paginas_processadas"], 2)
-        self.assertEqual(payload["limite_paginas"], 2)
-        self.assertEqual(payload["total_paginas_disponiveis"], 3)
-        self.assertEqual(payload["total_filmes"], 3)
-        self.assertEqual(len(payload["results"]), 3)
+        self.assertEqual(len(payload), 3)
+        self.assertEqual([filme["id"] for filme in payload], [1, 2, 3])
 
         primeiro_params = mock_get.call_args_list[0].kwargs["params"]
         segundo_params = mock_get.call_args_list[1].kwargs["params"]
@@ -141,7 +138,8 @@ class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
             limite_paginas=1,
         )
 
-        self.assertEqual(payload["total_filmes"], 1)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["id"], 1)
         request_kwargs = mock_get.call_args.kwargs
         self.assertNotIn("api_key", request_kwargs["params"])
         self.assertEqual(request_kwargs["headers"]["Authorization"], "Bearer token.tmdb.v4")
@@ -180,7 +178,8 @@ class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
             limite_paginas=1,
         )
 
-        self.assertEqual(payload["total_filmes"], 1)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["id"], 1)
         self.assertEqual(mock_get.call_count, 4)
         self.assertEqual(mock_get.call_args_list[0].kwargs["params"]["language"], "pt-BR")
         self.assertEqual(mock_get.call_args_list[3].kwargs["params"]["language"], "en-US")

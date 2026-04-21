@@ -182,14 +182,7 @@ def buscar_filme_por_periodo_de_lancamento(api_key, periodo, limite_paginas=500)
             filmes.extend(payload.get("results", []))
             pagina += 1
 
-        return {
-            "periodo": periodo,
-            "total_paginas_disponiveis": total_paginas_disponiveis,
-            "paginas_processadas": min(total_paginas_disponiveis, limite_paginas),
-            "limite_paginas": limite_paginas,
-            "total_filmes": len(filmes),
-            "results": filmes,
-        }
+        return filmes
     except Exception as e:
         raise RuntimeError(f"Erro ao buscar filmes para o periodo {periodo}: {str(e)}")
 
