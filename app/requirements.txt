@@ -1,3 +1,0 @@
-# Dependencias de runtime da aplicacao.
-boto3
-requests

@@ -76,17 +76,26 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   })
 }
 
+resource "null_resource" "lambda_build" {
+  triggers = {
+    source_hash = sha256(join("", [for f in fileset(local.lambda_api_src_path, "**/*.py") : filesha256("${local.lambda_api_src_path}/${f}")]))
+    requirements_hash = filesha256(local.lambda_api_requirements_path)
+    builder_hash = filesha256("${path.module}/scripts/build_lambda_package.py")
+  }
+
+  provisioner "local-exec" {
+    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_api_src_path} --requirements ${local.lambda_api_requirements_path} --dest ${local.lambda_api_build_path}"
+  }
+}
+
 data "archive_file" "lambda_bundle" {
 	type        = "zip"
 	output_path = "${path.module}/lambda_bundle.zip"
+	source_dir  = local.lambda_api_build_path
 
-	dynamic "source" {
-		for_each = fileset(local.lambda_api_src_path, "**/*.py")
-		content {
-			filename = source.value
-			content  = file("${local.lambda_api_src_path}/${source.value}")
-		}
-	}
+	depends_on = [
+		null_resource.lambda_build
+	]
 }
 
 resource "aws_s3_object" "lambda_deploy_package" {
@@ -125,6 +134,7 @@ resource "aws_lambda_function" "simple_lambda" {
 		aws_iam_role_policy_attachment.lambda_basic_execution,
 		aws_iam_role_policy.lambda_start_glue_jobs,
 		aws_iam_role_policy.lambda_s3_policy,
+		null_resource.lambda_build,
 		aws_s3_object.lambda_deploy_package,
 		aws_cloudwatch_log_group.lambda_log_group,
 		aws_iam_role_policy.lambda_secrets_manager_policy,
