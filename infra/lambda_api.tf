@@ -119,6 +119,7 @@ resource "aws_lambda_function" "simple_lambda" {
 	handler       = "main.lambda_handler"
 	runtime       = "python3.11"
 	timeout       = 300
+	memory_size   = 1024
 
 	environment {
 		variables = {
