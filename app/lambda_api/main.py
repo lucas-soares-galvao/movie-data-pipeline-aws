@@ -1,8 +1,11 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-from src.utils import obter_tmdb_api_key, carregar_filmes_tmdb_por_periodo_mensal, chamar_glue_etl
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(__file__))
+    from src.utils import obter_tmdb_api_key, carregar_filmes_tmdb_por_periodo_mensal, chamar_glue_etl
+else:
+    from .src.utils import obter_tmdb_api_key, carregar_filmes_tmdb_por_periodo_mensal, chamar_glue_etl
 
 
 def lambda_handler(event, context):
