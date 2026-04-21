@@ -1,2 +1,3 @@
 # Dependencias de runtime da aplicacao.
-# Adicione aqui bibliotecas usadas durante a execucao do job.
+boto3
+requests

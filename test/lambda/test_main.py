@@ -1,4 +1,4 @@
-"""Testes do modulo principal da aplicacao."""
+"""Testes do modulo principal da lambda API."""
 
 import unittest
 from unittest.mock import patch
@@ -7,92 +7,66 @@ from app.lambda_api.main import lambda_handler
 
 
 class TestMain(unittest.TestCase):
-    @patch("app.lambda_api.main.chamar_glue_etl_e_data_quality")
-    @patch("app.lambda_api.main.carregar_tmdb_por_ano_e_salvar_sor")
-    @patch("app.lambda_api.main.buscar_filme_tmdb")
+    @patch("app.lambda_api.main.carregar_filmes_tmdb_por_periodo_mensal")
     @patch("app.lambda_api.main.obter_tmdb_api_key")
-    def test_lambda_handler_dispara_glue_tmdb_e_ingestao_sor(
-        self,
-        mock_obter_key,
-        mock_buscar_tmdb,
-        mock_ingestao_sor,
-        mock_chamar_glue,
-    ):
-        mock_obter_key.return_value = "abc123"
-        mock_buscar_tmdb.return_value = {"results": [{"title": "Matrix"}]}
-        mock_ingestao_sor.return_value = {
-            "bucket": "bucket-sor",
-            "filmes_encontrados": 100,
-            "objetos_s3_gravados": 12,
-        }
-        mock_chamar_glue.return_value = {
-            "data_quality_job_name": "dq-job",
-            "data_quality_job_run_id": "jr-111",
-            "etl_job_name": "etl-job",
-            "etl_job_run_id": "jr-222",
+    def test_lambda_handler_sucesso(self, mock_obter_tmdb_api_key, mock_carregar):
+        mock_obter_tmdb_api_key.return_value = "abc123"
+        mock_carregar.return_value = {
+            "total_meses_processados": 2,
+            "limite_paginas_por_consulta": 500,
+            "objetos_salvos": [
+                "tmdb/discover_movie/year=2000/month=01/movies_2000_01.json",
+                "tmdb/discover_movie/year=2000/month=02/movies_2000_02.json",
+            ],
         }
 
-        response = lambda_handler(
-            {
-                "query": "matrix",
-                "glue_etl_job_name": "etl-job",
-                "glue_data_quality_job_name": "dq-job",
-            },
-            context=None,
+        with patch.dict(
+            "os.environ",
+            {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb", "S3_BUCKET_SOR": "bucket-sor"},
+            clear=True,
+        ):
+            response = lambda_handler(event={}, context=None)
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(response["body"]["total_meses_processados"], 2)
+        mock_obter_tmdb_api_key.assert_called_once_with("arn:aws:secretsmanager:tmdb")
+        mock_carregar.assert_called_once_with(
+            api_key="abc123",
+            bucket_name="bucket-sor",
+            data_inicio="2000-01-01",
+            limite_paginas=500,
         )
 
-        self.assertEqual(response["statusCode"], 200)
-        self.assertEqual(response["body"]["tmdb_query"], "matrix")
-        self.assertEqual(response["body"]["tmdb_result"]["results"][0]["title"], "Matrix")
-        self.assertIsNone(response["body"]["tmdb_error"])
-        self.assertEqual(response["body"]["sor_ingestao"]["objetos_s3_gravados"], 12)
-        self.assertIsNone(response["body"]["sor_error"])
-        mock_ingestao_sor.assert_called_once()
-        self.assertNotIn("mensagem", response["body"])
-        self.assertNotIn("numero", response["body"])
+    def test_lambda_handler_falha_sem_secret_arn(self):
+        with patch.dict("os.environ", {"S3_BUCKET_SOR": "bucket-sor"}, clear=True):
+            response = lambda_handler(event={}, context=None)
 
-    @patch("app.lambda_api.main.chamar_glue_etl_e_data_quality")
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("TMDB_SECRET_ARN", response["body"])
+
+    def test_lambda_handler_falha_sem_bucket(self):
+        with patch.dict("os.environ", {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb"}, clear=True):
+            response = lambda_handler(event={}, context=None)
+
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("S3_BUCKET_SOR", response["body"])
+
+    @patch("app.lambda_api.main.carregar_filmes_tmdb_por_periodo_mensal")
     @patch("app.lambda_api.main.obter_tmdb_api_key")
-    def test_lambda_handler_retorna_tmdb_error_quando_falha(self, mock_obter_key, mock_chamar_glue):
-        mock_obter_key.side_effect = ValueError("segredo nao encontrado")
-        mock_chamar_glue.return_value = {
-            "data_quality_job_name": "dq-job",
-            "data_quality_job_run_id": "jr-111",
-            "etl_job_name": "etl-job",
-            "etl_job_run_id": "jr-222",
-        }
+    def test_lambda_handler_retorna_erro_interno(self, mock_obter_tmdb_api_key, mock_carregar):
+        mock_obter_tmdb_api_key.return_value = "abc123"
+        mock_carregar.side_effect = RuntimeError("falha ao processar")
 
-        response = lambda_handler(event={"query": "matrix"}, context=None)
+        with patch.dict(
+            "os.environ",
+            {"TMDB_SECRET_ARN": "arn:aws:secretsmanager:tmdb", "S3_BUCKET_SOR": "bucket-sor"},
+            clear=True,
+        ):
+            response = lambda_handler(event={}, context=None)
 
-        self.assertEqual(response["statusCode"], 200)
-        self.assertIsNone(response["body"]["tmdb_result"])
-        self.assertEqual(response["body"]["tmdb_error"], "segredo nao encontrado")
-
-    @patch("app.lambda_api.main.chamar_glue_etl_e_data_quality")
-    @patch("app.lambda_api.main.carregar_tmdb_por_ano_e_salvar_sor")
-    @patch("app.lambda_api.main.obter_tmdb_api_key")
-    def test_lambda_handler_ignora_ingestao_sor_quando_desativado(
-        self,
-        mock_obter_key,
-        mock_ingestao_sor,
-        mock_chamar_glue,
-    ):
-        mock_obter_key.return_value = "abc123"
-        mock_chamar_glue.return_value = {
-            "data_quality_job_name": "dq-job",
-            "data_quality_job_run_id": "jr-111",
-            "etl_job_name": "etl-job",
-            "etl_job_run_id": "jr-222",
-        }
-
-        response = lambda_handler(event={"executar_ingestao_sor": False}, context=None)
-
-        self.assertEqual(response["statusCode"], 200)
-        self.assertIsNone(response["body"]["sor_ingestao"])
-        self.assertIsNone(response["body"]["sor_error"])
-        mock_ingestao_sor.assert_not_called()
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("falha ao processar", response["body"])
 
 
 if __name__ == "__main__":
     unittest.main()
-    

@@ -1,67 +1,36 @@
 import os
 import sys
-from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
-
-from src.utils import chamar_glue_etl_e_data_quality
-from src.utils import buscar_filme_tmdb, carregar_tmdb_por_ano_e_salvar_sor, obter_tmdb_api_key
+from src.utils import obter_tmdb_api_key, carregar_filmes_tmdb_por_periodo_mensal
 
 
 def lambda_handler(event, context):
-    """Handler simples para execucao da Lambda."""
-    query = event.get("query")
-    executar_ingestao_sor = event.get("executar_ingestao_sor", True)
-
-    tmdb_result = None
-    tmdb_error = None
-    sor_ingestao = None
-    sor_error = None
-
     try:
-        tmdb_api_key = obter_tmdb_api_key()
+        secret_arn = os.getenv("TMDB_SECRET_ARN")
+        bucket_name = os.getenv("S3_BUCKET_SOR")
 
-        if query:
-            tmdb_result = buscar_filme_tmdb(query=query, api_key=tmdb_api_key)
+        if not secret_arn:
+            raise ValueError("Variavel de ambiente TMDB_SECRET_ARN nao configurada.")
 
-        if executar_ingestao_sor:
-            ano_fim = int(event.get("ano_fim", datetime.utcnow().year))
-            mes_fim_default = datetime.utcnow().month if ano_fim == datetime.utcnow().year else 12
+        if not bucket_name:
+            raise ValueError("Variavel de ambiente S3_BUCKET_SOR nao configurada.")
 
-            sor_ingestao = carregar_tmdb_por_ano_e_salvar_sor(
-                api_key=tmdb_api_key,
-                bucket_name=os.getenv("S3_BUCKET_SOR"),
-                ano_inicio=int(event.get("ano_inicio", 2000)),
-                ano_fim=ano_fim,
-                mes_inicio=int(event.get("mes_inicio", 1)),
-                mes_fim=int(event.get("mes_fim", mes_fim_default)),
-                max_meses_por_execucao=int(event.get("max_meses_por_execucao", 3)),
-                paginas_por_mes=int(event.get("paginas_por_mes", 1)),
-                max_retries=int(event.get("max_retries", 3)),
-                s3_prefix=event.get("s3_prefix", "tmdb/discover_movie"),
-            )
-    except Exception as exc:
-        if query and tmdb_result is None:
-            tmdb_error = str(exc)
-        else:
-            sor_error = str(exc)
+        api_key = obter_tmdb_api_key(secret_arn)
+        resumo = carregar_filmes_tmdb_por_periodo_mensal(
+            api_key=api_key,
+            bucket_name=bucket_name,
+            data_inicio="2000-01-01",
+            limite_paginas=500,
+        )
 
-    glue_execucao = chamar_glue_etl_e_data_quality(
-        etl_job_name=event.get("glue_etl_job_name"),
-        data_quality_job_name=event.get("glue_data_quality_job_name"),
-    )
-
-    return {
-        "statusCode": 200,
-        "body": {
-            "tmdb_query": query,
-            "tmdb_result": tmdb_result,
-            "tmdb_error": tmdb_error,
-            "sor_ingestao": sor_ingestao,
-            "sor_error": sor_error,
-            "glue_execucao": glue_execucao,
-        },
-    }
+        return {
+            "statusCode": 200,
+            "body": resumo,
+        }
+    except Exception as e:
+        return {"statusCode": 500, "body": f"Erro interno: {str(e)}"}
+    
 
 def main():
     resultado = lambda_handler(event={}, context=None)

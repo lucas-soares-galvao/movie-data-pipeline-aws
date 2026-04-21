@@ -1,3 +1,5 @@
 # Dependencias usadas exclusivamente para testes automatizados.
 pytest
 pytest-cov
+boto3
+requests

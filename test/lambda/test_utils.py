@@ -1,402 +1,162 @@
-"""Testes unitarios das funcoes utilitarias."""
+"""Testes unitarios das funcoes utilitarias da lambda API."""
 
-import json
-import os
-import tempfile
-import urllib.error
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.lambda_api.src.utils import (
-    buscar_filme_tmdb,
-    buscar_filmes_tmdb_por_ano,
-    buscar_filmes_tmdb_por_ano_mes,
-    carregar_tmdb_por_ano_e_salvar_sor,
-    chamar_glue_etl_e_data_quality,
-    obter_secret,
+    buscar_filme_por_periodo_de_lancamento,
+    carregar_filmes_tmdb_por_periodo_mensal,
+    gerar_intervalos_mensais,
     obter_tmdb_api_key,
-    salvar_json_em_s3,
+    salvar_json_no_s3,
 )
 
-class _FakeGlueClient:
-    def __init__(self):
-        self.calls = []
 
-    def start_job_run(self, JobName):
-        self.calls.append(JobName)
-        return {"JobRunId": f"run-{JobName}"}
+class TestObterTmdbApiKey(unittest.TestCase):
+    @patch("app.lambda_api.src.utils.boto3.client")
+    def test_obter_tmdb_api_key_com_sucesso(self, mock_boto_client):
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {"SecretString": '{"TMDB_API_KEY":"abc123"}'}
+        mock_boto_client.return_value = mock_client
+
+        result = obter_tmdb_api_key("arn:aws:secretsmanager:tmdb")
+
+        self.assertEqual(result, "abc123")
+        mock_client.get_secret_value.assert_called_once_with(SecretId="arn:aws:secretsmanager:tmdb")
+
+    @patch("app.lambda_api.src.utils.boto3.client")
+    def test_obter_tmdb_api_key_lanca_runtime_error(self, mock_boto_client):
+        mock_client = MagicMock()
+        mock_client.get_secret_value.side_effect = Exception("secret not found")
+        mock_boto_client.return_value = mock_client
+
+        with self.assertRaises(RuntimeError):
+            obter_tmdb_api_key("arn:aws:secretsmanager:tmdb")
 
 
-class _FakeGlueClientConcurrent:
-    class exceptions:
-        class ConcurrentRunsExceededException(Exception):
-            pass
+class TestGerarIntervalosMensais(unittest.TestCase):
+    def test_gerar_intervalos_mensais_periodo_fixo(self):
+        intervalos = gerar_intervalos_mensais("2026-01-15", "2026-03-10")
 
-    def __init__(self):
-        self.calls = []
-
-    def start_job_run(self, JobName):
-        self.calls.append(JobName)
-        raise self.exceptions.ConcurrentRunsExceededException()
-
-
-class TestChamarGlueEtlEDataQuality(unittest.TestCase):
-    def test_dispara_data_quality_e_etl_com_nomes_explicitos(self):
-        fake_client = _FakeGlueClient()
-
-        result = chamar_glue_etl_e_data_quality(
-            etl_job_name="etl-job",
-            data_quality_job_name="dq-job",
-            glue_client=fake_client,
+        self.assertEqual(
+            intervalos,
+            [
+                {"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"},
+                {"primeiro_dia": "2026-02-01", "ultimo_dia": "2026-02-28"},
+                {"primeiro_dia": "2026-03-01", "ultimo_dia": "2026-03-10"},
+            ],
         )
 
-        self.assertEqual(fake_client.calls, ["dq-job", "etl-job"])
-        self.assertEqual(result["data_quality_job_run_id"], "run-dq-job")
-        self.assertEqual(result["etl_job_run_id"], "run-etl-job")
-
-    def test_falha_quando_nome_etl_nao_informado(self):
-        fake_client = _FakeGlueClient()
-
+    def test_gerar_intervalos_mensais_lanca_erro_quando_inicio_maior_que_fim(self):
         with self.assertRaises(ValueError):
-            chamar_glue_etl_e_data_quality(
-                etl_job_name=None,
-                data_quality_job_name="dq-job",
-                glue_client=fake_client,
-            )
+            gerar_intervalos_mensais("2026-03-11", "2026-03-10")
 
-    def test_falha_quando_nome_data_quality_nao_informado(self):
-        fake_client = _FakeGlueClient()
 
-        with self.assertRaises(ValueError):
-            chamar_glue_etl_e_data_quality(
-                etl_job_name="etl-job",
-                data_quality_job_name=None,
-                glue_client=fake_client,
-            )
+class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
+    @patch("app.lambda_api.src.utils.requests.get")
+    def test_buscar_filme_com_paginacao_e_limite(self, mock_get):
+        periodo = {"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"}
 
-    def test_usa_nomes_dos_jobs_vindos_do_ambiente(self):
-        fake_client = _FakeGlueClient()
-        env = {
-            "GLUE_ETL_JOB_NAME": "etl-job-env",
-            "GLUE_DATA_QUALITY_JOB_NAME": "dq-job-env",
+        resp1 = MagicMock()
+        resp1.json.return_value = {
+            "total_pages": 3,
+            "results": [{"id": 1}, {"id": 2}],
+        }
+        resp2 = MagicMock()
+        resp2.json.return_value = {
+            "total_pages": 3,
+            "results": [{"id": 3}],
         }
 
-        with patch.dict(os.environ, env, clear=True):
-            result = chamar_glue_etl_e_data_quality(
-                etl_job_name=None,
-                data_quality_job_name=None,
-                glue_client=fake_client,
+        mock_get.side_effect = [resp1, resp2]
+
+        payload = buscar_filme_por_periodo_de_lancamento(
+            api_key="abc123",
+            periodo=periodo,
+            limite_paginas=2,
+        )
+
+        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(payload["paginas_processadas"], 2)
+        self.assertEqual(payload["limite_paginas"], 2)
+        self.assertEqual(payload["total_paginas_disponiveis"], 3)
+        self.assertEqual(payload["total_filmes"], 3)
+        self.assertEqual(len(payload["results"]), 3)
+
+        primeiro_params = mock_get.call_args_list[0].kwargs["params"]
+        segundo_params = mock_get.call_args_list[1].kwargs["params"]
+        self.assertEqual(primeiro_params["page"], 1)
+        self.assertEqual(segundo_params["page"], 2)
+
+    @patch("app.lambda_api.src.utils.requests.get")
+    def test_buscar_filme_lanca_runtime_error(self, mock_get):
+        mock_get.side_effect = Exception("erro de rede")
+
+        with self.assertRaises(RuntimeError):
+            buscar_filme_por_periodo_de_lancamento(
+                api_key="abc123",
+                periodo={"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"},
+                limite_paginas=1,
             )
 
-        self.assertEqual(fake_client.calls, ["dq-job-env", "etl-job-env"])
-        self.assertEqual(result["data_quality_job_name"], "dq-job-env")
-        self.assertEqual(result["etl_job_name"], "etl-job-env")
 
-    def test_retorna_status_already_running_quando_excede_concorrencia(self):
-        fake_client = _FakeGlueClientConcurrent()
+class TestSalvarJsonNoS3(unittest.TestCase):
+    @patch("app.lambda_api.src.utils.boto3.client")
+    def test_salvar_json_no_s3(self, mock_boto_client):
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
 
-        result = chamar_glue_etl_e_data_quality(
-            etl_job_name="etl-job",
-            data_quality_job_name="dq-job",
-            glue_client=fake_client,
-        )
-
-        self.assertEqual(fake_client.calls, ["dq-job", "etl-job"])
-        self.assertIsNone(result["data_quality_job_run_id"])
-        self.assertIsNone(result["etl_job_run_id"])
-        self.assertEqual(result["data_quality_job_status"], "already_running")
-        self.assertEqual(result["etl_job_status"], "already_running")
-
-
-class _FakeSecretsManagerClient:
-    def __init__(self, secret_string):
-        self.secret_string = secret_string
-
-    def get_secret_value(self, SecretId):
-        return {"SecretString": self.secret_string}
-
-
-class _FakeUrlOpenResponse:
-    def __init__(self, body):
-        self._body = body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return False
-
-    def read(self):
-        return self._body
-
-
-class TestTMDBIntegrationUtils(unittest.TestCase):
-    def test_obter_secret_com_json(self):
-        client = _FakeSecretsManagerClient('{"api_key":"abc123"}')
-        result = obter_secret(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
-        self.assertEqual(result["api_key"], "abc123")
-
-    def test_obter_secret_com_string_pura(self):
-        client = _FakeSecretsManagerClient("abc123")
-        result = obter_secret(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
-        self.assertEqual(result["api_key"], "abc123")
-
-    def test_obter_tmdb_api_key(self):
-        client = _FakeSecretsManagerClient('{"tmdb_api_key":"abc123"}')
-        result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
-        self.assertEqual(result, "abc123")
-
-    def test_obter_tmdb_api_key_fallback_api_key(self):
-        client = _FakeSecretsManagerClient('{"api_key":"abc123"}')
-        result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
-        self.assertEqual(result, "abc123")
-
-    def test_obter_tmdb_api_key_com_access_token(self):
-        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"
-        client = _FakeSecretsManagerClient('{"tmdb_api_key":"' + token + '"}')
-        result = obter_tmdb_api_key(secret_id="arn:aws:secretsmanager:::secret:tmdb", secrets_client=client)
-        self.assertEqual(result, token)
-
-    def test_buscar_filme_tmdb(self):
-        payload = b'{"results":[{"title":"Matrix"}]}'
-
-        def fake_urlopen(url, timeout):
-            self.assertIn("api_key=abc123", url)
-            self.assertIn("query=matrix", url)
-            self.assertEqual(timeout, 10)
-            return _FakeUrlOpenResponse(payload)
-
-        result = buscar_filme_tmdb(query="matrix", api_key="abc123", urlopen_func=fake_urlopen)
-        self.assertEqual(result["results"][0]["title"], "Matrix")
-
-    def test_buscar_filme_tmdb_com_bearer_token(self):
-        payload = b'{"results":[{"title":"Matrix"}]}'
-
-        def fake_urlopen(request, timeout):
-            self.assertEqual(timeout, 10)
-            self.assertIn("query=matrix", request.full_url)
-            self.assertNotIn("api_key=", request.full_url)
-            self.assertEqual(request.headers["Authorization"], "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature")
-            return _FakeUrlOpenResponse(payload)
-
-        result = buscar_filme_tmdb(
-            query="matrix",
-            api_key="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
-            urlopen_func=fake_urlopen,
-        )
-        self.assertEqual(result["results"][0]["title"], "Matrix")
-
-    def test_buscar_filmes_tmdb_por_ano(self):
-        payload = b'{"results":[{"title":"Matrix"}]}'
-
-        def fake_urlopen(url, timeout):
-            self.assertIn("primary_release_year=2003", url)
-            self.assertIn("page=1", url)
-            self.assertIn("api_key=abc123", url)
-            self.assertEqual(timeout, 10)
-            return _FakeUrlOpenResponse(payload)
-
-        result = buscar_filmes_tmdb_por_ano(ano=2003, api_key="abc123", urlopen_func=fake_urlopen)
-        self.assertEqual(result["results"][0]["title"], "Matrix")
-
-    def test_buscar_filmes_tmdb_por_ano_mes(self):
-        payload = b'{"results":[{"title":"Matrix"}]}'
-
-        def fake_urlopen(url, timeout):
-            self.assertIn("primary_release_date.gte=2025-05-01", url)
-            self.assertIn("primary_release_date.lte=2025-05-31", url)
-            self.assertIn("sort_by=primary_release_date.asc", url)
-            self.assertIn("api_key=abc123", url)
-            self.assertEqual(timeout, 10)
-            return _FakeUrlOpenResponse(payload)
-
-        result = buscar_filmes_tmdb_por_ano_mes(ano=2025, mes=5, api_key="abc123", urlopen_func=fake_urlopen)
-        self.assertEqual(result["results"][0]["title"], "Matrix")
-
-    @patch("app.lambda_api.src.utils.time.sleep")
-    def test_buscar_filmes_tmdb_por_ano_mes_retry_502(self, _mock_sleep):
-        payload = b'{"results":[{"title":"Matrix"}]}'
-        attempts = {"count": 0}
-
-        def fake_urlopen(url, timeout):
-            attempts["count"] += 1
-            if attempts["count"] == 1:
-                raise urllib.error.HTTPError(url=url, code=502, msg="Bad Gateway", hdrs=None, fp=None)
-            return _FakeUrlOpenResponse(payload)
-
-        result = buscar_filmes_tmdb_por_ano_mes(
-            ano=2025,
-            mes=5,
-            api_key="abc123",
-            urlopen_func=fake_urlopen,
-            max_retries=2,
-        )
-
-        self.assertEqual(attempts["count"], 2)
-        self.assertEqual(result["results"][0]["title"], "Matrix")
-
-
-class TestCargaSorParticionada(unittest.TestCase):
-    def test_salvar_json_em_s3(self):
-        mock_s3_client = MagicMock()
-
-        salvar_json_em_s3(
+        salvar_json_no_s3(
             bucket_name="bucket-sor",
-            s3_key="tmdb/discover_movie/year=2003/month=05/arquivo.json",
+            object_key="tmdb/discover_movie/year=2026/month=01/movies_2026_01.json",
             payload={"ok": True},
-            s3_client=mock_s3_client,
         )
 
-        mock_s3_client.put_object.assert_called_once()
-        kwargs = mock_s3_client.put_object.call_args[1]
+        mock_s3.put_object.assert_called_once()
+        kwargs = mock_s3.put_object.call_args.kwargs
         self.assertEqual(kwargs["Bucket"], "bucket-sor")
-        self.assertEqual(kwargs["Key"], "tmdb/discover_movie/year=2003/month=05/arquivo.json")
+        self.assertIn("year=2026/month=01", kwargs["Key"])
 
-    def test_carregar_tmdb_por_ano_e_salvar_sor_particiona_year_month(self):
-        def fake_buscar_por_ano_mes_func(ano, mes, api_key, page, timeout, urlopen_func, max_retries):
-            if ano == 2000 and mes == 1:
-                return {
-                    "results": [
-                        {"id": 1, "release_date": "2000-01-10", "title": "A"},
-                        {"id": 2, "release_date": "2000-01-20", "title": "B"},
-                    ]
-                }
-            if ano == 2001 and mes == 2:
-                return {
-                    "results": [
-                        {"id": 3, "release_date": "2001-02-14", "title": "C"},
-                    ]
-                }
-            return {"results": []}
 
-        mock_s3_client = MagicMock()
+class TestCarregarFilmesTmdbPorPeriodoMensal(unittest.TestCase):
+    @patch("app.lambda_api.src.utils.salvar_json_no_s3")
+    @patch("app.lambda_api.src.utils.buscar_filme_por_periodo_de_lancamento")
+    @patch("app.lambda_api.src.utils.gerar_intervalos_mensais")
+    def test_carregar_filmes_por_periodo_mensal(
+        self,
+        mock_gerar_intervalos,
+        mock_buscar,
+        mock_salvar,
+    ):
+        mock_gerar_intervalos.return_value = [
+            {"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"},
+            {"primeiro_dia": "2026-02-01", "ultimo_dia": "2026-02-28"},
+        ]
+        mock_buscar.side_effect = [
+            {"results": [{"id": 1}]},
+            {"results": [{"id": 2}]},
+        ]
 
-        resumo = carregar_tmdb_por_ano_e_salvar_sor(
+        resumo = carregar_filmes_tmdb_por_periodo_mensal(
             api_key="abc123",
             bucket_name="bucket-sor",
-            ano_inicio=2000,
-            ano_fim=2001,
-            paginas_por_mes=1,
-            s3_prefix="tmdb/discover_movie",
-            s3_client=mock_s3_client,
-            buscar_por_ano_mes_func=fake_buscar_por_ano_mes_func,
+            data_inicio="2000-01-01",
+            limite_paginas=500,
         )
 
-        self.assertEqual(resumo["filmes_encontrados"], 3)
-        self.assertEqual(resumo["particoes_geradas"], 2)
-        self.assertEqual(resumo["objetos_s3_gravados"], 2)
+        self.assertEqual(resumo["total_meses_processados"], 2)
+        self.assertEqual(resumo["limite_paginas_por_consulta"], 500)
+        self.assertEqual(len(resumo["objetos_salvos"]), 2)
+        self.assertIn("year=2026/month=01", resumo["objetos_salvos"][0])
+        self.assertIn("year=2026/month=02", resumo["objetos_salvos"][1])
 
-        keys = [call.kwargs["Key"] for call in mock_s3_client.put_object.call_args_list]
-        self.assertTrue(any("year=2000/month=01" in key for key in keys))
-        self.assertTrue(any("year=2001/month=02" in key for key in keys))
-
-    def test_carregar_tmdb_por_ano_auto_paginas_quando_zero(self):
-        chamadas = []
-
-        def fake_buscar_por_ano_mes_func(ano, mes, api_key, page, timeout, urlopen_func, max_retries):
-            chamadas.append((ano, mes, page))
-            if mes != 5:
-                return {"total_pages": 1, "results": []}
-            if page == 1:
-                return {
-                    "total_pages": 2,
-                    "results": [
-                        {"id": 1, "release_date": "2025-01-10", "title": "A"},
-                    ],
-                }
-            return {
-                "total_pages": 2,
-                "results": [
-                    {"id": 2, "release_date": "2025-05-11", "title": "B"},
-                ],
-            }
-
-        mock_s3_client = MagicMock()
-
-        resumo = carregar_tmdb_por_ano_e_salvar_sor(
+        mock_buscar.assert_any_call(
             api_key="abc123",
-            bucket_name="bucket-sor",
-            ano_inicio=2025,
-            ano_fim=2025,
-            paginas_por_mes=0,
-            s3_prefix="tmdb/discover_movie",
-            s3_client=mock_s3_client,
-            buscar_por_ano_mes_func=fake_buscar_por_ano_mes_func,
+            periodo={"primeiro_dia": "2026-01-01", "ultimo_dia": "2026-01-31"},
+            limite_paginas=500,
         )
-
-        self.assertIn((2025, 5, 1), chamadas)
-        self.assertIn((2025, 5, 2), chamadas)
-        self.assertEqual(resumo["filmes_encontrados"], 2)
-        self.assertEqual(resumo["particoes_geradas"], 1)
-
-        keys = [call.kwargs["Key"] for call in mock_s3_client.put_object.call_args_list]
-        self.assertTrue(any("year=2025/month=05" in key for key in keys))
-
-    def test_carregar_tmdb_por_ano_um_pagina_por_mes(self):
-        chamadas = []
-
-        def fake_buscar_por_ano_mes_func(ano, mes, api_key, page, timeout, urlopen_func, max_retries):
-            chamadas.append((ano, mes, page))
-            return {
-                "total_pages": 3,
-                "results": [
-                    {"id": f"{ano}-{mes}-{page}", "release_date": f"{ano}-{mes:02d}-10", "title": "A"},
-                ],
-            }
-
-        mock_s3_client = MagicMock()
-
-        resumo = carregar_tmdb_por_ano_e_salvar_sor(
-            api_key="abc123",
-            bucket_name="bucket-sor",
-            ano_inicio=2024,
-            ano_fim=2024,
-            mes_inicio=1,
-            mes_fim=2,
-            paginas_por_mes=1,
-            s3_prefix="tmdb/discover_movie",
-            s3_client=mock_s3_client,
-            buscar_por_ano_mes_func=fake_buscar_por_ano_mes_func,
-        )
-
-        self.assertEqual(chamadas, [(2024, 1, 1), (2024, 2, 1)])
-        self.assertEqual(resumo["paginas_processadas"], 2)
-        self.assertEqual(resumo["paginas_processadas_por_mes"]["2024-01"], 1)
-        self.assertEqual(resumo["paginas_processadas_por_mes"]["2024-02"], 1)
-        self.assertEqual(resumo["filmes_encontrados"], 2)
-
-
-    def test_carregar_tmdb_por_ano_retorna_cursor_quando_limita_meses(self):
-        def fake_buscar_por_ano_mes_func(ano, mes, api_key, page, timeout, urlopen_func, max_retries):
-            return {
-                "total_pages": 1,
-                "results": [
-                    {"id": f"{ano}-{mes}", "release_date": f"{ano}-{mes:02d}-10", "title": "A"},
-                ],
-            }
-
-        mock_s3_client = MagicMock()
-
-        resumo = carregar_tmdb_por_ano_e_salvar_sor(
-            api_key="abc123",
-            bucket_name="bucket-sor",
-            ano_inicio=2025,
-            ano_fim=2025,
-            mes_inicio=1,
-            mes_fim=4,
-            max_meses_por_execucao=2,
-            paginas_por_mes=1,
-            s3_prefix="tmdb/discover_movie",
-            s3_client=mock_s3_client,
-            buscar_por_ano_mes_func=fake_buscar_por_ano_mes_func,
-        )
-
-        self.assertFalse(resumo["concluido"])
-        self.assertEqual(resumo["meses_processados"], 2)
-        self.assertEqual(resumo["proximo_cursor"]["ano_inicio"], 2025)
-        self.assertEqual(resumo["proximo_cursor"]["mes_inicio"], 3)
+        self.assertEqual(mock_salvar.call_count, 2)
 
 
 if __name__ == "__main__":
     unittest.main()
-    
