@@ -11,6 +11,10 @@ terraform {
     archive = {
       source = "hashicorp/archive"
     }
+
+    null = {
+      source = "hashicorp/null"
+    }
   }
 }
 

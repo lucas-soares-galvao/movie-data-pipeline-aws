@@ -1,0 +1,2 @@
+# Dependencias de runtime do Glue Data Quality
+# Adicionar conforme necessario

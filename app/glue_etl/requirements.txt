@@ -1,0 +1,2 @@
+# Dependencias de runtime do Glue ETL
+# Adicionar conforme necessario
