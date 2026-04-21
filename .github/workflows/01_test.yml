@@ -30,10 +30,8 @@ jobs:
           pip install pytest pytest-cov
           # Instala ferramentas de quality gates
           pip install ruff mypy bandit safety
-          # Verifica se existe um arquivo de dependências específico de teste e o instala
-          if [ -f test/requirements_test.txt ]; then
-            pip install -r test/requirements_test.txt
-          fi
+          # Instala dependências específicas de cada suíte de testes
+          find test -name 'requirements_tests.txt' -print -exec pip install -r {} \;
 
       # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
       # Adicionar o diretório raiz ao GITHUB_ENV resolve erros de "ModuleNotFoundError"
