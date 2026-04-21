@@ -1,10 +1,39 @@
 """Funcoes utilitarias compartilhadas pela aplicacao."""
 import calendar
 import json
+import time
 from datetime import date, datetime, timedelta
 
 import boto3
 import requests
+
+
+def _fazer_requisicao_tmdb_com_retry(url, headers, params, tentativas=3, timeout=30):
+    ultima_excecao = None
+
+    for tentativa in range(1, tentativas + 1):
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response else None
+            if status_code and 500 <= status_code < 600 and tentativa < tentativas:
+                ultima_excecao = exc
+                time.sleep(min(2 ** (tentativa - 1), 4))
+                continue
+            raise
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            if tentativa < tentativas:
+                ultima_excecao = exc
+                time.sleep(min(2 ** (tentativa - 1), 4))
+                continue
+            raise
+
+    if ultima_excecao:
+        raise ultima_excecao
+
+    raise RuntimeError("Falha ao consultar a API da TMDB sem excecao detalhada.")
 
 
 def _extrair_tmdb_credential(secret_string):
@@ -108,20 +137,46 @@ def buscar_filme_por_periodo_de_lancamento(api_key, periodo, limite_paginas=500)
         total_paginas_disponiveis = 1
 
         while pagina <= total_paginas_disponiveis and pagina <= limite_paginas:
-            params = {
+            params_base = {
                 "primary_release_date.gte": periodo["primeiro_dia"],
                 "primary_release_date.lte": periodo["ultimo_dia"],
-                "language": "pt-BR",
-                "sort_by": "primary_release_date.asc",
+                "sort_by": "popularity.desc",
                 "page": pagina,
             }
 
             if credencial_tmdb.get("tipo") == "api_key":
-                params["api_key"] = credencial_tmdb["valor"]
+                params_base["api_key"] = credencial_tmdb["valor"]
 
-            response = requests.get(url_base, headers=headers, params=params, timeout=30)
-            response.raise_for_status()
-            payload = response.json()
+            payload = None
+            ultimo_erro = None
+
+            # Fallback de idioma para contornar instabilidades pontuais da API.
+            for idioma in ("pt-BR", "en-US", None):
+                params = dict(params_base)
+                if idioma:
+                    params["language"] = idioma
+
+                try:
+                    payload = _fazer_requisicao_tmdb_com_retry(
+                        url=url_base,
+                        headers=headers,
+                        params=params,
+                    )
+                    break
+                except requests.exceptions.HTTPError as exc:
+                    status_code = exc.response.status_code if exc.response else None
+                    ultimo_erro = exc
+                    if status_code and 500 <= status_code < 600 and idioma is not None:
+                        continue
+                    raise
+                except requests.exceptions.RequestException as exc:
+                    ultimo_erro = exc
+                    if idioma is not None:
+                        continue
+                    raise
+
+            if payload is None and ultimo_erro is not None:
+                raise ultimo_erro
 
             total_paginas_disponiveis = payload.get("total_pages", 1)
             filmes.extend(payload.get("results", []))
@@ -150,27 +205,54 @@ def salvar_json_no_s3(bucket_name, object_key, payload):
     )
 
 
-def carregar_filmes_tmdb_por_periodo_mensal(api_key, bucket_name, data_inicio="2000-01-01", limite_paginas=500):
+def carregar_filmes_tmdb_por_periodo_mensal(
+    api_key,
+    bucket_name,
+    data_inicio="2000-01-01",
+    limite_paginas=500,
+    error_bucket_name=None,
+    error_prefix="lambda_api/error",
+):
     """Processa TMDB mes a mes e salva a resposta de cada mes no S3."""
     intervalos = gerar_intervalos_mensais(data_inicio=data_inicio)
     objetos_salvos = []
+    objetos_erro = []
 
     for periodo in intervalos:
-        payload = buscar_filme_por_periodo_de_lancamento(
-            api_key=api_key,
-            periodo=periodo,
-            limite_paginas=limite_paginas,
-        )
-
         ano = periodo["primeiro_dia"][0:4]
         mes = periodo["primeiro_dia"][5:7]
-        key = f"tmdb/discover_movie/year={ano}/month={mes}/movies_{ano}_{mes}.json"
+        try:
+            payload = buscar_filme_por_periodo_de_lancamento(
+                api_key=api_key,
+                periodo=periodo,
+                limite_paginas=limite_paginas,
+            )
 
-        salvar_json_no_s3(bucket_name=bucket_name, object_key=key, payload=payload)
-        objetos_salvos.append(key)
+            key = f"tmdb/discover_movie/year={ano}/month={mes}/movies_{ano}_{mes}.json"
+            salvar_json_no_s3(bucket_name=bucket_name, object_key=key, payload=payload)
+            objetos_salvos.append(key)
+        except Exception as exc:
+            if not error_bucket_name:
+                raise
+
+            key_erro = f"{error_prefix}/year={ano}/month={mes}/error_{ano}_{mes}.json"
+            payload_erro = {
+                "periodo": periodo,
+                "erro": str(exc),
+                "timestamp_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            }
+            salvar_json_no_s3(
+                bucket_name=error_bucket_name,
+                object_key=key_erro,
+                payload=payload_erro,
+            )
+            objetos_erro.append(key_erro)
 
     return {
         "total_meses_processados": len(intervalos),
+        "total_meses_com_sucesso": len(objetos_salvos),
+        "total_meses_com_erro": len(objetos_erro),
         "limite_paginas_por_consulta": limite_paginas,
         "objetos_salvos": objetos_salvos,
+        "objetos_erro": objetos_erro,
     }
