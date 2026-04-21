@@ -102,7 +102,7 @@ resource "aws_s3_object" "lambda_deploy_package" {
 	bucket = var.s3_bucket_aux
 	key    = "${var.lambda_api_name}/lambda_bundle.zip"
 	source = data.archive_file.lambda_bundle.output_path
-	etag   = filemd5(data.archive_file.lambda_bundle.output_path)
+	etag   = data.archive_file.lambda_bundle.output_md5
 }
 
 resource "aws_cloudwatch_log_group" "lambda_log_group" {
