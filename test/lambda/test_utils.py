@@ -37,6 +37,30 @@ class TestObterTmdbApiKey(unittest.TestCase):
         self.assertEqual(result, {"tipo": "bearer", "valor": "token.tmdb.v4"})
 
     @patch("app.lambda_api.src.utils.boto3.client")
+    def test_obter_tmdb_api_key_com_chave_minuscula(self, mock_boto_client):
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            "SecretString": '{"tmdb_api_key":"abc123"}'
+        }
+        mock_boto_client.return_value = mock_client
+
+        result = obter_tmdb_api_key("arn:aws:secretsmanager:tmdb")
+
+        self.assertEqual(result, {"tipo": "api_key", "valor": "abc123"})
+
+    @patch("app.lambda_api.src.utils.boto3.client")
+    def test_obter_tmdb_api_key_com_token_no_campo_tmdb_api_key(self, mock_boto_client):
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            "SecretString": '{"tmdb_api_key":"token.parte1.parte2"}'
+        }
+        mock_boto_client.return_value = mock_client
+
+        result = obter_tmdb_api_key("arn:aws:secretsmanager:tmdb")
+
+        self.assertEqual(result, {"tipo": "bearer", "valor": "token.parte1.parte2"})
+
+    @patch("app.lambda_api.src.utils.boto3.client")
     def test_obter_tmdb_api_key_lanca_runtime_error(self, mock_boto_client):
         mock_client = MagicMock()
         mock_client.get_secret_value.side_effect = Exception("secret not found")

@@ -19,13 +19,20 @@ def _extrair_tmdb_credential(secret_string):
             "valor": secret_limpo,
         }
 
-    for campo in ("TMDB_API_KEY", "api_key"):
-        valor = secret_dict.get(campo)
-        if valor:
-            return {"tipo": "api_key", "valor": valor}
+    secret_normalizado = {
+        str(chave).strip().lower(): valor
+        for chave, valor in secret_dict.items()
+    }
 
-    for campo in ("TMDB_READ_ACCESS_TOKEN", "TMDB_ACCESS_TOKEN", "access_token"):
-        valor = secret_dict.get(campo)
+    for campo in ("tmdb_api_key", "api_key"):
+        valor = secret_normalizado.get(campo)
+        if valor:
+            # Tokens JWT da TMDB (v4) normalmente possuem dois pontos (a.b.c).
+            tipo = "bearer" if isinstance(valor, str) and valor.count(".") >= 2 else "api_key"
+            return {"tipo": tipo, "valor": valor}
+
+    for campo in ("tmdb_read_access_token", "tmdb_access_token", "access_token", "read_access_token"):
+        valor = secret_normalizado.get(campo)
         if valor:
             return {"tipo": "bearer", "valor": valor}
 
