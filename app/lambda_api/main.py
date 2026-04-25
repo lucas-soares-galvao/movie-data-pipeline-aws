@@ -1,57 +1,47 @@
 import os
-import sys
-
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(__file__))
-    from src.utils import obter_tmdb_api_key, carregar_filmes_tmdb_por_periodo_mensal, chamar_glue_etl
-else:
-    from .src.utils import obter_tmdb_api_key, carregar_filmes_tmdb_por_periodo_mensal, chamar_glue_etl
+from app.lambda_api.src.utils import (
+        obter_tmdb_api_key,
+        gerar_periodos_mensais,
+        buscar_filmes_por_periodo,
+        salvar_json_no_s3,
+        chamar_glue_etl
+    )
 
 
 def lambda_handler(event, context):
-    try:
-        secret_arn = os.getenv("TMDB_SECRET_ARN")
-        bucket_name = os.getenv("S3_BUCKET_SOR")
-        bucket_aux_name = os.getenv("S3_BUCKET_AUX")
-        glue_etl_job_name = os.getenv("GLUE_ETL_JOB_NAME")
+    secret_arn = os.getenv("TMDB_SECRET_ARN")
+    bucket = os.getenv("S3_BUCKET_SOR")
+    glue_job = os.getenv("GLUE_ETL_JOB_NAME")
 
-        if not secret_arn:
-            raise ValueError("Variavel de ambiente TMDB_SECRET_ARN nao configurada.")
+    api_key = obter_tmdb_api_key(secret_arn)
 
-        if not bucket_name:
-            raise ValueError("Variavel de ambiente S3_BUCKET_SOR nao configurada.")
+    # Começa no ano desejado
+    periodos = gerar_periodos_mensais(ano_inicio=2000)
 
-        if not bucket_aux_name:
-            raise ValueError("Variavel de ambiente S3_BUCKET_AUX nao configurada.")
+    arquivos_salvos = []
 
-        if not glue_etl_job_name:
-            raise ValueError("Variavel de ambiente GLUE_ETL_JOB_NAME nao configurada.")
+    for periodo in periodos:
+        filmes = buscar_filmes_por_periodo(api_key, periodo)
 
-        api_key = obter_tmdb_api_key(secret_arn)
-        resumo = carregar_filmes_tmdb_por_periodo_mensal(
-            api_key=api_key,
-            bucket_name=bucket_name,
-            data_inicio="2000-01-01",
-            limite_paginas=5,
-            error_bucket_name=bucket_aux_name,
-            error_prefix="lambda_api/error",
-        )
+        ano = periodo["data_inicio"][:4]
+        mes = periodo["data_inicio"][5:7]
 
-        execucao_glue_etl = chamar_glue_etl(glue_etl_job_name=glue_etl_job_name)
-        resumo["glue_etl"] = execucao_glue_etl
+        key = f"tmdb/year={ano}/month={mes}/movies_{ano}_{mes}.json"
 
-        return {
-            "statusCode": 200,
-            "body": resumo,
+        salvar_json_no_s3(bucket, key, filmes)
+        arquivos_salvos.append(key)
+
+    glue = chamar_glue_etl(glue_job)
+
+    return {
+        "statusCode": 200,
+        "body": {
+            "meses_processados": len(arquivos_salvos),
+            "arquivos": arquivos_salvos,
+            "glue": glue
         }
-    except Exception as e:
-        return {"statusCode": 500, "body": f"Erro interno: {str(e)}"}
-    
+    }
 
-def main():
-    resultado = lambda_handler(event={}, context=None)
-    print(resultado)
 
 if __name__ == "__main__":
-    main()
-    
+    print(lambda_handler({}, None))

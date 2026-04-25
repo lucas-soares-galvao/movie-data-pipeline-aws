@@ -21,6 +21,8 @@ COLUNAS_SOT = [
     "month",
 ]
 
+COLUNAS_IDENTIFICACAO_FILME = ["id", "title", "original_title"]
+
 
 def obter_valor_argumento(argv, arg_name):
     """Le um argumento no formato --ARG_NAME valor."""
@@ -59,7 +61,7 @@ def _normalizar_payload_sor(df):
     colunas_dados = [c for c in df.columns if c not in colunas_particao]
 
     # Se o dataframe ja possui colunas de filme, nao precisa normalizar.
-    if any(coluna in df.columns for coluna in ("id", "title", "original_title")):
+    if any(coluna in df.columns for coluna in COLUNAS_IDENTIFICACAO_FILME):
         return df
 
     if len(colunas_dados) != 1:
@@ -86,6 +88,14 @@ def _normalizar_payload_sor(df):
     return df
 
 
+def _ler_sor_com_fallback_json(wr_module, caminho_origem):
+    """Le a SOR priorizando NDJSON e mantendo compatibilidade com JSON legado."""
+    try:
+        return wr_module.s3.read_json(path=caminho_origem, dataset=True, lines=True)
+    except Exception:
+        return wr_module.s3.read_json(path=caminho_origem, dataset=True)
+
+
 def carregar_sor_json_para_tabela_sot(
     s3_bucket_sor,
     s3_bucket_sot,
@@ -103,11 +113,7 @@ def carregar_sor_json_para_tabela_sot(
     caminho_origem = f"s3://{s3_bucket_sor}/{sor_prefix_normalizado}"
     caminho_destino = f"s3://{s3_bucket_sot}/{sot_prefix_normalizado}"
 
-    # Prioriza leitura em JSON lines (NDJSON) e cai para JSON padrao por compatibilidade.
-    try:
-        df = wr_module.s3.read_json(path=caminho_origem, dataset=True, lines=True)
-    except Exception:
-        df = wr_module.s3.read_json(path=caminho_origem, dataset=True)
+    df = _ler_sor_com_fallback_json(wr_module, caminho_origem)
     if df.empty:
         return {
             "catalog_database": catalog_database,
@@ -126,7 +132,7 @@ def carregar_sor_json_para_tabela_sot(
     df_sot = _garantir_colunas_sot(df)
 
     # Evita criar linhas em branco quando o payload nao foi parseado corretamente.
-    if df_sot[["id", "title", "original_title"]].isna().all().all():
+    if df_sot[COLUNAS_IDENTIFICACAO_FILME].isna().all().all():
         raise ValueError(
             "Payload SOR nao contem colunas de filmes validas apos normalizacao. "
             "Verifique o formato JSON gravado na SOR."
