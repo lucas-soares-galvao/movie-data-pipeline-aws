@@ -19,6 +19,62 @@ class TestObterValorArgumento(unittest.TestCase):
 
 
 class TestCarregarSorJsonParaTabelaSot(unittest.TestCase):
+    def test_normaliza_payload_lista_por_arquivo(self):
+        fake_wr = MagicMock()
+        fake_wr.s3.read_json.return_value = pd.DataFrame(
+            [
+                {
+                    "0": [
+                        {
+                            "id": 100,
+                            "title": "Filme A",
+                            "original_title": "Movie A",
+                            "overview": "Resumo A",
+                            "release_date": "2024-01-01",
+                            "original_language": "pt",
+                            "adult": False,
+                            "video": False,
+                            "genre_ids": [18],
+                            "popularity": 5.0,
+                            "vote_average": 7.1,
+                            "vote_count": 10,
+                        },
+                        {
+                            "id": 101,
+                            "title": "Filme B",
+                            "original_title": "Movie B",
+                            "overview": "Resumo B",
+                            "release_date": "2024-01-02",
+                            "original_language": "en",
+                            "adult": False,
+                            "video": False,
+                            "genre_ids": [28],
+                            "popularity": 6.0,
+                            "vote_average": 7.3,
+                            "vote_count": 12,
+                        },
+                    ],
+                    "year": "2024",
+                    "month": "01",
+                }
+            ]
+        )
+
+        resultado = carregar_sor_json_para_tabela_sot(
+            s3_bucket_sor="bucket-sor",
+            s3_bucket_sot="bucket-sot",
+            catalog_database="tmdb_dev",
+            catalog_table="movies_sot",
+            wr_module=fake_wr,
+        )
+
+        kwargs = fake_wr.s3.to_parquet.call_args.kwargs
+        df_gravado = kwargs["df"]
+        self.assertEqual(len(df_gravado), 2)
+        self.assertEqual(df_gravado.iloc[0]["id"], 100)
+        self.assertEqual(df_gravado.iloc[1]["id"], 101)
+        self.assertEqual(resultado["total_records"], 2)
+
     def test_escreve_dataset_parquet_no_catalogo(self):
         fake_wr = MagicMock()
         fake_wr.s3.read_json.return_value = pd.DataFrame(
@@ -112,6 +168,23 @@ class TestCarregarSorJsonParaTabelaSot(unittest.TestCase):
                 catalog_table="movies_sot",
                 wr_module=fake_wr,
             )
+
+    def test_falha_quando_so_existem_particoes_sem_filmes(self):
+        fake_wr = MagicMock()
+        fake_wr.s3.read_json.return_value = pd.DataFrame([
+            {"year": "2024", "month": "01"}
+        ])
+
+        with self.assertRaises(ValueError):
+            carregar_sor_json_para_tabela_sot(
+                s3_bucket_sor="bucket-sor",
+                s3_bucket_sot="bucket-sot",
+                catalog_database="tmdb_dev",
+                catalog_table="movies_sot",
+                wr_module=fake_wr,
+            )
+
+        fake_wr.s3.to_parquet.assert_not_called()
 
 
 if __name__ == "__main__":

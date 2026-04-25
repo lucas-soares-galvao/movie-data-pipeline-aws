@@ -48,6 +48,44 @@ def _garantir_colunas_sot(df):
     return df_sot
 
 
+def _normalizar_payload_sor(df):
+    """Normaliza o payload lido da SOR para linhas de filmes.
+
+    Alguns arquivos JSON mensais podem ser lidos como uma unica coluna
+    contendo lista de dicts (um array JSON por arquivo). Nesse caso,
+    este metodo explode a lista e converte cada item em uma linha.
+    """
+    colunas_particao = {"year", "month"}
+    colunas_dados = [c for c in df.columns if c not in colunas_particao]
+
+    # Se o dataframe ja possui colunas de filme, nao precisa normalizar.
+    if any(coluna in df.columns for coluna in ("id", "title", "original_title")):
+        return df
+
+    if len(colunas_dados) != 1:
+        return df
+
+    coluna_payload = colunas_dados[0]
+    serie_payload = df[coluna_payload]
+    if serie_payload.empty:
+        return df
+
+    if serie_payload.map(lambda valor: isinstance(valor, list)).any():
+        df_expandido = df[["year", "month", coluna_payload]].explode(coluna_payload, ignore_index=True)
+        df_expandido = df_expandido[df_expandido[coluna_payload].notna()].reset_index(drop=True)
+        if df_expandido.empty:
+            return df_expandido
+
+        detalhes = pd.json_normalize(df_expandido[coluna_payload])
+        return pd.concat([detalhes, df_expandido[["year", "month"]]], axis=1)
+
+    if serie_payload.map(lambda valor: isinstance(valor, dict)).any():
+        detalhes = pd.json_normalize(serie_payload)
+        return pd.concat([detalhes, df[["year", "month"]].reset_index(drop=True)], axis=1)
+
+    return df
+
+
 def carregar_sor_json_para_tabela_sot(
     s3_bucket_sor,
     s3_bucket_sot,
@@ -79,7 +117,16 @@ def carregar_sor_json_para_tabela_sot(
     if "year" not in df.columns or "month" not in df.columns:
         raise ValueError("Arquivos SOR sem particoes year/month no caminho S3.")
 
+    df = _normalizar_payload_sor(df)
+
     df_sot = _garantir_colunas_sot(df)
+
+    # Evita criar linhas em branco quando o payload nao foi parseado corretamente.
+    if df_sot[["id", "title", "original_title"]].isna().all().all():
+        raise ValueError(
+            "Payload SOR nao contem colunas de filmes validas apos normalizacao. "
+            "Verifique o formato JSON gravado na SOR."
+        )
 
     wr_module.s3.to_parquet(
         df=df_sot,
