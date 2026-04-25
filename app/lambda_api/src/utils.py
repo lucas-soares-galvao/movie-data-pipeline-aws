@@ -190,11 +190,22 @@ def buscar_filme_por_periodo_de_lancamento(api_key, periodo, limite_paginas=500)
 def salvar_json_no_s3(bucket_name, object_key, payload):
     """Salva um payload JSON no S3."""
     s3 = boto3.client("s3")
+
+    if isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
+        # NDJSON (JSON Lines): uma linha por filme para facilitar leitura no Glue.
+        conteudo = "\n".join(json.dumps(item, ensure_ascii=False) for item in payload)
+        if conteudo:
+            conteudo = f"{conteudo}\n"
+        content_type = "application/x-ndjson"
+    else:
+        conteudo = json.dumps(payload, ensure_ascii=False)
+        content_type = "application/json"
+
     s3.put_object(
         Bucket=bucket_name,
         Key=object_key,
-        Body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        ContentType="application/json",
+        Body=conteudo.encode("utf-8"),
+        ContentType=content_type,
     )
 
 
