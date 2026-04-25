@@ -188,7 +188,7 @@ class TestBuscarFilmePorPeriodoDeLancamento(unittest.TestCase):
 
 class TestSalvarJsonNoS3(unittest.TestCase):
     @patch("app.lambda_api.src.utils.boto3.client")
-    def test_salvar_json_no_s3(self, mock_boto_client):
+    def test_salvar_json_no_s3_payload_objeto(self, mock_boto_client):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
 
@@ -202,6 +202,25 @@ class TestSalvarJsonNoS3(unittest.TestCase):
         kwargs = mock_s3.put_object.call_args.kwargs
         self.assertEqual(kwargs["Bucket"], "bucket-sor")
         self.assertIn("year=2026/month=01", kwargs["Key"])
+        self.assertEqual(kwargs["ContentType"], "application/json")
+
+    @patch("app.lambda_api.src.utils.boto3.client")
+    def test_salvar_json_no_s3_payload_lista_em_ndjson(self, mock_boto_client):
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        salvar_json_no_s3(
+            bucket_name="bucket-sor",
+            object_key="tmdb/discover_movie/year=2026/month=01/movies_2026_01.json",
+            payload=[{"id": 1, "title": "A"}, {"id": 2, "title": "B"}],
+        )
+
+        kwargs = mock_s3.put_object.call_args.kwargs
+        self.assertEqual(kwargs["ContentType"], "application/x-ndjson")
+        body = kwargs["Body"].decode("utf-8")
+        self.assertEqual(len(body.strip().split("\n")), 2)
+        self.assertIn('"id": 1', body)
+        self.assertIn('"id": 2', body)
 
 
 class _FakeGlueClient:

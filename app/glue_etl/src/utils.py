@@ -103,7 +103,11 @@ def carregar_sor_json_para_tabela_sot(
     caminho_origem = f"s3://{s3_bucket_sor}/{sor_prefix_normalizado}"
     caminho_destino = f"s3://{s3_bucket_sot}/{sot_prefix_normalizado}"
 
-    df = wr_module.s3.read_json(path=caminho_origem, dataset=True)
+    # Prioriza leitura em JSON lines (NDJSON) e cai para JSON padrao por compatibilidade.
+    try:
+        df = wr_module.s3.read_json(path=caminho_origem, dataset=True, lines=True)
+    except Exception:
+        df = wr_module.s3.read_json(path=caminho_origem, dataset=True)
     if df.empty:
         return {
             "catalog_database": catalog_database,
