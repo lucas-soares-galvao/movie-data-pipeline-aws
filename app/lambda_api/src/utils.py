@@ -1,110 +1,41 @@
-"""Funcoes utilitarias compartilhadas pela aplicacao."""
-import calendar
 import json
-import time
+import calendar
 from datetime import date, datetime, timedelta
 
-import boto3
 import requests
-
-
-def _fazer_requisicao_tmdb_com_retry(url, headers, params, tentativas=3, timeout=30):
-    ultima_excecao = None
-
-    for tentativa in range(1, tentativas + 1):
-        try:
-            response = requests.get(url, headers=headers, params=params, timeout=timeout)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as exc:
-            status_code = exc.response.status_code if exc.response else None
-            if status_code and 500 <= status_code < 600 and tentativa < tentativas:
-                ultima_excecao = exc
-                time.sleep(min(2 ** (tentativa - 1), 4))
-                continue
-            raise
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
-            if tentativa < tentativas:
-                ultima_excecao = exc
-                time.sleep(min(2 ** (tentativa - 1), 4))
-                continue
-            raise
-
-    if ultima_excecao:
-        raise ultima_excecao
-
-    raise RuntimeError("Falha ao consultar a API da TMDB sem excecao detalhada.")
-
-
-def _extrair_tmdb_credential(secret_string):
-    try:
-        secret_dict = json.loads(secret_string)
-    except json.JSONDecodeError:
-        secret_limpo = secret_string.strip()
-        if not secret_limpo:
-            raise RuntimeError("SecretString da TMDB esta vazio.")
-        return {
-            "tipo": "bearer" if "." in secret_limpo else "api_key",
-            "valor": secret_limpo,
-        }
-
-    secret_normalizado = {
-        str(chave).strip().lower(): valor
-        for chave, valor in secret_dict.items()
-    }
-
-    for campo in ("tmdb_api_key", "api_key"):
-        valor = secret_normalizado.get(campo)
-        if valor:
-            # Tokens JWT da TMDB (v4) normalmente possuem dois pontos (a.b.c).
-            tipo = "bearer" if isinstance(valor, str) and valor.count(".") >= 2 else "api_key"
-            return {"tipo": tipo, "valor": valor}
-
-    for campo in ("tmdb_read_access_token", "tmdb_access_token", "access_token", "read_access_token"):
-        valor = secret_normalizado.get(campo)
-        if valor:
-            return {"tipo": "bearer", "valor": valor}
-
-    raise RuntimeError(
-        "Secret da TMDB deve conter TMDB_API_KEY ou TMDB_READ_ACCESS_TOKEN."
-    )
+import boto3
 
 
 def obter_tmdb_api_key(secret_arn):
     client = boto3.client("secretsmanager")
+    response = client.get_secret_value(SecretId=secret_arn)
 
-    try:
-        response = client.get_secret_value(SecretId=secret_arn)
-        secret = response["SecretString"]
-        return _extrair_tmdb_credential(secret)
-    except Exception as e:
-        raise RuntimeError(f"Erro ao obter a chave da TMDB: {str(e)}")
+    secret = json.loads(response["SecretString"])
+    return secret["tmdb_api_key"]
 
 
-def gerar_intervalos_mensais(data_inicio="2000-01-01", data_fim=None):
-    """Retorna lista com primeiro e ultimo dia de cada mes no periodo."""
-    inicio = datetime.strptime(data_inicio, "%Y-%m-%d").date()
-    fim = datetime.strptime(data_fim, "%Y-%m-%d").date() if data_fim else (date.today() - timedelta(days=1))
+def gerar_periodos_mensais(ano_inicio):
+    ontem = date.today() - timedelta(days=1)
 
-    if inicio > fim:
-        raise ValueError("data_inicio nao pode ser maior que data_fim.")
+    periodos = []
 
-    intervalos = []
-    ano, mes = inicio.year, inicio.month
+    ano = ano_inicio
+    mes = 1
 
-    while (ano, mes) <= (fim.year, fim.month):
-        primeiro_dia = datetime(ano, mes, 1).date()
-        ultimo_dia = datetime(ano, mes, calendar.monthrange(ano, mes)[1]).date()
+    while (ano, mes) <= (ontem.year, ontem.month):
+        primeiro_dia = date(ano, mes, 1)
 
-        if ano == fim.year and mes == fim.month and fim < ultimo_dia:
-            ultimo_dia = fim
+        ultimo_dia_mes = calendar.monthrange(ano, mes)[1]
+        ultimo_dia = date(ano, mes, ultimo_dia_mes)
 
-        intervalos.append(
-            {
-                "primeiro_dia": primeiro_dia.strftime("%Y-%m-%d"),
-                "ultimo_dia": ultimo_dia.strftime("%Y-%m-%d"),
-            }
-        )
+        # Se for o mês atual, vai só até ontem
+        if ano == ontem.year and mes == ontem.month:
+            ultimo_dia = ontem
+
+        periodos.append({
+            "data_inicio": primeiro_dia.strftime("%Y-%m-%d"),
+            "data_fim": ultimo_dia.strftime("%Y-%m-%d")
+        })
 
         if mes == 12:
             ano += 1
@@ -112,190 +43,53 @@ def gerar_intervalos_mensais(data_inicio="2000-01-01", data_fim=None):
         else:
             mes += 1
 
-    return intervalos
+    return periodos
 
 
-def buscar_filme_por_periodo_de_lancamento(api_key, periodo, limite_paginas=500):
-    """Busca filmes por periodo de lancamento usando a API da TMDB com paginacao."""
-    url_base = "https://api.themoviedb.org/3/discover/movie"
-    headers = {"accept": "application/json"}
+def buscar_filmes_por_periodo(api_key, periodo, max_paginas=5):
+    url = "https://api.themoviedb.org/3/discover/movie"
 
-    if isinstance(api_key, dict):
-        credencial_tmdb = api_key
-    else:
-        credencial_tmdb = {"tipo": "api_key", "valor": api_key}
+    filmes = []
 
-    if not credencial_tmdb.get("valor"):
-        raise RuntimeError("Credencial da TMDB nao encontrada ou vazia.")
+    for pagina in range(1, max_paginas + 1):
+        params = {
+            "api_key": api_key,
+            "primary_release_date.gte": periodo["data_inicio"],
+            "primary_release_date.lte": periodo["data_fim"],
+            "sort_by": "popularity.desc",
+            "page": pagina
+        }
 
-    if credencial_tmdb.get("tipo") == "bearer":
-        headers["Authorization"] = f"Bearer {credencial_tmdb['valor']}"
+        response = requests.get(url, params=params)
+        response.raise_for_status()
 
-    try:
-        filmes = []
-        pagina = 1
-        total_paginas_disponiveis = 1
+        dados = response.json()
 
-        while pagina <= total_paginas_disponiveis and pagina <= limite_paginas:
-            params_base = {
-                "primary_release_date.gte": periodo["primeiro_dia"],
-                "primary_release_date.lte": periodo["ultimo_dia"],
-                "sort_by": "popularity.desc",
-                "page": pagina,
-            }
+        filmes.extend(dados["results"])
 
-            if credencial_tmdb.get("tipo") == "api_key":
-                params_base["api_key"] = credencial_tmdb["valor"]
+        # Se não tiver mais páginas, para antes
+        if pagina >= dados.get("total_pages", 1):
+            break
 
-            payload = None
-            ultimo_erro = None
-
-            # Fallback de idioma para contornar instabilidades pontuais da API.
-            for idioma in ("pt-BR", "en-US", None):
-                params = dict(params_base)
-                if idioma:
-                    params["language"] = idioma
-
-                try:
-                    payload = _fazer_requisicao_tmdb_com_retry(
-                        url=url_base,
-                        headers=headers,
-                        params=params,
-                    )
-                    break
-                except requests.exceptions.HTTPError as exc:
-                    status_code = exc.response.status_code if exc.response else None
-                    ultimo_erro = exc
-                    if status_code and 500 <= status_code < 600 and idioma is not None:
-                        continue
-                    raise
-                except requests.exceptions.RequestException as exc:
-                    ultimo_erro = exc
-                    if idioma is not None:
-                        continue
-                    raise
-
-            if payload is None and ultimo_erro is not None:
-                raise ultimo_erro
-
-            total_paginas_disponiveis = payload.get("total_pages", 1)
-            filmes.extend(payload.get("results", []))
-            pagina += 1
-
-        return filmes
-    except Exception as e:
-        raise RuntimeError(f"Erro ao buscar filmes para o periodo {periodo}: {str(e)}")
+    return filmes
 
 
-def salvar_json_no_s3(bucket_name, object_key, payload):
-    """Salva um payload JSON no S3."""
+def salvar_json_no_s3(bucket, key, data):
     s3 = boto3.client("s3")
 
-    if isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
-        # NDJSON (JSON Lines): uma linha por filme para facilitar leitura no Glue.
-        conteudo = "\n".join(json.dumps(item, ensure_ascii=False) for item in payload)
-        if conteudo:
-            conteudo = f"{conteudo}\n"
-        content_type = "application/x-ndjson"
-    else:
-        conteudo = json.dumps(payload, ensure_ascii=False)
-        content_type = "application/json"
-
     s3.put_object(
-        Bucket=bucket_name,
-        Key=object_key,
-        Body=conteudo.encode("utf-8"),
-        ContentType=content_type,
+        Bucket=bucket,
+        Key=key,
+        Body=json.dumps(data).encode("utf-8")
     )
 
 
-def carregar_filmes_tmdb_por_periodo_mensal(
-    api_key,
-    bucket_name,
-    data_inicio="2000-01-01",
-    limite_paginas=500,
-    error_bucket_name=None,
-    error_prefix="lambda_api/error",
-):
-    """Processa TMDB mes a mes e salva a resposta de cada mes no S3."""
-    intervalos = gerar_intervalos_mensais(data_inicio=data_inicio)
-    objetos_salvos = []
-    objetos_erro = []
+def chamar_glue_etl(job_name):
+    glue = boto3.client("glue")
 
-    for periodo in intervalos:
-        ano = periodo["primeiro_dia"][0:4]
-        mes = periodo["primeiro_dia"][5:7]
-        try:
-            payload = buscar_filme_por_periodo_de_lancamento(
-                api_key=api_key,
-                periodo=periodo,
-                limite_paginas=limite_paginas,
-            )
-
-            key = f"tmdb/discover_movie/year={ano}/month={mes}/movies_{ano}_{mes}.json"
-            salvar_json_no_s3(bucket_name=bucket_name, object_key=key, payload=payload)
-            objetos_salvos.append(key)
-        except Exception as exc:
-            if not error_bucket_name:
-                raise
-
-            key_erro = f"{error_prefix}/year={ano}/month={mes}/error_{ano}_{mes}.json"
-            payload_erro = {
-                "periodo": periodo,
-                "erro": str(exc),
-                "timestamp_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            }
-            salvar_json_no_s3(
-                bucket_name=error_bucket_name,
-                object_key=key_erro,
-                payload=payload_erro,
-            )
-            objetos_erro.append(key_erro)
+    response = glue.start_job_run(JobName=job_name)
 
     return {
-        "total_meses_processados": len(intervalos),
-        "total_meses_com_sucesso": len(objetos_salvos),
-        "total_meses_com_erro": len(objetos_erro),
-        "limite_paginas_por_consulta": limite_paginas,
-        "objetos_salvos": objetos_salvos,
-        "objetos_erro": objetos_erro,
+        "job_name": job_name,
+        "job_run_id": response["JobRunId"]
     }
-
-
-def chamar_glue_etl(glue_etl_job_name, job_arguments=None, glue_client=None):
-    """Dispara o Glue ETL e retorna metadados da execucao."""
-    if not glue_etl_job_name:
-        raise ValueError("Nome do Glue ETL job nao informado.")
-
-    if glue_client is None:
-        glue_client = boto3.client("glue")
-
-    kwargs = {"JobName": glue_etl_job_name}
-    if job_arguments:
-        kwargs["Arguments"] = job_arguments
-
-    concurrent_exception = None
-    if hasattr(glue_client, "exceptions"):
-        concurrent_exception = getattr(
-            glue_client.exceptions,
-            "ConcurrentRunsExceededException",
-            None,
-        )
-
-    try:
-        response = glue_client.start_job_run(**kwargs)
-        glue_etl_job_run_id = response.get("JobRunId")
-        status = "started"
-    except Exception as exc:
-        if concurrent_exception and isinstance(exc, concurrent_exception):
-            glue_etl_job_run_id = None
-            status = "already_running"
-        else:
-            raise
-
-    return {
-        "glue_etl_job_name": glue_etl_job_name,
-        "glue_etl_job_run_id": glue_etl_job_run_id,
-        "glue_etl_job_status": status,
-    }
-
