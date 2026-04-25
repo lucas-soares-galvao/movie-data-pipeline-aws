@@ -19,6 +19,38 @@ class TestObterValorArgumento(unittest.TestCase):
 
 
 class TestCarregarSorJsonParaTabelaSot(unittest.TestCase):
+    def test_faz_fallback_para_json_padrao_quando_lines_falha(self):
+        fake_wr = MagicMock()
+        fake_wr.s3.read_json.side_effect = [
+            ValueError("nao eh ndjson"),
+            pd.DataFrame(
+                [
+                    {
+                        "id": 1,
+                        "title": "Filme",
+                        "original_title": "Movie",
+                        "year": "2024",
+                        "month": "01",
+                    }
+                ]
+            ),
+        ]
+
+        resultado = carregar_sor_json_para_tabela_sot(
+            s3_bucket_sor="bucket-sor",
+            s3_bucket_sot="bucket-sot",
+            catalog_database="tmdb_dev",
+            catalog_table="movies_sot",
+            wr_module=fake_wr,
+        )
+
+        self.assertEqual(fake_wr.s3.read_json.call_count, 2)
+        primeira_chamada = fake_wr.s3.read_json.call_args_list[0].kwargs
+        segunda_chamada = fake_wr.s3.read_json.call_args_list[1].kwargs
+        self.assertTrue(primeira_chamada["lines"])
+        self.assertNotIn("lines", segunda_chamada)
+        self.assertEqual(resultado["status"], "written")
+
     def test_normaliza_payload_lista_por_arquivo(self):
         fake_wr = MagicMock()
         fake_wr.s3.read_json.return_value = pd.DataFrame(
@@ -109,6 +141,7 @@ class TestCarregarSorJsonParaTabelaSot(unittest.TestCase):
         fake_wr.s3.read_json.assert_called_once_with(
             path="s3://bucket-sor/tmdb/discover_movie/",
             dataset=True,
+            lines=True,
         )
         fake_wr.s3.to_parquet.assert_called_once()
 
