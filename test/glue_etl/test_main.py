@@ -39,12 +39,16 @@ class TestGlueEtlMain(unittest.TestCase):
     def test_calls_glue_data_quality_with_partitions(self):
         mock_src_utils = _setup_mocks(self._DEFAULT_ARGS)
         mock_src_utils.process_tmdb.return_value = {"processed_rows": 10}
-        # Direct mock in sys.modules
         mock_src_utils.call_glue_data_quality.return_value = {"job_name": "glue-data-quality-dev", "job_run_id": "123"}
 
         _reload_main()
 
-        mock_src_utils.call_glue_data_quality.assert_called_with('glue-data-quality-dev', partition_columns='year,month')
+        expected_calls = [
+            (('glue-data-quality-dev',), {'partition_columns': 'year,month'}),
+            (('glue-data-quality-dev',), {'partition_columns': ''})
+        ]
+        actual_calls = [(c.args, c.kwargs) for c in mock_src_utils.call_glue_data_quality.call_args_list]
+        self.assertEqual(actual_calls, expected_calls)
 
     _DEFAULT_ARGS = {
         "GLUE_CATALOG_DATABASE": "db_tmdb",
@@ -52,7 +56,8 @@ class TestGlueEtlMain(unittest.TestCase):
         "S3_BUCKET_SOR": "bucket-sor",
         "S3_BUCKET_SOT": "bucket-sot",
         "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
-        "GLUE_CATALOG_TABLES": "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb"
+        "GLUE_CATALOG_TABLES": "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb",
+        "MEDIA_TYPE": "movie"
     }
 
     def tearDown(self):
@@ -72,9 +77,7 @@ class TestGlueEtlMain(unittest.TestCase):
 
         expected_calls = [
             dict(source_path='s3://bucket-sor/', destination_path='s3://bucket-sot/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
-            dict(source_path='s3://bucket-sor/', destination_path='s3://bucket-sot/', database='db_tmdb', table='tb_tv_tmdb', partition_columns=['year', 'month'], date_column='first_air_date'),
             dict(source_path='s3://bucket-sor/', destination_path='s3://bucket-sot/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=None, date_column=None),
-            dict(source_path='s3://bucket-sor/', destination_path='s3://bucket-sot/', database='db_tmdb', table='tb_genre_tv_tmdb', partition_columns=None, date_column=None),
         ]
         actual_calls = [call.kwargs for call in mock_src_utils.process_tmdb.call_args_list]
         self.assertEqual(actual_calls, expected_calls)

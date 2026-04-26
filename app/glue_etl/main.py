@@ -4,31 +4,38 @@ import sys
 from src.utils import process_tmdb, call_glue_data_quality
 
 args = getResolvedOptions(sys.argv, [
-    "GLUE_CATALOG_DATABASE",
-    "GLUE_CATALOG_TABLES",
     "S3_BUCKET_SOR",
     "S3_BUCKET_SOT",
+    "MEDIA_TYPE",
     "GLUE_DATA_QUALITY_JOB_NAME"
 ])
 
-database = args["GLUE_CATALOG_DATABASE"]
-tables = args["GLUE_CATALOG_TABLES"].split(",")
+
 bucket_sor = args["S3_BUCKET_SOR"]
 bucket_sot = args["S3_BUCKET_SOT"]
+media_type = args["MEDIA_TYPE"]
 glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
 
-partitioned_tables = ["tb_movies_tmdb", "tb_tv_tmdb"]
+database = "db_tmdb"
 
-for table in tables:
-    if table in partitioned_tables:
-        partition_columns = ["year", "month"]
-        if table == "tb_movies_tmdb":
-            date_column = "release_date"
-        elif table == "tb_tv_tmdb":
-            date_column = "first_air_date"
-    else:
-        partition_columns = None
-        date_column = None
+CONFIG = {
+    "movie": [
+        {"table": "tb_movies_tmdb", "date_column": "release_date"},
+        {"table": "tb_genre_movie_tmdb", "date_column": None}
+    ],
+    "tv": [
+        {"table": "tb_tv_tmdb", "date_column": "first_air_date"},
+        {"table": "tb_genre_tv_tmdb", "date_column": None}
+    ]
+}
+
+tables_config = CONFIG.get(media_type, [])
+
+for cfg in tables_config:
+    table = cfg["table"]
+    date_column = cfg["date_column"]
+
+    partition_columns = ["year", "month"] if date_column else None
 
     process_tmdb(
         source_path=f"s3://{bucket_sor}/",
@@ -39,16 +46,11 @@ for table in tables:
         date_column=date_column
     )
 
-# Ensure partition_columns_str is 'year,month' if there is a partitioned table
-partition_columns_str = ''
-for table in tables:
-    if table in partitioned_tables:
-        partition_columns_str = 'year,month'
-        break
+    call_glue_data_quality(
+        glue_data_quality_job_name,
+        partition_columns="year,month" if partition_columns else ""
+    )
 
-glue = call_glue_data_quality(glue_data_quality_job_name, partition_columns=partition_columns_str)
 
 if __name__ == "__main__":
     print("TMDB ETL executed successfully!")
-    if glue:
-        print(f"Data quality job started: {glue}")
