@@ -1,11 +1,11 @@
 # Glue Catalog da camada SOT para filmes TMDB em Parquet.
 
 resource "aws_glue_catalog_database" "sot_database" {
-  name = local.glue_catalog_database_name
+  name = var.glue_catalog_database_name
 }
 
 resource "aws_glue_catalog_table" "movies_sot" {
-  name          = local.glue_catalog_table_movies_sot
+  name          = var.glue_catalog_table_movies_name
   database_name = aws_glue_catalog_database.sot_database.name
   table_type    = "EXTERNAL_TABLE"
 

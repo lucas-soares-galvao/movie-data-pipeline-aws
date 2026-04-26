@@ -86,13 +86,13 @@ variable "glue_data_quality_job_name" {
 }
 
 variable "glue_catalog_database_name" {
-  description = "Nome do database no Glue Catalog para a camada SOT"
+  description = "Nome do database no Glue Catalog para a tabela de filmes TMDB"
   type        = string
-  default     = ""
+  default     = "db_movies_tmdb"
 }
 
-variable "glue_catalog_table_movies_sot" {
-  description = "Nome da tabela SOT de filmes no Glue Catalog"
+variable "glue_catalog_table_movies_name" {
+  description = "Nome da tabela de filmes no Glue Catalog"
   type        = string
-  default     = "movies_sot"
+  default     = "tb_movies_tmdb"
 }

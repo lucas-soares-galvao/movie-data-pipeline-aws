@@ -34,8 +34,8 @@ resource "aws_glue_job" "etl_job" {
     # Buckets S3 para leitura (SOR) e escrita (SOT)
     "--S3_BUCKET_SOR"                    = var.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = var.s3_bucket_sot
-    "--GLUE_CATALOG_DATABASE"            = local.glue_catalog_database_name
-    "--GLUE_CATALOG_TABLE"               = local.glue_catalog_table_movies_sot
+    "--GLUE_CATALOG_DATABASE"            = var.glue_catalog_database_name
+    "--GLUE_CATALOG_TABLE"               = var.glue_catalog_table_movies_name
     "--GLUE_DATA_QUALITY_JOB_NAME"       = var.glue_data_quality_job_name
   }
 
