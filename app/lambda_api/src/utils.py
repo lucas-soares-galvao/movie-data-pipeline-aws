@@ -133,10 +133,15 @@ def save_json_to_s3(bucket, key, data):
     )
 
 
-def trigger_glue_etl(job_name):
+def trigger_glue_etl(job_name, media_type):
     glue = boto3.client("glue")
 
-    response = glue.start_job_run(JobName=job_name)
+    response = glue.start_job_run(
+        JobName=job_name,
+        Arguments={
+            "--MEDIA_TYPE": media_type  
+        }
+    )
 
     return {
         "job_name": job_name,

@@ -51,10 +51,11 @@ resource "aws_glue_job" "data_quality_job" {
 
 # Publishes the main script executed by Glue to the auxiliary bucket.
 resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
-  bucket = var.s3_bucket_aux
+  bucket = aws_s3_bucket.auxiliary_bucket.id
   key    = "${var.glue_data_quality_job_name}/app/main.py"
   source = "${local.glue_data_quality_src_path}/main.py"
   etag   = filemd5("${local.glue_data_quality_src_path}/main.py")
+  depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
 
@@ -68,8 +69,9 @@ data "archive_file" "glue_app_bundle_data_quality" {
 
 # Uploads the zipped bundle to S3, used in --extra-py-files in the Glue Job.
 resource "aws_s3_object" "deploy_app_bundle_data_quality" {
-  bucket = var.s3_bucket_aux
+  bucket = aws_s3_bucket.auxiliary_bucket.id
   key    = "${var.glue_data_quality_job_name}/app_bundle.zip"
   source = data.archive_file.glue_app_bundle_data_quality.output_path
   etag   = data.archive_file.glue_app_bundle_data_quality.output_md5
+  depends_on = [aws_s3_bucket.auxiliary_bucket]
 }

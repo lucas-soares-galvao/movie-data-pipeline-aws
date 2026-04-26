@@ -138,7 +138,7 @@ class TestUtils(unittest.TestCase):
         }
         mock_boto.return_value = mock_glue
 
-        result = utils.trigger_glue_etl("job_test")
+        result = utils.trigger_glue_etl("job_test", "movie")
 
         self.assertEqual(result["job_name"], "job_test")
         self.assertEqual(result["job_run_id"], "abc123")

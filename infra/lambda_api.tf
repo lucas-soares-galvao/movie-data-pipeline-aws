@@ -22,10 +22,11 @@ data "archive_file" "lambda_bundle" {
 }
 
 resource "aws_s3_object" "lambda_deploy_package" {
-	bucket = var.s3_bucket_aux
+	bucket = aws_s3_bucket.auxiliary_bucket.id
 	key    = "${var.lambda_api_name}/lambda_bundle.zip"
 	source = data.archive_file.lambda_bundle.output_path
 	etag   = data.archive_file.lambda_bundle.output_md5
+	depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
 
