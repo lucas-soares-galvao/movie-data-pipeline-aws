@@ -35,7 +35,7 @@ resource "aws_glue_job" "etl_job" {
     "--S3_BUCKET_SOR"                    = var.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = var.s3_bucket_sot
     "--GLUE_CATALOG_DATABASE"            = var.glue_catalog_database_name
-    "--GLUE_CATALOG_TABLE"               = var.glue_catalog_table_movies_name
+    "--GLUE_CATALOG_TABLES"              = var.glue_catalog_table_list_name
     "--GLUE_DATA_QUALITY_JOB_NAME"       = var.glue_data_quality_job_name
   }
 
@@ -47,9 +47,12 @@ resource "aws_glue_job" "etl_job" {
     aws_iam_role_policy.glue_read_code_from_s3,
     aws_iam_role_policy.glue_write_logs_custom_prefix,
     aws_iam_role_policy.glue_read_sor_write_sot,
-    aws_iam_role_policy.glue_manage_catalog_sot,
-    aws_glue_catalog_database.sot_database,
-    aws_glue_catalog_table.movies_sot,
+    aws_iam_role_policy.glue_manage_catalog_tmdb,
+    aws_glue_catalog_database.tmdb_database,
+    aws_glue_catalog_table.movies_tmdb,
+    aws_glue_catalog_table.tv_tmdb,
+    aws_glue_catalog_table.movies_genre_tmdb,
+    aws_glue_catalog_table.tv_genre_tmdb,
     aws_glue_job.data_quality_job,
     aws_cloudwatch_log_group.glue_etl_job_error_log_group,
     aws_cloudwatch_log_group.glue_etl_job_output_log_group

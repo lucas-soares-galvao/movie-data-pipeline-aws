@@ -40,6 +40,7 @@ class TestGlueEtlMain(unittest.TestCase):
         "S3_BUCKET_SOR": "bucket-sor",
         "S3_BUCKET_SOT": "bucket-sot",
         "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
+        "GLUE_CATALOG_TABLES": "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb"
     }
 
     def tearDown(self):
@@ -57,12 +58,14 @@ class TestGlueEtlMain(unittest.TestCase):
 
         _reload_main()
 
-        mock_src_utils.processar_tmdb.assert_called_once_with(
-            input_path="s3://bucket-sor/",
-            output_path="s3://bucket-sot/",
-            database="tmdb_dev",
-            table="movies_sot",
-        )
+        expected_calls = [
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_movies_tmdb', partition_cols=['year', 'month']),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_tv_tmdb', partition_cols=['year', 'month']),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_genre_movie_tmdb', partition_cols=None),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_genre_tv_tmdb', partition_cols=None),
+        ]
+        actual_calls = [call.kwargs for call in mock_src_utils.processar_tmdb.call_args_list]
+        self.assertEqual(actual_calls, expected_calls)
 
     def test_main_executa_sem_excecao(self):
         mock_src_utils = _setup_mocks(self._DEFAULT_ARGS)

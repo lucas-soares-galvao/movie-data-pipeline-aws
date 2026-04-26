@@ -2,8 +2,8 @@ import os
 from src.utils import (
     obter_tmdb_api_key,
     gerar_periodos_mensais,
-    buscar_filmes_por_periodo,
-    salvar_json_no_s3,
+    processar_discover,
+    processar_generos,
     chamar_glue_etl
 )
 
@@ -14,33 +14,23 @@ def lambda_handler(event, context):
     glue_job = os.getenv("GLUE_ETL_JOB_NAME")
 
     api_key = obter_tmdb_api_key(secret_arn)
-
-    # Começa no ano desejado
     periodos = gerar_periodos_mensais(ano_inicio=2000)
 
-    arquivos_salvos = []
+    # Permite que o tipo venha do event, padrão 'movie' se não vier
+    tipo = event.get("tipo", "movie")
 
-    for periodo in periodos:
-        filmes = buscar_filmes_por_periodo(api_key, periodo)
+    arquivos_discover = processar_discover(api_key, bucket, periodos, tipo)
+    arquivos_generos = processar_generos(api_key, bucket, tipo)
 
-        ano = periodo["data_inicio"][:4]
-        mes = periodo["data_inicio"][5:7]
-
-        key = f"tmdb/year={ano}/month={mes}/movies_{ano}_{mes}.json"
-
-        salvar_json_no_s3(bucket, key, filmes)
-        arquivos_salvos.append(key)
-
-    if arquivos_salvos:
-        glue = chamar_glue_etl(glue_job)
-    else:
-        glue = None
+    arquivos_totais = arquivos_discover + arquivos_generos
+    glue = chamar_glue_etl(glue_job) if arquivos_totais else None
 
     return {
         "statusCode": 200,
         "body": {
-            "meses_processados": len(arquivos_salvos),
-            "arquivos": arquivos_salvos,
+            "tipo": tipo,
+            "arquivos_discover": arquivos_discover,
+            "arquivos_generos": arquivos_generos,
             "glue": glue
         }
     }

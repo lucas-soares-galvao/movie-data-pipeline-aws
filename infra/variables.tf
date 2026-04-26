@@ -91,8 +91,8 @@ variable "glue_catalog_database_name" {
   default     = "db_movies_tmdb"
 }
 
-variable "glue_catalog_table_movies_name" {
-  description = "Nome da tabela de filmes no Glue Catalog"
+variable "glue_catalog_table_list_name" {
+  description = "Lista de nomes de tabelas do Glue Catalog, separadas por vírgula"
   type        = string
-  default     = "tb_movies_tmdb"
+  default     = "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb"
 }

@@ -1,83 +1,3 @@
-resource "aws_iam_role" "lambda_role" {
-	name = "${var.lambda_api_name}-role-${var.env}"
-
-	assume_role_policy = jsonencode({
-		Version = "2012-10-17"
-		Statement = [
-			{
-				Action = "sts:AssumeRole"
-				Effect = "Allow"
-				Principal = {
-					Service = "lambda.amazonaws.com"
-				}
-			}
-		]
-	})
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
-	role       = aws_iam_role.lambda_role.name
-	policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
-	name = "${var.lambda_api_name}-start-glue-jobs-${var.env}"
-	role = aws_iam_role.lambda_role.id
-
-	policy = jsonencode({
-		Version = "2012-10-17"
-		Statement = [
-			{
-				Effect = "Allow"
-				Action = [
-					"glue:StartJobRun",
-					"glue:GetJobRun"
-				]
-				Resource = "*"
-			}
-		]
-	})
-}
-
-resource "aws_iam_role_policy" "lambda_s3_policy" {
-	name = "${var.lambda_api_name}-s3-policy-${var.env}"
-	role = aws_iam_role.lambda_role.id
-
-	policy = jsonencode({
-		Version = "2012-10-17"
-		Statement = [
-			{
-				Effect = "Allow"
-				Action = [
-					"s3:PutObject",
-					"s3:GetObject"
-				]
-				Resource = [
-					"arn:aws:s3:::${var.s3_bucket_sor}/*",
-					"arn:aws:s3:::${var.s3_bucket_aux}/lambda_api/error/*"
-				]
-			}
-		]
-	})
-}
-
-resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
-  name = "${var.lambda_api_name}-secrets-manager-${var.env}"
-  role = aws_iam_role.lambda_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:GetSecretValue"
-        ]
-        Resource = var.tmdb_secret_arn
-      }
-    ]
-  })
-}
 
 resource "null_resource" "lambda_build" {
   triggers = {
@@ -108,10 +28,6 @@ resource "aws_s3_object" "lambda_deploy_package" {
 	etag   = data.archive_file.lambda_bundle.output_md5
 }
 
-resource "aws_cloudwatch_log_group" "lambda_log_group" {
-	name              = "/aws/lambda/${var.lambda_api_name}"
-	retention_in_days = 1
-}
 
 resource "aws_lambda_function" "simple_lambda" {
 	function_name = "${var.lambda_api_name}"
