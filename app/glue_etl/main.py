@@ -21,18 +21,38 @@ tabelas_com_particao = ["tb_movies_tmdb", "tb_tv_tmdb"]
 
 for table in tables:
 
+    if table in tabelas_com_particao:
+
+        partitions_cols = ["year", "month"]
+
+        if table == "tb_movies_tmdb":
+            partiton_date_col = "release_date"
+        elif table == "tb_tv_tmdb":
+            partiton_date_col = "first_air_date"
+    
+    else:
+        partitions_cols = None
+        partiton_date_col = None
+
     processar_tmdb(
         input_path=f"s3://{bucket_sor}/",
         output_path=f"s3://{bucket_sot}/",
         database=database,
         table=table,
-        partition_cols=["year", "month"] if table in tabelas_com_particao else None
+        partitions_cols=partitions_cols,
+        partition_date_col=partiton_date_col
     )
 
-if processar_tmdb:
-    glue = chamar_glue_data_quality(glue_data_quality_job_name)
-else:    
-    glue = None
+
+
+# Garante que partitions_cols_str seja 'year,month' se houver tabela particionada
+partitions_cols_str = ''
+for table in tables:
+    if table in tabelas_com_particao:
+        partitions_cols_str = 'year,month'
+        break
+
+glue = chamar_glue_data_quality(glue_data_quality_job_name, partition_cols=partitions_cols_str)
 
 if __name__ == "__main__":
     print("ETL de TMDB executado com sucesso!")

@@ -34,6 +34,15 @@ def _reload_main():
 
 
 class TestGlueEtlMain(unittest.TestCase):
+    def test_chama_glue_data_quality_com_partitions(self):
+        mock_src_utils = _setup_mocks(self._DEFAULT_ARGS)
+        mock_src_utils.processar_tmdb.return_value = {"linhas_processadas": 10}
+        # Mock direto na sys.modules
+        mock_src_utils.chamar_glue_data_quality.return_value = {"job_name": "glue-data-quality-dev", "job_run_id": "123"}
+
+        _reload_main()
+
+        mock_src_utils.chamar_glue_data_quality.assert_called_with('glue-data-quality-dev', partition_cols='year,month')
     _DEFAULT_ARGS = {
         "GLUE_CATALOG_DATABASE": "tmdb_dev",
         "GLUE_CATALOG_TABLE": "movies_sot",
@@ -59,10 +68,10 @@ class TestGlueEtlMain(unittest.TestCase):
         _reload_main()
 
         expected_calls = [
-            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_movies_tmdb', partition_cols=['year', 'month']),
-            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_tv_tmdb', partition_cols=['year', 'month']),
-            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_genre_movie_tmdb', partition_cols=None),
-            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_genre_tv_tmdb', partition_cols=None),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_movies_tmdb', partitions_cols=['year', 'month'], partition_date_col='release_date'),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_tv_tmdb', partitions_cols=['year', 'month'], partition_date_col='first_air_date'),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_genre_movie_tmdb', partitions_cols=None, partition_date_col=None),
+            dict(input_path='s3://bucket-sor/', output_path='s3://bucket-sot/', database='tmdb_dev', table='tb_genre_tv_tmdb', partitions_cols=None, partition_date_col=None),
         ]
         actual_calls = [call.kwargs for call in mock_src_utils.processar_tmdb.call_args_list]
         self.assertEqual(actual_calls, expected_calls)
