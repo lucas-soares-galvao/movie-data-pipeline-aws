@@ -1,3 +1,6 @@
+class TestProcessarTmdb(unittest.TestCase):
+    # ...existing code...
+
     @patch("app.glue_etl.src.utils.wr")
     def test_sem_particao_nao_adiciona_colunas(self, mock_wr):
         df = self._df_base()
