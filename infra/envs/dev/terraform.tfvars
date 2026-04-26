@@ -5,6 +5,7 @@ iam_role_glue = "glue-job-role-etl-dev"
 iam_role_lambda = "lambda-role-dev"
 
 s3_bucket_aux = "lsg-sa-east-1-bucket-aux-dev"
+s3_bucket_temp = "lsg-sa-east-1-bucket-temp-dev"
 s3_bucket_sor = "lsg-sa-east-1-bucket-sor-dev"
 s3_bucket_sot = "lsg-sa-east-1-bucket-sot-dev"
 s3_bucket_spec = "lsg-sa-east-1-bucket-spec-dev"

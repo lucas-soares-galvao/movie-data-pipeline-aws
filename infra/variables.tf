@@ -18,22 +18,27 @@ variable "iam_role_lambda" {
 
 ############## S3 Buckets ##############
 variable "s3_bucket_aux" {
-  description = "The name of the auxiliary S3 bucket for Glue scripts"
+  description = "Nome do bucket auxiliar para códigos em python"
+  type        = string
+}
+
+variable "s3_bucket_temp" {
+  description = "Nome do bucket temporário para scripts do Athena"
   type        = string
 }
 
 variable "s3_bucket_sor" {
-  description = "The name of the source S3 bucket for Glue scripts"
+  description = "Nome do bucket principal para dados de entrada/saida processados pela Lambda"
   type        = string
 }
 
 variable "s3_bucket_sot" {
-  description = "The name of the target S3 bucket for Glue scripts"
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
   type        = string
 }
 
 variable "s3_bucket_spec" {
-  description = "The name of the specification S3 bucket for Glue scripts"
+  description = "Nome do bucket principal para dados de entrada/saida processados pela Glue ETL"
   type        = string
 }
 
