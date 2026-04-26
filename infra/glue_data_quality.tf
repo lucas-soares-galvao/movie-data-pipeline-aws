@@ -37,7 +37,7 @@ resource "aws_glue_job" "data_quality_job" {
     aws_s3_object.deploy_scripts_bucket_data_quality,
     aws_s3_object.deploy_app_bundle_data_quality,
     aws_iam_role_policy_attachment.glue_service_role,
-    aws_iam_role_policy.glue_read_code_from_s3,
+    aws_iam_role_policy.glue_read_code_s3,
     aws_iam_role_policy.glue_write_logs_custom_prefix,
     aws_cloudwatch_log_group.glue_data_quality_error,
     aws_cloudwatch_log_group.glue_data_quality_output

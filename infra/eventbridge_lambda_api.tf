@@ -15,7 +15,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_series" {
 resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
   rule      = aws_cloudwatch_event_rule.lambda_api_movies.name
   target_id = "lambda-api-movies"
-  arn       = aws_lambda_function.lambda_simple.arn
+  arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
     type = "movie"
@@ -25,7 +25,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
 resource "aws_cloudwatch_event_target" "lambda_api_series_target" {
   rule      = aws_cloudwatch_event_rule.lambda_api_series.name
   target_id = "lambda-api-series"
-  arn       = aws_lambda_function.lambda_simple.arn
+  arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
     type = "series"
@@ -35,7 +35,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_series_target" {
 resource "aws_lambda_permission" "allow_eventbridge_movies" {
   statement_id  = "AllowEventBridgeMoviesExecution"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_simple.function_name
+  function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.lambda_api_movies.arn
 }
@@ -43,7 +43,7 @@ resource "aws_lambda_permission" "allow_eventbridge_movies" {
 resource "aws_lambda_permission" "allow_eventbridge_series" {
   statement_id  = "AllowEventBridgeSeriesExecution"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_simple.function_name
+  function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.lambda_api_series.arn
 }

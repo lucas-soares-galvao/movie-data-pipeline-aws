@@ -56,7 +56,7 @@ resource "aws_lambda_function" "simple_lambda" {
 		aws_iam_role_policy.lambda_s3_policy,
 		null_resource.lambda_build,
 		aws_s3_object.lambda_deploy_package,
-		aws_cloudwatch_log_group.lambda_log_group,
+		aws_cloudwatch_log_group.lambda_log,
 		aws_iam_role_policy.lambda_secrets_manager_policy,
 	]
 }

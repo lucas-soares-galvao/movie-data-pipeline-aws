@@ -44,7 +44,7 @@ resource "aws_glue_job" "etl_job" {
     aws_s3_object.deploy_scripts_bucket_etl,
     aws_s3_object.deploy_app_bundle_etl,
     aws_iam_role_policy_attachment.glue_service_role,
-    aws_iam_role_policy.glue_read_code_from_s3,
+    aws_iam_role_policy.glue_read_code_s3,
     aws_iam_role_policy.glue_write_logs_custom_prefix,
     aws_iam_role_policy.glue_read_sor_write_sot,
     aws_iam_role_policy.glue_manage_catalog_tmdb,
