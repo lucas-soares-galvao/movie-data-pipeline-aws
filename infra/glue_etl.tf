@@ -34,8 +34,6 @@ resource "aws_glue_job" "etl_job" {
     # S3 buckets for reading (SOR) and writing (SOT)
     "--S3_BUCKET_SOR"                    = var.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = var.s3_bucket_sot
-    "--GLUE_CATALOG_DATABASE"            = var.glue_catalog_database_name
-    "--GLUE_CATALOG_TABLES"              = var.glue_catalog_table_list_name
     "--GLUE_DATA_QUALITY_JOB_NAME"       = var.glue_data_quality_job_name
   }
 
@@ -66,10 +64,11 @@ resource "aws_glue_job" "etl_job" {
 
 # Publishes the main script executed by Glue to the auxiliary bucket.
 resource "aws_s3_object" "deploy_scripts_bucket_etl" {
-  bucket = var.s3_bucket_aux
+  bucket = aws_s3_bucket.auxiliary_bucket.id
   key    = "${var.glue_etl_job_name}/app/main.py"
   source = "${local.glue_etl_src_path}/main.py"
   etag   = filemd5("${local.glue_etl_src_path}/main.py")
+  depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
 
@@ -83,8 +82,9 @@ data "archive_file" "glue_app_bundle_etl" {
 
 # Uploads the zipped bundle to S3, used in --extra-py-files in the Glue Job.
 resource "aws_s3_object" "deploy_app_bundle_etl" {
-  bucket = var.s3_bucket_aux
+  bucket = aws_s3_bucket.auxiliary_bucket.id
   key    = "${var.glue_etl_job_name}/app_bundle.zip"
   source = data.archive_file.glue_app_bundle_etl.output_path
   etag   = data.archive_file.glue_app_bundle_etl.output_md5
+  depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
