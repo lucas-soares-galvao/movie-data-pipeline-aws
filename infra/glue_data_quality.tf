@@ -33,7 +33,6 @@ resource "aws_glue_job" "data_quality_job" {
 
   # Garanta que artefatos e permissoes existam antes da criacao do job.
   depends_on = [
-    null_resource.glue_data_quality_build,
     aws_s3_object.deploy_scripts_bucket_data_quality,
     aws_s3_object.deploy_app_bundle_data_quality,
     aws_iam_role_policy_attachment.glue_service_role,
@@ -45,19 +44,6 @@ resource "aws_glue_job" "data_quality_job" {
 
   execution_property {
     max_concurrent_runs = 2
-  }
-}
-
-# Build step que copia fonte e instala dependencias externas via pip.
-resource "null_resource" "glue_data_quality_build" {
-  triggers = {
-    source_hash = sha256(join("", [for f in fileset(local.glue_data_quality_src_path, "**/*.py") : filesha256("${local.glue_data_quality_src_path}/${f}")]))
-    requirements_hash = filesha256(local.glue_data_quality_requirements_path)
-    builder_hash = filesha256("${path.module}/scripts/build_lambda_package.py")
-  }
-
-  provisioner "local-exec" {
-    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.glue_data_quality_src_path} --requirements ${local.glue_data_quality_requirements_path} --dest ${local.glue_data_quality_build_path}"
   }
 }
 
@@ -73,8 +59,7 @@ resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
 data "archive_file" "glue_app_bundle_data_quality" {
   type        = "zip"
   output_path = "${path.module}/glue_app_bundle_data_quality.zip"
-  source_dir  = local.glue_data_quality_build_path
-  depends_on  = [null_resource.glue_data_quality_build]
+  source_dir  = local.glue_data_quality_src_path
 }
 
 # Envia o bundle zipado para o S3, usado em --extra-py-files no Glue Job.
