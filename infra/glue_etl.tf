@@ -47,7 +47,7 @@ resource "aws_glue_job" "etl_job" {
     aws_iam_role_policy.glue_read_code_from_s3,
     aws_iam_role_policy.glue_write_logs_custom_prefix,
     aws_iam_role_policy.glue_read_sor_write_sot,
-    aws_iam_role_policy.glue_manage_catalog_sot,
+    aws_iam_role_policy.glue_manage_catalog_tmdb,
     aws_glue_catalog_database.sot_database,
     aws_glue_catalog_table.movies_sot,
     aws_glue_job.data_quality_job,
