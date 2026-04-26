@@ -51,8 +51,8 @@ resource "aws_glue_job" "etl_job" {
     aws_glue_catalog_database.tmdb_database,
     aws_glue_catalog_table.movies_tmdb,
     aws_glue_catalog_table.tv_tmdb,
-    aws_glue_catalog_table.genre_movie_tmdb,
-    aws_glue_catalog_table.genre_tv_tmdb,
+    aws_glue_catalog_table.movies_genre_tmdb,
+    aws_glue_catalog_table.tv_genre_tmdb,
     aws_glue_job.data_quality_job,
     aws_cloudwatch_log_group.glue_etl_job_error_log_group,
     aws_cloudwatch_log_group.glue_etl_job_output_log_group
