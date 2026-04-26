@@ -56,7 +56,7 @@ class TestGlueEtlMain(unittest.TestCase):
         "S3_BUCKET_SOR": "bucket-sor",
         "S3_BUCKET_SOT": "bucket-sot",
         "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
-        "GLUE_CATALOG_TABLES": "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb",
+        "GLUE_CATALOG_DATABASE": "db_tmdb",
         "MEDIA_TYPE": "movie"
     }
 

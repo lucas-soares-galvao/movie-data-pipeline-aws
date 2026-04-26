@@ -87,11 +87,5 @@ variable "glue_data_quality_job_name" {
 variable "glue_catalog_database_name" {
   description = "Name of the database in Glue Catalog for the TMDB movies table"
   type        = string
-  default     = "db_movies_tmdb"
-}
-
-variable "glue_catalog_table_list_name" {
-  description = "Comma-separated list of Glue Catalog table names"
-  type        = string
-  default     = "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb"
+  default     = "db_tmdb"
 }

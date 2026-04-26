@@ -6,17 +6,17 @@ from src.utils import process_tmdb, call_glue_data_quality
 args = getResolvedOptions(sys.argv, [
     "S3_BUCKET_SOR",
     "S3_BUCKET_SOT",
-    "MEDIA_TYPE",
-    "GLUE_DATA_QUALITY_JOB_NAME"
+    "GLUE_CATALOG_DATABASE",
+    "GLUE_DATA_QUALITY_JOB_NAME",
+    "MWEDIA_TYPE"
 ])
 
 
 bucket_sor = args["S3_BUCKET_SOR"]
 bucket_sot = args["S3_BUCKET_SOT"]
-media_type = args["MEDIA_TYPE"]
+database = args["GLUE_CATALOG_DATABASE"]
 glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
-
-database = "db_tmdb"
+media_type = args["MEDIA_TYPE"]
 
 CONFIG = {
     "movie": [
