@@ -1,1 +1,1 @@
-"""Subpacote com funcoes utilitarias da aplicacao."""
+"""Subpackage with utility functions for the application."""

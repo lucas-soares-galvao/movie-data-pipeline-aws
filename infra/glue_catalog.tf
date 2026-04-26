@@ -1,8 +1,8 @@
-# Glue Catalog da camada SOT para filmes TMDB em Parquet.
-
+# Glue Catalog for the SOT layer for TMDB movies in Parquet.
 resource "aws_glue_catalog_database" "tmdb_database" {
   name = var.glue_catalog_database_name
 }
+
 
 resource "aws_glue_catalog_table" "movies_tmdb" {
   name          = "movies_tmdb"
@@ -40,7 +40,7 @@ resource "aws_glue_catalog_table" "movies_tmdb" {
     }
 
     columns {
-      name = "overview"
+      name = "description"
       type = "string"
     }
 
@@ -95,6 +95,7 @@ resource "aws_glue_catalog_table" "movies_tmdb" {
     type = "string"
   }
 }
+
 
 resource "aws_glue_catalog_table" "tv_tmdb" {
   name          = "tv_tmdb"

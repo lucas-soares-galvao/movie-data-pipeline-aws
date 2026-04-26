@@ -6,7 +6,7 @@ import requests
 import boto3
 
 
-def obter_tmdb_api_key(secret_arn):
+def get_tmdb_key(secret_arn):
     client = boto3.client("secretsmanager")
     response = client.get_secret_value(SecretId=secret_arn)
 
@@ -14,115 +14,116 @@ def obter_tmdb_api_key(secret_arn):
     return secret["tmdb_api_key"]
 
 
-def gerar_periodos_mensais(ano_inicio):
-    ontem = date.today() - timedelta(days=1)
 
-    periodos = []
+def generate_monthly_periods(start_year):
+    yesterday = date.today() - timedelta(days=1)
 
-    ano = ano_inicio
-    mes = 1
+    periods = []
 
-    while (ano, mes) <= (ontem.year, ontem.month):
-        primeiro_dia = date(ano, mes, 1)
+    year = start_year
+    month = 1
 
-        ultimo_dia_mes = calendar.monthrange(ano, mes)[1]
-        ultimo_dia = date(ano, mes, ultimo_dia_mes)
+    while (year, month) <= (yesterday.year, yesterday.month):
+        first_day = date(year, month, 1)
 
-        # Se for o mês atual, vai só até ontem
-        if ano == ontem.year and mes == ontem.month:
-            ultimo_dia = ontem
+        last_day_of_month = calendar.monthrange(year, month)[1]
+        last_day = date(year, month, last_day_of_month)
 
-        periodos.append({
-            "data_inicio": primeiro_dia.strftime("%Y-%m-%d"),
-            "data_fim": ultimo_dia.strftime("%Y-%m-%d")
+        # If it is the current month, goes only until yesterday
+        if year == yesterday.year and month == yesterday.month:
+            last_day = yesterday
+
+        periods.append({
+            "start_date": first_day.strftime("%Y-%m-%d"),
+            "end_date": last_day.strftime("%Y-%m-%d")
         })
 
-        if mes == 12:
-            ano += 1
-            mes = 1
+        if month == 12:
+            year += 1
+            month = 1
         else:
-            mes += 1
+            month += 1
 
-    return periodos
+    return periods
 
 
-# Função genérica para discover (movie/tv)
-def buscar_discover(api_key, periodo, tipo="movie", max_paginas=5):
-    url = f"https://api.themoviedb.org/3/discover/{tipo}"
-    idiomas = ["pt-BR", "en-US"]
-    resultados = []
+# Generic function for discover (movie/tv)
+def fetch_discover(api_key, period, media_type="movie", max_pages=5):
+    url = f"https://api.themoviedb.org/3/discover/{media_type}"
+    languages = ["pt-BR", "en-US"]
+    results = []
 
-    for idioma in idiomas:
-        resultados = []
-        for pagina in range(1, max_paginas + 1):
+    for language in languages:
+        results = []
+        for page in range(1, max_pages + 1):
             params = {
                 "api_key": api_key,
                 "sort_by": "popularity.desc",
-                "page": pagina,
-                "language": idioma
+                "page": page,
+                "language": language
             }
-            if tipo == "movie":
-                params["primary_release_date.gte"] = periodo["data_inicio"]
-                params["primary_release_date.lte"] = periodo["data_fim"]
-            elif tipo == "tv":
-                params["first_air_date.gte"] = periodo["data_inicio"]
-                params["first_air_date.lte"] = periodo["data_fim"]
+            if media_type == "movie":
+                params["primary_release_date.gte"] = period["start_date"]
+                params["primary_release_date.lte"] = period["end_date"]
+            elif media_type == "tv":
+                params["first_air_date.gte"] = period["start_date"]
+                params["first_air_date.lte"] = period["end_date"]
 
             response = requests.get(url, params=params)
             response.raise_for_status()
-            dados = response.json()
-            resultados.extend(dados["results"])
-            if pagina >= dados.get("total_pages", 1):
+            data = response.json()
+            results.extend(data["results"])
+            if page >= data.get("total_pages", 1):
                 break
-        if resultados:
+        if results:
             break
-    return resultados
+    return results
 
-# Função para buscar gêneros (movie/tv)
-def buscar_generos(api_key, tipo="movie"):
-    url = f"https://api.themoviedb.org/3/genre/{tipo}/list"
-    idiomas = ["pt-BR", "en-US"]
-    for idioma in idiomas:
+# Function to fetch genres (movie/tv)
+def fetch_genres(api_key, media_type="movie"):
+    url = f"https://api.themoviedb.org/3/genre/{media_type}/list"
+    languages = ["pt-BR", "en-US"]
+    for language in languages:
         params = {
             "api_key": api_key,
-            "language": idioma
+            "language": language
         }
         response = requests.get(url, params=params)
         response.raise_for_status()
-        dados = response.json()
-        if "genres" in dados and dados["genres"]:
-            return dados["genres"]
+        data = response.json()
+        if "genres" in data and data["genres"]:
+            return data["genres"]
     return []
 
 
-def processar_discover(api_key, bucket, periodos, tipo):
-    arquivos = []
+def process_discover(api_key, bucket, periods, media_type):
+    files = []
 
-    for periodo in periodos:
-        dados = buscar_discover(api_key, periodo, tipo=tipo)
+    for period in periods:
+        data = fetch_discover(api_key, period, media_type=media_type)
 
-        ano = periodo["data_inicio"][:4]
-        mes = periodo["data_inicio"][5:7]
+        year = period["start_date"][:4]
+        month = period["start_date"][5:7]
 
-        key = f"tmdb/discover/{tipo}/year={ano}/month={mes}/{tipo}_{ano}_{mes}.json"
+        key = f"tmdb/discover/{media_type}/year={year}/month={month}/{media_type}_{year}_{month}.json"
 
-        salvar_json_no_s3(bucket, key, dados)
-        arquivos.append(key)
+        save_json_to_s3(bucket, key, data)
+        files.append(key)
 
-    return arquivos
+    return files
 
 
-def processar_generos(api_key, bucket, tipo):
-    generos = buscar_generos(api_key, tipo=tipo)
+def process_genres(api_key, bucket, media_type):
+    genres = fetch_genres(api_key, media_type=media_type)
 
-    key = f"tmdb/genre/{tipo}/genres_{tipo}.json"
+    key = f"tmdb/genre/{media_type}/genres_{media_type}.json"
 
-    salvar_json_no_s3(bucket, key, generos)
+    save_json_to_s3(bucket, key, genres)
 
     return [key]
 
 
-def salvar_json_no_s3(bucket, key, data):
+def save_json_to_s3(bucket, key, data):
     s3 = boto3.client("s3")
 
     s3.put_object(
@@ -132,7 +133,7 @@ def salvar_json_no_s3(bucket, key, data):
     )
 
 
-def chamar_glue_etl(job_name):
+def trigger_glue_etl(job_name):
     glue = boto3.client("glue")
 
     response = glue.start_job_run(JobName=job_name)

@@ -1,15 +1,15 @@
-# Regras EventBridge para acionar a Lambda com diferentes tipos
+# EventBridge rules to trigger Lambda with different types
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movies" {
   name        = "lambda-api-movies"
-  description = "Dispara a lambda para movies"
-  schedule_expression = "cron(0 3 * * ? *)" # Exemplo: todo dia às 3h UTC
+  description = "Triggers the lambda for movies"
+  schedule_expression = "cron(0 3 * * ? *)" # Example: every day at 3am UTC
 }
 
-resource "aws_cloudwatch_event_rule" "lambda_api_tv" {
-  name        = "lambda-api-tv"
-  description = "Dispara a lambda para tv"
-  schedule_expression = "cron(0 4 * * ? *)" # Exemplo: todo dia às 4h UTC
+resource "aws_cloudwatch_event_rule" "lambda_api_series" {
+  name        = "lambda-api-series"
+  description = "Triggers the lambda for series"
+  schedule_expression = "cron(0 4 * * ? *)" # Example: every day at 4am UTC
 }
 
 resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
@@ -18,32 +18,32 @@ resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    tipo = "movie"
+    type = "movie"
   })
 }
 
-resource "aws_cloudwatch_event_target" "lambda_api_tv_target" {
-  rule      = aws_cloudwatch_event_rule.lambda_api_tv.name
-  target_id = "lambda-api-tv"
+resource "aws_cloudwatch_event_target" "lambda_api_series_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_series.name
+  target_id = "lambda-api-series"
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    tipo = "tv"
+    type = "series"
   })
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_movies" {
-  statement_id  = "AllowExecutionFromEventBridgeMovies"
+  statement_id  = "AllowEventBridgeMoviesExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.lambda_api_movies.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_tv" {
-  statement_id  = "AllowExecutionFromEventBridgeTV"
+resource "aws_lambda_permission" "allow_eventbridge_series" {
+  statement_id  = "AllowEventBridgeSeriesExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv.arn
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_series.arn
 }

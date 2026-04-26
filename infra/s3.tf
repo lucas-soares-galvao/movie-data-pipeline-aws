@@ -1,15 +1,17 @@
-# Bucket auxiliar para códigos em python.
-resource "aws_s3_bucket" "bucket_aux" {
+
+# Auxiliary bucket for Python code.
+resource "aws_s3_bucket" "auxiliary_bucket" {
   bucket = var.s3_bucket_aux
 }
 
-# Bucket temporário para objetos do Athena, com política de expiração de 1 dia.
-resource "aws_s3_bucket" "bucket_temp" {
+
+# Temporary bucket for Athena objects, with 1-day expiration policy.
+resource "aws_s3_bucket" "temporary_bucket" {
   bucket = var.s3_bucket_temp
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "bucket_temp_lifecycle" {
-  bucket = aws_s3_bucket.bucket_temp.id
+resource "aws_s3_bucket_lifecycle_configuration" "temporary_bucket_lifecycle" {
+  bucket = aws_s3_bucket.temporary_bucket.id
 
   rule {
     id     = "delete-after-1-day"
@@ -21,17 +23,20 @@ resource "aws_s3_bucket_lifecycle_configuration" "bucket_temp_lifecycle" {
   }
 }
 
-# Bucket principal para dados de entrada/saida processados pela Lambda.
-resource "aws_s3_bucket" "bucket_sor" {
+
+# Main bucket for input/output data processed by Lambda.
+resource "aws_s3_bucket" "sor_bucket" {
   bucket = var.s3_bucket_sor
 }
 
-# Bucket principal para dados de entrada/saida processados pelo Glue ETL.
-resource "aws_s3_bucket" "bucket_sot" {
+
+# Main bucket for input/output data processed by Glue ETL.
+resource "aws_s3_bucket" "sot_bucket" {
   bucket = var.s3_bucket_sot
 }
 
-# Bucket principal para dados de entrada/saida processados pela Glue ETL.
-resource "aws_s3_bucket" "bucket_spec" {
+
+# Main bucket for input/output data processed by Glue ETL.
+resource "aws_s3_bucket" "spec_bucket" {
   bucket = var.s3_bucket_spec
 }
