@@ -1,8 +1,8 @@
-# IAM Policies customizadas (Lambda e Glue)
+# Custom IAM policies (Lambda and Glue)
 
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
   name = "${var.lambda_api_name}-start-glue-jobs-${var.env}"
-  role = aws_iam_role.lambda_role.id
+  role = aws_iam_role.lambda_function.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -15,7 +15,7 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
 
 resource "aws_iam_role_policy" "lambda_s3_policy" {
   name = "${var.lambda_api_name}-s3-policy-${var.env}"
-  role = aws_iam_role.lambda_role.id
+  role = aws_iam_role.lambda_function.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -23,7 +23,7 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
       Action = ["s3:PutObject", "s3:GetObject"]
       Resource = [
         "arn:aws:s3:::${var.s3_bucket_sor}/*",
-        "arn:aws:s3:::${var.s3_bucket_aux}/lambda_api/error/*"
+        "arn:aws:s3:::${var.s3_bucket_aux}/lambda_api/erro/*"
       ]
     }]
   })
@@ -31,7 +31,7 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
 
 resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   name = "${var.lambda_api_name}-secrets-manager-${var.env}"
-  role = aws_iam_role.lambda_role.id
+  role = aws_iam_role.lambda_function.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -42,8 +42,7 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   })
 }
 
-# Glue policies
-resource "aws_iam_role_policy" "glue_read_code_from_s3" {
+resource "aws_iam_role_policy" "glue_read_code_s3" {
   name = "${var.iam_role_glue}-read-code"
   role = aws_iam_role.glue_job_role.name
   policy = jsonencode({
@@ -140,7 +139,8 @@ resource "aws_iam_role_policy" "glue_read_sor_write_sot" {
     ]
   })
 }
-# Permissoes para criar/atualizar metadados da tabela no Glue Catalog.
+
+# Permissions to create/update table metadata in Glue Catalog.
 resource "aws_iam_role_policy" "glue_manage_catalog_tmdb" {
   name = "${var.iam_role_glue}-manage-catalog-tmdb"
   role = aws_iam_role.glue_job_role.name

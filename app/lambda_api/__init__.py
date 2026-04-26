@@ -1,1 +1,1 @@
-"""Pacote principal da aplicacao de exemplo usada pelo Glue."""
+"""Main package of the example application used by the Lambda API."""

@@ -1,30 +1,33 @@
-"""Testes unitarios das funcoes utilitarias do Glue ETL."""
+"""Unit tests for Glue ETL utility functions."""
 
 import unittest
 from unittest.mock import MagicMock, patch
 import pandas as pd
-from app.glue_etl.src.utils import processar_tmdb
 
-class TestProcessarTmdb(unittest.TestCase):
+from app.glue_etl.src.utils import process_tmdb
+
+
+class TestProcessTmdb(unittest.TestCase):
     @patch("app.glue_etl.src.utils.wr")
-    def test_particao_year_month(self, mock_wr):
-        df = self._df_base()
+    def test_partition_year_month(self, mock_wr):
+        df = self._base_df()
         mock_wr.s3.read_json.return_value = df
 
-        resultado = processar_tmdb(
-            input_path="s3://bucket-sor/",
-            output_path="s3://bucket-sot/",
-            database="tmdb_dev",
+        result = process_tmdb(
+            source_path="s3://bucket-sor/",
+            destination_path="s3://bucket-sot/",
+            database="db_tmdb",
             table="movies_sot",
-            partition_cols=["year", "month"],
-            partition_date_col="release_date"
+            partition_columns=["year", "month"],
+            date_column="release_date"
         )
 
         kwargs = mock_wr.s3.to_parquet.call_args.kwargs
         self.assertEqual(kwargs["partition_cols"], ["year", "month"])
         self.assertIn("year", kwargs["df"].columns)
         self.assertIn("month", kwargs["df"].columns)
-    def _df_base(self):
+
+    def _base_df(self):
         return pd.DataFrame({
             "id": [1, 2, 3],
             "title": ["Movie 1", "Movie 2", "Movie 3"],
@@ -32,16 +35,16 @@ class TestProcessarTmdb(unittest.TestCase):
         })
 
     @patch("app.glue_etl.src.utils.wr")
-    def test_sem_particao_nao_adiciona_colunas(self, mock_wr):
-        df = self._df_base()
+    def test_no_partition_does_not_add_columns(self, mock_wr):
+        df = self._base_df()
         mock_wr.s3.read_json.return_value = df
 
-        resultado = processar_tmdb(
-            input_path="s3://bucket-sor/",
-            output_path="s3://bucket-sot/",
-            database="tmdb_dev",
+        result = process_tmdb(
+            source_path="s3://bucket-sor/",
+            destination_path="s3://bucket-sot/",
+            database="db_tmdb",
             table="movies_sot",
-            partition_cols=None
+            partition_columns=None
         )
 
         kwargs = mock_wr.s3.to_parquet.call_args.kwargs
@@ -50,18 +53,18 @@ class TestProcessarTmdb(unittest.TestCase):
         self.assertNotIn("month", kwargs["df"].columns)
 
     @patch("app.glue_etl.src.utils.wr")
-    def test_particao_customizada(self, mock_wr):
-        df = self._df_base()
-        df["custom"] = ["A", "B", "C"]  # Simula coluna customizada
+    def test_custom_partition(self, mock_wr):
+        df = self._base_df()
+        df["custom"] = ["A", "B", "C"]  # Simulate custom column
         mock_wr.s3.read_json.return_value = df
 
-        resultado = processar_tmdb(
-            input_path="s3://bucket-sor/",
-            output_path="s3://bucket-sot/",
+        result = process_tmdb(
+            source_path="s3://bucket-sor/",
+            destination_path="s3://bucket-sot/",
             database="tmdb_dev",
             table="movies_sot",
-            partition_cols=["custom"],
-            partition_date_col="custom"
+            partition_columns=["custom"],
+            date_column="custom"
         )
 
         kwargs = mock_wr.s3.to_parquet.call_args.kwargs

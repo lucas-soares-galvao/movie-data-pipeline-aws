@@ -1,98 +1,97 @@
-############# VARIÁVEIS GERAIS ##############
+
+############# GENERAL VARIABLES ##############
 variable "env" {
-  # Nome logico do ambiente, usado em naming e isolamento de recursos.
+  # Logical name of the environment, used for naming and resource isolation.
   description = "The environment for the Glue job (e.g., dev, prod)"
   type        = string
 }
 
-############## IAM Roles e Policies ##############
+############## IAM Roles and Policies ##############
 variable "iam_role_glue" {
-  description = "Nome do IAM role para os jobs do Glue"
+  description = "IAM role name for Glue jobs"
   type        = string
 }
 
 variable "iam_role_lambda" {
-  description = "Nome do IAM role para a funcao Lambda"
+  description = "IAM role name for Lambda function"
   type        = string
 }
 
 ############## S3 Buckets ##############
 variable "s3_bucket_aux" {
-  description = "Nome do bucket auxiliar para códigos em python"
+  description = "Auxiliary bucket name for Python code"
   type        = string
 }
 
 variable "s3_bucket_temp" {
-  description = "Nome do bucket temporário para scripts do Athena"
+  description = "Temporary bucket name for Athena scripts"
   type        = string
 }
 
 variable "s3_bucket_sor" {
-  description = "Nome do bucket principal para dados de entrada/saida processados pela Lambda"
+  description = "Main bucket name for input/output data processed by Lambda"
   type        = string
 }
 
 variable "s3_bucket_sot" {
-  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
+  description = "Main bucket name for input/output data processed by Glue ETL"
   type        = string
 }
 
 variable "s3_bucket_spec" {
-  description = "Nome do bucket principal para dados de entrada/saida processados pela Glue ETL"
+  description = "Main bucket name for input/output data processed by Glue ETL"
   type        = string
 }
 
 ################ SECRETS MANAGER ############
 variable "tmdb_secret_arn" {
-  description = "ARN do secret no Secrets Manager com a chave da TMDB"
+  description = "ARN of the secret in Secrets Manager with the TMDB key"
   type        = string
 }
 
 ############### LAMBDA ##############
-
 variable "lambda_api_path_app" {
-  description = "Caminho dos modulos Python da aplicacao para o Lambda API"
+  description = "Path to the Python modules of the application for Lambda API"
   type        = string
   default     = "lambda_api"
 }
 
 variable "lambda_api_name" {
-  description = "Nome da funcao Lambda a ser criada por ambiente"
+  description = "Name of the Lambda function to be created per environment"
   type        = string
 }
 
 ############### GLUE ##############
-
 variable "glue_etl_path_app" {
-  description = "Caminho dos modulos Python da aplicacao para o Glue ETL"
+  description = "Path to the Python modules of the application for Glue ETL"
   type        = string
   default     = "glue_etl"
 }
 
 variable "glue_etl_job_name" {
-  description = "Nome do Glue ETL job a ser criado por ambiente"
+  description = "Name of the Glue ETL job to be created per environment"
   type        = string
 }
 
 variable "glue_data_quality_path_app" {
-  description = "Caminho dos modulos Python da aplicacao para o Glue Data Quality"
+  description = "Path to the Python modules of the application for Glue Data Quality"
   type        = string
   default     = "glue_data_quality"
 }
 
 variable "glue_data_quality_job_name" {
-  description = "Nome do Glue Data Quality job a ser criado por ambiente"
+  description = "Name of the Glue Data Quality job to be created per environment"
   type        = string
 }
 
 variable "glue_catalog_database_name" {
-  description = "Nome do database no Glue Catalog para a tabela de filmes TMDB"
+  description = "Name of the database in Glue Catalog for the TMDB movies table"
   type        = string
   default     = "db_movies_tmdb"
 }
 
 variable "glue_catalog_table_list_name" {
-  description = "Lista de nomes de tabelas do Glue Catalog, separadas por vírgula"
+  description = "Comma-separated list of Glue Catalog table names"
   type        = string
   default     = "tb_movies_tmdb,tb_tv_tmdb,tb_genre_movie_tmdb,tb_genre_tv_tmdb"
 }

@@ -3,46 +3,45 @@ import boto3
 import pandas as pd
 
 
-def processar_tmdb(
-    input_path,
-    output_path,
+def process_tmdb(
+    source_path,
+    destination_path,
     database,
     table,
-    partition_cols=None,
-    partition_date_col=None
+    partition_columns=None,
+    date_column=None
 ):
-    # 1. Lê os JSONs do S3
-    df = wr.s3.read_json(input_path)
+    # 1. Reads the JSONs from S3
+    df = wr.s3.read_json(source_path)
 
-    # 2. Extrai year e month da data, se particionado
-    if partition_cols:
-        df[partition_date_col] = pd.to_datetime(df[partition_date_col], errors="coerce")
-        df["year"] = df[partition_date_col].dt.year.astype("Int64").astype(str)
-        df["month"] = df[partition_date_col].dt.month.astype("Int64").astype(str).str.zfill(2)
+    # 2. Extracts year and month from the date, if partitioned
+    if partition_columns:
+        df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
+        df["year"] = df[date_column].dt.year.astype("Int64").astype(str)
+        df["month"] = df[date_column].dt.month.astype("Int64").astype(str).str.zfill(2)
 
-    # 3. Salva em Parquet (particionado se partition_cols informado)
+    # 3. Saves as Parquet (partitioned if partition_columns is provided)
     wr.s3.to_parquet(
         df=df,
-        path=output_path,
+        path=destination_path,
         dataset=True,
-        partition_cols=partition_cols if partition_cols else [],
+        partition_cols=partition_columns if partition_columns else [],
         database=database,
         table=table,
         mode="overwrite"
     )
 
     return {
-        "linhas_processadas": len(df)
+        "processed_rows": len(df)
     }
 
-
-def chamar_glue_data_quality(job_name, partition_cols=None):
+def call_glue_data_quality(job_name, partition_columns=None):
     glue = boto3.client("glue")
 
     response = glue.start_job_run(
         JobName=job_name,
         Arguments={
-            "--PARTITIONS": partition_cols if partition_cols else ""
+            "--PARTITIONS": partition_columns if partition_columns else ""
         }
     )
 
