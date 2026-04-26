@@ -1,47 +1,61 @@
-# Recursos compartilhados entre os jobs de Glue (ETL e Data Quality).
+# IAM Policies customizadas (Lambda e Glue)
 
-# Role principal assumida pelo servico AWS Glue durante a execucao do job.
-resource "aws_iam_role" "glue_job_role" {
-  name = var.iam_role_glue
-
-  # Trust policy: permite que o servico glue.amazonaws.com assuma esta role.
-  assume_role_policy = jsonencode({
+resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
+  name = "${var.lambda_api_name}-start-glue-jobs-${var.env}"
+  role = aws_iam_role.lambda_role.id
+  policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "glue.amazonaws.com"
-        }
-      }
-    ]
+    Statement = [{
+      Effect = "Allow"
+      Action = ["glue:StartJobRun", "glue:GetJobRun"]
+      Resource = "*"
+    }]
   })
 }
 
-# Anexa a policy gerenciada padrao da AWS necessaria para execucao do Glue.
-resource "aws_iam_role_policy_attachment" "glue_service_role" {
-  role       = aws_iam_role.glue_job_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+resource "aws_iam_role_policy" "lambda_s3_policy" {
+  name = "${var.lambda_api_name}-s3-policy-${var.env}"
+  role = aws_iam_role.lambda_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["s3:PutObject", "s3:GetObject"]
+      Resource = [
+        "arn:aws:s3:::${var.s3_bucket_sor}/*",
+        "arn:aws:s3:::${var.s3_bucket_aux}/lambda_api/error/*"
+      ]
+    }]
+  })
 }
 
-# Policy customizada com permissao minima para ler scripts e bundles no S3.
+resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
+  name = "${var.lambda_api_name}-secrets-manager-${var.env}"
+  role = aws_iam_role.lambda_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = var.tmdb_secret_arn
+    }]
+  })
+}
+
+# Glue policies
 resource "aws_iam_role_policy" "glue_read_code_from_s3" {
   name = "${var.iam_role_glue}-read-code"
   role = aws_iam_role.glue_job_role.name
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Sid    = "ListCodePrefix"
         Effect = "Allow"
-        # Necessario para listar objetos dentro do bucket (escopo de prefixo abaixo).
         Action = ["s3:ListBucket"]
         Resource = ["arn:aws:s3:::${var.s3_bucket_aux}"]
         Condition = {
           StringLike = {
-            # Restringe a listagem apenas ao prefixo de artefatos do Glue.
             "s3:prefix" = ["${var.glue_etl_job_name}/*", "${var.glue_data_quality_job_name}/*"]
           }
         }
@@ -49,13 +63,8 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
       {
         Sid    = "ReadGlueArtifacts"
         Effect = "Allow"
-        # Permite leitura dos arquivos publicados para execucao do job.
-        Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion"
-        ]
+        Action = ["s3:GetObject", "s3:GetObjectVersion"]
         Resource = [
-          # Escopo limitado aos objetos dentro do prefixo glue/ no bucket auxiliar.
           "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_etl_job_name}/*",
           "arn:aws:s3:::${var.s3_bucket_aux}/${var.glue_data_quality_job_name}/*"
         ]
@@ -63,23 +72,16 @@ resource "aws_iam_role_policy" "glue_read_code_from_s3" {
     ]
   })
 }
-
-# Permite que o Glue escreva streams e eventos nos grupos customizados do job.
 resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
   name = "${var.iam_role_glue}-write-logs-custom"
   role = aws_iam_role.glue_job_role.name
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Sid    = "WriteCustomGlueLogs"
         Effect = "Allow"
-        Action = [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogStreams"
-        ]
+        Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
         Resource = [
           "arn:aws:logs:*:*:log-group:/${var.glue_etl_job_name}/*",
           "arn:aws:logs:*:*:log-group:/${var.glue_etl_job_name}/*:log-stream:*",
@@ -90,33 +92,24 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
     ]
   })
 }
-
-# Permite que o ETL dispare o job de Data Quality ao final da execucao.
 resource "aws_iam_role_policy" "glue_start_data_quality_job" {
   name = "${var.iam_role_glue}-start-data-quality"
   role = aws_iam_role.glue_job_role.name
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Sid    = "StartAndReadDataQualityJobRun"
         Effect = "Allow"
-        Action = [
-          "glue:StartJobRun",
-          "glue:GetJobRun"
-        ]
+        Action = ["glue:StartJobRun", "glue:GetJobRun"]
         Resource = "*"
       }
     ]
   })
 }
-
-# Permite que o Glue leia arquivos do bucket SOR e escreva no bucket SOT.
 resource "aws_iam_role_policy" "glue_read_sor_write_sot" {
   name = "${var.iam_role_glue}-read-sor-write-sot"
   role = aws_iam_role.glue_job_role.name
-
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -129,10 +122,7 @@ resource "aws_iam_role_policy" "glue_read_sor_write_sot" {
       {
         Sid    = "ReadFromSOR"
         Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion"
-        ]
+        Action = ["s3:GetObject", "s3:GetObjectVersion"]
         Resource = ["arn:aws:s3:::${var.s3_bucket_sor}/*"]
       },
       {
@@ -144,47 +134,22 @@ resource "aws_iam_role_policy" "glue_read_sor_write_sot" {
       {
         Sid    = "WriteToSOT"
         Effect = "Allow"
-        Action = [
-          "s3:PutObject",
-          "s3:DeleteObject"
-        ]
+        Action = ["s3:PutObject", "s3:DeleteObject"]
         Resource = ["arn:aws:s3:::${var.s3_bucket_sot}/*"]
       }
     ]
   })
 }
-
-# Cria grupos de log por job para separar erro e saida com retencao reduzida.
-resource "aws_cloudwatch_log_group" "glue_etl_job_error_log_group" {
-  name              = "/${var.glue_etl_job_name}/error"
-  retention_in_days = 1
-}
-
-resource "aws_cloudwatch_log_group" "glue_etl_job_output_log_group" {
-  name              = "/${var.glue_etl_job_name}/output"
-  retention_in_days = 1
-}
-
-resource "aws_cloudwatch_log_group" "glue_data_quality_job_error_log_group" {
-  name              = "/${var.glue_data_quality_job_name}/error"
-  retention_in_days = 1
-}
-
-resource "aws_cloudwatch_log_group" "glue_data_quality_job_output_log_group" {
-  name              = "/${var.glue_data_quality_job_name}/output"
-  retention_in_days = 1
-}
-
-# Permissoes para criar/atualizar metadados da tabela SOT no Glue Catalog.
-resource "aws_iam_role_policy" "glue_manage_catalog_sot" {
-  name = "${var.iam_role_glue}-manage-catalog-sot"
+# Permissoes para criar/atualizar metadados da tabela no Glue Catalog.
+resource "aws_iam_role_policy" "glue_manage_catalog_tmdb" {
+  name = "${var.iam_role_glue}-manage-catalog-tmdb"
   role = aws_iam_role.glue_job_role.name
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ManageCatalogSOT"
+        Sid    = "ManageCatalogTMDB"
         Effect = "Allow"
         Action = [
           "glue:GetDatabase",
@@ -203,3 +168,4 @@ resource "aws_iam_role_policy" "glue_manage_catalog_sot" {
     ]
   })
 }
+

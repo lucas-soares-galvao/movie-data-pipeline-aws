@@ -46,37 +46,80 @@ def gerar_periodos_mensais(ano_inicio):
     return periodos
 
 
-def buscar_filmes_por_periodo(api_key, periodo, max_paginas=5):
-    url = "https://api.themoviedb.org/3/discover/movie"
+# Função genérica para discover (movie/tv)
+def buscar_discover(api_key, periodo, tipo="movie", max_paginas=5):
+    url = f"https://api.themoviedb.org/3/discover/{tipo}"
     idiomas = ["pt-BR", "en-US"]
-    filmes = []
+    resultados = []
 
     for idioma in idiomas:
-        filmes = []
+        resultados = []
         for pagina in range(1, max_paginas + 1):
             params = {
                 "api_key": api_key,
-                "primary_release_date.gte": periodo["data_inicio"],
-                "primary_release_date.lte": periodo["data_fim"],
                 "sort_by": "popularity.desc",
                 "page": pagina,
                 "language": idioma
             }
+            if tipo == "movie":
+                params["primary_release_date.gte"] = periodo["data_inicio"]
+                params["primary_release_date.lte"] = periodo["data_fim"]
+            elif tipo == "tv":
+                params["first_air_date.gte"] = periodo["data_inicio"]
+                params["first_air_date.lte"] = periodo["data_fim"]
 
             response = requests.get(url, params=params)
             response.raise_for_status()
-
             dados = response.json()
-            filmes.extend(dados["results"])
-
-            # Se não tiver mais páginas, para antes
+            resultados.extend(dados["results"])
             if pagina >= dados.get("total_pages", 1):
                 break
+        if resultados:
+            break
+    return resultados
 
-        if filmes:
-            break  # Se encontrou filmes em algum idioma, não tenta o próximo
+# Função para buscar gêneros (movie/tv)
+def buscar_generos(api_key, tipo="movie"):
+    url = f"https://api.themoviedb.org/3/genre/{tipo}/list"
+    idiomas = ["pt-BR", "en-US"]
+    for idioma in idiomas:
+        params = {
+            "api_key": api_key,
+            "language": idioma
+        }
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        dados = response.json()
+        if "genres" in dados and dados["genres"]:
+            return dados["genres"]
+    return []
 
-    return filmes
+
+def processar_discover(api_key, bucket, periodos, tipo):
+    arquivos = []
+
+    for periodo in periodos:
+        dados = buscar_discover(api_key, periodo, tipo=tipo)
+
+        ano = periodo["data_inicio"][:4]
+        mes = periodo["data_inicio"][5:7]
+
+        key = f"tmdb/discover/{tipo}/year={ano}/month={mes}/{tipo}_{ano}_{mes}.json"
+
+        salvar_json_no_s3(bucket, key, dados)
+        arquivos.append(key)
+
+    return arquivos
+
+
+def processar_generos(api_key, bucket, tipo):
+    generos = buscar_generos(api_key, tipo=tipo)
+
+    key = f"tmdb/genre/{tipo}/genres_{tipo}.json"
+
+    salvar_json_no_s3(bucket, key, generos)
+
+    return [key]
 
 
 def salvar_json_no_s3(bucket, key, data):
