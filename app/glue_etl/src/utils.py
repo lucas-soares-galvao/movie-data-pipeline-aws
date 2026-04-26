@@ -8,16 +8,17 @@ def processar_tmdb(
     output_path,
     database,
     table,
-    partition_cols=None
+    partition_cols=None,
+    partition_date_col=None
 ):
     # 1. Lê os JSONs do S3
     df = wr.s3.read_json(input_path)
 
     # 2. Extrai year e month da data, se particionado
     if partition_cols:
-        df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
-        df["year"] = df["release_date"].dt.year.astype("Int64").astype(str)
-        df["month"] = df["release_date"].dt.month.astype("Int64").astype(str).str.zfill(2)
+        df[partition_date_col] = pd.to_datetime(df[partition_date_col], errors="coerce")
+        df["year"] = df[partition_date_col].dt.year.astype("Int64").astype(str)
+        df["month"] = df[partition_date_col].dt.month.astype("Int64").astype(str).str.zfill(2)
 
     # 3. Salva em Parquet (particionado se partition_cols informado)
     wr.s3.to_parquet(
@@ -35,13 +36,13 @@ def processar_tmdb(
     }
 
 
-def chamar_glue_data_quality(job_name):
+def chamar_glue_data_quality(job_name, partition_cols=None):
     glue = boto3.client("glue")
 
     response = glue.start_job_run(
         JobName=job_name,
         Arguments={
-            "--PARTITIONS": "year,month"
+            "--PARTITIONS": partition_cols if partition_cols else ""
         }
     )
 
