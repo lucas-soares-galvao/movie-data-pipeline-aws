@@ -1,5 +1,6 @@
 
 import os
+from datetime import date, timedelta
 from src.utils import (
     get_tmdb_key,
     extract_media_tables,
@@ -16,7 +17,8 @@ def lambda_handler(event, context):
     bucket = os.getenv("S3_BUCKET_SOR")
 
     api_key = get_tmdb_key(secret_arn)
-    periods = generate_monthly_periods(start_year=2000)
+    last_year = date.today().year - 1
+    periods = generate_monthly_periods(start_year=last_year)
 
     media_info = extract_media_tables(event)
     media_type = media_info["media_type"]
