@@ -1,3 +1,5 @@
+
+
 import json
 import calendar
 from datetime import date, datetime, timedelta
@@ -13,6 +15,33 @@ def get_tmdb_key(secret_arn):
     secret = json.loads(response["SecretString"])
     return secret["tmdb_api_key"]
 
+
+def extract_media_tables(event):
+    """
+    Extracts media_type, table, genre_table, and partition_columns from the event dict.
+    Returns a dict with these keys.
+    """
+    media_type = event.get("type", "movie")
+    database = event.get("database")
+    if media_type == "movie":
+        table = event.get("table_movies")
+        genre_table = event.get("table_genre_movie")
+        partition_columns = "year,month" if table else ""
+    elif media_type == "tv":
+        table = event.get("table_tv")
+        genre_table = event.get("table_genre_tv")
+        partition_columns = "year,month" if table else ""
+    else:
+        table = None
+        genre_table = None
+        partition_columns = ""
+    return {
+        "media_type": media_type,
+        "database": database,
+        "table": table,
+        "genre_table": genre_table,
+        "partition_columns": partition_columns
+    }
 
 
 def generate_monthly_periods(start_year):
@@ -133,13 +162,17 @@ def save_json_to_s3(bucket, key, data):
     )
 
 
-def trigger_glue_etl(job_name, media_type):
+def trigger_glue_etl(job_name, params):
     glue = boto3.client("glue")
 
     response = glue.start_job_run(
         JobName=job_name,
         Arguments={
-            "--MEDIA_TYPE": media_type  
+            "--MEDIA_TYPE": params["media_type"],
+            "--DATABASE": params["database"],
+            "--TABLE": params["table"],
+            "--GENRE_TABLE": params["genre_table"],
+            "--PARTITION_COLUMNS": params["partition_columns"]
         }
     )
 

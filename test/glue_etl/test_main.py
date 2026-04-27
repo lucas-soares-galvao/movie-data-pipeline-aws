@@ -57,7 +57,11 @@ class TestGlueEtlMain(unittest.TestCase):
         "S3_BUCKET_SOT": "bucket-sot",
         "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
         "GLUE_CATALOG_DATABASE": "db_tmdb",
-        "MEDIA_TYPE": "movie"
+        "MEDIA_TYPE": "movie",
+        "DATABASE": "db_tmdb",
+        "TABLE": "tb_movies_tmdb",
+        "GENRE_TABLE": "tb_genre_movie_tmdb",
+        "PARTITION_COLUMNS": "year,month"
     }
 
     def tearDown(self):
@@ -76,8 +80,8 @@ class TestGlueEtlMain(unittest.TestCase):
         _reload_main()
 
         expected_calls = [
-            dict(source_path='s3://bucket-sor/', destination_path='s3://bucket-sot/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
-            dict(source_path='s3://bucket-sor/', destination_path='s3://bucket-sot/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=None, date_column=None),
+            dict(source_path='s3://bucket-sor/tb_movies_tmdb/', destination_path='s3://bucket-sot/tb_movies_tmdb/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
+            dict(source_path='s3://bucket-sor/tb_genre_movie_tmdb/', destination_path='s3://bucket-sot/tb_genre_movie_tmdb/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=[], date_column=None),
         ]
         actual_calls = [call.kwargs for call in mock_src_utils.process_tmdb.call_args_list]
         self.assertEqual(actual_calls, expected_calls)

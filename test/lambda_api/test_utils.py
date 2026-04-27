@@ -130,6 +130,7 @@ class TestUtils(unittest.TestCase):
 
         mock_s3.put_object.assert_called_once()
 
+
     @patch("boto3.client")
     def test_trigger_glue_etl(self, mock_boto):
         mock_glue = MagicMock()
@@ -138,10 +139,29 @@ class TestUtils(unittest.TestCase):
         }
         mock_boto.return_value = mock_glue
 
-        result = utils.trigger_glue_etl("job_test", "movie")
+        params = {
+            "media_type": "movie",
+            "database": "db_tmdb",
+            "table": "tb_movies_tmdb",
+            "genre_table": "tb_genre_movie_tmdb",
+            "partition_columns": "year,month"
+        }
+        result = utils.trigger_glue_etl("job_test", params)
 
         self.assertEqual(result["job_name"], "job_test")
         self.assertEqual(result["job_run_id"], "abc123")
+
+    def test_extract_media_tables(self):
+        event = {
+            "type": "movie",
+            "table_movies": "tb_movies_tmdb",
+            "table_genre_movie": "tb_genre_movie_tmdb"
+        }
+        result = utils.extract_media_tables(event)
+        self.assertEqual(result["media_type"], "movie")
+        self.assertEqual(result["table"], "tb_movies_tmdb")
+        self.assertEqual(result["genre_table"], "tb_genre_movie_tmdb")
+        self.assertEqual(result["partition_columns"], "year,month")
 
 
 if __name__ == "__main__":
