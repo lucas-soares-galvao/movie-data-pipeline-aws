@@ -47,19 +47,29 @@ for cfg in tables_config:
         else []
     )
 
-    process_tmdb(
+    result = process_tmdb(
         source_path=f"s3://{bucket_sor}/tmdb/{cfg['path']}/{media_type}/",
-        destination_path=f"s3://{bucket_sot}/tmdb/{cfg['path']}/{media_type}/",
+        destination_path=f"s3://{bucket_sot}/{cfg['table']}/",
         database=database,
         table=table,
         partition_columns=partition_columns_list,
         date_column=date_column
     )
 
-    call_glue_data_quality(
-        glue_data_quality_job_name,
-        partition_columns=",".join(partition_columns_list)
-    )
+    partitions = result.get("partitions", [])
+
+    if partition_columns_list:
+        call_glue_data_quality(
+            glue_data_quality_job_name,
+            partition_columns=",".join(partition_columns_list),
+            partition_values=partitions
+        )
+    else:
+        call_glue_data_quality(
+            glue_data_quality_job_name,
+            partition_columns="",
+            partition_values=None
+        )
 
 
 if __name__ == "__main__":
