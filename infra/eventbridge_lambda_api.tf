@@ -18,7 +18,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    type = "movie"
+    type = "movie",
+    database = var.glue_catalog_database_name,
+    table_movies = var.glue_catalog_table_movies_name,
+    table_genre_movie = var.glue_catalog_table_genre_movie_name
   })
 }
 
@@ -28,7 +31,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_series_target" {
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    type = "series"
+    type = "series",
+    database = var.glue_catalog_database_name,
+    table_tv = var.glue_catalog_table_tv_name,
+    table_genre_tv = var.glue_catalog_table_genre_tv_name
   })
 }
 
