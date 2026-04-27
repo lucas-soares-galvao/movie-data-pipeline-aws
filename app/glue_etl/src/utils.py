@@ -33,18 +33,32 @@ def process_tmdb(
         mode=mode
     )
 
+    partition_values = []
+    if partition_columns:
+        # Get unique combinations of partition columns
+        unique_partitions = df[partition_columns].drop_duplicates()
+        # Build partition string for each row, e.g. "year=2023/month=01" or "custom=A"
+        for _, row in unique_partitions.iterrows():
+            part_str = "/".join(f"{col}={row[col]}" for col in partition_columns)
+            partition_values.append(part_str)
+
     return {
-        "processed_rows": len(df)
+        "processed_rows": len(df),
+        "partitions": partition_values
     }
 
-def call_glue_data_quality(job_name, partition_columns=None):
+def call_glue_data_quality(job_name, partition_columns=None, partition_values=None):
     glue = boto3.client("glue")
+
+    arguments = {
+        "--PARTITIONS": partition_columns if partition_columns else ""
+    }
+    if partition_values:
+        arguments["--PARTITION_VALUES"] = ",".join(partition_values)
 
     response = glue.start_job_run(
         JobName=job_name,
-        Arguments={
-            "--PARTITIONS": partition_columns if partition_columns else ""
-        }
+        Arguments=arguments
     )
 
     return {
