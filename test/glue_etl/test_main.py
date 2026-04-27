@@ -80,8 +80,8 @@ class TestGlueEtlMain(unittest.TestCase):
         _reload_main()
 
         expected_calls = [
-            dict(source_path='s3://bucket-sor/discover/', destination_path='s3://bucket-sot/discover/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
-            dict(source_path='s3://bucket-sor/genre/', destination_path='s3://bucket-sot/genre/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=[], date_column=None),
+            dict(source_path='s3://bucket-sor/tmdb/discover/movie/', destination_path='s3://bucket-sot/tmdb/discover/movie/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
+            dict(source_path='s3://bucket-sor/tmdb/genre/movie/', destination_path='s3://bucket-sot/tmdb/genre/movie/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=[], date_column=None),
         ]
         actual_calls = [call.kwargs for call in mock_src_utils.process_tmdb.call_args_list]
         self.assertEqual(actual_calls, expected_calls)
