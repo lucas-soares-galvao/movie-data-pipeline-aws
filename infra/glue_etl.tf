@@ -46,11 +46,6 @@ resource "aws_glue_job" "etl_job" {
     aws_iam_role_policy.glue_write_logs_custom_prefix,
     aws_iam_role_policy.glue_read_sor_write_sot,
     aws_iam_role_policy.glue_manage_catalog_tmdb,
-    aws_glue_catalog_database.tmdb_database,
-    aws_glue_catalog_table.tb_movies_tmdb,
-    aws_glue_catalog_table.tb_tv_tmdb,
-    aws_glue_catalog_table.tb_genre_movie_tmdb,
-    aws_glue_catalog_table.tb_genre_tv_tmdb,
     aws_glue_job.data_quality_job,
     aws_cloudwatch_log_group.glue_etl_error,
     aws_cloudwatch_log_group.glue_etl_output
