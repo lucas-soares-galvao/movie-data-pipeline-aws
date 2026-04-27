@@ -14,6 +14,8 @@ def process_tmdb(
     # 1. Reads the JSONs from S3
     df = wr.s3.read_json(source_path)
 
+    mode = "overwrite_partitions" if partition_columns else "overwrite"
+
     # 2. Extracts year and month from the date, if partitioned
     if partition_columns:
         df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
@@ -28,7 +30,7 @@ def process_tmdb(
         partition_cols=partition_columns if partition_columns else [],
         database=database,
         table=table,
-        mode="overwrite"
+        mode=mode
     )
 
     return {

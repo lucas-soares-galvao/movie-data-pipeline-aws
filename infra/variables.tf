@@ -89,3 +89,27 @@ variable "glue_catalog_database_name" {
   type        = string
   default     = "db_tmdb"
 }
+
+variable "glue_catalog_table_movies_name" {
+  description = "Name of the table in Glue Catalog for the TMDB movies table"
+  type        = string
+  default     = "tb_movies_tmdb"
+}
+
+variable "glue_catalog_table_tv_name" {
+  description = "Name of the table in Glue Catalog for the TMDB TV shows table"
+  type        = string
+  default     = "tb_tv_tmdb"
+}
+
+variable "glue_catalog_table_genre_movie_name" {
+  description = "Name of the table in Glue Catalog for the TMDB movie genres table"
+  type        = string
+  default     = "tb_genre_movie_tmdb"
+}
+
+variable "glue_catalog_table_genre_tv_name" {
+  description = "Name of the table in Glue Catalog for the TMDB TV genres table"
+  type        = string
+  default     = "tb_genre_tv_tmdb"
+}
