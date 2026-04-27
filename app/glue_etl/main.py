@@ -48,8 +48,8 @@ for cfg in tables_config:
     )
 
     process_tmdb(
-        source_path=f"s3://{bucket_sor}/{cfg['path']}/",
-        destination_path=f"s3://{bucket_sot}/{cfg['path']}/",
+        source_path=f"s3://{bucket_sor}/tmdb/{cfg['path']}/{media_type}/",
+        destination_path=f"s3://{bucket_sot}/tmdb/{cfg['path']}/{media_type}/",
         database=database,
         table=table,
         partition_columns=partition_columns_list,
