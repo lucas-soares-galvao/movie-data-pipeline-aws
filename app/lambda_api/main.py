@@ -16,7 +16,7 @@ def lambda_handler(event, context):
     bucket = os.getenv("S3_BUCKET_SOR")
 
     api_key = get_tmdb_key(secret_arn)
-    periods = generate_monthly_periods(start_year=2026)
+    periods = generate_monthly_periods(start_year=2000)
 
     media_info = extract_media_tables(event)
     media_type = media_info["media_type"]
@@ -24,7 +24,7 @@ def lambda_handler(event, context):
     discover_files = process_discover(api_key, bucket, periods, media_type)
     genre_files = process_genres(api_key, bucket, media_type)
     all_files = discover_files + genre_files
-    glue = trigger_glue_etl(glue_job_name, **media_info) if all_files else None
+    glue = trigger_glue_etl(glue_job_name, media_info) if all_files else None
 
     return {
         "statusCode": 200,
