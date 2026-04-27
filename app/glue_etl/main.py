@@ -26,12 +26,12 @@ media_type = args["MEDIA_TYPE"]
 
 CONFIG = {
     "movie": [
-        {"table": table_tmdb, "date_column": "release_date"},
-        {"table": table_genre, "date_column": None}
+        {"path": "discover", "table": table_tmdb, "date_column": "release_date"},
+        {"path": "genre", "table": table_genre, "date_column": None}
     ],
     "tv": [
-        {"table": table_tmdb, "date_column": "first_air_date"},
-        {"table": table_genre, "date_column": None}
+        {"path": "discover", "table": table_tmdb, "date_column": "first_air_date"},
+        {"path": "genre", "table": table_genre, "date_column": None}
     ]
 }
 
@@ -48,8 +48,8 @@ for cfg in tables_config:
     )
 
     process_tmdb(
-        source_path=f"s3://{bucket_sor}/{table}/",
-        destination_path=f"s3://{bucket_sot}/{table}/",
+        source_path=f"s3://{bucket_sor}/{cfg['path']}/",
+        destination_path=f"s3://{bucket_sot}/{cfg['path']}/",
         database=database,
         table=table,
         partition_columns=partition_columns_list,
