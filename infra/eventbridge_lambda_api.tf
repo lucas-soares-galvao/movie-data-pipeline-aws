@@ -6,9 +6,9 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movies" {
   schedule_expression = "cron(0 15 * * ? *)" # Example: every day at 3pm UTC
 }
 
-resource "aws_cloudwatch_event_rule" "lambda_api_series" {
-  name        = "lambda-api-series"
-  description = "Triggers the lambda for series"
+resource "aws_cloudwatch_event_rule" "lambda_api_tv" {
+  name        = "lambda-api-tv"
+  description = "Triggers the lambda for tv"
   schedule_expression = "cron(30 15 * * ? *)" # Example: every day at 3:30pm UTC
 }
 
@@ -25,13 +25,13 @@ resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
   })
 }
 
-resource "aws_cloudwatch_event_target" "lambda_api_series_target" {
-  rule      = aws_cloudwatch_event_rule.lambda_api_series.name
-  target_id = "lambda-api-series"
+resource "aws_cloudwatch_event_target" "lambda_api_tv_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_tv.name
+  target_id = "lambda-api-tv"
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    type = "series",
+    type = "tv",
     database = var.glue_catalog_database_name,
     table_tv = var.glue_catalog_table_tv_name,
     table_genre_tv = var.glue_catalog_table_genre_tv_name
@@ -46,10 +46,10 @@ resource "aws_lambda_permission" "allow_eventbridge_movies" {
   source_arn    = aws_cloudwatch_event_rule.lambda_api_movies.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_series" {
-  statement_id  = "AllowEventBridgeSeriesExecution"
+resource "aws_lambda_permission" "allow_eventbridge_tv" {
+  statement_id  = "AllowEventBridgetvExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda_api_series.arn
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv.arn
 }
