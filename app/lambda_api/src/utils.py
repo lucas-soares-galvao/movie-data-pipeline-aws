@@ -26,20 +26,27 @@ def extract_media_tables(event):
     if media_type == "movie":
         table = event.get("table_movies")
         genre_table = event.get("table_genre_movie")
+        configuration_table = event.get("table_languages")
+        configuration = "languages" if configuration_table else ""
         partition_columns = "year,month" if table else ""
     elif media_type == "tv":
         table = event.get("table_tv")
         genre_table = event.get("table_genre_tv")
+        configuration_table = event.get("table_countries")
+        configuration = "countries" if configuration_table else ""
         partition_columns = "year,month" if table else ""
     else:
         table = None
         genre_table = None
+        configuration_table = None
         partition_columns = ""
     return {
         "media_type": media_type,
         "database": database,
         "table": table,
         "genre_table": genre_table,
+        "configuration_table": configuration_table,
+        "configuration": configuration,
         "partition_columns": partition_columns
     }
 
@@ -97,7 +104,8 @@ def fetch_discover(api_key, period, media_type="movie", max_pages=5):
             elif media_type == "tv":
                 params["first_air_date.gte"] = period["start_date"]
                 params["first_air_date.lte"] = period["end_date"]
-
+            else:
+                raise ValueError("Invalid media type")
             response = requests.get(url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -123,6 +131,23 @@ def fetch_genres(api_key, media_type="movie"):
         if "genres" in data and data["genres"]:
             return data["genres"]
     return []
+
+
+def fetch_configuration(api_key, configuration_type="languages"):
+    if configuration_type == "languages":
+        language = "pt-BR"
+        url = f"https://api.themoviedb.org/3/configuration/{configuration_type}/languages={language}"
+    elif configuration_type == "countries":
+        url = f"https://api.themoviedb.org/3/configuration/{configuration_type}"
+    else:
+        raise ValueError("Invalid configuration type")
+    
+    params = {
+        "api_key": api_key
+    }
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    return response.json()
 
 
 def process_discover(api_key, bucket, periods, media_type):
@@ -152,6 +177,16 @@ def process_genres(api_key, bucket, media_type):
     return [key]
 
 
+def process_configuration(api_key, bucket, configuration_type):
+    configuration = fetch_configuration(api_key, configuration_type=configuration_type)
+
+    key = f"tmdb/configuration/{configuration_type}/configuration_{configuration_type}.json"
+
+    save_json_to_s3(bucket, key, configuration)
+
+    return [key]
+
+
 def save_json_to_s3(bucket, key, data):
     s3 = boto3.client("s3")
 
@@ -172,6 +207,7 @@ def trigger_glue_etl(job_name, params):
             "--DATABASE": params["database"],
             "--TABLE": params["table"],
             "--GENRE_TABLE": params["genre_table"],
+            "--CONFIGURATION_TABLE": params["configuration_table"],
             "--PARTITION_COLUMNS": params["partition_columns"]
         }
     )
