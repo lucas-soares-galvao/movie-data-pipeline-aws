@@ -41,7 +41,8 @@ class TestGlueEtlMain(unittest.TestCase):
         # Simulate process_tmdb returning partitions for discover and empty for genre
         mock_src_utils.process_tmdb.side_effect = [
             {"processed_rows": 10, "partitions": ["year=2023/month=01", "year=2023/month=02"]},
-            {"processed_rows": 5, "partitions": []}
+            {"processed_rows": 5, "partitions": []},
+            {"processed_rows": 0, "partitions": []}
         ]
         mock_src_utils.call_glue_data_quality.return_value = {"job_name": "glue-data-quality-dev", "job_run_id": "123"}
 
@@ -49,6 +50,7 @@ class TestGlueEtlMain(unittest.TestCase):
 
         expected_calls = [
             (('glue-data-quality-dev',), {'partition_columns': 'year,month', 'partition_values': ["year=2023/month=01", "year=2023/month=02"]}),
+            (('glue-data-quality-dev',), {'partition_columns': '', 'partition_values': None}),
             (('glue-data-quality-dev',), {'partition_columns': '', 'partition_values': None})
         ]
         actual_calls = [(c.args, c.kwargs) for c in mock_src_utils.call_glue_data_quality.call_args_list]
@@ -65,6 +67,7 @@ class TestGlueEtlMain(unittest.TestCase):
         "DATABASE": "db_tmdb",
         "TABLE": "tb_movies_tmdb",
         "GENRE_TABLE": "tb_genre_movie_tmdb",
+        "CONFIGURATION_TABLE": "tb_configuration_movie_tmdb",
         "PARTITION_COLUMNS": "year,month"
     }
 
@@ -86,6 +89,7 @@ class TestGlueEtlMain(unittest.TestCase):
         expected_calls = [
             dict(source_path='s3://bucket-sor/tmdb/discover/movie/', destination_path='s3://bucket-sot/tb_movies_tmdb/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
             dict(source_path='s3://bucket-sor/tmdb/genre/movie/', destination_path='s3://bucket-sot/tb_genre_movie_tmdb/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=[], date_column=None),
+            dict(source_path='s3://bucket-sor/tmdb/configuration/movie/', destination_path='s3://bucket-sot/tb_configuration_movie_tmdb/', database='db_tmdb', table='tb_configuration_movie_tmdb', partition_columns=[], date_column=None),
         ]
         actual_calls = [call.kwargs for call in mock_src_utils.process_tmdb.call_args_list]
         self.assertEqual(actual_calls, expected_calls)

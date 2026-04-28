@@ -7,6 +7,7 @@ from src.utils import (
     generate_monthly_periods,
     process_discover,
     process_genres,
+    process_configuration,
     trigger_glue_etl
 )
 
@@ -22,10 +23,13 @@ def lambda_handler(event, context):
 
     media_info = extract_media_tables(event)
     media_type = media_info["media_type"]
+    configuration_type = media_info["configuration"]
 
     discover_files = process_discover(api_key, bucket, periods, media_type)
     genre_files = process_genres(api_key, bucket, media_type)
-    all_files = discover_files + genre_files
+    configuration_files = process_configuration(api_key, bucket, configuration_type)
+    all_files = discover_files + genre_files + configuration_files
+    
     glue = trigger_glue_etl(glue_job_name, media_info) if all_files else None
 
     return {
@@ -34,6 +38,7 @@ def lambda_handler(event, context):
             "type": media_type,
             "discover_files": discover_files,
             "genre_files": genre_files,
+            "configuration_files": configuration_files,
             "glue": glue
         }
     }

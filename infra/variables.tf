@@ -113,3 +113,16 @@ variable "glue_catalog_table_genre_tv_name" {
   type        = string
   default     = "tb_genre_tv_tmdb"
 }
+
+variable "glue_catalog_table_languages_name" {
+  description = "Name of the table in Glue Catalog for the TMDB languages table"
+  type        = string
+  default     = "tb_languages_tmdb"
+  
+}
+
+variable "glue_catalog_table_countries_name" {
+  description = "Name of the table in Glue Catalog for the TMDB countries table"
+  type        = string
+  default     = "tb_countries_tmdb"
+}

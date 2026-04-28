@@ -21,7 +21,8 @@ resource "aws_cloudwatch_event_target" "lambda_api_movies_target" {
     type = "movie",
     database = var.glue_catalog_database_name,
     table_movies = var.glue_catalog_table_movies_name,
-    table_genre_movie = var.glue_catalog_table_genre_movie_name
+    table_genre_movie = var.glue_catalog_table_genre_movie_name,
+    table_languages = var.glue_catalog_table_languages_name
   })
 }
 
@@ -34,7 +35,8 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_target" {
     type = "tv",
     database = var.glue_catalog_database_name,
     table_tv = var.glue_catalog_table_tv_name,
-    table_genre_tv = var.glue_catalog_table_genre_tv_name
+    table_genre_tv = var.glue_catalog_table_genre_tv_name,
+    table_countries = var.glue_catalog_table_countries_name
   })
 }
 

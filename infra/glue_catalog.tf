@@ -242,3 +242,73 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
     }
   }
 }
+
+resource "aws_glue_catalog_table" "tb_languages_tmdb" {
+  name          = var.glue_catalog_table_languages_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification      = "parquet"
+    EXTERNAL            = "TRUE"
+    has_encrypted_data  = "false"
+  }
+
+  storage_descriptor {
+    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_languages_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "iso_639_1"
+      type = "string"
+    }
+    columns {
+      name = "english_name"
+      type = "string"
+    }
+    columns {
+      name = "name"
+      type = "string"
+    }
+  }
+}
+
+resource "aws_glue_catalog_table" "tb_countries_tmdb" {
+  name          = var.glue_catalog_table_countries_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification      = "parquet"
+    EXTERNAL            = "TRUE"
+    has_encrypted_data  = "false"
+  }
+
+  storage_descriptor {
+    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_countries_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "iso_3166_1"
+      type = "string"
+    }
+    columns {
+      name = "english_name"
+      type = "string"
+    }
+    columns {
+      name = "name"
+      type = "string"
+    }
+  }
+}
