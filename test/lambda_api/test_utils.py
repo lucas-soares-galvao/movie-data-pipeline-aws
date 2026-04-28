@@ -57,7 +57,7 @@ class TestUtils(unittest.TestCase):
 
     @patch("requests.get")
     def test_fetch_discover_tv(self, mock_get):
-        # Simulates empty response for pt-BR and response with series for en-US
+        # Simulates empty response for pt-BR and response with tv for en-US
         mock_response_pt = MagicMock()
         mock_response_pt.json.return_value = {
             "results": [],
@@ -79,11 +79,11 @@ class TestUtils(unittest.TestCase):
             "end_date": "2024-01-31"
         }
 
-        series = utils.fetch_discover("fake_key", period, media_type="tv")
+        tv = utils.fetch_discover("fake_key", period, media_type="tv")
 
-        self.assertEqual(len(series), 2)
-        self.assertEqual(series[0]["id"], 10)
-        self.assertEqual(series[1]["id"], 20)
+        self.assertEqual(len(tv), 2)
+        self.assertEqual(tv[0]["id"], 10)
+        self.assertEqual(tv[1]["id"], 20)
 
     @patch("requests.get")
     def test_fetch_genres_movie(self, mock_get):
