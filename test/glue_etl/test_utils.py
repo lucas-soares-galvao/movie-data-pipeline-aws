@@ -42,7 +42,8 @@ class TestProcessTmdb(unittest.TestCase):
         mock_wr.s3.read_json.return_value = df
 
 
-        process_tmdb(
+
+        result = process_tmdb(
             source_path="s3://bucket-sor/",
             destination_path="s3://bucket-sot/",
             database="db_tmdb",
