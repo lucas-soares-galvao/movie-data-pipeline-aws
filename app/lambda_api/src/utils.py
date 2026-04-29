@@ -26,13 +26,13 @@ def extract_media_tables(event):
     if media_type == "movie":
         table = event.get("table_movies")
         genre_table = event.get("table_genre_movie")
-        configuration_table = event.get("table_languages")
+        configuration_table = event.get("table_configuration_languages")
         configuration = "languages" if configuration_table else ""
         partition_columns = "year,month" if table else ""
     elif media_type == "tv":
         table = event.get("table_tv")
         genre_table = event.get("table_genre_tv")
-        configuration_table = event.get("table_countries")
+        configuration_table = event.get("table_configuration_countries")
         configuration = "countries" if configuration_table else ""
         partition_columns = "year,month" if table else ""
     else:
