@@ -1,0 +1,43 @@
+
+name: Security (Reusable)
+
+permissions:
+  contents: read
+  security-events: write
+
+on:
+  workflow_call:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: |
+          pip install bandit safety checkov
+
+      - run: bandit -r app/ -f json -o bandit-report.json || true
+      - run: safety check --json --output safety-report.json || true
+
+      - run: checkov -d infra --output json --output-file checkov-report.json || true
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+            checkov-report.json

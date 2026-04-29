@@ -1,76 +1,89 @@
-# Nome da Pipeline que aparece no topo da aba Actions do GitHub
 name: Pipeline CI/CD
 
-# Define os gatilhos: a esteira roda sempre que houver um push nessas branches específicas
-# ou quando for disparada manualmente para testes/debug.
 on:
   push:
     branches: [feature/*, develop, main]
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Ambiente de deploy (dev, prod)'
         required: true
-        default: 'dev'
+        default: dev
         type: choice
-        options:
-          - dev
-          - prod
+        options: [dev, prod]
 
-# Permissões padrão para o token do GitHub (necessário para autenticação OIDC/AWS)
 permissions:
   id-token: write
   contents: read
   actions: write
 
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
-  # 1. Job de Testes: Chama o workflow reutilizável que criamos (01_test.yml)
-  # Roda para todas as branches configuradas no 'on'
-  test:
-    uses: ./.github/workflows/01_test.yml
+  context:
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.set.outputs.env }}
+    steps:
+      - id: set
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "env=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "env=dev" >> $GITHUB_OUTPUT
+          else
+            echo "env=prod" >> $GITHUB_OUTPUT
+          fi
 
-  # 3. Job de Terraform: Realiza o deploy da infraestrutura
+  lint:
+    uses: ./.github/workflows/01_lint.yml
+
+  tests:
+    uses: ./.github/workflows/02_tests.yml
+
+  security:
+    uses: ./.github/workflows/03_security.yml
+    permissions:
+      contents: read
+      security-events: write
+
+  build:
+    needs: [lint, tests, security]
+    uses: ./.github/workflows/04_build.yml
+
   terraform:
-    needs: test # Só inicia se o job 'test' terminar com sucesso
-    # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
-    if: |
-      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
-      needs.test.result == 'success'
-    uses: ./.github/workflows/02_terraform.yml
+    needs: build
+    if: github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/05_terraform.yml
     with:
-      # Em execução manual usa o input; em push usa mapeamento por branch
-      environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
+      environment: ${{ needs.context.outputs.env }}
     secrets:
-      # Seleção de secrets por ambiente (manual por input, push por branch)
-      aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
-      aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
-      aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+      aws-assume-role-arn: ${{ needs.context.outputs.env == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ needs.context.outputs.env == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ needs.context.outputs.env == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
-  # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
-    needs: test
+    needs: [lint, tests, security, build]
     if: |
-      startsWith(github.ref_name, 'feature/') &&
-      needs.test.result == 'success'
-    uses: ./.github/workflows/03_pr_auto.yml
-    with:
-      branch_name: ${{ github.ref_name }}
-    permissions: # Permissões extras para criar PR e editar conteúdo
-      contents: write
-      pull-requests: write
-
-  # 6. Auto PR para Ambientes: Promove develop -> main
-  auto-pr-environment:
-    needs: [terraform] # Só inicia se o terraform indicou que a infraestrutura foi destruída (caso de teste de destroy)
-    # Só roda para develop (main não tem destino posterior para promover)
-    if: |
-      github.ref_name == 'develop' &&
-      needs.terraform.result == 'success'
-    uses: ./.github/workflows/03_pr_auto.yml
+      startsWith(github.ref_name, 'feature/')
+    uses: ./.github/workflows/06_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions:
       contents: write
       pull-requests: write
-      
+
+  auto-pr-environment:
+    needs: [lint, tests, security, build, terraform]
+    if: |
+      (github.ref_name == 'develop') &&
+      always() &&
+      needs.terraform.result == 'success'
+    uses: ./.github/workflows/06_pr_auto.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pull-requests: write
