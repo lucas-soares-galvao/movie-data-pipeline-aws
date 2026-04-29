@@ -58,14 +58,14 @@ class TestGlueEtlMain(unittest.TestCase):
 
     _DEFAULT_ARGS = {
         "GLUE_CATALOG_DATABASE": "db_tmdb",
-        "GLUE_CATALOG_TABLE": "movies_sot",
+        "GLUE_CATALOG_TABLE": "movie_sot",
         "S3_BUCKET_SOR": "bucket-sor",
         "S3_BUCKET_SOT": "bucket-sot",
         "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
         "GLUE_CATALOG_DATABASE": "db_tmdb",
         "MEDIA_TYPE": "movie",
         "DATABASE": "db_tmdb",
-        "TABLE": "tb_movies_tmdb",
+        "DISCOVER_TABLE": "tb_discover_movie_tmdb",
         "GENRE_TABLE": "tb_genre_movie_tmdb",
         "CONFIGURATION_TABLE": "tb_configuration_movie_tmdb",
         "PARTITION_COLUMNS": "year,month"
@@ -87,7 +87,7 @@ class TestGlueEtlMain(unittest.TestCase):
         _reload_main()
 
         expected_calls = [
-            dict(source_path='s3://bucket-sor/tmdb/discover/movie/', destination_path='s3://bucket-sot/tb_movies_tmdb/', database='db_tmdb', table='tb_movies_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
+            dict(source_path='s3://bucket-sor/tmdb/discover/movie/', destination_path='s3://bucket-sot/tb_discover_movie_tmdb/', database='db_tmdb', table='tb_discover_movie_tmdb', partition_columns=['year', 'month'], date_column='release_date'),
             dict(source_path='s3://bucket-sor/tmdb/genre/movie/', destination_path='s3://bucket-sot/tb_genre_movie_tmdb/', database='db_tmdb', table='tb_genre_movie_tmdb', partition_columns=[], date_column=None),
             dict(source_path='s3://bucket-sor/tmdb/configuration/movie/', destination_path='s3://bucket-sot/tb_configuration_movie_tmdb/', database='db_tmdb', table='tb_configuration_movie_tmdb', partition_columns=[], date_column=None),
         ]

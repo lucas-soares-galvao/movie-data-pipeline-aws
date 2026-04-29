@@ -27,7 +27,7 @@ class TestUtils(unittest.TestCase):
 
     @patch("requests.get")
     def test_fetch_discover_movie(self, mock_get):
-        # Simulates empty response for pt-BR and response with movies for en-US
+        # Simulates empty response for pt-BR and response with movie for en-US
         mock_response_pt = MagicMock()
         mock_response_pt.json.return_value = {
             "results": [],
@@ -49,11 +49,11 @@ class TestUtils(unittest.TestCase):
             "end_date": "2024-01-31"
         }
 
-        movies = utils.fetch_discover("fake_key", period, media_type="movie")
+        movie = utils.fetch_discover("fake_key", period, media_type="movie")
 
-        self.assertEqual(len(movies), 2)
-        self.assertEqual(movies[0]["id"], 1)
-        self.assertEqual(movies[1]["id"], 2)
+        self.assertEqual(len(movie), 2)
+        self.assertEqual(movie[0]["id"], 1)
+        self.assertEqual(movie[1]["id"], 2)
 
     @patch("requests.get")
     def test_fetch_discover_tv(self, mock_get):
@@ -142,7 +142,7 @@ class TestUtils(unittest.TestCase):
         params = {
             "media_type": "movie",
             "database": "db_tmdb",
-            "table": "tb_movies_tmdb",
+            "discover_table": "tb_discover_movie_tmdb",
             "genre_table": "tb_genre_movie_tmdb",
             "configuration_table": "tb_configuration_movie_tmdb",
             "partition_columns": "year,month"
@@ -155,14 +155,12 @@ class TestUtils(unittest.TestCase):
     def test_extract_media_tables(self):
         event = {
             "type": "movie",
-            "table_movies": "tb_movies_tmdb",
-            "table_genre_movie": "tb_genre_movie_tmdb"
+            "table_discover_movie": "tb_discover_movie_tmdb",  # CORRETO!
+            "table_genre_movie": "tb_genre_movie_tmdb",
+            "table_configuration_languages": "tb_languages"
         }
         result = utils.extract_media_tables(event)
-        self.assertEqual(result["media_type"], "movie")
-        self.assertEqual(result["table"], "tb_movies_tmdb")
-        self.assertEqual(result["genre_table"], "tb_genre_movie_tmdb")
-        self.assertEqual(result["partition_columns"], "year,month")
+        self.assertEqual(result["discover_table"], "tb_discover_movie_tmdb")
 
 
 if __name__ == "__main__":

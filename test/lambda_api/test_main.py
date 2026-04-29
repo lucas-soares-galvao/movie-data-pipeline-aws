@@ -13,7 +13,7 @@ class TestMain(unittest.TestCase):
     @patch("app.lambda_api.main.generate_monthly_periods")
     @patch("app.lambda_api.main.get_tmdb_key")
     @patch("os.getenv")
-    def test_lambda_handler_movies(self, mock_getenv, mock_api_key, mock_periods, mock_process_discover, mock_process_genres, mock_process_configuration, mock_glue):
+    def test_lambda_handler_movie(self, mock_getenv, mock_api_key, mock_periods, mock_process_discover, mock_process_genres, mock_process_configuration, mock_glue):
         mock_getenv.side_effect = lambda key: {
             "TMDB_SECRET_ARN": "arn",
             "S3_BUCKET_SOR": "bucket",

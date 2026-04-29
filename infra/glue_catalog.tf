@@ -1,11 +1,11 @@
-# Glue Catalog for the SOT layer for TMDB movies in Parquet.
+# Glue Catalog for the SOT layer for TMDB movie in Parquet.
 resource "aws_glue_catalog_database" "tmdb_database" {
   name = var.glue_catalog_database_name
 }
 
 
-resource "aws_glue_catalog_table" "tb_movies_tmdb" {
-  name          = var.glue_catalog_table_movies_name
+resource "aws_glue_catalog_table" "tb_movie_tmdb" {
+  name          = var.glue_catalog_table_discover_movie_name
   database_name = aws_glue_catalog_database.tmdb_database.name
   table_type    = "EXTERNAL_TABLE"
 
@@ -16,7 +16,7 @@ resource "aws_glue_catalog_table" "tb_movies_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_movies_name}/"
+    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_discover_movie_name}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -98,7 +98,7 @@ resource "aws_glue_catalog_table" "tb_movies_tmdb" {
 
 
 resource "aws_glue_catalog_table" "tb_tv_tmdb" {
-  name          = var.glue_catalog_table_tv_name
+  name          = var.glue_catalog_table_discover_tv_name
   database_name = aws_glue_catalog_database.tmdb_database.name
   table_type    = "EXTERNAL_TABLE"
 
@@ -109,7 +109,7 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_tv_name}/"
+    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_discover_tv_name}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 

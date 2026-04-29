@@ -44,11 +44,6 @@ resource "aws_lambda_function" "simple_lambda" {
 			GLUE_ETL_JOB_NAME          = var.glue_etl_job_name
 			S3_BUCKET_SOR              = var.s3_bucket_sor
 			S3_BUCKET_AUX              = var.s3_bucket_aux
-			GLUE_CATALOG_DATABASE_NAME = var.glue_catalog_database_name
-    		GLUE_CATALOG_TABLE_MOVIES_NAME   = var.glue_catalog_table_movies_name
-    		GLUE_CATALOG_TABLE_TV_NAME       = var.glue_catalog_table_tv_name
-    		GLUE_CATALOG_TABLE_GENRE_MOVIE_NAME = var.glue_catalog_table_genre_movie_name
-    		GLUE_CATALOG_TABLE_GENRE_TV_NAME = var.glue_catalog_table_genre_tv_name
 		}
 	}
 

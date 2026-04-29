@@ -17,7 +17,7 @@ class TestProcessTmdb(unittest.TestCase):
             source_path="s3://bucket-sor/",
             destination_path="s3://bucket-sot/",
             database="db_tmdb",
-            table="movies_sot",
+            table="movie_sot",
             partition_columns=["year", "month"],
             date_column="release_date"
         )
@@ -45,7 +45,7 @@ class TestProcessTmdb(unittest.TestCase):
             source_path="s3://bucket-sor/",
             destination_path="s3://bucket-sot/",
             database="db_tmdb",
-            table="movies_sot",
+            table="movie_sot",
             partition_columns=None
         )
 
@@ -66,7 +66,7 @@ class TestProcessTmdb(unittest.TestCase):
             source_path="s3://bucket-sor/",
             destination_path="s3://bucket-sot/",
             database="tmdb_dev",
-            table="movies_sot",
+            table="movie_sot",
             partition_columns=["custom"],
             date_column="custom"
         )

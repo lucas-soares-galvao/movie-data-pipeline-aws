@@ -85,21 +85,21 @@ variable "glue_data_quality_job_name" {
 }
 
 variable "glue_catalog_database_name" {
-  description = "Name of the database in Glue Catalog for the TMDB movies table"
+  description = "Name of the database in Glue Catalog for the TMDB movie table"
   type        = string
   default     = "db_tmdb"
 }
 
-variable "glue_catalog_table_movies_name" {
-  description = "Name of the table in Glue Catalog for the TMDB movies table"
+variable "glue_catalog_table_discover_movie_name" {
+  description = "Name of the table in Glue Catalog for the TMDB movie table"
   type        = string
-  default     = "tb_movies_tmdb"
+  default     = "tb_discover_movie_tmdb"
 }
 
-variable "glue_catalog_table_tv_name" {
+variable "glue_catalog_table_discover_tv_name" {
   description = "Name of the table in Glue Catalog for the TMDB TV shows table"
   type        = string
-  default     = "tb_tv_tmdb"
+  default     = "tb_discover_tv_tmdb"
 }
 
 variable "glue_catalog_table_genre_movie_name" {
@@ -117,12 +117,12 @@ variable "glue_catalog_table_genre_tv_name" {
 variable "glue_catalog_table_configuration_languages_name" {
   description = "Name of the table in Glue Catalog for the TMDB languages table"
   type        = string
-  default     = "tb_languages_tmdb"
+  default     = "tb_configuration_languages_tmdb"
   
 }
 
 variable "glue_catalog_table_configuration_countries_name" {
   description = "Name of the table in Glue Catalog for the TMDB countries table"
   type        = string
-  default     = "tb_countries_tmdb"
+  default     = "tb_configuration_countries_tmdb"
 }

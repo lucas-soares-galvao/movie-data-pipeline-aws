@@ -24,26 +24,26 @@ def extract_media_tables(event):
     media_type = event.get("type", "movie")
     database = event.get("database")
     if media_type == "movie":
-        table = event.get("table_movies")
+        discover_table = event.get("table_discover_movie")
         genre_table = event.get("table_genre_movie")
         configuration_table = event.get("table_configuration_languages")
         configuration = "languages" if configuration_table else ""
-        partition_columns = "year,month" if table else ""
+        partition_columns = "year,month" if discover_table else ""
     elif media_type == "tv":
-        table = event.get("table_tv")
+        discover_table = event.get("table_discover_tv")
         genre_table = event.get("table_genre_tv")
         configuration_table = event.get("table_configuration_countries")
         configuration = "countries" if configuration_table else ""
-        partition_columns = "year,month" if table else ""
+        partition_columns = "year,month" if discover_table else ""
     else:
-        table = None
+        discover_table = None
         genre_table = None
         configuration_table = None
         partition_columns = ""
     return {
         "media_type": media_type,
         "database": database,
-        "table": table,
+        "discover_table": discover_table,
         "genre_table": genre_table,
         "configuration_table": configuration_table,
         "configuration": configuration,
@@ -205,7 +205,7 @@ def trigger_glue_etl(job_name, params):
         Arguments={
             "--MEDIA_TYPE": params["media_type"],
             "--DATABASE": params["database"],
-            "--TABLE": params["table"],
+            "--DISCOVER_TABLE": params["discover_table"],
             "--GENRE_TABLE": params["genre_table"],
             "--CONFIGURATION_TABLE": params["configuration_table"],
             "--PARTITION_COLUMNS": params["partition_columns"]

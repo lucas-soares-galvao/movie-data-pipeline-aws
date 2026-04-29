@@ -8,7 +8,7 @@ args = getResolvedOptions(sys.argv, [
     "S3_BUCKET_SOT",
     "MEDIA_TYPE",
     "DATABASE",
-    "TABLE",
+    "DISCOVER_TABLE",
     "GENRE_TABLE",
     "CONFIGURATION_TABLE",
     "PARTITION_COLUMNS",
@@ -19,23 +19,23 @@ args = getResolvedOptions(sys.argv, [
 bucket_sor = args["S3_BUCKET_SOR"]
 bucket_sot = args["S3_BUCKET_SOT"]
 database = args["DATABASE"]
-table_tmdb = args["TABLE"]
-table_genre = args["GENRE_TABLE"]
-table_configuration = args["CONFIGURATION_TABLE"]
+discover_table = args["DISCOVER_TABLE"]
+genre_table = args["GENRE_TABLE"]
+configuration_table = args["CONFIGURATION_TABLE"]
 partition_columns = args.get("PARTITION_COLUMNS", "")
 glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
 media_type = args["MEDIA_TYPE"]
 
 CONFIG = {
     "movie": [
-        {"path": "discover", "table": table_tmdb, "date_column": "release_date"},
-        {"path": "genre", "table": table_genre, "date_column": None},
-        {"path": "configuration", "table": table_configuration, "date_column": None}
+        {"path": "discover", "table": discover_table, "date_column": "release_date"},
+        {"path": "genre", "table": genre_table, "date_column": None},
+        {"path": "configuration", "table": configuration_table, "date_column": None}
     ],
     "tv": [
-        {"path": "discover", "table": table_tmdb, "date_column": "first_air_date"},
-        {"path": "genre", "table": table_genre, "date_column": None},
-        {"path": "configuration", "table": table_configuration, "date_column": None}
+        {"path": "discover", "table": discover_table, "date_column": "first_air_date"},
+        {"path": "genre", "table": genre_table, "date_column": None},
+        {"path": "configuration", "table": configuration_table, "date_column": None}
     ]
 }
 
