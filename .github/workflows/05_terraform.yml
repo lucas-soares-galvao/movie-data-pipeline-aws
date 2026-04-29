@@ -1,0 +1,65 @@
+name: Terraform (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+    secrets:
+      aws-assume-role-arn:
+        required: true
+      aws-statefile-s3-bucket:
+        required: true
+      aws-lock-dynamodb-table:
+        required: true
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-build
+          path: infra/build
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-assume-role-arn }}
+          aws-region: sa-east-1
+
+      - run: |
+          cd infra && terraform init \
+            -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="region=sa-east-1" \
+            -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
+
+      - run: cd infra && terraform validate
+
+      - run: |
+          cd infra
+          terraform plan \
+            -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
+            -out=tfplan
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: infra/tfplan
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: infra/
+
+      - run: |
+          cd infra
+          terraform apply -auto-approve tfplan
