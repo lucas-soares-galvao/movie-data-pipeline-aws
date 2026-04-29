@@ -1,0 +1,46 @@
+name: Auto PR (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      branch_name:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: branch
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == feature/* ]]; then
+            echo "base=develop" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "base=main" >> $GITHUB_OUTPUT
+          else
+            exit 1
+          fi
+
+      - run: |
+          BASE=${{ steps.branch.outputs.base }}
+          HEAD=${{ github.ref_name }}
+
+          PR=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
+
+          if [ -z "$PR" ]; then
+            gh pr create --base "$BASE" --head "$HEAD" \
+              --title "Auto PR: $HEAD → $BASE" \
+              --body "Pipeline automática"
+          else
+            gh pr edit "$PR" \
+              --title "Auto PR: $HEAD → $BASE"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

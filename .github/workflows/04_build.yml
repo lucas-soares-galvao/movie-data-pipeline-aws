@@ -1,0 +1,32 @@
+name: Build Artifacts (Reusable)
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: |
+          python infra/scripts/build_lambda_package.py \
+            --src app/lambda_api \
+            --requirements app/lambda_api/requirements.txt \
+            --dest build/lambda
+
+      - run: |
+          python infra/scripts/build_lambda_package.py \
+            --src app/glue_data_quality \
+            --requirements app/glue_data_quality/requirements.txt \
+            --dest build/glue
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: build/
