@@ -1,7 +1,12 @@
 ## Basic configuration of Terraform and providers used in the project.
 terraform {
   # Remote backend defined in the pipeline via -backend-config.
-  backend "s3" {}
+  backend "s3" {
+    bucket         = ""
+    key            = ""
+    region         = ""
+    dynamodb_table = ""
+  }
 
   required_providers {
     aws = {
