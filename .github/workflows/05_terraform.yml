@@ -36,8 +36,13 @@ jobs:
           aws-region: sa-east-1
 
 
-      - run: |
+
+        - run: |
           echo "[DEBUG] Valor de environment recebido: '${{ inputs.environment }}'"
+          echo "[DEBUG] bucket: '${{ secrets.aws-statefile-s3-bucket }}'"
+          echo "[DEBUG] key: '${{ github.event.repository.name }}'"
+          echo "[DEBUG] region: 'sa-east-1'"
+          echo "[DEBUG] dynamodb_table: '${{ secrets.aws-lock-dynamodb-table }}'"
           ls -l ./infra/envs/${{ inputs.environment }} || echo "Diretório não encontrado"
 
 
