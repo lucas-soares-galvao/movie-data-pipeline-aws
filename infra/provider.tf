@@ -2,9 +2,9 @@
 terraform {
   # Remote backend defined in the pipeline via -backend-config.
   backend "s3" {
-    bucket = ""
-    key    = ""
-    region = ""
+    bucket = "placeholder"
+    key    = "placeholder"
+    region = "placeholder"
   }
 
   required_providers {
