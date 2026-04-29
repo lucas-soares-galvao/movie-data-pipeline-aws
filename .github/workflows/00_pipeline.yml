@@ -45,6 +45,9 @@ jobs:
 
   security:
     uses: ./.github/workflows/03_security.yml
+    permissions:
+      contents: read
+      security-events: write
 
   build:
     needs: [lint, tests, security]
