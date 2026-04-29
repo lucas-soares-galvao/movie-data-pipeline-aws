@@ -1,3 +1,4 @@
 # Dependencias de runtime da lambda API (auto-contido)
 boto3
 requests
+types-requests
