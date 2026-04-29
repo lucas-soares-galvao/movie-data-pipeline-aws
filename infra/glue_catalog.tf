@@ -243,8 +243,8 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
   }
 }
 
-resource "aws_glue_catalog_table" "tb_languages_tmdb" {
-  name          = var.glue_catalog_table_languages_name
+resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
+  name          = var.glue_catalog_table_configuration_languages_name
   database_name = aws_glue_catalog_database.tmdb_database.name
   table_type    = "EXTERNAL_TABLE"
 
@@ -255,7 +255,7 @@ resource "aws_glue_catalog_table" "tb_languages_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_languages_name}/"
+    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_configuration_languages_name}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -278,8 +278,8 @@ resource "aws_glue_catalog_table" "tb_languages_tmdb" {
   }
 }
 
-resource "aws_glue_catalog_table" "tb_countries_tmdb" {
-  name          = var.glue_catalog_table_countries_name
+resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
+  name          = var.glue_catalog_table_configuration_countries_name
   database_name = aws_glue_catalog_database.tmdb_database.name
   table_type    = "EXTERNAL_TABLE"
 
@@ -290,7 +290,7 @@ resource "aws_glue_catalog_table" "tb_countries_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_countries_name}/"
+    location      = "s3://${var.s3_bucket_sot}/${var.glue_catalog_table_configuration_countries_name}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
