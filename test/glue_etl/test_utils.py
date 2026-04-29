@@ -1,7 +1,7 @@
 """Unit tests for Glue ETL utility functions."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 import pandas as pd
 
 from app.glue_etl.src.utils import process_tmdb
@@ -13,7 +13,7 @@ class TestProcessTmdb(unittest.TestCase):
         df = self._base_df()
         mock_wr.s3.read_json.return_value = df
 
-        result = process_tmdb(
+        process_tmdb(
             source_path="s3://bucket-sor/",
             destination_path="s3://bucket-sot/",
             database="db_tmdb",

@@ -1,4 +1,9 @@
+
 name: Security (Reusable)
+
+permissions:
+  contents: read
+  security-events: write
 
 on:
   workflow_call:

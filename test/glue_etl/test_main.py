@@ -4,7 +4,7 @@
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
  # Glue ETL main.py uses 'from src.utils import ...' without a qualified package,
 # so app/glue_etl needs to be in sys.path during import.
@@ -62,7 +62,6 @@ class TestGlueEtlMain(unittest.TestCase):
         "S3_BUCKET_SOR": "bucket-sor",
         "S3_BUCKET_SOT": "bucket-sot",
         "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
-        "GLUE_CATALOG_DATABASE": "db_tmdb",
         "MEDIA_TYPE": "movie",
         "DATABASE": "db_tmdb",
         "DISCOVER_TABLE": "tb_discover_movie_tmdb",

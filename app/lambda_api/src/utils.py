@@ -2,7 +2,7 @@
 
 import json
 import calendar
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import requests
 import boto3

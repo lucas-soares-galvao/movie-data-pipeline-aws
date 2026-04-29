@@ -1,6 +1,6 @@
 
 import os
-from datetime import date, timedelta
+from datetime import date
 from src.utils import (
     get_tmdb_key,
     extract_media_tables,

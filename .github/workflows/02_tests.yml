@@ -19,8 +19,12 @@ jobs:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
 
-      - run: |
+        - run: |
           pip install pytest pytest-cov
+          # Instala dependências de runtime de todas as apps
+          find app -name 'requirements.txt' -exec pip install -r {} \;
+          # Instala dependências de teste de todos os módulos de teste
+          find test -name 'requirements_tests.txt' -exec pip install -r {} \;
 
       - run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
