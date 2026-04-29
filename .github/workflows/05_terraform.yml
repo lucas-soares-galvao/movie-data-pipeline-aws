@@ -40,14 +40,15 @@ jobs:
           echo "[DEBUG] Valor de environment recebido: '${{ inputs.environment }}'"
           ls -l ./infra/envs/${{ inputs.environment }} || echo "Diretório não encontrado"
 
+
       - run: |
-          cd infra && terraform init \
+          cd infra
+          terraform init \
             -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -backend-config="key=${{ github.event.repository.name }}" \
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
-
-      - run: cd infra && terraform validate
+          terraform validate
 
       - run: |
           cd infra
