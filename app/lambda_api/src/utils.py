@@ -134,17 +134,18 @@ def fetch_genres(api_key, media_type="movie"):
 
 
 def fetch_configuration(api_key, configuration_type="languages"):
-    if configuration_type == "languages":
-        language = "pt-BR"
-        url = f"https://api.themoviedb.org/3/configuration/{configuration_type}/languages={language}"
-    elif configuration_type == "countries":
-        url = f"https://api.themoviedb.org/3/configuration/{configuration_type}"
-    else:
-        raise ValueError("Invalid configuration type")
     
-    params = {
-        "api_key": api_key
-    }
+    url = f"https://api.themoviedb.org/3/configuration/{configuration_type}"
+    
+    if configuration_type == "languages":
+        params = {
+            "api_key": api_key,
+            "language": "pt-BR"
+        }
+    elif configuration_type == "countries":
+        params = {
+            "api_key": api_key
+        }
     response = requests.get(url, params=params)
     response.raise_for_status()
     return response.json()
@@ -208,6 +209,7 @@ def trigger_glue_etl(job_name, params):
             "--DISCOVER_TABLE": params["discover_table"],
             "--GENRE_TABLE": params["genre_table"],
             "--CONFIGURATION_TABLE": params["configuration_table"],
+            "--CONFIGURATION": params["configuration"],
             "--PARTITION_COLUMNS": params["partition_columns"]
         }
     )

@@ -22,6 +22,7 @@ database = args["DATABASE"]
 discover_table = args["DISCOVER_TABLE"]
 genre_table = args["GENRE_TABLE"]
 configuration_table = args["CONFIGURATION_TABLE"]
+configuration = args["CONFIGURATION"]
 partition_columns = args.get("PARTITION_COLUMNS", "")
 glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
 media_type = args["MEDIA_TYPE"]
@@ -51,8 +52,13 @@ for cfg in tables_config:
         else []
     )
 
+    if cfg["path"] == "configuration":
+        s3_source_path = f"s3://{bucket_sor}/tmdb/{cfg['path']}/{configuration}/"
+    else:
+        s3_source_path = f"s3://{bucket_sor}/tmdb/{cfg['path']}/{media_type}/"
+
     result = process_tmdb(
-        source_path=f"s3://{bucket_sor}/tmdb/{cfg['path']}/{media_type}/",
+        source_path=s3_source_path,
         destination_path=f"s3://{bucket_sot}/{cfg['table']}/",
         database=database,
         table=table,

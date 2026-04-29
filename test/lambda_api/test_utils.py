@@ -145,6 +145,7 @@ class TestUtils(unittest.TestCase):
             "discover_table": "tb_discover_movie_tmdb",
             "genre_table": "tb_genre_movie_tmdb",
             "configuration_table": "tb_configuration_movie_tmdb",
+            "configuration": "languages",
             "partition_columns": "year,month"
         }
         result = utils.trigger_glue_etl("job_test", params)
