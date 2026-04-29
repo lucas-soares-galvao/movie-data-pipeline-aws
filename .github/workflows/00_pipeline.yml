@@ -65,8 +65,11 @@ jobs:
       aws-lock-dynamodb-table: ${{ needs.context.outputs.env == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
   auto-pr:
-    needs: [lint, tests]
-    if: startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop'
+    needs: [lint, tests, security, build, terraform]
+    if: |
+      (startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop') &&
+      always() &&
+      needs.terraform.result == 'success'
     uses: ./.github/workflows/06_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
