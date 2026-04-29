@@ -35,6 +35,11 @@ jobs:
           role-to-assume: ${{ secrets.aws-assume-role-arn }}
           aws-region: sa-east-1
 
+
+      - run: |
+          echo "[DEBUG] Valor de environment recebido: '${{ inputs.environment }}'"
+          ls -l ./infra/envs/${{ inputs.environment }} || echo "Diretório não encontrado"
+
       - run: |
           cd infra && terraform init \
             -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
