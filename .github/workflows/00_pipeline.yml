@@ -64,10 +64,21 @@ jobs:
       aws-statefile-s3-bucket: ${{ needs.context.outputs.env == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ needs.context.outputs.env == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
-  auto-pr:
+  auto-pr-feature:
+    needs: [lint, tests, security, build]
+    if: |
+      startsWith(github.ref_name, 'feature/')
+    uses: ./.github/workflows/06_pr_auto.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+  auto-pr-environment:
     needs: [lint, tests, security, build, terraform]
     if: |
-      (startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop') &&
+      (github.ref_name == 'develop') &&
       always() &&
       needs.terraform.result == 'success'
     uses: ./.github/workflows/06_pr_auto.yml
