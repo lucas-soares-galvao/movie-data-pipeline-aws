@@ -11,6 +11,7 @@ args = getResolvedOptions(sys.argv, [
     "DISCOVER_TABLE",
     "GENRE_TABLE",
     "CONFIGURATION_TABLE",
+    "CONFIGURATION",
     "PARTITION_COLUMNS",
     "GLUE_DATA_QUALITY_JOB_NAME"
 ])
