@@ -2,10 +2,9 @@
 terraform {
   # Remote backend defined in the pipeline via -backend-config.
   backend "s3" {
-    bucket         = ""
-    key            = ""
-    region         = ""
-    dynamodb_table = ""
+    bucket = "placeholder"
+    key    = "placeholder"
+    region = "placeholder"
   }
 
   required_providers {
