@@ -26,7 +26,6 @@ s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
 datasource = glueContext.create_dynamic_frame.from_catalog(
     database=database,
     table_name=table
-
 )
 
 # Regras DQDL dinâmicas por tabela usando função utilitária

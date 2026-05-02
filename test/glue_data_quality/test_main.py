@@ -1,22 +1,26 @@
-"""Tests for Glue Data Quality main module."""
+"""Tests for Glue Data Quality rulesets."""
 
 import unittest
+from app.glue_data_quality.src.rulesets_dq import rulesets_dq
 
-from app.glue_data_quality.main import validate_dataset
+class TestRulesetsDQ(unittest.TestCase):
+    def test_countries_ruleset(self):
+        rules = rulesets_dq["tb_configuration_countries_tmdb"]
+        self.assertIn('IsComplete "iso_3166_1"', rules)
+        self.assertIn('IsUnique "iso_3166_1"', rules)
+        self.assertIn('RowCount > 0', rules)
 
+    def test_languages_ruleset(self):
+        rules = rulesets_dq["tb_configuration_languages_tmdb"]
+        self.assertIn('IsComplete "iso_639_1"', rules)
+        self.assertIn('IsUnique "iso_639_1"', rules)
+        self.assertIn('RowCount > 0', rules)
 
-class TestDataQualityMain(unittest.TestCase):
-    """Validate user-facing messages returned by validate_dataset."""
-
-    def test_validate_dataset_approved(self):
-        columns = {"id", "title", "release_year", "genre"}
-        expected = "Dataset approved in data quality validation."
-        self.assertEqual(validate_dataset(columns), expected)
-
-    def test_validate_dataset_rejected(self):
-        columns = {"id", "title"}
-        expected = "Dataset rejected in data quality validation."
-        self.assertEqual(validate_dataset(columns), expected)
+    def test_genre_movie_ruleset(self):
+        rules = rulesets_dq["tb_genre_movie_tmdb"]
+        self.assertIn('IsComplete "id"', rules)
+        self.assertIn('IsUnique "id"', rules)
+        self.assertIn('IsComplete "name"', rules)
 
 
 if __name__ == "__main__":
