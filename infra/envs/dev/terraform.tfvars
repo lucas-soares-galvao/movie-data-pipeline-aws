@@ -16,3 +16,8 @@ lambda_api_name = "lambda-api-dev"
 
 glue_etl_job_name = "glue-etl-dev"
 glue_data_quality_job_name = "glue-data-quality-dev"
+
+eventbridge_notification_email        = "lsgalvao1000@gmail.com"
+lambda_notification_email             = "lsgalvao1000@gmail.com"
+glue_etl_notification_email           = "lsgalvao1000@gmail.com"
+glue_data_quality_notification_email  = "lsgalvao1000@gmail.com"
