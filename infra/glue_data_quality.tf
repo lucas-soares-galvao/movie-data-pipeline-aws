@@ -29,6 +29,8 @@ resource "aws_glue_job" "data_quality_job" {
     "--custom-logGroup-prefix"           = "/${local.envs.glue_data_quality_job_name}"
     "--enable-metrics"                   = ""
     "--enable-auto-scaling"              = "true"
+    "--S3_BUCKET_DATA_QUALITY"           = local.envs.s3_bucket_data_quality
+    "--ENVIRONMENT"                      = var.env
   }
 
 

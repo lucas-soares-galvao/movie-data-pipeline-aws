@@ -1,22 +1,27 @@
-"""Unit tests for Data Quality helper functions."""
+"""Unit tests for Data Quality utility functions."""
 
 import unittest
+from app.glue_data_quality.src.utils import rules_list_to_dqdl
 
-from app.glue_data_quality.src.utils import has_required_columns
+class TestRulesListToDQDL(unittest.TestCase):
+    def test_generates_dqdl_for_nonempty_list(self):
+        rules = [
+            'IsComplete "id"',
+            'IsUnique "id"',
+            'RowCount > 0'
+        ]
+        expected = (
+            'Rules = [\n'
+            '    IsComplete "id",\n'
+            '    IsUnique "id",\n'
+            '    RowCount > 0\n'
+            ']'
+        )
+        self.assertEqual(rules_list_to_dqdl(rules), expected)
 
-
-class TestHasRequiredColumns(unittest.TestCase):
-    """Ensures that the required columns check works as expected."""
-
-    def test_returns_true_when_all_columns_exist(self):
-        columns = {"id", "title", "release_year", "genre"}
-        required_columns = {"id", "title", "release_year"}
-        self.assertTrue(has_required_columns(columns, required_columns))
-
-    def test_returns_false_when_column_is_missing(self):
-        columns = {"id", "title"}
-        required_columns = {"id", "title", "release_year"}
-        self.assertFalse(has_required_columns(columns, required_columns))
+    def test_generates_minimal_dqdl_for_empty_list(self):
+        expected = 'Rules = [\n    RowCount > 0\n]'
+        self.assertEqual(rules_list_to_dqdl([]), expected)
 
 
 if __name__ == "__main__":

@@ -38,7 +38,7 @@ def _reload_main():
 class TestGlueEtlMain(unittest.TestCase):
     def test_calls_glue_data_quality_with_partitions(self):
         mock_src_utils = _setup_mocks(self._DEFAULT_ARGS)
-        # Simulate process_tmdb returning partitions for discover and empty for genre
+        # Simulate process_tmdb returning partitions for discover and empty for genre/configuration
         mock_src_utils.process_tmdb.side_effect = [
             {"processed_rows": 10, "partitions": ["year=2023/month=01", "year=2023/month=02"]},
             {"processed_rows": 5, "partitions": []},
@@ -49,12 +49,39 @@ class TestGlueEtlMain(unittest.TestCase):
         _reload_main()
 
         expected_calls = [
-            (('glue-data-quality-dev',), {'partition_columns': 'year,month', 'partition_values': ["year=2023/month=01", "year=2023/month=02"]}),
-            (('glue-data-quality-dev',), {'partition_columns': '', 'partition_values': None}),
-            (('glue-data-quality-dev',), {'partition_columns': '', 'partition_values': None})
+            (
+                'glue-data-quality-dev',
+                {
+                    'database': 'db_tmdb',
+                    'table': 'tb_discover_movie_tmdb',
+                    'partition_columns': 'year,month',
+                    'partition_values': ["year=2023/month=01", "year=2023/month=02"]
+                }
+            ),
+            (
+                'glue-data-quality-dev',
+                {
+                    'database': 'db_tmdb',
+                    'table': 'tb_genre_movie_tmdb',
+                    'partition_columns': '',
+                    'partition_values': None
+                }
+            ),
+            (
+                'glue-data-quality-dev',
+                {
+                    'database': 'db_tmdb',
+                    'table': 'tb_configuration_movie_tmdb',
+                    'partition_columns': '',
+                    'partition_values': None
+                }
+            )
         ]
-        actual_calls = [(c.args, c.kwargs) for c in mock_src_utils.call_glue_data_quality.call_args_list]
-        self.assertEqual(actual_calls, expected_calls)
+        actual_calls = [(c.args[0], c.kwargs) for c in mock_src_utils.call_glue_data_quality.call_args_list]
+        self.assertEqual(len(actual_calls), len(expected_calls))
+        for (actual_job, actual_kwargs), (expected_job, expected_kwargs) in zip(actual_calls, expected_calls):
+            self.assertEqual(actual_job, expected_job)
+            self.assertDictEqual(actual_kwargs, expected_kwargs)
 
     _DEFAULT_ARGS = {
         "GLUE_CATALOG_DATABASE": "db_tmdb",

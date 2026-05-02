@@ -1,22 +1,53 @@
-"""Entry point for the Glue Data Quality job."""
+from src.rulesets_dq import rulesets_dq
+from src.utils import rules_list_to_dqdl
+import sys
+from awsgluedq.transforms import EvaluateDataQuality
+from awsglue.context import GlueContext
+from pyspark.context import SparkContext
+from awsglue.utils import getResolvedOptions
 
-from app.glue_data_quality.src.utils import has_required_columns
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
 
-REQUIRED_COLUMNS = {"id", "title", "release_year"}
+args = getResolvedOptions(sys.argv, [
+    "DATABASE",
+    "TABLE",
+    "PARTITIONS",
+    "S3_BUCKET_DATA_QUALITY"
+])
 
+database = args["DATABASE"]
+table = args["TABLE"]
+partition_columns = args.get("PARTITIONS", "")
+s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
 
-def validate_dataset(columns):
-    """Return a readable status for required-column validation."""
-    if has_required_columns(columns, REQUIRED_COLUMNS):
-        return "Dataset approved in data quality validation."
-    return "Dataset rejected in data quality validation."
+# Lendo tabela do catálogo
+datasource = glueContext.create_dynamic_frame.from_catalog(
+    database=database,
+    table_name=table
+)
 
+# Regras DQDL dinâmicas por tabela usando função utilitária
+if table in rulesets_dq:
+    ruleset = rules_list_to_dqdl(rulesets_dq[table])
+else:
+    ruleset = rules_list_to_dqdl([])  # fallback mínimo
 
-def main():
-    # Simple local run example.
-    result = validate_dataset({"id", "title", "release_year", "genre"})
-    print(result)
+# Executa validação
+dq_results = EvaluateDataQuality.apply(
+    frame=datasource,
+    ruleset=ruleset,
+    publishing_options={
+        "dataQualityEvaluationContext": "meu_contexto",
+        "enableDataQualityCloudWatchMetrics": True,
+        "enableDataQualityResultsPublishing": True,
+    },
+    job_name="GlueDataQualityJob",
+    database=database,
+    table=table,
+    partition_columns=partition_columns.split(",") if partition_columns else [],
+)
 
-
-if __name__ == "__main__":
-    main()
+# Escreve resultados em S3
+dq_results.toDF().write.mode("overwrite").parquet(f"s3://{s3_bucket_dq}/dq-results/")
