@@ -10,7 +10,7 @@ resource "aws_cloudwatch_metric_alarm" "glue_data_quality_failed_alarm" {
 	threshold           = 0
 	alarm_description   = "Alerta por e-mail quando o Glue Data Quality falha."
 	dimensions = {
-		JobName = var.glue_data_quality_job_name
+		JobName = local.envs.glue_data_quality_job_name
 	}
 	alarm_actions = [aws_sns_topic.glue_data_quality_notifications.arn]
 }
@@ -27,7 +27,7 @@ resource "aws_cloudwatch_metric_alarm" "glue_data_quality_success_alarm" {
 	threshold           = 0
 	alarm_description   = "Notifica por e-mail quando o Glue Data Quality executa com sucesso."
 	dimensions = {
-		JobName = var.glue_data_quality_job_name
+		JobName = local.envs.glue_data_quality_job_name
 	}
 	alarm_actions = [aws_sns_topic.glue_data_quality_notifications.arn]
 	ok_actions    = [aws_sns_topic.glue_data_quality_notifications.arn]
@@ -45,7 +45,7 @@ resource "aws_cloudwatch_metric_alarm" "glue_etl_failed_alarm" {
 	threshold           = 0
 	alarm_description   = "Alerta por e-mail quando o Glue ETL falha."
 	dimensions = {
-		JobName = var.glue_etl_job_name
+		JobName = local.envs.glue_etl_job_name
 	}
 	alarm_actions = [aws_sns_topic.glue_etl_notifications.arn]
 }
@@ -62,7 +62,7 @@ resource "aws_cloudwatch_metric_alarm" "glue_etl_success_alarm" {
 	threshold           = 0
 	alarm_description   = "Notifica por e-mail quando o Glue ETL executa com sucesso."
 	dimensions = {
-		JobName = var.glue_etl_job_name
+		JobName = local.envs.glue_etl_job_name
 	}
 	alarm_actions = [aws_sns_topic.glue_etl_notifications.arn]
 	ok_actions    = [aws_sns_topic.glue_etl_notifications.arn]
@@ -80,7 +80,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
 	threshold           = 0
 	alarm_description   = "Alerta por e-mail quando a Lambda apresenta erro."
 	dimensions = {
-		FunctionName = var.lambda_api_name
+		FunctionName = local.envs.lambda_api_name
 	}
 	alarm_actions = [aws_sns_topic.lambda_notifications.arn]
 }
@@ -97,7 +97,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_success_alarm" {
 	threshold           = 0
 	alarm_description   = "Notifica por e-mail quando a Lambda executa com sucesso."
 	dimensions = {
-		FunctionName = var.lambda_api_name
+		FunctionName = local.envs.lambda_api_name
 	}
 	alarm_actions = [aws_sns_topic.lambda_notifications.arn]
 	ok_actions    = [aws_sns_topic.lambda_notifications.arn]
