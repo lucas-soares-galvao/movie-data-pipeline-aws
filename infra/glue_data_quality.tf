@@ -1,6 +1,6 @@
 # Defines the Glue Job responsible for running the Data Quality pipeline.
 resource "aws_glue_job" "data_quality_job" {
-  name              = var.glue_data_quality_job_name
+  name              = "${var.glue_data_quality_job_name}-${var.env}"
   description       = "Glue Data Quality Job"
   role_arn          = aws_iam_role.glue_job_role.arn
   glue_version      = "5.0"
@@ -13,7 +13,7 @@ resource "aws_glue_job" "data_quality_job" {
   command {
     # Main job script in the auxiliary bucket.
     script_location = "s3://${var.s3_bucket_aux}/${var.glue_data_quality_job_name}/app/main.py"
-    name            = "glueetl"
+    name            = "glueetl-${var.env}"
     python_version  = "3"
   }
 
