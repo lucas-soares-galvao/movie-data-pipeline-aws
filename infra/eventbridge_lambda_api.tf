@@ -19,10 +19,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_target" {
 
   input = jsonencode({
     type = "movie",
-    database = local.envs.glue_catalog_database_name,
-    table_discover_movie = local.envs.glue_catalog_table_discover_movie_name,
-    table_genre_movie = local.envs.glue_catalog_table_genre_movie_name,
-    table_configuration_languages = local.envs.glue_catalog_table_configuration_languages_name
+    database = var.glue_catalog_database_name,
+    table_discover_movie = var.glue_catalog_table_discover_movie_name,
+    table_genre_movie = var.glue_catalog_table_genre_movie_name,
+    table_configuration_languages = var.glue_catalog_table_configuration_languages_name
   })
 }
 
@@ -33,10 +33,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_target" {
 
   input = jsonencode({
     type = "tv",
-    database = local.envs.glue_catalog_database_name,
-    table_discover_tv = local.envs.glue_catalog_table_discover_tv_name,
-    table_genre_tv = local.envs.glue_catalog_table_genre_tv_name,
-    table_configuration_countries = local.envs.glue_catalog_table_configuration_countries_name
+    database = var.glue_catalog_database_name,
+    table_discover_tv = var.glue_catalog_table_discover_tv_name,
+    table_genre_tv = var.glue_catalog_table_genre_tv_name,
+    table_configuration_countries = var.glue_catalog_table_configuration_countries_name
   })
 }
 
