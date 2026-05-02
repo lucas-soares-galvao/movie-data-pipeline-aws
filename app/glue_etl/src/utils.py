@@ -47,10 +47,12 @@ def process_tmdb(
         "partitions": partition_values
     }
 
-def call_glue_data_quality(job_name, partition_columns=None, partition_values=None):
+def call_glue_data_quality(job_name, database, table, partition_columns=None, partition_values=None):
     glue = boto3.client("glue")
 
     arguments = {
+        "--DATABASE": database,
+        "--TABLE": table,
         "--PARTITIONS": partition_columns if partition_columns else ""
     }
     if partition_values:

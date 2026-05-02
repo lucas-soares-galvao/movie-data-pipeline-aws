@@ -23,13 +23,7 @@ locals {
       s3_bucket_sor = "${var.s3_bucket_sor}-${var.env}"
       s3_bucket_sot = "${var.s3_bucket_sot}-${var.env}"
       s3_bucket_spec = "${var.s3_bucket_spec}-${var.env}"
-      glue_catalog_database_name = "${var.glue_catalog_database_name}-${var.env}"
-      glue_catalog_table_discover_movie_name = "${var.glue_catalog_table_discover_movie_name}-${var.env}"
-      glue_catalog_table_discover_tv_name = "${var.glue_catalog_table_discover_tv_name}-${var.env}"
-      glue_catalog_table_genre_movie_name = "${var.glue_catalog_table_genre_movie_name}-${var.env}"
-      glue_catalog_table_genre_tv_name = "${var.glue_catalog_table_genre_tv_name}-${var.env}"
-      glue_catalog_table_configuration_languages_name = "${var.glue_catalog_table_configuration_languages_name}-${var.env}"
-      glue_catalog_table_configuration_countries_name = "${var.glue_catalog_table_configuration_countries_name}-${var.env}"
+      s3_bucket_data_quality = "${var.s3_bucket_data_quality}-${var.env}"
     }
 }
 

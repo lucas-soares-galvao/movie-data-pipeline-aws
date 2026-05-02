@@ -1,7 +1,15 @@
-"""Shared utility functions for the Data Quality app."""
-
-
-
-def has_required_columns(columns, required_columns):
-    """Checks if all required columns are present in the dataset."""
-    return set(required_columns).issubset(set(columns))
+def rules_list_to_dqdl(rules_list):
+    """
+    Converte uma lista de regras em string DQDL para o Glue Data Quality.
+    Exemplo:
+        ["IsComplete 'id'", "RowCount > 0"]
+    vira:
+        Rules = [
+            IsComplete 'id',
+            RowCount > 0
+        ]
+    """
+    if not rules_list:
+        return "Rules = [\n    RowCount > 0\n]"
+    rules = ",\n    ".join(rules_list)
+    return f"Rules = [\n    {rules}\n]"

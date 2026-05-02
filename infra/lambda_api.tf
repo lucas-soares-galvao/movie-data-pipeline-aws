@@ -44,6 +44,7 @@ resource "aws_lambda_function" "simple_lambda" {
 			GLUE_ETL_JOB_NAME          = local.envs.glue_etl_job_name
 			S3_BUCKET_SOR              = local.envs.s3_bucket_sor
 			S3_BUCKET_AUX              = local.envs.s3_bucket_aux
+			ENVIRONMENT                = var.env
 		}
 	}
 

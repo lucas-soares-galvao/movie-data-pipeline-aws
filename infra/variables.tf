@@ -76,6 +76,12 @@ variable "s3_bucket_spec" {
   default     = "lsg-sa-east-1-bucket-spec"
 }
 
+variable "s3_bucket_data_quality" {
+  description = "Main bucket name for input/output data processed by Glue Data Quality"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-data-quality"
+}
+
 ################ SECRETS MANAGER ############
 variable "tmdb_secret_arn" {
   description = "ARN of the secret in Secrets Manager with the TMDB key"

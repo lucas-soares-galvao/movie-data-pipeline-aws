@@ -35,6 +35,7 @@ resource "aws_glue_job" "etl_job" {
     "--S3_BUCKET_SOR"                    = local.envs.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = local.envs.s3_bucket_sot
     "--GLUE_DATA_QUALITY_JOB_NAME"       = local.envs.glue_data_quality_job_name
+    "--ENVIRONMENT"                      = var.env
   }
 
   # Ensure that artifacts and permissions exist before creating the job.

@@ -72,12 +72,16 @@ for cfg in tables_config:
     if partition_columns_list:
         call_glue_data_quality(
             glue_data_quality_job_name,
+            database=database,
+            table=table,
             partition_columns=",".join(partition_columns_list),
             partition_values=partitions
         )
     else:
         call_glue_data_quality(
             glue_data_quality_job_name,
+            database=database,
+            table=table,
             partition_columns="",
             partition_values=None
         )

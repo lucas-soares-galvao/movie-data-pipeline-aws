@@ -45,3 +45,10 @@ resource "aws_s3_bucket" "spec_bucket" {
   bucket = local.envs.s3_bucket_spec
   force_destroy = true
 }
+
+
+# Main bucket for input/output data processed by Glue ETL.
+resource "aws_s3_bucket" "data_quality_bucket" {
+  bucket = local.envs.s3_bucket_data_quality
+  force_destroy = true
+}
