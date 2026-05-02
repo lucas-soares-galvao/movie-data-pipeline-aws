@@ -1,11 +1,7 @@
-## Basic configuration of Terraform and providers used in the project.
+# Configuracao basica do Terraform e dos providers usados no projeto.
 terraform {
-  # Remote backend defined in the pipeline via -backend-config.
-  backend "s3" {
-    bucket = "placeholder"
-    key    = "placeholder"
-    region = "placeholder"
-  }
+  # Backend remoto definido no pipeline via -backend-config.
+  backend "s3" {}
 
   required_providers {
     aws = {
@@ -15,14 +11,10 @@ terraform {
     archive = {
       source = "hashicorp/archive"
     }
-
-    null = {
-      source = "hashicorp/null"
-    }
   }
 }
 
 provider "aws" {
-  # Default region to create/manage resources.
+  # Regiao padrao para criar/gerenciar os recursos.
   region = "sa-east-1"
 }
