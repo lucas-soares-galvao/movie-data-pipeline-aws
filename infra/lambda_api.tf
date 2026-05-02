@@ -23,7 +23,7 @@ data "archive_file" "lambda_bundle" {
 
 resource "aws_s3_object" "lambda_deploy_package" {
 	bucket = aws_s3_bucket.auxiliary_bucket.id
-	key    = "${var.lambda_api_name}/lambda_bundle.zip"
+	key    = "${local.envs.lambda_api_name}/lambda_bundle.zip"
 	source = data.archive_file.lambda_bundle.output_path
 	etag   = data.archive_file.lambda_bundle.output_md5
 	depends_on = [aws_s3_bucket.auxiliary_bucket]
@@ -31,7 +31,7 @@ resource "aws_s3_object" "lambda_deploy_package" {
 
 
 resource "aws_lambda_function" "simple_lambda" {
-	function_name = "${var.lambda_api_name}-${var.env}"
+	function_name = local.envs.lambda_api_name
 	role          = aws_iam_role.lambda_function.arn
 	handler       = "main.lambda_handler"
 	runtime       = "python3.11"
@@ -41,13 +41,13 @@ resource "aws_lambda_function" "simple_lambda" {
 	environment {
 		variables = {
 			TMDB_SECRET_ARN            = var.tmdb_secret_arn
-			GLUE_ETL_JOB_NAME          = var.glue_etl_job_name
-			S3_BUCKET_SOR              = var.s3_bucket_sor
-			S3_BUCKET_AUX              = var.s3_bucket_aux
+			GLUE_ETL_JOB_NAME          = local.envs.glue_etl_job_name
+			S3_BUCKET_SOR              = local.envs.s3_bucket_sor
+			S3_BUCKET_AUX              = local.envs.s3_bucket_aux
 		}
 	}
 
-	s3_bucket        = var.s3_bucket_aux
+	s3_bucket        = local.envs.s3_bucket_aux
 	s3_key           = aws_s3_object.lambda_deploy_package.key
 	source_code_hash = data.archive_file.lambda_bundle.output_base64sha256
 
