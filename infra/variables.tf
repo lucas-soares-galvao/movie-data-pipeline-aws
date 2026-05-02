@@ -1,20 +1,3 @@
-variable "glue_data_quality_notification_email" {
-  description = "E-mail para receber notificações de execução do Glue Data Quality"
-  type        = string
-}
-variable "glue_etl_notification_email" {
-  description = "E-mail para receber notificações de execução do Glue ETL"
-  type        = string
-}
-variable "lambda_notification_email" {
-  description = "E-mail para receber notificações de execução da Lambda"
-  type        = string
-}
-variable "eventbridge_notification_email" {
-  description = "E-mail para receber notificações de sucesso do EventBridge"
-  type        = string
-}
-
 ############# GENERAL VARIABLES ##############
 variable "env" {
   # Logical name of the environment, used for naming and resource isolation.
@@ -22,41 +5,75 @@ variable "env" {
   type        = string
 }
 
+variable "account_id" {
+  description = "AWS account ID"
+  type        = string
+}
+
 ############## IAM Roles and Policies ##############
 variable "iam_role_glue" {
   description = "IAM role name for Glue jobs"
   type        = string
+  default     = "glue-job-role-etl"
 }
 
 variable "iam_role_lambda" {
   description = "IAM role name for Lambda function"
   type        = string
+  default     = "lambda-role"
+}
+
+############# ALARMS VARIABLES ##############
+variable "glue_data_quality_notification_email" {
+  description = "E-mail para receber notificações de execução do Glue Data Quality"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+variable "glue_etl_notification_email" {
+  description = "E-mail para receber notificações de execução do Glue ETL"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+variable "lambda_notification_email" {
+  description = "E-mail para receber notificações de execução da Lambda"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+variable "eventbridge_notification_email" {
+  description = "E-mail para receber notificações de sucesso do EventBridge"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
 }
 
 ############## S3 Buckets ##############
 variable "s3_bucket_aux" {
   description = "Auxiliary bucket name for Python code"
   type        = string
+  default     = "lsg-sa-east-1-bucket-aux"
 }
 
 variable "s3_bucket_temp" {
   description = "Temporary bucket name for Athena scripts"
   type        = string
+  default     = "lsg-sa-east-1-bucket-temp"
 }
 
 variable "s3_bucket_sor" {
   description = "Main bucket name for input/output data processed by Lambda"
   type        = string
+  default     = "lsg-sa-east-1-bucket-sor"
 }
 
 variable "s3_bucket_sot" {
   description = "Main bucket name for input/output data processed by Glue ETL"
   type        = string
+  default     = "lsg-sa-east-1-bucket-sot"
 }
 
 variable "s3_bucket_spec" {
   description = "Main bucket name for input/output data processed by Glue ETL"
   type        = string
+  default     = "lsg-sa-east-1-bucket-spec"
 }
 
 ################ SECRETS MANAGER ############
@@ -75,6 +92,7 @@ variable "lambda_api_path_app" {
 variable "lambda_api_name" {
   description = "Name of the Lambda function to be created per environment"
   type        = string
+  default     = "lambda-api"
 }
 
 ############### GLUE ##############
@@ -87,6 +105,7 @@ variable "glue_etl_path_app" {
 variable "glue_etl_job_name" {
   description = "Name of the Glue ETL job to be created per environment"
   type        = string
+  default     = "glue-etl"
 }
 
 variable "glue_data_quality_path_app" {
@@ -98,6 +117,7 @@ variable "glue_data_quality_path_app" {
 variable "glue_data_quality_job_name" {
   description = "Name of the Glue Data Quality job to be created per environment"
   type        = string
+  default     = "glue-data-quality"
 }
 
 variable "glue_catalog_database_name" {

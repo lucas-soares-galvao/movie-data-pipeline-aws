@@ -1,23 +1,4 @@
 # Variaveis especificas do ambiente de producao.
 env = "prod"
-
-iam_role_glue = "glue-job-role-etl-prod"
-iam_role_lambda = "lambda-role-prod"
-
-s3_bucket_aux = "lsg-sa-east-1-bucket-aux-prod"
-s3_bucket_temp = "lsg-sa-east-1-bucket-temp-prod"
-s3_bucket_sor = "lsg-sa-east-1-bucket-sor-prod"
-s3_bucket_sot = "lsg-sa-east-1-bucket-sot-prod"
-s3_bucket_spec = "lsg-sa-east-1-bucket-spec-prod"
-
-tmdb_secret_arn = "arn:aws:secretsmanager:sa-east-1:216126109924:secret:tmdb_api_key_prod-nSo0db"
-
-lambda_api_name = "lambda-api-prod"
-
-glue_etl_job_name = "my-glue-etl-prod"
-glue_data_quality_job_name = "my-glue-data-quality-prod"
-
-eventbridge_notification_email        = "lsgalvao1000@gmail.com"
-lambda_notification_email             = "lsgalvao1000@gmail.com"
-glue_etl_notification_email           = "lsgalvao1000@gmail.com"
-glue_data_quality_notification_email  = "lsgalvao1000@gmail.com"
+account_id = "216126109924"
+tmdb_secret_arn = "arn:aws:secretsmanager:sa-east-1:${account_id}:secret:tmdb_api_key_prod-nSo0db"

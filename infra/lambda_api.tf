@@ -31,7 +31,7 @@ resource "aws_s3_object" "lambda_deploy_package" {
 
 
 resource "aws_lambda_function" "simple_lambda" {
-	function_name = "${var.lambda_api_name}"
+	function_name = "${var.lambda_api_name}-${var.env}"
 	role          = aws_iam_role.lambda_function.arn
 	handler       = "main.lambda_handler"
 	runtime       = "python3.11"

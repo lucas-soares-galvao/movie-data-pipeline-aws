@@ -18,7 +18,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 }
 
 resource "aws_iam_role" "glue_job_role" {
-  name = var.iam_role_glue
+  name = "${var.iam_role_glue}-${var.env}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

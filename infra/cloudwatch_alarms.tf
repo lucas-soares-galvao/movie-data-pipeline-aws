@@ -105,7 +105,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_success_alarm" {
 
 # Exemplo de regra EventBridge que envia para SNS ao sucesso de execução (ajuste event_pattern conforme seu caso)
 resource "aws_cloudwatch_event_rule" "eventbridge_success" {
-	name        = "eventbridge-success-rule"
+	name        = "eventbridge-success-rule-${var.env}"
 	description = "Notifica por e-mail quando EventBridge executa com sucesso."
 	event_pattern = <<EOF
 {

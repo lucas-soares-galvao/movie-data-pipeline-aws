@@ -1,11 +1,11 @@
 # Glue Catalog for the SOT layer for TMDB movie in Parquet.
 resource "aws_glue_catalog_database" "tmdb_database" {
-  name = var.glue_catalog_database_name
+  name = "${var.glue_catalog_database_name}-${var.env}"
 }
 
 
 resource "aws_glue_catalog_table" "tb_movie_tmdb" {
-  name          = var.glue_catalog_table_discover_movie_name
+  name          = "${var.glue_catalog_table_discover_movie_name}-${var.env}"
   database_name = aws_glue_catalog_database.tmdb_database.name
   table_type    = "EXTERNAL_TABLE"
 
