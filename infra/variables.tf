@@ -1,3 +1,19 @@
+variable "glue_data_quality_notification_email" {
+  description = "E-mail para receber notificações de execução do Glue Data Quality"
+  type        = string
+}
+variable "glue_etl_notification_email" {
+  description = "E-mail para receber notificações de execução do Glue ETL"
+  type        = string
+}
+variable "lambda_notification_email" {
+  description = "E-mail para receber notificações de execução da Lambda"
+  type        = string
+}
+variable "eventbridge_notification_email" {
+  description = "E-mail para receber notificações de sucesso do EventBridge"
+  type        = string
+}
 
 ############# GENERAL VARIABLES ##############
 variable "env" {
