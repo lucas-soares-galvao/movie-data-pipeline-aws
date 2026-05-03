@@ -2,7 +2,7 @@
 resource "aws_glue_job" "etl_job" {
   name              = local.envs.glue_etl_job_name
   description       = "Glue ETL Job"
-  role_arn          = aws_iam_role.glue_job_role.arn
+  role_arn          = aws_iam_role.glue_etl_role.arn
   glue_version      = "5.0"
   max_retries       = 0
   timeout           = 30
