@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 import requests
 import boto3
+import time
 
 
 def get_tmdb_key(secret_arn):
@@ -106,8 +107,19 @@ def fetch_discover(api_key, period, media_type="movie", max_pages=5):
                 params["first_air_date.lte"] = period["end_date"]
             else:
                 raise ValueError("Invalid media type")
-            response = requests.get(url, params=params)
-            response.raise_for_status()
+
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    response = requests.get(url, params=params)
+                    response.raise_for_status()
+                    break
+                except requests.exceptions.HTTPError as e:
+                    if response.status_code == 500 and attempt < retries - 1:
+                        wait = 2 ** attempt
+                        time.sleep(wait)
+                    else:
+                        raise
             data = response.json()
             results.extend(data["results"])
             if page >= data.get("total_pages", 1):
