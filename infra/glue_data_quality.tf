@@ -13,7 +13,7 @@ resource "aws_glue_job" "data_quality_job" {
   command {
     # Main job script in the auxiliary bucket.
     script_location = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app/main.py"
-    name            = "glue-data-quality"
+    name            = "gluedataquality"
     python_version  = "3"
   }
 
