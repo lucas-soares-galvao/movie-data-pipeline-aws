@@ -26,10 +26,8 @@ resource "aws_glue_job" "data_quality_job" {
     "--extra-py-files"                   = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
     "--custom-logGroup-prefix"           = "/${local.envs.glue_data_quality_job_name}"
     "--enable-metrics"                   = ""
-    "--enable-auto-scaling"              = "true"
     "--enable-glue-datacatalog"          = ""
     "--enable-job-insights"              = ""
-    "--enable-data-quality"              = ""
     "--S3_BUCKET_DATA_QUALITY"           = local.envs.s3_bucket_data_quality
     "--ENVIRONMENT"                      = var.env
     # Adicione outros argumentos necessários para seu job aqui
