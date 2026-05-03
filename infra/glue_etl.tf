@@ -13,7 +13,7 @@ resource "aws_glue_job" "etl_job" {
   command {
     # Main job script in the auxiliary bucket.
     script_location = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app/main.py"
-    name            = "glue-etl-${var.env}"
+    name            = "glue-etl"
     python_version  = "3"
   }
 
