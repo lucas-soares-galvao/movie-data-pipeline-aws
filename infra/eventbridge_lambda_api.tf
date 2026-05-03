@@ -3,13 +3,13 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
   name        = "lambda-api-movie-${var.env}"
   description = "Triggers the lambda for movie"
-  schedule_expression = "cron(30 18 * * ? *)" # Every day at 17:30 UTC
+  schedule_expression = "cron(30 19 * * ? *)" # Every day at 19:30 UTC
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv" {
   name        = "lambda-api-tv-${var.env}"
   description = "Triggers the lambda for tv"
-  schedule_expression = "cron(00 19 * * ? *)" # Every day at 18:00 UTC
+  schedule_expression = "cron(00 20 * * ? *)" # Every day at 20:00 UTC
 }
 
 resource "aws_cloudwatch_event_target" "lambda_api_movie_target" {
