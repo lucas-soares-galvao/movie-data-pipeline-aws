@@ -60,7 +60,7 @@ for cfg in tables_config:
 
     result = process_tmdb(
         source_path=s3_source_path,
-        destination_path=f"s3://{bucket_sot}/{cfg['table']}/",
+        destination_path=f"s3://{bucket_sot}/tmdb/{cfg['table']}/",
         database=database,
         table=table,
         partition_columns=partition_columns_list,

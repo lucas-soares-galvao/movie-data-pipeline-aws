@@ -49,5 +49,8 @@ dq_results = EvaluateDataQuality.apply(
     partition_columns=partition_columns.split(",") if partition_columns else [],
 )
 
+df_dq_results = dq_results.toDF()
+df_dq_results.show(truncate=False)
+
 # Escreve resultados em S3
-dq_results.toDF().write.mode("overwrite").parquet(f"s3://{s3_bucket_dq}/{table}/")
+df_dq_results.write.mode("overwrite").parquet(f"s3://{s3_bucket_dq}/tmdb/{table}/")
