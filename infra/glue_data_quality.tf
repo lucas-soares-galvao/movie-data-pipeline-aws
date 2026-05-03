@@ -3,7 +3,7 @@ resource "aws_glue_job" "data_quality_job" {
   name              = local.envs.glue_data_quality_job_name
   description       = "Glue Data Quality Job"
   role_arn          = aws_iam_role.glue_job_role.arn
-  glue_version      = "5.0"
+  glue_version      = "4.0"
   max_retries       = 0
   timeout           = 30
   number_of_workers = 2
