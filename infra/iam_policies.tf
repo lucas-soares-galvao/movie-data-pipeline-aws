@@ -45,8 +45,8 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
 # =========================
 # READ CODE (AMBOS)
 # =========================
-resource "aws_iam_policy" "glue_read_code_policy" {
-  name = "${local.envs.iam_role_glue}-read-code-shared"
+resource "aws_iam_policy" "glue_shared_read_code" {
+  name = "glue-shared-read-code"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -66,18 +66,18 @@ resource "aws_iam_policy" "glue_read_code_policy" {
 }
 
 # attach nas duas roles
-resource "aws_iam_role_policy_attachment" "etl_read_code" {
+resource "aws_iam_role_policy_attachment" "glue_etl_read_code" {
   role       = aws_iam_role.glue_etl_role.name
-  policy_arn = aws_iam_policy.glue_read_code_policy.arn
+  policy_arn = aws_iam_policy.glue_shared_read_code.arn
 }
 
-resource "aws_iam_role_policy_attachment" "dq_read_code" {
+resource "aws_iam_role_policy_attachment" "glue_dq_read_code" {
   role       = aws_iam_role.glue_dq_role.name
-  policy_arn = aws_iam_policy.glue_read_code_policy.arn
+  policy_arn = aws_iam_policy.glue_shared_read_code.arn
 }
 
-resource "aws_iam_role_policy" "glue_write_logs_custom_prefix_etl" {
-  name = "${local.envs.iam_role_glue}-write-logs-custom-etl"
+resource "aws_iam_role_policy" "glue_etl_logs" {
+  name = "glue-etl-logs"
   role = aws_iam_role.glue_etl_role.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -95,8 +95,8 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix_etl" {
   })
 }
 
-resource "aws_iam_role_policy" "glue_write_logs_custom_prefix_dq" {
-  name = "${local.envs.iam_role_glue}-write-logs-custom-dq"
+resource "aws_iam_role_policy" "glue_dq_logs" {
+  name = "glue-dq-logs"
   role = aws_iam_role.glue_dq_role.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -117,7 +117,7 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix_dq" {
 # ETL - SOR → SOT
 # =========================
 resource "aws_iam_role_policy" "glue_etl_sor_sot" {
-  name = "${local.envs.iam_role_glue}-etl-sor-sot"
+  name = "glue-etl-sor-sot"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -141,7 +141,7 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
 # ETL - Glue Catalog
 # =========================
 resource "aws_iam_role_policy" "glue_etl_catalog" {
-  name = "${local.envs.iam_role_glue}-etl-catalog"
+  name = "glue-etl-catalog"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -164,7 +164,7 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
 # ETL - Start DQ Job
 # =========================
 resource "aws_iam_role_policy" "glue_etl_start_dq" {
-  name = "${local.envs.iam_role_glue}-etl-start-dq"
+  name = "glue-etl-start-dq"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -181,7 +181,7 @@ resource "aws_iam_role_policy" "glue_etl_start_dq" {
 # DQ - Read SOT
 # =========================
 resource "aws_iam_role_policy" "glue_dq_read_sot" {
-  name = "${local.envs.iam_role_glue}-dq-read-sot"
+  name = "glue-dq-read-sot"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
@@ -198,7 +198,7 @@ resource "aws_iam_role_policy" "glue_dq_read_sot" {
 # DQ - Write results
 # =========================
 resource "aws_iam_role_policy" "glue_dq_write_results" {
-  name = "${local.envs.iam_role_glue}-dq-write-results"
+  name = "glue-dq-write-results"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
