@@ -30,7 +30,6 @@ resource "aws_glue_job" "etl_job" {
     # Custom prefix for the groups /<job>/error and /<job>/output.
     "--custom-logGroup-prefix"           = "/${local.envs.glue_etl_job_name}"
     "--enable-metrics"                   = ""
-    "--enable-auto-scaling"              = "true"
     # S3 buckets for reading (SOR) and writing (SOT)
     "--S3_BUCKET_SOR"                    = local.envs.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = local.envs.s3_bucket_sot
