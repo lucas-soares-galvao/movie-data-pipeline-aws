@@ -17,8 +17,12 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role" "glue_job_role" {
-  name = "${local.envs.iam_role_glue}"
+# =========================
+# GLUE ETL ROLE
+# =========================
+resource "aws_iam_role" "glue_etl_role" {
+  name = "${local.envs.iam_role_glue}-etl"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -29,7 +33,29 @@ resource "aws_iam_role" "glue_job_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "glue_service_role" {
-  role       = aws_iam_role.glue_job_role.name
+resource "aws_iam_role_policy_attachment" "glue_etl_service_role" {
+  role       = aws_iam_role.glue_etl_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+
+# =========================
+# GLUE DATA QUALITY ROLE
+# =========================
+resource "aws_iam_role" "glue_dq_role" {
+  name = "${local.envs.iam_role_glue}-dq"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "glue.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "glue_dq_service_role" {
+  role       = aws_iam_role.glue_dq_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }
