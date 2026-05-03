@@ -50,4 +50,4 @@ dq_results = EvaluateDataQuality.apply(
 )
 
 # Escreve resultados em S3
-dq_results.toDF().write.mode("overwrite").parquet(f"s3://{s3_bucket_dq}/dq-results/")
+dq_results.toDF().write.mode("overwrite").parquet(f"s3://{s3_bucket_dq}/{table}/")
