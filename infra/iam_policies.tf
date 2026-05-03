@@ -76,9 +76,9 @@ resource "aws_iam_role_policy_attachment" "dq_read_code" {
   policy_arn = aws_iam_policy.glue_read_code_policy.arn
 }
 
-resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
-  name = "${local.envs.iam_role_glue}-write-logs-custom"
-  role = aws_iam_role.glue_job_role.name
+resource "aws_iam_role_policy" "glue_write_logs_custom_prefix_etl" {
+  name = "${local.envs.iam_role_glue}-write-logs-custom-etl"
+  role = aws_iam_role.glue_etl_role.name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -88,7 +88,24 @@ resource "aws_iam_role_policy" "glue_write_logs_custom_prefix" {
         Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
         Resource = [
           "arn:aws:logs:*:*:log-group:/${local.envs.glue_etl_job_name}/*",
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_etl_job_name}/*:log-stream:*",
+          "arn:aws:logs:*:*:log-group:/${local.envs.glue_etl_job_name}/*:log-stream:*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_write_logs_custom_prefix_dq" {
+  name = "${local.envs.iam_role_glue}-write-logs-custom-dq"
+  role = aws_iam_role.glue_dq_role.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "WriteCustomGlueLogs"
+        Effect = "Allow"
+        Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+        Resource = [
           "arn:aws:logs:*:*:log-group:/${local.envs.glue_data_quality_job_name}/*",
           "arn:aws:logs:*:*:log-group:/${local.envs.glue_data_quality_job_name}/*:log-stream:*"
         ]
