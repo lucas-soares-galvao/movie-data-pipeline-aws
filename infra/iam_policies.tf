@@ -37,7 +37,7 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
     Statement = [{
       Effect = "Allow"
       Action = ["secretsmanager:GetSecretValue"]
-      Resource = local.envs.tmdb_secret_arn
+      Resource = var.tmdb_secret_arn
     }]
   })
 }
