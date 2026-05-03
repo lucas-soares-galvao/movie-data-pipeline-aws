@@ -1,7 +1,7 @@
 # IAM roles and attachments (Lambda and Glue)
 
 resource "aws_iam_role" "lambda_function" {
-  name = "${var.lambda_api_name}-function-${var.env}"
+  name = "${local.envs.lambda_api_name}-function"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -18,7 +18,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 }
 
 resource "aws_iam_role" "glue_job_role" {
-  name = "${var.iam_role_glue}-${var.env}"
+  name = "${local.envs.iam_role_glue}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
