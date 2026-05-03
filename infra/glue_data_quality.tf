@@ -3,7 +3,7 @@ resource "aws_glue_job" "data_quality_job" {
   name              = local.envs.glue_data_quality_job_name
   description       = "Glue Data Quality Job"
   role_arn          = aws_iam_role.glue_dq_role.arn
-  glue_version      = "4.0"
+  glue_version      = "5.0"
   max_retries       = 0
   timeout           = 30
   number_of_workers = 2
@@ -26,8 +26,6 @@ resource "aws_glue_job" "data_quality_job" {
     "--extra-py-files"                   = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
     "--custom-logGroup-prefix"           = "/${local.envs.glue_data_quality_job_name}"
     "--enable-metrics"                   = ""
-    "--enable-glue-datacatalog"          = ""
-    "--enable-job-insights"              = ""
     "--S3_BUCKET_DATA_QUALITY"           = local.envs.s3_bucket_data_quality
     "--ENVIRONMENT"                      = var.env
   }
