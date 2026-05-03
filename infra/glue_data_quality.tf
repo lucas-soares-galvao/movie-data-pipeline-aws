@@ -38,9 +38,9 @@ resource "aws_glue_job" "data_quality_job" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_data_quality,
     aws_s3_object.deploy_app_bundle_data_quality,
-    aws_iam_role_policy_attachment.glue_dq_role,
-    aws_iam_role_policy.glue_read_code_s3,
-    aws_iam_role_policy.glue_write_logs_custom_prefix,
+    aws_iam_role_policy_attachment.glue_dq_service_role,
+    aws_iam_role_policy_attachment.glue_dq_read_code,
+    aws_iam_role_policy.glue_dq_logs,
     aws_cloudwatch_log_group.glue_data_quality_error,
     aws_cloudwatch_log_group.glue_data_quality_output
   ]
