@@ -52,9 +52,10 @@ def call_glue_data_quality(job_name, database, table, partition_columns=None, pa
 
     arguments = {
         "--DATABASE": database,
-        "--TABLE": table,
-        "--PARTITIONS": partition_columns if partition_columns else ""
+        "--TABLE": table
     }
+    if partition_columns:
+        arguments["--PARTITIONS"] = partition_columns
     if partition_values:
         arguments["--PARTITION_VALUES"] = ",".join(partition_values)
 
