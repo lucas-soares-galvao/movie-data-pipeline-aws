@@ -130,7 +130,7 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
       },
       {
         Effect = "Allow"
-        Action = ["s3:PutObject"]
+        Action = ["s3:PutObject", "s3: DeleteObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
       }
     ]
