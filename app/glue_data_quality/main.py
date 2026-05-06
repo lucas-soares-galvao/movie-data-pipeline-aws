@@ -13,13 +13,12 @@ spark = glueContext.spark_session
 args = getResolvedOptions(sys.argv, [
     "DATABASE",
     "TABLE",
-    "PARTITIONS",
     "S3_BUCKET_DATA_QUALITY"
 ])
 
 database = args["DATABASE"]
 table = args["TABLE"]
-partition_columns = args.get("PARTITIONS", "")
+partition_columns = args.get("PARTITIONS")
 s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
 
 # Lendo tabela do catálogo
