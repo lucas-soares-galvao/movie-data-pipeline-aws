@@ -69,6 +69,8 @@ for cfg in tables_config:
 
     partitions = result.get("partitions", [])
 
+    print(partitions)
+
     if partition_columns_list:
         call_glue_data_quality(
             glue_data_quality_job_name,
