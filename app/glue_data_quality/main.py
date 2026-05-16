@@ -3,24 +3,15 @@ import sys
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
 
-try:
-    from app.glue_data_quality.src.utils import (
-        build_ruleset,
-        get_partition_columns,
-        parse_args,
-        read_catalog_table,
-        run_data_quality,
-        write_results,
-    )
-except ModuleNotFoundError:
-    from src.utils import (
-        build_ruleset,
-        get_partition_columns,
-        parse_args,
-        read_catalog_table,
-        run_data_quality,
-        write_results,
-    )
+from src.utils import (
+    build_ruleset,
+    get_partition_columns,
+    parse_args,
+    read_catalog_table,
+    register_partition,
+    run_data_quality,
+    write_results,
+)
 
 
 def main(argv=None):
@@ -46,7 +37,8 @@ def main(argv=None):
 
     df_dq_results = dq_results.toDF()
     df_dq_results.show(truncate=False)
-    write_results(df_dq_results, s3_bucket_dq, table, database=database)
+    table_root_path = write_results(df_dq_results, s3_bucket_dq, table)
+    register_partition(database, table, table_root_path)
 
 
 if __name__ == "__main__":

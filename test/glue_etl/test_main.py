@@ -25,8 +25,8 @@ DEFAULT_ARGS = {
 
 class TestGlueEtlMain(unittest.TestCase):
     def test_calls_glue_data_quality_with_partitions(self):
-        with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.src.utils.call_glue_data_quality") as mock_call_glue_data_quality:
+        with patch("src.utils.process_tmdb") as mock_process_tmdb, \
+            patch("src.utils.call_glue_data_quality") as mock_call_glue_data_quality:
             mock_process_tmdb.side_effect = [
                 {"processed_rows": 10, "partitions": ["year=2023/month=01", "year=2023/month=02"]},
                 {"processed_rows": 5, "partitions": []},
@@ -72,8 +72,8 @@ class TestGlueEtlMain(unittest.TestCase):
                 self.assertDictEqual(actual_kwargs, expected_kwargs)
 
     def test_calls_process_tmdb_with_correct_arguments(self):
-        with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.src.utils.call_glue_data_quality"):
+        with patch("src.utils.process_tmdb") as mock_process_tmdb, \
+            patch("src.utils.call_glue_data_quality"):
             mock_process_tmdb.return_value = {"processed_rows": 10}
 
             main.run_etl(DEFAULT_ARGS)
@@ -87,8 +87,8 @@ class TestGlueEtlMain(unittest.TestCase):
             self.assertEqual(actual_calls, expected_calls)
 
     def test_main_runs_without_exception(self):
-        with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.src.utils.call_glue_data_quality"):
+        with patch("src.utils.process_tmdb") as mock_process_tmdb, \
+            patch("src.utils.call_glue_data_quality"):
             mock_process_tmdb.return_value = {"processed_rows": 5}
 
             try:

@@ -3,6 +3,19 @@ import boto3
 import pandas as pd
 
 
+REQUIRED_ARGS = [
+    "S3_BUCKET_SOR",
+    "S3_BUCKET_SOT",
+    "MEDIA_TYPE",
+    "DATABASE",
+    "DISCOVER_TABLE",
+    "GENRE_TABLE",
+    "CONFIGURATION_TABLE",
+    "CONFIGURATION",
+    "PARTITION_COLUMNS",
+    "GLUE_DATA_QUALITY_JOB_NAME"
+]
+
 TABLES_BY_MEDIA = {
     "movie": [
         {"path": "discover", "table_arg": "DISCOVER_TABLE", "date_column": "release_date"},

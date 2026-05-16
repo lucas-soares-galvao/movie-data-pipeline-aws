@@ -7,6 +7,7 @@ from app.glue_data_quality.src.utils import (
     get_partition_columns,
     parse_args,
     read_catalog_table,
+    register_partition,
     rules_list_to_dqdl,
     run_data_quality,
     write_results,
@@ -15,9 +16,8 @@ from app.glue_data_quality.src.utils import (
 
 class TestParseArgs(unittest.TestCase):
     def test_parse_args_with_optional_partitions(self):
-        fake_get_resolved_options = lambda argv, keys: {
-            key: f"val_{key.lower()}" for key in keys
-        }
+        def fake_get_resolved_options(argv, keys):
+            return {key: f"val_{key.lower()}" for key in keys}
 
         argv = [
             "script.py",
@@ -154,7 +154,7 @@ class TestHelperFunctions(unittest.TestCase):
             "s3://bucket-dq/tmdb/tb_data_quality_tmdb/",
         )
 
-    def test_write_results_registers_partition_with_awswrangler(self):
+    def test_write_results_returns_table_root_path(self):
         class _FakeLitValue:
             def __init__(self, value):
                 self.value = value
@@ -176,6 +176,12 @@ class TestHelperFunctions(unittest.TestCase):
             def withColumn(self, _, __):
                 return self
 
+        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)):
+            result = write_results(_FakeDataFrame(), "bucket-dq", "tb_discover_tv_tmdb")
+
+        self.assertEqual(result, "s3://bucket-dq/tmdb/tb_data_quality_tmdb/")
+
+    def test_register_partition_calls_awswrangler(self):
         class _FakeCatalog:
             def __init__(self):
                 self.called_with = None
@@ -188,15 +194,10 @@ class TestHelperFunctions(unittest.TestCase):
                 self.catalog = _FakeCatalog()
 
         fake_wr = _FakeWr()
+        table_root_path = "s3://bucket-dq/tmdb/tb_data_quality_tmdb/"
 
-        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)):
-            with patch("app.glue_data_quality.src.utils.wr", fake_wr):
-                write_results(
-                    _FakeDataFrame(),
-                    "bucket-dq",
-                    "tb_discover_tv_tmdb",
-                    database="db_tmdb",
-                )
+        with patch("app.glue_data_quality.src.utils.wr", fake_wr):
+            register_partition("db_tmdb", "tb_discover_tv_tmdb", table_root_path)
 
         self.assertEqual(fake_wr.catalog.called_with["database"], "db_tmdb")
         self.assertEqual(fake_wr.catalog.called_with["table"], "tb_data_quality_tmdb")
