@@ -1,5 +1,4 @@
 import sys
-import os
 
 from awsglue.utils import getResolvedOptions
 

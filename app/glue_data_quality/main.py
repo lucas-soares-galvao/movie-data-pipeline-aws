@@ -1,5 +1,4 @@
 import sys
-import os
 
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
