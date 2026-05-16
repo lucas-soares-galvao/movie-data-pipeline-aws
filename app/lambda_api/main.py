@@ -1,7 +1,7 @@
 
 import os
 from datetime import date
-from app.lambda_api.src.utils import (
+from src.utils import (
     extract_media_tables,
     generate_monthly_periods,
     get_tmdb_key,
