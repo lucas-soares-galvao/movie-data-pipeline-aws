@@ -90,7 +90,6 @@ resource "aws_cloudwatch_metric_alarm" "lambda_success_alarm" {
 	alarm_name          = "lambda-success-alarm-${var.env}"
 	comparison_operator = "GreaterThanThreshold"
 	evaluation_periods  = 1
-	period              = 60
 	threshold           = 0
 	alarm_description   = "Notifica por e-mail quando a Lambda executa com sucesso."
 	treat_missing_data  = "notBreaching"
