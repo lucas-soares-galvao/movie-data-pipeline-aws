@@ -1,16 +1,28 @@
 import sys
+import os
 
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
 
-from .src.utils import (
-    build_ruleset,
-    parse_args,
-    read_catalog_table,
-    register_partition,
-    run_data_quality,
-    write_results,
-)
+# Support both Glue runtime (where bundle contains glue_data_quality/) and local testing (app.glue_data_quality)
+try:
+    from glue_data_quality.src.utils import (
+        build_ruleset,
+        parse_args,
+        read_catalog_table,
+        register_partition,
+        run_data_quality,
+        write_results,
+    )
+except ImportError:
+    from app.glue_data_quality.src.utils import (
+        build_ruleset,
+        parse_args,
+        read_catalog_table,
+        register_partition,
+        run_data_quality,
+        write_results,
+    )
 
 
 def main(argv=None):

@@ -1,7 +1,13 @@
 import sys
+import os
 
 from awsglue.utils import getResolvedOptions
-from .src.utils import REQUIRED_ARGS, run_etl
+
+# Support both Glue runtime (where bundle contains glue_etl/) and local testing (app.glue_etl)
+try:
+    from glue_etl.src.utils import REQUIRED_ARGS, run_etl
+except ImportError:
+    from app.glue_etl.src.utils import REQUIRED_ARGS, run_etl
 
 
 def resolve_args(argv):
