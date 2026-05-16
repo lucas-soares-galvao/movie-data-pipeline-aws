@@ -3,7 +3,7 @@ import sys
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
 
-from src.utils import (
+from app.glue_data_quality.src.utils import (
     build_ruleset,
     parse_args,
     read_catalog_table,

@@ -1,7 +1,7 @@
 import sys
 
 from awsglue.utils import getResolvedOptions
-from src.utils import run_etl, REQUIRED_ARGS
+from app.glue_etl.src.utils import REQUIRED_ARGS, run_etl
 
 
 def resolve_args(argv):

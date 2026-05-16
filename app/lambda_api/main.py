@@ -1,26 +1,15 @@
 
 import os
 from datetime import date
-try:
-    from app.lambda_api.src.utils import (
-        extract_media_tables,
-        generate_monthly_periods,
-        get_tmdb_key,
-        process_configuration,
-        process_discover,
-        process_genres,
-        trigger_glue_etl,
-    )
-except ImportError:  # pragma: no cover - fallback for Lambda package layout
-    from src.utils import (
-        extract_media_tables,
-        generate_monthly_periods,
-        get_tmdb_key,
-        process_configuration,
-        process_discover,
-        process_genres,
-        trigger_glue_etl,
-    )
+from app.lambda_api.src.utils import (
+    extract_media_tables,
+    generate_monthly_periods,
+    get_tmdb_key,
+    process_configuration,
+    process_discover,
+    process_genres,
+    trigger_glue_etl,
+)
 
 
 def lambda_handler(event, context):
