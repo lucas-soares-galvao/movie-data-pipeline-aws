@@ -35,7 +35,17 @@ def build_package(src: Path, requirements: Path, dest: Path) -> None:
         ]
     )
 
-    shutil.copytree(src, dest, dirs_exist_ok=True)
+    # Keep app package namespace in the deployment artifact so imports like
+    # `from app.lambda_api.src.utils import ...` work at Lambda runtime.
+    app_root = src.parent
+    package_root = dest / "app"
+    package_root.mkdir(parents=True, exist_ok=True)
+
+    app_init = app_root / "__init__.py"
+    if app_init.exists():
+        shutil.copy2(app_init, package_root / "__init__.py")
+
+    shutil.copytree(src, package_root / src.name, dirs_exist_ok=True)
 
 
 def main() -> None:
