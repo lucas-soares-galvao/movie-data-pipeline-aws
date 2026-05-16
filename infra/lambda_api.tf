@@ -35,7 +35,7 @@ resource "aws_s3_object" "lambda_deploy_package" {
 resource "aws_lambda_function" "simple_lambda" {
 	function_name = local.envs.lambda_api_name
 	role          = aws_iam_role.lambda_function.arn
-	handler       = "app.lambda_api.main.lambda_handler"
+	handler       = "main.lambda_handler"
 	runtime       = "python3.11"
 	timeout       = 900
 	memory_size   = 1024

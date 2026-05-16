@@ -35,17 +35,16 @@ def build_package(src: Path, requirements: Path, dest: Path) -> None:
         ]
     )
 
-    # Keep app package namespace in the deployment artifact so imports like
-    # `from app.lambda_api.src.utils import ...` work at Lambda runtime.
-    app_root = src.parent
-    package_root = dest / "app"
-    package_root.mkdir(parents=True, exist_ok=True)
-
-    app_init = app_root / "__init__.py"
-    if app_init.exists():
-        shutil.copy2(app_init, package_root / "__init__.py")
-
-    shutil.copytree(src, package_root / src.name, dirs_exist_ok=True)
+    # Copy application source directly to dest so `from src.utils import ...`
+    # works at Lambda runtime (mirrors the Glue --extra-py-files layout).
+    for item in src.iterdir():
+        if item.name == "__pycache__":
+            continue
+        target = dest / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, target)
 
 
 def main() -> None:

@@ -1,13 +1,7 @@
 
 import os
-import sys
 from datetime import date
-
-# Add app directory to path for Lambda environment compatibility
-if __name__ != "__main__":
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app.lambda_api.src.utils import (
+from src.utils import (
     extract_media_tables,
     generate_monthly_periods,
     get_tmdb_key,
