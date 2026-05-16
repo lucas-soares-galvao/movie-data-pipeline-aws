@@ -11,6 +11,10 @@ locals {
     for line in split("\n", file(local.glue_etl_requirements_path)) : trimspace(line)
     if trimspace(line) != "" && !startswith(trimspace(line), "#")
   ])
+  glue_data_quality_additional_python_modules = join(",", [
+    for line in split("\n", file(local.glue_data_quality_requirements_path)) : trimspace(line)
+    if trimspace(line) != "" && !startswith(trimspace(line), "#")
+  ])
 
     envs = {
       glue_etl_job_name = "${var.glue_etl_job_name}-${var.env}"

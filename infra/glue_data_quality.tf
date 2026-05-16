@@ -24,6 +24,7 @@ resource "aws_glue_job" "data_quality_job" {
   default_arguments = {
     "--job-language"                     = "python"
     "--extra-py-files"                   = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
+    "--additional-python-modules"        = local.glue_data_quality_additional_python_modules
     "--custom-logGroup-prefix"           = "/${local.envs.glue_data_quality_job_name}"
     "--enable-metrics"                   = ""
     "--S3_BUCKET_DATA_QUALITY"           = local.envs.s3_bucket_data_quality
