@@ -90,36 +90,176 @@ resource "aws_cloudwatch_metric_alarm" "lambda_success_alarm" {
 	alarm_name          = "lambda-success-alarm-${var.env}"
 	comparison_operator = "GreaterThanThreshold"
 	evaluation_periods  = 1
-	metric_name         = "Invocations"
-	namespace           = "AWS/Lambda"
-	period              = 60
-	statistic           = "Sum"
 	threshold           = 0
 	alarm_description   = "Notifica por e-mail quando a Lambda executa com sucesso."
-	dimensions = {
-		FunctionName = local.envs.lambda_api_name
+	treat_missing_data  = "notBreaching"
+
+	metric_query {
+		id          = "invocations"
+		return_data = false
+
+		metric {
+			metric_name = "Invocations"
+			namespace   = "AWS/Lambda"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				FunctionName = local.envs.lambda_api_name
+			}
+		}
 	}
+
+	metric_query {
+		id          = "errors"
+		return_data = false
+
+		metric {
+			metric_name = "Errors"
+			namespace   = "AWS/Lambda"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				FunctionName = local.envs.lambda_api_name
+			}
+		}
+	}
+
+	metric_query {
+		id          = "success"
+		expression  = "invocations-errors"
+		label       = "LambdaSuccessfulInvocations"
+		return_data = true
+	}
+
 	alarm_actions = [aws_sns_topic.lambda_notifications.arn]
 	ok_actions    = [aws_sns_topic.lambda_notifications.arn]
 }
 
-# Exemplo de regra EventBridge que envia para SNS ao sucesso de execução (ajuste event_pattern conforme seu caso)
-resource "aws_cloudwatch_event_rule" "eventbridge_success" {
-	name        = "eventbridge-success-rule-${var.env}"
-	description = "Notifica por e-mail quando EventBridge executa com sucesso."
-	event_pattern = <<EOF
-{
-	"source": ["aws.events"],
-	"detail-type": ["Scheduled Event"],
-	"detail": {
-		"status": ["SUCCESS"]
+# Alarme de falha no EventBridge (somando as duas regras agendadas da pipeline)
+resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
+	alarm_name          = "eventbridge-failed-alarm-${var.env}"
+	comparison_operator = "GreaterThanThreshold"
+	evaluation_periods  = 1
+	threshold           = 0
+	alarm_description   = "Alerta por e-mail quando o EventBridge falha ao invocar o alvo da pipeline."
+	treat_missing_data  = "notBreaching"
+
+	metric_query {
+		id          = "movie_failed"
+		return_data = false
+
+		metric {
+			metric_name = "FailedInvocations"
+			namespace   = "AWS/Events"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				RuleName = aws_cloudwatch_event_rule.lambda_api_movie.name
+			}
+		}
 	}
-}
-EOF
+
+	metric_query {
+		id          = "tv_failed"
+		return_data = false
+
+		metric {
+			metric_name = "FailedInvocations"
+			namespace   = "AWS/Events"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				RuleName = aws_cloudwatch_event_rule.lambda_api_tv.name
+			}
+		}
+	}
+
+	metric_query {
+		id          = "total_failed"
+		expression  = "movie_failed+tv_failed"
+		label       = "EventBridgeFailedInvocations"
+		return_data = true
+	}
+
+	alarm_actions = [aws_sns_topic.eventbridge_notifications.arn]
 }
 
-resource "aws_cloudwatch_event_target" "eventbridge_success_sns" {
-	rule      = aws_cloudwatch_event_rule.eventbridge_success.name
-	target_id = "SendToSNS"
-	arn       = aws_sns_topic.eventbridge_notifications.arn
+# Alarme de sucesso no EventBridge (invocações efetivas sem falha, somando as duas regras)
+resource "aws_cloudwatch_metric_alarm" "eventbridge_success_alarm" {
+	alarm_name          = "eventbridge-success-alarm-${var.env}"
+	comparison_operator = "GreaterThanThreshold"
+	evaluation_periods  = 1
+	threshold           = 0
+	alarm_description   = "Notifica por e-mail quando o EventBridge executa com sucesso."
+	treat_missing_data  = "notBreaching"
+
+	metric_query {
+		id          = "movie_invocations"
+		return_data = false
+
+		metric {
+			metric_name = "Invocations"
+			namespace   = "AWS/Events"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				RuleName = aws_cloudwatch_event_rule.lambda_api_movie.name
+			}
+		}
+	}
+
+	metric_query {
+		id          = "tv_invocations"
+		return_data = false
+
+		metric {
+			metric_name = "Invocations"
+			namespace   = "AWS/Events"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				RuleName = aws_cloudwatch_event_rule.lambda_api_tv.name
+			}
+		}
+	}
+
+	metric_query {
+		id          = "movie_failed"
+		return_data = false
+
+		metric {
+			metric_name = "FailedInvocations"
+			namespace   = "AWS/Events"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				RuleName = aws_cloudwatch_event_rule.lambda_api_movie.name
+			}
+		}
+	}
+
+	metric_query {
+		id          = "tv_failed"
+		return_data = false
+
+		metric {
+			metric_name = "FailedInvocations"
+			namespace   = "AWS/Events"
+			period      = 60
+			stat        = "Sum"
+			dimensions = {
+				RuleName = aws_cloudwatch_event_rule.lambda_api_tv.name
+			}
+		}
+	}
+
+	metric_query {
+		id          = "total_success"
+		expression  = "(movie_invocations+tv_invocations)-(movie_failed+tv_failed)"
+		label       = "EventBridgeSuccessfulInvocations"
+		return_data = true
+	}
+
+	alarm_actions = [aws_sns_topic.eventbridge_notifications.arn]
+	ok_actions    = [aws_sns_topic.eventbridge_notifications.arn]
 }
