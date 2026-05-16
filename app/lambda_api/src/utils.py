@@ -9,6 +9,24 @@ import boto3
 import time
 
 
+MEDIA_EVENT_CONFIG = {
+    "movie": {
+        "discover_table": "table_discover_movie",
+        "genre_table": "table_genre_movie",
+        "configuration_table": "table_configuration_languages",
+        "configuration": "languages"
+    },
+    "tv": {
+        "discover_table": "table_discover_tv",
+        "genre_table": "table_genre_tv",
+        "configuration_table": "table_configuration_countries",
+        "configuration": "countries"
+    }
+}
+
+LANGUAGE_FALLBACK = ["pt-BR", "en-US"]
+
+
 def get_tmdb_key(secret_arn):
     client = boto3.client("secretsmanager")
     response = client.get_secret_value(SecretId=secret_arn)
@@ -24,23 +42,17 @@ def extract_media_tables(event):
     """
     media_type = event.get("type", "movie")
     database = event.get("database")
-    if media_type == "movie":
-        discover_table = event.get("table_discover_movie")
-        genre_table = event.get("table_genre_movie")
-        configuration_table = event.get("table_configuration_languages")
-        configuration = "languages" if configuration_table else ""
-        partition_columns = "year,month" if discover_table else ""
-    elif media_type == "tv":
-        discover_table = event.get("table_discover_tv")
-        genre_table = event.get("table_genre_tv")
-        configuration_table = event.get("table_configuration_countries")
-        configuration = "countries" if configuration_table else ""
-        partition_columns = "year,month" if discover_table else ""
-    else:
-        discover_table = None
-        genre_table = None
-        configuration_table = None
-        partition_columns = ""
+    media_config = MEDIA_EVENT_CONFIG.get(media_type)
+
+    if not media_config:
+        raise ValueError(f"Unsupported media type: {media_type}")
+
+    discover_table = event.get(media_config["discover_table"])
+    genre_table = event.get(media_config["genre_table"])
+    configuration_table = event.get(media_config["configuration_table"])
+    configuration = media_config["configuration"] if configuration_table else ""
+    partition_columns = "year,month" if discover_table else ""
+
     return {
         "media_type": media_type,
         "database": database,
@@ -50,6 +62,40 @@ def extract_media_tables(event):
         "configuration": configuration,
         "partition_columns": partition_columns
     }
+
+
+def _build_discover_params(api_key, period, media_type, page, language):
+    params = {
+        "api_key": api_key,
+        "sort_by": "popularity.desc",
+        "page": page,
+        "language": language
+    }
+
+    if media_type == "movie":
+        params["primary_release_date.gte"] = period["start_date"]
+        params["primary_release_date.lte"] = period["end_date"]
+    elif media_type == "tv":
+        params["first_air_date.gte"] = period["start_date"]
+        params["first_air_date.lte"] = period["end_date"]
+    else:
+        raise ValueError(f"Invalid media type: {media_type}")
+
+    return params
+
+
+def _request_json_with_retry(url, params, retries=3):
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as error:
+            status_code = error.response.status_code if error.response else None
+            if status_code == 500 and attempt < retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
 
 
 def generate_monthly_periods(start_year):
@@ -87,52 +133,22 @@ def generate_monthly_periods(start_year):
 # Generic function for discover (movie/tv)
 def fetch_discover(api_key, period, media_type="movie", max_pages=5):
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    languages = ["pt-BR", "en-US"]
-    results = []
-
-    for language in languages:
+    for language in LANGUAGE_FALLBACK:
         results = []
         for page in range(1, max_pages + 1):
-            params = {
-                "api_key": api_key,
-                "sort_by": "popularity.desc",
-                "page": page,
-                "language": language
-            }
-            if media_type == "movie":
-                params["primary_release_date.gte"] = period["start_date"]
-                params["primary_release_date.lte"] = period["end_date"]
-            elif media_type == "tv":
-                params["first_air_date.gte"] = period["start_date"]
-                params["first_air_date.lte"] = period["end_date"]
-            else:
-                raise ValueError("Invalid media type")
-
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    response = requests.get(url, params=params)
-                    response.raise_for_status()
-                    break
-                except requests.exceptions.HTTPError as e:
-                    if response.status_code == 500 and attempt < retries - 1:
-                        wait = 2 ** attempt
-                        time.sleep(wait)
-                    else:
-                        raise
-            data = response.json()
+            params = _build_discover_params(api_key, period, media_type, page, language)
+            data = _request_json_with_retry(url, params=params)
             results.extend(data["results"])
             if page >= data.get("total_pages", 1):
                 break
         if results:
-            break
-    return results
+            return results
+    return []
 
 # Function to fetch genres (movie/tv)
 def fetch_genres(api_key, media_type="movie"):
     url = f"https://api.themoviedb.org/3/genre/{media_type}/list"
-    languages = ["pt-BR", "en-US"]
-    for language in languages:
+    for language in LANGUAGE_FALLBACK:
         params = {
             "api_key": api_key,
             "language": language
@@ -146,9 +162,9 @@ def fetch_genres(api_key, media_type="movie"):
 
 
 def fetch_configuration(api_key, configuration_type="languages"):
-    
+
     url = f"https://api.themoviedb.org/3/configuration/{configuration_type}"
-    
+
     if configuration_type == "languages":
         params = {
             "api_key": api_key,
@@ -158,6 +174,9 @@ def fetch_configuration(api_key, configuration_type="languages"):
         params = {
             "api_key": api_key
         }
+    else:
+        raise ValueError(f"Invalid configuration type: {configuration_type}")
+
     response = requests.get(url, params=params)
     response.raise_for_status()
     return response.json()
@@ -191,6 +210,9 @@ def process_genres(api_key, bucket, media_type):
 
 
 def process_configuration(api_key, bucket, configuration_type):
+    if not configuration_type:
+        return []
+
     configuration = fetch_configuration(api_key, configuration_type=configuration_type)
 
     key = f"tmdb/configuration/{configuration_type}/configuration_{configuration_type}.json"

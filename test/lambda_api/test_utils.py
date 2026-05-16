@@ -163,6 +163,21 @@ class TestUtils(unittest.TestCase):
         result = utils.extract_media_tables(event)
         self.assertEqual(result["discover_table"], "tb_discover_movie_tmdb")
 
+    def test_extract_media_tables_invalid_type(self):
+        event = {
+            "type": "anime"
+        }
+        with self.assertRaises(ValueError):
+            utils.extract_media_tables(event)
+
+    def test_process_configuration_empty_type(self):
+        result = utils.process_configuration("fake_key", "bucket", "")
+        self.assertEqual(result, [])
+
+    def test_fetch_configuration_invalid_type(self):
+        with self.assertRaises(ValueError):
+            utils.fetch_configuration("fake_key", configuration_type="invalid")
+
 
 if __name__ == "__main__":
     unittest.main()

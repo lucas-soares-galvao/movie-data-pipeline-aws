@@ -30,7 +30,9 @@ class TestMain(unittest.TestCase):
 
         event = {
             "type": "movie",
-            "table_languages": "tb_languages"
+            "table_discover_movie": "tb_discover_movie_tmdb",
+            "table_genre_movie": "tb_genre_movie_tmdb",
+            "table_configuration_languages": "tb_languages"
         }
         result = main.lambda_handler(event, None)
 
@@ -64,7 +66,9 @@ class TestMain(unittest.TestCase):
 
         event = {
             "type": "tv",
-            "table_countries": "tb_countries"
+            "table_discover_tv": "tb_discover_tv_tmdb",
+            "table_genre_tv": "tb_genre_tv_tmdb",
+            "table_configuration_countries": "tb_countries"
         }
         result = main.lambda_handler(event, None)
 
@@ -73,6 +77,22 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["body"]["discover_files"], ["tv1.json"])
         self.assertEqual(result["body"]["genre_files"], ["genres_tv.json"])
         self.assertEqual(result["body"]["glue"], {"job_name": "job", "job_run_id": "123"})
+
+    @patch("os.getenv")
+    def test_lambda_handler_invalid_media_type(self, mock_getenv):
+        mock_getenv.side_effect = lambda key: {
+            "TMDB_SECRET_ARN": "arn",
+            "S3_BUCKET_SOR": "bucket",
+            "GLUE_ETL_JOB_NAME": "job"
+        }[key]
+
+        event = {
+            "type": "anime"
+        }
+        result = main.lambda_handler(event, None)
+
+        self.assertEqual(result["statusCode"], 400)
+        self.assertIn("Unsupported media type", result["body"]["error"])
 
 
 if __name__ == "__main__":

@@ -312,3 +312,50 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
     }
   }
 }
+
+resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
+  name          = var.glue_catalog_table_data_quality_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification     = "parquet"
+    EXTERNAL           = "TRUE"
+    has_encrypted_data = "false"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_data_quality}/tmdb/${var.glue_catalog_table_data_quality_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "rule"
+      type = "string"
+    }
+
+    columns {
+      name = "outcome"
+      type = "string"
+    }
+
+    columns {
+      name = "failure_reason"
+      type = "string"
+    }
+
+    columns {
+      name = "evaluated_metrics"
+      type = "map<string,double>"
+    }
+  }
+
+  partition_keys {
+    name = "source_table"
+    type = "string"
+  }
+}

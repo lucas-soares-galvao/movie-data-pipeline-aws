@@ -47,11 +47,6 @@ jobs:
         with:
           terraform_version: 1.8.3
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       # 3. Autenticação na AWS usando OIDC (OpenID Connect)
       # Isso evita o uso de chaves fixas (Access Keys), usando uma Role temporária mais segura
       - name: Configure AWS credentials
@@ -60,18 +55,6 @@ jobs:
           role-to-assume: ${{ secrets.aws-assume-role-arn }}
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: sa-east-1
-
-      - name: Prepare packaged artifacts
-        run: |
-          python infra/scripts/build_lambda_package.py \
-            --src app/lambda_api \
-            --requirements app/lambda_api/requirements.txt \
-            --dest infra/.lambda_build
-
-          python infra/scripts/build_lambda_package.py \
-            --src app/glue_data_quality \
-            --requirements app/glue_data_quality/requirements.txt \
-            --dest infra/.glue_data_quality_build
 
       # 4. Verifica se o ambiente deve ser destruído ou criado
       # Ele lê um arquivo JSON local para saber se a flag de 'destroy' está ativa para aquele ambiente

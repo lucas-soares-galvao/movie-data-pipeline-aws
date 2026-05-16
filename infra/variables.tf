@@ -168,3 +168,9 @@ variable "glue_catalog_table_configuration_countries_name" {
   type        = string
   default     = "tb_configuration_countries_tmdb"
 }
+
+variable "glue_catalog_table_data_quality_name" {
+  description = "Name of the table in Glue Catalog for Data Quality results"
+  type        = string
+  default     = "tb_data_quality_tmdb"
+}
