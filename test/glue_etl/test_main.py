@@ -74,7 +74,7 @@ class TestGlueEtlMain(unittest.TestCase):
     def test_calls_process_tmdb_with_correct_arguments(self):
         with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
             patch("app.glue_etl.src.utils.call_glue_data_quality"):
-            mock_process_tmdb.return_value = {"processed_rows": 10}
+            mock_process_tmdb.return_value = {"processed_rows": 10, "partitions": []}
 
             main.run_etl(DEFAULT_ARGS)
 
@@ -89,7 +89,7 @@ class TestGlueEtlMain(unittest.TestCase):
     def test_main_runs_without_exception(self):
         with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
             patch("app.glue_etl.src.utils.call_glue_data_quality"):
-            mock_process_tmdb.return_value = {"processed_rows": 5}
+            mock_process_tmdb.return_value = {"processed_rows": 5, "partitions": []}
 
             try:
                 main.run_etl(DEFAULT_ARGS)

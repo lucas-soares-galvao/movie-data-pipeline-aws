@@ -99,14 +99,11 @@ class TestHelperFunctions(unittest.TestCase):
             result = run_data_quality(
                 datasource="frame",
                 ruleset="Rules = []",
-                database="db",
-                table="tb",
-                partition_columns=["dt"],
             )
 
-        self.assertEqual(result["database"], "db")
-        self.assertEqual(result["table"], "tb")
-        self.assertEqual(result["partition_columns"], ["dt"])
+        self.assertEqual(result["frame"], "frame")
+        self.assertEqual(result["ruleset"], "Rules = []")
+        self.assertIn("publishing_options", result)
 
     def test_write_results_writes_to_expected_path(self):
         class _FakeLitValue:
