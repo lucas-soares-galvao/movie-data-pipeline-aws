@@ -1,23 +1,47 @@
-# SNS Topic para notificações do Glue Data Quality
-resource "aws_sns_topic" "glue_data_quality_notifications" {
-	name = "glue-data-quality-notifications"
+# SNS Topic para notificações de sucesso do Glue Data Quality
+resource "aws_sns_topic" "glue_data_quality_success_notifications" {
+	name = "glue-data-quality-success-notifications"
 }
 
-# Assinatura de e-mail no SNS para Glue Data Quality
-resource "aws_sns_topic_subscription" "glue_data_quality_email" {
-	topic_arn = aws_sns_topic.glue_data_quality_notifications.arn
+# Assinatura de e-mail no SNS para sucesso do Glue Data Quality
+resource "aws_sns_topic_subscription" "glue_data_quality_success_email" {
+	topic_arn = aws_sns_topic.glue_data_quality_success_notifications.arn
 	protocol  = "email"
 	endpoint  = var.glue_data_quality_notification_email
 }
 
-# SNS Topic para notificações do Glue ETL
-resource "aws_sns_topic" "glue_etl_notifications" {
-	name = "glue-etl-notifications"
+# SNS Topic para notificações de falha do Glue Data Quality
+resource "aws_sns_topic" "glue_data_quality_failure_notifications" {
+	name = "glue-data-quality-failure-notifications"
 }
 
-# Assinatura de e-mail no SNS para Glue ETL
-resource "aws_sns_topic_subscription" "glue_etl_email" {
-	topic_arn = aws_sns_topic.glue_etl_notifications.arn
+# Assinatura de e-mail no SNS para falha do Glue Data Quality
+resource "aws_sns_topic_subscription" "glue_data_quality_failure_email" {
+	topic_arn = aws_sns_topic.glue_data_quality_failure_notifications.arn
+	protocol  = "email"
+	endpoint  = var.glue_data_quality_notification_email
+}
+
+# SNS Topic para notificações de sucesso do Glue ETL
+resource "aws_sns_topic" "glue_etl_success_notifications" {
+	name = "glue-etl-success-notifications"
+}
+
+# Assinatura de e-mail no SNS para sucesso do Glue ETL
+resource "aws_sns_topic_subscription" "glue_etl_success_email" {
+	topic_arn = aws_sns_topic.glue_etl_success_notifications.arn
+	protocol  = "email"
+	endpoint  = var.glue_etl_notification_email
+}
+
+# SNS Topic para notificações de falha do Glue ETL
+resource "aws_sns_topic" "glue_etl_failure_notifications" {
+	name = "glue-etl-failure-notifications"
+}
+
+# Assinatura de e-mail no SNS para falha do Glue ETL
+resource "aws_sns_topic_subscription" "glue_etl_failure_email" {
+	topic_arn = aws_sns_topic.glue_etl_failure_notifications.arn
 	protocol  = "email"
 	endpoint  = var.glue_etl_notification_email
 }

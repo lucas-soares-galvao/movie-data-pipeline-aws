@@ -58,7 +58,7 @@ def register_partition(database, source_table, table_root_path, dq_table="tb_dat
     wr.catalog.add_parquet_partitions(
         database=database,
         table=dq_table,
-        partitions_values={partition_prefix: f"{table_root_path}{partition_prefix}"},
+        partitions_values={f"{table_root_path}{partition_prefix}": [source_table]},
     )
 
 

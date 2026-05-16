@@ -201,9 +201,9 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertEqual(
             fake_wr.catalog.called_with["partitions_values"],
             {
-                "source_table=tb_discover_tv_tmdb/": (
-                    "s3://bucket-dq/tmdb/tb_data_quality_tmdb/source_table=tb_discover_tv_tmdb/"
-                )
+                "s3://bucket-dq/tmdb/tb_data_quality_tmdb/source_table=tb_discover_tv_tmdb/": [
+                    "tb_discover_tv_tmdb"
+                ]
             },
         )
 
