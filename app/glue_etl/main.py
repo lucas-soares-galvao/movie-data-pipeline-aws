@@ -1,10 +1,7 @@
 import sys
 
 from awsglue.utils import getResolvedOptions
-try:
-    from app.glue_etl.src.utils import REQUIRED_ARGS, run_etl
-except ImportError:  # pragma: no cover - fallback for Glue runtime script path
-    from src.utils import REQUIRED_ARGS, run_etl
+from src.utils import run_etl, REQUIRED_ARGS
 
 
 def resolve_args(argv):

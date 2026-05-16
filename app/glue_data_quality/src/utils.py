@@ -43,7 +43,6 @@ def run_data_quality(datasource, ruleset, database, table, partition_columns):
             "enableDataQualityCloudWatchMetrics": True,
             "enableDataQualityResultsPublishing": True,
         },
-        job_name="GlueDataQualityJob",
         database=database,
         table=table,
         partition_columns=partition_columns,
