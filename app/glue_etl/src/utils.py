@@ -82,11 +82,10 @@ def process_tmdb(
     partition_values = _build_partition_values(df, partition_columns)
 
     return {
-        "processed_rows": len(df),
         "partitions": partition_values
     }
 
-def call_glue_data_quality(job_name, database, table, partition_columns=None, partition_values=None):
+def call_glue_data_quality(job_name, database, table, partition_values=None):
     """Trigger the Glue Data Quality job for a given catalog table."""
     glue = boto3.client("glue")
 
@@ -94,8 +93,6 @@ def call_glue_data_quality(job_name, database, table, partition_columns=None, pa
         "--DATABASE": database,
         "--TABLE": table
     }
-    if partition_columns:
-        arguments["--PARTITIONS"] = partition_columns
     if partition_values:
         arguments["--PARTITION_VALUES"] = ",".join(partition_values)
 
@@ -140,13 +137,13 @@ def build_partition_columns(partition_columns, date_column):
     return [column.strip() for column in partition_columns.split(",") if column.strip()]
 
 
-def resolve_dq_partition_values(table_path, partition_columns_list, partitions, year):
+def resolve_dq_partition_values(table_path, partition_columns_list, year):
     """Determine which partition values to send to the Data Quality job."""
     if not partition_columns_list:
         return None
     if year and table_path == "discover":
         return [f"year={year}"]
-    return partitions
+    return None
 
 
 def run_etl(args):
@@ -180,13 +177,11 @@ def run_etl(args):
         dq_partition_values = resolve_dq_partition_values(
             table_path=cfg["path"],
             partition_columns_list=partition_columns_list,
-            partitions=partitions,
             year=year
         )
         call_glue_data_quality(
             glue_data_quality_job_name,
             database=database,
             table=table,
-            partition_columns=",".join(partition_columns_list),
             partition_values=dq_partition_values
         )

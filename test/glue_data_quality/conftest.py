@@ -39,5 +39,5 @@ sys.modules.setdefault("pyspark.context", _make_module("pyspark.context", SparkC
 sys.modules.setdefault("pyspark.sql", _make_module("pyspark.sql"))
 sys.modules.setdefault(
     "pyspark.sql.functions",
-    _make_module("pyspark.sql.functions", coalesce=None, lit=None, current_timestamp=None),
+    _make_module("pyspark.sql.functions", coalesce=None, col=None, from_utc_timestamp=None, lit=None, current_timestamp=None, when=None),
 )

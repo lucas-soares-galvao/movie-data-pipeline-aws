@@ -58,8 +58,3 @@ def lambda_handler(event, context):
             "glue": glue_runs
         }
     }
-
-
-
-if __name__ == "__main__":
-    print(lambda_handler({}, None))

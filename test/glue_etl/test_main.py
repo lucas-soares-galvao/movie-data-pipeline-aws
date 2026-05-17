@@ -29,9 +29,9 @@ class TestGlueEtlMain(unittest.TestCase):
         with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
             patch("app.glue_etl.src.utils.call_glue_data_quality") as mock_call_glue_data_quality:
             mock_process_tmdb.side_effect = [
-                {"processed_rows": 10, "partitions": ["year=2023/month=01", "year=2023/month=02"]},
-                {"processed_rows": 5, "partitions": []},
-                {"processed_rows": 0, "partitions": []}
+                {"partitions": ["year=2023/month=01", "year=2023/month=02"]},
+                {"partitions": []},
+                {"partitions": []}
             ]
             mock_call_glue_data_quality.return_value = {"job_name": "glue-data-quality-dev", "job_run_id": "123"}
 
@@ -43,7 +43,6 @@ class TestGlueEtlMain(unittest.TestCase):
                     {
                         "database": "db_tmdb",
                         "table": "tb_discover_movie_tmdb",
-                        "partition_columns": "year,month",
                         "partition_values": ["year=2023"]
                     }
                 ),
@@ -52,7 +51,6 @@ class TestGlueEtlMain(unittest.TestCase):
                     {
                         "database": "db_tmdb",
                         "table": "tb_genre_movie_tmdb",
-                        "partition_columns": "",
                         "partition_values": None
                     }
                 ),
@@ -61,7 +59,6 @@ class TestGlueEtlMain(unittest.TestCase):
                     {
                         "database": "db_tmdb",
                         "table": "tb_configuration_movie_tmdb",
-                        "partition_columns": "",
                         "partition_values": None
                     }
                 )
@@ -75,7 +72,7 @@ class TestGlueEtlMain(unittest.TestCase):
     def test_calls_process_tmdb_with_correct_arguments(self):
         with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
             patch("app.glue_etl.src.utils.call_glue_data_quality"):
-            mock_process_tmdb.return_value = {"processed_rows": 10, "partitions": []}
+            mock_process_tmdb.return_value = {"partitions": []}
 
             main.run_etl(DEFAULT_ARGS)
 
@@ -90,7 +87,7 @@ class TestGlueEtlMain(unittest.TestCase):
     def test_main_runs_without_exception(self):
         with patch("app.glue_etl.src.utils.process_tmdb") as mock_process_tmdb, \
             patch("app.glue_etl.src.utils.call_glue_data_quality"):
-            mock_process_tmdb.return_value = {"processed_rows": 5, "partitions": []}
+            mock_process_tmdb.return_value = {"partitions": []}
 
             try:
                 main.run_etl(DEFAULT_ARGS)

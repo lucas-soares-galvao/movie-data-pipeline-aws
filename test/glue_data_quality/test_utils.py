@@ -15,7 +15,7 @@ from app.glue_data_quality.src.utils import (
 
 
 class TestParseArgs(unittest.TestCase):
-    def test_parse_args_with_optional_partitions(self):
+    def test_parse_args_with_optional_partition_values(self):
         def fake_get_resolved_options(argv, keys):
             return {key: f"val_{key.lower()}" for key in keys}
 
@@ -27,8 +27,6 @@ class TestParseArgs(unittest.TestCase):
             "tb",
             "--S3_BUCKET_DATA_QUALITY",
             "bucket",
-            "--PARTITIONS",
-            "dt,region",
             "--PARTITION_VALUES",
             "year=2025",
         ]
@@ -36,7 +34,6 @@ class TestParseArgs(unittest.TestCase):
         with patch("app.glue_data_quality.src.utils.getResolvedOptions", fake_get_resolved_options):
             args = parse_args(argv)
 
-        self.assertIn("PARTITIONS", args)
         self.assertIn("PARTITION_VALUES", args)
         self.assertEqual(args["DATABASE"], "val_database")
 
@@ -60,7 +57,7 @@ class TestParseArgs(unittest.TestCase):
         with patch("app.glue_data_quality.src.utils.getResolvedOptions", _fake_get_resolved_options):
             parse_args(argv)
 
-        self.assertNotIn("PARTITIONS", captured["keys"])
+        self.assertNotIn("PARTITION_VALUES", captured["keys"])
 
 
 class TestHelperFunctions(unittest.TestCase):
@@ -131,6 +128,9 @@ class TestHelperFunctions(unittest.TestCase):
             def __init__(self, value):
                 self.value = value
 
+            def __sub__(self, _):
+                return _FakeLitValue(self.value)
+
         class _FakeWriter:
             def __init__(self):
                 self.mode_value = None
@@ -153,6 +153,9 @@ class TestHelperFunctions(unittest.TestCase):
                 self.write = _FakeWriter()
                 self.columns = []
 
+            def drop(self, *_):
+                return self
+
             def withColumn(self, name, value):
                 self.columns.append((name, value.value))
                 return self
@@ -165,6 +168,9 @@ class TestHelperFunctions(unittest.TestCase):
             "app.glue_data_quality.src.utils.current_timestamp",
             lambda: _FakeLitValue("__now__"),
         ), patch(
+            "app.glue_data_quality.src.utils.from_utc_timestamp",
+            lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}"),
+        ), patch(
             "app.glue_data_quality.src.utils.coalesce",
             lambda x, y: y,  # Return the second arg (empty string) as fallback
         ):
@@ -172,7 +178,8 @@ class TestHelperFunctions(unittest.TestCase):
 
         self.assertIn(("source_table", "tb_discover_movie_tmdb"), fake_df.columns)
         self.assertIn(("partition", ""), fake_df.columns)
-        self.assertIn(("datetime_process", "__now__"), fake_df.columns)
+        self.assertIn(("failure_reason", ""), fake_df.columns)
+        self.assertIn(("datetime_process", "__now__@America/Sao_Paulo"), fake_df.columns)
         self.assertEqual(fake_df.write.mode_value, "append")
         self.assertEqual(fake_df.write.partition_by, "source_table")
         self.assertEqual(
@@ -180,10 +187,52 @@ class TestHelperFunctions(unittest.TestCase):
             "s3://bucket-dq/tmdb/tb_data_quality_tmdb/",
         )
 
+    def test_write_results_uses_partition_value(self):
+        class _FakeLitValue:
+            def __init__(self, value):
+                self.value = value
+
+            def __sub__(self, _):
+                return _FakeLitValue(self.value)
+
+        class _FakeWriter:
+            def mode(self, _):
+                return self
+
+            def partitionBy(self, _):
+                return self
+
+            def parquet(self, _):
+                return None
+
+        class _FakeDataFrame:
+            def __init__(self):
+                self.write = _FakeWriter()
+                self.columns = []
+
+            def drop(self, *_):
+                return self
+
+            def withColumn(self, name, value):
+                self.columns.append((name, value.value))
+                return self
+
+        fake_df = _FakeDataFrame()
+        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
+               patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")), \
+             patch("app.glue_data_quality.src.utils.from_utc_timestamp", lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}")), \
+               patch("app.glue_data_quality.src.utils.coalesce", lambda x, y: x):
+            write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb", partition="year=2025")
+
+        self.assertIn(("partition", "year=2025"), fake_df.columns)
+
     def test_write_results_returns_table_root_path(self):
         class _FakeLitValue:
             def __init__(self, value):
                 self.value = value
+
+            def __sub__(self, _):
+                return _FakeLitValue(self.value)
 
         class _FakeWriter:
             def mode(self, _):
@@ -199,11 +248,15 @@ class TestHelperFunctions(unittest.TestCase):
             def __init__(self):
                 self.write = _FakeWriter()
 
+            def drop(self, *_):
+                return self
+
             def withColumn(self, _, __):
                 return self
 
         with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
                patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")), \
+             patch("app.glue_data_quality.src.utils.from_utc_timestamp", lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}")), \
                patch("app.glue_data_quality.src.utils.coalesce", lambda x, y: y):
             result = write_results(_FakeDataFrame(), "bucket-dq", "tb_discover_tv_tmdb")
 

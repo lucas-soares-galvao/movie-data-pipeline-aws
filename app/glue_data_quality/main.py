@@ -19,7 +19,6 @@ def main(argv=None):
 
     database = args["DATABASE"]
     table = args["TABLE"]
-    partition = args.get("PARTITIONS")
     partition_values = args.get("PARTITION_VALUES")
     s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
 
@@ -33,7 +32,7 @@ def main(argv=None):
 
     df_dq_results = dq_results.toDF()
     df_dq_results.show(truncate=False)
-    table_root_path = write_results(df_dq_results, s3_bucket_dq, table, partition=partition)
+    table_root_path = write_results(df_dq_results, s3_bucket_dq, table, partition=partition_values)
     register_partition(database, table, table_root_path)
 
 

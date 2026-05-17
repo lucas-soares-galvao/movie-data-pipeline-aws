@@ -1,14 +1,14 @@
 import awswrangler as wr
 from awsglue.utils import getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import coalesce, current_timestamp, lit
+from pyspark.sql.functions import coalesce, col, current_timestamp, from_utc_timestamp, lit, when
 
 from .rulesets_dq import rulesets_dq
 
 
 def parse_args(argv):
     required_args = ["DATABASE", "TABLE", "S3_BUCKET_DATA_QUALITY"]
-    optional_args = [name for name in ["PARTITIONS", "PARTITION_VALUES"] if f"--{name}" in argv]
+    optional_args = ["PARTITION_VALUES"] if "--PARTITION_VALUES" in argv else []
     return getResolvedOptions(argv, required_args + optional_args)
 
 
@@ -59,11 +59,45 @@ def run_data_quality(datasource, ruleset):
 
 def write_results(df_dq_results, s3_bucket_dq, source_table, partition=None, dq_table="tb_data_quality_tmdb"):
     table_root_path = f"s3://{s3_bucket_dq}/tmdb/{dq_table}/"
+    # Keep the persisted schema minimal: remove raw metric payloads from Glue DQ output.
+    df_base = df_dq_results.drop("evaluated_metrics", "EvaluatedMetrics")
+
+    columns = set(getattr(df_base, "columns", []))
+    outcome_col = "Outcome" if "Outcome" in columns else ("outcome" if "outcome" in columns else None)
+    failure_reason_col = (
+        "FailureReason"
+        if "FailureReason" in columns
+        else ("failure_reason" if "failure_reason" in columns else None)
+    )
+
+    if outcome_col and failure_reason_col:
+        failure_reason_expr = (
+            when(
+                (col(outcome_col) == "Failed")
+                & col(failure_reason_col).isNotNull()
+                & (col(failure_reason_col) != ""),
+                col(failure_reason_col),
+            )
+            .when(
+                col(outcome_col) == "Failed",
+                lit("DQ metric failed without explicit reason"),
+            )
+            .otherwise(lit(""))
+        )
+    elif outcome_col:
+        failure_reason_expr = when(
+            col(outcome_col) == "Failed",
+            lit("DQ metric failed without explicit reason"),
+        ).otherwise(lit(""))
+    else:
+        failure_reason_expr = lit("")
+
     df_enriched = (
-        df_dq_results
+        df_base
         .withColumn("source_table", lit(source_table))
         .withColumn("partition", coalesce(lit(partition), lit("")))
-        .withColumn("datetime_process", current_timestamp())
+        .withColumn("failure_reason", failure_reason_expr)
+        .withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))
     )
     df_enriched.write.mode("append").partitionBy("source_table").parquet(table_root_path)
     return table_root_path
