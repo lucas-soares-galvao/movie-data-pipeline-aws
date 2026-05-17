@@ -19,7 +19,8 @@ DEFAULT_ARGS = {
     "GENRE_TABLE": "tb_genre_movie_tmdb",
     "CONFIGURATION_TABLE": "tb_configuration_movie_tmdb",
     "CONFIGURATION": "languages",
-    "PARTITION_COLUMNS": "year,month"
+    "PARTITION_COLUMNS": "year,month",
+    "YEAR": "2023"
 }
 
 
@@ -43,7 +44,7 @@ class TestGlueEtlMain(unittest.TestCase):
                         "database": "db_tmdb",
                         "table": "tb_discover_movie_tmdb",
                         "partition_columns": "year,month",
-                        "partition_values": ["year=2023/month=01", "year=2023/month=02"]
+                        "partition_values": ["year=2023"]
                     }
                 ),
                 (

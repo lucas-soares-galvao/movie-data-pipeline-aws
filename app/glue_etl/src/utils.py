@@ -13,7 +13,8 @@ REQUIRED_ARGS = [
     "CONFIGURATION_TABLE",
     "CONFIGURATION",
     "PARTITION_COLUMNS",
-    "GLUE_DATA_QUALITY_JOB_NAME"
+    "GLUE_DATA_QUALITY_JOB_NAME",
+    "YEAR"
 ]
 
 TABLES_BY_MEDIA = {
@@ -33,7 +34,7 @@ TABLES_BY_MEDIA = {
 def _add_temporal_partition_columns(df, date_column):
     df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
     df["year"] = df[date_column].dt.year.astype("Int64").astype(str)
-    df["month"] = df[date_column].dt.month.astype("Int64").astype(str).str.zfill(2)
+    df["month"] = df[date_column].dt.strftime("%m")
     return df
 
 
@@ -50,7 +51,7 @@ def _build_partition_values(df, partition_columns):
 
 
 def _is_temporal_partition(partition_columns, date_column):
-    return bool(date_column) and partition_columns == ["year", "month"]
+    return bool(date_column) and bool(partition_columns)
 
 
 def process_tmdb(
@@ -139,6 +140,15 @@ def build_partition_columns(partition_columns, date_column):
     return [column.strip() for column in partition_columns.split(",") if column.strip()]
 
 
+def resolve_dq_partition_values(table_path, partition_columns_list, partitions, year):
+    """Determine which partition values to send to the Data Quality job."""
+    if not partition_columns_list:
+        return None
+    if year and table_path == "discover":
+        return [f"year={year}"]
+    return partitions
+
+
 def run_etl(args):
     """Run ETL for all configured TMDB tables and trigger Data Quality."""
     bucket_sor = args["S3_BUCKET_SOR"]
@@ -148,6 +158,7 @@ def run_etl(args):
     configuration = args["CONFIGURATION"]
     partition_columns = args.get("PARTITION_COLUMNS", "")
     glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
+    year = args.get("YEAR")
 
     for cfg in build_tables_config(media_type, args):
         table = cfg["table"]
@@ -166,10 +177,16 @@ def run_etl(args):
         partitions = result.get("partitions", [])
         print(f"Processed table={table}, partitions={partitions}")
 
+        dq_partition_values = resolve_dq_partition_values(
+            table_path=cfg["path"],
+            partition_columns_list=partition_columns_list,
+            partitions=partitions,
+            year=year
+        )
         call_glue_data_quality(
             glue_data_quality_job_name,
             database=database,
             table=table,
             partition_columns=",".join(partition_columns_list),
-            partition_values=partitions if partition_columns_list else None
+            partition_values=dq_partition_values
         )

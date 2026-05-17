@@ -130,6 +130,14 @@ def generate_monthly_periods(start_year):
     return periods
 
 
+def group_periods_by_year(periods):
+    result = {}
+    for period in periods:
+        year = period["start_date"][:4]
+        result.setdefault(year, []).append(period)
+    return result
+
+
 # Generic function for discover (movie/tv)
 def fetch_discover(api_key, period, media_type="movie", max_pages=5):
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
@@ -232,20 +240,24 @@ def save_json_to_s3(bucket, key, data):
     )
 
 
-def trigger_glue_etl(job_name, params):
+def trigger_glue_etl(job_name, params, year=None):
     glue = boto3.client("glue")
+
+    arguments = {
+        "--MEDIA_TYPE": params["media_type"],
+        "--DATABASE": params["database"],
+        "--DISCOVER_TABLE": params["discover_table"],
+        "--GENRE_TABLE": params["genre_table"],
+        "--CONFIGURATION_TABLE": params["configuration_table"],
+        "--CONFIGURATION": params["configuration"],
+        "--PARTITION_COLUMNS": params["partition_columns"]
+    }
+    if year:
+        arguments["--YEAR"] = year
 
     response = glue.start_job_run(
         JobName=job_name,
-        Arguments={
-            "--MEDIA_TYPE": params["media_type"],
-            "--DATABASE": params["database"],
-            "--DISCOVER_TABLE": params["discover_table"],
-            "--GENRE_TABLE": params["genre_table"],
-            "--CONFIGURATION_TABLE": params["configuration_table"],
-            "--CONFIGURATION": params["configuration"],
-            "--PARTITION_COLUMNS": params["partition_columns"]
-        }
+        Arguments=arguments
     )
 
     return {
