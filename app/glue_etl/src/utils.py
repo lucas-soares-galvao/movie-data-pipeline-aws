@@ -179,9 +179,10 @@ def run_etl(args):
         table = cfg["table"]
         date_column = cfg["date_column"]
         partition_columns_list = build_partition_columns(partition_columns, date_column)
+        source_year = year if table_scope == TABLE_SCOPE_DISCOVER and cfg["path"] == "discover" else None
 
         result = process_tmdb(
-            source_path=build_source_path(bucket_sor, cfg["path"], media_type, configuration, year=year),
+            source_path=build_source_path(bucket_sor, cfg["path"], media_type, configuration, year=source_year),
             destination_path=f"s3://{bucket_sot}/tmdb/{table}/",
             database=database,
             table=table,
