@@ -216,7 +216,7 @@ resource "aws_cloudwatch_event_target" "lambda_alarm_failed_state_change_target"
 			region     = "$.region"
 		}
 
-		input_template = "\"[Lambda Falha]\\nAlarme: <alarm_name>\\nEstado: <state>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <timestamp>\""
+		input_template = jsonencode("[Lambda Falha]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>")
 	}
 }
 
@@ -251,7 +251,7 @@ resource "aws_cloudwatch_event_target" "lambda_alarm_success_state_change_target
 			region     = "$.region"
 		}
 
-		input_template = "\"[Lambda Sucesso]\\nAlarme: <alarm_name>\\nEstado: <state>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <timestamp>\""
+		input_template = jsonencode("[Lambda Sucesso]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>")
 	}
 }
 
@@ -286,7 +286,7 @@ resource "aws_cloudwatch_event_target" "eventbridge_alarm_failed_state_change_ta
 			region     = "$.region"
 		}
 
-		input_template = "\"[EventBridge Falha]\\nAlarme: <alarm_name>\\nEstado: <state>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <timestamp>\""
+		input_template = jsonencode("[EventBridge Falha]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>")
 	}
 }
 
@@ -321,6 +321,6 @@ resource "aws_cloudwatch_event_target" "eventbridge_alarm_success_state_change_t
 			region     = "$.region"
 		}
 
-		input_template = "\"[EventBridge Sucesso]\\nAlarme: <alarm_name>\\nEstado: <state>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <timestamp>\""
+		input_template = jsonencode("[EventBridge Sucesso]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>")
 	}
 }

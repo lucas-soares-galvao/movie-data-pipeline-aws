@@ -27,7 +27,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_succeeded_target" {
       region     = "$.region"
     }
 
-    input_template = "\"[Glue ETL Sucesso]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nRegião: <region>\\nHorário: <event_time>\""
+    input_template = jsonencode("[Glue ETL Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>")
   }
 }
 
@@ -60,7 +60,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
       region     = "$.region"
     }
 
-    input_template = "\"[Glue ETL Falha]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <event_time>\""
+    input_template = jsonencode("[Glue ETL Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>")
   }
 }
 
@@ -92,7 +92,7 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_succeeded_target" {
       region     = "$.region"
     }
 
-    input_template = "\"[Glue Data Quality Sucesso]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nRegião: <region>\\nHorário: <event_time>\""
+    input_template = jsonencode("[Glue Data Quality Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>")
   }
 }
 
@@ -125,6 +125,6 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_failed_target" {
       region     = "$.region"
     }
 
-    input_template = "\"[Glue Data Quality Falha]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <event_time>\""
+    input_template = jsonencode("[Glue Data Quality Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>")
   }
 }

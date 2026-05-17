@@ -320,3 +320,107 @@ resource "aws_sns_topic_policy" "glue_data_quality_failure_topic_policy" {
   policy = data.aws_iam_policy_document.glue_data_quality_failure_topic_policy.json
 }
 
+data "aws_iam_policy_document" "lambda_success_topic_policy" {
+  statement {
+    sid    = "AllowEventBridgePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.lambda_success_notifications.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.lambda_alarm_success_state_change.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "lambda_success_topic_policy" {
+  arn    = aws_sns_topic.lambda_success_notifications.arn
+  policy = data.aws_iam_policy_document.lambda_success_topic_policy.json
+}
+
+data "aws_iam_policy_document" "lambda_failure_topic_policy" {
+  statement {
+    sid    = "AllowEventBridgePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.lambda_failure_notifications.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.lambda_alarm_failed_state_change.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "lambda_failure_topic_policy" {
+  arn    = aws_sns_topic.lambda_failure_notifications.arn
+  policy = data.aws_iam_policy_document.lambda_failure_topic_policy.json
+}
+
+data "aws_iam_policy_document" "eventbridge_success_topic_policy" {
+  statement {
+    sid    = "AllowEventBridgePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.eventbridge_success_notifications.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.eventbridge_alarm_success_state_change.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "eventbridge_success_topic_policy" {
+  arn    = aws_sns_topic.eventbridge_success_notifications.arn
+  policy = data.aws_iam_policy_document.eventbridge_success_topic_policy.json
+}
+
+data "aws_iam_policy_document" "eventbridge_failure_topic_policy" {
+  statement {
+    sid    = "AllowEventBridgePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.eventbridge_failure_notifications.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.eventbridge_alarm_failed_state_change.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "eventbridge_failure_topic_policy" {
+  arn    = aws_sns_topic.eventbridge_failure_notifications.arn
+  policy = data.aws_iam_policy_document.eventbridge_failure_topic_policy.json
+}
+
