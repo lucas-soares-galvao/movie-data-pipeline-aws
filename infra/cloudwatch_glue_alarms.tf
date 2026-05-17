@@ -17,6 +17,18 @@ resource "aws_cloudwatch_event_target" "glue_etl_succeeded_target" {
   rule      = aws_cloudwatch_event_rule.glue_etl_succeeded.name
   target_id = "glue-etl-succeeded-sns"
   arn       = aws_sns_topic.glue_etl_success_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      job_name   = "$.detail.jobName"
+      state      = "$.detail.state"
+      job_run_id = "$.detail.jobRunId"
+      event_time = "$.time"
+      region     = "$.region"
+    }
+
+    input_template = "\"[Glue ETL Sucesso]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nRegião: <region>\\nHorário: <event_time>\""
+  }
 }
 
 resource "aws_cloudwatch_event_rule" "glue_etl_failed" {
@@ -37,6 +49,19 @@ resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
   rule      = aws_cloudwatch_event_rule.glue_etl_failed.name
   target_id = "glue-etl-failed-sns"
   arn       = aws_sns_topic.glue_etl_failure_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      job_name   = "$.detail.jobName"
+      state      = "$.detail.state"
+      job_run_id = "$.detail.jobRunId"
+      reason     = "$.detail.message"
+      event_time = "$.time"
+      region     = "$.region"
+    }
+
+    input_template = "\"[Glue ETL Falha]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <event_time>\""
+  }
 }
 
 resource "aws_cloudwatch_event_rule" "glue_data_quality_succeeded" {
@@ -57,6 +82,18 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_succeeded_target" {
   rule      = aws_cloudwatch_event_rule.glue_data_quality_succeeded.name
   target_id = "glue-data-quality-succeeded-sns"
   arn       = aws_sns_topic.glue_data_quality_success_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      job_name   = "$.detail.jobName"
+      state      = "$.detail.state"
+      job_run_id = "$.detail.jobRunId"
+      event_time = "$.time"
+      region     = "$.region"
+    }
+
+    input_template = "\"[Glue Data Quality Sucesso]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nRegião: <region>\\nHorário: <event_time>\""
+  }
 }
 
 resource "aws_cloudwatch_event_rule" "glue_data_quality_failed" {
@@ -77,4 +114,17 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_failed_target" {
   rule      = aws_cloudwatch_event_rule.glue_data_quality_failed.name
   target_id = "glue-data-quality-failed-sns"
   arn       = aws_sns_topic.glue_data_quality_failure_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      job_name   = "$.detail.jobName"
+      state      = "$.detail.state"
+      job_run_id = "$.detail.jobRunId"
+      reason     = "$.detail.message"
+      event_time = "$.time"
+      region     = "$.region"
+    }
+
+    input_template = "\"[Glue Data Quality Falha]\\nJob: <job_name>\\nStatus: <state>\\nRunId: <job_run_id>\\nMotivo: <reason>\\nRegião: <region>\\nHorário: <event_time>\""
+  }
 }

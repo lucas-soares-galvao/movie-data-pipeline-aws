@@ -177,6 +177,7 @@ class TestHelperFunctions(unittest.TestCase):
             write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb")
 
         self.assertIn(("source_table", "tb_discover_movie_tmdb"), fake_df.columns)
+        self.assertIn(("source_database", ""), fake_df.columns)
         self.assertIn(("partition", ""), fake_df.columns)
         self.assertIn(("failure_reason", ""), fake_df.columns)
         self.assertIn(("datetime_process", "__now__@America/Sao_Paulo"), fake_df.columns)
@@ -220,11 +221,18 @@ class TestHelperFunctions(unittest.TestCase):
         fake_df = _FakeDataFrame()
         with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
                patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")), \
-             patch("app.glue_data_quality.src.utils.from_utc_timestamp", lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}")), \
+               patch("app.glue_data_quality.src.utils.from_utc_timestamp", lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}")), \
                patch("app.glue_data_quality.src.utils.coalesce", lambda x, y: x):
-            write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb", partition="year=2025")
+            write_results(
+                fake_df,
+                "bucket-dq",
+                "tb_discover_movie_tmdb",
+                partition="year=2025",
+                source_database="db_tmdb"
+            )
 
         self.assertIn(("partition", "year=2025"), fake_df.columns)
+        self.assertIn(("source_database", "db_tmdb"), fake_df.columns)
 
     def test_write_results_returns_table_root_path(self):
         class _FakeLitValue:
