@@ -1,7 +1,7 @@
 import awswrangler as wr
 from awsglue.utils import getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import current_timestamp, lit
+from pyspark.sql.functions import coalesce, current_timestamp, lit
 
 from .rulesets_dq import rulesets_dq
 
@@ -47,7 +47,7 @@ def write_results(df_dq_results, s3_bucket_dq, source_table, partition=None, dq_
     df_enriched = (
         df_dq_results
         .withColumn("source_table", lit(source_table))
-        .withColumn("partition", lit(partition))
+        .withColumn("partition", coalesce(lit(partition), lit("")))
         .withColumn("datetime_process", current_timestamp())
     )
     df_enriched.write.mode("append").partitionBy("source_table").parquet(table_root_path)

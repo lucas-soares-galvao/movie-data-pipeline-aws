@@ -138,11 +138,14 @@ class TestHelperFunctions(unittest.TestCase):
         ), patch(
             "app.glue_data_quality.src.utils.current_timestamp",
             lambda: _FakeLitValue("__now__"),
+        ), patch(
+            "app.glue_data_quality.src.utils.coalesce",
+            lambda x, y: y,  # Return the second arg (empty string) as fallback
         ):
             write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb")
 
         self.assertIn(("source_table", "tb_discover_movie_tmdb"), fake_df.columns)
-        self.assertIn(("partition", None), fake_df.columns)
+        self.assertIn(("partition", ""), fake_df.columns)
         self.assertIn(("datetime_process", "__now__"), fake_df.columns)
         self.assertEqual(fake_df.write.mode_value, "append")
         self.assertEqual(fake_df.write.partition_by, "source_table")
@@ -174,7 +177,8 @@ class TestHelperFunctions(unittest.TestCase):
                 return self
 
         with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
-             patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")):
+               patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")), \
+               patch("app.glue_data_quality.src.utils.coalesce", lambda x, y: y):
             result = write_results(_FakeDataFrame(), "bucket-dq", "tb_discover_tv_tmdb")
 
         self.assertEqual(result, "s3://bucket-dq/tmdb/tb_data_quality_tmdb/")
