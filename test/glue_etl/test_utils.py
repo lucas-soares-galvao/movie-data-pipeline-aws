@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 import pandas as pd
 
-from app.glue_etl.src.utils import process_tmdb
+from app.glue_etl.src.utils import build_source_path, filter_tables_config, process_tmdb
 
 
 class TestProcessTmdb(unittest.TestCase):
@@ -75,6 +75,24 @@ class TestProcessTmdb(unittest.TestCase):
 
         kwargs = mock_wr.s3.to_parquet.call_args.kwargs
         self.assertEqual(kwargs["partition_cols"], ["custom"])
+
+    def test_build_source_path_uses_year_for_discover(self):
+        result = build_source_path("bucket-sor", "discover", "movie", "languages", year="2024")
+
+        self.assertEqual(result, "s3://bucket-sor/tmdb/discover/movie/year=2024/")
+
+    def test_filter_tables_config_by_scope(self):
+        configs = [
+            {"path": "discover", "table": "discover_table", "date_column": "release_date"},
+            {"path": "genre", "table": "genre_table", "date_column": None},
+            {"path": "configuration", "table": "config_table", "date_column": None},
+        ]
+
+        discover_only = filter_tables_config(configs, "discover")
+        static_only = filter_tables_config(configs, "static")
+
+        self.assertEqual(discover_only, [configs[0]])
+        self.assertEqual(static_only, configs[1:])
 
 if __name__ == "__main__":
     unittest.main()

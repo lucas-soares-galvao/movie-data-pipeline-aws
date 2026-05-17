@@ -30,6 +30,10 @@ TABLES_BY_MEDIA = {
     ]
 }
 
+TABLE_SCOPE_ALL = "all"
+TABLE_SCOPE_DISCOVER = "discover"
+TABLE_SCOPE_STATIC = "static"
+
 
 def _add_temporal_partition_columns(df, date_column):
     df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
@@ -123,10 +127,12 @@ def build_tables_config(media_type, args):
     ]
 
 
-def build_source_path(bucket_sor, table_path, media_type, configuration):
+def build_source_path(bucket_sor, table_path, media_type, configuration, year=None):
     """Build S3 source path for table extraction."""
     if table_path == "configuration":
         return f"s3://{bucket_sor}/tmdb/{table_path}/{configuration}/"
+    if table_path == "discover" and year:
+        return f"s3://{bucket_sor}/tmdb/{table_path}/{media_type}/year={year}/"
     return f"s3://{bucket_sor}/tmdb/{table_path}/{media_type}/"
 
 
@@ -135,6 +141,15 @@ def build_partition_columns(partition_columns, date_column):
     if not partition_columns or not date_column:
         return []
     return [column.strip() for column in partition_columns.split(",") if column.strip()]
+
+
+def filter_tables_config(configs, table_scope):
+    """Filter ETL tables by requested execution scope."""
+    if table_scope == TABLE_SCOPE_DISCOVER:
+        return [cfg for cfg in configs if cfg["path"] == "discover"]
+    if table_scope == TABLE_SCOPE_STATIC:
+        return [cfg for cfg in configs if cfg["path"] != "discover"]
+    return configs
 
 
 def resolve_dq_partition_values(table_path, partition_columns_list, year):
@@ -156,14 +171,18 @@ def run_etl(args):
     partition_columns = args.get("PARTITION_COLUMNS", "")
     glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
     year = args.get("YEAR")
+    table_scope = args.get("TABLE_SCOPE", TABLE_SCOPE_ALL)
 
-    for cfg in build_tables_config(media_type, args):
+    table_configs = filter_tables_config(build_tables_config(media_type, args), table_scope)
+
+    for cfg in table_configs:
         table = cfg["table"]
         date_column = cfg["date_column"]
         partition_columns_list = build_partition_columns(partition_columns, date_column)
+        source_year = year if table_scope == TABLE_SCOPE_DISCOVER and cfg["path"] == "discover" else None
 
         result = process_tmdb(
-            source_path=build_source_path(bucket_sor, cfg["path"], media_type, configuration),
+            source_path=build_source_path(bucket_sor, cfg["path"], media_type, configuration, year=source_year),
             destination_path=f"s3://{bucket_sot}/tmdb/{table}/",
             database=database,
             table=table,

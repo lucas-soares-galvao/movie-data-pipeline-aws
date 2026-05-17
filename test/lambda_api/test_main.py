@@ -40,8 +40,22 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["body"]["type"], "movie")
         self.assertEqual(result["body"]["discover_files"], ["movie1.json"])
         self.assertEqual(result["body"]["genre_files"], ["genres_movie.json"])
-        self.assertEqual(result["body"]["glue"], [{"job_name": "job", "job_run_id": "123"}])
-        mock_glue.assert_called_once_with("job", mock_glue.call_args[0][1], year="2024")
+        self.assertEqual(
+            result["body"]["glue"],
+            [
+                {"job_name": "job", "job_run_id": "123"},
+                {"job_name": "job", "job_run_id": "123"}
+            ]
+        )
+        self.assertEqual(mock_glue.call_count, 2)
+        self.assertEqual(
+            mock_glue.call_args_list[0].kwargs,
+            {"table_scope": "static"}
+        )
+        self.assertEqual(
+            mock_glue.call_args_list[1].kwargs,
+            {"year": "2024", "table_scope": "discover"}
+        )
 
     @patch("app.lambda_api.main.trigger_glue_etl")
     @patch("app.lambda_api.main.process_configuration")
@@ -77,8 +91,22 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["body"]["type"], "tv")
         self.assertEqual(result["body"]["discover_files"], ["tv1.json"])
         self.assertEqual(result["body"]["genre_files"], ["genres_tv.json"])
-        self.assertEqual(result["body"]["glue"], [{"job_name": "job", "job_run_id": "123"}])
-        mock_glue.assert_called_once_with("job", mock_glue.call_args[0][1], year="2024")
+        self.assertEqual(
+            result["body"]["glue"],
+            [
+                {"job_name": "job", "job_run_id": "123"},
+                {"job_name": "job", "job_run_id": "123"}
+            ]
+        )
+        self.assertEqual(mock_glue.call_count, 2)
+        self.assertEqual(
+            mock_glue.call_args_list[0].kwargs,
+            {"table_scope": "static"}
+        )
+        self.assertEqual(
+            mock_glue.call_args_list[1].kwargs,
+            {"year": "2024", "table_scope": "discover"}
+        )
 
     @patch("app.lambda_api.main.trigger_glue_etl")
     @patch("app.lambda_api.main.process_configuration")
@@ -100,6 +128,7 @@ class TestMain(unittest.TestCase):
         mock_process_discover.return_value = []
         mock_process_genres.return_value = ["genres_movie.json"]
         mock_process_configuration.return_value = ["configuration_movie.json"]
+        mock_glue.return_value = {"job_name": "job", "job_run_id": "123"}
 
         event = {
             "type": "movie",
@@ -110,8 +139,8 @@ class TestMain(unittest.TestCase):
         result = main.lambda_handler(event, None)
 
         self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(result["body"]["glue"], [])
-        mock_glue.assert_not_called()
+        self.assertEqual(result["body"]["glue"], [{"job_name": "job", "job_run_id": "123"}])
+        mock_glue.assert_called_once_with("job", mock_glue.call_args[0][1], table_scope="static")
 
     @patch("os.getenv")
     def test_lambda_handler_invalid_media_type(self, mock_getenv):

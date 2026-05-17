@@ -240,7 +240,7 @@ def save_json_to_s3(bucket, key, data):
     )
 
 
-def trigger_glue_etl(job_name, params, year=None):
+def trigger_glue_etl(job_name, params, year=None, table_scope=None):
     glue = boto3.client("glue")
 
     arguments = {
@@ -254,6 +254,8 @@ def trigger_glue_etl(job_name, params, year=None):
     }
     if year:
         arguments["--YEAR"] = year
+    if table_scope:
+        arguments["--TABLE_SCOPE"] = table_scope
 
     response = glue.start_job_run(
         JobName=job_name,

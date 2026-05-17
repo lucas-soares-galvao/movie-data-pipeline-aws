@@ -30,6 +30,9 @@ resource "aws_glue_job" "etl_job" {
     # Custom prefix for the groups /<job>/error and /<job>/output.
     "--custom-logGroup-prefix"           = "/${local.envs.glue_etl_job_name}"
     "--enable-metrics"                   = ""
+    # Static job arguments. Runtime arguments such as MEDIA_TYPE, DISCOVER_TABLE,
+    # GENRE_TABLE, CONFIGURATION_TABLE, CONFIGURATION, PARTITION_COLUMNS, YEAR,
+    # and TABLE_SCOPE are supplied by the Lambda when starting each Glue run.
     # S3 buckets for reading (SOR) and writing (SOT)
     "--S3_BUCKET_SOR"                    = local.envs.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = local.envs.s3_bucket_sot

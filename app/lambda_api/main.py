@@ -41,11 +41,22 @@ def lambda_handler(event, context):
 
     discover_files = []
     glue_runs = []
+
+    if genre_files or configuration_files:
+        glue_runs.append(
+            trigger_glue_etl(glue_job_name, media_info, table_scope="static")
+        )
+
     for year, year_periods in sorted(years_periods.items()):
         year_files = process_discover(api_key, bucket, year_periods, media_type)
         discover_files.extend(year_files)
         if year_files:
-            glue = trigger_glue_etl(glue_job_name, media_info, year=year)
+            glue = trigger_glue_etl(
+                glue_job_name,
+                media_info,
+                year=year,
+                table_scope="discover"
+            )
             glue_runs.append(glue)
 
     return {

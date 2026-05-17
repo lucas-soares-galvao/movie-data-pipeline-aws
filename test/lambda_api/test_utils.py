@@ -148,12 +148,13 @@ class TestUtils(unittest.TestCase):
             "configuration": "languages",
             "partition_columns": "year,month"
         }
-        result = utils.trigger_glue_etl("job_test", params, year="2024")
+        result = utils.trigger_glue_etl("job_test", params, year="2024", table_scope="discover")
 
         self.assertEqual(result["job_name"], "job_test")
         self.assertEqual(result["job_run_id"], "abc123")
         call_args = mock_glue.start_job_run.call_args
         self.assertEqual(call_args.kwargs["Arguments"]["--YEAR"], "2024")
+        self.assertEqual(call_args.kwargs["Arguments"]["--TABLE_SCOPE"], "discover")
 
     def test_group_periods_by_year(self):
         periods = [
