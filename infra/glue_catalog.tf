@@ -349,11 +349,6 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
     }
 
     columns {
-      name = "evaluated_metrics"
-      type = "map<string,double>"
-    }
-
-    columns {
       name = "partition"
       type = "string"
     }
@@ -361,6 +356,11 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
     columns {
       name = "datetime_process"
       type = "timestamp"
+    }
+
+    columns {
+      name = "source_database"
+      type = "string"
     }
   }
 

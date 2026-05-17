@@ -32,7 +32,13 @@ def main(argv=None):
 
     df_dq_results = dq_results.toDF()
     df_dq_results.show(truncate=False)
-    table_root_path = write_results(df_dq_results, s3_bucket_dq, table, partition=partition_values)
+    table_root_path = write_results(
+        df_dq_results,
+        s3_bucket_dq,
+        table,
+        partition=partition_values,
+        source_database=database
+    )
     register_partition(database, table, table_root_path)
 
 

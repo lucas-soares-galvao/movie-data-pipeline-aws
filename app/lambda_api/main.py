@@ -29,8 +29,8 @@ def lambda_handler(event, context):
         }
 
     api_key = get_tmdb_key(secret_arn)
-    current_year = date.today().year
-    periods = generate_monthly_periods(start_year=current_year)
+    last_year = date.today().year - 1
+    periods = generate_monthly_periods(start_year=last_year)
     years_periods = group_periods_by_year(periods)
 
     media_type = media_info["media_type"]

@@ -57,7 +57,14 @@ def run_data_quality(datasource, ruleset):
     )
 
 
-def write_results(df_dq_results, s3_bucket_dq, source_table, partition=None, dq_table="tb_data_quality_tmdb"):
+def write_results(
+    df_dq_results,
+    s3_bucket_dq,
+    source_table,
+    partition=None,
+    source_database=None,
+    dq_table="tb_data_quality_tmdb"
+):
     table_root_path = f"s3://{s3_bucket_dq}/tmdb/{dq_table}/"
     # Keep the persisted schema minimal: remove raw metric payloads from Glue DQ output.
     df_base = df_dq_results.drop("evaluated_metrics", "EvaluatedMetrics")
@@ -95,6 +102,7 @@ def write_results(df_dq_results, s3_bucket_dq, source_table, partition=None, dq_
     df_enriched = (
         df_base
         .withColumn("source_table", lit(source_table))
+        .withColumn("source_database", coalesce(lit(source_database), lit("")))
         .withColumn("partition", coalesce(lit(partition), lit("")))
         .withColumn("failure_reason", failure_reason_expr)
         .withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))
