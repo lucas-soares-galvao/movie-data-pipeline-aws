@@ -148,10 +148,25 @@ class TestUtils(unittest.TestCase):
             "configuration": "languages",
             "partition_columns": "year,month"
         }
-        result = utils.trigger_glue_etl("job_test", params)
+        result = utils.trigger_glue_etl("job_test", params, year="2024")
 
         self.assertEqual(result["job_name"], "job_test")
         self.assertEqual(result["job_run_id"], "abc123")
+        call_args = mock_glue.start_job_run.call_args
+        self.assertEqual(call_args.kwargs["Arguments"]["--YEAR"], "2024")
+
+    def test_group_periods_by_year(self):
+        periods = [
+            {"start_date": "2023-11-01", "end_date": "2023-11-30"},
+            {"start_date": "2023-12-01", "end_date": "2023-12-31"},
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        ]
+        result = utils.group_periods_by_year(periods)
+
+        self.assertIn("2023", result)
+        self.assertIn("2024", result)
+        self.assertEqual(len(result["2023"]), 2)
+        self.assertEqual(len(result["2024"]), 1)
 
     def test_extract_media_tables(self):
         event = {

@@ -8,7 +8,7 @@ from .rulesets_dq import rulesets_dq
 
 def parse_args(argv):
     required_args = ["DATABASE", "TABLE", "S3_BUCKET_DATA_QUALITY"]
-    optional_args = [name for name in ["PARTITIONS"] if f"--{name}" in argv]
+    optional_args = [name for name in ["PARTITIONS", "PARTITION_VALUES"] if f"--{name}" in argv]
     return getResolvedOptions(argv, required_args + optional_args)
 
 
@@ -23,10 +23,25 @@ def build_ruleset(table_name):
     return rules_list_to_dqdl(rulesets_dq.get(table_name, []))
 
 
-def read_catalog_table(glue_context, database, table):
+def build_push_down_predicate(partition_values_str):
+    """Convert 'year=2025' format to a Spark SQL predicate for Glue catalog filtering."""
+    if not partition_values_str:
+        return None
+    parts = partition_values_str.split("=", 1)
+    if len(parts) != 2:
+        return None
+    col, val = parts[0].strip(), parts[1].strip()
+    return f"{col} = '{val}'"
+
+
+def read_catalog_table(glue_context, database, table, push_down_predicate=None):
+    kwargs = {}
+    if push_down_predicate:
+        kwargs["push_down_predicate"] = push_down_predicate
     return glue_context.create_dynamic_frame.from_catalog(
         database=database,
         table_name=table,
+        **kwargs
     )
 
 

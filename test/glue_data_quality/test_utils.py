@@ -3,6 +3,7 @@
 from unittest.mock import patch
 import unittest
 from app.glue_data_quality.src.utils import (
+    build_push_down_predicate,
     build_ruleset,
     parse_args,
     read_catalog_table,
@@ -28,12 +29,15 @@ class TestParseArgs(unittest.TestCase):
             "bucket",
             "--PARTITIONS",
             "dt,region",
+            "--PARTITION_VALUES",
+            "year=2025",
         ]
 
         with patch("app.glue_data_quality.src.utils.getResolvedOptions", fake_get_resolved_options):
             args = parse_args(argv)
 
         self.assertIn("PARTITIONS", args)
+        self.assertIn("PARTITION_VALUES", args)
         self.assertEqual(args["DATABASE"], "val_database")
 
     def test_parse_args_without_optional_partitions(self):
@@ -70,8 +74,8 @@ class TestHelperFunctions(unittest.TestCase):
 
     def test_read_catalog_table(self):
         class _FakeCatalog:
-            def from_catalog(self, database, table_name):
-                return {"database": database, "table": table_name}
+            def from_catalog(self, database, table_name, **kwargs):
+                return {"database": database, "table": table_name, **kwargs}
 
         class _FakeDynamicFrame:
             def __init__(self):
@@ -83,6 +87,28 @@ class TestHelperFunctions(unittest.TestCase):
 
         result = read_catalog_table(_FakeGlueContext(), "db", "tb")
         self.assertEqual(result, {"database": "db", "table": "tb"})
+
+    def test_read_catalog_table_with_predicate(self):
+        class _FakeCatalog:
+            def from_catalog(self, database, table_name, **kwargs):
+                return {"database": database, "table": table_name, **kwargs}
+
+        class _FakeDynamicFrame:
+            def __init__(self):
+                self.from_catalog = _FakeCatalog().from_catalog
+
+        class _FakeGlueContext:
+            def __init__(self):
+                self.create_dynamic_frame = _FakeDynamicFrame()
+
+        result = read_catalog_table(_FakeGlueContext(), "db", "tb", push_down_predicate="year = '2025'")
+        self.assertEqual(result["push_down_predicate"], "year = '2025'")
+
+    def test_build_push_down_predicate(self):
+        self.assertEqual(build_push_down_predicate("year=2025"), "year = '2025'")
+        self.assertIsNone(build_push_down_predicate(""))
+        self.assertIsNone(build_push_down_predicate(None))
+        self.assertIsNone(build_push_down_predicate("invalidsemigual"))
 
     def test_run_data_quality_calls_apply(self):
         class _FakeEvaluateDataQuality:

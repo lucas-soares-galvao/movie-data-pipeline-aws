@@ -3,6 +3,7 @@ import sys
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
 from src.utils import (
+    build_push_down_predicate,
     build_ruleset,
     parse_args,
     read_catalog_table,
@@ -19,10 +20,13 @@ def main(argv=None):
     database = args["DATABASE"]
     table = args["TABLE"]
     partition = args.get("PARTITIONS")
+    partition_values = args.get("PARTITION_VALUES")
     s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
 
+    push_down_predicate = build_push_down_predicate(partition_values)
+
     glue_context = GlueContext(SparkContext.getOrCreate())
-    datasource = read_catalog_table(glue_context, database, table)
+    datasource = read_catalog_table(glue_context, database, table, push_down_predicate=push_down_predicate)
     ruleset = build_ruleset(table)
 
     dq_results = run_data_quality(datasource=datasource, ruleset=ruleset)
