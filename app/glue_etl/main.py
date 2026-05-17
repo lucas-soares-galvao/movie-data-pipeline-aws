@@ -5,7 +5,8 @@ from src.utils import REQUIRED_ARGS, run_etl
 
 
 OPTIONAL_ARGS = [
-    "TABLE_SCOPE"
+    "TABLE_SCOPE",
+    "YEAR"
 ]
 
 
