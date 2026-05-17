@@ -27,14 +27,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_succeeded_target" {
       region     = "$.region"
     }
 
-    input_template = <<-EOT
-[Glue ETL Sucesso]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Região: <region>
-Horário: <event_time>
-EOT
+  input_template = local.glue_etl_succeeded_input_template
   }
 }
 
@@ -67,15 +60,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
       region     = "$.region"
     }
 
-    input_template = <<-EOT
-[Glue ETL Falha]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Motivo: <reason>
-Região: <region>
-Horário: <event_time>
-EOT
+  input_template = local.glue_etl_failed_input_template
   }
 }
 
@@ -107,14 +92,7 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_succeeded_target" {
       region     = "$.region"
     }
 
-    input_template = <<-EOT
-[Glue Data Quality Sucesso]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Região: <region>
-Horário: <event_time>
-EOT
+  input_template = local.glue_data_quality_succeeded_input_template
   }
 }
 
@@ -147,14 +125,6 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_failed_target" {
       region     = "$.region"
     }
 
-    input_template = <<-EOT
-[Glue Data Quality Falha]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Motivo: <reason>
-Região: <region>
-Horário: <event_time>
-EOT
+  input_template = local.glue_data_quality_failed_input_template
   }
 }

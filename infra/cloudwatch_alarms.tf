@@ -216,14 +216,7 @@ resource "aws_cloudwatch_event_target" "lambda_alarm_failed_state_change_target"
 			region     = "$.region"
 		}
 
-		input_template = <<-EOT
-[Lambda Falha]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
-EOT
+		input_template = local.lambda_alarm_failed_input_template
 	}
 }
 
@@ -258,14 +251,7 @@ resource "aws_cloudwatch_event_target" "lambda_alarm_success_state_change_target
 			region     = "$.region"
 		}
 
-		input_template = <<-EOT
-[Lambda Sucesso]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
-EOT
+		input_template = local.lambda_alarm_success_input_template
 	}
 }
 
@@ -300,14 +286,7 @@ resource "aws_cloudwatch_event_target" "eventbridge_alarm_failed_state_change_ta
 			region     = "$.region"
 		}
 
-		input_template = <<-EOT
-[EventBridge Falha]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
-EOT
+		input_template = local.eventbridge_alarm_failed_input_template
 	}
 }
 
@@ -342,13 +321,6 @@ resource "aws_cloudwatch_event_target" "eventbridge_alarm_success_state_change_t
 			region     = "$.region"
 		}
 
-		input_template = <<-EOT
-[EventBridge Sucesso]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
-EOT
+		input_template = local.eventbridge_alarm_success_input_template
 	}
 }
