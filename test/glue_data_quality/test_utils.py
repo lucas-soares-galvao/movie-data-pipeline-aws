@@ -4,7 +4,6 @@ from unittest.mock import patch
 import unittest
 from app.glue_data_quality.src.utils import (
     build_ruleset,
-    get_partition_columns,
     parse_args,
     read_catalog_table,
     register_partition,
@@ -61,10 +60,6 @@ class TestParseArgs(unittest.TestCase):
 
 
 class TestHelperFunctions(unittest.TestCase):
-    def test_get_partition_columns(self):
-        self.assertEqual(get_partition_columns("dt,region"), ["dt", "region"])
-        self.assertEqual(get_partition_columns(None), [])
-
     def test_build_ruleset_with_known_table(self):
         dqdl = build_ruleset("tb_configuration_countries_tmdb")
         self.assertIn('IsComplete "iso_3166_1"', dqdl)
@@ -140,10 +135,15 @@ class TestHelperFunctions(unittest.TestCase):
         with patch(
             "app.glue_data_quality.src.utils.lit",
             lambda value: _FakeLitValue(value),
+        ), patch(
+            "app.glue_data_quality.src.utils.current_timestamp",
+            lambda: _FakeLitValue("__now__"),
         ):
             write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb")
 
         self.assertIn(("source_table", "tb_discover_movie_tmdb"), fake_df.columns)
+        self.assertIn(("partition", None), fake_df.columns)
+        self.assertIn(("datetime_process", "__now__"), fake_df.columns)
         self.assertEqual(fake_df.write.mode_value, "append")
         self.assertEqual(fake_df.write.partition_by, "source_table")
         self.assertEqual(
@@ -173,7 +173,8 @@ class TestHelperFunctions(unittest.TestCase):
             def withColumn(self, _, __):
                 return self
 
-        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)):
+        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
+             patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")):
             result = write_results(_FakeDataFrame(), "bucket-dq", "tb_discover_tv_tmdb")
 
         self.assertEqual(result, "s3://bucket-dq/tmdb/tb_data_quality_tmdb/")

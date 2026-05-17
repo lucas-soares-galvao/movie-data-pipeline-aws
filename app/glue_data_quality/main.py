@@ -18,6 +18,7 @@ def main(argv=None):
 
     database = args["DATABASE"]
     table = args["TABLE"]
+    partition = args.get("PARTITIONS")
     s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
 
     glue_context = GlueContext(SparkContext.getOrCreate())
@@ -28,7 +29,7 @@ def main(argv=None):
 
     df_dq_results = dq_results.toDF()
     df_dq_results.show(truncate=False)
-    table_root_path = write_results(df_dq_results, s3_bucket_dq, table)
+    table_root_path = write_results(df_dq_results, s3_bucket_dq, table, partition=partition)
     register_partition(database, table, table_root_path)
 
 

@@ -1,7 +1,7 @@
 import awswrangler as wr
 from awsglue.utils import getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import lit
+from pyspark.sql.functions import current_timestamp, lit
 
 from .rulesets_dq import rulesets_dq
 
@@ -10,10 +10,6 @@ def parse_args(argv):
     required_args = ["DATABASE", "TABLE", "S3_BUCKET_DATA_QUALITY"]
     optional_args = [name for name in ["PARTITIONS"] if f"--{name}" in argv]
     return getResolvedOptions(argv, required_args + optional_args)
-
-
-def get_partition_columns(partitions):
-    return partitions.split(",") if partitions else []
 
 
 def rules_list_to_dqdl(rules_list):
@@ -46,10 +42,15 @@ def run_data_quality(datasource, ruleset):
     )
 
 
-def write_results(df_dq_results, s3_bucket_dq, source_table, dq_table="tb_data_quality_tmdb"):
+def write_results(df_dq_results, s3_bucket_dq, source_table, partition=None, dq_table="tb_data_quality_tmdb"):
     table_root_path = f"s3://{s3_bucket_dq}/tmdb/{dq_table}/"
-    df_with_source = df_dq_results.withColumn("source_table", lit(source_table))
-    df_with_source.write.mode("append").partitionBy("source_table").parquet(table_root_path)
+    df_enriched = (
+        df_dq_results
+        .withColumn("source_table", lit(source_table))
+        .withColumn("partition", lit(partition))
+        .withColumn("datetime_process", current_timestamp())
+    )
+    df_enriched.write.mode("append").partitionBy("source_table").parquet(table_root_path)
     return table_root_path
 
 
