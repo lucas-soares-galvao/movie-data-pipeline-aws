@@ -16,87 +16,37 @@ locals {
     if trimspace(line) != "" && !startswith(trimspace(line), "#")
   ])
 
-  lambda_alarm_failed_input_template = jsonencode(<<-EOT
-[Lambda Falha]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
+  lambda_alarm_failed_input_template = <<-EOT
+{"message":"[Lambda Falha]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
-  )
 
-  lambda_alarm_success_input_template = jsonencode(<<-EOT
-[Lambda Sucesso]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
+  lambda_alarm_success_input_template = <<-EOT
+{"message":"[Lambda Sucesso]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
-  )
 
-  eventbridge_alarm_failed_input_template = jsonencode(<<-EOT
-[EventBridge Falha]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
+  eventbridge_alarm_failed_input_template = <<-EOT
+{"message":"[EventBridge Falha]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
-  )
 
-  eventbridge_alarm_success_input_template = jsonencode(<<-EOT
-[EventBridge Sucesso]
-Alarme: <alarm_name>
-Estado: <state>
-Motivo: <reason>
-Região: <region>
-Horário: <timestamp>
+  eventbridge_alarm_success_input_template = <<-EOT
+{"message":"[EventBridge Sucesso]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
-  )
 
-  glue_etl_succeeded_input_template = jsonencode(<<-EOT
-[Glue ETL Sucesso]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Região: <region>
-Horário: <event_time>
+  glue_etl_succeeded_input_template = <<-EOT
+{"message":"[Glue ETL Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>"}
 EOT
-  )
 
-  glue_etl_failed_input_template = jsonencode(<<-EOT
-[Glue ETL Falha]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Motivo: <reason>
-Região: <region>
-Horário: <event_time>
+  glue_etl_failed_input_template = <<-EOT
+{"message":"[Glue ETL Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
-  )
 
-  glue_data_quality_succeeded_input_template = jsonencode(<<-EOT
-[Glue Data Quality Sucesso]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Região: <region>
-Horário: <event_time>
+  glue_data_quality_succeeded_input_template = <<-EOT
+{"message":"[Glue Data Quality Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>"}
 EOT
-  )
 
-  glue_data_quality_failed_input_template = jsonencode(<<-EOT
-[Glue Data Quality Falha]
-Job: <job_name>
-Status: <state>
-RunId: <job_run_id>
-Motivo: <reason>
-Região: <region>
-Horário: <event_time>
+  glue_data_quality_failed_input_template = <<-EOT
+{"message":"[Glue Data Quality Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
-  )
 
     envs = {
       glue_etl_job_name = "${var.glue_etl_job_name}-${var.env}"
