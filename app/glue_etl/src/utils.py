@@ -3,8 +3,11 @@
 import awswrangler as wr
 import boto3
 import pandas as pd
+from awsglue.utils import getResolvedOptions
 
 
+# Argumentos obrigatorios para execucao do Glue ETL.
+# Eles definem buckets de origem/destino, tabelas de catalogo e job de DQ a ser disparado.
 REQUIRED_ARGS = [
     "S3_BUCKET_SOR",
     "S3_BUCKET_SOT",
@@ -18,6 +21,35 @@ REQUIRED_ARGS = [
     "GLUE_DATA_QUALITY_JOB_NAME"
 ]
 
+OPTIONAL_ARGS = [
+    "TABLE_SCOPE",
+    "YEAR"
+]
+
+
+def _resolve_optional_args(argv: list[str], optional_args: list[str]) -> dict[str, str]:
+    """Resolve argumentos opcionais sem falhar quando nao forem enviados ao job."""
+    resolved: dict[str, str] = {}
+
+    for arg in optional_args:
+        option = f"--{arg}"
+        if option in argv:
+            index = argv.index(option)
+            if index + 1 < len(argv):
+                resolved[arg] = argv[index + 1]
+
+    return resolved
+
+
+def resolve_args(argv: list[str]) -> dict[str, str]:
+    """Resolve argumentos Glue combinando obrigatorios e opcionais."""
+    args = getResolvedOptions(argv, REQUIRED_ARGS)
+    args.update(_resolve_optional_args(argv, OPTIONAL_ARGS))
+    return args
+
+
+# Mapeamento declarativo de tabelas por tipo de midia.
+# Isso evita if/else espalhado no fluxo principal do ETL.
 TABLES_BY_MEDIA = {
     "movie": [
         {"path": "discover", "table_arg": "DISCOVER_TABLE", "date_column": "release_date"},
@@ -37,6 +69,7 @@ TABLE_SCOPE_STATIC = "static"
 
 
 def _add_temporal_partition_columns(df: pd.DataFrame, date_column: str) -> pd.DataFrame:
+    """Deriva ano/mes da coluna de data para escrita particionada."""
     df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
     df["year"] = df[date_column].dt.year.astype("Int64").astype(str)
     df["month"] = df[date_column].dt.strftime("%m")
@@ -44,6 +77,7 @@ def _add_temporal_partition_columns(df: pd.DataFrame, date_column: str) -> pd.Da
 
 
 def _build_partition_values(df: pd.DataFrame, partition_columns: list[str] | None) -> list[str]:
+    """Monta paths de particao no formato coluna=valor para uso posterior no Glue DQ."""
     if not partition_columns:
         return []
 
@@ -56,6 +90,7 @@ def _build_partition_values(df: pd.DataFrame, partition_columns: list[str] | Non
 
 
 def _is_temporal_partition(partition_columns: list[str] | None, date_column: str | None) -> bool:
+    """Define se o dataset deve receber particionamento temporal (ano/mes)."""
     return bool(date_column) and bool(partition_columns)
 
 
@@ -67,13 +102,17 @@ def process_tmdb(
     partition_columns: list[str] | None = None,
     date_column: str | None = None,
 ) -> dict:
-    """Read TMDB JSON from S3, transform when needed, and write Parquet to S3."""
+    """Le JSON da TMDB no S3, transforma quando necessario e grava Parquet no S3."""
+    # Etapa 1: leitura do dado bruto no SOR.
     df = wr.s3.read_json(source_path)
+    # Etapa 2: escolhe estrategia de escrita conforme existe (ou nao) particionamento.
     mode = "overwrite_partitions" if partition_columns else "overwrite"
 
     if _is_temporal_partition(partition_columns, date_column):
+        # Para tabelas temporais, materializa year/month a partir da data de referencia.
         df = _add_temporal_partition_columns(df, date_column)
 
+    # Etapa 3: persistencia em Parquet com registro no Glue Catalog.
     wr.s3.to_parquet(
         df=df,
         path=destination_path,
@@ -96,7 +135,8 @@ def call_glue_data_quality(
     table: str,
     partition_values: list[str] | None = None,
 ) -> dict:
-    """Trigger the Glue Data Quality job for a given catalog table."""
+    """Dispara o job de Glue Data Quality para uma tabela do Catalog."""
+    # Dispara DQ de forma assincrona e retorna identificadores para rastreio.
     glue = boto3.client("glue")
 
     arguments = {
@@ -118,7 +158,7 @@ def call_glue_data_quality(
 
 
 def build_tables_config(media_type: str, args: dict) -> list[dict]:
-    """Build per-table ETL config according to media type."""
+    """Monta a configuracao ETL por tabela conforme o tipo de midia."""
     configs = TABLES_BY_MEDIA.get(media_type)
     if configs is None:
         raise ValueError(f"Unsupported MEDIA_TYPE: {media_type}")
@@ -140,7 +180,7 @@ def build_source_path(
     configuration: str,
     year: str | None = None,
 ) -> str:
-    """Build S3 source path for table extraction."""
+    """Monta o caminho de origem no S3 para extracao da tabela."""
     if table_path == "configuration":
         return f"s3://{bucket_sor}/tmdb/{table_path}/{configuration}/"
     if table_path == "discover" and year:
@@ -149,14 +189,14 @@ def build_source_path(
 
 
 def build_partition_columns(partition_columns: str, date_column: str | None) -> list[str]:
-    """Return partition columns only for temporal discover datasets."""
+    """Retorna colunas de particionamento apenas para datasets temporais do discover."""
     if not partition_columns or not date_column:
         return []
     return [column.strip() for column in partition_columns.split(",") if column.strip()]
 
 
 def filter_tables_config(configs: list[dict], table_scope: str) -> list[dict]:
-    """Filter ETL tables by requested execution scope."""
+    """Filtra as tabelas do ETL conforme o escopo de execucao solicitado."""
     if table_scope == TABLE_SCOPE_DISCOVER:
         return [cfg for cfg in configs if cfg["path"] == "discover"]
     if table_scope == TABLE_SCOPE_STATIC:
@@ -169,7 +209,7 @@ def resolve_dq_partition_values(
     partition_columns_list: list[str],
     year: str | None,
 ) -> list[str] | None:
-    """Determine which partition values to send to the Data Quality job."""
+    """Define quais valores de particao serao enviados ao job de Data Quality."""
     if not partition_columns_list:
         return None
     if year and table_path == "discover":
@@ -177,46 +217,3 @@ def resolve_dq_partition_values(
     return None
 
 
-def run_etl(args: dict) -> None:
-    """Run ETL for all configured TMDB tables and trigger Data Quality."""
-    bucket_sor = args["S3_BUCKET_SOR"]
-    bucket_sot = args["S3_BUCKET_SOT"]
-    media_type = args["MEDIA_TYPE"]
-    database = args["DATABASE"]
-    configuration = args["CONFIGURATION"]
-    partition_columns = args.get("PARTITION_COLUMNS", "")
-    glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
-    year = args.get("YEAR")
-    table_scope = args.get("TABLE_SCOPE", TABLE_SCOPE_ALL)
-
-    table_configs = filter_tables_config(build_tables_config(media_type, args), table_scope)
-
-    for cfg in table_configs:
-        table = cfg["table"]
-        date_column = cfg["date_column"]
-        partition_columns_list = build_partition_columns(partition_columns, date_column)
-        source_year = year if table_scope == TABLE_SCOPE_DISCOVER and cfg["path"] == "discover" else None
-
-        result = process_tmdb(
-            source_path=build_source_path(bucket_sor, cfg["path"], media_type, configuration, year=source_year),
-            destination_path=f"s3://{bucket_sot}/tmdb/{table}/",
-            database=database,
-            table=table,
-            partition_columns=partition_columns_list,
-            date_column=date_column
-        )
-
-        partitions = result.get("partitions", [])
-        print(f"Processed table={table}, partitions={partitions}")
-
-        dq_partition_values = resolve_dq_partition_values(
-            table_path=cfg["path"],
-            partition_columns_list=partition_columns_list,
-            year=year
-        )
-        call_glue_data_quality(
-            glue_data_quality_job_name,
-            database=database,
-            table=table,
-            partition_values=dq_partition_values
-        )

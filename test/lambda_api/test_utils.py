@@ -29,7 +29,7 @@ class TestUtils(unittest.TestCase):
 
     @patch("requests.get")
     def test_fetch_discover_movie(self, mock_get):
-        # Simulates empty response for pt-BR and response with movie for en-US
+        # Simula resposta vazia para pt-BR e resposta com filmes para en-US
         mock_response_pt = MagicMock()
         mock_response_pt.json.return_value = {
             "results": [],
@@ -59,7 +59,7 @@ class TestUtils(unittest.TestCase):
 
     @patch("requests.get")
     def test_fetch_discover_tv(self, mock_get):
-        # Simulates empty response for pt-BR and response with tv for en-US
+        # Simula resposta vazia para pt-BR e resposta com series para en-US
         mock_response_pt = MagicMock()
         mock_response_pt.json.return_value = {
             "results": [],
@@ -89,7 +89,7 @@ class TestUtils(unittest.TestCase):
 
     @patch("requests.get")
     def test_fetch_genres_movie(self, mock_get):
-        # Simulates empty response for pt-BR and response with genres for en-US
+        # Simula resposta vazia para pt-BR e resposta com generos para en-US
         mock_response_pt = MagicMock()
         mock_response_pt.json.return_value = {"genres": []}
         mock_response_pt.raise_for_status.return_value = None
@@ -107,7 +107,7 @@ class TestUtils(unittest.TestCase):
 
     @patch("requests.get")
     def test_fetch_genres_tv(self, mock_get):
-        # Simulates empty response for pt-BR and response with genres for en-US
+        # Simula resposta vazia para pt-BR e resposta com generos para en-US
         mock_response_pt = MagicMock()
         mock_response_pt.json.return_value = {"genres": []}
         mock_response_pt.raise_for_status.return_value = None

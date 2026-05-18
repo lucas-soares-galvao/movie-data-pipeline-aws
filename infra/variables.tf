@@ -1,25 +1,25 @@
 # Raciocinio: declara contrato de entrada da infraestrutura para reutilizacao entre ambientes.
 
 variable "env" {
-  # Logical name of the environment, used for naming and resource isolation.
-  description = "The environment for the Glue job (e.g., dev, prod)"
+  # Nome logico do ambiente, usado para nomes e isolamento de recursos.
+  description = "Ambiente do job Glue (ex.: dev, prod)"
   type        = string
 }
 
 variable "account_id" {
-  description = "AWS account ID"
+  description = "ID da conta AWS"
   type        = string
 }
 
 ############## IAM Roles and Policies ##############
 variable "iam_role_glue" {
-  description = "IAM role name for Glue jobs"
+  description = "Nome da role IAM para jobs Glue"
   type        = string
   default     = "glue-job-role-etl"
 }
 
 variable "iam_role_lambda" {
-  description = "IAM role name for Lambda function"
+  description = "Nome da role IAM para a funcao Lambda"
   type        = string
   default     = "lambda-role"
 }
@@ -54,124 +54,124 @@ variable "s3_bucket_aux" {
 }
 
 variable "s3_bucket_temp" {
-  description = "Temporary bucket name for Athena scripts"
+  description = "Nome do bucket temporario para scripts do Athena"
   type        = string
   default     = "lsg-sa-east-1-bucket-temp"
 }
 
 variable "s3_bucket_sor" {
-  description = "Main bucket name for input/output data processed by Lambda"
+  description = "Nome do bucket principal para dados de entrada/saida processados pela Lambda"
   type        = string
   default     = "lsg-sa-east-1-bucket-sor"
 }
 
 variable "s3_bucket_sot" {
-  description = "Main bucket name for input/output data processed by Glue ETL"
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
   type        = string
   default     = "lsg-sa-east-1-bucket-sot"
 }
 
 variable "s3_bucket_spec" {
-  description = "Main bucket name for input/output data processed by Glue ETL"
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
   type        = string
   default     = "lsg-sa-east-1-bucket-spec"
 }
 
 variable "s3_bucket_data_quality" {
-  description = "Main bucket name for input/output data processed by Glue Data Quality"
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue Data Quality"
   type        = string
   default     = "lsg-sa-east-1-bucket-data-quality"
 }
 
 ################ SECRETS MANAGER ############
 variable "tmdb_secret_arn" {
-  description = "ARN of the secret in Secrets Manager with the TMDB key"
+  description = "ARN do segredo no Secrets Manager com a chave da TMDB"
   type        = string
 }
 
 ############### LAMBDA ##############
 variable "lambda_api_path_app" {
-  description = "Path to the Python modules of the application for Lambda API"
+  description = "Caminho para os modulos Python da aplicacao da Lambda API"
   type        = string
   default     = "lambda_api"
 }
 
 variable "lambda_api_name" {
-  description = "Name of the Lambda function to be created per environment"
+  description = "Nome da funcao Lambda a ser criada por ambiente"
   type        = string
   default     = "lambda-api"
 }
 
 ############### GLUE ##############
 variable "glue_etl_path_app" {
-  description = "Path to the Python modules of the application for Glue ETL"
+  description = "Caminho para os modulos Python da aplicacao do Glue ETL"
   type        = string
   default     = "glue_etl"
 }
 
 variable "glue_etl_job_name" {
-  description = "Name of the Glue ETL job to be created per environment"
+  description = "Nome do job Glue ETL a ser criado por ambiente"
   type        = string
   default     = "glue-etl"
 }
 
 variable "glue_data_quality_path_app" {
-  description = "Path to the Python modules of the application for Glue Data Quality"
+  description = "Caminho para os modulos Python da aplicacao do Glue Data Quality"
   type        = string
   default     = "glue_data_quality"
 }
 
 variable "glue_data_quality_job_name" {
-  description = "Name of the Glue Data Quality job to be created per environment"
+  description = "Nome do job Glue Data Quality a ser criado por ambiente"
   type        = string
   default     = "glue-data-quality"
 }
 
 variable "glue_catalog_database_name" {
-  description = "Name of the database in Glue Catalog for the TMDB movie table"
+  description = "Nome do banco no Glue Catalog para a tabela TMDB"
   type        = string
   default     = "db_tmdb"
 }
 
 variable "glue_catalog_table_discover_movie_name" {
-  description = "Name of the table in Glue Catalog for the TMDB movie table"
+  description = "Nome da tabela no Glue Catalog para a tabela de filmes da TMDB"
   type        = string
   default     = "tb_discover_movie_tmdb"
 }
 
 variable "glue_catalog_table_discover_tv_name" {
-  description = "Name of the table in Glue Catalog for the TMDB TV shows table"
+  description = "Nome da tabela no Glue Catalog para a tabela de series da TMDB"
   type        = string
   default     = "tb_discover_tv_tmdb"
 }
 
 variable "glue_catalog_table_genre_movie_name" {
-  description = "Name of the table in Glue Catalog for the TMDB movie genres table"
+  description = "Nome da tabela no Glue Catalog para a tabela de generos de filmes da TMDB"
   type        = string
   default     = "tb_genre_movie_tmdb"
 }
 
 variable "glue_catalog_table_genre_tv_name" {
-  description = "Name of the table in Glue Catalog for the TMDB TV genres table"
+  description = "Nome da tabela no Glue Catalog para a tabela de generos de series da TMDB"
   type        = string
   default     = "tb_genre_tv_tmdb"
 }
 
 variable "glue_catalog_table_configuration_languages_name" {
-  description = "Name of the table in Glue Catalog for the TMDB languages table"
+  description = "Nome da tabela no Glue Catalog para a tabela de linguas da TMDB"
   type        = string
   default     = "tb_configuration_languages_tmdb"
   
 }
 
 variable "glue_catalog_table_configuration_countries_name" {
-  description = "Name of the table in Glue Catalog for the TMDB countries table"
+  description = "Nome da tabela no Glue Catalog para a tabela de paises da TMDB"
   type        = string
   default     = "tb_configuration_countries_tmdb"
 }
 
 variable "glue_catalog_table_data_quality_name" {
-  description = "Name of the table in Glue Catalog for Data Quality results"
+  description = "Nome da tabela no Glue Catalog para resultados de Data Quality"
   type        = string
   default     = "tb_data_quality_tmdb"
 }

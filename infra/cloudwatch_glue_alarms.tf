@@ -2,7 +2,7 @@
 
 resource "aws_cloudwatch_event_rule" "glue_etl_succeeded" {
   name        = "glue-etl-succeeded-${var.env}"
-  description = "Notifies when Glue ETL job succeeds"
+  description = "Notifica quando o job Glue ETL conclui com sucesso"
 
   event_pattern = jsonencode({
     source        = ["aws.glue"]
@@ -34,7 +34,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_succeeded_target" {
 
 resource "aws_cloudwatch_event_rule" "glue_etl_failed" {
   name        = "glue-etl-failed-${var.env}"
-  description = "Notifies when Glue ETL job fails or is interrupted"
+  description = "Notifica quando o job Glue ETL falha ou e interrompido"
 
   event_pattern = jsonencode({
     source        = ["aws.glue"]
@@ -67,7 +67,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
 
 resource "aws_cloudwatch_event_rule" "glue_data_quality_succeeded" {
   name        = "glue-data-quality-succeeded-${var.env}"
-  description = "Notifies when Glue Data Quality job succeeds"
+  description = "Notifica quando o job Glue Data Quality conclui com sucesso"
 
   event_pattern = jsonencode({
     source        = ["aws.glue"]
@@ -99,7 +99,7 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_succeeded_target" {
 
 resource "aws_cloudwatch_event_rule" "glue_data_quality_failed" {
   name        = "glue-data-quality-failed-${var.env}"
-  description = "Notifies when Glue Data Quality job fails or is interrupted"
+  description = "Notifica quando o job Glue Data Quality falha ou e interrompido"
 
   event_pattern = jsonencode({
     source        = ["aws.glue"]

@@ -26,7 +26,7 @@ class TestProcessTmdb(unittest.TestCase):
         self.assertEqual(kwargs["partition_cols"], ["year", "month"])
         self.assertIn("year", kwargs["df"].columns)
         self.assertIn("month", kwargs["df"].columns)
-        # Check returned partitions
+        # Verifica as particoes retornadas
         self.assertEqual(result["partitions"], ["year=2023/month=01", "year=2023/month=02", "year=2023/month=03"])
 
     def _base_df(self):
@@ -55,13 +55,13 @@ class TestProcessTmdb(unittest.TestCase):
         self.assertEqual(kwargs["partition_cols"], [])
         self.assertNotIn("year", kwargs["df"].columns)
         self.assertNotIn("month", kwargs["df"].columns)
-        # Check returned partitions is empty
+        # Verifica que as particoes retornadas estao vazias
         self.assertEqual(result["partitions"], [])
 
     @patch("app.glue_etl.src.utils.wr")
     def test_custom_partition(self, mock_wr):
         df = self._base_df()
-        df["custom"] = ["A", "B", "C"]  # Simulate custom column
+        df["custom"] = ["A", "B", "C"]  # Simula uma coluna personalizada
         mock_wr.s3.read_json.return_value = df
 
         process_tmdb(

@@ -12,7 +12,7 @@ _SUITE_TO_APP: dict[str, Path] = {
     "lambda_api": _APP_ROOT / "lambda_api",
 }
 
-# Sub-packages within each app directory that expose a src/utils module.
+# Subpacotes dentro de cada diretorio app que expoem um modulo src/utils.
 _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_data_quality": "app.glue_data_quality.src.utils",
     "glue_etl": "app.glue_etl.src.utils",
@@ -48,7 +48,7 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
         __import__(fq_module)
         mod = sys.modules[fq_module]
         sys.modules["src.utils"] = mod
-        # Also expose the parent 'src' package if available.
+        # Tambem expõe o pacote pai 'src' se ele estiver disponivel.
         src_pkg = fq_module.rsplit(".", 1)[0]  # app.X.src
         if src_pkg in sys.modules:
             sys.modules["src"] = sys.modules[src_pkg]

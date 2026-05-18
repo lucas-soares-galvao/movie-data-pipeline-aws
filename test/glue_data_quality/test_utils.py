@@ -172,7 +172,7 @@ class TestHelperFunctions(unittest.TestCase):
             lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}"),
         ), patch(
             "app.glue_data_quality.src.utils.coalesce",
-            lambda x, y: y,  # Return the second arg (empty string) as fallback
+            lambda x, y: y,  # Retorna o segundo argumento (string vazia) como fallback
         ):
             write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb")
 
