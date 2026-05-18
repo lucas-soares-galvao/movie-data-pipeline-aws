@@ -1,1 +1,2 @@
-"""Glue Data Quality application package."""
+"""Raciocinio: marca o pacote do job Glue Data Quality para imports consistentes."""
+

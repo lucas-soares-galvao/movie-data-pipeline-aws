@@ -1,3 +1,4 @@
+# Raciocinio: empacota codigo, publica artefato e cria funcao Lambda com configuracao operacional.
 
 resource "null_resource" "lambda_build" {
   triggers = {

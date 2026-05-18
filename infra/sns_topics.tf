@@ -1,4 +1,5 @@
-# SNS Topic para notificações de sucesso do Glue Data Quality
+# Raciocinio: configura topicos SNS para notificacoes operacionais da pipeline.
+
 resource "aws_sns_topic" "glue_data_quality_success_notifications" {
 	name         = "glue-data-quality-success-notifications"
 	display_name = "[${upper(var.env)}] GLUE DATA QUALITY - SUCESSO"

@@ -1,4 +1,5 @@
-# EventBridge rules to notify Glue ETL and Glue Data Quality state changes.
+# Raciocinio: cria eventos de monitoramento do Glue e notifica estados relevantes de execucao.
+
 resource "aws_cloudwatch_event_rule" "glue_etl_succeeded" {
   name        = "glue-etl-succeeded-${var.env}"
   description = "Notifies when Glue ETL job succeeds"

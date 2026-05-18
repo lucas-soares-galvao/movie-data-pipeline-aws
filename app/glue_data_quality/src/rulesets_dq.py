@@ -1,3 +1,5 @@
+"""Raciocinio: concentra regras por tabela para desacoplar validacao da logica de execucao."""
+
 rulesets_dq = {
     "tb_configuration_countries_tmdb": [
         # Exemplo de regra para a tabela de países

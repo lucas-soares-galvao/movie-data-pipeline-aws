@@ -1,4 +1,5 @@
-# Defines the Glue Job responsible for running the Data Quality pipeline.
+# Raciocinio: define o job Glue Data Quality com argumentos e dependencias de execucao.
+
 resource "aws_glue_job" "data_quality_job" {
   name              = local.envs.glue_data_quality_job_name
   description       = "Glue Data Quality Job"

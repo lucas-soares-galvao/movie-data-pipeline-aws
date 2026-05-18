@@ -1,4 +1,5 @@
-# Nome do workflow reutilizável para automação de Pull Requests
+# Raciocinio: automatiza abertura e atualizacao de PR para reduzir operacao manual no fluxo de entrega.
+
 name: Auto PR Pipeline (Reusable)
 
 # Define que este workflow é chamado por outro (workflow_call)

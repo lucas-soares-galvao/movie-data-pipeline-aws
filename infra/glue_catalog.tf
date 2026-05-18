@@ -1,4 +1,5 @@
-# Glue Catalog for the SOT layer for TMDB movie in Parquet.
+# Raciocinio: declara metadados do Glue Catalog para consulta consistente dos dados SOT.
+
 resource "aws_glue_catalog_database" "tmdb_database" {
   name = var.glue_catalog_database_name
 }

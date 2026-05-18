@@ -1,4 +1,4 @@
-"""Stubs for AWS Glue and PySpark modules unavailable outside the Glue runtime."""
+"""Raciocinio: simula dependencias Glue/PySpark para executar testes fora do runtime AWS."""
 
 import sys
 import types

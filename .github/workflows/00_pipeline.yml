@@ -1,4 +1,5 @@
-# Nome da Pipeline que aparece no topo da aba Actions do GitHub
+# Raciocinio: orquestra a esteira CI/CD chamando workflows reutilizaveis em ordem controlada.
+
 name: Pipeline CI/CD
 
 # Define os gatilhos: a esteira roda sempre que houver um push nessas branches específicas

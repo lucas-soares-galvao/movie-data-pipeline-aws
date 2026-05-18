@@ -1,5 +1,5 @@
+# Raciocinio: provisiona buckets por funcao (codigo, temporario, SOR, SOT, spec, DQ) para separar responsabilidades.
 
-# Auxiliary bucket for Python code.
 resource "aws_s3_bucket" "auxiliary_bucket" {
   bucket = local.envs.s3_bucket_aux
   force_destroy = true

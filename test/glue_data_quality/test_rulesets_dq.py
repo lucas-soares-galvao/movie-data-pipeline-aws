@@ -1,4 +1,4 @@
-"""Tests for Glue Data Quality rulesets."""
+"""Raciocinio: valida regras DQ por tabela para evitar regressao de contrato de qualidade."""
 
 import unittest
 from app.glue_data_quality.src.rulesets_dq import rulesets_dq

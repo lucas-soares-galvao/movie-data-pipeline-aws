@@ -1,4 +1,4 @@
-# Custom IAM policies (Lambda and Glue)
+# Raciocinio: concentra politicas minimas necessarias para Lambda/Glue acessarem servicos AWS.
 
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
   name = "${local.envs.lambda_api_name}-start-glue-jobs"

@@ -1,3 +1,5 @@
+"""Raciocinio: valida integracoes utilitarias (Secrets, periodos, requests e serializacao)."""
+
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -193,6 +195,32 @@ class TestUtils(unittest.TestCase):
     def test_fetch_configuration_invalid_type(self):
         with self.assertRaises(ValueError):
             utils.fetch_configuration("fake_key", configuration_type="invalid")
+
+    @patch("requests.get")
+    def test_fetch_configuration_languages(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = [{"iso_639_1": "pt", "english_name": "Portuguese"}]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = utils.fetch_configuration("fake_key", configuration_type="languages")
+
+        self.assertEqual(result, [{"iso_639_1": "pt", "english_name": "Portuguese"}])
+        params = mock_get.call_args.kwargs["params"]
+        self.assertEqual(params["language"], "pt-BR")
+
+    @patch("requests.get")
+    def test_fetch_configuration_countries(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = [{"iso_3166_1": "BR", "english_name": "Brazil"}]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        result = utils.fetch_configuration("fake_key", configuration_type="countries")
+
+        self.assertEqual(result, [{"iso_3166_1": "BR", "english_name": "Brazil"}])
+        params = mock_get.call_args.kwargs["params"]
+        self.assertNotIn("language", params)
 
 
 if __name__ == "__main__":

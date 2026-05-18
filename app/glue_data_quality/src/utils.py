@@ -1,3 +1,7 @@
+"""Raciocinio: implementa parsing de args, leitura do catalogo, avaliacao DQ e escrita padronizada de saida."""
+
+from typing import Any
+
 import awswrangler as wr
 from awsglue.utils import getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
@@ -6,24 +10,36 @@ from pyspark.sql.functions import coalesce, col, current_timestamp, from_utc_tim
 from .rulesets_dq import rulesets_dq
 
 
-def parse_args(argv):
+def _resolve_optional_args(argv: list[str], optional_args: list[str]) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for arg in optional_args:
+        option = f"--{arg}"
+        if option in argv:
+            index = argv.index(option)
+            if index + 1 < len(argv):
+                resolved[arg] = argv[index + 1]
+    return resolved
+
+
+def parse_args(argv: list[str]) -> dict[str, str]:
     required_args = ["DATABASE", "TABLE", "S3_BUCKET_DATA_QUALITY"]
-    optional_args = ["PARTITION_VALUES"] if "--PARTITION_VALUES" in argv else []
-    return getResolvedOptions(argv, required_args + optional_args)
+    args = getResolvedOptions(argv, required_args)
+    args.update(_resolve_optional_args(argv, ["PARTITION_VALUES"]))
+    return args
 
 
-def rules_list_to_dqdl(rules_list):
+def rules_list_to_dqdl(rules_list: list[str]) -> str:
     if not rules_list:
         return "Rules = [\n    RowCount > 0\n]"
     rules = ",\n    ".join(rules_list)
     return f"Rules = [\n    {rules}\n]"
 
 
-def build_ruleset(table_name):
+def build_ruleset(table_name: str) -> str:
     return rules_list_to_dqdl(rulesets_dq.get(table_name, []))
 
 
-def build_push_down_predicate(partition_values_str):
+def build_push_down_predicate(partition_values_str: str | None) -> str | None:
     """Convert 'year=2025' format to a Spark SQL predicate for Glue catalog filtering."""
     if not partition_values_str:
         return None
@@ -34,7 +50,12 @@ def build_push_down_predicate(partition_values_str):
     return f"{col} = '{val}'"
 
 
-def read_catalog_table(glue_context, database, table, push_down_predicate=None):
+def read_catalog_table(
+    glue_context: Any,
+    database: str,
+    table: str,
+    push_down_predicate: str | None = None,
+) -> Any:
     kwargs = {}
     if push_down_predicate:
         kwargs["push_down_predicate"] = push_down_predicate
@@ -45,7 +66,7 @@ def read_catalog_table(glue_context, database, table, push_down_predicate=None):
     )
 
 
-def run_data_quality(datasource, ruleset):
+def run_data_quality(datasource: Any, ruleset: str) -> Any:
     return EvaluateDataQuality.apply(
         frame=datasource,
         ruleset=ruleset,
@@ -58,13 +79,13 @@ def run_data_quality(datasource, ruleset):
 
 
 def write_results(
-    df_dq_results,
-    s3_bucket_dq,
-    source_table,
-    partition=None,
-    source_database=None,
-    dq_table="tb_data_quality_tmdb"
-):
+    df_dq_results: Any,
+    s3_bucket_dq: str,
+    source_table: str,
+    partition: str | None = None,
+    source_database: str | None = None,
+    dq_table: str = "tb_data_quality_tmdb",
+) -> str:
     table_root_path = f"s3://{s3_bucket_dq}/tmdb/{dq_table}/"
     # Keep the persisted schema minimal: remove raw metric payloads from Glue DQ output.
     df_base = df_dq_results.drop("evaluated_metrics", "EvaluatedMetrics")
@@ -111,13 +132,15 @@ def write_results(
     return table_root_path
 
 
-def register_partition(database, source_table, table_root_path, dq_table="tb_data_quality_tmdb"):
+def register_partition(
+    database: str,
+    source_table: str,
+    table_root_path: str,
+    dq_table: str = "tb_data_quality_tmdb",
+) -> None:
     partition_prefix = f"source_table={source_table}/"
     wr.catalog.add_parquet_partitions(
         database=database,
         table=dq_table,
         partitions_values={f"{table_root_path}{partition_prefix}": [source_table]},
     )
-
-
-

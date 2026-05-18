@@ -1,5 +1,4 @@
-
-"""Tests for the main module of Glue ETL."""
+"""Raciocinio: valida orquestracao do ETL (escopo, argumentos e disparo de Data Quality)."""
 
 import unittest
 from unittest.mock import patch

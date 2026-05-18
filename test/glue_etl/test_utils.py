@@ -1,4 +1,4 @@
-"""Unit tests for Glue ETL utility functions."""
+"""Raciocinio: valida transformacoes e funcoes auxiliares do ETL em cenarios unitarios."""
 
 import unittest
 from unittest.mock import patch

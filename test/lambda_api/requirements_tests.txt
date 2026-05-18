@@ -1,3 +1,5 @@
+# Raciocinio: fixa dependencias necessarias para rodar testes da Lambda API.
+
 boto3
 requests
 types-requests

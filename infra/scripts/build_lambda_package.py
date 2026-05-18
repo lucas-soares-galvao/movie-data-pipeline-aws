@@ -1,4 +1,4 @@
-"""Build lambda package directory with application source and pip dependencies."""
+"""Raciocinio: monta pacote da Lambda com codigo e dependencias para deploy deterministico no Terraform."""
 
 import argparse
 import os

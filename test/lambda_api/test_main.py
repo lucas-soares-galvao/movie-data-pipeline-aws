@@ -1,3 +1,5 @@
+"""Raciocinio: valida fluxo do handler por tipo de midia e condicoes de disparo do Glue."""
+
 import unittest
 from unittest.mock import patch
 

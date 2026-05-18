@@ -1,4 +1,5 @@
-# Alarme de erro na Lambda
+# Raciocinio: define alarmes operacionais para falhas criticas da Lambda e resposta rapida.
+
 resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
 	alarm_name          = "lambda-error-alarm-${var.env}"
 	comparison_operator = "GreaterThanThreshold"
