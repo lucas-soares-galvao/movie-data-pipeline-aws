@@ -1,4 +1,5 @@
-# Nome do workflow reutilizável para operações de infraestrutura
+# Raciocinio: centraliza plan/apply/destroy do Terraform com parametros por ambiente.
+
 name: "Terraform (Reusable)"
 
 # Define que este workflow é chamado por outro (workflow_call)

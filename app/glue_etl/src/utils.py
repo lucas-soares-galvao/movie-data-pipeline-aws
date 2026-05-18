@@ -1,3 +1,5 @@
+"""Raciocinio: transforma JSON TMDB em Parquet catalogado e aciona Data Quality conforme escopo."""
+
 import awswrangler as wr
 import boto3
 import pandas as pd
@@ -34,14 +36,14 @@ TABLE_SCOPE_DISCOVER = "discover"
 TABLE_SCOPE_STATIC = "static"
 
 
-def _add_temporal_partition_columns(df, date_column):
+def _add_temporal_partition_columns(df: pd.DataFrame, date_column: str) -> pd.DataFrame:
     df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
     df["year"] = df[date_column].dt.year.astype("Int64").astype(str)
     df["month"] = df[date_column].dt.strftime("%m")
     return df
 
 
-def _build_partition_values(df, partition_columns):
+def _build_partition_values(df: pd.DataFrame, partition_columns: list[str] | None) -> list[str]:
     if not partition_columns:
         return []
 
@@ -53,18 +55,18 @@ def _build_partition_values(df, partition_columns):
     return partition_values
 
 
-def _is_temporal_partition(partition_columns, date_column):
+def _is_temporal_partition(partition_columns: list[str] | None, date_column: str | None) -> bool:
     return bool(date_column) and bool(partition_columns)
 
 
 def process_tmdb(
-    source_path,
-    destination_path,
-    database,
-    table,
-    partition_columns=None,
-    date_column=None
-):
+    source_path: str,
+    destination_path: str,
+    database: str,
+    table: str,
+    partition_columns: list[str] | None = None,
+    date_column: str | None = None,
+) -> dict:
     """Read TMDB JSON from S3, transform when needed, and write Parquet to S3."""
     df = wr.s3.read_json(source_path)
     mode = "overwrite_partitions" if partition_columns else "overwrite"
@@ -88,7 +90,12 @@ def process_tmdb(
         "partitions": partition_values
     }
 
-def call_glue_data_quality(job_name, database, table, partition_values=None):
+def call_glue_data_quality(
+    job_name: str,
+    database: str,
+    table: str,
+    partition_values: list[str] | None = None,
+) -> dict:
     """Trigger the Glue Data Quality job for a given catalog table."""
     glue = boto3.client("glue")
 
@@ -110,7 +117,7 @@ def call_glue_data_quality(job_name, database, table, partition_values=None):
     }
 
 
-def build_tables_config(media_type, args):
+def build_tables_config(media_type: str, args: dict) -> list[dict]:
     """Build per-table ETL config according to media type."""
     configs = TABLES_BY_MEDIA.get(media_type)
     if configs is None:
@@ -126,7 +133,13 @@ def build_tables_config(media_type, args):
     ]
 
 
-def build_source_path(bucket_sor, table_path, media_type, configuration, year=None):
+def build_source_path(
+    bucket_sor: str,
+    table_path: str,
+    media_type: str,
+    configuration: str,
+    year: str | None = None,
+) -> str:
     """Build S3 source path for table extraction."""
     if table_path == "configuration":
         return f"s3://{bucket_sor}/tmdb/{table_path}/{configuration}/"
@@ -135,14 +148,14 @@ def build_source_path(bucket_sor, table_path, media_type, configuration, year=No
     return f"s3://{bucket_sor}/tmdb/{table_path}/{media_type}/"
 
 
-def build_partition_columns(partition_columns, date_column):
+def build_partition_columns(partition_columns: str, date_column: str | None) -> list[str]:
     """Return partition columns only for temporal discover datasets."""
     if not partition_columns or not date_column:
         return []
     return [column.strip() for column in partition_columns.split(",") if column.strip()]
 
 
-def filter_tables_config(configs, table_scope):
+def filter_tables_config(configs: list[dict], table_scope: str) -> list[dict]:
     """Filter ETL tables by requested execution scope."""
     if table_scope == TABLE_SCOPE_DISCOVER:
         return [cfg for cfg in configs if cfg["path"] == "discover"]
@@ -151,7 +164,11 @@ def filter_tables_config(configs, table_scope):
     return configs
 
 
-def resolve_dq_partition_values(table_path, partition_columns_list, year):
+def resolve_dq_partition_values(
+    table_path: str,
+    partition_columns_list: list[str],
+    year: str | None,
+) -> list[str] | None:
     """Determine which partition values to send to the Data Quality job."""
     if not partition_columns_list:
         return None
@@ -160,7 +177,7 @@ def resolve_dq_partition_values(table_path, partition_columns_list, year):
     return None
 
 
-def run_etl(args):
+def run_etl(args: dict) -> None:
     """Run ETL for all configured TMDB tables and trigger Data Quality."""
     bucket_sor = args["S3_BUCKET_SOR"]
     bucket_sot = args["S3_BUCKET_SOT"]

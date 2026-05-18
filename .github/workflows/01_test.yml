@@ -1,4 +1,5 @@
-# Nome identificador do workflow que aparecerá na interface do GitHub Actions
+# Raciocinio: encapsula execucao de testes para reutilizacao e padronizacao do pipeline.
+
 name: Test (Reusable)
 
 # Define que este workflow é "Reutilizável" (pode ser chamado por outros arquivos .yml)

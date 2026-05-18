@@ -1,4 +1,5 @@
-# Configuracao basica do Terraform e dos providers usados no projeto.
+# Raciocinio: define backend e providers Terraform para execucao reproduzivel por ambiente.
+
 terraform {
   # Backend remoto definido no pipeline via -backend-config.
   backend "s3" {}

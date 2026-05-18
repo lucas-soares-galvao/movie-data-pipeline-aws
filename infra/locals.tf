@@ -1,4 +1,5 @@
-# Local path of the Python application to be packaged and sent to S3.
+# Raciocinio: centraliza caminhos e nomes derivados para evitar repeticao e erro de referencia.
+
 locals {
   lambda_api_src_path            = "${path.root}/../app/${var.lambda_api_path_app}"
   lambda_api_requirements_path   = "${path.root}/../app/${var.lambda_api_path_app}/requirements.txt"

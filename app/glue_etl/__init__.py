@@ -1,1 +1,2 @@
-"""Main package of the example application used by Glue."""
+"""Raciocinio: marca o pacote do Glue ETL e facilita importacao do entrypoint e utilitarios."""
+

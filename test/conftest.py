@@ -1,15 +1,4 @@
-"""Root conftest: ensure the correct 'src' package is on sys.path before
-each test file is collected.
-
-Each application (lambda_api, glue_etl, glue_data_quality) ships its own
-src/ package.  Because Python caches module imports, running all suites in
-one session without this hook would cause the first-loaded 'src' to shadow
-the others.  The hook evicts the cached 'src' namespace, promotes the
-matching app directory to the front of sys.path, and aliases the fully-
-qualified module (e.g. app.glue_etl.src.utils) as 'src.utils' so that
-unittest.mock patches on the full path also affect code that used
-'from src.utils import ...'.
-"""
+"""Raciocinio: isola resolucao de imports entre suites para evitar conflito entre pacotes src homonimos."""
 
 import sys
 from pathlib import Path

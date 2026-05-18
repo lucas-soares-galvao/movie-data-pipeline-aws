@@ -1,4 +1,4 @@
-"""Unit tests for Data Quality utility functions."""
+"""Raciocinio: cobre utilitarios DQ e cenarios de escrita/filtro para garantir comportamento esperado."""
 
 from unittest.mock import patch
 import unittest

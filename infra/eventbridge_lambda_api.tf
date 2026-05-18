@@ -1,4 +1,4 @@
-# EventBridge rules to trigger Lambda with different types
+# Raciocinio: agenda invocacoes da Lambda por tipo de midia para ingestao recorrente automatica.
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
   name        = "lambda-api-movie-${var.env}"

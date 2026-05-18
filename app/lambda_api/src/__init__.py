@@ -1,1 +1,2 @@
-"""Subpackage with utility functions for the application."""
+"""Raciocinio: agrupa utilitarios de integracao externa usados pelo handler da Lambda."""
+

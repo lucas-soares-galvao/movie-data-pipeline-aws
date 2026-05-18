@@ -1,4 +1,5 @@
-# Defines the Glue Job responsible for running the ETL pipeline.
+# Raciocinio: define o job Glue ETL que converte SOR em SOT e publica no catalogo.
+
 resource "aws_glue_job" "etl_job" {
   name              = local.envs.glue_etl_job_name
   description       = "Glue ETL Job"

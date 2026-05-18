@@ -1,4 +1,4 @@
-# IAM roles and attachments (Lambda and Glue)
+# Raciocinio: cria roles e anexos para separar responsabilidades e aplicar menor privilegio.
 
 resource "aws_iam_role" "lambda_function" {
   name = "${local.envs.lambda_api_name}-function"

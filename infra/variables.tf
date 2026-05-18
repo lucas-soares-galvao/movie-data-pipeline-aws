@@ -1,4 +1,5 @@
-############# GENERAL VARIABLES ##############
+# Raciocinio: declara contrato de entrada da infraestrutura para reutilizacao entre ambientes.
+
 variable "env" {
   # Logical name of the environment, used for naming and resource isolation.
   description = "The environment for the Glue job (e.g., dev, prod)"

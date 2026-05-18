@@ -1,4 +1,5 @@
-# Glue ETL log groups
+# Raciocinio: provisiona grupos de logs com retencao controlada para observabilidade e custo.
+
 resource "aws_cloudwatch_log_group" "glue_etl_error" {
 	name              = "/${local.envs.glue_etl_job_name}/error"
 	retention_in_days = 1

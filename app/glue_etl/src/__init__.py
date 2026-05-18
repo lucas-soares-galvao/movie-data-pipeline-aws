@@ -1,3 +1,4 @@
+"""Raciocinio: define a API publica de funcoes ETL usadas pelo entrypoint."""
 
 from .utils import (
 	call_glue_data_quality as call_glue_data_quality,

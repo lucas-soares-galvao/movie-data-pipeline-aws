@@ -1,3 +1,4 @@
-# Dependencias de runtime do Glue Data Quality (auto-contido)
+# Raciocinio: fixa dependencias de runtime do job Glue Data Quality para reproducibilidade.
+
 boto3
 awswrangler
