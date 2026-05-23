@@ -1,3 +1,0 @@
-# Raciocinio: fixa dependencias necessarias para rodar testes do Glue ETL.
-
-awswrangler

@@ -1,7 +1,0 @@
-# .coveragerc
-[run]
-omit =
-    test/*
-    infra/*
-    setup.py
-    
