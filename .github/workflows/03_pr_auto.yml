@@ -1,0 +1,84 @@
+# Raciocinio: automatiza abertura e atualizacao de PR para reduzir operacao manual no fluxo de entrega.
+
+name: Auto PR Pipeline (Reusable)
+
+# Define que este workflow é chamado por outro (workflow_call)
+on:
+  workflow_call:
+    inputs:
+      # Recebe o nome da branch que disparou a pipeline como entrada
+      branch_name:
+        required: true
+        type: string
+
+# Permissões necessárias para interagir com o repositório e criar PRs
+permissions:
+  contents: write      # Necessário para editar conteúdos ou fazer merge
+  pull-requests: write # Necessário para criar e editar Pull Requests
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Faz o checkout do código para ter acesso aos arquivos (como a pasta infra)
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Lógica de decisão: define qual será a branch de DESTINO (base) do PR
+      - name: Define base branch
+        id: branch
+        run: |
+          # Verifica o prefixo ou nome da branch atual para decidir o próximo passo na esteira
+          if [[ "${GITHUB_REF_NAME}" == feature/* ]]; then
+            echo "base=develop" >> $GITHUB_OUTPUT    # De Feature para Develop
+          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "base=main" >> $GITHUB_OUTPUT       # De Develop para Main (Produção)
+          else
+            # Caso a branch não siga o padrão, a pipeline interrompe para evitar PRs errados
+            echo "Branch não suportada"
+            exit 1
+          fi
+
+      # 3. Prepara o ambiente Terraform para validação sintática
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # 4. Valida os arquivos de infraestrutura antes de abrir o PR
+      # Isso garante que você não promova código com erros de configuração de nuvem
+      - name: Terraform Validate
+        run: |
+          cd infra
+          terraform init -backend=false # Inicializa sem precisar de acesso ao S3/Estado remoto
+          terraform validate
+
+      # 5. Gerenciamento do Pull Request via CLI do GitHub (gh)
+      - name: Create or Update PR
+        run: |
+          # Recupera as variáveis de destino (BASE) e origem (HEAD)
+          BASE=${{ steps.branch.outputs.base }}
+          HEAD=${{ github.ref_name }}
+
+          # Verifica se já existe um PR aberto entre essas duas branches
+          # O comando busca o número do PR; se não existir, retorna vazio ""
+          PR_NUMBER=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
+
+          if [ -z "$PR_NUMBER" ]; then
+            # Se não houver PR aberto, cria um novo
+            gh pr create \
+              --base "$BASE" \
+              --head "$HEAD" \
+              --title "Auto PR: $HEAD → $BASE" \
+              --body "PR criado automaticamente via Pipeline CI/CD."
+          else
+            # Se já houver um PR, apenas atualiza o título e a descrição
+            # (O código no PR é atualizado automaticamente pelo push do Git)
+            gh pr edit "$PR_NUMBER" \
+              --title "Auto PR: $HEAD → $BASE" \
+              --body "PR atualizado automaticamente via Pipeline CI/CD."
+            echo "PR já existente: #$PR_NUMBER"
+          fi
+        env:
+          # O GITHUB_TOKEN é gerado automaticamente pelo GitHub para autenticar o comando 'gh'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
