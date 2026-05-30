@@ -313,6 +313,20 @@ class TestCollectAndSave(unittest.TestCase):
         s3_key_usado = mock_save.call_args[0][3]
         self.assertEqual(s3_key_usado, "tmdb/discover/movie/ano=2023/pagina_001.json")
 
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_data")
+    def test_salva_apenas_results_sem_metadados_de_paginacao(self, mock_fetch, mock_save):
+        filmes = [{"id": 1, "title": "Filme A"}, {"id": 2, "title": "Filme B"}]
+        mock_fetch.return_value = {"page": 1, "results": filmes, "total_pages": 1, "total_results": 2}
+        mock_s3 = MagicMock()
+
+        collect_and_save("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+
+        # O 3º argumento posicional de save_to_s3 é o dado salvo
+        dado_salvo = mock_save.call_args[0][2]
+        # Deve ser apenas a lista de filmes, sem "page", "total_pages", etc.
+        self.assertEqual(dado_salvo, filmes)
+
 
 if __name__ == "__main__":
     unittest.main()

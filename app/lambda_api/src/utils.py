@@ -287,6 +287,7 @@ def collect_and_save(
             )
             break
 
+        # Salva apenas a lista de filmes/séries, sem os metadados de paginação
         # Exemplo de caminho gerado: tmdb/discover/movie/ano=2023/pagina_001.json
         s3_key = f"{folder}/ano={year}/pagina_{page:03d}.json"
-        save_to_s3(s3_client, bucket, data, s3_key)
+        save_to_s3(s3_client, bucket, data["results"], s3_key)
