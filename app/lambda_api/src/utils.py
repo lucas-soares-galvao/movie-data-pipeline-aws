@@ -1,312 +1,292 @@
-# Raciocinio: encapsula chamadas TMDB/AWS e regras de particionamento para manter o handler simples.
+"""
+utils.py — Funções auxiliares da Lambda.
+
+Aqui ficam todas as funções que fazem tarefas específicas:
+  - buscar a chave de API no Secrets Manager
+  - chamar a API do TMDB
+  - salvar arquivos no S3
+  - acionar o job Glue ETL
+
+Separar essas funções do main.py torna o código mais fácil de ler,
+testar e reutilizar.
+"""
 
 import json
-import calendar
-from datetime import date, timedelta
+import logging
 
-import requests
 import boto3
-import time
+import requests
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+MAX_PAGES = 100  # Máximo de páginas por ano (TMDB suporta até 500)
 
 
-# Mapeamento entre tipo de mídia e as chaves esperadas no evento do EventBridge.
-# Os nomes das tabelas são passados no evento porque variam entre ambientes (dev/prod).
-MEDIA_EVENT_CONFIG = {
-    "movie": {
-        "discover_table": "table_discover_movie",
-        "genre_table": "table_genre_movie",
-        "configuration_table": "table_configuration_languages",
-        "configuration": "languages"
-    },
-    "tv": {
-        "discover_table": "table_discover_tv",
-        "genre_table": "table_genre_tv",
-        "configuration_table": "table_configuration_countries",
-        "configuration": "countries"
-    }
-}
+# ---------------------------------------------------------------------------
+# Secrets Manager
+# ---------------------------------------------------------------------------
 
-# A API TMDB retorna mais dados em inglês; tentamos pt-BR primeiro e usamos en-US como fallback.
-LANGUAGE_FALLBACK = ["pt-BR", "en-US"]
+def get_tmdb_api_key(secret_arn: str) -> str:
+    """
+    Busca a chave de API do TMDB armazenada no AWS Secrets Manager.
 
+    O segredo deve estar no formato JSON: {"api_key": "sua-chave-aqui"}
 
-def get_tmdb_key(secret_arn: str) -> str:
-    """Le a chave da TMDB no Secrets Manager para manter credencial fora do codigo."""
-    # Recupera a chave TMDB armazenada no Secrets Manager para evitar hardcode de credenciais.
+    Args:
+        secret_arn: ARN do segredo cadastrado no Secrets Manager.
+
+    Returns:
+        A chave de API do TMDB como string.
+    """
     client = boto3.client("secretsmanager")
     response = client.get_secret_value(SecretId=secret_arn)
-
     secret = json.loads(response["SecretString"])
-    return secret["tmdb_api_key"]
+    return secret["api_key"]
 
 
-def extract_media_tables(event: dict) -> dict:
+# ---------------------------------------------------------------------------
+# TMDB API
+# ---------------------------------------------------------------------------
+
+def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> dict:
     """
-    Resolve configuracao de tabelas a partir do tipo de midia recebido no evento.
+    Busca uma página de dados de filmes ou séries na API do TMDB.
 
-    Raciocinio:
-    - centraliza o mapeamento de chaves por midia em um unico ponto (movie/tv);
-    - falha cedo para tipo invalido, evitando gravar dados em caminhos incorretos;
-    - retorna contrato unico para o restante do fluxo da Lambda.
+    Endpoints utilizados:
+      - Filmes: https://api.themoviedb.org/3/discover/movie
+      - Séries:  https://api.themoviedb.org/3/discover/tv
+
+    Parâmetros fixos em todas as chamadas:
+      - language    : pt-BR  (resultados em português)
+      - sort_by     : popularity.desc (mais populares primeiro)
+      - page        : número da página solicitada
+
+    Args:
+        api_key:      Chave de API do TMDB.
+        content_type: "movie" para filmes ou "tv" para séries.
+        year:         Ano de lançamento/estreia do conteúdo.
+        page:         Número da página (1 a 500 — limite do TMDB).
+
+    Returns:
+        Dicionário com os dados retornados pela API, incluindo:
+          - page          : página atual
+          - results       : lista de filmes/séries
+          - total_pages   : total de páginas disponíveis
+          - total_results : total de registros disponíveis
     """
-    media_type = event.get("type", "movie")
-    database = event.get("database")
-    media_config = MEDIA_EVENT_CONFIG.get(media_type)
+    if content_type == "movie":
+        url = "https://api.themoviedb.org/3/discover/movie"
+    else:
+        url = "https://api.themoviedb.org/3/discover/tv"
 
-    if not media_config:
-        raise ValueError(f"Unsupported media type: {media_type}")
-
-    discover_table = event.get(media_config["discover_table"])
-    genre_table = event.get(media_config["genre_table"])
-    configuration_table = event.get(media_config["configuration_table"])
-    configuration = media_config["configuration"] if configuration_table else ""
-    partition_columns = "year,month" if discover_table else ""
-
-    return {
-        "media_type": media_type,
-        "database": database,
-        "discover_table": discover_table,
-        "genre_table": genre_table,
-        "configuration_table": configuration_table,
-        "configuration": configuration,
-        "partition_columns": partition_columns
-    }
-
-
-def _build_discover_params(
-    api_key: str,
-    period: dict,
-    media_type: str,
-    page: int,
-    language: str,
-) -> dict:
-    """Monta query params da API discover com filtros de data por tipo de midia."""
     params = {
         "api_key": api_key,
+        "language": "pt-BR",
         "sort_by": "popularity.desc",
         "page": page,
-        "language": language
     }
 
-    if media_type == "movie":
-        params["primary_release_date.gte"] = period["start_date"]
-        params["primary_release_date.lte"] = period["end_date"]
-    elif media_type == "tv":
-        params["first_air_date.gte"] = period["start_date"]
-        params["first_air_date.lte"] = period["end_date"]
+    # Adiciona o filtro de ano com o nome correto para cada tipo de conteúdo
+    if content_type == "movie":
+        params["primary_release_year"] = year
     else:
-        raise ValueError(f"Invalid media type: {media_type}")
+        params["first_air_date_year"] = year
 
-    return params
-
-
-def _request_json_with_retry(url: str, params: dict, retries: int = 3) -> dict | list:
-    # Só faz retry em HTTP 500 (erros transientes do servidor TMDB).
-    # Outros erros (401, 404, 429) são propagados imediatamente — retry não ajudaria.
-    # Backoff exponencial: 1s, 2s, 4s entre tentativas.
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as error:
-            status_code = error.response.status_code if error.response else None
-            if status_code == 500 and attempt < retries - 1:
-                time.sleep(2 ** attempt)
-                continue
-            raise
+    response = requests.get(url, params=params, timeout=30)
+    # Lança uma exceção automática se a API retornar erro (4xx, 5xx)
+    response.raise_for_status()
+    return response.json()
 
 
-def generate_monthly_periods(start_year: int) -> list[dict]:
-    """Gera janelas mensais fechadas para particionar a coleta e facilitar reruns."""
-    # Usa "ontem" como limite para não incluir o dia atual, que pode ter dados incompletos.
-    yesterday = date.today() - timedelta(days=1)
+# ---------------------------------------------------------------------------
+# S3
+# ---------------------------------------------------------------------------
 
-    periods = []
+def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
+    """
+    Salva um dicionário Python como arquivo JSON no S3.
 
-    year = start_year
-    month = 1
+    Args:
+        s3_client: Cliente boto3 já instanciado para o S3.
+        bucket:    Nome do bucket de destino.
+        data:      Dados a serem salvos (dicionário Python).
+        s3_key:    Caminho do arquivo dentro do bucket.
+                   Exemplo: "filmes/ano=2023/mes=05/pagina_001.json"
+    """
+    # ensure_ascii=False mantém acentos e caracteres especiais do pt-BR
+    body = json.dumps(data, ensure_ascii=False)
 
-    while (year, month) <= (yesterday.year, yesterday.month):
-        first_day = date(year, month, 1)
-
-        last_day_of_month = calendar.monthrange(year, month)[1]
-        last_day = date(year, month, last_day_of_month)
-
-        # Se for o mês atual, o end_date é ontem (não o último dia do mês).
-        if year == yesterday.year and month == yesterday.month:
-            last_day = yesterday
-
-        periods.append({
-            "start_date": first_day.strftime("%Y-%m-%d"),
-            "end_date": last_day.strftime("%Y-%m-%d")
-        })
-
-        if month == 12:
-            year += 1
-            month = 1
-        else:
-            month += 1
-
-    return periods
-
-
-def group_periods_by_year(periods: list[dict]) -> dict[str, list[dict]]:
-    """Agrupa periodos por ano para disparar Glue de forma incremental anual."""
-    result: dict[str, list[dict]] = {}
-    for period in periods:
-        year = period["start_date"][:4]
-        result.setdefault(year, []).append(period)
-    return result
-
-
-def fetch_discover(
-    api_key: str,
-    period: dict,
-    media_type: str = "movie",
-    max_pages: int = 5,
-) -> list[dict]:
-    """Busca conteudo discover com fallback de idioma e limite de paginacao."""
-    # Tenta pt-BR primeiro; se não retornar resultados, cai para en-US.
-    # max_pages limita a paginação para evitar execuções longas em períodos muito populares.
-    url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    for language in LANGUAGE_FALLBACK:
-        results = []
-        for page in range(1, max_pages + 1):
-            params = _build_discover_params(api_key, period, media_type, page, language)
-            data = _request_json_with_retry(url, params=params)
-            results.extend(data["results"])
-            if page >= data.get("total_pages", 1):
-                break
-        if results:
-            return results
-    return []
-
-
-def fetch_genres(api_key: str, media_type: str = "movie") -> list[dict]:
-    """Busca genero com fallback de idioma para aumentar taxa de preenchimento."""
-    url = f"https://api.themoviedb.org/3/genre/{media_type}/list"
-    for language in LANGUAGE_FALLBACK:
-        params = {
-            "api_key": api_key,
-            "language": language
-        }
-        data = _request_json_with_retry(url, params=params)
-        if "genres" in data and data["genres"]:
-            return data["genres"]
-    return []
-
-
-def fetch_configuration(api_key: str, configuration_type: str = "languages") -> list[dict]:
-    """Busca configuracoes globais da TMDB (languages/countries)."""
-    url = f"https://api.themoviedb.org/3/configuration/{configuration_type}"
-
-    if configuration_type == "languages":
-        params = {
-            "api_key": api_key,
-            "language": "pt-BR"
-        }
-    elif configuration_type == "countries":
-        params = {
-            "api_key": api_key
-        }
-    else:
-        raise ValueError(f"Invalid configuration type: {configuration_type}")
-
-    return _request_json_with_retry(url, params=params)
-
-
-def process_discover(
-    api_key: str,
-    bucket: str,
-    periods: list[dict],
-    media_type: str,
-) -> list[str]:
-    """Extrai discover por periodo e salva cada mes em chave S3 particionada por ano/mes."""
-    files = []
-
-    for period in periods:
-        data = fetch_discover(api_key, period, media_type=media_type)
-
-        year = period["start_date"][:4]
-        month = period["start_date"][5:7]
-
-        # Nome de chave deterministico para idempotencia e facil localizacao por particao temporal.
-        key = f"tmdb/discover/{media_type}/year={year}/month={month}/{media_type}_{year}_{month}.json"
-
-        save_json_to_s3(bucket, key, data)
-        files.append(key)
-
-    return files
-
-
-def process_genres(api_key: str, bucket: str, media_type: str) -> list[str]:
-    """Extrai genero e salva snapshot unico por tipo de midia."""
-    genres = fetch_genres(api_key, media_type=media_type)
-
-    key = f"tmdb/genre/{media_type}/genres_{media_type}.json"
-
-    save_json_to_s3(bucket, key, genres)
-
-    return [key]
-
-
-def process_configuration(api_key: str, bucket: str, configuration_type: str) -> list[str]:
-    """Extrai configuracao estatica quando aplicavel e persiste no S3."""
-    if not configuration_type:
-        return []
-
-    configuration = fetch_configuration(api_key, configuration_type=configuration_type)
-
-    key = f"tmdb/configuration/{configuration_type}/configuration_{configuration_type}.json"
-
-    save_json_to_s3(bucket, key, configuration)
-
-    return [key]
-
-
-def save_json_to_s3(bucket: str, key: str, data: list | dict) -> None:
-    # Serializa para UTF-8 antes de enviar; o Glue ETL lerá com wr.s3.read_json.
-    s3 = boto3.client("s3")
-
-    s3.put_object(
+    s3_client.put_object(
         Bucket=bucket,
-        Key=key,
-        Body=json.dumps(data).encode("utf-8")
+        Key=s3_key,
+        Body=body.encode("utf-8"),
+        ContentType="application/json",
     )
+    logger.info("Arquivo salvo: s3://%s/%s", bucket, s3_key)
 
 
-def trigger_glue_etl(
-    job_name: str,
-    params: dict,
-    year: str | None = None,
-    table_scope: str | None = None,
-) -> dict:
-    """Dispara Glue ETL com argumentos dinamicos para escopo estatico ou discover anual."""
-    # Os argumentos do Glue precisam do prefixo "--" conforme convenção do AWS Glue Job.
-    # year e table_scope são opcionais: omiti-los processa todos os anos/todas as tabelas.
-    glue = boto3.client("glue")
+# ---------------------------------------------------------------------------
+# Glue ETL
+# ---------------------------------------------------------------------------
 
-    arguments = {
-        "--MEDIA_TYPE": params["media_type"],
-        "--DATABASE": params["database"],
-        "--DISCOVER_TABLE": params["discover_table"],
-        "--GENRE_TABLE": params["genre_table"],
-        "--CONFIGURATION_TABLE": params["configuration_table"],
-        "--CONFIGURATION": params["configuration"],
-        "--PARTITION_COLUMNS": params["partition_columns"]
-    }
-    if year:
-        arguments["--YEAR"] = year
-    if table_scope:
-        arguments["--TABLE_SCOPE"] = table_scope
+def trigger_glue_job(glue_client, job_name: str, glue_catalog_args: dict, year: int = None) -> str:
+    """
+    Inicia o job Glue ETL para processar dados do TMDB.
 
-    response = glue.start_job_run(
+    Pode ser chamado de duas formas:
+      - Com year: processa os dados de discover de um ano específico.
+      - Sem year: processa apenas os dados de referência (gêneros e configurações).
+
+    Args:
+        glue_client:       Cliente boto3 já instanciado para o Glue.
+        job_name:          Nome do job Glue cadastrado na AWS.
+        glue_catalog_args: Dicionário com "database" e nomes de tabelas vindos
+                           do evento EventBridge (exceto o campo "type").
+        year:              Ano dos dados a processar. Opcional — omitir quando
+                           for processar apenas tabelas de referência.
+
+    Returns:
+        O ID de execução do job (JobRunId), útil para acompanhamento.
+    """
+    # Constrói os argumentos do Glue: o prefixo "--" é obrigatório
+    arguments = {}
+
+    # O ano só é informado quando o job processa tabelas de discover
+    if year is not None:
+        arguments["--YEAR"] = str(year)
+
+    for key, value in glue_catalog_args.items():
+        arguments[f"--{key.upper()}"] = str(value)
+
+    response = glue_client.start_job_run(
         JobName=job_name,
-        Arguments=arguments
+        Arguments=arguments,
     )
+    run_id = response["JobRunId"]
+    if year is not None:
+        logger.info("Job Glue '%s' iniciado para o ano %d. RunId: %s", job_name, year, run_id)
+    else:
+        logger.info("Job Glue '%s' iniciado para tabelas de referência. RunId: %s", job_name, run_id)
+    return run_id
 
-    return {
-        "job_name": job_name,
-        "job_run_id": response["JobRunId"]
-    }
+
+# ---------------------------------------------------------------------------
+# TMDB API — dados de referência (sem paginação)
+# ---------------------------------------------------------------------------
+
+def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict = None) -> dict:
+    """
+    Busca dados de referência do TMDB — endpoints que retornam uma lista
+    simples, sem paginação (países, idiomas, gêneros, etc.).
+
+    Args:
+        api_key:  Chave de API do TMDB.
+        endpoint: Caminho do endpoint a partir da base, ex.: "/configuration/countries".
+        params:   Parâmetros extras opcionais, ex.: {"language": "pt-BR"}.
+
+    Returns:
+        Dicionário com os dados retornados pela API.
+    """
+    base_url = "https://api.themoviedb.org/3"
+    url = f"{base_url}{endpoint}"
+
+    query = {"api_key": api_key}
+    if params:  # adiciona parâmetros extras apenas se forem informados
+        query.update(params)
+
+    response = requests.get(url, params=query, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def collect_reference_data(api_key: str, s3_client, bucket: str, content_type: str) -> None:
+    """
+    Coleta os dados de referência do TMDB relativos ao tipo de conteúdo
+    recebido no evento e salva cada um como JSON no S3.
+
+    Cada execução da Lambda trata um tipo e coleta apenas o que lhe cabe:
+
+      content_type="movie":
+        - /genre/movie/list  (language: pt-BR) → tmdb/genre/movie/generos_filmes.json
+        - /configuration/languages             → tmdb/configuration/languages/idiomas.json
+
+      content_type="tv":
+        - /genre/tv/list     (language: pt-BR) → tmdb/genre/tv/generos_series.json
+        - /configuration/countries (language: pt-BR) → tmdb/configuration/countries/paises.json
+
+    Args:
+        api_key:       Chave de API do TMDB.
+        s3_client:     Cliente boto3 do S3.
+        bucket:        Nome do bucket S3 de destino.
+        content_type:  "movie" ou "tv" — vem do campo "type" do evento EventBridge.
+    """
+    if content_type == "movie":
+        # Gêneros de filmes
+        logger.info("Coletando referência: /genre/movie/list")
+        data = fetch_tmdb_reference(api_key, "/genre/movie/list", {"language": "pt-BR"})
+        save_to_s3(s3_client, bucket, data, "tmdb/genre/movie/generos_filmes.json")
+
+        # Idiomas disponíveis
+        logger.info("Coletando referência: /configuration/languages")
+        data = fetch_tmdb_reference(api_key, "/configuration/languages")
+        save_to_s3(s3_client, bucket, data, "tmdb/configuration/languages/idiomas.json")
+
+    else:
+        # Gêneros de séries
+        logger.info("Coletando referência: /genre/tv/list")
+        data = fetch_tmdb_reference(api_key, "/genre/tv/list", {"language": "pt-BR"})
+        save_to_s3(s3_client, bucket, data, "tmdb/genre/tv/generos_series.json")
+
+        # Países disponíveis
+        logger.info("Coletando referência: /configuration/countries")
+        data = fetch_tmdb_reference(api_key, "/configuration/countries", {"language": "pt-BR"})
+        save_to_s3(s3_client, bucket, data, "tmdb/configuration/countries/paises.json")
+
+
+# ---------------------------------------------------------------------------
+# Coleta e salvamento por ano
+# ---------------------------------------------------------------------------
+
+def collect_and_save(
+    api_key: str,
+    s3_client,
+    bucket: str,
+    content_type: str,
+    folder: str,
+    year: int
+) -> None:
+    """
+    Busca todas as páginas disponíveis (até MAX_PAGES) de um tipo de conteúdo
+    para um dado ano e salva cada página como um arquivo JSON separado no S3.
+
+    A função para automaticamente se o TMDB informar que não há mais páginas,
+    evitando chamadas desnecessárias à API.
+
+    Args:
+        api_key:       Chave de API do TMDB.
+        s3_client:     Cliente boto3 do S3.
+        bucket:        Nome do bucket S3 de destino.
+        content_type:  "movie" (filmes) ou "tv" (séries) — parâmetro da API do TMDB.
+        folder:        Nome da pasta no S3: "filmes" ou "series".
+        year:          Ano de lançamento/estreia do conteúdo.
+        current_month: Mês atual no formato "MM" (ex.: "05" para maio).
+    """
+    logger.info("Coletando %s do ano %d...", folder, year)
+
+    for page in range(1, MAX_PAGES + 1):
+        data = fetch_tmdb_data(api_key, content_type, year, page)
+
+        # O TMDB informa o total de páginas disponíveis na resposta.
+        # Se já passamos do limite real, não há mais dados para buscar.
+        total_pages = data.get("total_pages", 0)
+        if page > total_pages:
+            logger.info(
+                "%s/%d: %d página(s) disponível(is). Encerrando na página %d.",
+                folder, year, total_pages, page - 1,
+            )
+            break
+
+        # Exemplo de caminho gerado: tmdb/discover/movie/ano=2023/pagina_001.json
+        s3_key = f"{folder}/ano={year}/pagina_{page:03d}.json"
+        save_to_s3(s3_client, bucket, data, s3_key)

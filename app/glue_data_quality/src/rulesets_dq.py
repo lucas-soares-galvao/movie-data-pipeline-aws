@@ -6,7 +6,7 @@ rulesets_dq = {
         'IsComplete "iso_3166_1"',
         'IsUnique "iso_3166_1"',
         'IsComplete "english_name"',
-        'IsComplete "native_name"',
+        'IsComplete "name"',
         'RowCount > 0',
     ],
     "tb_configuration_languages_tmdb": [

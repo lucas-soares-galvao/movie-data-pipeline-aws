@@ -90,11 +90,6 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     name = "year"
     type = "string"
   }
-
-  partition_keys {
-    name = "month"
-    type = "string"
-  }
 }
 
 
@@ -174,10 +169,6 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
 
   partition_keys {
     name = "year"
-    type = "string"
-  }
-  partition_keys {
-    name = "month"
     type = "string"
   }
 }

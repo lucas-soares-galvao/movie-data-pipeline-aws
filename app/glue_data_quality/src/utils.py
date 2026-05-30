@@ -1,157 +1,272 @@
-"""Raciocinio: implementa parsing de args, leitura do catalogo, avaliacao DQ e escrita padronizada de saida."""
+"""
+utils.py — Funções auxiliares do job Glue Data Quality.
 
-from typing import Any
+Aqui ficam as funções que realizam tarefas específicas:
+  - Ler argumentos opcionais do job
+  - Ler dados da tabela SOT (Parquet)
+  - Avaliar as regras de qualidade (DQDL simplificado)
+  - Salvar os resultados no bucket de Data Quality
+
+As regras suportadas são:
+  IsComplete "coluna"               → verifica se não há valores nulos
+  IsUnique "coluna"                 → verifica se não há valores duplicados
+  ColumnValues "coluna" between X and Y → verifica se os valores estão no intervalo
+  RowCount > N                      → verifica se a tabela tem mais de N linhas
+"""
+
+import logging
+import sys
+from datetime import datetime
+from typing import List, Optional
 
 import awswrangler as wr
-from awsglue.utils import getResolvedOptions
-from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import coalesce, col, current_timestamp, from_utc_timestamp, lit, when
+import pandas as pd
 
-from .rulesets_dq import rulesets_dq
-
-
-def _resolve_optional_args(argv: list[str], optional_args: list[str]) -> dict[str, str]:
-    """Extrai argumentos opcionais do argv sem quebrar quando nao forem informados."""
-    resolved: dict[str, str] = {}
-    for arg in optional_args:
-        option = f"--{arg}"
-        if option in argv:
-            index = argv.index(option)
-            if index + 1 < len(argv):
-                resolved[arg] = argv[index + 1]
-    return resolved
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
-def parse_args(argv: list[str]) -> dict[str, str]:
-    """Resolve os parametros obrigatorios do job e injeta o opcional de particao."""
-    required_args = ["DATABASE", "TABLE", "S3_BUCKET_DATA_QUALITY"]
-    args = getResolvedOptions(argv, required_args)
-    args.update(_resolve_optional_args(argv, ["PARTITION_VALUES"]))
-    return args
+# ---------------------------------------------------------------------------
+# Utilitários gerais
+# ---------------------------------------------------------------------------
+
+def get_optional_arg(name: str, default: Optional[str] = None) -> Optional[str]:
+    """
+    Lê um argumento opcional de sys.argv sem lançar erro se estiver ausente.
+
+    Args:
+        name:    Nome do argumento (sem o prefixo "--").
+        default: Valor retornado caso o argumento não seja encontrado.
+
+    Returns:
+        O valor do argumento como string, ou `default` se não encontrado.
+    """
+    for i, token in enumerate(sys.argv):
+        if token == f"--{name}" and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if token.startswith(f"--{name}="):
+            return token.split("=", 1)[1]
+    return default
 
 
-def rules_list_to_dqdl(rules_list: list[str]) -> str:
-    """Converte a lista de regras em DQDL, com fallback minimo para evitar job sem regra."""
-    if not rules_list:
-        return "Rules = [\n    RowCount > 0\n]"
-    rules = ",\n    ".join(rules_list)
-    return f"Rules = [\n    {rules}\n]"
+# ---------------------------------------------------------------------------
+# Leitura dos dados da camada SOT
+# ---------------------------------------------------------------------------
 
+def read_table_from_sot(
+    s3_bucket_sot: str,
+    table_name: str,
+    year: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Lê os dados de uma tabela no bucket SOT (formato Parquet).
 
-def build_ruleset(table_name: str) -> str:
-    """Seleciona o ruleset por tabela e mantém a validacao declarativa em arquivo dedicado."""
-    return rules_list_to_dqdl(rulesets_dq.get(table_name, []))
+    Para tabelas de discover (particionadas por ano), é possível
+    informar o ano para ler apenas a partição correspondente, evitando
+    que todos os dados históricos sejam carregados desnecessariamente.
 
+    Args:
+        s3_bucket_sot: Nome do bucket SOT.
+        table_name:    Nome da tabela (usado como subpasta dentro do bucket).
+        year:          Ano da partição a ser lida. Se None, lê todos os dados.
 
-def build_push_down_predicate(partition_values_str: str | None) -> str | None:
-    """Converte o formato 'year=2025' para um predicado Spark SQL de filtro no Catalog."""
-    if not partition_values_str:
-        return None
-    parts = partition_values_str.split("=", 1)
-    if len(parts) != 2:
-        return None
-    col, val = parts[0].strip(), parts[1].strip()
-    return f"{col} = '{val}'"
+    Returns:
+        DataFrame com os dados da tabela (ou partição).
+    """
+    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
 
-
-def read_catalog_table(
-    glue_context: Any,
-    database: str,
-    table: str,
-    push_down_predicate: str | None = None,
-) -> Any:
-    """Le a tabela do Glue Catalog com filtro opcional de particao na origem."""
-    kwargs = {}
-    if push_down_predicate:
-        kwargs["push_down_predicate"] = push_down_predicate
-    return glue_context.create_dynamic_frame.from_catalog(
-        database=database,
-        table_name=table,
-        **kwargs
-    )
-
-
-def run_data_quality(datasource: Any, ruleset: str) -> Any:
-    """Executa a avaliacao de qualidade e publica metricas/resultados no ecossistema Glue."""
-    return EvaluateDataQuality.apply(
-        frame=datasource,
-        ruleset=ruleset,
-        publishing_options={
-            "dataQualityEvaluationContext": "meu_contexto",
-            "enableDataQualityCloudWatchMetrics": True,
-            "enableDataQualityResultsPublishing": True,
-        },
-    )
-
-
-def write_results(
-    df_dq_results: Any,
-    s3_bucket_dq: str,
-    source_table: str,
-    partition: str | None = None,
-    source_database: str | None = None,
-    dq_table: str = "tb_data_quality_tmdb",
-) -> str:
-    """Padroniza e grava o resultado de DQ em Parquet para consulta historica e auditoria."""
-    table_root_path = f"s3://{s3_bucket_dq}/tmdb/{dq_table}/"
-    # Keep the persisted schema minimal: remove raw metric payloads from Glue DQ output.
-    df_base = df_dq_results.drop("evaluated_metrics", "EvaluatedMetrics")
-
-    # Compatibiliza diferentes nomes de colunas retornadas pelo Glue DQ.
-    columns = set(getattr(df_base, "columns", []))
-    outcome_col = "Outcome" if "Outcome" in columns else ("outcome" if "outcome" in columns else None)
-    failure_reason_col = (
-        "FailureReason"
-        if "FailureReason" in columns
-        else ("failure_reason" if "failure_reason" in columns else None)
-    )
-
-    # Enriquecimento do motivo de falha para evitar registros sem explicacao.
-    if outcome_col and failure_reason_col:
-        failure_reason_expr = (
-            when(
-                (col(outcome_col) == "Failed")
-                & col(failure_reason_col).isNotNull()
-                & (col(failure_reason_col) != ""),
-                col(failure_reason_col),
-            )
-            .when(
-                col(outcome_col) == "Failed",
-                lit("DQ metric failed without explicit reason"),
-            )
-            .otherwise(lit(""))
+    if year is not None:
+        # Lê apenas a partição do ano informado, muito mais eficiente
+        # do que carregar todos os anos
+        filters = [("year", "=", year)]
+        logger.info("Lendo s3_path=%s | filtro year=%s", s3_path, year)
+        df = wr.s3.read_parquet(
+            path=s3_path,
+            dataset=True,
+            partition_filter=lambda x: x.get("year") == year,
         )
-    elif outcome_col:
-        failure_reason_expr = when(
-            col(outcome_col) == "Failed",
-            lit("DQ metric failed without explicit reason"),
-        ).otherwise(lit(""))
     else:
-        failure_reason_expr = lit("")
+        logger.info("Lendo todos os dados de s3_path=%s", s3_path)
+        df = wr.s3.read_parquet(path=s3_path, dataset=True)
 
-    # Adiciona metadados de rastreio para facilitar consumo analitico e observabilidade.
-    df_enriched = (
-        df_base
-        .withColumn("source_table", lit(source_table))
-        .withColumn("source_database", coalesce(lit(source_database), lit("")))
-        .withColumn("partition", coalesce(lit(partition), lit("")))
-        .withColumn("failure_reason", failure_reason_expr)
-        .withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))
-    )
-    df_enriched.write.mode("append").partitionBy("source_table").parquet(table_root_path)
-    return table_root_path
+    logger.info("Lidos %d registros da tabela '%s'.", len(df), table_name)
+    return df
 
 
-def register_partition(
+# ---------------------------------------------------------------------------
+# Avaliação das regras de qualidade
+# ---------------------------------------------------------------------------
+
+def evaluate_rules(
+    df: pd.DataFrame,
+    rules: List[str],
     database: str,
-    source_table: str,
-    table_root_path: str,
-    dq_table: str = "tb_data_quality_tmdb",
+    table_name: str,
+    year: Optional[str] = None,
+) -> List[dict]:
+    """
+    Avalia cada regra da lista e retorna um resultado por regra.
+
+    As regras seguem a sintaxe DQDL simplificada:
+      IsComplete "coluna"
+      IsUnique "coluna"
+      ColumnValues "coluna" between X and Y
+      RowCount > N
+
+    Args:
+        df:         DataFrame com os dados a validar.
+        rules:      Lista de regras DQDL (strings).
+        database:   Banco de dados no Glue Catalog (para registro no resultado).
+        table_name: Nome da tabela (para registro no resultado).
+        year:       Ano da partição (para registro no resultado; pode ser None).
+
+    Returns:
+        Lista de dicionários, um por regra, com os campos:
+          - rule            : texto da regra avaliada
+          - outcome         : "PASS" ou "FAIL"
+          - failure_reason  : descrição do motivo da falha (None se PASS)
+          - partition       : valor do ano ou "sem particao"
+          - datetime_process: momento da avaliação
+          - source_database : banco de dados avaliado
+    """
+    results = []
+    now = datetime.utcnow()
+    partition_label = year if year is not None else "sem particao"
+
+    for rule in rules:
+        rule = rule.strip()
+        outcome = "PASS"
+        failure_reason = None
+
+        try:
+            if rule.startswith("IsComplete"):
+                # Verifica se há valores nulos na coluna informada
+                col = _extract_column_name(rule)
+                null_count = int(df[col].isna().sum())
+                if null_count > 0:
+                    outcome = "FAIL"
+                    failure_reason = f"{null_count} valores nulos na coluna '{col}'"
+
+            elif rule.startswith("IsUnique"):
+                # Verifica se há valores duplicados na coluna informada
+                col = _extract_column_name(rule)
+                dup_count = int(df[col].duplicated().sum())
+                if dup_count > 0:
+                    outcome = "FAIL"
+                    failure_reason = f"{dup_count} valores duplicados na coluna '{col}'"
+
+            elif rule.startswith("RowCount"):
+                # Exemplo: "RowCount > 0"
+                # Verifica se o total de linhas satisfaz a condição
+                parts = rule.split()  # ["RowCount", ">", "0"]
+                operator = parts[1]
+                threshold = int(parts[2])
+                row_count = len(df)
+                if operator == ">" and not (row_count > threshold):
+                    outcome = "FAIL"
+                    failure_reason = f"RowCount={row_count} não satisfaz RowCount > {threshold}"
+
+            elif rule.startswith("ColumnValues"):
+                # Exemplo: 'ColumnValues "vote_average" between 0 and 10'
+                # Verifica se todos os valores estão no intervalo [min, max]
+                col = _extract_column_name(rule)
+                between_part = rule.split("between")[1].strip()  # "0 and 10"
+                low_str, high_str = between_part.split("and")
+                low = float(low_str.strip())
+                high = float(high_str.strip())
+                out_of_range = int(((df[col] < low) | (df[col] > high)).sum())
+                if out_of_range > 0:
+                    outcome = "FAIL"
+                    failure_reason = (
+                        f"{out_of_range} valores fora do intervalo "
+                        f"[{low}, {high}] na coluna '{col}'"
+                    )
+
+            else:
+                # Regra não reconhecida — registra como FAIL para forçar revisão
+                outcome = "FAIL"
+                failure_reason = f"Regra não reconhecida: '{rule}'"
+
+        except Exception as exc:
+            # Se ocorrer qualquer erro ao avaliar a regra, registra como FAIL
+            outcome = "FAIL"
+            failure_reason = f"Erro ao avaliar regra: {exc}"
+            logger.error("Erro ao avaliar regra '%s': %s", rule, exc)
+
+        result = {
+            "rule": rule,
+            "outcome": outcome,
+            "failure_reason": failure_reason,
+            "partition": partition_label,
+            "datetime_process": now,
+            "source_database": database,
+        }
+        results.append(result)
+
+        logger.info("[%s] %s | motivo: %s", outcome, rule, failure_reason)
+
+    return results
+
+
+def _extract_column_name(rule: str) -> str:
+    """
+    Extrai o nome da coluna de uma regra DQDL.
+
+    O nome da coluna está entre aspas duplas na regra.
+    Ex.: 'IsComplete "vote_average"' → 'vote_average'
+
+    Args:
+        rule: String com a regra DQDL.
+
+    Returns:
+        Nome da coluna como string.
+    """
+    start = rule.index('"') + 1
+    end = rule.index('"', start)
+    return rule[start:end]
+
+
+# ---------------------------------------------------------------------------
+# Gravação dos resultados de qualidade
+# ---------------------------------------------------------------------------
+
+def save_dq_results(
+    results: List[dict],
+    s3_bucket_data_quality: str,
+    table_name: str,
 ) -> None:
-    """Registra no Catalog a particao escrita para consulta imediata sem crawler."""
-    partition_prefix = f"source_table={source_table}/"
-    wr.catalog.add_parquet_partitions(
-        database=database,
-        table=dq_table,
-        partitions_values={f"{table_root_path}{partition_prefix}": [source_table]},
+    """
+    Salva os resultados da avaliação de qualidade como Parquet no bucket
+    de Data Quality, particionado por nome da tabela de origem.
+
+    O caminho de destino segue o padrão:
+      s3://{bucket}/tmdb/tb_data_quality_tmdb/source_table={table_name}/
+
+    Args:
+        results:                Lista de resultados retornada por evaluate_rules().
+        s3_bucket_data_quality: Nome do bucket de Data Quality.
+        table_name:             Nome da tabela avaliada (usada como partição).
+    """
+    df_results = pd.DataFrame(results)
+
+    # Adiciona a coluna de partição com o nome da tabela de origem
+    df_results["source_table"] = table_name
+
+    s3_path = f"s3://{s3_bucket_data_quality}/tmdb/tb_data_quality_tmdb/"
+
+    logger.info(
+        "Salvando %d resultados de DQ em %s | partição source_table=%s",
+        len(df_results), s3_path, table_name,
     )
+
+    # overwrite_partitions: substitui apenas os resultados desta tabela,
+    # preservando resultados de outras tabelas já gravados
+    wr.s3.to_parquet(
+        df=df_results,
+        path=s3_path,
+        dataset=True,
+        partition_cols=["source_table"],
+        mode="overwrite_partitions",
+    )
+
+    logger.info("Resultados de DQ para '%s' salvos com sucesso!", table_name)
