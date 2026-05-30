@@ -42,7 +42,7 @@ def get_tmdb_api_key(secret_arn: str) -> str:
     client = boto3.client("secretsmanager")
     response = client.get_secret_value(SecretId=secret_arn)
     secret = json.loads(response["SecretString"])
-    return secret["api_key"]
+    return secret["tmdb_api_key"]
 
 
 # ---------------------------------------------------------------------------
