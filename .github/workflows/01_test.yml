@@ -1,0 +1,125 @@
+# Raciocinio: encapsula execucao de testes para reutilizacao e padronizacao do pipeline.
+
+name: Test (Reusable)
+
+# Define que este workflow é "Reutilizável" (pode ser chamado por outros arquivos .yml)
+on:
+  workflow_call:
+
+jobs:
+  test:
+    # Especifica o ambiente de execução (neste caso, uma máquina virtual Linux zerada)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Baixa o código do seu repositório para dentro da máquina virtual
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Prepara o ambiente instalando a versão 3.12 do interpretador Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            app/**/requirements.txt
+            test/**/requirements_tests.txt
+
+      # 3. Gerencia as bibliotecas necessárias
+      - name: Install dependencies
+        run: |
+          # Atualiza o instalador de pacotes (pip) para a versão mais recente
+          python -m pip install --upgrade pip
+          # Instala o framework de teste (pytest) e o plugin de cobertura (pytest-cov)
+          pip install pytest pytest-cov
+          # Instala ferramentas de quality gates
+          pip install ruff mypy bandit safety
+          # Instala todos os arquivos de dependências de teste por módulo
+          for file in $(find test -type f -name "requirements_tests.txt"); do
+            echo "Instalando dependências de teste: $file"
+            pip install -r "$file"
+          done
+          # Instala dependências da aplicação por módulo
+          for file in app/*/requirements.txt; do
+            if [ -f "$file" ]; then
+              echo "Instalando dependências da aplicação: $file"
+              pip install -r "$file"
+            fi
+          done
+
+      # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
+      # Adicionar o diretório raiz ao GITHUB_ENV resolve erros de "ModuleNotFoundError"
+      - name: Configure PYTHONPATH
+        run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
+      # 5. Linting com Ruff - Verifica estilo de código e boas práticas
+      - name: Lint with Ruff
+        run: |
+          # Faz linting do código Python seguindo padrões de estilo
+          ruff check app/ test/
+          echo "Ruff linting concluido"
+
+      # 6. Type Check com mypy - Verifica tipos de dados estaticamente
+      - name: Type Check with mypy
+        run: |
+          # Executa type checking para detectar erros potenciais de tipo
+          # --ignore-missing-imports ignora pacotes sem stubs de tipo
+          if ! mypy app/ --ignore-missing-imports; then
+            echo "::warning::Avisos de tipo detectados (recomendado corrigir antes de deploy)"
+          fi
+          echo "Mypy type checking concluido"
+
+      # 7. Security Scan com Bandit - Detecta vulnerabilidades de segurança
+      - name: Security Scan with Bandit
+        run: |
+          # Escaneia código em busca de problemas comuns de segurança
+          # -ll mostra apenas Issues de alta e média severidade
+          if ! bandit -r app/ -ll -f json -o bandit-report.json; then
+            echo "::warning::Possiveis vulnerabilidades detectadas pelo Bandit"
+          fi
+          echo "Bandit security scan concluido"
+          # Exibir um resumo legível
+          bandit -r app/ -ll || echo "Resumo do Bandit com alertas"
+
+      # 8. Dependency Check - Verifica vulnerabilidades em dependências
+      - name: Check Dependencies with Safety
+        run: |
+          # Verifica dependências conhecidas com vulnerabilidades divulgadas
+          if ! safety check --json --output safety-report.json; then
+            echo "::warning::Vulnerabilidades conhecidas em dependencias (recomendado revisar)"
+          fi
+          echo "Safety dependency check concluido"
+
+      # 9. Executa os testes e aplica a barreira de qualidade (Quality Gate)
+      - name: Run tests with Coverage Gate
+        run: |
+          # pytest: executa os testes
+          # --cov=app: mede a cobertura de código apenas da aplicação
+          # --cov-report=term-missing: lista no terminal quais linhas não foram testadas
+          # --cov-report=xml: gera um arquivo técnico (coverage.xml) para ferramentas externas
+          # --cov-fail-under=70: interrompe a pipeline com erro se a cobertura for menor que 70%
+          pytest --cov=app \
+                 --cov-report=term-missing \
+                 --cov-report=xml \
+                 --cov-fail-under=70
+
+      # 10. Quality Gate Summary - Resumo final de qualidade
+      - name: Quality Gate Summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "        QUALITY GATES SUMMARY"
+          echo "=========================================="
+          echo "Etapas executadas:"
+          echo "- Testes Unitarios (pytest)"
+          echo "- Cobertura de Codigo (Coverage Gate: 70%)"
+          echo "- Linting (ruff)"
+          echo "- Type Checking (mypy - informativo)"
+          echo "- Security Analysis (bandit - informativo)"
+          echo "- Dependency Vulnerabilities (safety - informativo)"
+          echo "=========================================="
+          echo "Resumo concluido. Consulte os logs para detalhes de alertas ou falhas."
+          echo "=========================================="
+          

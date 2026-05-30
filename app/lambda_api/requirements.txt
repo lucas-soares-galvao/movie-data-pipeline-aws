@@ -1,0 +1,5 @@
+# Raciocinio: fixa dependencias da Lambda API para evitar divergencia entre deploys.
+
+boto3
+requests
+types-requests

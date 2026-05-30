@@ -1,0 +1,177 @@
+# Raciocinio: declara contrato de entrada da infraestrutura para reutilizacao entre ambientes.
+
+variable "env" {
+  # Nome logico do ambiente, usado para nomes e isolamento de recursos.
+  description = "Ambiente do job Glue (ex.: dev, prod)"
+  type        = string
+}
+
+variable "account_id" {
+  description = "ID da conta AWS"
+  type        = string
+}
+
+############## IAM Roles and Policies ##############
+variable "iam_role_glue" {
+  description = "Nome da role IAM para jobs Glue"
+  type        = string
+  default     = "glue-job-role-etl"
+}
+
+variable "iam_role_lambda" {
+  description = "Nome da role IAM para a funcao Lambda"
+  type        = string
+  default     = "lambda-role"
+}
+
+############# ALARMS VARIABLES ##############
+variable "glue_data_quality_notification_email" {
+  description = "E-mail para receber notificações de execução do Glue Data Quality"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+variable "glue_etl_notification_email" {
+  description = "E-mail para receber notificações de execução do Glue ETL"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+variable "lambda_notification_email" {
+  description = "E-mail para receber notificações de execução da Lambda"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+variable "eventbridge_notification_email" {
+  description = "E-mail para receber notificações de sucesso do EventBridge"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+
+############## S3 Buckets ##############
+variable "s3_bucket_aux" {
+  description = "Auxiliary bucket name for Python code"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-aux"
+}
+
+variable "s3_bucket_temp" {
+  description = "Nome do bucket temporario para scripts do Athena"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-temp"
+}
+
+variable "s3_bucket_sor" {
+  description = "Nome do bucket principal para dados de entrada/saida processados pela Lambda"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-sor"
+}
+
+variable "s3_bucket_sot" {
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-sot"
+}
+
+variable "s3_bucket_spec" {
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-spec"
+}
+
+variable "s3_bucket_data_quality" {
+  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue Data Quality"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-data-quality"
+}
+
+################ SECRETS MANAGER ############
+variable "tmdb_secret_arn" {
+  description = "ARN do segredo no Secrets Manager com a chave da TMDB"
+  type        = string
+}
+
+############### LAMBDA ##############
+variable "lambda_api_path_app" {
+  description = "Caminho para os modulos Python da aplicacao da Lambda API"
+  type        = string
+  default     = "lambda_api"
+}
+
+variable "lambda_api_name" {
+  description = "Nome da funcao Lambda a ser criada por ambiente"
+  type        = string
+  default     = "lambda-api"
+}
+
+############### GLUE ##############
+variable "glue_etl_path_app" {
+  description = "Caminho para os modulos Python da aplicacao do Glue ETL"
+  type        = string
+  default     = "glue_etl"
+}
+
+variable "glue_etl_job_name" {
+  description = "Nome do job Glue ETL a ser criado por ambiente"
+  type        = string
+  default     = "glue-etl"
+}
+
+variable "glue_data_quality_path_app" {
+  description = "Caminho para os modulos Python da aplicacao do Glue Data Quality"
+  type        = string
+  default     = "glue_data_quality"
+}
+
+variable "glue_data_quality_job_name" {
+  description = "Nome do job Glue Data Quality a ser criado por ambiente"
+  type        = string
+  default     = "glue-data-quality"
+}
+
+variable "glue_catalog_database_name" {
+  description = "Nome do banco no Glue Catalog para a tabela TMDB"
+  type        = string
+  default     = "db_tmdb"
+}
+
+variable "glue_catalog_table_discover_movie_name" {
+  description = "Nome da tabela no Glue Catalog para a tabela de filmes da TMDB"
+  type        = string
+  default     = "tb_discover_movie_tmdb"
+}
+
+variable "glue_catalog_table_discover_tv_name" {
+  description = "Nome da tabela no Glue Catalog para a tabela de series da TMDB"
+  type        = string
+  default     = "tb_discover_tv_tmdb"
+}
+
+variable "glue_catalog_table_genre_movie_name" {
+  description = "Nome da tabela no Glue Catalog para a tabela de generos de filmes da TMDB"
+  type        = string
+  default     = "tb_genre_movie_tmdb"
+}
+
+variable "glue_catalog_table_genre_tv_name" {
+  description = "Nome da tabela no Glue Catalog para a tabela de generos de series da TMDB"
+  type        = string
+  default     = "tb_genre_tv_tmdb"
+}
+
+variable "glue_catalog_table_configuration_languages_name" {
+  description = "Nome da tabela no Glue Catalog para a tabela de linguas da TMDB"
+  type        = string
+  default     = "tb_configuration_languages_tmdb"
+  
+}
+
+variable "glue_catalog_table_configuration_countries_name" {
+  description = "Nome da tabela no Glue Catalog para a tabela de paises da TMDB"
+  type        = string
+  default     = "tb_configuration_countries_tmdb"
+}
+
+variable "glue_catalog_table_data_quality_name" {
+  description = "Nome da tabela no Glue Catalog para resultados de Data Quality"
+  type        = string
+  default     = "tb_data_quality_tmdb"
+}
