@@ -78,7 +78,6 @@ def read_table_from_sot(
     if year is not None:
         # Lê apenas a partição do ano informado, muito mais eficiente
         # do que carregar todos os anos
-        filters = [("year", "=", year)]
         logger.info("Lendo s3_path=%s | filtro year=%s", s3_path, year)
         df = wr.s3.read_parquet(
             path=s3_path,
