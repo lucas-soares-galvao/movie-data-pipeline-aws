@@ -31,9 +31,9 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
     if app_dir is None:
         return
 
-    # Evict the cached 'src' namespace so the next import picks the right one.
+    # Evict the cached 'src' and 'main' namespaces so the next import picks the right one.
     for key in list(sys.modules.keys()):
-        if key == "src" or key.startswith("src."):
+        if key == "src" or key.startswith("src.") or key == "main":
             del sys.modules[key]
 
     # Promote this suite's app directory to the front of sys.path.
