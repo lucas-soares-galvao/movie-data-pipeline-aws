@@ -6,6 +6,7 @@ Este arquivo contém apenas a lógica principal do fluxo:
   2. Mapeia TABLE_TYPE para as colunas de partição.
   3. Chama read_from_sor para ler os dados do SOR (dispatch por table_type).
   4. Chama write_parquet_to_sot para gravar no SOT em Parquet e atualizar o Catalog.
+  5. Aciona o job Glue Data Quality para validar a tabela recém-escrita.
 
 A Lambda aciona este job com --TABLE_TYPE em cada run:
   - "genre"         : processa a tabela de gêneros.
@@ -19,6 +20,7 @@ import logging
 from src.utils import (
     get_parameters_glue,
     read_from_sor,
+    trigger_data_quality,
     write_parquet_to_sot,
 )
 
@@ -38,7 +40,7 @@ _TABLE_TYPE_TO_MODE = {
 }
 
 
-def run() -> None:
+def main() -> None:
     """Executa o pipeline ETL: lê do SOR e grava no SOT em Parquet."""
     args = get_parameters_glue()
 
@@ -48,14 +50,14 @@ def run() -> None:
     database = args["DATABASE"]
     table_type = args["TABLE_TYPE"]
     table_name = args["TABLE_NAME"]
+    dq_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
     year = args.get("YEAR")
 
     partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
     mode = _TABLE_TYPE_TO_MODE[table_type]
 
     logger.info(
-        "Processando table_type=%s | media_type=%s | year=%s",
-        table_type, media_type, year,
+        f"Processando table_type={table_type} | media_type={media_type} | year={year}"
     )
 
     df = read_from_sor(s3_bucket_sor, media_type, table_type, year)
@@ -67,9 +69,15 @@ def run() -> None:
         partition_cols=partition_cols,
         mode=mode,
     )
+    trigger_data_quality(
+        dq_job_name=dq_job_name,
+        table_name=table_name,
+        database=database,
+        year=year,
+    )
 
     logger.info("Job Glue ETL finalizado com sucesso!")
 
 
 if __name__ == "__main__":
-    run()
+    main()
