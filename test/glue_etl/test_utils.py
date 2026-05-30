@@ -1,0 +1,196 @@
+"""Testes unitários para app/glue_etl/src/utils.py."""
+
+import json
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+
+from src.utils import (
+    read_from_sor,
+    write_parquet_to_sot,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers compartilhados
+# ---------------------------------------------------------------------------
+
+def _make_s3_mock(payload) -> MagicMock:
+    """Cria um cliente S3 simulado que retorna `payload` serializado como JSON."""
+    body = MagicMock()
+    body.read.return_value = json.dumps(payload).encode()
+    s3_mock = MagicMock()
+    s3_mock.get_object.return_value = {"Body": body}
+    return s3_mock
+
+
+# ---------------------------------------------------------------------------
+# read_from_sor — table_type="discover"
+# ---------------------------------------------------------------------------
+
+class TestReadFromSorDiscover:
+    def test_calls_wrangler_with_correct_path(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}, {"id": 2, "title": "Film B"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock) as mock_read:
+            read_from_sor("my-sor", "movie", "discover", year="2023")
+            mock_read.assert_called_once_with(
+                path="s3://my-sor/tmdb/discover/movie/ano=2023/",
+                orient="records",
+            )
+
+    def test_adds_year_column(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "discover", year="2023")
+            assert "year" in result.columns
+            assert result["year"].iloc[0] == "2023"
+
+    def test_year_column_value_matches_arg(self):
+        df_mock = pd.DataFrame([{"id": 1}, {"id": 2}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "discover", year="2000")
+            assert (result["year"] == "2000").all()
+
+    def test_tv_uses_correct_path(self):
+        df_mock = pd.DataFrame([{"id": 10, "name": "Serie A"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock) as mock_read:
+            read_from_sor("my-sor", "tv", "discover", year="2022")
+            mock_read.assert_called_once_with(
+                path="s3://my-sor/tmdb/discover/tv/ano=2022/",
+                orient="records",
+            )
+
+
+# ---------------------------------------------------------------------------
+# read_from_sor — table_type="genre"
+# ---------------------------------------------------------------------------
+
+class TestReadFromSorGenre:
+    def test_movie_reads_correct_s3_key(self):
+        s3_mock = _make_s3_mock([{"id": 28, "name": "Ação"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "movie", "genre")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/genre/movie/generos_filmes.json",
+            )
+
+    def test_tv_reads_correct_s3_key(self):
+        s3_mock = _make_s3_mock([{"id": 10759, "name": "Ação & Aventura"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "tv", "genre")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/genre/tv/generos_series.json",
+            )
+
+    def test_returns_dataframe_from_list(self):
+        genres = [{"id": 28, "name": "Ação"}, {"id": 12, "name": "Aventura"}]
+        s3_mock = _make_s3_mock(genres)
+        with patch("boto3.client", return_value=s3_mock):
+            result = read_from_sor("my-sor", "movie", "genre")
+            assert len(result) == 2
+            assert list(result.columns) == ["id", "name"]
+            assert result["id"].tolist() == [28, 12]
+
+
+# ---------------------------------------------------------------------------
+# read_from_sor — table_type="configuration"
+# ---------------------------------------------------------------------------
+
+class TestReadFromSorConfiguration:
+    def test_movie_reads_languages_s3_key(self):
+        s3_mock = _make_s3_mock([{"iso_639_1": "pt", "english_name": "Portuguese"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "movie", "configuration")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/configuration/languages/idiomas.json",
+            )
+
+    def test_tv_reads_countries_s3_key(self):
+        s3_mock = _make_s3_mock([{"iso_3166_1": "BR", "english_name": "Brazil"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "tv", "configuration")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/configuration/countries/paises.json",
+            )
+
+    def test_returns_dataframe_from_list(self):
+        s3_mock = _make_s3_mock([{"iso_639_1": "pt"}, {"iso_639_1": "en"}])
+        with patch("boto3.client", return_value=s3_mock):
+            result = read_from_sor("my-sor", "movie", "configuration")
+            assert len(result) == 2
+            assert "iso_639_1" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# write_parquet_to_sot
+# ---------------------------------------------------------------------------
+
+class TestWriteParquetToSot:
+    def test_with_partition_cols(self):
+        df = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_discover_movie_tmdb",
+                database="db_tmdb",
+                partition_cols=["year"],
+            )
+            mock_write.assert_called_once_with(
+                df=df,
+                path="s3://my-sot/tmdb/tb_discover_movie_tmdb/",
+                dataset=True,
+                partition_cols=["year"],
+                mode="overwrite_partitions",
+                database="db_tmdb",
+                table="tb_discover_movie_tmdb",
+            )
+
+    def test_without_partition_cols_defaults_to_none(self):
+        df = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_genre_movie_tmdb",
+                database="db_tmdb",
+            )
+            mock_write.assert_called_once_with(
+                df=df,
+                path="s3://my-sot/tmdb/tb_genre_movie_tmdb/",
+                dataset=True,
+                partition_cols=None,
+                mode="overwrite_partitions",
+                database="db_tmdb",
+                table="tb_genre_movie_tmdb",
+            )
+
+    def test_custom_mode_is_forwarded(self):
+        df = pd.DataFrame([{"id": 1}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_test",
+                database="db_tmdb",
+                mode="overwrite",
+            )
+            _, kwargs = mock_write.call_args
+            assert kwargs["mode"] == "overwrite"
+
+    def test_s3_path_uses_table_name(self):
+        df = pd.DataFrame([{"id": 1}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="bucket-sot",
+                table_name="tb_custom",
+                database="db_tmdb",
+            )
+            _, kwargs = mock_write.call_args
+            assert kwargs["path"] == "s3://bucket-sot/tmdb/tb_custom/"

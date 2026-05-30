@@ -10,8 +10,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.utils import (
-    collect_and_save,
-    collect_reference_data,
+    collect_configuration_data,
+    collect_discover_data,
+    collect_genre_data,
     fetch_tmdb_data,
     fetch_tmdb_reference,
     get_tmdb_api_key,
@@ -143,7 +144,9 @@ class TestTriggerGlueJob(unittest.TestCase):
         run_id = trigger_glue_job(
             mock_glue,
             "meu-glue-job",
-            {"database": "tmdb_db", "table_discover_movie": "discover_movie"},
+            {"database": "tmdb_db"},
+            table_type="discover",
+            table_name="discover_movie",
             year=2023,
         )
 
@@ -156,14 +159,17 @@ class TestTriggerGlueJob(unittest.TestCase):
         trigger_glue_job(
             mock_glue,
             "meu-glue-job",
-            {"database": "tmdb_db", "table_discover_movie": "discover_movie"},
+            {"database": "tmdb_db"},
+            table_type="discover",
+            table_name="discover_movie",
             year=2023,
         )
 
         args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
         self.assertEqual(args_glue["--YEAR"], "2023")
         self.assertEqual(args_glue["--DATABASE"], "tmdb_db")
-        self.assertEqual(args_glue["--TABLE_DISCOVER_MOVIE"], "discover_movie")
+        self.assertEqual(args_glue["--TABLE_TYPE"], "discover")
+        self.assertEqual(args_glue["--TABLE_NAME"], "discover_movie")
 
     def test_sem_year_nao_inclui_argumento_year(self):
         """Quando chamado sem year, o Glue não recebe --YEAR (tabelas de referência)."""
@@ -173,13 +179,50 @@ class TestTriggerGlueJob(unittest.TestCase):
         trigger_glue_job(
             mock_glue,
             "meu-glue-job",
-            {"database": "tmdb_db", "table_genre_movie": "genre_movie"},
+            {"database": "tmdb_db"},
+            table_type="genre",
+            table_name="genre_movie",
         )
 
         args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
         self.assertNotIn("--YEAR", args_glue)
         self.assertEqual(args_glue["--DATABASE"], "tmdb_db")
-        self.assertEqual(args_glue["--TABLE_GENRE_MOVIE"], "genre_movie")
+        self.assertEqual(args_glue["--TABLE_TYPE"], "genre")
+        self.assertEqual(args_glue["--TABLE_NAME"], "genre_movie")
+
+    def test_table_type_incluido_nos_argumentos_do_glue(self):
+        """table_type sempre é repassado ao Glue como --TABLE_TYPE."""
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.return_value = {"JobRunId": "jr_tt"}
+
+        trigger_glue_job(
+            mock_glue,
+            "meu-glue-job",
+            {"database": "tmdb_db"},
+            table_type="genre",
+            table_name="genre_movie",
+        )
+
+        args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
+        self.assertEqual(args_glue["--TABLE_TYPE"], "genre")
+        self.assertNotIn("--YEAR", args_glue)
+
+    def test_table_name_incluido_nos_argumentos_do_glue(self):
+        """table_name sempre é repassado ao Glue como --TABLE_NAME."""
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.return_value = {"JobRunId": "jr_tn"}
+
+        trigger_glue_job(
+            mock_glue,
+            "meu-glue-job",
+            {"database": "tmdb_db"},
+            table_type="genre",
+            table_name="genre_movie",
+        )
+
+        args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
+        self.assertEqual(args_glue["--TABLE_NAME"], "genre_movie")
+        self.assertNotIn("--YEAR", args_glue)
 
 
 # ---------------------------------------------------------------------------
@@ -216,64 +259,101 @@ class TestFetchTmdbReference(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# collect_reference_data
+# collect_genre_data
 # ---------------------------------------------------------------------------
 
-class TestCollectReferenceData(unittest.TestCase):
+class TestCollectGenreData(unittest.TestCase):
 
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_reference")
-    def test_movie_coleta_generos_e_idiomas(self, mock_fetch, mock_save):
-        mock_fetch.return_value = {"genres": []}
+    def test_movie_coleta_generos_de_filmes(self, mock_fetch, mock_save):
+        generos = [{"id": 28, "name": "Ação"}]
+        mock_fetch.return_value = {"genres": generos}
         mock_s3 = MagicMock()
 
-        collect_reference_data("key", mock_s3, "meu-bucket", "movie")
+        collect_genre_data("key", mock_s3, "meu-bucket", "movie")
 
-        # Deve chamar fetch_tmdb_reference duas vezes: gêneros + idiomas
-        self.assertEqual(mock_fetch.call_count, 2)
-        endpoints_chamados = [c[0][1] for c in mock_fetch.call_args_list]
-        self.assertIn("/genre/movie/list", endpoints_chamados)
-        self.assertIn("/configuration/languages", endpoints_chamados)
-
-        # Deve salvar dois arquivos no S3
-        s3_keys = [c[0][3] for c in mock_save.call_args_list]
-        self.assertIn("tmdb/genre/movie/generos_filmes.json", s3_keys)
-        self.assertIn("tmdb/configuration/languages/idiomas.json", s3_keys)
+        mock_fetch.assert_called_once()
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/genre/movie/list")
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertEqual(dados_salvos, generos)
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/genre/movie/generos_filmes.json")
 
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_reference")
-    def test_tv_coleta_generos_e_paises(self, mock_fetch, mock_save):
-        mock_fetch.return_value = {"genres": []}
+    def test_tv_coleta_generos_de_series(self, mock_fetch, mock_save):
+        generos = [{"id": 10759, "name": "Ação & Aventura"}]
+        mock_fetch.return_value = {"genres": generos}
         mock_s3 = MagicMock()
 
-        collect_reference_data("key", mock_s3, "meu-bucket", "tv")
+        collect_genre_data("key", mock_s3, "meu-bucket", "tv")
 
-        endpoints_chamados = [c[0][1] for c in mock_fetch.call_args_list]
-        self.assertIn("/genre/tv/list", endpoints_chamados)
-        self.assertIn("/configuration/countries", endpoints_chamados)
-
-        s3_keys = [c[0][3] for c in mock_save.call_args_list]
-        self.assertIn("tmdb/genre/tv/generos_series.json", s3_keys)
-        self.assertIn("tmdb/configuration/countries/paises.json", s3_keys)
+        mock_fetch.assert_called_once()
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/genre/tv/list")
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertEqual(dados_salvos, generos)
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/genre/tv/generos_series.json")
 
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_reference")
     def test_movie_nao_coleta_dados_de_tv(self, mock_fetch, mock_save):
-        mock_fetch.return_value = {}
+        mock_fetch.return_value = {"genres": []}
         mock_s3 = MagicMock()
 
-        collect_reference_data("key", mock_s3, "meu-bucket", "movie")
+        collect_genre_data("key", mock_s3, "meu-bucket", "movie")
 
-        endpoints_chamados = [c[0][1] for c in mock_fetch.call_args_list]
-        self.assertNotIn("/genre/tv/list", endpoints_chamados)
-        self.assertNotIn("/configuration/countries", endpoints_chamados)
+        endpoints = [c[0][1] for c in mock_fetch.call_args_list]
+        self.assertNotIn("/genre/tv/list", endpoints)
+
+
+# ---------------------------------------------------------------------------
+# collect_configuration_data
+# ---------------------------------------------------------------------------
+
+class TestCollectConfigurationData(unittest.TestCase):
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_movie_coleta_idiomas(self, mock_fetch, mock_save):
+        mock_fetch.return_value = []
+        mock_s3 = MagicMock()
+
+        collect_configuration_data("key", mock_s3, "meu-bucket", "movie")
+
+        mock_fetch.assert_called_once()
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/configuration/languages")
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/configuration/languages/idiomas.json")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_tv_coleta_paises(self, mock_fetch, mock_save):
+        mock_fetch.return_value = []
+        mock_s3 = MagicMock()
+
+        collect_configuration_data("key", mock_s3, "meu-bucket", "tv")
+
+        mock_fetch.assert_called_once()
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/configuration/countries")
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/configuration/countries/paises.json")
 
 
 # ---------------------------------------------------------------------------
 # collect_and_save
 # ---------------------------------------------------------------------------
 
-class TestCollectAndSave(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# collect_discover_data
+# ---------------------------------------------------------------------------
+
+class TestCollectDiscoverData(unittest.TestCase):
 
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_data")
@@ -282,7 +362,7 @@ class TestCollectAndSave(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": [], "total_pages": 3}
         mock_s3 = MagicMock()
 
-        collect_and_save("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+        collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
 
         # 3 páginas salvas + 1 chamada extra para detectar o fim = 4 chamadas ao fetch
         self.assertEqual(mock_fetch.call_count, 4)
@@ -295,7 +375,7 @@ class TestCollectAndSave(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": [], "total_pages": 1}
         mock_s3 = MagicMock()
 
-        collect_and_save("key", mock_s3, "meu-bucket", "tv", "tmdb/discover/tv", 2010)
+        collect_discover_data("key", mock_s3, "meu-bucket", "tv", "tmdb/discover/tv", 2010)
 
         # 1 página salva + 1 chamada extra para detectar o fim = 2 chamadas ao fetch
         self.assertEqual(mock_fetch.call_count, 2)
@@ -307,7 +387,7 @@ class TestCollectAndSave(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": [], "total_pages": 1}
         mock_s3 = MagicMock()
 
-        collect_and_save("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+        collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
 
         # Verifica o caminho do arquivo salvo na primeira (e única) página
         s3_key_usado = mock_save.call_args[0][3]
@@ -320,7 +400,7 @@ class TestCollectAndSave(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": filmes, "total_pages": 1, "total_results": 2}
         mock_s3 = MagicMock()
 
-        collect_and_save("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+        collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
 
         # O 3º argumento posicional de save_to_s3 é o dado salvo
         dado_salvo = mock_save.call_args[0][2]
