@@ -32,7 +32,7 @@ class TestGetTmdbApiKey(unittest.TestCase):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
         mock_client.get_secret_value.return_value = {
-            "SecretString": json.dumps({"api_key": "chave-teste-123"})
+            "SecretString": json.dumps({"tmdb_api_key": "chave-teste-123"})
         }
 
         resultado = get_tmdb_api_key("arn:aws:secretsmanager:us-east-1:123:secret:tmdb")
