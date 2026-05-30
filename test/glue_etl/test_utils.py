@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.utils import (
     read_from_sor,
+    trigger_data_quality,
     write_parquet_to_sot,
 )
 
@@ -193,3 +194,46 @@ class TestWriteParquetToSot:
             )
             _, kwargs = mock_write.call_args
             assert kwargs["path"] == "s3://bucket-sot/tmdb/tb_custom/"
+
+
+# ---------------------------------------------------------------------------
+# trigger_data_quality
+# ---------------------------------------------------------------------------
+
+class TestTriggerDataQuality:
+    def _make_glue_mock(self, run_id="run-123") -> MagicMock:
+        glue_mock = MagicMock()
+        glue_mock.start_job_run.return_value = {"JobRunId": run_id}
+        return glue_mock
+
+    def test_calls_start_job_run_with_correct_args(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            glue_mock.start_job_run.assert_called_once_with(
+                JobName="dq-job",
+                Arguments={
+                    "--TABLE_NAME": "tb_genre_movie_tmdb",
+                    "--DATABASE": "db_tmdb",
+                },
+            )
+
+    def test_includes_year_when_provided(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_data_quality("dq-job", "tb_discover_movie_tmdb", "db_tmdb", year="2023")
+            _, kwargs = glue_mock.start_job_run.call_args
+            assert kwargs["Arguments"]["--YEAR"] == "2023"
+
+    def test_omits_year_when_not_provided(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            _, kwargs = glue_mock.start_job_run.call_args
+            assert "--YEAR" not in kwargs["Arguments"]
+
+    def test_returns_job_run_id(self):
+        glue_mock = self._make_glue_mock(run_id="run-abc")
+        with patch("boto3.client", return_value=glue_mock):
+            run_id = trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            assert run_id == "run-abc"
