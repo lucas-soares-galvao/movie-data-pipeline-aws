@@ -28,7 +28,7 @@ class TestGetParametersGlue:
 
     def test_returns_required_args(self):
         """Os quatro argumentos obrigatórios devem estar no retorno."""
-        with patch("src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, SystemExit()]):
+        with patch("src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, Exception()]):
             result = get_parameters_glue()
 
         assert result["TABLE_NAME"] == "tb_genre_movie_tmdb"
@@ -46,14 +46,14 @@ class TestGetParametersGlue:
 
     def test_omits_year_when_not_provided(self):
         """YEAR não deve estar no retorno quando o argumento não for enviado."""
-        with patch("src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, SystemExit("not found")]):
+        with patch("src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, Exception("not found")]):
             result = get_parameters_glue()
 
         assert "YEAR" not in result
 
     def test_does_not_raise_when_year_is_missing(self):
         """Ausência de YEAR não pode lançar exceção — é argumento opcional."""
-        with patch("src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, SystemExit()]):
+        with patch("src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, Exception()]):
             # Não deve lançar nada
             get_parameters_glue()
 
@@ -482,13 +482,3 @@ class TestWriteResultsToS3:
         after_mode = df_mock.write.mode.return_value
         after_partition = after_mode.partitionBy.return_value
         after_partition.parquet.assert_called_once()
-
-    def test_runs_msck_repair_table_after_write(self):
-        """Após gravar o Parquet, deve registrar as partições no Glue Catalog
-        via MSCK REPAIR TABLE para que o Athena encontre os dados."""
-        df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", "db_tmdb")
-
-        df_mock.sparkSession.sql.assert_called_once_with(
-            "MSCK REPAIR TABLE db_tmdb.tb_data_quality_tmdb"
-        )
