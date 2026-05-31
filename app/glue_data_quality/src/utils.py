@@ -230,18 +230,20 @@ def write_results_to_s3(
     df,
     s3_bucket_data_quality: str,
     table_name: str,
+    database: str,
     year: Optional[str] = None,
 ) -> None:
     """
     Grava o DataFrame com os resultados do Data Quality no S3 como Parquet,
-    particionado pela coluna source_table.
+    particionado pela coluna source_table, e registra as partições no Glue Catalog.
+
+    O Spark nativo não registra partições no Glue Catalog automaticamente.
+    Por isso, após a escrita, executa MSCK REPAIR TABLE para que o Athena
+    enxergue os dados recém-gravados sem precisar de um Glue Crawler.
 
     A coluna 'partition' (ano) é mantida como dado normal dentro do Parquet —
     não é usada no partitionBy — para evitar que o Spark remova seu valor do
     arquivo e o Athena retorne null ao consultar a tabela.
-
-    O modo "dynamic" garante que apenas a partição source_table presente no
-    DataFrame seja substituída, sem apagar resultados de outras tabelas.
 
     Caminho de escrita:
       s3://<bucket>/tmdb/tb_data_quality_tmdb/
@@ -252,6 +254,7 @@ def write_results_to_s3(
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada (informativo para o log).
+        database:               Nome do banco de dados no Glue Catalog.
         year:                   Ano da partição (informativo; já está na coluna
                                 'partition' do DataFrame).
     """
@@ -272,5 +275,11 @@ def write_results_to_s3(
         .partitionBy("source_table")   # source_table vira subpasta; partition fica no Parquet
         .parquet(s3_path)
     )
+
+    # Registra as novas partições no Glue Catalog para que o Athena enxergue os dados.
+    # O Spark nativo não faz isso automaticamente — sem esse comando, a tabela retorna
+    # 0 resultados no Athena mesmo com os arquivos presentes no S3.
+    df.sparkSession.sql(f"MSCK REPAIR TABLE {database}.{output_table}")
+    logger.info(f"Partições de '{output_table}' atualizadas no Glue Catalog.")
 
     logger.info(f"Resultados de '{table_name}' gravados com sucesso!")

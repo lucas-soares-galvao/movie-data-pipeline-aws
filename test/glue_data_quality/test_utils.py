@@ -275,20 +275,14 @@ class TestEvaluateDataQuality:
         mocks = self._run()
         mocks["df_mock"].withColumnRenamed.assert_any_call("EvaluatedMetrics", "evaluated_metrics")
 
-    def test_casts_evaluated_metrics_to_string(self):
-        """evaluated_metrics deve ser convertida para StringType para evitar falha no commit S3."""
-        mocks = self._run()
-        mocks["df_mock"].withColumn.assert_any_call("evaluated_metrics", mocks["mock_col"].return_value.cast.return_value)
-        mocks["mock_col"].assert_any_call("evaluated_metrics")
-
     def test_adds_partition_column_with_year(self):
-        """Coluna partition deve ser preenchida com o ano quando fornecido, como StringType."""
+        """Coluna partition deve ser preenchida com o ano quando fornecido."""
         mocks = self._run(year="2002")
-        mocks["df_mock"].withColumn.assert_any_call("partition", mocks["mock_lit"].return_value.cast.return_value)
+        mocks["df_mock"].withColumn.assert_any_call("partition", mocks["mock_lit"].return_value)
         mocks["mock_lit"].assert_any_call("2002")
 
     def test_adds_partition_column_none_when_no_year(self):
-        """Coluna partition deve ser None (StringType) para tabelas sem partição (gêneros, config)."""
+        """Coluna partition deve ser None para tabelas sem partição (gêneros, config)."""
         mocks = self._run(year=None)
         mocks["mock_lit"].assert_any_call(None)
 
@@ -342,7 +336,7 @@ class TestEvaluateDataQuality:
                 "tb_discover_movie_tmdb", "db", year="2002",
             )
 
-        mock_col.assert_any_call("year")           # col("year") construiu a expressão
+        mock_col.assert_called_with("year")           # col("year") construiu a expressão
         df_source.filter.assert_called_once()          # filter foi chamado no DataFrame
         # DynamicFrame.fromDF recebe o df filtrado, o glue_context e um nome de frame
         mock_dyn.fromDF.assert_called_once_with(
@@ -401,8 +395,7 @@ class TestEvaluateDataQuality:
                 "tb_genre_movie_tmdb", "db", year=None,
             )
 
-        mock_col.assert_any_call("evaluated_metrics")  # col é usado para cast de evaluated_metrics
-        mock_col.assert_called_once_with  # col("year") não é chamado (sem filtro por year)
+        mock_col.assert_not_called()
         mock_dyn.fromDF.assert_not_called()
         call_kwargs = mock_edq.apply.call_args[1]
         assert call_kwargs["frame"] is dynamic_frame
