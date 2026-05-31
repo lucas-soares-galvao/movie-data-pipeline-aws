@@ -28,7 +28,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_succeeded_target" {
       region     = "$.region"
     }
 
-  input_template = local.glue_etl_succeeded_input_template
+    input_template = local.glue_etl_succeeded_input_template
   }
 }
 
@@ -61,7 +61,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
       region     = "$.region"
     }
 
-  input_template = local.glue_etl_failed_input_template
+    input_template = local.glue_etl_failed_input_template
   }
 }
 
@@ -93,7 +93,7 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_succeeded_target" {
       region     = "$.region"
     }
 
-  input_template = local.glue_data_quality_succeeded_input_template
+    input_template = local.glue_data_quality_succeeded_input_template
   }
 }
 
@@ -126,7 +126,7 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_failed_target" {
       region     = "$.region"
     }
 
-  input_template = local.glue_data_quality_failed_input_template
+    input_template = local.glue_data_quality_failed_input_template
   }
 }
 
@@ -158,7 +158,7 @@ resource "aws_cloudwatch_event_target" "glue_agg_succeeded_target" {
       region     = "$.region"
     }
 
-  input_template = local.glue_agg_succeeded_input_template
+    input_template = local.glue_agg_succeeded_input_template
   }
 }
 
@@ -191,6 +191,6 @@ resource "aws_cloudwatch_event_target" "glue_agg_failed_target" {
       region     = "$.region"
     }
 
-  input_template = local.glue_agg_failed_input_template
+    input_template = local.glue_agg_failed_input_template
   }
 }

@@ -1,15 +1,15 @@
 # Raciocinio: agenda invocacoes da Lambda por tipo de midia para ingestao recorrente automatica.
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
-  name        = "lambda-api-movie-${var.env}"
-  description = "Dispara a Lambda para filmes"
-  schedule_expression = "cron(25 23 * * ? *)" # Todos os dias as 23:25 UTC
+  name                = "lambda-api-movie-${var.env}"
+  description         = "Dispara a Lambda para filmes"
+  schedule_expression = "cron(55 23 * * ? *)" # Todos os dias as 23:55 UTC
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv" {
-  name        = "lambda-api-tv-${var.env}"
-  description = "Dispara a Lambda para series"
-  schedule_expression = "cron(30 23 * * ? *)" # Todos os dias as 23:30 UTC
+  name                = "lambda-api-tv-${var.env}"
+  description         = "Dispara a Lambda para series"
+  schedule_expression = "cron(00 00 * * ? *)" # Todos os dias as 00:00 UTC
 }
 
 resource "aws_cloudwatch_event_target" "lambda_api_movie_target" {
@@ -18,10 +18,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_target" {
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    type = "movie",
-    database = var.glue_catalog_database_name,
-    table_discover_movie = var.glue_catalog_table_discover_movie_name,
-    table_genre_movie = var.glue_catalog_table_genre_movie_name,
+    type                          = "movie",
+    database                      = var.glue_catalog_database_name,
+    table_discover_movie          = var.glue_catalog_table_discover_movie_name,
+    table_genre_movie             = var.glue_catalog_table_genre_movie_name,
     table_configuration_languages = var.glue_catalog_table_configuration_languages_name
   })
 }
@@ -32,10 +32,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_target" {
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    type = "tv",
-    database = var.glue_catalog_database_name,
-    table_discover_tv = var.glue_catalog_table_discover_tv_name,
-    table_genre_tv = var.glue_catalog_table_genre_tv_name,
+    type                          = "tv",
+    database                      = var.glue_catalog_database_name,
+    table_discover_tv             = var.glue_catalog_table_discover_tv_name,
+    table_genre_tv                = var.glue_catalog_table_genre_tv_name,
     table_configuration_countries = var.glue_catalog_table_configuration_countries_name
   })
 }
