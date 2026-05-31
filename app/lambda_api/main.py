@@ -48,7 +48,7 @@ S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]          # Bucket SOR onde os dados 
 # ---------------------------------------------------------------------------
 # Constantes de negócio
 # ---------------------------------------------------------------------------
-START_YEAR = 2025  # Primeiro ano a ser coletado
+START_YEAR = 2000  # Primeiro ano a ser coletado
 
 
 # ---------------------------------------------------------------------------
