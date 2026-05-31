@@ -180,7 +180,7 @@ variable "glue_catalog_table_configuration_languages_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de linguas da TMDB"
   type        = string
   default     = "tb_configuration_languages_tmdb"
-  
+
 }
 
 variable "glue_catalog_table_configuration_countries_name" {
