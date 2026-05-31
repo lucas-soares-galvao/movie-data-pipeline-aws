@@ -224,33 +224,55 @@ def write_results_to_s3(
     df,
     s3_bucket_data_quality: str,
     table_name: str,
+    year: Optional[str] = None,
 ) -> None:
     """
-    Grava o DataFrame com os resultados do Data Quality no S3 como Parquet,
-    particionado pela coluna source_table.
+    Grava o DataFrame com os resultados do Data Quality no S3 como Parquet.
+
+    Estratégia de escrita:
+      - Tabelas de discover (year fornecido): overwrite nas partições
+        source_table + partition, substituindo apenas a avaliação daquele
+        ano sem apagar outros anos ou outras tabelas.
+      - Tabelas de gênero/configuração (year=None): overwrite na partição
+        source_table, substituindo a avaliação anterior da mesma tabela.
+
+    O modo "dynamic" garante que apenas as partições presentes no DataFrame
+    sejam substituídas, sem apagar as demais.
 
     Caminho de escrita:
-      s3://<bucket>/tmdb/tb_data_quality_tmdb/source_table=<table_name>/
-
-    O modo "append" garante que resultados de avaliações anteriores de outras
-    tabelas não sejam apagados — cada tabela fica em sua própria partição.
+      s3://<bucket>/tmdb/tb_data_quality_tmdb/
+        └── source_table=<table_name>/
+              └── partition=<year>/   (somente para discover)
 
     Args:
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada (informativo para o log).
+        year:                   Ano da partição (somente para tabelas de discover).
     """
     output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
-    logger.info(
-        f"Gravando resultados em {s3_path} | partição: source_table='{table_name}'"
-    )
+    # Ativa o overwrite dinâmico: substitui apenas as partições presentes no DataFrame,
+    # sem apagar resultados de outras tabelas ou outros anos.
+    df.sparkSession.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+
+    if year is not None:
+        partition_cols = ["source_table", "partition"]
+        logger.info(
+            f"Gravando resultados em {s3_path} | "
+            f"source_table='{table_name}', partition='{year}'"
+        )
+    else:
+        partition_cols = ["source_table"]
+        logger.info(
+            f"Gravando resultados em {s3_path} | source_table='{table_name}'"
+        )
 
     (
         df.write
-        .mode("append")                # append: preserva resultados de outras tabelas
-        .partitionBy("source_table")   # cria subpastas source_table=<nome_da_tabela>
+        .mode("overwrite")
+        .partitionBy(*partition_cols)
         .parquet(s3_path)
     )
 

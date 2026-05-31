@@ -406,19 +406,41 @@ class TestEvaluateDataQuality:
 # ---------------------------------------------------------------------------
 
 class TestWriteResultsToS3:
-    def test_uses_append_mode(self):
-        """O modo 'append' deve ser usado para não apagar resultados de outras tabelas."""
+    def test_uses_overwrite_mode(self):
+        """O modo 'overwrite' deve ser usado para substituir avaliações anteriores
+        da mesma tabela/partição sem acumular resultados duplicados."""
         df_mock = MagicMock()
         write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
 
-        df_mock.write.mode.assert_called_once_with("append")
+        df_mock.write.mode.assert_called_once_with("overwrite")
 
-    def test_partitions_by_source_table(self):
-        """Os dados devem ser particionados pela coluna source_table."""
+    def test_enables_dynamic_partition_overwrite(self):
+        """O modo dinâmico de overwrite deve ser ativado para que apenas as partições
+        presentes no DataFrame sejam substituídas, preservando as demais."""
         df_mock = MagicMock()
         write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
+
+        df_mock.sparkSession.conf.set.assert_called_once_with(
+            "spark.sql.sources.partitionOverwriteMode", "dynamic"
+        )
+
+    def test_partitions_by_source_table_when_no_year(self):
+        """Para tabelas sem partição por ano (gênero/config), deve particionar
+        apenas por source_table."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", year=None)
 
         df_mock.write.mode.return_value.partitionBy.assert_called_once_with("source_table")
+
+    def test_partitions_by_source_table_and_partition_for_discover(self):
+        """Para tabelas de discover (year fornecido), deve particionar por
+        source_table + partition para sobrescrever apenas o ano solicitado."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_discover_movie_tmdb", year="2002")
+
+        df_mock.write.mode.return_value.partitionBy.assert_called_once_with(
+            "source_table", "partition"
+        )
 
     def test_writes_parquet_to_correct_s3_path(self):
         """O Parquet deve ser escrito em s3://<bucket>/tmdb/tb_data_quality_tmdb/."""
