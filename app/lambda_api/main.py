@@ -46,12 +46,6 @@ GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]  # Nome do job Glue ETL
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]          # Bucket SOR onde os dados brutos são salvos
 
 # ---------------------------------------------------------------------------
-# Constantes de negócio
-# ---------------------------------------------------------------------------
-START_YEAR = 2000  # Primeiro ano a ser coletado
-
-
-# ---------------------------------------------------------------------------
 # Handler principal — chamado pela AWS ao invocar a Lambda
 # ---------------------------------------------------------------------------
 
@@ -107,6 +101,7 @@ def lambda_handler(event, context):
     api_key = get_tmdb_api_key(TMDB_SECRET_ARN)
 
     current_year = datetime.now().year
+    start_year = current_year - 1
 
     # Coleta gêneros e aciona o Glue passando apenas a tabela de gêneros
     logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
@@ -120,9 +115,9 @@ def lambda_handler(event, context):
     logger.info("Acionando Glue ETL para tabela de configuração...")
     trigger_glue_job(glue_client, GLUE_ETL_JOB_NAME, glue_base_args, table_type="configuration", table_name=table_configuration)
 
-    logger.info(f"Iniciando coleta do TMDB ({content_type}) de {START_YEAR} até {current_year}...")
+    logger.info(f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {current_year}...")
 
-    for year in range(START_YEAR, current_year + 1):
+    for year in range(start_year, current_year + 1):
         logger.info(f"=== Ano: {year} | Tipo: {content_type} ===")
 
         # Coleta o tipo recebido no evento para o ano atual
@@ -141,6 +136,6 @@ def lambda_handler(event, context):
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")
     return {
         "statusCode": 200,
-        "body": f"Dados de '{content_type}' coletados de {START_YEAR} a {current_year} com sucesso.",
+        "body": f"Dados de '{content_type}' coletados de {start_year} a {current_year} com sucesso.",
     }
 

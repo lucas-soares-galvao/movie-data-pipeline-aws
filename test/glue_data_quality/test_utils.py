@@ -276,13 +276,13 @@ class TestEvaluateDataQuality:
         mocks["df_mock"].withColumnRenamed.assert_any_call("EvaluatedMetrics", "evaluated_metrics")
 
     def test_adds_partition_column_with_year(self):
-        """Coluna partition deve ser preenchida com o ano quando fornecido."""
+        """Coluna partition deve ser preenchida com o ano quando fornecido, como StringType."""
         mocks = self._run(year="2002")
-        mocks["df_mock"].withColumn.assert_any_call("partition", mocks["mock_lit"].return_value)
+        mocks["df_mock"].withColumn.assert_any_call("partition", mocks["mock_lit"].return_value.cast.return_value)
         mocks["mock_lit"].assert_any_call("2002")
 
     def test_adds_partition_column_none_when_no_year(self):
-        """Coluna partition deve ser None para tabelas sem partição (gêneros, config)."""
+        """Coluna partition deve ser None (StringType) para tabelas sem partição (gêneros, config)."""
         mocks = self._run(year=None)
         mocks["mock_lit"].assert_any_call(None)
 

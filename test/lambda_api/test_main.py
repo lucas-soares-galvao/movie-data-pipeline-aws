@@ -155,14 +155,14 @@ class TestLambdaHandler(unittest.TestCase):
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
     ):
         mock_get_key.return_value = "api-key-teste"
-        mock_dt.now.return_value.year = 2002  # Simula ano atual = 2002
+        mock_dt.now.return_value.year = 2027  # Simula ano atual = 2027
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-        # START_YEAR=2000 até 2002 = 3 anos → 3 chamadas ao collect_discover_data
-        self.assertEqual(mock_discover.call_count, 3)
-        # genre(1) + configuration(1) + 3×discover = 5 trigger_glue_job calls
-        self.assertEqual(mock_trigger.call_count, 5)
+        # start_year = 2027 - 1 = 2026 → range(2026, 2028) = 2 anos
+        self.assertEqual(mock_discover.call_count, 2)
+        # genre(1) + configuration(1) + 2×discover = 4 trigger_glue_job calls
+        self.assertEqual(mock_trigger.call_count, 4)
 
     # --- collect_discover_data ---
 
@@ -177,7 +177,7 @@ class TestLambdaHandler(unittest.TestCase):
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
     ):
         mock_get_key.return_value = "api-key-teste"
-        mock_dt.now.return_value.year = 2000  # 1 único ano para simplificar
+        mock_dt.now.return_value.year = 2025  # 1 único ano para simplificar
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
@@ -196,7 +196,7 @@ class TestLambdaHandler(unittest.TestCase):
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
     ):
         mock_get_key.return_value = "api-key-teste"
-        mock_dt.now.return_value.year = 2000
+        mock_dt.now.return_value.year = 2025
 
         main.lambda_handler(EVENTO_TV, self.mock_context)
 
@@ -217,7 +217,7 @@ class TestLambdaHandler(unittest.TestCase):
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
     ):
         mock_get_key.return_value = "api-key-teste"
-        mock_dt.now.return_value.year = 2000  # 1 único ano
+        mock_dt.now.return_value.year = 2025  # 1 único ano
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
@@ -249,12 +249,13 @@ class TestLambdaHandler(unittest.TestCase):
     ):
         """As chamadas do Glue para genre e configuration não devem receber year."""
         mock_get_key.return_value = "api-key-teste"
-        mock_dt.now.return_value.year = 2000  # 1 ano no loop
+        mock_dt.now.return_value.year = 2025  # 1 ano no loop
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-        # genre(1) + configuration(1) + discover(1) = 3 total
-        self.assertEqual(mock_trigger.call_count, 3)
+        # genre(1) + configuration(1) + discover(2) = 4 total
+        # start_year = 2025 - 1 = 2024 → range(2024, 2026) = [2024, 2025]
+        self.assertEqual(mock_trigger.call_count, 4)
 
         # 1ª chamada: genre — sem year, table_type="genre"
         chamada_genre = mock_trigger.call_args_list[0]
@@ -278,18 +279,18 @@ class TestLambdaHandler(unittest.TestCase):
     ):
         """As chamadas do Glue dentro do loop devem receber year e table_type='discover'."""
         mock_get_key.return_value = "api-key-teste"
-        mock_dt.now.return_value.year = 2001  # 2 anos: 2000 e 2001
+        mock_dt.now.return_value.year = 2026  # 2 anos: 2025 e 2026
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-        # genre(0) + configuration(1) + discover_2000(2) + discover_2001(3)
-        chamada_ano_2000 = mock_trigger.call_args_list[2]
-        chamada_ano_2001 = mock_trigger.call_args_list[3]
+        # genre(0) + configuration(1) + discover_2025(2) + discover_2026(3)
+        chamada_ano_2025 = mock_trigger.call_args_list[2]
+        chamada_ano_2026 = mock_trigger.call_args_list[3]
 
-        self.assertEqual(chamada_ano_2000[1].get("year"), 2000)
-        self.assertEqual(chamada_ano_2000[1].get("table_type"), "discover")
-        self.assertEqual(chamada_ano_2001[1].get("year"), 2001)
-        self.assertEqual(chamada_ano_2001[1].get("table_type"), "discover")
+        self.assertEqual(chamada_ano_2025[1].get("year"), 2025)
+        self.assertEqual(chamada_ano_2025[1].get("table_type"), "discover")
+        self.assertEqual(chamada_ano_2026[1].get("year"), 2026)
+        self.assertEqual(chamada_ano_2026[1].get("table_type"), "discover")
 
 
 if __name__ == "__main__":
