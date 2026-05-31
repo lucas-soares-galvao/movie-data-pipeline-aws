@@ -1,6 +1,6 @@
 """Testes unitários para app/glue_data_quality/src/utils.py."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
