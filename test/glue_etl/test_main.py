@@ -13,6 +13,7 @@ _BASE = {
     "S3_BUCKET_SOT": "my-sot",
     "MEDIA_TYPE": "movie",
     "DATABASE": "db_tmdb",
+    "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
 }
 
 
@@ -28,16 +29,18 @@ class TestRunDiscover:
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock) as mock_read, \
-             patch.object(m, "write_parquet_to_sot"):
-            m.run()
+             patch.object(m, "write_parquet_to_sot"), \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023")
 
     def test_writes_to_discover_table_with_year_partition(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock), \
-             patch.object(m, "write_parquet_to_sot") as mock_write:
-            m.run()
+             patch.object(m, "write_parquet_to_sot") as mock_write, \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
@@ -52,8 +55,9 @@ class TestRunDiscover:
         args = self._args(MEDIA_TYPE="tv", YEAR="2022", TABLE_NAME="tb_discover_tv_tmdb")
         with patch.object(m, "get_parameters_glue", return_value=args), \
              patch.object(m, "read_from_sor", return_value=df_mock) as mock_read, \
-             patch.object(m, "write_parquet_to_sot") as mock_write:
-            m.run()
+             patch.object(m, "write_parquet_to_sot") as mock_write, \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022")
             mock_write.assert_called_once_with(
                 df=df_mock,
@@ -68,9 +72,24 @@ class TestRunDiscover:
         df_mock = pd.DataFrame([{"id": 1}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock), \
-             patch.object(m, "write_parquet_to_sot") as mock_write:
-            m.run()
+             patch.object(m, "write_parquet_to_sot") as mock_write, \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             assert mock_write.call_count == 1
+
+    def test_triggers_data_quality_with_year(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with patch.object(m, "get_parameters_glue", return_value=self._args()), \
+             patch.object(m, "read_from_sor", return_value=df_mock), \
+             patch.object(m, "write_parquet_to_sot"), \
+             patch.object(m, "trigger_data_quality") as mock_dq:
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_discover_movie_tmdb",
+                database="db_tmdb",
+                year="2023",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -85,16 +104,18 @@ class TestRunGenre:
         df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock) as mock_read, \
-             patch.object(m, "write_parquet_to_sot"):
-            m.run()
+             patch.object(m, "write_parquet_to_sot"), \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "genre", None)
 
     def test_writes_to_genre_table_without_partition(self):
         df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock), \
-             patch.object(m, "write_parquet_to_sot") as mock_write:
-            m.run()
+             patch.object(m, "write_parquet_to_sot") as mock_write, \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
@@ -102,6 +123,20 @@ class TestRunGenre:
                 database="db_tmdb",
                 partition_cols=None,
                 mode="overwrite",
+            )
+
+    def test_triggers_data_quality_without_year(self):
+        df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with patch.object(m, "get_parameters_glue", return_value=self._args()), \
+             patch.object(m, "read_from_sor", return_value=df_mock), \
+             patch.object(m, "write_parquet_to_sot"), \
+             patch.object(m, "trigger_data_quality") as mock_dq:
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_genre_movie_tmdb",
+                database="db_tmdb",
+                year=None,
             )
 
 
@@ -117,16 +152,18 @@ class TestRunConfiguration:
         df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock) as mock_read, \
-             patch.object(m, "write_parquet_to_sot"):
-            m.run()
+             patch.object(m, "write_parquet_to_sot"), \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "configuration", None)
 
     def test_writes_to_configuration_table_without_partition(self):
         df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
         with patch.object(m, "get_parameters_glue", return_value=self._args()), \
              patch.object(m, "read_from_sor", return_value=df_mock), \
-             patch.object(m, "write_parquet_to_sot") as mock_write:
-            m.run()
+             patch.object(m, "write_parquet_to_sot") as mock_write, \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
@@ -144,8 +181,9 @@ class TestRunConfiguration:
         )
         with patch.object(m, "get_parameters_glue", return_value=args), \
              patch.object(m, "read_from_sor", return_value=df_mock) as mock_read, \
-             patch.object(m, "write_parquet_to_sot") as mock_write:
-            m.run()
+             patch.object(m, "write_parquet_to_sot") as mock_write, \
+             patch.object(m, "trigger_data_quality"):
+            m.main()
             mock_read.assert_called_once_with("my-sor", "tv", "configuration", None)
             mock_write.assert_called_once_with(
                 df=df_mock,
@@ -154,4 +192,18 @@ class TestRunConfiguration:
                 database="db_tmdb",
                 partition_cols=None,
                 mode="overwrite",
+            )
+
+    def test_triggers_data_quality_without_year(self):
+        df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
+        with patch.object(m, "get_parameters_glue", return_value=self._args()), \
+             patch.object(m, "read_from_sor", return_value=df_mock), \
+             patch.object(m, "write_parquet_to_sot"), \
+             patch.object(m, "trigger_data_quality") as mock_dq:
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_configuration_languages_tmdb",
+                database="db_tmdb",
+                year=None,
             )
