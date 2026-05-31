@@ -102,3 +102,27 @@ resource "aws_sns_topic_subscription" "eventbridge_failure_email" {
 	protocol  = "email"
 	endpoint  = var.eventbridge_notification_email
 }
+
+# SNS Topic para notificações de sucesso do Glue AGG
+resource "aws_sns_topic" "glue_agg_success_notifications" {
+	name         = "glue-agg-success-notifications"
+	display_name = "[${upper(var.env)}] GLUE AGG - SUCESSO"
+}
+
+resource "aws_sns_topic_subscription" "glue_agg_success_email" {
+	topic_arn = aws_sns_topic.glue_agg_success_notifications.arn
+	protocol  = "email"
+	endpoint  = var.glue_agg_notification_email
+}
+
+# SNS Topic para notificações de falha do Glue AGG
+resource "aws_sns_topic" "glue_agg_failure_notifications" {
+	name         = "glue-agg-failure-notifications"
+	display_name = "[${upper(var.env)}] GLUE AGG - ERRO"
+}
+
+resource "aws_sns_topic_subscription" "glue_agg_failure_email" {
+	topic_arn = aws_sns_topic.glue_agg_failure_notifications.arn
+	protocol  = "email"
+	endpoint  = var.glue_agg_notification_email
+}

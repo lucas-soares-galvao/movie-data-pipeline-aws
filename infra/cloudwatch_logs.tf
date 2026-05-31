@@ -24,3 +24,14 @@ resource "aws_cloudwatch_log_group" "lambda_log" {
 	name              = "/aws/lambda/${local.envs.lambda_api_name}"
 	retention_in_days = 1
 }
+
+# Grupos de logs do Glue AGG
+resource "aws_cloudwatch_log_group" "glue_agg_error" {
+	name              = "/${local.envs.glue_agg_job_name}/error"
+	retention_in_days = 1
+}
+
+resource "aws_cloudwatch_log_group" "glue_agg_output" {
+	name              = "/${local.envs.glue_agg_job_name}/output"
+	retention_in_days = 1
+}

@@ -230,3 +230,28 @@ def trigger_data_quality(
     run_id = response["JobRunId"]
     logger.info(f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}")
     return run_id
+
+
+# ---------------------------------------------------------------------------
+# Acionamento do Glue AGG
+# ---------------------------------------------------------------------------
+
+def trigger_agg(agg_job_name: str) -> str:
+    """
+    Aciona o job Glue AGG para unificar os dados de discover no bucket SPEC.
+
+    Deve ser chamado apenas no run de media_type="tv", pois esse é o último
+    processo a concluir, garantindo que ambas as tabelas (movie e tv) já
+    foram gravadas no SOT antes da agregação.
+
+    Args:
+        agg_job_name: Nome do job Glue AGG cadastrado na AWS.
+
+    Returns:
+        O ID de execução do job (JobRunId).
+    """
+    glue_client = boto3.client("glue")
+    response = glue_client.start_job_run(JobName=agg_job_name)
+    run_id = response["JobRunId"]
+    logger.info(f"Job AGG '{agg_job_name}' iniciado. RunId: {run_id}")
+    return run_id
