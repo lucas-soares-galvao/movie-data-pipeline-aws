@@ -51,7 +51,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
-    except Exception:
+    except SystemExit:
         pass
 
     return args
@@ -205,6 +205,7 @@ def evaluate_data_quality(
         .withColumnRenamed("Outcome", "outcome")
         .withColumnRenamed("FailureReason", "failure_reason")
         .withColumnRenamed("EvaluatedMetrics", "evaluated_metrics")
+        .drop("EvaluatedRule")  # coluna extra do Glue DQ não mapeada no schema do Catalog
     )
 
     # EvaluatedMetrics é retornada pelo Glue DQ como map<string, double> — tipo complexo
@@ -235,15 +236,14 @@ def write_results_to_s3(
 ) -> None:
     """
     Grava o DataFrame com os resultados do Data Quality no S3 como Parquet,
-    particionado pela coluna source_table, e registra as partições no Glue Catalog.
-
-    O Spark nativo não registra partições no Glue Catalog automaticamente.
-    Por isso, após a escrita, executa MSCK REPAIR TABLE para que o Athena
-    enxergue os dados recém-gravados sem precisar de um Glue Crawler.
+    particionado pela coluna source_table.
 
     A coluna 'partition' (ano) é mantida como dado normal dentro do Parquet —
     não é usada no partitionBy — para evitar que o Spark remova seu valor do
     arquivo e o Athena retorne null ao consultar a tabela.
+
+    O modo "dynamic" garante que apenas a partição source_table presente no
+    DataFrame seja substituída, sem apagar resultados de outras tabelas.
 
     Caminho de escrita:
       s3://<bucket>/tmdb/tb_data_quality_tmdb/
@@ -276,10 +276,9 @@ def write_results_to_s3(
         .parquet(s3_path)
     )
 
-    # Registra as novas partições no Glue Catalog para que o Athena enxergue os dados.
-    # O Spark nativo não faz isso automaticamente — sem esse comando, a tabela retorna
-    # 0 resultados no Athena mesmo com os arquivos presentes no S3.
-    df.sparkSession.sql(f"MSCK REPAIR TABLE {database}.{output_table}")
-    logger.info(f"Partições de '{output_table}' atualizadas no Glue Catalog.")
-
     logger.info(f"Resultados de '{table_name}' gravados com sucesso!")
+
+    # Registra a nova partição source_table no Glue Catalog para que o Athena
+    # consiga localizar os dados sem necessitar de reparo manual da tabela.
+    df.sparkSession.sql(f"MSCK REPAIR TABLE {database}.{output_table}")
+    logger.info(f"Partições de '{database}.{output_table}' sincronizadas no Glue Catalog.")
