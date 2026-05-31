@@ -69,7 +69,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     Lê os argumentos obrigatórios e opcionais do job Glue e os retorna em um dicionário.
 
     Argumentos obrigatórios: S3_BUCKET_SOR, S3_BUCKET_SOT, MEDIA_TYPE, DATABASE,
-    TABLE_NAME, TABLE_TYPE.
+    TABLE_NAME, TABLE_TYPE, GLUE_DATA_QUALITY_JOB_NAME.
     Argumento opcional: YEAR (presente apenas para runs de discover).
 
     Returns:
@@ -83,6 +83,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "DATABASE",
         "TABLE_NAME",
         "TABLE_TYPE",
+        "GLUE_DATA_QUALITY_JOB_NAME",
     ]
     args = get_resolved_option(required_args)
 
@@ -133,7 +134,7 @@ def read_from_sor(
         DataFrame com os dados lidos do SOR.
     """
     s3_key = SOR_KEYS[media_type][table_type].format(year=year)
-    logger.info("Lendo %s de s3://%s/%s", table_type, s3_bucket_sor, s3_key)
+    logger.info(f"Lendo {table_type} de s3://{s3_bucket_sor}/{s3_key}")
 
     if table_type == "discover":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
@@ -144,7 +145,7 @@ def read_from_sor(
         data = json.loads(response["Body"].read())
         df = pd.DataFrame(data)
 
-    logger.info("Lidos %d registros.", len(df))
+    logger.info(f"Lidos {len(df)} registros.")
     return df
 
 
@@ -178,8 +179,7 @@ def write_parquet_to_sot(
     """
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(
-        "Escrevendo %d registros em %s | particao=%s | mode=%s",
-        len(df), s3_path, partition_cols, mode,
+        f"Escrevendo {len(df)} registros em {s3_path} | particao={partition_cols} | mode={mode}"
     )
     wr.s3.to_parquet(
         df=df,
@@ -190,4 +190,43 @@ def write_parquet_to_sot(
         database=database,
         table=table_name,
     )
-    logger.info("Tabela '%s' atualizada com sucesso no SOT.", table_name)
+    logger.info(f"Tabela '{table_name}' atualizada com sucesso no SOT.")
+
+
+# ---------------------------------------------------------------------------
+# Acionamento do Glue Data Quality
+# ---------------------------------------------------------------------------
+
+def trigger_data_quality(
+    dq_job_name: str,
+    table_name: str,
+    database: str,
+    year: Optional[str] = None,
+) -> str:
+    """
+    Aciona o job Glue Data Quality para validar uma tabela no SOT.
+
+    Args:
+        dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
+        table_name:  Nome da tabela a validar (usado para buscar o ruleset).
+        database:    Nome do banco de dados no Glue Catalog.
+        year:        Ano da partição. Informado apenas para discover.
+
+    Returns:
+        O ID de execução do job (JobRunId).
+    """
+    arguments = {
+        "--TABLE_NAME": table_name,
+        "--DATABASE": database,
+    }
+    if year is not None:
+        arguments["--YEAR"] = year
+
+    glue_client = boto3.client("glue")
+    response = glue_client.start_job_run(
+        JobName=dq_job_name,
+        Arguments=arguments,
+    )
+    run_id = response["JobRunId"]
+    logger.info(f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}")
+    return run_id
