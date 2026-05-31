@@ -3,6 +3,7 @@
 import sys
 import types
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # Permite que 'from src.X import ...' resolva para app/glue_data_quality/src/
 # como ocorreria no pacote de runtime do Glue.
@@ -41,4 +42,8 @@ sys.modules.setdefault("pyspark.sql", _make_module("pyspark.sql"))
 sys.modules.setdefault(
     "pyspark.sql.functions",
     _make_module("pyspark.sql.functions", coalesce=None, col=None, from_utc_timestamp=None, lit=None, current_timestamp=None, when=None),
+)
+sys.modules.setdefault(
+    "pyspark.sql.types",
+    _make_module("pyspark.sql.types", StringType=MagicMock()),
 )
