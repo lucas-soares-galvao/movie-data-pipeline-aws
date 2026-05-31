@@ -70,8 +70,9 @@ def main() -> None:
     df_results = evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name, database, year)
 
     # --- 6. Grava o resultado no bucket de Data Quality ---
-    # O resultado fica particionado por source_table para facilitar consultas futuras.
-    write_results_to_s3(df_results, s3_bucket_data_quality, table_name)
+    # Para discover: particionado por source_table + partition (ano), sobrescrevendo
+    # apenas aquele ano. Para genre/config: sobrescreve apenas source_table.
+    write_results_to_s3(df_results, s3_bucket_data_quality, table_name, year)
 
     logger.info("Job Glue Data Quality finalizado com sucesso!")
 
