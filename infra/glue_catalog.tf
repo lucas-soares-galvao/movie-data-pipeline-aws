@@ -341,6 +341,11 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
     }
 
     columns {
+      name = "evaluated_metrics"
+      type = "string"
+    }
+
+    columns {
       name = "partition"
       type = "string"
     }
