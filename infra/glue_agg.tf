@@ -59,10 +59,10 @@ resource "aws_glue_job" "agg_job" {
 
 # Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket_agg" {
-  bucket = aws_s3_bucket.auxiliary_bucket.id
-  key    = "${local.envs.glue_agg_job_name}/app/main.py"
-  source = "${local.glue_agg_src_path}/main.py"
-  etag   = filemd5("${local.glue_agg_src_path}/main.py")
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.envs.glue_agg_job_name}/app/main.py"
+  source     = "${local.glue_agg_src_path}/main.py"
+  etag       = filemd5("${local.glue_agg_src_path}/main.py")
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
@@ -77,10 +77,10 @@ data "archive_file" "glue_app_bundle_agg" {
 
 # Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_bundle_agg" {
-  bucket = aws_s3_bucket.auxiliary_bucket.id
-  key    = "${local.envs.glue_agg_job_name}/app_bundle.zip"
-  source = data.archive_file.glue_app_bundle_agg.output_path
-  etag   = data.archive_file.glue_app_bundle_agg.output_md5
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.envs.glue_agg_job_name}/app_bundle.zip"
+  source     = data.archive_file.glue_app_bundle_agg.output_path
+  etag       = data.archive_file.glue_app_bundle_agg.output_md5
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 

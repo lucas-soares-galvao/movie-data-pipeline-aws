@@ -6,7 +6,7 @@
 # Modulo auxiliar para armazenar scripts e artefatos de codigo (zips, main.py)
 # --------------------------------------------------------------------------
 resource "aws_s3_bucket" "auxiliary_bucket" {
-  bucket = local.envs.s3_bucket_aux
+  bucket        = local.envs.s3_bucket_aux
   force_destroy = true
 }
 
@@ -33,7 +33,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "auxiliary_bucket"
 # Objetos expiram automaticamente apos 1 dia para controle de custo.
 # --------------------------------------------------------------------------
 resource "aws_s3_bucket" "temporary_bucket" {
-  bucket = local.envs.s3_bucket_temp
+  bucket        = local.envs.s3_bucket_temp
   force_destroy = true
 }
 
@@ -73,7 +73,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "temporary_bucket_lifecycle" {
 # Nenhuma transformacao e feita aqui; e a "fonte da verdade" dos dados originais.
 # --------------------------------------------------------------------------
 resource "aws_s3_bucket" "sor_bucket" {
-  bucket = local.envs.s3_bucket_sor
+  bucket        = local.envs.s3_bucket_sor
   force_destroy = true
 }
 
@@ -100,7 +100,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "sor_bucket" {
 # Formato Parquet particionado por ano; consultado pelo Athena e Glue AGG.
 # --------------------------------------------------------------------------
 resource "aws_s3_bucket" "sot_bucket" {
-  bucket = local.envs.s3_bucket_sot
+  bucket        = local.envs.s3_bucket_sot
   force_destroy = true
 }
 
@@ -127,7 +127,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "sot_bucket" {
 # Contem a visao final pronta para consumo por ferramentas de BI/analytics.
 # --------------------------------------------------------------------------
 resource "aws_s3_bucket" "spec_bucket" {
-  bucket = local.envs.s3_bucket_spec
+  bucket        = local.envs.s3_bucket_spec
   force_destroy = true
 }
 
@@ -154,7 +154,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "spec_bucket" {
 # Permite auditoria e rastreabilidade das regras aplicadas pelo Glue DQ.
 # --------------------------------------------------------------------------
 resource "aws_s3_bucket" "data_quality_bucket" {
-  bucket = local.envs.s3_bucket_data_quality
+  bucket        = local.envs.s3_bucket_data_quality
   force_destroy = true
 }
 

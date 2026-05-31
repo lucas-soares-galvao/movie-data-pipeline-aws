@@ -23,23 +23,23 @@ resource "aws_glue_job" "etl_job" {
   }
 
   default_arguments = {
-    "--job-language"                     = "python"
+    "--job-language" = "python"
     # Pacote com os modulos auxiliares importados pelo script principal.
-    "--extra-py-files"                   = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app_bundle.zip"
+    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app_bundle.zip"
     # Dependencias do Glue ETL instaladas no proprio runtime Linux do Glue.
-    "--additional-python-modules"        = local.glue_etl_additional_python_modules
+    "--additional-python-modules" = local.glue_etl_additional_python_modules
     # Prefixo personalizado para os grupos /<job>/error e /<job>/output.
-    "--custom-logGroup-prefix"           = "/${local.envs.glue_etl_job_name}"
-    "--enable-metrics"                   = ""
+    "--custom-logGroup-prefix" = "/${local.envs.glue_etl_job_name}"
+    "--enable-metrics"         = ""
     # Argumentos estaticos do job. Argumentos em tempo de execucao, como MEDIA_TYPE,
     # DISCOVER_TABLE, GENRE_TABLE, CONFIGURATION_TABLE, CONFIGURATION, PARTITION_COLUMNS,
     # YEAR e TABLE_SCOPE, sao fornecidos pela Lambda ao iniciar cada execucao.
     # Buckets S3 para leitura (SOR) e escrita (SOT)
-    "--S3_BUCKET_SOR"                    = local.envs.s3_bucket_sor
-    "--S3_BUCKET_SOT"                    = local.envs.s3_bucket_sot
-    "--GLUE_DATA_QUALITY_JOB_NAME"       = local.envs.glue_data_quality_job_name
-    "--GLUE_AGG_JOB_NAME"                = local.envs.glue_agg_job_name
-    "--ENVIRONMENT"                      = var.env
+    "--S3_BUCKET_SOR"              = local.envs.s3_bucket_sor
+    "--S3_BUCKET_SOT"              = local.envs.s3_bucket_sot
+    "--GLUE_DATA_QUALITY_JOB_NAME" = local.envs.glue_data_quality_job_name
+    "--GLUE_AGG_JOB_NAME"          = local.envs.glue_agg_job_name
+    "--ENVIRONMENT"                = var.env
   }
 
   # Garante que artefatos e permissoes existam antes de criar o job.
@@ -65,10 +65,10 @@ resource "aws_glue_job" "etl_job" {
 
 # Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket_etl" {
-  bucket = aws_s3_bucket.auxiliary_bucket.id
-  key    = "${local.envs.glue_etl_job_name}/app/main.py"
-  source = "${local.glue_etl_src_path}/main.py"
-  etag   = filemd5("${local.glue_etl_src_path}/main.py")
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.envs.glue_etl_job_name}/app/main.py"
+  source     = "${local.glue_etl_src_path}/main.py"
+  etag       = filemd5("${local.glue_etl_src_path}/main.py")
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
@@ -83,9 +83,9 @@ data "archive_file" "glue_app_bundle_etl" {
 
 # Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_bundle_etl" {
-  bucket = aws_s3_bucket.auxiliary_bucket.id
-  key    = "${local.envs.glue_etl_job_name}/app_bundle.zip"
-  source = data.archive_file.glue_app_bundle_etl.output_path
-  etag   = data.archive_file.glue_app_bundle_etl.output_md5
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.envs.glue_etl_job_name}/app_bundle.zip"
+  source     = data.archive_file.glue_app_bundle_etl.output_path
+  etag       = data.archive_file.glue_app_bundle_etl.output_md5
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
