@@ -207,6 +207,11 @@ def evaluate_data_quality(
         .withColumnRenamed("EvaluatedMetrics", "evaluated_metrics")
     )
 
+    # EvaluatedMetrics é retornada pelo Glue DQ como map<string, double> — tipo complexo
+    # que falha no commit de staging do S3 ao escrever Parquet particionado.
+    # O cast para StringType serializa o mapa como string, garantindo compatibilidade.
+    df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
+
     # Adiciona colunas de contexto para rastreabilidade e particionamento
     df = df.withColumn("partition", lit(year).cast(StringType()))  # ano da partição (None para gêneros/config)
     df = df.withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))  # horário em São Paulo
