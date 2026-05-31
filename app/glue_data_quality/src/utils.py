@@ -227,52 +227,43 @@ def write_results_to_s3(
     year: Optional[str] = None,
 ) -> None:
     """
-    Grava o DataFrame com os resultados do Data Quality no S3 como Parquet.
+    Grava o DataFrame com os resultados do Data Quality no S3 como Parquet,
+    particionado pela coluna source_table.
 
-    Estratégia de escrita:
-      - Tabelas de discover (year fornecido): overwrite nas partições
-        source_table + partition, substituindo apenas a avaliação daquele
-        ano sem apagar outros anos ou outras tabelas.
-      - Tabelas de gênero/configuração (year=None): overwrite na partição
-        source_table, substituindo a avaliação anterior da mesma tabela.
+    A coluna 'partition' (ano) é mantida como dado normal dentro do Parquet —
+    não é usada no partitionBy — para evitar que o Spark remova seu valor do
+    arquivo e o Athena retorne null ao consultar a tabela.
 
-    O modo "dynamic" garante que apenas as partições presentes no DataFrame
-    sejam substituídas, sem apagar as demais.
+    O modo "dynamic" garante que apenas a partição source_table presente no
+    DataFrame seja substituída, sem apagar resultados de outras tabelas.
 
     Caminho de escrita:
       s3://<bucket>/tmdb/tb_data_quality_tmdb/
         └── source_table=<table_name>/
-              └── partition=<year>/   (somente para discover)
+              └── part-00000.parquet  (contém a coluna partition como dado)
 
     Args:
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada (informativo para o log).
-        year:                   Ano da partição (somente para tabelas de discover).
+        year:                   Ano da partição (informativo; já está na coluna
+                                'partition' do DataFrame).
     """
     output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
-    # Ativa o overwrite dinâmico: substitui apenas as partições presentes no DataFrame,
-    # sem apagar resultados de outras tabelas ou outros anos.
+    # Ativa o overwrite dinâmico: substitui apenas a partição source_table presente
+    # no DataFrame, sem apagar resultados de outras tabelas.
     df.sparkSession.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
 
-    if year is not None:
-        partition_cols = ["source_table", "partition"]
-        logger.info(
-            f"Gravando resultados em {s3_path} | "
-            f"source_table='{table_name}', partition='{year}'"
-        )
-    else:
-        partition_cols = ["source_table"]
-        logger.info(
-            f"Gravando resultados em {s3_path} | source_table='{table_name}'"
-        )
+    logger.info(
+        f"Gravando resultados em {s3_path} | source_table='{table_name}' | partition='{year}'"
+    )
 
     (
         df.write
         .mode("overwrite")
-        .partitionBy(*partition_cols)
+        .partitionBy("source_table")   # source_table vira subpasta; partition fica no Parquet
         .parquet(s3_path)
     )
 
