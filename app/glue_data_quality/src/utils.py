@@ -51,7 +51,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
-    except SystemExit:
+    except Exception:
         pass
 
     return args
@@ -277,8 +277,3 @@ def write_results_to_s3(
     )
 
     logger.info(f"Resultados de '{table_name}' gravados com sucesso!")
-
-    # Registra a nova partição source_table no Glue Catalog para que o Athena
-    # consiga localizar os dados sem necessitar de reparo manual da tabela.
-    df.sparkSession.sql(f"MSCK REPAIR TABLE {database}.{output_table}")
-    logger.info(f"Partições de '{database}.{output_table}' sincronizadas no Glue Catalog.")
