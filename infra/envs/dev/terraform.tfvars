@@ -1,5 +1,6 @@
 # Raciocinio: parametriza o ambiente dev com valores isolados de conta e recursos.
+# Os valores sensíveis (tmdb_secret_arn) são injetados pelo CI/CD
+# via GitHub Secret AWS_TMDB_SECRET_ARN_DEV e não devem ser commitados.
 
-env = "dev"
-account_id = "<AWS_ACCOUNT_ID_DEV>"
-tmdb_secret_arn = "arn:aws:secretsmanager:sa-east-1:<AWS_ACCOUNT_ID_DEV>:secret:tmdb_api_key_dev-BSZF4M"
+env             = "dev"
+tmdb_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_DEV"
