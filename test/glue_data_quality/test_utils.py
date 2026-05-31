@@ -426,21 +426,20 @@ class TestWriteResultsToS3:
 
     def test_partitions_by_source_table_when_no_year(self):
         """Para tabelas sem partição por ano (gênero/config), deve particionar
-        apenas por source_table."""
+        por source_table. A coluna partition ficará null no Parquet."""
         df_mock = MagicMock()
         write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", year=None)
 
         df_mock.write.mode.return_value.partitionBy.assert_called_once_with("source_table")
 
-    def test_partitions_by_source_table_and_partition_for_discover(self):
-        """Para tabelas de discover (year fornecido), deve particionar por
-        source_table + partition para sobrescrever apenas o ano solicitado."""
+    def test_partitions_only_by_source_table_for_discover(self):
+        """Para tabelas de discover (year fornecido), deve particionar apenas por
+        source_table — a coluna partition fica como dado no Parquet para evitar
+        que o Athena retorne null ao não encontrá-la no Glue Catalog como chave."""
         df_mock = MagicMock()
         write_results_to_s3(df_mock, "my-dq-bucket", "tb_discover_movie_tmdb", year="2002")
 
-        df_mock.write.mode.return_value.partitionBy.assert_called_once_with(
-            "source_table", "partition"
-        )
+        df_mock.write.mode.return_value.partitionBy.assert_called_once_with("source_table")
 
     def test_writes_parquet_to_correct_s3_path(self):
         """O Parquet deve ser escrito em s3://<bucket>/tmdb/tb_data_quality_tmdb/."""
