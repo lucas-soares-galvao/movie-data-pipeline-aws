@@ -1,4 +1,12 @@
 # Raciocinio: encapsula execucao de testes para reutilizacao e padronizacao do pipeline.
+#
+# Quality Gates neste workflow:
+#   BLOQUEANTE (falha a pipeline):  pytest com cobertura ≥ 70%, Ruff linting
+#   INFORMATIVO (apenas aviso):    mypy, Bandit, Safety
+#
+# Por que separar? Gates informativos ainda estão sendo calibrados e não devem
+# bloquear entregas. Quando a base de código estiver madura, promova-os a BLOQUEANTE
+# simplesmente removendo o 'if ! ... || echo' e deixando o comando retornar o exit code real.
 
 name: Test (Reusable)
 
@@ -54,45 +62,51 @@ jobs:
       - name: Configure PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
-      # 5. Linting com Ruff - Verifica estilo de código e boas práticas
+      # 5. [BLOQUEANTE] Linting com Ruff - Verifica estilo de código e boas práticas
+      #    Falha a pipeline se o código não seguir as regras configuradas.
+      #    Para ignorar uma linha específica, adicione: # noqa: <CODIGO_DA_REGRA>
       - name: Lint with Ruff
         run: |
-          # Faz linting do código Python seguindo padrões de estilo
           ruff check app/ test/
           echo "Ruff linting concluido"
 
-      # 6. Type Check com mypy - Verifica tipos de dados estaticamente
+      # 6. [INFORMATIVO] Type Check com mypy - Verifica tipos de dados estaticamente
+      #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
+      #    --ignore-missing-imports: ignora pacotes sem stubs de tipo (ex.: awsglue)
       - name: Type Check with mypy
         run: |
-          # Executa type checking para detectar erros potenciais de tipo
-          # --ignore-missing-imports ignora pacotes sem stubs de tipo
           if ! mypy app/ --ignore-missing-imports; then
             echo "::warning::Avisos de tipo detectados (recomendado corrigir antes de deploy)"
           fi
           echo "Mypy type checking concluido"
 
-      # 7. Security Scan com Bandit - Detecta vulnerabilidades de segurança
+      # 7. [INFORMATIVO] Security Scan com Bandit - Detecta vulnerabilidades de segurança
+      #    -ll  → exibe apenas severidade MÉDIA e ALTA
+      #    -f json → salva relatório estruturado para download como artefato
+      #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
       - name: Security Scan with Bandit
         run: |
-          # Escaneia código em busca de problemas comuns de segurança
-          # -ll mostra apenas Issues de alta e média severidade
-          if ! bandit -r app/ -ll -f json -o bandit-report.json; then
-            echo "::warning::Possiveis vulnerabilidades detectadas pelo Bandit"
+          # Gera relatório JSON (salvo como artefato abaixo)
+          bandit -r app/ -ll -f json -o bandit-report.json || true
+          # Exibe resumo legível no log
+          if ! bandit -r app/ -ll; then
+            echo "::warning::Possiveis vulnerabilidades detectadas pelo Bandit (ver artefato bandit-report.json)"
           fi
           echo "Bandit security scan concluido"
-          # Exibir um resumo legível
-          bandit -r app/ -ll || echo "Resumo do Bandit com alertas"
 
-      # 8. Dependency Check - Verifica vulnerabilidades em dependências
+      # 8. [INFORMATIVO] Dependency Check - Verifica vulnerabilidades em dependências
+      #    Usa 'safety scan' (sintaxe da versão 3.x; versões antigas usavam 'safety check').
+      #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
       - name: Check Dependencies with Safety
         run: |
-          # Verifica dependências conhecidas com vulnerabilidades divulgadas
-          if ! safety check --json --output safety-report.json; then
-            echo "::warning::Vulnerabilidades conhecidas em dependencias (recomendado revisar)"
+          # Gera relatório JSON (salvo como artefato abaixo)
+          if ! safety scan --output json > safety-report.json 2>&1; then
+            echo "::warning::Vulnerabilidades conhecidas em dependencias (ver artefato safety-report.json)"
           fi
           echo "Safety dependency check concluido"
 
-      # 9. Executa os testes e aplica a barreira de qualidade (Quality Gate)
+      # 9. [BLOQUEANTE] Executa os testes e aplica a barreira de qualidade (Quality Gate)
+      #    Falha a pipeline se: algum teste falhar OU cobertura < 70%.
       - name: Run tests with Coverage Gate
         run: |
           # pytest: executa os testes
@@ -105,21 +119,35 @@ jobs:
                  --cov-report=xml \
                  --cov-fail-under=70
 
-      # 10. Quality Gate Summary - Resumo final de qualidade
+      # 10. Upload de relatórios de segurança como artefatos do GitHub Actions
+      #     Artefatos ficam disponíveis por 7 dias na aba "Summary" do run.
+      #     Para baixar: vá em Actions → run → Artifacts → security-reports
+      - name: Upload Security Reports
+        if: always() # Sobe os relatórios mesmo se algum step anterior falhou
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+            coverage.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # 11. Quality Gate Summary - Resumo final de qualidade
       - name: Quality Gate Summary
         if: always()
         run: |
           echo "=========================================="
           echo "        QUALITY GATES SUMMARY"
           echo "=========================================="
-          echo "Etapas executadas:"
-          echo "- Testes Unitarios (pytest)"
-          echo "- Cobertura de Codigo (Coverage Gate: 70%)"
-          echo "- Linting (ruff)"
-          echo "- Type Checking (mypy - informativo)"
-          echo "- Security Analysis (bandit - informativo)"
-          echo "- Dependency Vulnerabilities (safety - informativo)"
+          echo "[BLOQUEANTE] Testes Unitarios (pytest)"
+          echo "[BLOQUEANTE] Cobertura de Codigo (Gate: >= 70%)"
+          echo "[BLOQUEANTE] Linting (ruff)"
+          echo "[INFORMATIVO] Type Checking (mypy)"
+          echo "[INFORMATIVO] Security Analysis (bandit)"
+          echo "[INFORMATIVO] Dependency Vulnerabilities (safety)"
           echo "=========================================="
-          echo "Resumo concluido. Consulte os logs para detalhes de alertas ou falhas."
+          echo "Relatorios de seguranca disponiveis em: Actions > Artifacts > security-reports"
           echo "=========================================="
           
