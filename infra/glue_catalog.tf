@@ -299,7 +299,7 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
       type = "string"
     }
     columns {
-      name = "name"
+      name = "native_name"
       type = "string"
     }
   }
