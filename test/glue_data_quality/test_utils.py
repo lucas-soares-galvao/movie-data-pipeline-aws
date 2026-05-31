@@ -205,6 +205,8 @@ class TestEvaluateDataQuality:
         dq_result_mock.toDF.return_value = df_mock
 
         with patch("src.utils.EvaluateDataQuality") as mock_edq, \
+             patch("src.utils.DynamicFrame") as mock_dyn, \
+             patch("src.utils.col") as mock_col, \
              patch("src.utils.lit") as mock_lit, \
              patch("src.utils.current_timestamp") as mock_ts, \
              patch("src.utils.from_utc_timestamp") as mock_utc:
@@ -218,6 +220,8 @@ class TestEvaluateDataQuality:
             "result": result,
             "df_mock": df_mock,
             "mock_edq": mock_edq,
+            "mock_dyn": mock_dyn,
+            "mock_col": mock_col,
             "mock_lit": mock_lit,
             "mock_ts": mock_ts,
             "mock_utc": mock_utc,
@@ -305,6 +309,96 @@ class TestEvaluateDataQuality:
         """O retorno deve ser o DataFrame após todos os renames e withColumns."""
         mocks = self._run()
         assert mocks["result"] is mocks["df_mock"]
+
+    def test_filters_dataframe_by_year_before_evaluate_when_year_provided(self):
+        """Quando year é fornecido, o DynamicFrame é convertido em DataFrame e filtrado
+        por year ANTES de passar ao EvaluateDataQuality, garantindo que apenas os dados
+        da partição solicitada sejam avaliados."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+        df_source = MagicMock()
+        dynamic_frame.toDF.return_value = df_source
+
+        df_mock = self._make_chainable_df()
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with patch("src.utils.EvaluateDataQuality") as mock_edq, \
+             patch("src.utils.DynamicFrame") as mock_dyn, \
+             patch("src.utils.col") as mock_col, \
+             patch("src.utils.lit"), \
+             patch("src.utils.current_timestamp"), \
+             patch("src.utils.from_utc_timestamp"):
+            mock_edq.apply.return_value = dq_result_mock
+
+            evaluate_data_quality(
+                glue_context, dynamic_frame, 'Rules = [\n  RowCount > 0\n]',
+                "tb_discover_movie_tmdb", "db", year="2002",
+            )
+
+        mock_col.assert_called_with("year")           # col("year") construiu a expressão
+        df_source.filter.assert_called_once()          # filter foi chamado no DataFrame
+        # DynamicFrame.fromDF recebe o df filtrado, o glue_context e um nome de frame
+        mock_dyn.fromDF.assert_called_once_with(
+            df_source.filter.return_value, glue_context, "filtered_frame"
+        )
+
+    def test_passes_filtered_dynamic_frame_to_evaluate_when_year_provided(self):
+        """EvaluateDataQuality.apply deve receber o DynamicFrame filtrado (não o original)
+        quando year é fornecido, assegurando que as regras sejam avaliadas apenas
+        nos dados da partição recém-escrita."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+        filtered_dynamic_frame = MagicMock()
+
+        df_mock = self._make_chainable_df()
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with patch("src.utils.EvaluateDataQuality") as mock_edq, \
+             patch("src.utils.DynamicFrame") as mock_dyn, \
+             patch("src.utils.col"), \
+             patch("src.utils.lit"), \
+             patch("src.utils.current_timestamp"), \
+             patch("src.utils.from_utc_timestamp"):
+            mock_edq.apply.return_value = dq_result_mock
+            mock_dyn.fromDF.return_value = filtered_dynamic_frame
+
+            evaluate_data_quality(
+                glue_context, dynamic_frame, 'Rules = [\n  RowCount > 0\n]',
+                "tb_discover_tv_tmdb", "db", year="2023",
+            )
+
+        call_kwargs = mock_edq.apply.call_args[1]
+        assert call_kwargs["frame"] is filtered_dynamic_frame
+
+    def test_does_not_filter_when_year_is_none(self):
+        """Quando year é None (tabelas sem partição por ano), o DynamicFrame original
+        deve ser passado diretamente ao EvaluateDataQuality sem conversão ou filtro."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+
+        df_mock = self._make_chainable_df()
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with patch("src.utils.EvaluateDataQuality") as mock_edq, \
+             patch("src.utils.DynamicFrame") as mock_dyn, \
+             patch("src.utils.col") as mock_col, \
+             patch("src.utils.lit"), \
+             patch("src.utils.current_timestamp"), \
+             patch("src.utils.from_utc_timestamp"):
+            mock_edq.apply.return_value = dq_result_mock
+
+            evaluate_data_quality(
+                glue_context, dynamic_frame, 'Rules = [\n  RowCount > 0\n]',
+                "tb_genre_movie_tmdb", "db", year=None,
+            )
+
+        mock_col.assert_not_called()
+        mock_dyn.fromDF.assert_not_called()
+        call_kwargs = mock_edq.apply.call_args[1]
+        assert call_kwargs["frame"] is dynamic_frame
 
 
 # ---------------------------------------------------------------------------
