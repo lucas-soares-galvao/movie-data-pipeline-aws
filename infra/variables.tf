@@ -67,7 +67,7 @@ variable "s3_bucket_sot" {
 }
 
 variable "s3_bucket_spec" {
-  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
+  description = "Nome do bucket SPEC para dados agregados e especializados gerados pelo Glue AGG"
   type        = string
   default     = "lsg-sa-east-1-bucket-spec"
 }
@@ -193,4 +193,11 @@ variable "glue_catalog_table_data_quality_name" {
   description = "Nome da tabela no Glue Catalog para resultados de Data Quality"
   type        = string
   default     = "tb_data_quality_tmdb"
+}
+
+############# CLOUDWATCH LOGS ##############
+variable "log_retention_days" {
+  description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"
+  type        = number
+  default     = 7
 }

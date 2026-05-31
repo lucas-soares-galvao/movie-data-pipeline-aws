@@ -13,7 +13,7 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
   parameters = {
     classification      = "parquet"
     EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+
   }
 
   storage_descriptor {
@@ -101,7 +101,7 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   parameters = {
     classification      = "parquet"
     EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+
   }
 
   storage_descriptor {
@@ -181,7 +181,7 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
   parameters = {
     classification      = "parquet"
     EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+
   }
 
   storage_descriptor {
@@ -212,7 +212,7 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
   parameters = {
     classification      = "parquet"
     EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+
   }
 
   storage_descriptor {
@@ -243,7 +243,7 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   parameters = {
     classification      = "parquet"
     EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+
   }
 
   storage_descriptor {
@@ -278,7 +278,7 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   parameters = {
     classification      = "parquet"
     EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+
   }
 
   storage_descriptor {
@@ -313,7 +313,7 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   parameters = {
     classification     = "parquet"
     EXTERNAL           = "TRUE"
-    has_encrypted_data = "false"
+
   }
 
   storage_descriptor {

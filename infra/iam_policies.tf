@@ -1,5 +1,7 @@
 # Raciocinio: concentra politicas minimas necessarias para Lambda/Glue acessarem servicos AWS.
 
+# Permite que a Lambda dispare e monitore os jobs Glue ETL e AGG.
+# Resource restrito aos ARNs dos jobs especificos para limitar o escopo de acesso.
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
   name = "${local.envs.lambda_api_name}-start-glue-jobs"
   role = aws_iam_role.lambda_function.id
@@ -8,7 +10,10 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
     Statement = [{
       Effect = "Allow"
       Action = ["glue:StartJobRun", "glue:GetJobRun"]
-      Resource = "*"
+      Resource = [
+        "arn:aws:glue:*:*:job/${local.envs.glue_etl_job_name}",
+        "arn:aws:glue:*:*:job/${local.envs.glue_agg_job_name}"
+      ]
     }]
   })
 }
@@ -45,8 +50,11 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
 # =========================
 # READ CODE (AMBOS)
 # =========================
+# IMPORTANTE: O nome inclui o ambiente (${var.env}) para evitar conflito
+# quando dev e prod sao provisionados na mesma conta AWS.
+# Nomes de IAM Policy sao unicos por conta, entao sem sufixo haveria erro.
 resource "aws_iam_policy" "glue_shared_read_code" {
-  name = "glue-shared-read-code"
+  name = "glue-shared-read-code-${var.env}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -171,6 +179,7 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
 # =========================
 # ETL - Start DQ Job
 # =========================
+# Permite que o Glue ETL inicie o job de Data Quality ao final do processamento.
 resource "aws_iam_role_policy" "glue_etl_start_dq" {
   name = "glue-etl-start-dq"
   role = aws_iam_role.glue_etl_role.name
@@ -178,9 +187,9 @@ resource "aws_iam_role_policy" "glue_etl_start_dq" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Action = ["glue:StartJobRun"]
-      Resource = "*"
+      Effect   = "Allow"
+      Action   = ["glue:StartJobRun"]
+      Resource = ["arn:aws:glue:*:*:job/${local.envs.glue_data_quality_job_name}"]
     }]
   })
 }

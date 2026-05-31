@@ -2,11 +2,11 @@
 
 resource "null_resource" "lambda_build" {
   triggers = {
-    source_hash = sha256(join("", [for f in fileset(local.lambda_api_src_path, "**/*.py") : filesha256("${local.lambda_api_src_path}/${f}")]))
+    source_hash       = sha256(join("", [for f in fileset(local.lambda_api_src_path, "**/*.py") : filesha256("${local.lambda_api_src_path}/${f}")]))
     requirements_hash = filesha256(local.lambda_api_requirements_path)
-		builder_hash = filesha256("${path.module}/scripts/build_lambda_package.py")
-		# Os runners de CI sao efemeros; forca o rebuild para que .lambda_build exista em toda execucao.
-		always_run = timestamp()
+		builder_hash      = filesha256("${path.module}/scripts/build_lambda_package.py")
+		# Nota: 'always_run = timestamp()' foi removido para evitar rebuild desnecessario a cada apply.
+		# O rebuild e disparado automaticamente quando qualquer arquivo .py ou requirements.txt mudar.
   }
 
   provisioner "local-exec" {

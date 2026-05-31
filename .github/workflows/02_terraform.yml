@@ -1,4 +1,14 @@
 # Raciocinio: centraliza plan/apply/destroy do Terraform com parametros por ambiente.
+#
+# Fluxo de execução (decidido pelo arquivo infra/destroy_config.json):
+#
+#   destroy_config[ambiente] == "true"  →  passo 10: Terraform DESTROY
+#   destroy_config[ambiente] == "false" →  passo 11: Terraform PLAN
+#                                          passo 12: Terraform APPLY
+#
+# Por que usar um arquivo JSON para controlar destroy?
+#   Isso permite ativar/desativar o destroy por ambiente sem alterar o código
+#   da pipeline. Basta editar destroy_config.json e fazer commit.
 
 name: "Terraform (Reusable)"
 
@@ -85,11 +95,11 @@ jobs:
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
-      # 6. Valida se a sintaxe do código Terraform está correta
+      # 7. Valida se a sintaxe do código Terraform está correta
       - name: Terraform Validate
         run: cd infra && terraform validate
 
-      # 7. TFLint - Linting para Terraform (detecção de má prática e erros potenciais)
+      # 8. TFLint - Linting para Terraform (detecção de má prática e erros potenciais)
       - name: Setup and Run TFLint
         run: |
           # Instala TFLint
@@ -103,39 +113,42 @@ jobs:
           echo "🔍 Executando TFLint para validações de boas práticas..."
           tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
 
-      # 8. Format Check - Verifica se o código está formatado corretamente
+      # 9. [BLOQUEANTE] Format Check - Verifica se o código está formatado corretamente
+      #    Falha a pipeline se houver arquivos fora do padrão.
+      #    Para corrigir localmente: execute 'terraform fmt -recursive' na pasta infra/
       - name: Terraform Format Check
         run: |
           cd infra
-          echo "🎨 Verificando formatação do código Terraform..."
-          terraform fmt -check -recursive || {
-            echo "⚠ Código não formatado. Execute: terraform fmt -recursive"
-            exit 0  # Não falha a pipeline, apenas aviso
-          }
+          echo "Verificando formatacao do codigo Terraform..."
+          terraform fmt -check -recursive
 
-      # 9. Checkov - Policy validation (detecção de vulnerabilidades de segurança/compliance)
+      # 10. [INFORMATIVO] Checkov - Policy validation (detecção de vulnerabilidades de segurança/compliance)
+      #     Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
+      #     Para tornar BLOQUEANTE: remova o '|| true' no final do segundo checkov.
       - name: Checkov Security Scan
         run: |
-          # Instala Checkov
           pip install checkov
-          
           cd infra
-          echo "🔒 Executando Checkov para validações de segurança e compliance..."
-          
-          # Executa Checkov com output em JSON para relatório
-          checkov -d . \
-                  --framework terraform \
-                  --quiet \
-                  --output json \
-                  --output-file checkov-report.json || echo "⚠ Problemas de segurança/compliance detectados"
-          
-          # Exibe um resumo em terminal
-          checkov -d . --framework terraform --quiet || {
-            echo "⚠ Verifique os problemas de segurança identificados acima"
-            exit 0  # Não falha a pipeline para permitir correções iterativas
-          }
+          echo "Executando Checkov para validacoes de seguranca e compliance..."
+          # Gera relatório JSON (salvo como artefato abaixo)
+          checkov -d . --framework terraform --quiet --output json --output-file checkov-report.json || true
+          # Exibe resumo no terminal; nao falha a pipeline (exit 0 implícito via || true)
+          if ! checkov -d . --framework terraform --quiet; then
+            echo "::warning::Problemas de seguranca/compliance detectados (ver artefato checkov-report.json)"
+          fi
 
-      # 10. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
+      # 11. Upload do relatório Checkov como artefato do GitHub Actions
+      #     Artefatos ficam disponíveis por 7 dias na aba "Summary" do run.
+      - name: Upload Checkov Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-report
+          path: infra/checkov-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # 12. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
       # Isolamento entre dev/prod é feito por buckets S3 separados (sem necessidade de workspace)
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
@@ -144,7 +157,7 @@ jobs:
           cd infra
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
 
-      # 11. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
+      # 13. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
       # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
@@ -153,7 +166,7 @@ jobs:
           cd infra
           terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
 
-      # 12. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 14. Execução (Apply): Aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
