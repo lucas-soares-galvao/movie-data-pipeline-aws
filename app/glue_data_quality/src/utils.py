@@ -231,7 +231,6 @@ def write_results_to_s3(
     df,
     s3_bucket_data_quality: str,
     table_name: str,
-    database: str,
     year: Optional[str] = None,
 ) -> None:
     """
@@ -254,7 +253,6 @@ def write_results_to_s3(
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada (informativo para o log).
-        database:               Nome do banco de dados no Glue Catalog.
         year:                   Ano da partição (informativo; já está na coluna
                                 'partition' do DataFrame).
     """

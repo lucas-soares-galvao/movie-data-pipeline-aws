@@ -414,7 +414,7 @@ class TestWriteResultsToS3:
         """O modo 'overwrite' deve ser usado para substituir avaliações anteriores
         da mesma tabela/partição sem acumular resultados duplicados."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", "db_tmdb")
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
 
         df_mock.write.mode.assert_called_once_with("overwrite")
 
@@ -422,7 +422,7 @@ class TestWriteResultsToS3:
         """O modo dinâmico de overwrite deve ser ativado para que apenas as partições
         presentes no DataFrame sejam substituídas, preservando as demais."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", "db_tmdb")
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
 
         df_mock.sparkSession.conf.set.assert_called_once_with(
             "spark.sql.sources.partitionOverwriteMode", "dynamic"
@@ -432,7 +432,7 @@ class TestWriteResultsToS3:
         """Para tabelas sem partição por ano (gênero/config), deve particionar
         por source_table. A coluna partition ficará null no Parquet."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", "db_tmdb", year=None)
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", year=None)
 
         df_mock.write.mode.return_value.partitionBy.assert_called_once_with("source_table")
 
@@ -441,14 +441,14 @@ class TestWriteResultsToS3:
         source_table — a coluna partition fica como dado no Parquet para evitar
         que o Athena retorne null ao não encontrá-la no Glue Catalog como chave."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_discover_movie_tmdb", "db_tmdb", year="2002")
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_discover_movie_tmdb", year="2002")
 
         df_mock.write.mode.return_value.partitionBy.assert_called_once_with("source_table")
 
     def test_writes_parquet_to_correct_s3_path(self):
         """O Parquet deve ser escrito em s3://<bucket>/tmdb/tb_data_quality_tmdb/."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", "db_tmdb")
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
 
         parquet_call = df_mock.write.mode.return_value.partitionBy.return_value.parquet
         parquet_call.assert_called_once_with("s3://my-dq-bucket/tmdb/tb_data_quality_tmdb/")
@@ -456,7 +456,7 @@ class TestWriteResultsToS3:
     def test_s3_path_uses_fixed_output_table_name(self):
         """O nome da tabela de saída deve ser sempre tb_data_quality_tmdb."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "bucket-dq", "tb_discover_tv_tmdb", "db_tmdb")
+        write_results_to_s3(df_mock, "bucket-dq", "tb_discover_tv_tmdb")
 
         parquet_path = (
             df_mock.write.mode.return_value.partitionBy.return_value.parquet.call_args[0][0]
@@ -466,7 +466,7 @@ class TestWriteResultsToS3:
     def test_s3_path_uses_bucket_name(self):
         """O nome do bucket de Data Quality deve aparecer no caminho S3."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "meu-bucket-dq", "tb_genre_tv_tmdb", "db_tmdb")
+        write_results_to_s3(df_mock, "meu-bucket-dq", "tb_genre_tv_tmdb")
 
         parquet_path = (
             df_mock.write.mode.return_value.partitionBy.return_value.parquet.call_args[0][0]
@@ -476,7 +476,7 @@ class TestWriteResultsToS3:
     def test_chained_write_operations_are_called_in_order(self):
         """mode → partitionBy → parquet devem ser chamados nesta ordem."""
         df_mock = MagicMock()
-        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", "db_tmdb")
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
 
         # Verifica que o encadeamento completo foi executado
         after_mode = df_mock.write.mode.return_value
