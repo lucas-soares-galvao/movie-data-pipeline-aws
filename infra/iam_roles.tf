@@ -12,9 +12,27 @@ resource "aws_iam_role" "lambda_function" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
-  role       = aws_iam_role.lambda_function.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+# Raciocinio: nao usa AWSLambdaBasicExecutionRole pois ela concede logs:CreateLogGroup,
+# o que permitiria a Lambda criar um grupo de logs sem retencao fora do controle do Terraform.
+# A policy abaixo permite apenas escrever logs no grupo pre-existente criado pelo Terraform.
+resource "aws_iam_role_policy" "lambda_logs" {
+  name = "${local.envs.lambda_api_name}-logs"
+  role = aws_iam_role.lambda_function.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "WriteLambdaLogs"
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+      ]
+      Resource = [
+        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.envs.lambda_api_name}",
+        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.envs.lambda_api_name}:log-stream:*",
+      ]
+    }]
+  })
 }
 
 # =========================
