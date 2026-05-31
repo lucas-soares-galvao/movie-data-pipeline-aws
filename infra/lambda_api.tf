@@ -56,7 +56,7 @@ resource "aws_lambda_function" "simple_lambda" {
 	source_code_hash = data.archive_file.lambda_bundle.output_base64sha256
 
 	depends_on = [
-		aws_iam_role_policy_attachment.lambda_basic_execution,
+		aws_iam_role_policy.lambda_logs,
 		aws_iam_role_policy.lambda_start_glue_jobs,
 		aws_iam_role_policy.lambda_s3_policy,
 		null_resource.lambda_build,
