@@ -11,7 +11,7 @@ Responsabilidades:
 
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
