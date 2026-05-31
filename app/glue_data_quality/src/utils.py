@@ -18,6 +18,7 @@ from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
 from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit
+from pyspark.sql.types import StringType
 
 from src.rulesets_dq import rulesets_dq
 
@@ -207,7 +208,7 @@ def evaluate_data_quality(
     )
 
     # Adiciona colunas de contexto para rastreabilidade e particionamento
-    df = df.withColumn("partition", lit(year))              # ano da partição (None para gêneros/config)
+    df = df.withColumn("partition", lit(year).cast(StringType()))  # ano da partição (None para gêneros/config)
     df = df.withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))  # horário em São Paulo
     df = df.withColumn("source_database", lit(database))   # banco de dados avaliado
     df = df.withColumn("source_table", lit(table_name))    # partição no S3
