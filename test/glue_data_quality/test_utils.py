@@ -148,6 +148,30 @@ class TestReadTableFromCatalog:
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
         assert kwargs["table_name"] == "tb_discover_movie_tmdb"
 
+    def test_no_push_down_predicate_when_year_is_none(self):
+        """Sem year, push_down_predicate não deve ser passado (tabelas sem partição)."""
+        glue_context = MagicMock()
+        read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb", year=None)
+
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert "push_down_predicate" not in kwargs
+
+    def test_push_down_predicate_when_year_is_provided(self):
+        """Com year, push_down_predicate deve filtrar apenas a partição informada."""
+        glue_context = MagicMock()
+        read_table_from_catalog(glue_context, "db_tmdb", "tb_discover_movie_tmdb", year="2019")
+
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert kwargs["push_down_predicate"] == "year = '2019'"
+
+    def test_push_down_predicate_uses_correct_year_value(self):
+        """O predicado deve conter exatamente o ano passado como argumento."""
+        glue_context = MagicMock()
+        read_table_from_catalog(glue_context, "db_tmdb", "tb_discover_tv_tmdb", year="2023")
+
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert "2023" in kwargs["push_down_predicate"]
+
 
 # ---------------------------------------------------------------------------
 # evaluate_data_quality

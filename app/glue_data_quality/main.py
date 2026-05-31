@@ -61,7 +61,9 @@ def main() -> None:
 
     # --- 4. Lê os dados da tabela no Glue Catalog ---
     # O Glue Catalog funciona como um catálogo central de metadados (nome, schema, localização).
-    dynamic_frame = read_table_from_catalog(glue_context, database, table_name)
+    # Para tabelas de discover (particionadas por ano), filtra apenas a partição recém-escrita
+    # via push_down_predicate, evitando erros de arquivo não encontrado em partições anteriores.
+    dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)
 
     # --- 5. Avalia a qualidade dos dados ---
     # Para cada regra do ruleset, o Glue verifica se os dados passam ou falham.

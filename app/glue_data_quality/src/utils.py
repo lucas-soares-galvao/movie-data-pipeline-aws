@@ -97,7 +97,7 @@ def get_ruleset(table_name: str) -> str:
 # Leitura da tabela no Glue Catalog
 # ---------------------------------------------------------------------------
 
-def read_table_from_catalog(glue_context: GlueContext, database: str, table_name: str):
+def read_table_from_catalog(glue_context: GlueContext, database: str, table_name: str, year: Optional[str] = None):
     """
     Lê uma tabela registrada no Glue Catalog e a retorna como DynamicFrame.
 
@@ -105,19 +105,29 @@ def read_table_from_catalog(glue_context: GlueContext, database: str, table_name
     distribuídos (semelhante ao DataFrame do Spark, mas com suporte extra
     a esquemas flexíveis e tipos aninhados).
 
+    Quando `year` é informado (tabelas de discover particionadas por ano), aplica
+    um `push_down_predicate` para ler **apenas** a partição recém-escrita. Isso
+    evita que o Glue tente acessar arquivos de outras partições que possam ter
+    metadados obsoletos no Catalog após re-escritas anteriores.
+
     Args:
         glue_context: Contexto do Glue criado no main.py.
         database:     Nome do banco de dados no Glue Catalog.
         table_name:   Nome da tabela a ser lida.
+        year:         Ano da partição a filtrar. None lê a tabela inteira.
 
     Returns:
-        DynamicFrame com os dados da tabela.
+        DynamicFrame com os dados da tabela (ou partição, quando year é fornecido).
     """
     logger.info(f"Lendo tabela '{database}.{table_name}' do Glue Catalog...")
-    return glue_context.create_dynamic_frame.from_catalog(
-        database=database,
-        table_name=table_name,
-    )
+    kwargs: Dict[str, Any] = {
+        "database": database,
+        "table_name": table_name,
+    }
+    if year is not None:
+        kwargs["push_down_predicate"] = f"year = '{year}'"
+        logger.info(f"Aplicando filtro de partição: year = '{year}'")
+    return glue_context.create_dynamic_frame.from_catalog(**kwargs)
 
 
 # ---------------------------------------------------------------------------

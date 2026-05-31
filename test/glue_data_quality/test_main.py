@@ -102,13 +102,13 @@ class TestReadTableFromCatalogCall:
     def test_calls_read_table_with_database(self):
         """read_table_from_catalog deve receber o DATABASE dos args."""
         mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
-        _, database, _ = mocks["mock_read"].call_args[0]
+        _, database, _, _ = mocks["mock_read"].call_args[0]
         assert database == "db_tmdb"
 
     def test_calls_read_table_with_table_name(self):
         """read_table_from_catalog deve receber o TABLE_NAME dos args."""
         mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
-        _, _, table_name = mocks["mock_read"].call_args[0]
+        _, _, table_name, _ = mocks["mock_read"].call_args[0]
         assert table_name == "tb_genre_movie_tmdb"
 
 
