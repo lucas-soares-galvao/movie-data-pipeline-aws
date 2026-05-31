@@ -38,6 +38,7 @@ resource "aws_glue_job" "etl_job" {
     "--S3_BUCKET_SOR"                    = local.envs.s3_bucket_sor
     "--S3_BUCKET_SOT"                    = local.envs.s3_bucket_sot
     "--GLUE_DATA_QUALITY_JOB_NAME"       = local.envs.glue_data_quality_job_name
+    "--GLUE_AGG_JOB_NAME"                = local.envs.glue_agg_job_name
     "--ENVIRONMENT"                      = var.env
   }
 
@@ -51,6 +52,7 @@ resource "aws_glue_job" "etl_job" {
     aws_iam_role_policy.glue_etl_sor_sot,
     aws_iam_role_policy.glue_etl_catalog,
     aws_glue_job.data_quality_job,
+    aws_glue_job.agg_job,
     aws_cloudwatch_log_group.glue_etl_error,
     aws_cloudwatch_log_group.glue_etl_output
   ]

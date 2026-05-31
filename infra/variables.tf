@@ -122,6 +122,30 @@ variable "glue_data_quality_job_name" {
   default     = "glue-data-quality"
 }
 
+variable "glue_agg_path_app" {
+  description = "Caminho para os modulos Python da aplicacao do Glue AGG"
+  type        = string
+  default     = "glue_agg"
+}
+
+variable "glue_agg_job_name" {
+  description = "Nome do job Glue AGG a ser criado por ambiente"
+  type        = string
+  default     = "glue-agg"
+}
+
+variable "glue_agg_notification_email" {
+  description = "E-mail para receber notificacoes de execucao do Glue AGG"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
+
+variable "glue_agg_spec_table_name" {
+  description = "Nome da tabela unificada gravada no bucket SPEC pelo Glue AGG"
+  type        = string
+  default     = "tb_discover_unified_tmdb"
+}
+
 variable "glue_catalog_database_name" {
   description = "Nome do banco no Glue Catalog para a tabela TMDB"
   type        = string

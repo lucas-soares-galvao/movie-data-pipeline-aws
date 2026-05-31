@@ -1,0 +1,3 @@
+# Raciocinio: fixa dependencias de runtime do Glue AGG para execucao previsivel no job.
+
+awswrangler
