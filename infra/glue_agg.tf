@@ -86,19 +86,28 @@ resource "aws_s3_object" "deploy_app_bundle_agg" {
 
 
 # ---------------------------------------------------------------------------
-# Schedule — a ser configurado apos definicao do horario dos processos ETL.
-# Mantido desabilitado ate que o cron seja validado.
+# Trigger CONDITIONAL — dispara o Glue AGG somente apos o Glue ETL SUCCEEDED.
+# Isso garante que os dados do SOT estejam completos antes da agregacao no SPEC.
+# Anteriormente usava SCHEDULED (cron fixo), o que criava risco de o AGG rodar
+# com dados incompletos se o ETL atrasasse.
 # ---------------------------------------------------------------------------
-resource "aws_glue_trigger" "glue_agg_schedule" {
-  name    = "glue-agg-schedule-${var.env}"
-  type    = "SCHEDULED"
-  # Placeholder: ajustar apos definicao do horario dos jobs movie e tv.
-  schedule = "cron(0 23 * * ? *)" # Todos os dias as 23:00 UTC
-  enabled  = true
+resource "aws_glue_trigger" "glue_agg_after_etl" {
+  name    = "glue-agg-after-etl-${var.env}"
+  type    = "CONDITIONAL"
+  enabled = true
 
+  # Acao: iniciar o job AGG quando a condicao for satisfeita.
   actions {
     job_name = aws_glue_job.agg_job.name
   }
 
-  depends_on = [aws_glue_job.agg_job]
+  # Condicao: so dispara quando o job ETL terminar com SUCCEEDED.
+  predicate {
+    conditions {
+      job_name = aws_glue_job.etl_job.name
+      state    = "SUCCEEDED"
+    }
+  }
+
+  depends_on = [aws_glue_job.agg_job, aws_glue_job.etl_job]
 }

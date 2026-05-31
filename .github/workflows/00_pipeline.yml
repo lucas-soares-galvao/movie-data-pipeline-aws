@@ -1,4 +1,14 @@
 # Raciocinio: orquestra a esteira CI/CD chamando workflows reutilizaveis em ordem controlada.
+#
+# Fluxo de branches e jobs:
+#   feature/*  →  [1] test → [3] auto-pr-feature  (abre PR: feature → develop)
+#   develop    →  [1] test → [2] terraform(dev)   → [4] auto-pr-environment (abre PR: develop → main)
+#   main       →  [1] test → [2] terraform(prod)
+#
+# Workflows reutilizáveis chamados:
+#   01_test.yml      → roda testes, lint, type check e security scan
+#   02_terraform.yml → aplica ou destrói infraestrutura na AWS
+#   03_pr_auto.yml   → cria/atualiza Pull Request automaticamente
 
 name: Pipeline CI/CD
 
@@ -18,38 +28,80 @@ on:
           - dev
           - prod
 
+# Controle de concorrência: garante que apenas uma execução por branch/ambiente
+# rode por vez. Se um novo push chegar enquanto a pipeline está rodando,
+# o run anterior é cancelado para evitar conflitos de estado na AWS.
+concurrency:
+  group: pipeline-${{ github.ref_name }}
+  cancel-in-progress: true
+
 # Permissões padrão para o token do GitHub (necessário para autenticação OIDC/AWS)
 permissions:
   id-token: write
   contents: read
   actions: write
 
+# ---------------------------------------------------------------------------
+# Variáveis de ambiente reutilizáveis para seleção de secrets por ambiente.
+# Centralizar aqui evita repetir a mesma expressão ternária em cada job.
+# A lógica: se for disparo manual (workflow_dispatch), usa o input escolhido;
+#            se for push na branch 'develop', usa 'dev'; senão usa 'prod'.
+# ---------------------------------------------------------------------------
+env:
+  TARGET_ENV: >-
+    ${{ github.event_name == 'workflow_dispatch'
+        && github.event.inputs.environment
+        || (github.ref_name == 'develop' && 'dev' || 'prod') }}
+
 jobs:
 
-  # 1. Job de Testes: Chama o workflow reutilizável que criamos (01_test.yml)
-  # Roda para todas as branches configuradas no 'on'
+  # ── JOB 1 ──────────────────────────────────────────────────────────────────
+  # Testes e quality gates: roda para TODAS as branches.
+  # Chama o workflow reutilizável 01_test.yml.
+  # ───────────────────────────────────────────────────────────────────────────
   test:
     uses: ./.github/workflows/01_test.yml
 
-  # 3. Job de Terraform: Realiza o deploy da infraestrutura
+  # ── JOB 2 ──────────────────────────────────────────────────────────────────
+  # Deploy de infraestrutura (Terraform): roda SOMENTE em 'develop', 'main'
+  # ou quando disparado manualmente. Depende do job 'test' ter passado.
+  # ───────────────────────────────────────────────────────────────────────────
   terraform:
-    needs: test # Só inicia se o job 'test' terminar com sucesso
-    # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
+    needs: test
     if: |
-      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
       needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
-      # Em execução manual usa o input; em push usa mapeamento por branch
-      environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
+      # Repassa o ambiente resolvido acima (dev ou prod)
+      environment: >-
+        ${{ github.event_name == 'workflow_dispatch'
+            && github.event.inputs.environment
+            || (github.ref_name == 'develop' && 'dev' || 'prod') }}
     secrets:
-      # Seleção de secrets por ambiente (manual por input, push por branch)
-      aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
-      aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
-      aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
-      tmdb-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD }}
+      # Cada secret é selecionado pelo ambiente: DEV para develop/dev, PROD para main/prod.
+      # A expressão ternária segue o mesmo padrão: manual → usa input; push → usa branch.
+      aws-assume-role-arn: >-
+        ${{ github.event_name == 'workflow_dispatch'
+            && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD)
+            || (github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) }}
+      aws-statefile-s3-bucket: >-
+        ${{ github.event_name == 'workflow_dispatch'
+            && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD)
+            || (github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) }}
+      aws-lock-dynamodb-table: >-
+        ${{ github.event_name == 'workflow_dispatch'
+            && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD)
+            || (github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) }}
+      tmdb-secret-arn: >-
+        ${{ github.event_name == 'workflow_dispatch'
+            && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD)
+            || (github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) }}
 
-  # 5. Auto PR para Feature: Promove o código de feature/* para develop
+  # ── JOB 3 ──────────────────────────────────────────────────────────────────
+  # Auto PR para Feature: abre um PR de feature/* → develop após os testes passarem.
+  # Evita que o engenheiro precise abrir o PR manualmente no GitHub.
+  # ───────────────────────────────────────────────────────────────────────────
   auto-pr-feature:
     needs: test
     if: |
@@ -58,14 +110,16 @@ jobs:
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
-    permissions: # Permissões extras para criar PR e editar conteúdo
+    permissions:
       contents: write
       pull-requests: write
 
-  # 6. Auto PR para Ambientes: Promove develop -> main
+  # ── JOB 4 ──────────────────────────────────────────────────────────────────
+  # Auto PR para Ambiente: abre um PR de develop → main após o deploy em dev.
+  # Só roda na branch 'develop' (main já é o destino final, não há próxima etapa).
+  # ───────────────────────────────────────────────────────────────────────────
   auto-pr-environment:
-    needs: [terraform] # Só inicia se o terraform indicou que a infraestrutura foi destruída (caso de teste de destroy)
-    # Só roda para develop (main não tem destino posterior para promover)
+    needs: [terraform]
     if: |
       github.ref_name == 'develop' &&
       needs.terraform.result == 'success'

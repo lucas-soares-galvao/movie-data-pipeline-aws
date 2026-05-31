@@ -1,4 +1,12 @@
 # Raciocinio: automatiza abertura e atualizacao de PR para reduzir operacao manual no fluxo de entrega.
+#
+# Regras de promoção de branches (definidas no passo 'Define base branch'):
+#
+#   feature/*  →  develop   (promove funcionalidade desenvolvida para integração)
+#   develop    →  main      (promove versão testada para produção)
+#
+# O PR é criado (ou atualizado se já existir) automaticamente via GitHub CLI (gh).
+# O merge é manual — um engenheiro ainda precisa aprovar e fazer merge no GitHub.
 
 name: Auto PR Pipeline (Reusable)
 
@@ -29,14 +37,15 @@ jobs:
       - name: Define base branch
         id: branch
         run: |
-          # Verifica o prefixo ou nome da branch atual para decidir o próximo passo na esteira
-          if [[ "${GITHUB_REF_NAME}" == feature/* ]]; then
+          # Usa a variável de contexto do GitHub Actions (não a variável de ambiente)
+          # para maior consistência com o restante da pipeline.
+          if [[ "${{ github.ref_name }}" == feature/* ]]; then
             echo "base=develop" >> $GITHUB_OUTPUT    # De Feature para Develop
-          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+          elif [[ "${{ github.ref_name }}" == "develop" ]]; then
             echo "base=main" >> $GITHUB_OUTPUT       # De Develop para Main (Produção)
           else
             # Caso a branch não siga o padrão, a pipeline interrompe para evitar PRs errados
-            echo "Branch não suportada"
+            echo "::error::Branch '${{ github.ref_name }}' não suportada para auto-PR"
             exit 1
           fi
 
@@ -55,7 +64,6 @@ jobs:
       # 5. Gerenciamento do Pull Request via CLI do GitHub (gh)
       - name: Create or Update PR
         run: |
-          # Recupera as variáveis de destino (BASE) e origem (HEAD)
           BASE=${{ steps.branch.outputs.base }}
           HEAD=${{ github.ref_name }}
 
@@ -63,20 +71,36 @@ jobs:
           # O comando busca o número do PR; se não existir, retorna vazio ""
           PR_NUMBER=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
 
+          # Corpo do PR com contexto útil para o revisor
+          PR_BODY=$(cat <<'EOF'
+          ## PR Automático via CI/CD
+
+          | Campo      | Valor                               |
+          |------------|-------------------------------------|
+          | Origem     | `${{ github.ref_name }}`            |
+          | Destino    | `${{ steps.branch.outputs.base }}`  |
+          | Commit     | `${{ github.sha }}`                 |
+          | Autor      | @${{ github.actor }}                |
+          | Workflow   | [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |
+
+          > Todos os quality gates passaram. Revise as mudanças antes de fazer merge.
+          EOF
+          )
+
           if [ -z "$PR_NUMBER" ]; then
             # Se não houver PR aberto, cria um novo
             gh pr create \
               --base "$BASE" \
               --head "$HEAD" \
               --title "Auto PR: $HEAD → $BASE" \
-              --body "PR criado automaticamente via Pipeline CI/CD."
+              --body "$PR_BODY"
           else
             # Se já houver um PR, apenas atualiza o título e a descrição
             # (O código no PR é atualizado automaticamente pelo push do Git)
             gh pr edit "$PR_NUMBER" \
               --title "Auto PR: $HEAD → $BASE" \
-              --body "PR atualizado automaticamente via Pipeline CI/CD."
-            echo "PR já existente: #$PR_NUMBER"
+              --body "$PR_BODY"
+            echo "PR ja existente atualizado: #$PR_NUMBER"
           fi
         env:
           # O GITHUB_TOKEN é gerado automaticamente pelo GitHub para autenticar o comando 'gh'
