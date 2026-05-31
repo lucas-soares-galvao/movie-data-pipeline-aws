@@ -25,6 +25,7 @@ sys.modules.setdefault(
     _make_module("awsglue.utils", getResolvedOptions=None),
 )
 sys.modules.setdefault("awsglue.context", _make_module("awsglue.context", GlueContext=None))
+sys.modules.setdefault("awsglue.dynamicframe", _make_module("awsglue.dynamicframe", DynamicFrame=None))
 
 # stubs do awsgluedq
 sys.modules.setdefault("awsgluedq", _make_module("awsgluedq"))

@@ -14,9 +14,10 @@ import sys
 from typing import Any, Dict
 
 from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import current_timestamp, from_utc_timestamp, lit
+from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit
 
 from src.rulesets_dq import rulesets_dq
 
@@ -171,6 +172,14 @@ def evaluate_data_quality(
         Spark DataFrame com os resultados da avaliação e colunas de contexto.
     """
     logger.info(f"Avaliando qualidade de dados da tabela '{table_name}'...")
+
+    # Para tabelas de discover (particionadas por ano), filtra o DataFrame pelo ano da partição
+    # antes de avaliar. Isso garante que o Glue DQ avalie apenas os dados do ano solicitado,
+    # mesmo que o push_down_predicate do Catalog já tenha filtrado a partição no S3.
+    if year is not None:
+        df_source = dynamic_frame.toDF().filter(col("year") == year)
+        dynamic_frame = DynamicFrame.fromDF(df_source, glue_context, "filtered_frame")
+        logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
 
     # Executa as regras sobre o DynamicFrame e retorna outro DynamicFrame com os resultados
     dq_results = EvaluateDataQuality.apply(
