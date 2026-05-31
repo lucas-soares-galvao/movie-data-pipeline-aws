@@ -40,8 +40,8 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Action = ["secretsmanager:GetSecretValue"]
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
       Resource = var.tmdb_secret_arn
     }]
   })
@@ -60,13 +60,13 @@ resource "aws_iam_policy" "glue_shared_read_code" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:ListBucket"]
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_aux}"]
       },
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_aux}/*"]
       }
     ]
@@ -140,13 +140,13 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
         ]
       },
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sor}/*"]
       },
       {
-        Effect = "Allow"
-        Action = ["s3:PutObject", "s3:DeleteObject"]
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:DeleteObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
       }
     ]
@@ -205,13 +205,13 @@ resource "aws_iam_role_policy" "glue_dq_read_sot" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:ListBucket"]
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}"]
       },
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
       }
     ]
@@ -498,21 +498,21 @@ resource "aws_iam_role_policy" "glue_agg_s3" {
         ]
       },
       {
-        Sid    = "ReadSOTForAthena"
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
+        Sid      = "ReadSOTForAthena"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
       },
       {
-        Sid    = "AthenaTemp"
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Sid      = "AthenaTemp"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/athena/glue_agg/*"]
       },
       {
-        Sid    = "WriteSpec"
-        Effect = "Allow"
-        Action = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
+        Sid      = "WriteSpec"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_spec}/*"]
       }
     ]

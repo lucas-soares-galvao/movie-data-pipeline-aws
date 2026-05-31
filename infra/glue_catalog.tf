@@ -11,8 +11,8 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
@@ -99,8 +99,8 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
@@ -179,8 +179,8 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
@@ -210,8 +210,8 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
@@ -241,8 +241,8 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
@@ -276,8 +276,8 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
@@ -311,8 +311,8 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification     = "parquet"
-    EXTERNAL           = "TRUE"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
 
   }
 
