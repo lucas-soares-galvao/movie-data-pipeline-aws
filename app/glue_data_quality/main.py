@@ -49,6 +49,7 @@ def main() -> None:
     table_name             = args["TABLE_NAME"]
     database               = args["DATABASE"]
     s3_bucket_data_quality = args["S3_BUCKET_DATA_QUALITY"]
+    year                   = args.get("YEAR")  # None para tabelas sem partição (gêneros, config)
 
     logger.info(
         f"Iniciando Data Quality | tabela: '{table_name}' | banco: '{database}'"
@@ -64,7 +65,7 @@ def main() -> None:
 
     # --- 5. Avalia a qualidade dos dados ---
     # Para cada regra do ruleset, o Glue verifica se os dados passam ou falham.
-    df_results = evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name)
+    df_results = evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name, database, year)
 
     # --- 6. Grava o resultado no bucket de Data Quality ---
     # O resultado fica particionado por source_table para facilitar consultas futuras.

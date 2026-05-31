@@ -154,46 +154,49 @@ class TestReadTableFromCatalog:
 # ---------------------------------------------------------------------------
 
 class TestEvaluateDataQuality:
-    def _make_df_chain(self):
+    def _make_chainable_df(self):
         """
-        Cria um Spark DataFrame simulado que suporta o encadeamento:
-          df.withColumn(...).withColumn(...)
-        Retorna os três mocks: df original, df após 1º withColumn, df após 2º withColumn.
+        DataFrame mock onde withColumnRenamed e withColumn retornam o próprio mock.
+        Permite encadear chamadas ilimitadas sem criar um mock por nível.
         """
-        df_final = MagicMock()
-        df_after_source = MagicMock()
-        df_after_source.withColumn.return_value = df_final
+        df_mock = MagicMock()
+        df_mock.withColumnRenamed.return_value = df_mock
+        df_mock.withColumn.return_value = df_mock
+        df_mock.count.return_value = 3
+        return df_mock
 
-        df_original = MagicMock()
-        df_original.withColumn.return_value = df_after_source
-
-        return df_original, df_after_source, df_final
-
-    def _run(self, table_name="tb_genre_movie_tmdb", ruleset='Rules = [\n  RowCount > 0\n]'):
+    def _run(
+        self,
+        table_name="tb_genre_movie_tmdb",
+        ruleset='Rules = [\n  RowCount > 0\n]',
+        database="db_tmdb",
+        year=None,
+    ):
         """Executa evaluate_data_quality com colaboradores simulados e retorna os mocks."""
         glue_context = MagicMock()
         dynamic_frame = MagicMock()
-        df_original, df_after_source, df_final = self._make_df_chain()
+        df_mock = self._make_chainable_df()
 
         dq_result_mock = MagicMock()
-        dq_result_mock.toDF.return_value = df_original
-        df_final.count.return_value = 3
+        dq_result_mock.toDF.return_value = df_mock
 
         with patch("src.utils.EvaluateDataQuality") as mock_edq, \
              patch("src.utils.lit") as mock_lit, \
-             patch("src.utils.current_timestamp") as mock_ts:
+             patch("src.utils.current_timestamp") as mock_ts, \
+             patch("src.utils.from_utc_timestamp") as mock_utc:
             mock_edq.apply.return_value = dq_result_mock
 
-            result = evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name)
+            result = evaluate_data_quality(
+                glue_context, dynamic_frame, ruleset, table_name, database, year
+            )
 
         return {
             "result": result,
-            "df_original": df_original,
-            "df_after_source": df_after_source,
-            "df_final": df_final,
+            "df_mock": df_mock,
             "mock_edq": mock_edq,
             "mock_lit": mock_lit,
             "mock_ts": mock_ts,
+            "mock_utc": mock_utc,
             "dq_result_mock": dq_result_mock,
             "dynamic_frame": dynamic_frame,
         }
@@ -223,28 +226,61 @@ class TestEvaluateDataQuality:
         mocks = self._run()
         mocks["dq_result_mock"].toDF.assert_called_once()
 
-    def test_adds_source_table_column(self):
-        """A primeira withColumn deve criar a coluna source_table com o nome da tabela."""
-        mocks = self._run(table_name="tb_genre_movie_tmdb")
-
-        first_call = mocks["df_original"].withColumn.call_args_list[0]
-        column_name = first_call[0][0]
-        assert column_name == "source_table"
-        mocks["mock_lit"].assert_called_once_with("tb_genre_movie_tmdb")
-
-    def test_adds_evaluated_at_column(self):
-        """A segunda withColumn deve criar a coluna evaluated_at com current_timestamp."""
+    def test_renames_rule_column_to_snake_case(self):
+        """Coluna 'Rule' do Glue DQ deve ser renomeada para 'rule'."""
         mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call("Rule", "rule")
 
-        second_call = mocks["df_after_source"].withColumn.call_args_list[0]
-        column_name = second_call[0][0]
-        assert column_name == "evaluated_at"
+    def test_renames_outcome_column_to_snake_case(self):
+        """Coluna 'Outcome' do Glue DQ deve ser renomeada para 'outcome'."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call("Outcome", "outcome")
+
+    def test_renames_failure_reason_column_to_snake_case(self):
+        """Coluna 'FailureReason' deve ser renomeada para 'failure_reason'.
+        Sem esse rename, o Athena retornaria null em linhas com Outcome=Failed."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call("FailureReason", "failure_reason")
+
+    def test_renames_evaluated_metrics_column_to_snake_case(self):
+        """Coluna 'EvaluatedMetrics' do Glue DQ deve ser renomeada para 'evaluated_metrics'."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call("EvaluatedMetrics", "evaluated_metrics")
+
+    def test_adds_partition_column_with_year(self):
+        """Coluna partition deve ser preenchida com o ano quando fornecido."""
+        mocks = self._run(year="2002")
+        mocks["df_mock"].withColumn.assert_any_call("partition", mocks["mock_lit"].return_value)
+        mocks["mock_lit"].assert_any_call("2002")
+
+    def test_adds_partition_column_none_when_no_year(self):
+        """Coluna partition deve ser None para tabelas sem partição (gêneros, config)."""
+        mocks = self._run(year=None)
+        mocks["mock_lit"].assert_any_call(None)
+
+    def test_adds_datetime_process_column(self):
+        """Coluna datetime_process deve ser adicionada com horário de São Paulo."""
+        mocks = self._run()
+        mocks["df_mock"].withColumn.assert_any_call("datetime_process", mocks["mock_utc"].return_value)
+        mocks["mock_utc"].assert_called_once_with(mocks["mock_ts"].return_value, "America/Sao_Paulo")
         mocks["mock_ts"].assert_called_once()
 
-    def test_returns_dataframe_after_both_withcolumn_calls(self):
-        """O retorno deve ser o DataFrame após os dois withColumn encadeados."""
+    def test_adds_source_database_column(self):
+        """Coluna source_database deve ser adicionada com o nome do banco de dados."""
+        mocks = self._run(database="db_tmdb")
+        mocks["df_mock"].withColumn.assert_any_call("source_database", mocks["mock_lit"].return_value)
+        mocks["mock_lit"].assert_any_call("db_tmdb")
+
+    def test_adds_source_table_column(self):
+        """Coluna source_table deve ser adicionada com o nome da tabela avaliada."""
+        mocks = self._run(table_name="tb_genre_movie_tmdb")
+        mocks["df_mock"].withColumn.assert_any_call("source_table", mocks["mock_lit"].return_value)
+        mocks["mock_lit"].assert_any_call("tb_genre_movie_tmdb")
+
+    def test_returns_dataframe_after_all_transformations(self):
+        """O retorno deve ser o DataFrame após todos os renames e withColumns."""
         mocks = self._run()
-        assert mocks["result"] is mocks["df_final"]
+        assert mocks["result"] is mocks["df_mock"]
 
 
 # ---------------------------------------------------------------------------
