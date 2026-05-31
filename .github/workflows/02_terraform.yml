@@ -23,6 +23,8 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
+      tmdb-secret-arn:
+        required: true
 
 jobs:
   terraform:
@@ -65,7 +67,15 @@ jobs:
           DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
 
-      # 5. Inicializa o Terraform configurando o Backend Remoto dinamicamente
+      # 5. Gera o terraform.tfvars em runtime para não expor ARNs sensíveis no repositório público
+      - name: Generate terraform.tfvars
+        run: |
+          cat > infra/envs/${{ inputs.environment }}/terraform.tfvars <<EOF
+          env             = "${{ inputs.environment }}"
+          tmdb_secret_arn = "${{ secrets.tmdb-secret-arn }}"
+          EOF
+
+      # 6. Inicializa o Terraform configurando o Backend Remoto dinamicamente
       # O bucket, a chave (nome do repo), a região e a tabela de lock (DynamoDB) vêm dos secrets
       - name: Terraform Init
         run: |

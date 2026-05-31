@@ -6,11 +6,6 @@ variable "env" {
   type        = string
 }
 
-variable "account_id" {
-  description = "ID da conta AWS"
-  type        = string
-}
-
 ############## IAM Roles and Policies ##############
 variable "iam_role_glue" {
   description = "Nome da role IAM para jobs Glue"

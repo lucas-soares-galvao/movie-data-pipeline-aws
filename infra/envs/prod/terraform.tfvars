@@ -1,5 +1,6 @@
 # Raciocinio: parametriza o ambiente prod com isolamento e naming proprios de producao.
+# Os valores sensíveis (tmdb_secret_arn) são injetados pelo CI/CD
+# via GitHub Secret AWS_TMDB_SECRET_ARN_PROD e não devem ser commitados.
 
-env = "prod"
-account_id = "216126109924"
-tmdb_secret_arn = "arn:aws:secretsmanager:sa-east-1:216126109924:secret:tmdb_api_key_prod-nSo0db"
+env             = "prod"
+tmdb_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_PROD"
