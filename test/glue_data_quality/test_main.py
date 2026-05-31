@@ -102,14 +102,29 @@ class TestReadTableFromCatalogCall:
     def test_calls_read_table_with_database(self):
         """read_table_from_catalog deve receber o DATABASE dos args."""
         mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
-        _, database, _ = mocks["mock_read"].call_args[0]
+        _, database, _, _ = mocks["mock_read"].call_args[0]
         assert database == "db_tmdb"
 
     def test_calls_read_table_with_table_name(self):
         """read_table_from_catalog deve receber o TABLE_NAME dos args."""
         mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
-        _, _, table_name = mocks["mock_read"].call_args[0]
+        _, _, table_name, _ = mocks["mock_read"].call_args[0]
         assert table_name == "tb_genre_movie_tmdb"
+
+    def test_calls_read_table_with_none_year_when_not_in_args(self):
+        """read_table_from_catalog deve receber year=None quando YEAR não está nos args
+        (tabelas de gênero e configuração não têm partição por ano)."""
+        mocks = _run_main()  # _BASE_ARGS não tem YEAR
+        _, _, _, year = mocks["mock_read"].call_args[0]
+        assert year is None
+
+    def test_calls_read_table_with_year_when_in_args(self):
+        """read_table_from_catalog deve receber o ano para aplicar push_down_predicate
+        e avaliar apenas a partição recém-escrita, não a tabela inteira."""
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb", "YEAR": "2002"}
+        mocks = _run_main(args=args)
+        _, _, _, year = mocks["mock_read"].call_args[0]
+        assert year == "2002"
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +156,25 @@ class TestEvaluateDataQualityCall:
         mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
         table_name_arg = mocks["mock_eval"].call_args[0][3]
         assert table_name_arg == "tb_genre_movie_tmdb"
+
+    def test_calls_evaluate_with_database(self):
+        """evaluate_data_quality deve receber o DATABASE dos args."""
+        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
+        database_arg = mocks["mock_eval"].call_args[0][4]
+        assert database_arg == "db_tmdb"
+
+    def test_calls_evaluate_with_none_year_when_not_in_args(self):
+        """evaluate_data_quality deve receber year=None quando YEAR não está nos args."""
+        mocks = _run_main()  # _BASE_ARGS não tem YEAR
+        year_arg = mocks["mock_eval"].call_args[0][5]
+        assert year_arg is None
+
+    def test_calls_evaluate_with_year_when_in_args(self):
+        """evaluate_data_quality deve receber o ano quando YEAR está nos args."""
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb", "YEAR": "2002"}
+        mocks = _run_main(args=args)
+        year_arg = mocks["mock_eval"].call_args[0][5]
+        assert year_arg == "2002"
 
 
 # ---------------------------------------------------------------------------
