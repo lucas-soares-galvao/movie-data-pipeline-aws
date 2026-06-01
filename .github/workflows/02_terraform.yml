@@ -88,6 +88,14 @@ jobs:
           TMDB_SECRET_ARN: ${{ secrets.tmdb-secret-arn }}
         run: |
           CLEAN_ARN=$(printf '%s' "${TMDB_SECRET_ARN}" | tr -d '\r\n')
+           if ! printf '%s' "${CLEAN_ARN}" | LC_ALL=C grep -Eq '^[ -~]+$'; then
+             echo "tmdb-secret-arn contains non-ASCII or non-printable characters"
+             exit 1
+           fi
+           if ! printf '%s' "${CLEAN_ARN}" | grep -Eq '^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+'; then
+             echo "tmdb-secret-arn is not a valid Secrets Manager ARN"
+             exit 1
+           fi
           cat > infra/envs/${{ inputs.environment }}/terraform.tfvars <<EOF
           env             = "${{ inputs.environment }}"
           tmdb_secret_arn = "${CLEAN_ARN}"
