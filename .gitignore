@@ -25,6 +25,7 @@ htmlcov/
 
 # --- Terraform (Baseado na sua pasta infra/) ---
 .terraform/
+.tfdata-local/
 *.tfstate
 *.tfstate.backup
 *.tfplan
