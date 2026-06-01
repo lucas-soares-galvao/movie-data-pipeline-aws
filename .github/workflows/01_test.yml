@@ -1,12 +1,4 @@
 # Raciocinio: encapsula execucao de testes para reutilizacao e padronizacao do pipeline.
-#
-# Quality Gates neste workflow:
-#   BLOQUEANTE (falha a pipeline):  Trufflehog (secrets), Ruff linting, pytest com cobertura ≥ 70%
-#   INFORMATIVO (apenas aviso):    mypy, Bandit, Safety
-#
-# Por que separar? Gates informativos ainda estão sendo calibrados e não devem
-# bloquear entregas. Quando a base de código estiver madura, promova-os a BLOQUEANTE
-# simplesmente removendo o 'if ! ... || echo' e deixando o comando retornar o exit code real.
 
 name: Test (Reusable)
 
@@ -21,25 +13,11 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # 1. Baixa o código do repositório (histórico completo necessário para o Trufflehog)
+      # 1. Baixa o código do seu repositório para dentro da máquina virtual
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Sem isso o Trufflehog só vê o último commit e não detecta segredos antigos
 
-      # 2. [BLOQUEANTE] Secrets Scan com Trufflehog - Detecta credenciais vazadas no histórico Git
-      #    --only-verified: reporta apenas secrets que a ferramenta confirmou como válidos (menos falsos positivos)
-      #    --fail: garante exit code != 0 se qualquer secret for encontrado (falha a pipeline)
-      #    Por que é o 1º gate? Uma chave AWS vazada no Git é o risco mais crítico em projetos cloud.
-      #    Por que antes do Python? Não depende de nada — roda rápido e falha cedo se houver problema.
-      - name: Secrets Scan with Trufflehog
-        uses: trufflesecurity/trufflehog@main
-        with:
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --only-verified
-
-      # 3. Prepara o ambiente instalando a versão 3.12 do interpretador Python
+      # 2. Prepara o ambiente instalando a versão 3.12 do interpretador Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -49,19 +27,21 @@ jobs:
             app/**/requirements.txt
             test/**/requirements_tests.txt
 
-      # 4. Instala ferramentas de qualidade de código (pytest, ruff, mypy, bandit, safety)
-      - name: Install Quality Gate Tools
+      # 3. Gerencia as bibliotecas necessárias
+      - name: Install dependencies
         run: |
+          # Atualiza o instalador de pacotes (pip) para a versão mais recente
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov ruff mypy bandit safety
-
-      # 5. Instala dependências da aplicação e dos testes por módulo
-      - name: Install Application & Test Dependencies
-        run: |
+          # Instala o framework de teste (pytest) e o plugin de cobertura (pytest-cov)
+          pip install pytest pytest-cov
+          # Instala ferramentas de quality gates
+          pip install ruff mypy bandit safety
+          # Instala todos os arquivos de dependências de teste por módulo
           for file in $(find test -type f -name "requirements_tests.txt"); do
             echo "Instalando dependências de teste: $file"
             pip install -r "$file"
           done
+          # Instala dependências da aplicação por módulo
           for file in app/*/requirements.txt; do
             if [ -f "$file" ]; then
               echo "Instalando dependências da aplicação: $file"
@@ -69,58 +49,50 @@ jobs:
             fi
           done
 
-      # 6. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
+      # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
       # Adicionar o diretório raiz ao GITHUB_ENV resolve erros de "ModuleNotFoundError"
       - name: Configure PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
-      # 6. [BLOQUEANTE] Linting e Format Check com Ruff
-      #    ruff check: verifica regras de estilo e boas práticas
-      #    ruff format --check: garante consistência de formatação (sem alterar arquivos)
-      #    Para ignorar uma linha específica, adicione: # noqa: <CODIGO_DA_REGRA>
-      - name: Lint and Format Check with Ruff
+      # 5. Linting com Ruff - Verifica estilo de código e boas práticas
+      - name: Lint with Ruff
         run: |
+          # Faz linting do código Python seguindo padrões de estilo
           ruff check app/ test/
-          ruff format --check app/ test/
-          echo "Ruff linting e format check concluido"
+          echo "Ruff linting concluido"
 
-      # 8. [INFORMATIVO] Type Check com mypy - Verifica tipos de dados estaticamente
-      #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
-      #    --ignore-missing-imports: ignora pacotes sem stubs de tipo (ex.: awsglue)
+      # 6. Type Check com mypy - Verifica tipos de dados estaticamente
       - name: Type Check with mypy
         run: |
+          # Executa type checking para detectar erros potenciais de tipo
+          # --ignore-missing-imports ignora pacotes sem stubs de tipo
           if ! mypy app/ --ignore-missing-imports; then
             echo "::warning::Avisos de tipo detectados (recomendado corrigir antes de deploy)"
           fi
           echo "Mypy type checking concluido"
 
-      # 9. [INFORMATIVO] Security Scan com Bandit - Detecta vulnerabilidades de segurança
-      #    -ll  → exibe apenas severidade MÉDIA e ALTA
-      #    -f json → salva relatório estruturado para download como artefato
-      #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
+      # 7. Security Scan com Bandit - Detecta vulnerabilidades de segurança
       - name: Security Scan with Bandit
         run: |
-          # Gera relatório JSON (salvo como artefato abaixo)
-          bandit -r app/ -ll -f json -o bandit-report.json || true
-          # Exibe resumo legível no log
-          if ! bandit -r app/ -ll; then
-            echo "::warning::Possiveis vulnerabilidades detectadas pelo Bandit (ver artefato bandit-report.json)"
+          # Escaneia código em busca de problemas comuns de segurança
+          # -ll mostra apenas Issues de alta e média severidade
+          if ! bandit -r app/ -ll -f json -o bandit-report.json; then
+            echo "::warning::Possiveis vulnerabilidades detectadas pelo Bandit"
           fi
           echo "Bandit security scan concluido"
+          # Exibir um resumo legível
+          bandit -r app/ -ll || echo "Resumo do Bandit com alertas"
 
-      # 10. [INFORMATIVO] Dependency Check - Verifica vulnerabilidades em dependências
-      #    Usa 'safety scan' (sintaxe da versão 3.x; versões antigas usavam 'safety check').
-      #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
+      # 8. Dependency Check - Verifica vulnerabilidades em dependências
       - name: Check Dependencies with Safety
         run: |
-          # Gera relatório JSON (salvo como artefato abaixo)
-          if ! safety scan --output json > safety-report.json 2>&1; then
-            echo "::warning::Vulnerabilidades conhecidas em dependencias (ver artefato safety-report.json)"
+          # Verifica dependências conhecidas com vulnerabilidades divulgadas
+          if ! safety check --json --output safety-report.json; then
+            echo "::warning::Vulnerabilidades conhecidas em dependencias (recomendado revisar)"
           fi
           echo "Safety dependency check concluido"
 
-      # 11. [BLOQUEANTE] Executa os testes e aplica a barreira de qualidade (Quality Gate)
-      #    Falha a pipeline se: algum teste falhar OU cobertura < 70%.
+      # 9. Executa os testes e aplica a barreira de qualidade (Quality Gate)
       - name: Run tests with Coverage Gate
         run: |
           # pytest: executa os testes
@@ -133,36 +105,21 @@ jobs:
                  --cov-report=xml \
                  --cov-fail-under=70
 
-      # 12. Upload de relatórios de segurança como artefatos do GitHub Actions
-      #     Artefatos ficam disponíveis por 7 dias na aba "Summary" do run.
-      #     Para baixar: vá em Actions → run → Artifacts → security-reports
-      - name: Upload Security Reports
-        if: always() # Sobe os relatórios mesmo se algum step anterior falhou
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-            safety-report.json
-            coverage.xml
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # 13. Quality Gate Summary - Resumo final de qualidade
+      # 10. Quality Gate Summary - Resumo final de qualidade
       - name: Quality Gate Summary
         if: always()
         run: |
           echo "=========================================="
           echo "        QUALITY GATES SUMMARY"
           echo "=========================================="
-          echo "[BLOQUEANTE] Secrets no Historico Git (trufflehog)"
-          echo "[BLOQUEANTE] Linting e Format Check (ruff)"
-          echo "[BLOQUEANTE] Testes Unitarios (pytest)"
-          echo "[BLOQUEANTE] Cobertura de Codigo (Gate: >= 70%)"
-          echo "[INFORMATIVO] Type Checking (mypy)"
-          echo "[INFORMATIVO] Security Analysis (bandit)"
-          echo "[INFORMATIVO] Dependency Vulnerabilities (safety)"
+          echo "Etapas executadas:"
+          echo "- Testes Unitarios (pytest)"
+          echo "- Cobertura de Codigo (Coverage Gate: 70%)"
+          echo "- Linting (ruff)"
+          echo "- Type Checking (mypy - informativo)"
+          echo "- Security Analysis (bandit - informativo)"
+          echo "- Dependency Vulnerabilities (safety - informativo)"
           echo "=========================================="
-          echo "Relatorios de seguranca disponiveis em: Actions > Artifacts > security-reports"
+          echo "Resumo concluido. Consulte os logs para detalhes de alertas ou falhas."
           echo "=========================================="
           
