@@ -20,6 +20,11 @@ variable "iam_role_lambda" {
 }
 
 ############# ALARMS VARIABLES ##############
+variable "glue_agg_notification_email" {
+  description = "E-mail para receber notificacoes de execucao do Glue AGG"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
 variable "glue_data_quality_notification_email" {
   description = "E-mail para receber notificações de execução do Glue Data Quality"
   type        = string
@@ -132,12 +137,6 @@ variable "glue_agg_job_name" {
   description = "Nome do job Glue AGG a ser criado por ambiente"
   type        = string
   default     = "glue-agg"
-}
-
-variable "glue_agg_notification_email" {
-  description = "E-mail para receber notificacoes de execucao do Glue AGG"
-  type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 
 variable "glue_agg_spec_table_name" {

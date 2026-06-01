@@ -165,7 +165,18 @@ jobs:
           cd infra
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
 
-      # 13. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
+      # 13. Pré-build do pacote Lambda: cria infra/.lambda_build/ antes do plan
+      # O data.archive_file.lambda_bundle lê esse diretório durante o plan; sem ele o plan falha.
+      # O null_resource.lambda_build repete o build no apply se os hashes mudarem (idempotente).
+      - name: Build Lambda package
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          python infra/scripts/build_lambda_package.py \
+            --src app/lambda_api \
+            --requirements app/lambda_api/requirements.txt \
+            --dest infra/.lambda_build
+
+      # 14. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
       # Salva o resultado em arquivo binário (.plan) para o Apply E em texto puro (/tmp/tfplan.txt)
       # para o comentário no PR e para o Infracost.
       - name: Terraform Plan
@@ -179,7 +190,7 @@ jobs:
             -out="${{ inputs.environment }}.plan" \
             -no-color 2>&1 | tee /tmp/tfplan.txt
 
-      # 14. Posta o resultado do Plan como comentário no PR (se houver PR aberto para esta branch)
+      # 15. Posta o resultado do Plan como comentário no PR (se houver PR aberto para esta branch)
       #     O revisor vê exatamente o que será criado/modificado/destruído na AWS sem rodar nada localmente.
       #     Se não houver PR aberto, o step é ignorado sem erro.
       - name: Post Plan as PR Comment
@@ -241,7 +252,7 @@ jobs:
               console.log(`Comentário de plan criado no PR #${prNumber}`);
             }
 
-      # 15. [INFORMATIVO] Estimativa de custo com Infracost
+      # 16. [INFORMATIVO] Estimativa de custo com Infracost
       #     Mostra o delta de custo mensal estimado entre o estado atual e o plan.
       #     continue-on-error: true → não bloqueia o deploy se a API key não estiver configurada.
       #     Para tornar BLOQUEANTE: remova 'continue-on-error: true'.
@@ -261,7 +272,7 @@ jobs:
         env:
           INFRACOST_API_KEY: ${{ secrets.infracost-api-key }}
 
-      # 16. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 17. Execução (Apply): Aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
