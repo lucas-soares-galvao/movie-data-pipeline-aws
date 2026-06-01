@@ -1,7 +1,7 @@
 # Raciocinio: encapsula execucao de testes para reutilizacao e padronizacao do pipeline.
 #
 # Quality Gates neste workflow:
-#   BLOQUEANTE (falha a pipeline):  pytest com cobertura ≥ 70%, Ruff linting
+#   BLOQUEANTE (falha a pipeline):  Trufflehog (secrets), Ruff linting, pytest com cobertura ≥ 70%
 #   INFORMATIVO (apenas aviso):    mypy, Bandit, Safety
 #
 # Por que separar? Gates informativos ainda estão sendo calibrados e não devem
@@ -21,11 +21,25 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # 1. Baixa o código do seu repositório para dentro da máquina virtual
+      # 1. Baixa o código do repositório (histórico completo necessário para o Trufflehog)
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Sem isso o Trufflehog só vê o último commit e não detecta segredos antigos
 
-      # 2. Prepara o ambiente instalando a versão 3.12 do interpretador Python
+      # 2. [BLOQUEANTE] Secrets Scan com Trufflehog - Detecta credenciais vazadas no histórico Git
+      #    --only-verified: reporta apenas secrets que a ferramenta confirmou como válidos (menos falsos positivos)
+      #    --fail: garante exit code != 0 se qualquer secret for encontrado (falha a pipeline)
+      #    Por que é o 1º gate? Uma chave AWS vazada no Git é o risco mais crítico em projetos cloud.
+      #    Por que antes do Python? Não depende de nada — roda rápido e falha cedo se houver problema.
+      - name: Secrets Scan with Trufflehog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified --fail
+
+      # 3. Prepara o ambiente instalando a versão 3.12 do interpretador Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -141,9 +155,10 @@ jobs:
           echo "=========================================="
           echo "        QUALITY GATES SUMMARY"
           echo "=========================================="
+          echo "[BLOQUEANTE] Secrets no Historico Git (trufflehog)"
+          echo "[BLOQUEANTE] Linting (ruff)"
           echo "[BLOQUEANTE] Testes Unitarios (pytest)"
           echo "[BLOQUEANTE] Cobertura de Codigo (Gate: >= 70%)"
-          echo "[BLOQUEANTE] Linting (ruff)"
           echo "[INFORMATIVO] Type Checking (mypy)"
           echo "[INFORMATIVO] Security Analysis (bandit)"
           echo "[INFORMATIVO] Dependency Vulnerabilities (safety)"

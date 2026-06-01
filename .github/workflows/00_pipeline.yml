@@ -40,6 +40,7 @@ permissions:
   id-token: write
   contents: read
   actions: write
+  pull-requests: write  # Necessário para o Terraform postar o Plan como comentário no PR
 
 # ---------------------------------------------------------------------------
 # Variáveis de ambiente reutilizáveis para seleção de secrets por ambiente.
@@ -96,8 +97,9 @@ jobs:
       tmdb-secret-arn: >-
         ${{ github.event_name == 'workflow_dispatch'
             && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD)
-            || (github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) }}
-
+            || (github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) }}      # Infracost API key — cadastro gratuito em https://www.infracost.io
+      # Se não configurado, o step de custo é ignorado (continue-on-error: true no 02_terraform.yml)
+      infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
   # ── JOB 3 ──────────────────────────────────────────────────────────────────
   # Auto PR para Feature: abre um PR de feature/* → develop após os testes passarem.
   # Evita que o engenheiro precise abrir o PR manualmente no GitHub.
