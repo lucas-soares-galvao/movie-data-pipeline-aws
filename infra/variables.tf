@@ -2,8 +2,13 @@
 
 variable "env" {
   # Nome logico do ambiente, usado para nomes e isolamento de recursos.
-  description = "Ambiente do job Glue (ex.: dev, prod)"
+  description = "Ambiente do serviço (ex.: dev, prod)"
   type        = string
+
+  validation {
+    condition     = contains(["dev", "prod"], lower(var.env))
+    error_message = "A variavel env deve ser uma destas opcoes: dev ou prod."
+  }
 }
 
 ############## IAM Roles and Policies ##############
