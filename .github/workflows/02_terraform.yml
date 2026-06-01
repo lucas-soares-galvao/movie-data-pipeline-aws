@@ -84,10 +84,13 @@ jobs:
 
       # 5. Gera o terraform.tfvars em runtime para não expor ARNs sensíveis no repositório público
       - name: Generate terraform.tfvars
+        env:
+          TMDB_SECRET_ARN: ${{ secrets.tmdb-secret-arn }}
         run: |
+          CLEAN_ARN=$(printf '%s' "${TMDB_SECRET_ARN}" | tr -d '\r\n')
           cat > infra/envs/${{ inputs.environment }}/terraform.tfvars <<EOF
           env             = "${{ inputs.environment }}"
-          tmdb_secret_arn = "${{ secrets.tmdb-secret-arn }}"
+          tmdb_secret_arn = "${CLEAN_ARN}"
           EOF
 
       # 6. Inicializa o Terraform configurando o Backend Remoto dinamicamente
