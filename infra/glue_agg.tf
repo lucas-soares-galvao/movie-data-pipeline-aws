@@ -88,8 +88,6 @@ resource "aws_s3_object" "deploy_app_bundle_agg" {
 # ---------------------------------------------------------------------------
 # Trigger CONDITIONAL — dispara o Glue AGG somente apos o Glue ETL SUCCEEDED.
 # Isso garante que os dados do SOT estejam completos antes da agregacao no SPEC.
-# Anteriormente usava SCHEDULED (cron fixo), o que criava risco de o AGG rodar
-# com dados incompletos se o ETL atrasasse.
 # ---------------------------------------------------------------------------
 resource "aws_glue_trigger" "glue_agg_after_etl" {
   name    = "glue-agg-after-etl-${var.env}"
