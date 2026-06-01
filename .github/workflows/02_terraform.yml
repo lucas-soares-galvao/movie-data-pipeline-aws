@@ -25,6 +25,8 @@ on:
         required: true
       aws-tmdb-secret-arn:
         required: true
+      infracost-api-key:
+        required: true
 
 jobs:
   terraform:
@@ -159,7 +161,41 @@ jobs:
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
             -out="${{ inputs.environment }}.plan"
 
-      # 12. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 12. Infracost - Estimativa de custo da infraestrutura
+      # Converte o plan binário para JSON (Infracost não suporta .plan binário),
+      # gera o breakdown e escreve no Step Summary (visível em push e PR).
+      - name: Setup Infracost
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.infracost-api-key }}
+
+      - name: Generate Terraform Plan JSON
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: cd infra && terraform show -json ${{ inputs.environment }}.plan > /tmp/plan.json
+
+      - name: Infracost Breakdown
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          infracost breakdown \
+            --path /tmp/plan.json \
+            --format json \
+            --out-file /tmp/infracost.json
+
+          echo "## Estimativa de Custo (Infracost) — ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          infracost output --path /tmp/infracost.json --format table >> $GITHUB_STEP_SUMMARY
+
+      - name: Infracost PR Comment
+        if: steps.read-destroy-config.outputs.destroy != 'true' && github.event_name == 'pull_request'
+        run: |
+          infracost comment github \
+            --path /tmp/infracost.json \
+            --repo ${{ github.repository }} \
+            --github-token ${{ github.token }} \
+            --pull-request ${{ github.event.pull_request.number }} \
+            --behavior update
+
+      # 13. Execução (Apply): Aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
