@@ -43,6 +43,7 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     # Outputs do job: Passa para o pipeline principal se a infraestrutura foi destruída ou não (usado para condicional de deploy da app)
     outputs:
@@ -103,19 +104,19 @@ jobs:
       - name: Terraform Validate
         run: cd infra && terraform validate
 
-      # 8. TFLint - Linting para Terraform (detecção de má prática e erros potenciais)
-      - name: Setup and Run TFLint
+      # 8. TFLint - Setup via action oficial (versão pinada para estabilidade)
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.55.0
+
+      # 9. TFLint - Execução (detecção de má prática e erros potenciais)
+      - name: Run TFLint
         run: |
-          # Instala TFLint
-          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
-          
-          # Inicializa TFLint com configurações padrão
           cd infra
           tflint --init
-          
-          # Executa TFLint com formato legível
-          echo "🔍 Executando TFLint para validações de boas práticas..."
-          tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
+          echo "Executando TFLint para validacoes de boas praticas..."
+          tflint --format compact || echo "Avisos de TFLint detectados (verificar antes de deploy)"
 
       # 9. [BLOQUEANTE] Format Check - Verifica se o código está formatado corretamente
       #    Falha a pipeline se houver arquivos fora do padrão.
