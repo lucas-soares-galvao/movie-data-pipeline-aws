@@ -12,7 +12,7 @@ terraform {
     # Provider AWS: gerencia todos os recursos na nuvem Amazon.
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
 
     # Provider Archive: cria arquivos .zip dos codigos Python para deploy.
