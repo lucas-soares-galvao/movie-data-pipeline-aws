@@ -35,6 +35,10 @@ on:
         required: true
       tmdb-secret-arn:
         required: true
+      # Infracost API key — cadastro gratuito em https://www.infracost.io
+      # Se não configurado, o step de estimativa de custo é ignorado (continue-on-error: true)
+      infracost-api-key:
+        required: false
 
 jobs:
   terraform:
@@ -158,19 +162,105 @@ jobs:
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
 
       # 13. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
-      # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
+      # Salva o resultado em arquivo binário (.plan) para o Apply E em texto puro (/tmp/tfplan.txt)
+      # para o comentário no PR e para o Infracost.
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-plan
         run: |
           cd infra
-          terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
+          # -no-color: remove códigos ANSI de cor para o texto no PR ficar legível
+          # tee: imprime no terminal E salva no arquivo ao mesmo tempo
+          terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
+            -out="${{ inputs.environment }}.plan" \
+            -no-color 2>&1 | tee /tmp/tfplan.txt
 
-      # 14. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 14. Posta o resultado do Plan como comentário no PR (se houver PR aberto para esta branch)
+      #     O revisor vê exatamente o que será criado/modificado/destruído na AWS sem rodar nada localmente.
+      #     Se não houver PR aberto, o step é ignorado sem erro.
+      - name: Post Plan as PR Comment
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const fullPlan = fs.readFileSync('/tmp/tfplan.txt', 'utf8');
+
+            // Trunca se ultrapassar o limite de ~65k caracteres de um comentário no GitHub
+            const maxLen = 60000;
+            const plan = fullPlan.length > maxLen
+              ? fullPlan.substring(0, maxLen) + '\n\n... (saída truncada — ver log completo em Actions)'
+              : fullPlan;
+
+            // Busca PRs abertos para esta branch
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
+              state: 'open'
+            });
+
+            if (prs.length === 0) {
+              console.log('Nenhum PR aberto para esta branch. Comentário de plan não será postado.');
+              return;
+            }
+
+            const prNumber = prs[0].number;
+            // Marcador HTML invisível para localizar e atualizar o comentário em runs futuros
+            const marker = '<!-- terraform-plan-comment -->';
+            const body = `${marker}\n### Terraform Plan — ambiente: \`${{ inputs.environment }}\`\n\n<details>\n<summary>Clique para ver o plano completo</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
+
+            // Se já existe um comentário de plan neste PR, atualiza em vez de criar novo
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+              console.log(`Comentário de plan atualizado no PR #${prNumber}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body
+              });
+              console.log(`Comentário de plan criado no PR #${prNumber}`);
+            }
+
+      # 15. [INFORMATIVO] Estimativa de custo com Infracost
+      #     Mostra o delta de custo mensal estimado entre o estado atual e o plan.
+      #     continue-on-error: true → não bloqueia o deploy se a API key não estiver configurada.
+      #     Para tornar BLOQUEANTE: remova 'continue-on-error: true'.
+      - name: Infracost Cost Estimate
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        continue-on-error: true
+        run: |
+          # Instala o CLI do Infracost
+          curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+
+          # Converte o plano binário para JSON (formato aceito pelo Infracost)
+          # Isso evita re-executar o terraform plan (mais rápido e sem custos extras de API AWS)
+          cd infra && terraform show -json "${{ inputs.environment }}.plan" > /tmp/plan.json && cd ..
+
+          # Gera estimativa de custo baseada no plan já executado
+          infracost breakdown --path /tmp/plan.json --format table
+        env:
+          INFRACOST_API_KEY: ${{ secrets.infracost-api-key }}
+
+      # 16. Execução (Apply): Aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
         run: |
           cd infra
           terraform apply "${{ inputs.environment }}.plan"
-          
