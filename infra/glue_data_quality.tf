@@ -23,13 +23,13 @@ resource "aws_glue_job" "data_quality_job" {
   }
 
   default_arguments = {
-    "--job-language"                     = "python"
-    "--extra-py-files"                   = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
-    "--additional-python-modules"        = local.glue_data_quality_additional_python_modules
-    "--custom-logGroup-prefix"           = "/${local.envs.glue_data_quality_job_name}"
-    "--enable-metrics"                   = ""
-    "--S3_BUCKET_DATA_QUALITY"           = local.envs.s3_bucket_data_quality
-    "--ENVIRONMENT"                      = var.env
+    "--job-language"              = "python"
+    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
+    "--additional-python-modules" = local.glue_data_quality_additional_python_modules
+    "--custom-logGroup-prefix"    = "/${local.envs.glue_data_quality_job_name}"
+    "--enable-metrics"            = ""
+    "--S3_BUCKET_DATA_QUALITY"    = local.envs.s3_bucket_data_quality
+    "--ENVIRONMENT"               = var.env
   }
 
 
@@ -52,10 +52,10 @@ resource "aws_glue_job" "data_quality_job" {
 
 # Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
-  bucket = aws_s3_bucket.auxiliary_bucket.id
-  key    = "${local.envs.glue_data_quality_job_name}/app/main.py"
-  source = "${local.glue_data_quality_src_path}/main.py"
-  etag   = filemd5("${local.glue_data_quality_src_path}/main.py")
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.envs.glue_data_quality_job_name}/app/main.py"
+  source     = "${local.glue_data_quality_src_path}/main.py"
+  etag       = filemd5("${local.glue_data_quality_src_path}/main.py")
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
@@ -70,9 +70,9 @@ data "archive_file" "glue_app_bundle_data_quality" {
 
 # Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_bundle_data_quality" {
-  bucket = aws_s3_bucket.auxiliary_bucket.id
-  key    = "${local.envs.glue_data_quality_job_name}/app_bundle.zip"
-  source = data.archive_file.glue_app_bundle_data_quality.output_path
-  etag   = data.archive_file.glue_app_bundle_data_quality.output_md5
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.envs.glue_data_quality_job_name}/app_bundle.zip"
+  source     = data.archive_file.glue_app_bundle_data_quality.output_path
+  etag       = data.archive_file.glue_app_bundle_data_quality.output_md5
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }

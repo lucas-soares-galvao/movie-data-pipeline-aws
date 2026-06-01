@@ -1,325 +1,553 @@
-"""Raciocinio: cobre utilitarios DQ e cenarios de escrita/filtro para garantir comportamento esperado."""
+"""Testes unitários para app/glue_data_quality/src/utils.py."""
 
-from unittest.mock import patch
-import unittest
-from app.glue_data_quality.src.utils import (
-    build_push_down_predicate,
-    build_ruleset,
-    parse_args,
-    read_catalog_table,
-    register_partition,
-    rules_list_to_dqdl,
-    run_data_quality,
-    write_results,
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from src.utils import (
+    evaluate_data_quality,
+    get_parameters_glue,
+    get_ruleset,
+    read_table_from_catalog,
+    write_results_to_s3,
 )
 
 
-class TestParseArgs(unittest.TestCase):
-    def test_parse_args_with_optional_partition_values(self):
-        def fake_get_resolved_options(argv, keys):
-            return {key: f"val_{key.lower()}" for key in keys}
-
-        argv = [
-            "script.py",
-            "--DATABASE",
-            "db",
-            "--TABLE",
-            "tb",
-            "--S3_BUCKET_DATA_QUALITY",
-            "bucket",
-            "--PARTITION_VALUES",
-            "year=2025",
-        ]
-
-        with patch("app.glue_data_quality.src.utils.getResolvedOptions", fake_get_resolved_options):
-            args = parse_args(argv)
-
-        self.assertIn("PARTITION_VALUES", args)
-        self.assertEqual(args["DATABASE"], "val_database")
-
-    def test_parse_args_without_optional_partitions(self):
-        captured = {}
-
-        def _fake_get_resolved_options(argv, keys):
-            captured["keys"] = keys
-            return {key: f"val_{key.lower()}" for key in keys}
-
-        argv = [
-            "script.py",
-            "--DATABASE",
-            "db",
-            "--TABLE",
-            "tb",
-            "--S3_BUCKET_DATA_QUALITY",
-            "bucket",
-        ]
-
-        with patch("app.glue_data_quality.src.utils.getResolvedOptions", _fake_get_resolved_options):
-            parse_args(argv)
-
-        self.assertNotIn("PARTITION_VALUES", captured["keys"])
+# ---------------------------------------------------------------------------
+# get_parameters_glue
+# ---------------------------------------------------------------------------
 
 
-class TestHelperFunctions(unittest.TestCase):
-    def test_build_ruleset_with_known_table(self):
-        dqdl = build_ruleset("tb_configuration_countries_tmdb")
-        self.assertIn('IsComplete "iso_3166_1"', dqdl)
+class TestGetParametersGlue:
+    # Argumentos que o Glue sempre envia
+    _REQUIRED = {
+        "TABLE_NAME": "tb_genre_movie_tmdb",
+        "DATABASE": "db_tmdb",
+        "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
+        "ENVIRONMENT": "dev",
+    }
 
-    def test_build_ruleset_with_unknown_table(self):
-        dqdl = build_ruleset("unknown_table")
-        self.assertEqual(dqdl, 'Rules = [\n    RowCount > 0\n]')
-
-    def test_read_catalog_table(self):
-        class _FakeCatalog:
-            def from_catalog(self, database, table_name, **kwargs):
-                return {"database": database, "table": table_name, **kwargs}
-
-        class _FakeDynamicFrame:
-            def __init__(self):
-                self.from_catalog = _FakeCatalog().from_catalog
-
-        class _FakeGlueContext:
-            def __init__(self):
-                self.create_dynamic_frame = _FakeDynamicFrame()
-
-        result = read_catalog_table(_FakeGlueContext(), "db", "tb")
-        self.assertEqual(result, {"database": "db", "table": "tb"})
-
-    def test_read_catalog_table_with_predicate(self):
-        class _FakeCatalog:
-            def from_catalog(self, database, table_name, **kwargs):
-                return {"database": database, "table": table_name, **kwargs}
-
-        class _FakeDynamicFrame:
-            def __init__(self):
-                self.from_catalog = _FakeCatalog().from_catalog
-
-        class _FakeGlueContext:
-            def __init__(self):
-                self.create_dynamic_frame = _FakeDynamicFrame()
-
-        result = read_catalog_table(_FakeGlueContext(), "db", "tb", push_down_predicate="year = '2025'")
-        self.assertEqual(result["push_down_predicate"], "year = '2025'")
-
-    def test_build_push_down_predicate(self):
-        self.assertEqual(build_push_down_predicate("year=2025"), "year = '2025'")
-        self.assertIsNone(build_push_down_predicate(""))
-        self.assertIsNone(build_push_down_predicate(None))
-        self.assertIsNone(build_push_down_predicate("invalidsemigual"))
-
-    def test_run_data_quality_calls_apply(self):
-        class _FakeEvaluateDataQuality:
-            @staticmethod
-            def apply(**kwargs):
-                return kwargs
-
-        with patch("app.glue_data_quality.src.utils.EvaluateDataQuality", _FakeEvaluateDataQuality):
-            result = run_data_quality(
-                datasource="frame",
-                ruleset="Rules = []",
-            )
-
-        self.assertEqual(result["frame"], "frame")
-        self.assertEqual(result["ruleset"], "Rules = []")
-        self.assertIn("publishing_options", result)
-
-    def test_write_results_writes_to_expected_path(self):
-        class _FakeLitValue:
-            def __init__(self, value):
-                self.value = value
-
-            def __sub__(self, _):
-                return _FakeLitValue(self.value)
-
-        class _FakeWriter:
-            def __init__(self):
-                self.mode_value = None
-                self.partition_by = None
-                self.path_value = None
-
-            def mode(self, value):
-                self.mode_value = value
-                return self
-
-            def parquet(self, value):
-                self.path_value = value
-
-            def partitionBy(self, value):
-                self.partition_by = value
-                return self
-
-        class _FakeDataFrame:
-            def __init__(self):
-                self.write = _FakeWriter()
-                self.columns = []
-
-            def drop(self, *_):
-                return self
-
-            def withColumn(self, name, value):
-                self.columns.append((name, value.value))
-                return self
-
-        fake_df = _FakeDataFrame()
+    def test_returns_required_args(self):
+        """Os quatro argumentos obrigatórios devem estar no retorno."""
         with patch(
-            "app.glue_data_quality.src.utils.lit",
-            lambda value: _FakeLitValue(value),
-        ), patch(
-            "app.glue_data_quality.src.utils.current_timestamp",
-            lambda: _FakeLitValue("__now__"),
-        ), patch(
-            "app.glue_data_quality.src.utils.from_utc_timestamp",
-            lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}"),
-        ), patch(
-            "app.glue_data_quality.src.utils.coalesce",
-            lambda x, y: y,  # Retorna o segundo argumento (string vazia) como fallback
+            "src.utils.getResolvedOptions",
+            side_effect=[{**self._REQUIRED}, Exception()],
         ):
-            write_results(fake_df, "bucket-dq", "tb_discover_movie_tmdb")
+            result = get_parameters_glue()
 
-        self.assertIn(("source_table", "tb_discover_movie_tmdb"), fake_df.columns)
-        self.assertIn(("source_database", ""), fake_df.columns)
-        self.assertIn(("partition", ""), fake_df.columns)
-        self.assertIn(("failure_reason", ""), fake_df.columns)
-        self.assertIn(("datetime_process", "__now__@America/Sao_Paulo"), fake_df.columns)
-        self.assertEqual(fake_df.write.mode_value, "append")
-        self.assertEqual(fake_df.write.partition_by, "source_table")
-        self.assertEqual(
-            fake_df.write.path_value,
-            "s3://bucket-dq/tmdb/tb_data_quality_tmdb/",
+        assert result["TABLE_NAME"] == "tb_genre_movie_tmdb"
+        assert result["DATABASE"] == "db_tmdb"
+        assert result["S3_BUCKET_DATA_QUALITY"] == "my-dq-bucket"
+        assert result["ENVIRONMENT"] == "dev"
+
+    def test_adds_year_when_available(self):
+        """YEAR deve ser incluído quando o Glue ETL passar o argumento."""
+        year_args = {"YEAR": "2023"}
+        with patch(
+            "src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, year_args]
+        ):
+            result = get_parameters_glue()
+
+        assert result["YEAR"] == "2023"
+
+    def test_omits_year_when_not_provided(self):
+        """YEAR não deve estar no retorno quando o argumento não for enviado."""
+        with patch(
+            "src.utils.getResolvedOptions",
+            side_effect=[{**self._REQUIRED}, Exception("not found")],
+        ):
+            result = get_parameters_glue()
+
+        assert "YEAR" not in result
+
+    def test_does_not_raise_when_year_is_missing(self):
+        """Ausência de YEAR não pode lançar exceção — é argumento opcional."""
+        with patch(
+            "src.utils.getResolvedOptions",
+            side_effect=[{**self._REQUIRED}, Exception()],
+        ):
+            # Não deve lançar nada
+            get_parameters_glue()
+
+
+# ---------------------------------------------------------------------------
+# get_ruleset
+# ---------------------------------------------------------------------------
+
+
+class TestGetRuleset:
+    def test_starts_with_rules_block(self):
+        """O formato DQDL exige que a string comece com 'Rules = ['."""
+        result = get_ruleset("tb_genre_movie_tmdb")
+        assert result.startswith("Rules = [")
+
+    def test_ends_with_closing_bracket(self):
+        """O bloco DQDL deve ser fechado com ']'."""
+        result = get_ruleset("tb_genre_movie_tmdb")
+        assert result.endswith("]")
+
+    def test_contains_all_rules_from_rulesets_dq(self):
+        """Cada regra definida em rulesets_dq deve aparecer na string gerada."""
+        from src.rulesets_dq import rulesets_dq
+
+        rules = rulesets_dq["tb_genre_movie_tmdb"]
+        result = get_ruleset("tb_genre_movie_tmdb")
+
+        for rule in rules:
+            assert rule in result
+
+    def test_raises_key_error_for_unknown_table(self):
+        """Tabela sem regras definidas deve lançar KeyError com nome descritivo."""
+        with pytest.raises(KeyError, match="tb_nao_existe"):
+            get_ruleset("tb_nao_existe")
+
+    def test_rules_separated_by_comma(self):
+        """Quando há mais de uma regra, elas devem ser separadas por vírgula."""
+        from src.rulesets_dq import rulesets_dq
+
+        rules = rulesets_dq["tb_genre_movie_tmdb"]
+        result = get_ruleset("tb_genre_movie_tmdb")
+
+        if len(rules) > 1:
+            assert "," in result
+
+    def test_works_for_all_tables_in_rulesets_dq(self):
+        """get_ruleset deve funcionar para todas as tabelas cadastradas."""
+        from src.rulesets_dq import rulesets_dq
+
+        for table in rulesets_dq:
+            result = get_ruleset(table)
+            assert result.startswith("Rules = [")
+
+
+# ---------------------------------------------------------------------------
+# read_table_from_catalog
+# ---------------------------------------------------------------------------
+
+
+class TestReadTableFromCatalog:
+    def test_calls_from_catalog_with_correct_args(self):
+        """Deve chamar from_catalog passando database e table_name corretos."""
+        glue_context = MagicMock()
+        read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb")
+
+        glue_context.create_dynamic_frame.from_catalog.assert_called_once_with(
+            database="db_tmdb",
+            table_name="tb_genre_movie_tmdb",
         )
 
-    def test_write_results_uses_partition_value(self):
-        class _FakeLitValue:
-            def __init__(self, value):
-                self.value = value
+    def test_returns_dynamic_frame_from_catalog(self):
+        """O retorno deve ser exatamente o DynamicFrame devolvido pelo Glue."""
+        glue_context = MagicMock()
+        expected = MagicMock()
+        glue_context.create_dynamic_frame.from_catalog.return_value = expected
 
-            def __sub__(self, _):
-                return _FakeLitValue(self.value)
+        result = read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb")
 
-        class _FakeWriter:
-            def mode(self, _):
-                return self
+        assert result is expected
 
-            def partitionBy(self, _):
-                return self
+    def test_uses_provided_database_name(self):
+        """O nome do banco de dados passado deve ser repassado ao Catalog."""
+        glue_context = MagicMock()
+        read_table_from_catalog(glue_context, "meu_banco", "tb_genre_movie_tmdb")
 
-            def parquet(self, _):
-                return None
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert kwargs["database"] == "meu_banco"
 
-        class _FakeDataFrame:
-            def __init__(self):
-                self.write = _FakeWriter()
-                self.columns = []
+    def test_uses_provided_table_name(self):
+        """O nome da tabela passado deve ser repassado ao Catalog."""
+        glue_context = MagicMock()
+        read_table_from_catalog(glue_context, "db_tmdb", "tb_discover_movie_tmdb")
 
-            def drop(self, *_):
-                return self
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert kwargs["table_name"] == "tb_discover_movie_tmdb"
 
-            def withColumn(self, name, value):
-                self.columns.append((name, value.value))
-                return self
+    def test_no_push_down_predicate_when_year_is_none(self):
+        """Sem year, push_down_predicate não deve ser passado (tabelas sem partição)."""
+        glue_context = MagicMock()
+        read_table_from_catalog(
+            glue_context, "db_tmdb", "tb_genre_movie_tmdb", year=None
+        )
 
-        fake_df = _FakeDataFrame()
-        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
-               patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")), \
-               patch("app.glue_data_quality.src.utils.from_utc_timestamp", lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}")), \
-               patch("app.glue_data_quality.src.utils.coalesce", lambda x, y: x):
-            write_results(
-                fake_df,
-                "bucket-dq",
-                "tb_discover_movie_tmdb",
-                partition="year=2025",
-                source_database="db_tmdb"
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert "push_down_predicate" not in kwargs
+
+    def test_push_down_predicate_when_year_is_provided(self):
+        """Com year, push_down_predicate deve filtrar apenas a partição informada."""
+        glue_context = MagicMock()
+        read_table_from_catalog(
+            glue_context, "db_tmdb", "tb_discover_movie_tmdb", year="2019"
+        )
+
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert kwargs["push_down_predicate"] == "year = '2019'"
+
+    def test_push_down_predicate_uses_correct_year_value(self):
+        """O predicado deve conter exatamente o ano passado como argumento."""
+        glue_context = MagicMock()
+        read_table_from_catalog(
+            glue_context, "db_tmdb", "tb_discover_tv_tmdb", year="2023"
+        )
+
+        _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
+        assert "2023" in kwargs["push_down_predicate"]
+
+
+# ---------------------------------------------------------------------------
+# evaluate_data_quality
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateDataQuality:
+    def _make_chainable_df(self):
+        """
+        DataFrame mock onde withColumnRenamed e withColumn retornam o próprio mock.
+        Permite encadear chamadas ilimitadas sem criar um mock por nível.
+        """
+        df_mock = MagicMock()
+        df_mock.withColumnRenamed.return_value = df_mock
+        df_mock.withColumn.return_value = df_mock
+        df_mock.drop.return_value = df_mock
+        df_mock.count.return_value = 3
+        return df_mock
+
+    def _run(
+        self,
+        table_name="tb_genre_movie_tmdb",
+        ruleset="Rules = [\n  RowCount > 0\n]",
+        database="db_tmdb",
+        year=None,
+    ):
+        """Executa evaluate_data_quality com colaboradores simulados e retorna os mocks."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+        df_mock = self._make_chainable_df()
+
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with (
+            patch("src.utils.EvaluateDataQuality") as mock_edq,
+            patch("src.utils.DynamicFrame") as mock_dyn,
+            patch("src.utils.col") as mock_col,
+            patch("src.utils.lit") as mock_lit,
+            patch("src.utils.current_timestamp") as mock_ts,
+            patch("src.utils.from_utc_timestamp") as mock_utc,
+        ):
+            mock_edq.apply.return_value = dq_result_mock
+
+            result = evaluate_data_quality(
+                glue_context, dynamic_frame, ruleset, table_name, database, year
             )
 
-        self.assertIn(("partition", "year=2025"), fake_df.columns)
-        self.assertIn(("source_database", "db_tmdb"), fake_df.columns)
+        return {
+            "result": result,
+            "df_mock": df_mock,
+            "mock_edq": mock_edq,
+            "mock_dyn": mock_dyn,
+            "mock_col": mock_col,
+            "mock_lit": mock_lit,
+            "mock_ts": mock_ts,
+            "mock_utc": mock_utc,
+            "dq_result_mock": dq_result_mock,
+            "dynamic_frame": dynamic_frame,
+        }
 
-    def test_write_results_returns_table_root_path(self):
-        class _FakeLitValue:
-            def __init__(self, value):
-                self.value = value
+    def test_calls_evaluate_data_quality_apply_with_frame_and_ruleset(self):
+        """EvaluateDataQuality.apply deve receber o DynamicFrame e o ruleset corretos."""
+        mocks = self._run()
 
-            def __sub__(self, _):
-                return _FakeLitValue(self.value)
+        mocks["mock_edq"].apply.assert_called_once()
+        call_kwargs = mocks["mock_edq"].apply.call_args[1]
+        assert call_kwargs["frame"] is mocks["dynamic_frame"]
+        assert call_kwargs["ruleset"] == "Rules = [\n  RowCount > 0\n]"
 
-        class _FakeWriter:
-            def mode(self, _):
-                return self
+    def test_passes_correct_publishing_options(self):
+        """As opções de publicação devem ativar métricas e resultados no Glue Studio."""
+        mocks = self._run(table_name="tb_genre_movie_tmdb")
 
-            def partitionBy(self, _):
-                return self
+        call_kwargs = mocks["mock_edq"].apply.call_args[1]
+        opts = call_kwargs["publishing_options"]
 
-            def parquet(self, _):
-                return None
+        assert opts["dataQualityEvaluationContext"] == "tb_genre_movie_tmdb"
+        assert opts["enableDataQualityCloudWatchMetrics"] is True
+        assert opts["enableDataQualityResultsPublishing"] is True
 
-        class _FakeDataFrame:
-            def __init__(self):
-                self.write = _FakeWriter()
+    def test_converts_dynamic_frame_to_spark_dataframe(self):
+        """toDF() deve ser chamado para converter DynamicFrame em Spark DataFrame."""
+        mocks = self._run()
+        mocks["dq_result_mock"].toDF.assert_called_once()
 
-            def drop(self, *_):
-                return self
+    def test_renames_rule_column_to_snake_case(self):
+        """Coluna 'Rule' do Glue DQ deve ser renomeada para 'rule'."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call("Rule", "rule")
 
-            def withColumn(self, _, __):
-                return self
+    def test_renames_outcome_column_to_snake_case(self):
+        """Coluna 'Outcome' do Glue DQ deve ser renomeada para 'outcome'."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call("Outcome", "outcome")
 
-        with patch("app.glue_data_quality.src.utils.lit", lambda value: _FakeLitValue(value)), \
-               patch("app.glue_data_quality.src.utils.current_timestamp", lambda: _FakeLitValue("__now__")), \
-             patch("app.glue_data_quality.src.utils.from_utc_timestamp", lambda ts, tz: _FakeLitValue(f"{ts.value}@{tz}")), \
-               patch("app.glue_data_quality.src.utils.coalesce", lambda x, y: y):
-            result = write_results(_FakeDataFrame(), "bucket-dq", "tb_discover_tv_tmdb")
-
-        self.assertEqual(result, "s3://bucket-dq/tmdb/tb_data_quality_tmdb/")
-
-    def test_register_partition_calls_awswrangler(self):
-        class _FakeCatalog:
-            def __init__(self):
-                self.called_with = None
-
-            def add_parquet_partitions(self, **kwargs):
-                self.called_with = kwargs
-
-        class _FakeWr:
-            def __init__(self):
-                self.catalog = _FakeCatalog()
-
-        fake_wr = _FakeWr()
-        table_root_path = "s3://bucket-dq/tmdb/tb_data_quality_tmdb/"
-
-        with patch("app.glue_data_quality.src.utils.wr", fake_wr):
-            register_partition("db_tmdb", "tb_discover_tv_tmdb", table_root_path)
-
-        self.assertEqual(fake_wr.catalog.called_with["database"], "db_tmdb")
-        self.assertEqual(fake_wr.catalog.called_with["table"], "tb_data_quality_tmdb")
-        self.assertEqual(
-            fake_wr.catalog.called_with["partitions_values"],
-            {
-                "s3://bucket-dq/tmdb/tb_data_quality_tmdb/source_table=tb_discover_tv_tmdb/": [
-                    "tb_discover_tv_tmdb"
-                ]
-            },
+    def test_renames_failure_reason_column_to_snake_case(self):
+        """Coluna 'FailureReason' deve ser renomeada para 'failure_reason'.
+        Sem esse rename, o Athena retornaria null em linhas com Outcome=Failed."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call(
+            "FailureReason", "failure_reason"
         )
 
-
-class TestRulesListToDQDL(unittest.TestCase):
-    def test_generates_dqdl_for_nonempty_list(self):
-        rules = [
-            'IsComplete "id"',
-            'IsUnique "id"',
-            'RowCount > 0'
-        ]
-        expected = (
-            'Rules = [\n'
-            '    IsComplete "id",\n'
-            '    IsUnique "id",\n'
-            '    RowCount > 0\n'
-            ']'
+    def test_renames_evaluated_metrics_column_to_snake_case(self):
+        """Coluna 'EvaluatedMetrics' do Glue DQ deve ser renomeada para 'evaluated_metrics'."""
+        mocks = self._run()
+        mocks["df_mock"].withColumnRenamed.assert_any_call(
+            "EvaluatedMetrics", "evaluated_metrics"
         )
-        self.assertEqual(rules_list_to_dqdl(rules), expected)
 
-    def test_generates_minimal_dqdl_for_empty_list(self):
-        expected = 'Rules = [\n    RowCount > 0\n]'
-        self.assertEqual(rules_list_to_dqdl([]), expected)
+    def test_adds_partition_column_with_year(self):
+        """Coluna partition deve ser preenchida com o ano quando fornecido."""
+        mocks = self._run(year="2002")
+        mocks["df_mock"].withColumn.assert_any_call(
+            "partition", mocks["mock_lit"].return_value.cast.return_value
+        )
+        mocks["mock_lit"].assert_any_call("2002")
+
+    def test_adds_partition_column_none_when_no_year(self):
+        """Coluna partition deve ser None para tabelas sem partição (gêneros, config)."""
+        mocks = self._run(year=None)
+        mocks["mock_lit"].assert_any_call(None)
+
+    def test_adds_datetime_process_column(self):
+        """Coluna datetime_process deve ser adicionada com horário de São Paulo."""
+        mocks = self._run()
+        mocks["df_mock"].withColumn.assert_any_call(
+            "datetime_process", mocks["mock_utc"].return_value
+        )
+        mocks["mock_utc"].assert_called_once_with(
+            mocks["mock_ts"].return_value, "America/Sao_Paulo"
+        )
+        mocks["mock_ts"].assert_called_once()
+
+    def test_adds_source_database_column(self):
+        """Coluna source_database deve ser adicionada com o nome do banco de dados."""
+        mocks = self._run(database="db_tmdb")
+        mocks["df_mock"].withColumn.assert_any_call(
+            "source_database", mocks["mock_lit"].return_value
+        )
+        mocks["mock_lit"].assert_any_call("db_tmdb")
+
+    def test_adds_source_table_column(self):
+        """Coluna source_table deve ser adicionada com o nome da tabela avaliada."""
+        mocks = self._run(table_name="tb_genre_movie_tmdb")
+        mocks["df_mock"].withColumn.assert_any_call(
+            "source_table", mocks["mock_lit"].return_value
+        )
+        mocks["mock_lit"].assert_any_call("tb_genre_movie_tmdb")
+
+    def test_returns_dataframe_after_all_transformations(self):
+        """O retorno deve ser o DataFrame após todos os renames e withColumns."""
+        mocks = self._run()
+        assert mocks["result"] is mocks["df_mock"]
+
+    def test_filters_dataframe_by_year_before_evaluate_when_year_provided(self):
+        """Quando year é fornecido, o DynamicFrame é convertido em DataFrame e filtrado
+        por year ANTES de passar ao EvaluateDataQuality, garantindo que apenas os dados
+        da partição solicitada sejam avaliados."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+        df_source = MagicMock()
+        dynamic_frame.toDF.return_value = df_source
+
+        df_mock = self._make_chainable_df()
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with (
+            patch("src.utils.EvaluateDataQuality") as mock_edq,
+            patch("src.utils.DynamicFrame") as mock_dyn,
+            patch("src.utils.col") as mock_col,
+            patch("src.utils.lit"),
+            patch("src.utils.current_timestamp"),
+            patch("src.utils.from_utc_timestamp"),
+        ):
+            mock_edq.apply.return_value = dq_result_mock
+
+            evaluate_data_quality(
+                glue_context,
+                dynamic_frame,
+                "Rules = [\n  RowCount > 0\n]",
+                "tb_discover_movie_tmdb",
+                "db",
+                year="2002",
+            )
+
+        mock_col.assert_any_call("year")  # col("year") construiu a expressão
+        df_source.filter.assert_called_once()  # filter foi chamado no DataFrame
+        # DynamicFrame.fromDF recebe o df filtrado, o glue_context e um nome de frame
+        mock_dyn.fromDF.assert_called_once_with(
+            df_source.filter.return_value, glue_context, "filtered_frame"
+        )
+
+    def test_passes_filtered_dynamic_frame_to_evaluate_when_year_provided(self):
+        """EvaluateDataQuality.apply deve receber o DynamicFrame filtrado (não o original)
+        quando year é fornecido, assegurando que as regras sejam avaliadas apenas
+        nos dados da partição recém-escrita."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+        filtered_dynamic_frame = MagicMock()
+
+        df_mock = self._make_chainable_df()
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with (
+            patch("src.utils.EvaluateDataQuality") as mock_edq,
+            patch("src.utils.DynamicFrame") as mock_dyn,
+            patch("src.utils.col"),
+            patch("src.utils.lit"),
+            patch("src.utils.current_timestamp"),
+            patch("src.utils.from_utc_timestamp"),
+        ):
+            mock_edq.apply.return_value = dq_result_mock
+            mock_dyn.fromDF.return_value = filtered_dynamic_frame
+
+            evaluate_data_quality(
+                glue_context,
+                dynamic_frame,
+                "Rules = [\n  RowCount > 0\n]",
+                "tb_discover_tv_tmdb",
+                "db",
+                year="2023",
+            )
+
+        call_kwargs = mock_edq.apply.call_args[1]
+        assert call_kwargs["frame"] is filtered_dynamic_frame
+
+    def test_does_not_filter_when_year_is_none(self):
+        """Quando year é None (tabelas sem partição por ano), o DynamicFrame original
+        deve ser passado diretamente ao EvaluateDataQuality sem conversão ou filtro."""
+        glue_context = MagicMock()
+        dynamic_frame = MagicMock()
+
+        df_mock = self._make_chainable_df()
+        dq_result_mock = MagicMock()
+        dq_result_mock.toDF.return_value = df_mock
+
+        with (
+            patch("src.utils.EvaluateDataQuality") as mock_edq,
+            patch("src.utils.DynamicFrame") as mock_dyn,
+            patch("src.utils.col") as mock_col,
+            patch("src.utils.lit"),
+            patch("src.utils.current_timestamp"),
+            patch("src.utils.from_utc_timestamp"),
+        ):
+            mock_edq.apply.return_value = dq_result_mock
+
+            evaluate_data_quality(
+                glue_context,
+                dynamic_frame,
+                "Rules = [\n  RowCount > 0\n]",
+                "tb_genre_movie_tmdb",
+                "db",
+                year=None,
+            )
+
+        from unittest.mock import call as mock_call
+
+        assert (
+            mock_call("year") not in mock_col.call_args_list
+        )  # col("year") nunca chamado sem year
+        mock_dyn.fromDF.assert_not_called()
+        call_kwargs = mock_edq.apply.call_args[1]
+        assert call_kwargs["frame"] is dynamic_frame
 
 
-if __name__ == "__main__":
-    unittest.main()
+# ---------------------------------------------------------------------------
+# write_results_to_s3
+# ---------------------------------------------------------------------------
+
+
+class TestWriteResultsToS3:
+    def test_uses_overwrite_mode(self):
+        """O modo 'overwrite' deve ser usado para substituir avaliações anteriores
+        da mesma tabela/partição sem acumular resultados duplicados."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
+
+        df_mock.write.mode.assert_called_once_with("overwrite")
+
+    def test_enables_dynamic_partition_overwrite(self):
+        """O modo dinâmico de overwrite deve ser ativado para que apenas as partições
+        presentes no DataFrame sejam substituídas, preservando as demais."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
+
+        df_mock.sparkSession.conf.set.assert_called_once_with(
+            "spark.sql.sources.partitionOverwriteMode", "dynamic"
+        )
+
+    def test_partitions_by_source_table_when_no_year(self):
+        """Para tabelas sem partição por ano (gênero/config), deve particionar
+        por source_table. A coluna partition ficará null no Parquet."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb", year=None)
+
+        df_mock.write.mode.return_value.partitionBy.assert_called_once_with(
+            "source_table"
+        )
+
+    def test_partitions_only_by_source_table_for_discover(self):
+        """Para tabelas de discover (year fornecido), deve particionar apenas por
+        source_table — a coluna partition fica como dado no Parquet para evitar
+        que o Athena retorne null ao não encontrá-la no Glue Catalog como chave."""
+        df_mock = MagicMock()
+        write_results_to_s3(
+            df_mock, "my-dq-bucket", "tb_discover_movie_tmdb", year="2002"
+        )
+
+        df_mock.write.mode.return_value.partitionBy.assert_called_once_with(
+            "source_table"
+        )
+
+    def test_writes_parquet_to_correct_s3_path(self):
+        """O Parquet deve ser escrito em s3://<bucket>/tmdb/tb_data_quality_tmdb/."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
+
+        parquet_call = df_mock.write.mode.return_value.partitionBy.return_value.parquet
+        parquet_call.assert_called_once_with(
+            "s3://my-dq-bucket/tmdb/tb_data_quality_tmdb/"
+        )
+
+    def test_s3_path_uses_fixed_output_table_name(self):
+        """O nome da tabela de saída deve ser sempre tb_data_quality_tmdb."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "bucket-dq", "tb_discover_tv_tmdb")
+
+        parquet_path = (
+            df_mock.write.mode.return_value.partitionBy.return_value.parquet.call_args[
+                0
+            ][0]
+        )
+        assert "tb_data_quality_tmdb" in parquet_path
+
+    def test_s3_path_uses_bucket_name(self):
+        """O nome do bucket de Data Quality deve aparecer no caminho S3."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "meu-bucket-dq", "tb_genre_tv_tmdb")
+
+        parquet_path = (
+            df_mock.write.mode.return_value.partitionBy.return_value.parquet.call_args[
+                0
+            ][0]
+        )
+        assert "meu-bucket-dq" in parquet_path
+
+    def test_chained_write_operations_are_called_in_order(self):
+        """mode → partitionBy → parquet devem ser chamados nesta ordem."""
+        df_mock = MagicMock()
+        write_results_to_s3(df_mock, "my-dq-bucket", "tb_genre_movie_tmdb")
+
+        # Verifica que o encadeamento completo foi executado
+        after_mode = df_mock.write.mode.return_value
+        after_partition = after_mode.partitionBy.return_value
+        after_partition.parquet.assert_called_once()

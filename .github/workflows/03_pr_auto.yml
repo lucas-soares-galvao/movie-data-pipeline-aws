@@ -6,7 +6,7 @@ name: Auto PR Pipeline (Reusable)
 on:
   workflow_call:
     inputs:
-      # Recebe o nome da branch que disparou a pipeline como entrada
+      # Recebe explicitamente a branch de origem que deve ser promovida
       branch_name:
         required: true
         type: string
@@ -25,14 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Lógica de decisão: define qual será a branch de DESTINO (base) do PR
+      # 2. Define a branch de destino a partir da branch de origem recebida pelo workflow
       - name: Define base branch
         id: branch
         run: |
-          # Verifica o prefixo ou nome da branch atual para decidir o próximo passo na esteira
-          if [[ "${GITHUB_REF_NAME}" == feature/* ]]; then
+          SOURCE_BRANCH="${{ inputs.branch_name }}"
+
+          # Verifica a branch de origem para decidir o próximo passo na esteira
+          if [[ "$SOURCE_BRANCH" == feature/* ]]; then
             echo "base=develop" >> $GITHUB_OUTPUT    # De Feature para Develop
-          elif [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+          elif [[ "$SOURCE_BRANCH" == "develop" ]]; then
             echo "base=main" >> $GITHUB_OUTPUT       # De Develop para Main (Produção)
           else
             # Caso a branch não siga o padrão, a pipeline interrompe para evitar PRs errados
@@ -57,7 +59,7 @@ jobs:
         run: |
           # Recupera as variáveis de destino (BASE) e origem (HEAD)
           BASE=${{ steps.branch.outputs.base }}
-          HEAD=${{ github.ref_name }}
+          HEAD=${{ inputs.branch_name }}
 
           # Verifica se já existe um PR aberto entre essas duas branches
           # O comando busca o número do PR; se não existir, retorna vazio ""

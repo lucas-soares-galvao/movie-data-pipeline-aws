@@ -1,0 +1,5 @@
+# Raciocinio: fixa dependencias de teste do Glue AGG para execucao local isolada.
+
+awswrangler
+pandas
+pytest

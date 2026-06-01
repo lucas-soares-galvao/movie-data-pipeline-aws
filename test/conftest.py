@@ -31,9 +31,9 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
     if app_dir is None:
         return
 
-    # Evict the cached 'src' namespace so the next import picks the right one.
+    # Evict the cached 'src' and 'main' namespaces so the next import picks the right one.
     for key in list(sys.modules.keys()):
-        if key == "src" or key.startswith("src."):
+        if key == "src" or key.startswith("src.") or key == "main":
             del sys.modules[key]
 
     # Promote this suite's app directory to the front of sys.path.
@@ -52,5 +52,41 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
         src_pkg = fq_module.rsplit(".", 1)[0]  # app.X.src
         if src_pkg in sys.modules:
             sys.modules["src"] = sys.modules[src_pkg]
+            # Alias all sub-modules (e.g., src.rulesets_dq) so inline imports work.
+            prefix = src_pkg + "."
+            for key in list(sys.modules.keys()):
+                if key.startswith(prefix):
+                    sys.modules["src." + key[len(prefix) :]] = sys.modules[key]
     except ImportError:
         pass
+
+
+def _apply_suite_aliases(suite: str) -> None:
+    """Re-alias sys.modules src.* entries to the correct suite's modules."""
+    fq_module = _SUITE_TO_SRC_MODULE.get(suite)
+    if not fq_module or fq_module not in sys.modules:
+        return
+
+    sys.modules["src.utils"] = sys.modules[fq_module]
+    src_pkg = fq_module.rsplit(".", 1)[0]  # app.X.src
+    if src_pkg in sys.modules:
+        sys.modules["src"] = sys.modules[src_pkg]
+        prefix = src_pkg + "."
+        for key in list(sys.modules.keys()):
+            if key.startswith(prefix):
+                sys.modules["src." + key[len(prefix) :]] = sys.modules[key]
+
+    app_dir = _SUITE_TO_APP[suite]
+    app_dir_str = str(app_dir)
+    sys.path[:] = [app_dir_str] + [p for p in sys.path if p != app_dir_str]
+
+
+def pytest_runtest_setup(item):
+    """Re-alias src.* to the correct suite modules before each test executes."""
+    try:
+        suite = item.path.relative_to(_TEST_ROOT).parts[0]
+    except (ValueError, IndexError):
+        return
+
+    if suite in _SUITE_TO_SRC_MODULE:
+        _apply_suite_aliases(suite)

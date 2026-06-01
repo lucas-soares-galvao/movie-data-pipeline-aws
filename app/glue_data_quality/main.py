@@ -1,56 +1,82 @@
-"""Raciocinio: entrypoint do Glue Data Quality; le dados alvo, aplica regras e persiste resultados para auditoria."""
+"""
+main.py — Ponto de entrada do job Glue Data Quality.
 
-import sys
+Este arquivo contém apenas a lógica principal do fluxo, em ordem:
+
+  1. Cria o SparkContext e o GlueContext — necessários para ler tabelas do Catalog
+     e executar o motor de avaliação de qualidade.
+  2. Lê os argumentos do job (TABLE_NAME, DATABASE, S3_BUCKET_DATA_QUALITY, ENVIRONMENT).
+  3. Busca as regras de qualidade definidas em rulesets_dq.py para a tabela recebida.
+  4. Lê os dados da tabela diretamente do Glue Catalog.
+  5. Avalia as regras e gera o relatório de qualidade (Passed / Failed por regra).
+  6. Grava o resultado como Parquet no bucket de Data Quality,
+     particionado pela coluna source_table.
+
+Este job é acionado pelo Glue ETL logo após gravar cada tabela no SOT.
+O Glue ETL passa os argumentos --TABLE_NAME, --DATABASE e opcionalmente --YEAR.
+"""
+
+import logging
 
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
+
 from src.utils import (
-    build_push_down_predicate,
-    build_ruleset,
-    parse_args,
-    read_catalog_table,
-    register_partition,
-    run_data_quality,
-    write_results,
+    evaluate_data_quality,
+    get_parameters_glue,
+    get_ruleset,
+    read_table_from_catalog,
+    write_results_to_s3,
 )
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-def main(argv: list[str] | None = None) -> None:
-    """Executa validacao de qualidade e persiste resultados enriquecidos no data lake.
 
-    Raciocinio do fluxo:
-    1) le somente a particao alvo (quando informada) para reduzir custo de leitura;
-    2) aplica ruleset por tabela para manter contrato de qualidade por dominio;
-    3) grava resultado padronizado e registra particao para consulta no Catalog.
-    """
-    argv = argv or sys.argv
-    args = parse_args(argv)
+def main() -> None:
+    """Executa o pipeline de avaliação de qualidade de dados."""
 
+    # --- 1. Cria os contextos do Spark e do Glue ---
+    # SparkContext: ponto de entrada do Spark (motor de processamento distribuído).
+    # GlueContext: adiciona funcionalidades do AWS Glue sobre o Spark, como
+    #              leitura do Glue Catalog e integração com o Data Quality.
+    sc = SparkContext.getOrCreate()
+    glue_context = GlueContext(sc)
+
+    # --- 2. Lê os argumentos do job ---
+    # Os argumentos são passados pelo Glue ETL ao acionar este job.
+    args = get_parameters_glue()
+    table_name = args["TABLE_NAME"]
     database = args["DATABASE"]
-    table = args["TABLE"]
-    partition_values = args.get("PARTITION_VALUES")
-    s3_bucket_dq = args["S3_BUCKET_DATA_QUALITY"]
+    s3_bucket_data_quality = args["S3_BUCKET_DATA_QUALITY"]
+    year = args.get("YEAR")  # None para tabelas sem partição (gêneros, config)
 
-    # Filtragem no Catalog antes da leitura reduz processamento quando o job e disparado por ano.
-    push_down_predicate = build_push_down_predicate(partition_values)
-
-    glue_context = GlueContext(SparkContext.getOrCreate())
-    datasource = read_catalog_table(glue_context, database, table, push_down_predicate=push_down_predicate)
-    # O ruleset e resolvido pelo nome da tabela para aplicar regras especificas de negocio.
-    ruleset = build_ruleset(table)
-
-    dq_results = run_data_quality(datasource=datasource, ruleset=ruleset)
-
-    df_dq_results = dq_results.toDF()
-    df_dq_results.show(truncate=False)
-    table_root_path = write_results(
-        df_dq_results,
-        s3_bucket_dq,
-        table,
-        partition=partition_values,
-        source_database=database
+    logger.info(
+        f"Iniciando Data Quality | tabela: '{table_name}' | banco: '{database}'"
     )
-    register_partition(database, table, table_root_path)
+
+    # --- 3. Busca as regras de qualidade para esta tabela ---
+    # As regras ficam centralizadas em rulesets_dq.py, desacopladas da lógica de execução.
+    ruleset = get_ruleset(table_name)
+
+    # --- 4. Lê os dados da tabela no Glue Catalog ---
+    # O Glue Catalog funciona como um catálogo central de metadados (nome, schema, localização).
+    # Para tabelas de discover (particionadas por ano), filtra apenas a partição recém-escrita
+    # via push_down_predicate, evitando erros de arquivo não encontrado em partições anteriores.
+    dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)
+
+    # --- 5. Avalia a qualidade dos dados ---
+    # Para cada regra do ruleset, o Glue verifica se os dados passam ou falham.
+    df_results = evaluate_data_quality(
+        glue_context, dynamic_frame, ruleset, table_name, database, year
+    )
+
+    # --- 6. Grava o resultado no bucket de Data Quality ---
+    # Para discover: particionado por source_table + partition (ano), sobrescrevendo
+    # apenas aquele ano. Para genre/config: sobrescreve apenas source_table.
+    write_results_to_s3(df_results, s3_bucket_data_quality, table_name, year)
+
+    logger.info("Job Glue Data Quality finalizado com sucesso!")
 
 
 if __name__ == "__main__":

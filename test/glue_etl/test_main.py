@@ -1,150 +1,343 @@
-"""Raciocinio: valida orquestracao do ETL (escopo, argumentos e disparo de Data Quality)."""
+"""Testes de integração para app/glue_etl/main.py."""
 
-import unittest
 from unittest.mock import patch
 
-from app.glue_etl import main
+import pandas as pd
 
+import main as m
 
-DEFAULT_ARGS = {
-    "GLUE_CATALOG_DATABASE": "db_tmdb",
-    "GLUE_CATALOG_TABLE": "movie_sot",
-    "S3_BUCKET_SOR": "bucket-sor",
-    "S3_BUCKET_SOT": "bucket-sot",
-    "GLUE_DATA_QUALITY_JOB_NAME": "glue-data-quality-dev",
+# Argumentos base reutilizados pelos testes (sem TABLE_TYPE nem YEAR —
+# cada classe de teste define os valores que lhe são relevantes).
+_BASE = {
+    "S3_BUCKET_SOR": "my-sor",
+    "S3_BUCKET_SOT": "my-sot",
     "MEDIA_TYPE": "movie",
     "DATABASE": "db_tmdb",
-    "DISCOVER_TABLE": "tb_discover_movie_tmdb",
-    "GENRE_TABLE": "tb_genre_movie_tmdb",
-    "CONFIGURATION_TABLE": "tb_configuration_movie_tmdb",
-    "CONFIGURATION": "languages",
-    "PARTITION_COLUMNS": "year,month",
-    "YEAR": "2023"
-}
-
-STATIC_ARGS = {
-    **DEFAULT_ARGS,
-    "TABLE_SCOPE": "static"
-}
-
-DISCOVER_ARGS = {
-    **DEFAULT_ARGS,
-    "TABLE_SCOPE": "discover"
+    "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "GLUE_AGG_JOB_NAME": "agg-job",
 }
 
 
-class TestGlueEtlMain(unittest.TestCase):
-    def test_calls_glue_data_quality_with_partitions(self):
-        with patch("app.glue_etl.main.resolve_args", return_value=DEFAULT_ARGS), \
-            patch("app.glue_etl.main.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.main.call_glue_data_quality") as mock_call_glue_data_quality:
-            mock_process_tmdb.side_effect = [
-                {"partitions": ["year=2023/month=01", "year=2023/month=02"]},
-                {"partitions": []},
-                {"partitions": []}
-            ]
-            mock_call_glue_data_quality.return_value = {"job_name": "glue-data-quality-dev", "job_run_id": "123"}
+# ---------------------------------------------------------------------------
+# run() com TABLE_TYPE="discover"
+# ---------------------------------------------------------------------------
 
-            main.main([])
 
-            expected_calls = [
-                (
-                    "glue-data-quality-dev",
-                    {
-                        "database": "db_tmdb",
-                        "table": "tb_discover_movie_tmdb",
-                        "partition_values": ["year=2023"]
-                    }
-                ),
-                (
-                    "glue-data-quality-dev",
-                    {
-                        "database": "db_tmdb",
-                        "table": "tb_genre_movie_tmdb",
-                        "partition_values": None
-                    }
-                ),
-                (
-                    "glue-data-quality-dev",
-                    {
-                        "database": "db_tmdb",
-                        "table": "tb_configuration_movie_tmdb",
-                        "partition_values": None
-                    }
-                )
-            ]
-            actual_calls = [(c.args[0], c.kwargs) for c in mock_call_glue_data_quality.call_args_list]
-            self.assertEqual(len(actual_calls), len(expected_calls))
-            for (actual_job, actual_kwargs), (expected_job, expected_kwargs) in zip(actual_calls, expected_calls):
-                self.assertEqual(actual_job, expected_job)
-                self.assertDictEqual(actual_kwargs, expected_kwargs)
+class TestRunDiscover:
+    def _args(self, **overrides):
+        return {
+            **_BASE,
+            "TABLE_TYPE": "discover",
+            "TABLE_NAME": "tb_discover_movie_tmdb",
+            "YEAR": "2023",
+            **overrides,
+        }
 
-    def test_calls_process_tmdb_with_correct_arguments(self):
-        with patch("app.glue_etl.main.resolve_args", return_value=DEFAULT_ARGS), \
-            patch("app.glue_etl.main.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.main.call_glue_data_quality"):
-            mock_process_tmdb.return_value = {"partitions": []}
+    def test_calls_read_from_sor_with_discover_args(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023")
 
-            main.main([])
-
-            expected_calls = [
-                dict(source_path="s3://bucket-sor/tmdb/discover/movie/", destination_path="s3://bucket-sot/tmdb/tb_discover_movie_tmdb/", database="db_tmdb", table="tb_discover_movie_tmdb", partition_columns=["year", "month"], date_column="release_date"),
-                dict(source_path="s3://bucket-sor/tmdb/genre/movie/", destination_path="s3://bucket-sot/tmdb/tb_genre_movie_tmdb/", database="db_tmdb", table="tb_genre_movie_tmdb", partition_columns=[], date_column=None),
-                dict(source_path="s3://bucket-sor/tmdb/configuration/languages/", destination_path="s3://bucket-sot/tmdb/tb_configuration_movie_tmdb/", database="db_tmdb", table="tb_configuration_movie_tmdb", partition_columns=[], date_column=None),
-            ]
-            actual_calls = [call.kwargs for call in mock_process_tmdb.call_args_list]
-            self.assertEqual(actual_calls, expected_calls)
-
-    def test_discovers_scope_processes_only_requested_year(self):
-        with patch("app.glue_etl.main.resolve_args", return_value=DISCOVER_ARGS), \
-            patch("app.glue_etl.main.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.main.call_glue_data_quality") as mock_call_glue_data_quality:
-            mock_process_tmdb.return_value = {"partitions": ["year=2023/month=01"]}
-
-            main.main([])
-
-            mock_process_tmdb.assert_called_once_with(
-                source_path="s3://bucket-sor/tmdb/discover/movie/year=2023/",
-                destination_path="s3://bucket-sot/tmdb/tb_discover_movie_tmdb/",
+    def test_writes_to_discover_table_with_year_partition(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_write.assert_called_once_with(
+                df=df_mock,
+                s3_bucket_sot="my-sot",
+                table_name="tb_discover_movie_tmdb",
                 database="db_tmdb",
-                table="tb_discover_movie_tmdb",
-                partition_columns=["year", "month"],
-                date_column="release_date"
-            )
-            mock_call_glue_data_quality.assert_called_once_with(
-                "glue-data-quality-dev",
-                database="db_tmdb",
-                table="tb_discover_movie_tmdb",
-                partition_values=["year=2023"]
+                partition_cols=["year"],
+                mode="overwrite_partitions",
             )
 
-    def test_static_scope_skips_discover(self):
-        with patch("app.glue_etl.main.resolve_args", return_value=STATIC_ARGS), \
-            patch("app.glue_etl.main.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.main.call_glue_data_quality") as mock_call_glue_data_quality:
-            mock_process_tmdb.return_value = {"partitions": []}
+    def test_tv_media_type_forwarded_to_read_from_sor(self):
+        df_mock = pd.DataFrame([{"id": 10, "year": "2022"}])
+        args = self._args(
+            MEDIA_TYPE="tv", YEAR="2022", TABLE_NAME="tb_discover_tv_tmdb"
+        )
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022")
+            mock_write.assert_called_once_with(
+                df=df_mock,
+                s3_bucket_sot="my-sot",
+                table_name="tb_discover_tv_tmdb",
+                database="db_tmdb",
+                partition_cols=["year"],
+                mode="overwrite_partitions",
+            )
 
-            main.main([])
+    def test_write_is_called_exactly_once(self):
+        df_mock = pd.DataFrame([{"id": 1}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            assert mock_write.call_count == 1
 
-            expected_calls = [
-                dict(source_path="s3://bucket-sor/tmdb/genre/movie/", destination_path="s3://bucket-sot/tmdb/tb_genre_movie_tmdb/", database="db_tmdb", table="tb_genre_movie_tmdb", partition_columns=[], date_column=None),
-                dict(source_path="s3://bucket-sor/tmdb/configuration/languages/", destination_path="s3://bucket-sot/tmdb/tb_configuration_movie_tmdb/", database="db_tmdb", table="tb_configuration_movie_tmdb", partition_columns=[], date_column=None),
-            ]
-            actual_calls = [call.kwargs for call in mock_process_tmdb.call_args_list]
-            self.assertEqual(actual_calls, expected_calls)
-            self.assertEqual(mock_call_glue_data_quality.call_count, 2)
-
-    def test_main_runs_without_exception(self):
-        with patch("app.glue_etl.main.resolve_args", return_value=DEFAULT_ARGS), \
-            patch("app.glue_etl.main.process_tmdb") as mock_process_tmdb, \
-            patch("app.glue_etl.main.call_glue_data_quality"):
-            mock_process_tmdb.return_value = {"partitions": []}
-
-            try:
-                main.main([])
-            except Exception as exc:
-                self.fail(f"main.py raised an unexpected exception: {exc}")
+    def test_triggers_data_quality_with_year(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality") as mock_dq,
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_discover_movie_tmdb",
+                database="db_tmdb",
+                year="2023",
+            )
 
 
-if __name__ == "__main__":
-    unittest.main()
+# ---------------------------------------------------------------------------
+# run() com TABLE_TYPE="genre"
+# ---------------------------------------------------------------------------
+
+
+class TestRunGenre:
+    def _args(self, **overrides):
+        return {
+            **_BASE,
+            "TABLE_TYPE": "genre",
+            "TABLE_NAME": "tb_genre_movie_tmdb",
+            **overrides,
+        }
+
+    def test_calls_read_from_sor_with_genre_args(self):
+        df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_read.assert_called_once_with("my-sor", "movie", "genre", None)
+
+    def test_writes_to_genre_table_without_partition(self):
+        df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_write.assert_called_once_with(
+                df=df_mock,
+                s3_bucket_sot="my-sot",
+                table_name="tb_genre_movie_tmdb",
+                database="db_tmdb",
+                partition_cols=None,
+                mode="overwrite",
+            )
+
+    def test_triggers_data_quality_without_year(self):
+        df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality") as mock_dq,
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_genre_movie_tmdb",
+                database="db_tmdb",
+                year=None,
+            )
+
+
+# ---------------------------------------------------------------------------
+# run() com TABLE_TYPE="configuration"
+# ---------------------------------------------------------------------------
+
+
+class TestRunConfiguration:
+    def _args(self, **overrides):
+        return {
+            **_BASE,
+            "TABLE_TYPE": "configuration",
+            "TABLE_NAME": "tb_configuration_languages_tmdb",
+            **overrides,
+        }
+
+    def test_calls_read_from_sor_with_configuration_args(self):
+        df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_read.assert_called_once_with("my-sor", "movie", "configuration", None)
+
+    def test_writes_to_configuration_table_without_partition(self):
+        df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_write.assert_called_once_with(
+                df=df_mock,
+                s3_bucket_sot="my-sot",
+                table_name="tb_configuration_languages_tmdb",
+                database="db_tmdb",
+                partition_cols=None,
+                mode="overwrite",
+            )
+
+    def test_tv_uses_configuration_countries_table(self):
+        df_mock = pd.DataFrame([{"iso_3166_1": "BR"}])
+        args = self._args(
+            MEDIA_TYPE="tv",
+            TABLE_NAME="tb_configuration_countries_tmdb",
+        )
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_read.assert_called_once_with("my-sor", "tv", "configuration", None)
+            mock_write.assert_called_once_with(
+                df=df_mock,
+                s3_bucket_sot="my-sot",
+                table_name="tb_configuration_countries_tmdb",
+                database="db_tmdb",
+                partition_cols=None,
+                mode="overwrite",
+            )
+
+    def test_triggers_data_quality_without_year(self):
+        df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality") as mock_dq,
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_configuration_languages_tmdb",
+                database="db_tmdb",
+                year=None,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Disparo condicional do Glue AGG
+# ---------------------------------------------------------------------------
+
+
+class TestTriggerAgg:
+    def _discover_args(self, **overrides):
+        return {
+            **_BASE,
+            "TABLE_TYPE": "discover",
+            "TABLE_NAME": "tb_discover_movie_tmdb",
+            "YEAR": "2023",
+            **overrides,
+        }
+
+    def test_agg_triggered_when_media_type_is_tv(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg") as mock_agg,
+        ):
+            m.main()
+            mock_agg.assert_called_once_with(agg_job_name="agg-job")
+
+    def test_agg_not_triggered_when_media_type_is_movie(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        args = self._discover_args(
+            MEDIA_TYPE="movie", TABLE_NAME="tb_discover_movie_tmdb"
+        )
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg") as mock_agg,
+        ):
+            m.main()
+            mock_agg.assert_not_called()
+
+    def test_agg_not_triggered_for_genre_tv(self):
+        # Mesmo com media_type=tv, TABLE_TYPE=genre nao deve acionar o AGG.
+        df_mock = pd.DataFrame([{"id": 28, "name": "Drama"}])
+        args = {
+            **_BASE,
+            "TABLE_TYPE": "genre",
+            "TABLE_NAME": "tb_genre_tv_tmdb",
+            "MEDIA_TYPE": "tv",
+        }
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg") as mock_agg,
+        ):
+            m.main()
+            mock_agg.assert_not_called()
+
+    def test_agg_triggered_exactly_once_for_tv_discover(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg") as mock_agg,
+        ):
+            m.main()
+            assert mock_agg.call_count == 1

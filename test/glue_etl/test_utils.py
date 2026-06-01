@@ -1,98 +1,249 @@
-"""Raciocinio: valida transformacoes e funcoes auxiliares do ETL em cenarios unitarios."""
+"""Testes unitários para app/glue_etl/src/utils.py."""
 
-import unittest
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 
-from app.glue_etl.src.utils import build_source_path, filter_tables_config, process_tmdb
+from src.utils import (
+    read_from_sor,
+    trigger_data_quality,
+    write_parquet_to_sot,
+)
 
 
-class TestProcessTmdb(unittest.TestCase):
-    @patch("app.glue_etl.src.utils.wr")
-    def test_partition_year_month(self, mock_wr):
-        df = self._base_df()
-        mock_wr.s3.read_json.return_value = df
+# ---------------------------------------------------------------------------
+# Helpers compartilhados
+# ---------------------------------------------------------------------------
 
-        result = process_tmdb(
-            source_path="s3://bucket-sor/",
-            destination_path="s3://bucket-sot/",
-            database="db_tmdb",
-            table="movie_sot",
-            partition_columns=["year", "month"],
-            date_column="release_date"
+
+def _make_s3_mock(payload) -> MagicMock:
+    """Cria um cliente S3 simulado que retorna `payload` serializado como JSON."""
+    body = MagicMock()
+    body.read.return_value = json.dumps(payload).encode()
+    s3_mock = MagicMock()
+    s3_mock.get_object.return_value = {"Body": body}
+    return s3_mock
+
+
+# ---------------------------------------------------------------------------
+# read_from_sor — table_type="discover"
+# ---------------------------------------------------------------------------
+
+
+class TestReadFromSorDiscover:
+    def test_calls_wrangler_with_correct_path(self):
+        df_mock = pd.DataFrame(
+            [{"id": 1, "title": "Film A"}, {"id": 2, "title": "Film B"}]
         )
+        with patch("awswrangler.s3.read_json", return_value=df_mock) as mock_read:
+            read_from_sor("my-sor", "movie", "discover", year="2023")
+            mock_read.assert_called_once_with(
+                path="s3://my-sor/tmdb/discover/movie/ano=2023/",
+                orient="records",
+            )
 
-        kwargs = mock_wr.s3.to_parquet.call_args.kwargs
-        self.assertEqual(kwargs["partition_cols"], ["year", "month"])
-        self.assertIn("year", kwargs["df"].columns)
-        self.assertIn("month", kwargs["df"].columns)
-        # Verifica as particoes retornadas
-        self.assertEqual(result["partitions"], ["year=2023/month=01", "year=2023/month=02", "year=2023/month=03"])
+    def test_adds_year_column(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "discover", year="2023")
+            assert "year" in result.columns
+            assert result["year"].iloc[0] == "2023"
 
-    def _base_df(self):
-        return pd.DataFrame({
-            "id": [1, 2, 3],
-            "title": ["Movie 1", "Movie 2", "Movie 3"],
-            "release_date": ["2023-01-01", "2023-02-01", "2023-03-01"]
-        })
+    def test_year_column_value_matches_arg(self):
+        df_mock = pd.DataFrame([{"id": 1}, {"id": 2}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "discover", year="2000")
+            assert (result["year"] == "2000").all()
 
-    @patch("app.glue_etl.src.utils.wr")
-    def test_no_partition_does_not_add_columns(self, mock_wr):
-        df = self._base_df()
-        mock_wr.s3.read_json.return_value = df
+    def test_tv_uses_correct_path(self):
+        df_mock = pd.DataFrame([{"id": 10, "name": "Serie A"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock) as mock_read:
+            read_from_sor("my-sor", "tv", "discover", year="2022")
+            mock_read.assert_called_once_with(
+                path="s3://my-sor/tmdb/discover/tv/ano=2022/",
+                orient="records",
+            )
 
 
+# ---------------------------------------------------------------------------
+# read_from_sor — table_type="genre"
+# ---------------------------------------------------------------------------
 
-        result = process_tmdb(
-            source_path="s3://bucket-sor/",
-            destination_path="s3://bucket-sot/",
-            database="db_tmdb",
-            table="movie_sot",
-            partition_columns=None
-        )
 
-        kwargs = mock_wr.s3.to_parquet.call_args.kwargs
-        self.assertEqual(kwargs["partition_cols"], [])
-        self.assertNotIn("year", kwargs["df"].columns)
-        self.assertNotIn("month", kwargs["df"].columns)
-        # Verifica que as particoes retornadas estao vazias
-        self.assertEqual(result["partitions"], [])
+class TestReadFromSorGenre:
+    def test_movie_reads_correct_s3_key(self):
+        s3_mock = _make_s3_mock([{"id": 28, "name": "Ação"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "movie", "genre")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/genre/movie/generos_filmes.json",
+            )
 
-    @patch("app.glue_etl.src.utils.wr")
-    def test_custom_partition(self, mock_wr):
-        df = self._base_df()
-        df["custom"] = ["A", "B", "C"]  # Simula uma coluna personalizada
-        mock_wr.s3.read_json.return_value = df
+    def test_tv_reads_correct_s3_key(self):
+        s3_mock = _make_s3_mock([{"id": 10759, "name": "Ação & Aventura"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "tv", "genre")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/genre/tv/generos_series.json",
+            )
 
-        process_tmdb(
-            source_path="s3://bucket-sor/",
-            destination_path="s3://bucket-sot/",
-            database="tmdb_dev",
-            table="movie_sot",
-            partition_columns=["custom"],
-            date_column="custom"
-        )
+    def test_returns_dataframe_from_list(self):
+        genres = [{"id": 28, "name": "Ação"}, {"id": 12, "name": "Aventura"}]
+        s3_mock = _make_s3_mock(genres)
+        with patch("boto3.client", return_value=s3_mock):
+            result = read_from_sor("my-sor", "movie", "genre")
+            assert len(result) == 2
+            assert list(result.columns) == ["id", "name"]
+            assert result["id"].tolist() == [28, 12]
 
-        kwargs = mock_wr.s3.to_parquet.call_args.kwargs
-        self.assertEqual(kwargs["partition_cols"], ["custom"])
 
-    def test_build_source_path_uses_year_for_discover(self):
-        result = build_source_path("bucket-sor", "discover", "movie", "languages", year="2024")
+# ---------------------------------------------------------------------------
+# read_from_sor — table_type="configuration"
+# ---------------------------------------------------------------------------
 
-        self.assertEqual(result, "s3://bucket-sor/tmdb/discover/movie/year=2024/")
 
-    def test_filter_tables_config_by_scope(self):
-        configs = [
-            {"path": "discover", "table": "discover_table", "date_column": "release_date"},
-            {"path": "genre", "table": "genre_table", "date_column": None},
-            {"path": "configuration", "table": "config_table", "date_column": None},
-        ]
+class TestReadFromSorConfiguration:
+    def test_movie_reads_languages_s3_key(self):
+        s3_mock = _make_s3_mock([{"iso_639_1": "pt", "english_name": "Portuguese"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "movie", "configuration")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/configuration/languages/idiomas.json",
+            )
 
-        discover_only = filter_tables_config(configs, "discover")
-        static_only = filter_tables_config(configs, "static")
+    def test_tv_reads_countries_s3_key(self):
+        s3_mock = _make_s3_mock([{"iso_3166_1": "BR", "english_name": "Brazil"}])
+        with patch("boto3.client", return_value=s3_mock):
+            read_from_sor("my-sor", "tv", "configuration")
+            s3_mock.get_object.assert_called_once_with(
+                Bucket="my-sor",
+                Key="tmdb/configuration/countries/paises.json",
+            )
 
-        self.assertEqual(discover_only, [configs[0]])
-        self.assertEqual(static_only, configs[1:])
+    def test_returns_dataframe_from_list(self):
+        s3_mock = _make_s3_mock([{"iso_639_1": "pt"}, {"iso_639_1": "en"}])
+        with patch("boto3.client", return_value=s3_mock):
+            result = read_from_sor("my-sor", "movie", "configuration")
+            assert len(result) == 2
+            assert "iso_639_1" in result.columns
 
-if __name__ == "__main__":
-    unittest.main()
+
+# ---------------------------------------------------------------------------
+# write_parquet_to_sot
+# ---------------------------------------------------------------------------
+
+
+class TestWriteParquetToSot:
+    def test_with_partition_cols(self):
+        df = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_discover_movie_tmdb",
+                database="db_tmdb",
+                partition_cols=["year"],
+            )
+            mock_write.assert_called_once_with(
+                df=df,
+                path="s3://my-sot/tmdb/tb_discover_movie_tmdb/",
+                dataset=True,
+                partition_cols=["year"],
+                mode="overwrite_partitions",
+                database="db_tmdb",
+                table="tb_discover_movie_tmdb",
+            )
+
+    def test_without_partition_cols_defaults_to_none(self):
+        df = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_genre_movie_tmdb",
+                database="db_tmdb",
+            )
+            mock_write.assert_called_once_with(
+                df=df,
+                path="s3://my-sot/tmdb/tb_genre_movie_tmdb/",
+                dataset=True,
+                partition_cols=None,
+                mode="overwrite_partitions",
+                database="db_tmdb",
+                table="tb_genre_movie_tmdb",
+            )
+
+    def test_custom_mode_is_forwarded(self):
+        df = pd.DataFrame([{"id": 1}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_test",
+                database="db_tmdb",
+                mode="overwrite",
+            )
+            _, kwargs = mock_write.call_args
+            assert kwargs["mode"] == "overwrite"
+
+    def test_s3_path_uses_table_name(self):
+        df = pd.DataFrame([{"id": 1}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="bucket-sot",
+                table_name="tb_custom",
+                database="db_tmdb",
+            )
+            _, kwargs = mock_write.call_args
+            assert kwargs["path"] == "s3://bucket-sot/tmdb/tb_custom/"
+
+
+# ---------------------------------------------------------------------------
+# trigger_data_quality
+# ---------------------------------------------------------------------------
+
+
+class TestTriggerDataQuality:
+    def _make_glue_mock(self, run_id="run-123") -> MagicMock:
+        glue_mock = MagicMock()
+        glue_mock.start_job_run.return_value = {"JobRunId": run_id}
+        return glue_mock
+
+    def test_calls_start_job_run_with_correct_args(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            glue_mock.start_job_run.assert_called_once_with(
+                JobName="dq-job",
+                Arguments={
+                    "--TABLE_NAME": "tb_genre_movie_tmdb",
+                    "--DATABASE": "db_tmdb",
+                },
+            )
+
+    def test_includes_year_when_provided(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_data_quality(
+                "dq-job", "tb_discover_movie_tmdb", "db_tmdb", year="2023"
+            )
+            _, kwargs = glue_mock.start_job_run.call_args
+            assert kwargs["Arguments"]["--YEAR"] == "2023"
+
+    def test_omits_year_when_not_provided(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            _, kwargs = glue_mock.start_job_run.call_args
+            assert "--YEAR" not in kwargs["Arguments"]
+
+    def test_returns_job_run_id(self):
+        glue_mock = self._make_glue_mock(run_id="run-abc")
+        with patch("boto3.client", return_value=glue_mock):
+            run_id = trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            assert run_id == "run-abc"

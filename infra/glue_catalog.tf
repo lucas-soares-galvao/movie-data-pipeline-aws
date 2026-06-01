@@ -11,9 +11,9 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -90,11 +90,6 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     name = "year"
     type = "string"
   }
-
-  partition_keys {
-    name = "month"
-    type = "string"
-  }
 }
 
 
@@ -104,9 +99,9 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -176,10 +171,6 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
     name = "year"
     type = "string"
   }
-  partition_keys {
-    name = "month"
-    type = "string"
-  }
 }
 
 resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
@@ -188,9 +179,9 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -219,9 +210,9 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -250,9 +241,9 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -285,9 +276,9 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification      = "parquet"
-    EXTERNAL            = "TRUE"
-    has_encrypted_data  = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -308,7 +299,7 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
       type = "string"
     }
     columns {
-      name = "name"
+      name = "native_name"
       type = "string"
     }
   }
@@ -320,9 +311,9 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    classification     = "parquet"
-    EXTERNAL           = "TRUE"
-    has_encrypted_data = "false"
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+
   }
 
   storage_descriptor {
@@ -346,6 +337,11 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
 
     columns {
       name = "failure_reason"
+      type = "string"
+    }
+
+    columns {
+      name = "evaluated_metrics"
       type = "string"
     }
 

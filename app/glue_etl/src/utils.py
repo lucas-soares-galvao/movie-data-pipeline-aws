@@ -1,219 +1,264 @@
-"""Raciocinio: transforma JSON TMDB em Parquet catalogado e aciona Data Quality conforme escopo."""
+"""
+utils.py — Funções auxiliares do job Glue ETL.
 
-import awswrangler as wr
+Responsabilidades:
+  - Ler argumentos do job (obrigatórios e opcionais)
+  - Ler dados do bucket SOR de acordo com o tipo de tabela (table_type)
+  - Escrever DataFrame como Parquet no bucket SOT e registrar no Glue Catalog
+
+Estrutura dos arquivos no SOR (gravados pela Lambda):
+  tmdb/discover/{media_type}/ano={year}/pagina_NNN.json  → array de objetos
+  tmdb/genre/movie/generos_filmes.json                   → array de objetos
+  tmdb/genre/tv/generos_series.json                      → array de objetos
+  tmdb/configuration/languages/idiomas.json              → array de objetos
+  tmdb/configuration/countries/paises.json               → array de objetos
+
+Tipos de tabela (TABLE_TYPE) enviados pela Lambda ao acionar o job:
+  "discover"      → dados paginados por ano (precisa do arg --YEAR)
+  "genre"         → tabela de gêneros de filmes ou séries
+  "configuration" → tabela de idiomas (movie) ou países (tv)
+"""
+
+import json
+import logging
+import sys
+from typing import Any, Dict, List, Optional
+
 import boto3
+import awswrangler as wr
 import pandas as pd
 from awsglue.utils import getResolvedOptions
 
+SOR_KEYS = {
+    "movie": {
+        "genre": "tmdb/genre/movie/generos_filmes.json",
+        "configuration": "tmdb/configuration/languages/idiomas.json",
+        "discover": "tmdb/discover/movie/ano={year}/",
+    },
+    "tv": {
+        "genre": "tmdb/genre/tv/generos_series.json",
+        "configuration": "tmdb/configuration/countries/paises.json",
+        "discover": "tmdb/discover/tv/ano={year}/",
+    },
+}
 
-# Argumentos obrigatorios para execucao do Glue ETL.
-# Eles definem buckets de origem/destino, tabelas de catalogo e job de DQ a ser disparado.
-REQUIRED_ARGS = [
-    "S3_BUCKET_SOR",
-    "S3_BUCKET_SOT",
-    "MEDIA_TYPE",
-    "DATABASE",
-    "DISCOVER_TABLE",
-    "GENRE_TABLE",
-    "CONFIGURATION_TABLE",
-    "CONFIGURATION",
-    "PARTITION_COLUMNS",
-    "GLUE_DATA_QUALITY_JOB_NAME"
-]
-
-OPTIONAL_ARGS = [
-    "TABLE_SCOPE",
-    "YEAR"
-]
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
-def _resolve_optional_args(argv: list[str], optional_args: list[str]) -> dict[str, str]:
-    """Resolve argumentos opcionais sem falhar quando nao forem enviados ao job."""
-    resolved: dict[str, str] = {}
-
-    for arg in optional_args:
-        option = f"--{arg}"
-        if option in argv:
-            index = argv.index(option)
-            if index + 1 < len(argv):
-                resolved[arg] = argv[index + 1]
-
-    return resolved
+# ---------------------------------------------------------------------------
+# Utilitários gerais
+# ---------------------------------------------------------------------------
 
 
-def resolve_args(argv: list[str]) -> dict[str, str]:
-    """Resolve argumentos Glue combinando obrigatorios e opcionais."""
-    args = getResolvedOptions(argv, REQUIRED_ARGS)
-    args.update(_resolve_optional_args(argv, OPTIONAL_ARGS))
+def get_resolved_option(args: list) -> Dict[str, Any]:
+    """
+    Converte a lista de argumentos do Glue (ex.: ["--S3_BUCKET_SOR", "my-sor", ...])
+    em um dicionário { "S3_BUCKET_SOR": "my-sor", ... }.
+
+    Args:
+        args: Lista de nomes de argumentos a resolver (sem o prefixo "--").
+
+    Returns:
+        Dicionário mapeando nome do argumento para seu valor.
+    """
+    return getResolvedOptions(sys.argv, args)
+
+
+def get_parameters_glue() -> Dict[str, Any]:
+    """
+    Lê os argumentos obrigatórios e opcionais do job Glue e os retorna em um dicionário.
+
+    Argumentos obrigatórios: S3_BUCKET_SOR, S3_BUCKET_SOT, MEDIA_TYPE, DATABASE,
+    TABLE_NAME, TABLE_TYPE, GLUE_DATA_QUALITY_JOB_NAME.
+    Argumento opcional: YEAR (presente apenas para runs de discover).
+
+    Returns:
+        Dicionário com todos os argumentos resolvidos. "YEAR" estará ausente
+        quando o job não for acionado para discover.
+    """
+    required_args = [
+        "S3_BUCKET_SOR",
+        "S3_BUCKET_SOT",
+        "MEDIA_TYPE",
+        "DATABASE",
+        "TABLE_NAME",
+        "TABLE_TYPE",
+        "GLUE_DATA_QUALITY_JOB_NAME",
+        "GLUE_AGG_JOB_NAME",
+    ]
+    args = get_resolved_option(required_args)
+
+    try:
+        args.update(get_resolved_option(["YEAR"]))
+    except Exception:
+        pass
+
     return args
 
 
-# Mapeamento declarativo de tabelas por tipo de midia.
-# Isso evita if/else espalhado no fluxo principal do ETL.
-TABLES_BY_MEDIA = {
-    "movie": [
-        {"path": "discover", "table_arg": "DISCOVER_TABLE", "date_column": "release_date"},
-        {"path": "genre", "table_arg": "GENRE_TABLE", "date_column": None},
-        {"path": "configuration", "table_arg": "CONFIGURATION_TABLE", "date_column": None}
-    ],
-    "tv": [
-        {"path": "discover", "table_arg": "DISCOVER_TABLE", "date_column": "first_air_date"},
-        {"path": "genre", "table_arg": "GENRE_TABLE", "date_column": None},
-        {"path": "configuration", "table_arg": "CONFIGURATION_TABLE", "date_column": None}
-    ]
-}
-
-TABLE_SCOPE_ALL = "all"
-TABLE_SCOPE_DISCOVER = "discover"
-TABLE_SCOPE_STATIC = "static"
+# ---------------------------------------------------------------------------
+# Leitura unificada dos dados da camada SOR
+# ---------------------------------------------------------------------------
 
 
-def _add_temporal_partition_columns(df: pd.DataFrame, date_column: str) -> pd.DataFrame:
-    """Deriva ano/mes da coluna de data para escrita particionada."""
-    df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
-    df["year"] = df[date_column].dt.year.astype("Int64").astype(str)
-    df["month"] = df[date_column].dt.strftime("%m")
+def read_from_sor(
+    s3_bucket_sor: str,
+    media_type: str,
+    table_type: str,
+    year: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Lê dados do bucket SOR de acordo com o tipo de tabela (table_type).
+
+    Despacha para a lógica correta dependendo do valor de table_type:
+
+      "discover"
+        Lê JSON paginado do prefixo tmdb/discover/{media_type}/ano={year}/
+        usando wr.s3.read_json. Requer o argumento year.
+        Adiciona a coluna "year" ao DataFrame (usada como partição no SOT).
+
+      "genre"
+        Lê tmdb/genre/{media_type}/generos_filmes.json (movie) ou
+        generos_series.json (tv) via boto3. O payload é um array direto de objetos.
+
+      "configuration"
+        Lê tmdb/configuration/languages/idiomas.json (movie) ou
+        configuration/countries/paises.json (tv) via boto3.
+        O payload é um array direto de objetos.
+
+    Args:
+        s3_bucket_sor: Nome do bucket SOR.
+        media_type:    "movie" ou "tv".
+        table_type:    "discover", "genre" ou "configuration".
+        year:          Ano da partição. Obrigatório quando table_type="discover".
+
+    Returns:
+        DataFrame com os dados lidos do SOR.
+    """
+    s3_key = SOR_KEYS[media_type][table_type].format(year=year)
+    logger.info(f"Lendo {table_type} de s3://{s3_bucket_sor}/{s3_key}")
+
+    if table_type == "discover":
+        df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
+        df["year"] = year
+    else:
+        s3_client = boto3.client("s3")
+        response = s3_client.get_object(Bucket=s3_bucket_sor, Key=s3_key)
+        data = json.loads(response["Body"].read())
+        df = pd.DataFrame(data)
+
+    logger.info(f"Lidos {len(df)} registros.")
     return df
 
 
-def _build_partition_values(df: pd.DataFrame, partition_columns: list[str] | None) -> list[str]:
-    """Monta paths de particao no formato coluna=valor para uso posterior no Glue DQ."""
-    if not partition_columns:
-        return []
-
-    partition_values = []
-    unique_partitions = df[partition_columns].drop_duplicates()
-    for _, row in unique_partitions.iterrows():
-        part_str = "/".join(f"{col}={row[col]}" for col in partition_columns)
-        partition_values.append(part_str)
-    return partition_values
+# ---------------------------------------------------------------------------
+# Gravação na camada SOT
+# ---------------------------------------------------------------------------
 
 
-def _is_temporal_partition(partition_columns: list[str] | None, date_column: str | None) -> bool:
-    """Define se o dataset deve receber particionamento temporal (ano/mes)."""
-    return bool(date_column) and bool(partition_columns)
-
-
-def process_tmdb(
-    source_path: str,
-    destination_path: str,
+def write_parquet_to_sot(
+    df: pd.DataFrame,
+    s3_bucket_sot: str,
+    table_name: str,
     database: str,
-    table: str,
-    partition_columns: list[str] | None = None,
-    date_column: str | None = None,
-) -> dict:
-    """Le JSON da TMDB no S3, transforma quando necessario e grava Parquet no S3."""
-    # Etapa 1: leitura do dado bruto no SOR.
-    df = wr.s3.read_json(source_path)
-    # Etapa 2: escolhe estrategia de escrita conforme existe (ou nao) particionamento.
-    mode = "overwrite_partitions" if partition_columns else "overwrite"
+    partition_cols: Optional[List[str]] = None,
+    mode: str = "overwrite_partitions",
+) -> None:
+    """
+    Escreve um DataFrame como Parquet no bucket SOT e atualiza o Glue Catalog.
 
-    if _is_temporal_partition(partition_columns, date_column):
-        # Para tabelas temporais, materializa year/month a partir da data de referencia.
-        df = _add_temporal_partition_columns(df, date_column)
+    Usa o AWS Wrangler para gravar e registrar/atualizar as partições automaticamente,
+    evitando a necessidade de executar MSCK REPAIR TABLE após cada escrita.
 
-    # Etapa 3: persistencia em Parquet com registro no Glue Catalog.
+    Args:
+        df:             DataFrame a ser gravado.
+        s3_bucket_sot:  Nome do bucket SOT.
+        table_name:     Nome da tabela de destino (usado como subpasta e no Glue Catalog).
+        database:       Nome do banco de dados no Glue Catalog.
+        partition_cols: Colunas de partição, ou None para tabelas não particionadas.
+        mode:           Modo de escrita do AWS Wrangler. Padrão: "overwrite_partitions"
+                        (substitui apenas as partições presentes no DataFrame).
+    """
+    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
+    logger.info(
+        f"Escrevendo {len(df)} registros em {s3_path} | particao={partition_cols} | mode={mode}"
+    )
     wr.s3.to_parquet(
         df=df,
-        path=destination_path,
+        path=s3_path,
         dataset=True,
-        partition_cols=partition_columns if partition_columns else [],
+        partition_cols=partition_cols,
+        mode=mode,
         database=database,
-        table=table,
-        mode=mode
+        table=table_name,
     )
+    logger.info(f"Tabela '{table_name}' atualizada com sucesso no SOT.")
 
-    partition_values = _build_partition_values(df, partition_columns)
 
-    return {
-        "partitions": partition_values
-    }
+# ---------------------------------------------------------------------------
+# Acionamento do Glue Data Quality
+# ---------------------------------------------------------------------------
 
-def call_glue_data_quality(
-    job_name: str,
+
+def trigger_data_quality(
+    dq_job_name: str,
+    table_name: str,
     database: str,
-    table: str,
-    partition_values: list[str] | None = None,
-) -> dict:
-    """Dispara o job de Glue Data Quality para uma tabela do Catalog."""
-    # Dispara DQ de forma assincrona e retorna identificadores para rastreio.
-    glue = boto3.client("glue")
-
-    arguments = {
-        "--DATABASE": database,
-        "--TABLE": table
-    }
-    if partition_values:
-        arguments["--PARTITION_VALUES"] = ",".join(partition_values)
-
-    response = glue.start_job_run(
-        JobName=job_name,
-        Arguments=arguments
-    )
-
-    return {
-        "job_name": job_name,
-        "job_run_id": response["JobRunId"]
-    }
-
-
-def build_tables_config(media_type: str, args: dict) -> list[dict]:
-    """Monta a configuracao ETL por tabela conforme o tipo de midia."""
-    configs = TABLES_BY_MEDIA.get(media_type)
-    if configs is None:
-        raise ValueError(f"Unsupported MEDIA_TYPE: {media_type}")
-
-    return [
-        {
-            "path": cfg["path"],
-            "table": args[cfg["table_arg"]],
-            "date_column": cfg["date_column"]
-        }
-        for cfg in configs
-    ]
-
-
-def build_source_path(
-    bucket_sor: str,
-    table_path: str,
-    media_type: str,
-    configuration: str,
-    year: str | None = None,
+    year: Optional[str] = None,
 ) -> str:
-    """Monta o caminho de origem no S3 para extracao da tabela."""
-    if table_path == "configuration":
-        return f"s3://{bucket_sor}/tmdb/{table_path}/{configuration}/"
-    if table_path == "discover" and year:
-        return f"s3://{bucket_sor}/tmdb/{table_path}/{media_type}/year={year}/"
-    return f"s3://{bucket_sor}/tmdb/{table_path}/{media_type}/"
+    """
+    Aciona o job Glue Data Quality para validar uma tabela no SOT.
+
+    Args:
+        dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
+        table_name:  Nome da tabela a validar (usado para buscar o ruleset).
+        database:    Nome do banco de dados no Glue Catalog.
+        year:        Ano da partição. Informado apenas para discover.
+
+    Returns:
+        O ID de execução do job (JobRunId).
+    """
+    arguments = {
+        "--TABLE_NAME": table_name,
+        "--DATABASE": database,
+    }
+    if year is not None:
+        arguments["--YEAR"] = year
+
+    glue_client = boto3.client("glue")
+    response = glue_client.start_job_run(
+        JobName=dq_job_name,
+        Arguments=arguments,
+    )
+    run_id = response["JobRunId"]
+    logger.info(
+        f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}"
+    )
+    return run_id
 
 
-def build_partition_columns(partition_columns: str, date_column: str | None) -> list[str]:
-    """Retorna colunas de particionamento apenas para datasets temporais do discover."""
-    if not partition_columns or not date_column:
-        return []
-    return [column.strip() for column in partition_columns.split(",") if column.strip()]
+# ---------------------------------------------------------------------------
+# Acionamento do Glue AGG
+# ---------------------------------------------------------------------------
 
 
-def filter_tables_config(configs: list[dict], table_scope: str) -> list[dict]:
-    """Filtra as tabelas do ETL conforme o escopo de execucao solicitado."""
-    if table_scope == TABLE_SCOPE_DISCOVER:
-        return [cfg for cfg in configs if cfg["path"] == "discover"]
-    if table_scope == TABLE_SCOPE_STATIC:
-        return [cfg for cfg in configs if cfg["path"] != "discover"]
-    return configs
+def trigger_agg(agg_job_name: str) -> str:
+    """
+    Aciona o job Glue AGG para unificar os dados de discover no bucket SPEC.
 
+    Deve ser chamado apenas no run de media_type="tv", pois esse é o último
+    processo a concluir, garantindo que ambas as tabelas (movie e tv) já
+    foram gravadas no SOT antes da agregação.
 
-def resolve_dq_partition_values(
-    table_path: str,
-    partition_columns_list: list[str],
-    year: str | None,
-) -> list[str] | None:
-    """Define quais valores de particao serao enviados ao job de Data Quality."""
-    if not partition_columns_list:
-        return None
-    if year and table_path == "discover":
-        return [f"year={year}"]
-    return None
+    Args:
+        agg_job_name: Nome do job Glue AGG cadastrado na AWS.
 
-
+    Returns:
+        O ID de execução do job (JobRunId).
+    """
+    glue_client = boto3.client("glue")
+    response = glue_client.start_job_run(JobName=agg_job_name)
+    run_id = response["JobRunId"]
+    logger.info(f"Job AGG '{agg_job_name}' iniciado. RunId: {run_id}")
+    return run_id

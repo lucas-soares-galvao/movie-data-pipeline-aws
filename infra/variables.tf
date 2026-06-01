@@ -2,13 +2,13 @@
 
 variable "env" {
   # Nome logico do ambiente, usado para nomes e isolamento de recursos.
-  description = "Ambiente do job Glue (ex.: dev, prod)"
+  description = "Ambiente do serviço (ex.: dev, prod)"
   type        = string
-}
 
-variable "account_id" {
-  description = "ID da conta AWS"
-  type        = string
+  validation {
+    condition     = contains(["dev", "prod"], lower(var.env))
+    error_message = "A variavel env deve ser uma destas opcoes: dev ou prod."
+  }
 }
 
 ############## IAM Roles and Policies ##############
@@ -25,6 +25,11 @@ variable "iam_role_lambda" {
 }
 
 ############# ALARMS VARIABLES ##############
+variable "glue_agg_notification_email" {
+  description = "E-mail para receber notificacoes de execucao do Glue AGG"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
 variable "glue_data_quality_notification_email" {
   description = "E-mail para receber notificações de execução do Glue Data Quality"
   type        = string
@@ -72,7 +77,7 @@ variable "s3_bucket_sot" {
 }
 
 variable "s3_bucket_spec" {
-  description = "Nome do bucket principal para dados de entrada/saida processados pelo Glue ETL"
+  description = "Nome do bucket SPEC para dados agregados e especializados gerados pelo Glue AGG"
   type        = string
   default     = "lsg-sa-east-1-bucket-spec"
 }
@@ -127,6 +132,24 @@ variable "glue_data_quality_job_name" {
   default     = "glue-data-quality"
 }
 
+variable "glue_agg_path_app" {
+  description = "Caminho para os modulos Python da aplicacao do Glue AGG"
+  type        = string
+  default     = "glue_agg"
+}
+
+variable "glue_agg_job_name" {
+  description = "Nome do job Glue AGG a ser criado por ambiente"
+  type        = string
+  default     = "glue-agg"
+}
+
+variable "glue_agg_spec_table_name" {
+  description = "Nome da tabela unificada gravada no bucket SPEC pelo Glue AGG"
+  type        = string
+  default     = "tb_discover_unified_tmdb"
+}
+
 variable "glue_catalog_database_name" {
   description = "Nome do banco no Glue Catalog para a tabela TMDB"
   type        = string
@@ -161,7 +184,7 @@ variable "glue_catalog_table_configuration_languages_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de linguas da TMDB"
   type        = string
   default     = "tb_configuration_languages_tmdb"
-  
+
 }
 
 variable "glue_catalog_table_configuration_countries_name" {
@@ -174,4 +197,11 @@ variable "glue_catalog_table_data_quality_name" {
   description = "Nome da tabela no Glue Catalog para resultados de Data Quality"
   type        = string
   default     = "tb_data_quality_tmdb"
+}
+
+############# CLOUDWATCH LOGS ##############
+variable "log_retention_days" {
+  description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"
+  type        = number
+  default     = 7
 }

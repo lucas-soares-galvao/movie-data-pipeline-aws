@@ -1,80 +1,90 @@
-"""Raciocinio: entrypoint do Glue ETL; resolve argumentos, executa transformacoes e aciona Data Quality."""
+"""
+main.py — Ponto de entrada do job Glue ETL.
 
-import sys
+Este arquivo contém apenas a lógica principal do fluxo:
+  1. Lê os argumentos do job (buckets, tipo de mídia, nome da tabela, TABLE_TYPE).
+  2. Mapeia TABLE_TYPE para as colunas de partição.
+  3. Chama read_from_sor para ler os dados do SOR (dispatch por table_type).
+  4. Chama write_parquet_to_sot para gravar no SOT em Parquet e atualizar o Catalog.
+  5. Aciona o job Glue Data Quality para validar a tabela recém-escrita.
+  6. Se media_type="tv", aciona o job Glue AGG para unificar discover movie e tv no SPEC.
+
+A Lambda aciona este job com --TABLE_TYPE em cada run:
+  - "genre"         : processa a tabela de gêneros.
+  - "configuration" : processa a tabela de idiomas ou países.
+  - "discover"      : processa os dados paginados de discover (requer --YEAR).
+"""
+
+import logging
+
 
 from src.utils import (
-    TABLE_SCOPE_ALL,
-    build_partition_columns,
-    build_source_path,
-    build_tables_config,
-    call_glue_data_quality,
-    filter_tables_config,
-    process_tmdb,
-    resolve_args,
-    resolve_dq_partition_values,
+    get_parameters_glue,
+    read_from_sor,
+    trigger_agg,
+    trigger_data_quality,
+    write_parquet_to_sot,
 )
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-def main(argv: list[str] | None = None) -> None:
-    """Executa o job ETL e delega o processamento para a camada de utilitarios.
+_TABLE_TYPE_TO_PARTITION = {
+    "discover": ["year"],
+    "genre": None,
+    "configuration": None,
+}
 
-    Raciocinio do fluxo:
-    1) resolve obrigatorios e opcionais sem quebrar execucoes parciais;
-    2) aplica o pipeline por tabela (discover/genre/configuration) com regras de escopo;
-    3) dispara Data Quality por tabela para manter validacao desacoplada do ETL.
-    """
-    argv = argv or sys.argv
-    args = resolve_args(argv)
+_TABLE_TYPE_TO_MODE = {
+    "discover": "overwrite_partitions",
+    "genre": "overwrite",
+    "configuration": "overwrite",
+}
 
-    # Parametros base de infraestrutura e catalogo usados em todas as tabelas processadas.
-    bucket_sor = args["S3_BUCKET_SOR"]
-    bucket_sot = args["S3_BUCKET_SOT"]
+
+def main() -> None:
+    """Executa o pipeline ETL: lê do SOR e grava no SOT em Parquet."""
+    args = get_parameters_glue()
+
+    s3_bucket_sor = args["S3_BUCKET_SOR"]
+    s3_bucket_sot = args["S3_BUCKET_SOT"]
     media_type = args["MEDIA_TYPE"]
     database = args["DATABASE"]
-    configuration = args["CONFIGURATION"]
-    partition_columns = args.get("PARTITION_COLUMNS", "")
-    glue_data_quality_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
+    table_type = args["TABLE_TYPE"]
+    table_name = args["TABLE_NAME"]
+    dq_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
+    agg_job_name = args["GLUE_AGG_JOB_NAME"]
     year = args.get("YEAR")
-    table_scope = args.get("TABLE_SCOPE", TABLE_SCOPE_ALL)
 
-    # Define quais tabelas entram no ciclo conforme tipo de midia e escopo solicitado.
-    table_configs = filter_tables_config(build_tables_config(media_type, args), table_scope)
+    partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
+    mode = _TABLE_TYPE_TO_MODE[table_type]
 
-    for cfg in table_configs:
-        # Cada iteracao representa um dataset independente no lake (tabela de destino).
-        table = cfg["table"]
-        date_column = cfg["date_column"]
-        partition_columns_list = build_partition_columns(partition_columns, date_column)
-        source_year = year if table_scope == "discover" and cfg["path"] == "discover" else None
+    logger.info(
+        f"Processando table_type={table_type} | media_type={media_type} | year={year}"
+    )
 
-        # Le JSON bruto no SOR e escreve Parquet no SOT com metadados de catalogo.
-        result = process_tmdb(
-            source_path=build_source_path(bucket_sor, cfg["path"], media_type, configuration, year=source_year),
-            destination_path=f"s3://{bucket_sot}/tmdb/{table}/",
-            database=database,
-            table=table,
-            partition_columns=partition_columns_list,
-            date_column=date_column,
-        )
+    df = read_from_sor(s3_bucket_sor, media_type, table_type, year)
+    write_parquet_to_sot(
+        df=df,
+        s3_bucket_sot=s3_bucket_sot,
+        table_name=table_name,
+        database=database,
+        partition_cols=partition_cols,
+        mode=mode,
+    )
+    trigger_data_quality(
+        dq_job_name=dq_job_name,
+        table_name=table_name,
+        database=database,
+        year=year,
+    )
 
-        partitions = result.get("partitions", [])
-        print(f"Processed table={table}, partitions={partitions}")
+    # Dispara o AGG somente no run de tv + discover — o último processo a concluir,
+    # garantindo que movie e tv já estão disponíveis no SOT antes da agregação.
+    if media_type == "tv" and table_type == "discover":
+        trigger_agg(agg_job_name=agg_job_name)
 
-        # Envia recorte de particao apenas quando fizer sentido (discover por ano).
-        dq_partition_values = resolve_dq_partition_values(
-            table_path=cfg["path"],
-            partition_columns_list=partition_columns_list,
-            year=year,
-        )
-        # Dispara o job de Data Quality por tabela para rastrear qualidade por dominio.
-        call_glue_data_quality(
-            glue_data_quality_job_name,
-            database=database,
-            table=table,
-            partition_values=dq_partition_values,
-        )
-
-    print("TMDB ETL executed successfully!")
+    logger.info("Job Glue ETL finalizado com sucesso!")
 
 
 if __name__ == "__main__":

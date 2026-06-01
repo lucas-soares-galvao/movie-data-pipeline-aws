@@ -39,8 +39,9 @@ infra/lambda_bundle*.zip
 infra/.lambda_build/
 infra/.glue_etl_build/
 infra/.glue_data_quality_build/
-# Exceção: se você quiser manter as variáveis de exemplo, 
-# mas geralmente .tfvars contém segredos (senhas, keys).
+# terraform.tfvars pode conter account_id e ARNs sensíveis.
+# Os valores reais são injetados pelo CI/CD via GitHub Secrets.
+# Os arquivos no repositório contêm apenas placeholders.
 # terraform.tfvars
 
 # --- Sistema ---

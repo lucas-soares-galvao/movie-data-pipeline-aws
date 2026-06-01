@@ -23,6 +23,7 @@ permissions:
   id-token: write
   contents: read
   actions: write
+  pull-requests: write
 
 jobs:
 
@@ -47,6 +48,8 @@ jobs:
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+      aws-tmdb-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD }}
+      infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop
   auto-pr-feature:
@@ -61,9 +64,9 @@ jobs:
       contents: write
       pull-requests: write
 
-  # 6. Auto PR para Ambientes: Promove develop -> main
+  # 6. Auto PR para Ambientes: promove develop -> main apos deploy Terraform bem-sucedido
   auto-pr-environment:
-    needs: [terraform] # Só inicia se o terraform indicou que a infraestrutura foi destruída (caso de teste de destroy)
+    needs: [terraform] # So inicia quando o workflow de Terraform conclui com sucesso
     # Só roda para develop (main não tem destino posterior para promover)
     if: |
       github.ref_name == 'develop' &&

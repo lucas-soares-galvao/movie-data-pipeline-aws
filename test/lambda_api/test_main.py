@@ -1,164 +1,370 @@
-"""Raciocinio: valida o fluxo do handler por tipo de midia e as condicoes de disparo do Glue."""
+"""
+test_main.py — Testes unitários do handler principal da Lambda.
 
+As funções auxiliares (collect_and_save, trigger_glue_job, etc.) já foram
+testadas em test_utils.py. Aqui testamos apenas a lógica de orquestração
+do lambda_handler: se ele chama as funções certas, com os argumentos certos,
+na ordem certa.
+
+Os decoradores @patch substituem as dependências externas por objetos simulados
+(Mocks), sem chamar AWS ou TMDB de verdade.
+"""
+
+import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from app.lambda_api import main
+# As variáveis de ambiente precisam existir ANTES de importar main,
+# pois main.py as lê no momento em que é carregado pelo Python.
+os.environ.setdefault(
+    "TMDB_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123:secret:tmdb-test"
+)
+os.environ.setdefault("GLUE_ETL_JOB_NAME", "test-glue-etl-job")
+os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
+
+import main  # noqa: E402  (importação após configuração de env vars)
 
 
-class TestMain(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# Eventos simulados do EventBridge — espelham o que o Terraform configura
+# ---------------------------------------------------------------------------
 
-    @patch("app.lambda_api.main.trigger_glue_etl")
-    @patch("app.lambda_api.main.process_configuration")
-    @patch("app.lambda_api.main.process_genres")
-    @patch("app.lambda_api.main.process_discover")
-    @patch("app.lambda_api.main.generate_monthly_periods")
-    @patch("app.lambda_api.main.get_tmdb_key")
-    @patch("os.getenv")
-    def test_lambda_handler_movie(self, mock_getenv, mock_api_key, mock_periods, mock_process_discover, mock_process_genres, mock_process_configuration, mock_glue):
-        mock_getenv.side_effect = lambda key: {
-            "TMDB_SECRET_ARN": "arn",
-            "S3_BUCKET_SOR": "bucket",
-            "GLUE_ETL_JOB_NAME": "job"
-        }[key]
-        mock_api_key.return_value = "fake_key"
-        mock_periods.return_value = [
-            {"start_date": "2024-01-01", "end_date": "2024-01-31"}
-        ]
-        mock_process_discover.return_value = ["movie1.json"]
-        mock_process_genres.return_value = ["genres_movie.json"]
-        mock_process_configuration.return_value = ["configuration_movie.json"]
-        mock_glue.return_value = {"job_name": "job", "job_run_id": "123"}
+EVENTO_MOVIE = {
+    "type": "movie",
+    "database": "tmdb_db",
+    "table_discover_movie": "discover_movie",
+    "table_genre_movie": "genre_movie",
+    "table_configuration_languages": "configuration_languages",
+}
 
-        event = {
-            "type": "movie",
-            "table_discover_movie": "tb_discover_movie_tmdb",
-            "table_genre_movie": "tb_genre_movie_tmdb",
-            "table_configuration_languages": "tb_languages"
-        }
-        result = main.lambda_handler(event, None)
+EVENTO_TV = {
+    "type": "tv",
+    "database": "tmdb_db",
+    "table_discover_tv": "discover_tv",
+    "table_genre_tv": "genre_tv",
+    "table_configuration_countries": "configuration_countries",
+}
 
-        self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(result["body"]["type"], "movie")
-        self.assertEqual(result["body"]["discover_files"], ["movie1.json"])
-        self.assertEqual(result["body"]["genre_files"], ["genres_movie.json"])
-        self.assertEqual(
-            result["body"]["glue"],
-            [
-                {"job_name": "job", "job_run_id": "123"},
-                {"job_name": "job", "job_run_id": "123"}
-            ]
-        )
-        self.assertEqual(mock_glue.call_count, 2)
-        self.assertEqual(
-            mock_glue.call_args_list[0].kwargs,
-            {"table_scope": "static"}
-        )
-        self.assertEqual(
-            mock_glue.call_args_list[1].kwargs,
-            {"year": "2024", "table_scope": "discover"}
-        )
 
-    @patch("app.lambda_api.main.trigger_glue_etl")
-    @patch("app.lambda_api.main.process_configuration")
-    @patch("app.lambda_api.main.process_genres")
-    @patch("app.lambda_api.main.process_discover")
-    @patch("app.lambda_api.main.generate_monthly_periods")
-    @patch("app.lambda_api.main.get_tmdb_key")
-    @patch("os.getenv")
-    def test_lambda_handler_tv(self, mock_getenv, mock_api_key, mock_periods, mock_process_discover, mock_process_genres, mock_process_configuration, mock_glue):
-        mock_getenv.side_effect = lambda key: {
-            "TMDB_SECRET_ARN": "arn",
-            "S3_BUCKET_SOR": "bucket",
-            "GLUE_ETL_JOB_NAME": "job"
-        }[key]
-        mock_api_key.return_value = "fake_key"
-        mock_periods.return_value = [
-            {"start_date": "2024-01-01", "end_date": "2024-01-31"}
-        ]
-        mock_process_discover.return_value = ["tv1.json"]
-        mock_process_genres.return_value = ["genres_tv.json"]
-        mock_process_configuration.return_value = ["configuration_tv.json"]
-        mock_glue.return_value = {"job_name": "job", "job_run_id": "123"}
+# ---------------------------------------------------------------------------
+# Testes do lambda_handler
+# ---------------------------------------------------------------------------
 
-        event = {
-            "type": "tv",
-            "table_discover_tv": "tb_discover_tv_tmdb",
-            "table_genre_tv": "tb_genre_tv_tmdb",
-            "table_configuration_countries": "tb_countries"
-        }
-        result = main.lambda_handler(event, None)
 
-        self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(result["body"]["type"], "tv")
-        self.assertEqual(result["body"]["discover_files"], ["tv1.json"])
-        self.assertEqual(result["body"]["genre_files"], ["genres_tv.json"])
-        self.assertEqual(
-            result["body"]["glue"],
-            [
-                {"job_name": "job", "job_run_id": "123"},
-                {"job_name": "job", "job_run_id": "123"}
-            ]
-        )
-        self.assertEqual(mock_glue.call_count, 2)
-        self.assertEqual(
-            mock_glue.call_args_list[0].kwargs,
-            {"table_scope": "static"}
-        )
-        self.assertEqual(
-            mock_glue.call_args_list[1].kwargs,
-            {"year": "2024", "table_scope": "discover"}
-        )
+class TestLambdaHandler(unittest.TestCase):
+    def setUp(self):
+        """Objeto de contexto simulado (exigido pela assinatura do handler)."""
+        self.mock_context = MagicMock()
 
-    @patch("app.lambda_api.main.trigger_glue_etl")
-    @patch("app.lambda_api.main.process_configuration")
-    @patch("app.lambda_api.main.process_genres")
-    @patch("app.lambda_api.main.process_discover")
-    @patch("app.lambda_api.main.generate_monthly_periods")
-    @patch("app.lambda_api.main.get_tmdb_key")
-    @patch("os.getenv")
-    def test_lambda_handler_no_discover_files_skips_glue(self, mock_getenv, mock_api_key, mock_periods, mock_process_discover, mock_process_genres, mock_process_configuration, mock_glue):
-        mock_getenv.side_effect = lambda key: {
-            "TMDB_SECRET_ARN": "arn",
-            "S3_BUCKET_SOR": "bucket",
-            "GLUE_ETL_JOB_NAME": "job"
-        }[key]
-        mock_api_key.return_value = "fake_key"
-        mock_periods.return_value = [
-            {"start_date": "2024-01-01", "end_date": "2024-01-31"}
-        ]
-        mock_process_discover.return_value = []
-        mock_process_genres.return_value = ["genres_movie.json"]
-        mock_process_configuration.return_value = ["configuration_movie.json"]
-        mock_glue.return_value = {"job_name": "job", "job_run_id": "123"}
+    # --- Resposta HTTP ---
 
-        event = {
-            "type": "movie",
-            "table_discover_movie": "tb_discover_movie_tmdb",
-            "table_genre_movie": "tb_genre_movie_tmdb",
-            "table_configuration_languages": "tb_languages"
-        }
-        result = main.lambda_handler(event, None)
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    def test_retorna_status_200_para_movie(
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
 
-        self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(result["body"]["glue"], [{"job_name": "job", "job_run_id": "123"}])
-        mock_glue.assert_called_once_with("job", mock_glue.call_args[0][1], table_scope="static")
+        resposta = main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-    @patch("os.getenv")
-    def test_lambda_handler_invalid_media_type(self, mock_getenv):
-        mock_getenv.side_effect = lambda key: {
-            "TMDB_SECRET_ARN": "arn",
-            "S3_BUCKET_SOR": "bucket",
-            "GLUE_ETL_JOB_NAME": "job"
-        }[key]
+        self.assertEqual(resposta["statusCode"], 200)
+        self.assertIn("movie", resposta["body"])
 
-        event = {
-            "type": "anime"
-        }
-        result = main.lambda_handler(event, None)
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    def test_retorna_status_200_para_tv(
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
 
-        self.assertEqual(result["statusCode"], 400)
-        self.assertIn("Unsupported media type", result["body"]["error"])
+        resposta = main.lambda_handler(EVENTO_TV, self.mock_context)
+
+        self.assertEqual(resposta["statusCode"], 200)
+        self.assertIn("tv", resposta["body"])
+
+    # --- Secrets Manager ---
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    def test_busca_api_key_uma_unica_vez(
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        # Independente de quantos anos existam, o Secrets Manager é chamado só 1 vez
+        mock_get_key.assert_called_once_with(main.TMDB_SECRET_ARN)
+
+    # --- collect_genre_data e collect_configuration_data ---
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    def test_collect_genre_chamado_com_tipo_movie(
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        mock_genre.assert_called_once()
+        _, _, _, content_type = mock_genre.call_args[0]
+        self.assertEqual(content_type, "movie")
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    def test_collect_configuration_chamado_com_tipo_tv(
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+
+        main.lambda_handler(EVENTO_TV, self.mock_context)
+
+        mock_config.assert_called_once()
+        _, _, _, content_type = mock_config.call_args[0]
+        self.assertEqual(content_type, "tv")
+
+    # --- Loop de anos ---
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_loop_executa_para_cada_ano(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2027  # Simula ano atual = 2027
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        # start_year = 2027 - 1 = 2026 → range(2026, 2028) = 2 anos
+        self.assertEqual(mock_discover.call_count, 2)
+        # genre(1) + configuration(1) + 2×discover = 4 trigger_glue_job calls
+        self.assertEqual(mock_trigger.call_count, 4)
+
+    # --- collect_discover_data ---
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_collect_discover_usa_folder_correto_para_movie(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2025  # 1 único ano para simplificar
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        kwargs = mock_discover.call_args[1]
+        self.assertEqual(kwargs["folder"], "tmdb/discover/movie")
+        self.assertEqual(kwargs["content_type"], "movie")
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_collect_discover_usa_folder_correto_para_tv(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2025
+
+        main.lambda_handler(EVENTO_TV, self.mock_context)
+
+        kwargs = mock_discover.call_args[1]
+        self.assertEqual(kwargs["folder"], "tmdb/discover/tv")
+        self.assertEqual(kwargs["content_type"], "tv")
+
+    # --- trigger_glue_job ---
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_glue_recebe_argumentos_padronizados(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2025  # 1 único ano
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        # Verifica os args base e table_name de cada chamada ao Glue
+        chamada_genre = mock_trigger.call_args_list[0]
+        chamada_config = mock_trigger.call_args_list[1]
+        chamada_disc = mock_trigger.call_args_list[2]
+
+        # glue_base_args (3º arg posicional) deve conter apenas MEDIA_TYPE e DATABASE
+        for chamada in (chamada_genre, chamada_config, chamada_disc):
+            args_base = chamada[0][2]
+            self.assertEqual(args_base["MEDIA_TYPE"], "movie")
+            self.assertEqual(args_base["DATABASE"], "tmdb_db")
+
+        # table_name varia conforme o contexto (keyword arg)
+        self.assertEqual(chamada_genre[1].get("table_name"), "genre_movie")
+        self.assertEqual(chamada_config[1].get("table_name"), "configuration_languages")
+        self.assertEqual(chamada_disc[1].get("table_name"), "discover_movie")
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_glue_acionado_para_genre_e_configuration_sem_year(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        """As chamadas do Glue para genre e configuration não devem receber year."""
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2025  # 1 ano no loop
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        # genre(1) + configuration(1) + discover(2) = 4 total
+        # start_year = 2025 - 1 = 2024 → range(2024, 2026) = [2024, 2025]
+        self.assertEqual(mock_trigger.call_count, 4)
+
+        # 1ª chamada: genre — sem year, table_type="genre"
+        chamada_genre = mock_trigger.call_args_list[0]
+        self.assertIsNone(chamada_genre[1].get("year"))
+        self.assertEqual(chamada_genre[1].get("table_type"), "genre")
+
+        # 2ª chamada: configuration — sem year, table_type="configuration"
+        chamada_config = mock_trigger.call_args_list[1]
+        self.assertIsNone(chamada_config[1].get("year"))
+        self.assertEqual(chamada_config[1].get("table_type"), "configuration")
+
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_glue_no_loop_recebe_year_e_table_type_corretos(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        """As chamadas do Glue dentro do loop devem receber year e table_type='discover'."""
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2026  # 2 anos: 2025 e 2026
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        # genre(0) + configuration(1) + discover_2025(2) + discover_2026(3)
+        chamada_ano_2025 = mock_trigger.call_args_list[2]
+        chamada_ano_2026 = mock_trigger.call_args_list[3]
+
+        self.assertEqual(chamada_ano_2025[1].get("year"), 2025)
+        self.assertEqual(chamada_ano_2025[1].get("table_type"), "discover")
+        self.assertEqual(chamada_ano_2026[1].get("year"), 2026)
+        self.assertEqual(chamada_ano_2026[1].get("table_type"), "discover")
 
 
 if __name__ == "__main__":
