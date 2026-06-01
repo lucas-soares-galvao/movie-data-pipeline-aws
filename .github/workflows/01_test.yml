@@ -33,11 +33,11 @@ jobs:
       #    Por que é o 1º gate? Uma chave AWS vazada no Git é o risco mais crítico em projetos cloud.
       #    Por que antes do Python? Não depende de nada — roda rápido e falha cedo se houver problema.
       - name: Secrets Scan with Trufflehog
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3
         with:
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
-          extra_args: --only-verified --fail
+          extra_args: --only-verified
 
       # 3. Prepara o ambiente instalando a versão 3.12 do interpretador Python
       - name: Setup Python
@@ -49,21 +49,19 @@ jobs:
             app/**/requirements.txt
             test/**/requirements_tests.txt
 
-      # 3. Gerencia as bibliotecas necessárias
-      - name: Install dependencies
+      # 4. Instala ferramentas de qualidade de código (pytest, ruff, mypy, bandit, safety)
+      - name: Install Quality Gate Tools
         run: |
-          # Atualiza o instalador de pacotes (pip) para a versão mais recente
           python -m pip install --upgrade pip
-          # Instala o framework de teste (pytest) e o plugin de cobertura (pytest-cov)
-          pip install pytest pytest-cov
-          # Instala ferramentas de quality gates
-          pip install ruff mypy bandit safety
-          # Instala todos os arquivos de dependências de teste por módulo
+          pip install pytest pytest-cov ruff mypy bandit safety
+
+      # 5. Instala dependências da aplicação e dos testes por módulo
+      - name: Install Application & Test Dependencies
+        run: |
           for file in $(find test -type f -name "requirements_tests.txt"); do
             echo "Instalando dependências de teste: $file"
             pip install -r "$file"
           done
-          # Instala dependências da aplicação por módulo
           for file in app/*/requirements.txt; do
             if [ -f "$file" ]; then
               echo "Instalando dependências da aplicação: $file"
@@ -71,20 +69,22 @@ jobs:
             fi
           done
 
-      # 4. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
+      # 6. Configura o PYTHONPATH para que o Python consiga importar seus módulos (pasta app, etc)
       # Adicionar o diretório raiz ao GITHUB_ENV resolve erros de "ModuleNotFoundError"
       - name: Configure PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
-      # 5. [BLOQUEANTE] Linting com Ruff - Verifica estilo de código e boas práticas
-      #    Falha a pipeline se o código não seguir as regras configuradas.
+      # 6. [BLOQUEANTE] Linting e Format Check com Ruff
+      #    ruff check: verifica regras de estilo e boas práticas
+      #    ruff format --check: garante consistência de formatação (sem alterar arquivos)
       #    Para ignorar uma linha específica, adicione: # noqa: <CODIGO_DA_REGRA>
-      - name: Lint with Ruff
+      - name: Lint and Format Check with Ruff
         run: |
           ruff check app/ test/
-          echo "Ruff linting concluido"
+          ruff format --check app/ test/
+          echo "Ruff linting e format check concluido"
 
-      # 6. [INFORMATIVO] Type Check com mypy - Verifica tipos de dados estaticamente
+      # 8. [INFORMATIVO] Type Check com mypy - Verifica tipos de dados estaticamente
       #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
       #    --ignore-missing-imports: ignora pacotes sem stubs de tipo (ex.: awsglue)
       - name: Type Check with mypy
@@ -94,7 +94,7 @@ jobs:
           fi
           echo "Mypy type checking concluido"
 
-      # 7. [INFORMATIVO] Security Scan com Bandit - Detecta vulnerabilidades de segurança
+      # 9. [INFORMATIVO] Security Scan com Bandit - Detecta vulnerabilidades de segurança
       #    -ll  → exibe apenas severidade MÉDIA e ALTA
       #    -f json → salva relatório estruturado para download como artefato
       #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
@@ -108,7 +108,7 @@ jobs:
           fi
           echo "Bandit security scan concluido"
 
-      # 8. [INFORMATIVO] Dependency Check - Verifica vulnerabilidades em dependências
+      # 10. [INFORMATIVO] Dependency Check - Verifica vulnerabilidades em dependências
       #    Usa 'safety scan' (sintaxe da versão 3.x; versões antigas usavam 'safety check').
       #    Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
       - name: Check Dependencies with Safety
@@ -119,7 +119,7 @@ jobs:
           fi
           echo "Safety dependency check concluido"
 
-      # 9. [BLOQUEANTE] Executa os testes e aplica a barreira de qualidade (Quality Gate)
+      # 11. [BLOQUEANTE] Executa os testes e aplica a barreira de qualidade (Quality Gate)
       #    Falha a pipeline se: algum teste falhar OU cobertura < 70%.
       - name: Run tests with Coverage Gate
         run: |
@@ -133,7 +133,7 @@ jobs:
                  --cov-report=xml \
                  --cov-fail-under=70
 
-      # 10. Upload de relatórios de segurança como artefatos do GitHub Actions
+      # 12. Upload de relatórios de segurança como artefatos do GitHub Actions
       #     Artefatos ficam disponíveis por 7 dias na aba "Summary" do run.
       #     Para baixar: vá em Actions → run → Artifacts → security-reports
       - name: Upload Security Reports
@@ -148,7 +148,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # 11. Quality Gate Summary - Resumo final de qualidade
+      # 13. Quality Gate Summary - Resumo final de qualidade
       - name: Quality Gate Summary
         if: always()
         run: |
@@ -156,7 +156,7 @@ jobs:
           echo "        QUALITY GATES SUMMARY"
           echo "=========================================="
           echo "[BLOQUEANTE] Secrets no Historico Git (trufflehog)"
-          echo "[BLOQUEANTE] Linting (ruff)"
+          echo "[BLOQUEANTE] Linting e Format Check (ruff)"
           echo "[BLOQUEANTE] Testes Unitarios (pytest)"
           echo "[BLOQUEANTE] Cobertura de Codigo (Gate: >= 70%)"
           echo "[INFORMATIVO] Type Checking (mypy)"

@@ -17,6 +17,11 @@ name: Pipeline CI/CD
 on:
   push:
     branches: [feature/*, develop, main]
+    paths:
+      - 'app/**'
+      - 'test/**'
+      - 'infra/**'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       environment:
