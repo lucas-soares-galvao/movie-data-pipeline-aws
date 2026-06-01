@@ -32,43 +32,27 @@ locals {
   ])
 
   lambda_alarm_failed_input_template = <<-EOT
-{"message":"[Lambda Falha]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
-EOT
-
-  lambda_alarm_success_input_template = <<-EOT
-{"message":"[Lambda Sucesso]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
+{"message":"[Pipeline Falha]\nEtapa: Lambda\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
 
   eventbridge_alarm_failed_input_template = <<-EOT
-{"message":"[EventBridge Falha]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
-EOT
-
-  eventbridge_alarm_success_input_template = <<-EOT
-{"message":"[EventBridge Sucesso]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
-EOT
-
-  glue_etl_succeeded_input_template = <<-EOT
-{"message":"[Glue ETL Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>"}
+{"message":"[Pipeline Falha]\nEtapa: EventBridge\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
 
   glue_etl_failed_input_template = <<-EOT
-{"message":"[Glue ETL Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
-EOT
-
-  glue_data_quality_succeeded_input_template = <<-EOT
-{"message":"[Glue Data Quality Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>"}
+{"message":"[Pipeline Falha]\nEtapa: Glue ETL\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
   glue_data_quality_failed_input_template = <<-EOT
-{"message":"[Glue Data Quality Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
+{"message":"[Pipeline Falha]\nEtapa: Glue Data Quality\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
   glue_agg_succeeded_input_template = <<-EOT
-{"message":"[Glue AGG Sucesso]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>"}
+{"message":"[Pipeline Sucesso Final]\nEtapa final: Glue AGG\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
   glue_agg_failed_input_template = <<-EOT
-{"message":"[Glue AGG Falha]\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
+{"message":"[Pipeline Falha]\nEtapa: Glue AGG\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
   envs = {
