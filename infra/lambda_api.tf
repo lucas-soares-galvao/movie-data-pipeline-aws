@@ -38,6 +38,7 @@ resource "aws_lambda_function" "simple_lambda" {
   role          = aws_iam_role.lambda_function.arn
   handler       = "main.lambda_handler"
   runtime       = "python3.11"
+  architectures = ["arm64"]
   timeout       = 900
   memory_size   = 1024
 
