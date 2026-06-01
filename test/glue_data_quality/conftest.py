@@ -25,8 +25,12 @@ sys.modules.setdefault(
     "awsglue.utils",
     _make_module("awsglue.utils", getResolvedOptions=None),
 )
-sys.modules.setdefault("awsglue.context", _make_module("awsglue.context", GlueContext=None))
-sys.modules.setdefault("awsglue.dynamicframe", _make_module("awsglue.dynamicframe", DynamicFrame=None))
+sys.modules.setdefault(
+    "awsglue.context", _make_module("awsglue.context", GlueContext=None)
+)
+sys.modules.setdefault(
+    "awsglue.dynamicframe", _make_module("awsglue.dynamicframe", DynamicFrame=None)
+)
 
 # stubs do awsgluedq
 sys.modules.setdefault("awsgluedq", _make_module("awsgluedq"))
@@ -37,11 +41,21 @@ sys.modules.setdefault(
 
 # stubs do pyspark
 sys.modules.setdefault("pyspark", _make_module("pyspark"))
-sys.modules.setdefault("pyspark.context", _make_module("pyspark.context", SparkContext=None))
+sys.modules.setdefault(
+    "pyspark.context", _make_module("pyspark.context", SparkContext=None)
+)
 sys.modules.setdefault("pyspark.sql", _make_module("pyspark.sql"))
 sys.modules.setdefault(
     "pyspark.sql.functions",
-    _make_module("pyspark.sql.functions", coalesce=None, col=None, from_utc_timestamp=None, lit=None, current_timestamp=None, when=None),
+    _make_module(
+        "pyspark.sql.functions",
+        coalesce=None,
+        col=None,
+        from_utc_timestamp=None,
+        lit=None,
+        current_timestamp=None,
+        when=None,
+    ),
 )
 sys.modules.setdefault(
     "pyspark.sql.types",

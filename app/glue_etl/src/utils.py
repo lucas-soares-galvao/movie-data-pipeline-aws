@@ -31,14 +31,14 @@ from awsglue.utils import getResolvedOptions
 
 SOR_KEYS = {
     "movie": {
-        "genre":         "tmdb/genre/movie/generos_filmes.json",
+        "genre": "tmdb/genre/movie/generos_filmes.json",
         "configuration": "tmdb/configuration/languages/idiomas.json",
-        "discover":      "tmdb/discover/movie/ano={year}/",
+        "discover": "tmdb/discover/movie/ano={year}/",
     },
     "tv": {
-        "genre":         "tmdb/genre/tv/generos_series.json",
+        "genre": "tmdb/genre/tv/generos_series.json",
         "configuration": "tmdb/configuration/countries/paises.json",
-        "discover":      "tmdb/discover/tv/ano={year}/",
+        "discover": "tmdb/discover/tv/ano={year}/",
     },
 }
 
@@ -49,6 +49,7 @@ logger.setLevel(logging.INFO)
 # ---------------------------------------------------------------------------
 # Utilitários gerais
 # ---------------------------------------------------------------------------
+
 
 def get_resolved_option(args: list) -> Dict[str, Any]:
     """
@@ -100,6 +101,7 @@ def get_parameters_glue() -> Dict[str, Any]:
 # Leitura unificada dos dados da camada SOR
 # ---------------------------------------------------------------------------
 
+
 def read_from_sor(
     s3_bucket_sor: str,
     media_type: str,
@@ -150,10 +152,10 @@ def read_from_sor(
     return df
 
 
-
 # ---------------------------------------------------------------------------
 # Gravação na camada SOT
 # ---------------------------------------------------------------------------
+
 
 def write_parquet_to_sot(
     df: pd.DataFrame,
@@ -198,6 +200,7 @@ def write_parquet_to_sot(
 # Acionamento do Glue Data Quality
 # ---------------------------------------------------------------------------
 
+
 def trigger_data_quality(
     dq_job_name: str,
     table_name: str,
@@ -229,13 +232,16 @@ def trigger_data_quality(
         Arguments=arguments,
     )
     run_id = response["JobRunId"]
-    logger.info(f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}")
+    logger.info(
+        f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}"
+    )
     return run_id
 
 
 # ---------------------------------------------------------------------------
 # Acionamento do Glue AGG
 # ---------------------------------------------------------------------------
+
 
 def trigger_agg(agg_job_name: str) -> str:
     """

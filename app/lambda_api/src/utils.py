@@ -27,6 +27,7 @@ MAX_PAGES = 100  # Máximo de páginas por ano (TMDB suporta até 500)
 # Secrets Manager
 # ---------------------------------------------------------------------------
 
+
 def get_tmdb_api_key(secret_arn: str) -> str:
     """
     Busca a chave de API do TMDB armazenada no AWS Secrets Manager.
@@ -48,6 +49,7 @@ def get_tmdb_api_key(secret_arn: str) -> str:
 # ---------------------------------------------------------------------------
 # TMDB API
 # ---------------------------------------------------------------------------
+
 
 def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> dict:
     """
@@ -103,6 +105,7 @@ def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> di
 # S3
 # ---------------------------------------------------------------------------
 
+
 def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
     """
     Salva um dicionário Python como arquivo JSON no S3.
@@ -130,7 +133,15 @@ def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
 # Glue ETL
 # ---------------------------------------------------------------------------
 
-def trigger_glue_job(glue_client, job_name: str, glue_catalog_args: dict, table_type: str, table_name: str, year: int = None) -> str:
+
+def trigger_glue_job(
+    glue_client,
+    job_name: str,
+    glue_catalog_args: dict,
+    table_type: str,
+    table_name: str,
+    year: int = None,
+) -> str:
     """
     Inicia o job Glue ETL para processar dados do TMDB.
 
@@ -169,15 +180,20 @@ def trigger_glue_job(glue_client, job_name: str, glue_catalog_args: dict, table_
     )
     run_id = response["JobRunId"]
     if year is not None:
-        logger.info(f"Job Glue '{job_name}' iniciado para '{table_type}' do ano {year}. RunId: {run_id}")
+        logger.info(
+            f"Job Glue '{job_name}' iniciado para '{table_type}' do ano {year}. RunId: {run_id}"
+        )
     else:
-        logger.info(f"Job Glue '{job_name}' iniciado para '{table_type}'. RunId: {run_id}")
+        logger.info(
+            f"Job Glue '{job_name}' iniciado para '{table_type}'. RunId: {run_id}"
+        )
     return run_id
 
 
 # ---------------------------------------------------------------------------
 # TMDB API — dados de referência (sem paginação)
 # ---------------------------------------------------------------------------
+
 
 def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict = None) -> dict:
     """
@@ -220,14 +236,20 @@ def collect_genre_data(api_key: str, s3_client, bucket: str, content_type: str) 
     if content_type == "movie":
         logger.info("Coletando referência: /genre/movie/list")
         data = fetch_tmdb_reference(api_key, "/genre/movie/list", {"language": "pt-BR"})
-        save_to_s3(s3_client, bucket, data["genres"], "tmdb/genre/movie/generos_filmes.json")
+        save_to_s3(
+            s3_client, bucket, data["genres"], "tmdb/genre/movie/generos_filmes.json"
+        )
     else:
         logger.info("Coletando referência: /genre/tv/list")
         data = fetch_tmdb_reference(api_key, "/genre/tv/list", {"language": "pt-BR"})
-        save_to_s3(s3_client, bucket, data["genres"], "tmdb/genre/tv/generos_series.json")
+        save_to_s3(
+            s3_client, bucket, data["genres"], "tmdb/genre/tv/generos_series.json"
+        )
 
 
-def collect_configuration_data(api_key: str, s3_client, bucket: str, content_type: str) -> None:
+def collect_configuration_data(
+    api_key: str, s3_client, bucket: str, content_type: str
+) -> None:
     """
     Coleta os dados de configuração do TMDB para o tipo de conteúdo recebido e salva no S3.
 
@@ -246,20 +268,19 @@ def collect_configuration_data(api_key: str, s3_client, bucket: str, content_typ
         save_to_s3(s3_client, bucket, data, "tmdb/configuration/languages/idiomas.json")
     else:
         logger.info("Coletando referência: /configuration/countries")
-        data = fetch_tmdb_reference(api_key, "/configuration/countries", {"language": "pt-BR"})
+        data = fetch_tmdb_reference(
+            api_key, "/configuration/countries", {"language": "pt-BR"}
+        )
         save_to_s3(s3_client, bucket, data, "tmdb/configuration/countries/paises.json")
+
 
 # ---------------------------------------------------------------------------
 # Coleta e salvamento por ano
 # ---------------------------------------------------------------------------
 
+
 def collect_discover_data(
-    api_key: str,
-    s3_client,
-    bucket: str,
-    content_type: str,
-    folder: str,
-    year: int
+    api_key: str, s3_client, bucket: str, content_type: str, folder: str, year: int
 ) -> None:
     """
     Busca todas as páginas disponíveis (até MAX_PAGES) de um tipo de conteúdo
