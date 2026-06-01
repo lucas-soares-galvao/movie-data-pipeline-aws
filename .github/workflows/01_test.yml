@@ -87,8 +87,7 @@ jobs:
       - name: Check Dependencies with Safety
         run: |
           # Verifica dependências conhecidas com vulnerabilidades divulgadas
-          # safety scan substitui o depreciado safety check (v3+)
-          if ! safety scan --output json > safety-report.json; then
+          if ! safety check --json --output safety-report.json; then
             echo "::warning::Vulnerabilidades conhecidas em dependencias (recomendado revisar)"
           fi
           echo "Safety dependency check concluido"
@@ -123,16 +122,4 @@ jobs:
           echo "=========================================="
           echo "Resumo concluido. Consulte os logs para detalhes de alertas ou falhas."
           echo "=========================================="
-
-      # 11. Upload dos relatórios gerados para consulta posterior
-      - name: Upload Test Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-reports
-          path: |
-            coverage.xml
-            bandit-report.json
-            safety-report.json
-          retention-days: 7
-
+          
