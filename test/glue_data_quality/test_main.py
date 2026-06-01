@@ -29,14 +29,17 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
 
     # SparkContext e GlueContext são None no conftest (stubs) — precisam ser
     # substituídos por MagicMock para que .getOrCreate() e GlueContext(sc) funcionem.
-    with patch.object(m, "SparkContext") as mock_sc_cls, \
-         patch.object(m, "GlueContext") as mock_gc_cls, \
-         patch.object(m, "get_parameters_glue", return_value=args), \
-         patch.object(m, "get_ruleset", return_value=ruleset) as mock_ruleset, \
-         patch.object(m, "read_table_from_catalog", return_value=dynamic_frame) as mock_read, \
-         patch.object(m, "evaluate_data_quality", return_value=df_results) as mock_eval, \
-         patch.object(m, "write_results_to_s3") as mock_write:
-
+    with (
+        patch.object(m, "SparkContext") as mock_sc_cls,
+        patch.object(m, "GlueContext") as mock_gc_cls,
+        patch.object(m, "get_parameters_glue", return_value=args),
+        patch.object(m, "get_ruleset", return_value=ruleset) as mock_ruleset,
+        patch.object(
+            m, "read_table_from_catalog", return_value=dynamic_frame
+        ) as mock_read,
+        patch.object(m, "evaluate_data_quality", return_value=df_results) as mock_eval,
+        patch.object(m, "write_results_to_s3") as mock_write,
+    ):
         mock_sc_cls.getOrCreate.return_value = sc_mock
         mock_gc_cls.return_value = glue_context_mock
 
@@ -58,6 +61,7 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
 # Criação dos contextos Spark / Glue
 # ---------------------------------------------------------------------------
 
+
 class TestContextCreation:
     def test_creates_spark_context(self):
         """SparkContext.getOrCreate() deve ser chamado para iniciar o Spark."""
@@ -73,6 +77,7 @@ class TestContextCreation:
 # ---------------------------------------------------------------------------
 # Chamada de get_ruleset
 # ---------------------------------------------------------------------------
+
 
 class TestGetRulesetCall:
     def test_calls_get_ruleset_with_table_name(self):
@@ -90,6 +95,7 @@ class TestGetRulesetCall:
 # ---------------------------------------------------------------------------
 # Chamada de read_table_from_catalog
 # ---------------------------------------------------------------------------
+
 
 class TestReadTableFromCatalogCall:
     def test_calls_read_table_with_glue_context(self):
@@ -131,6 +137,7 @@ class TestReadTableFromCatalogCall:
 # Chamada de evaluate_data_quality
 # ---------------------------------------------------------------------------
 
+
 class TestEvaluateDataQualityCall:
     def test_calls_evaluate_with_glue_context(self):
         """evaluate_data_quality deve receber o GlueContext."""
@@ -147,9 +154,9 @@ class TestEvaluateDataQualityCall:
 
     def test_calls_evaluate_with_ruleset(self):
         """evaluate_data_quality deve receber o ruleset retornado por get_ruleset."""
-        mocks = _run_main(ruleset='Rules = [\n  RowCount > 0\n]')
+        mocks = _run_main(ruleset="Rules = [\n  RowCount > 0\n]")
         ruleset_arg = mocks["mock_eval"].call_args[0][2]
-        assert ruleset_arg == 'Rules = [\n  RowCount > 0\n]'
+        assert ruleset_arg == "Rules = [\n  RowCount > 0\n]"
 
     def test_calls_evaluate_with_table_name(self):
         """evaluate_data_quality deve receber o TABLE_NAME dos args."""
@@ -180,6 +187,7 @@ class TestEvaluateDataQualityCall:
 # ---------------------------------------------------------------------------
 # Chamada de write_results_to_s3
 # ---------------------------------------------------------------------------
+
 
 class TestWriteResultsToS3Call:
     def test_calls_write_with_df_results(self):

@@ -16,6 +16,7 @@ from src.utils import (
 # Helpers compartilhados
 # ---------------------------------------------------------------------------
 
+
 def _make_s3_mock(payload) -> MagicMock:
     """Cria um cliente S3 simulado que retorna `payload` serializado como JSON."""
     body = MagicMock()
@@ -29,9 +30,12 @@ def _make_s3_mock(payload) -> MagicMock:
 # read_from_sor — table_type="discover"
 # ---------------------------------------------------------------------------
 
+
 class TestReadFromSorDiscover:
     def test_calls_wrangler_with_correct_path(self):
-        df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}, {"id": 2, "title": "Film B"}])
+        df_mock = pd.DataFrame(
+            [{"id": 1, "title": "Film A"}, {"id": 2, "title": "Film B"}]
+        )
         with patch("awswrangler.s3.read_json", return_value=df_mock) as mock_read:
             read_from_sor("my-sor", "movie", "discover", year="2023")
             mock_read.assert_called_once_with(
@@ -66,6 +70,7 @@ class TestReadFromSorDiscover:
 # read_from_sor — table_type="genre"
 # ---------------------------------------------------------------------------
 
+
 class TestReadFromSorGenre:
     def test_movie_reads_correct_s3_key(self):
         s3_mock = _make_s3_mock([{"id": 28, "name": "Ação"}])
@@ -99,6 +104,7 @@ class TestReadFromSorGenre:
 # read_from_sor — table_type="configuration"
 # ---------------------------------------------------------------------------
 
+
 class TestReadFromSorConfiguration:
     def test_movie_reads_languages_s3_key(self):
         s3_mock = _make_s3_mock([{"iso_639_1": "pt", "english_name": "Portuguese"}])
@@ -129,6 +135,7 @@ class TestReadFromSorConfiguration:
 # ---------------------------------------------------------------------------
 # write_parquet_to_sot
 # ---------------------------------------------------------------------------
+
 
 class TestWriteParquetToSot:
     def test_with_partition_cols(self):
@@ -200,6 +207,7 @@ class TestWriteParquetToSot:
 # trigger_data_quality
 # ---------------------------------------------------------------------------
 
+
 class TestTriggerDataQuality:
     def _make_glue_mock(self, run_id="run-123") -> MagicMock:
         glue_mock = MagicMock()
@@ -221,7 +229,9 @@ class TestTriggerDataQuality:
     def test_includes_year_when_provided(self):
         glue_mock = self._make_glue_mock()
         with patch("boto3.client", return_value=glue_mock):
-            trigger_data_quality("dq-job", "tb_discover_movie_tmdb", "db_tmdb", year="2023")
+            trigger_data_quality(
+                "dq-job", "tb_discover_movie_tmdb", "db_tmdb", year="2023"
+            )
             _, kwargs = glue_mock.start_job_run.call_args
             assert kwargs["Arguments"]["--YEAR"] == "2023"
 
