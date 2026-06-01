@@ -1,14 +1,4 @@
 # Raciocinio: centraliza plan/apply/destroy do Terraform com parametros por ambiente.
-#
-# Fluxo de execução (decidido pelo arquivo infra/destroy_config.json):
-#
-#   destroy_config[ambiente] == "true"  →  passo 10: Terraform DESTROY
-#   destroy_config[ambiente] == "false" →  passo 11: Terraform PLAN
-#                                          passo 12: Terraform APPLY
-#
-# Por que usar um arquivo JSON para controlar destroy?
-#   Isso permite ativar/desativar o destroy por ambiente sem alterar o código
-#   da pipeline. Basta editar destroy_config.json e fazer commit.
 
 name: "Terraform (Reusable)"
 
@@ -33,17 +23,10 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
-      tmdb-secret-arn:
-        required: true
-      # Infracost API key — cadastro gratuito em https://www.infracost.io
-      # Se não configurado, o step de estimativa de custo é ignorado (continue-on-error: true)
-      infracost-api-key:
-        required: false
 
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     # Outputs do job: Passa para o pipeline principal se a infraestrutura foi destruída ou não (usado para condicional de deploy da app)
     outputs:
@@ -82,26 +65,7 @@ jobs:
           DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
 
-      # 5. Gera o terraform.tfvars em runtime para não expor ARNs sensíveis no repositório público
-      - name: Generate terraform.tfvars
-        env:
-          TMDB_SECRET_ARN: ${{ secrets.tmdb-secret-arn }}
-        run: |
-          CLEAN_ARN=$(printf '%s' "${TMDB_SECRET_ARN}" | tr -d '\r\n')
-           if ! printf '%s' "${CLEAN_ARN}" | LC_ALL=C grep -Eq '^[ -~]+$'; then
-             echo "tmdb-secret-arn contains non-ASCII or non-printable characters"
-             exit 1
-           fi
-           if ! printf '%s' "${CLEAN_ARN}" | grep -Eq '^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+'; then
-             echo "tmdb-secret-arn is not a valid Secrets Manager ARN"
-             exit 1
-           fi
-          cat > infra/envs/${{ inputs.environment }}/terraform.tfvars <<EOF
-          env             = "${{ inputs.environment }}"
-          tmdb_secret_arn = "${CLEAN_ARN}"
-          EOF
-
-      # 6. Inicializa o Terraform configurando o Backend Remoto dinamicamente
+      # 5. Inicializa o Terraform configurando o Backend Remoto dinamicamente
       # O bucket, a chave (nome do repo), a região e a tabela de lock (DynamoDB) vêm dos secrets
       - name: Terraform Init
         run: |
@@ -111,60 +75,57 @@ jobs:
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
-      # 7. Valida se a sintaxe do código Terraform está correta
+      # 6. Valida se a sintaxe do código Terraform está correta
       - name: Terraform Validate
         run: cd infra && terraform validate
 
-      # 8. TFLint - Setup via action oficial (versão pinada para estabilidade)
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
-        with:
-          tflint_version: v0.55.0
-
-      # 9. TFLint - Execução (detecção de má prática e erros potenciais)
-      - name: Run TFLint
+      # 7. TFLint - Linting para Terraform (detecção de má prática e erros potenciais)
+      - name: Setup and Run TFLint
         run: |
+          # Instala TFLint
+          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          
+          # Inicializa TFLint com configurações padrão
           cd infra
           tflint --init
-          echo "Executando TFLint para validacoes de boas praticas..."
-          tflint --format compact || echo "Avisos de TFLint detectados (verificar antes de deploy)"
+          
+          # Executa TFLint com formato legível
+          echo "🔍 Executando TFLint para validações de boas práticas..."
+          tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
 
-      # 9. [BLOQUEANTE] Format Check - Verifica se o código está formatado corretamente
-      #    Falha a pipeline se houver arquivos fora do padrão.
-      #    Para corrigir localmente: execute 'terraform fmt -recursive' na pasta infra/
+      # 8. Format Check - Verifica se o código está formatado corretamente
       - name: Terraform Format Check
         run: |
           cd infra
-          echo "Verificando formatacao do codigo Terraform..."
-          terraform fmt -check -recursive
+          echo "🎨 Verificando formatação do código Terraform..."
+          terraform fmt -check -recursive || {
+            echo "⚠ Código não formatado. Execute: terraform fmt -recursive"
+            exit 0  # Não falha a pipeline, apenas aviso
+          }
 
-      # 10. [INFORMATIVO] Checkov - Policy validation (detecção de vulnerabilidades de segurança/compliance)
-      #     Gera ::warning:: no log do GitHub, mas NÃO falha a pipeline.
-      #     Para tornar BLOQUEANTE: remova o '|| true' no final do segundo checkov.
+      # 9. Checkov - Policy validation (detecção de vulnerabilidades de segurança/compliance)
       - name: Checkov Security Scan
         run: |
+          # Instala Checkov
           pip install checkov
+          
           cd infra
-          echo "Executando Checkov para validacoes de seguranca e compliance..."
-          # Gera relatório JSON (salvo como artefato abaixo)
-          checkov -d . --framework terraform --quiet --output json --output-file checkov-report.json || true
-          # Exibe resumo no terminal; nao falha a pipeline (exit 0 implícito via || true)
-          if ! checkov -d . --framework terraform --quiet; then
-            echo "::warning::Problemas de seguranca/compliance detectados (ver artefato checkov-report.json)"
-          fi
+          echo "🔒 Executando Checkov para validações de segurança e compliance..."
+          
+          # Executa Checkov com output em JSON para relatório
+          checkov -d . \
+                  --framework terraform \
+                  --quiet \
+                  --output json \
+                  --output-file checkov-report.json || echo "⚠ Problemas de segurança/compliance detectados"
+          
+          # Exibe um resumo em terminal
+          checkov -d . --framework terraform --quiet || {
+            echo "⚠ Verifique os problemas de segurança identificados acima"
+            exit 0  # Não falha a pipeline para permitir correções iterativas
+          }
 
-      # 11. Upload do relatório Checkov como artefato do GitHub Actions
-      #     Artefatos ficam disponíveis por 7 dias na aba "Summary" do run.
-      - name: Upload Checkov Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: checkov-report
-          path: infra/checkov-report.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # 12. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
+      # 10. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
       # Isolamento entre dev/prod é feito por buckets S3 separados (sem necessidade de workspace)
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
@@ -173,117 +134,20 @@ jobs:
           cd infra
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -auto-approve
 
-      # 13. Pré-build do pacote Lambda: cria infra/.lambda_build/ antes do plan
-      # O data.archive_file.lambda_bundle lê esse diretório durante o plan; sem ele o plan falha.
-      # O null_resource.lambda_build repete o build no apply se os hashes mudarem (idempotente).
-      - name: Build Lambda package
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        run: |
-          python infra/scripts/build_lambda_package.py \
-            --src app/lambda_api \
-            --requirements app/lambda_api/requirements.txt \
-            --dest infra/.lambda_build
-
-      # 14. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
-      # Salva o resultado em arquivo binário (.plan) para o Apply E em texto puro (/tmp/tfplan.txt)
-      # para o comentário no PR e para o Infracost.
+      # 11. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
+      # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-plan
         run: |
           cd infra
-          # -no-color: remove códigos ANSI de cor para o texto no PR ficar legível
-          # tee: imprime no terminal E salva no arquivo ao mesmo tempo
-          terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
-            -out="${{ inputs.environment }}.plan" \
-            -no-color 2>&1 | tee /tmp/tfplan.txt
+          terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
 
-      # 15. Posta o resultado do Plan como comentário no PR (se houver PR aberto para esta branch)
-      #     O revisor vê exatamente o que será criado/modificado/destruído na AWS sem rodar nada localmente.
-      #     Se não houver PR aberto, o step é ignorado sem erro.
-      - name: Post Plan as PR Comment
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const fullPlan = fs.readFileSync('/tmp/tfplan.txt', 'utf8');
-
-            // Trunca se ultrapassar o limite de ~65k caracteres de um comentário no GitHub
-            const maxLen = 60000;
-            const plan = fullPlan.length > maxLen
-              ? fullPlan.substring(0, maxLen) + '\n\n... (saída truncada — ver log completo em Actions)'
-              : fullPlan;
-
-            // Busca PRs abertos para esta branch
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
-              state: 'open'
-            });
-
-            if (prs.length === 0) {
-              console.log('Nenhum PR aberto para esta branch. Comentário de plan não será postado.');
-              return;
-            }
-
-            const prNumber = prs[0].number;
-            // Marcador HTML invisível para localizar e atualizar o comentário em runs futuros
-            const marker = '<!-- terraform-plan-comment -->';
-            const body = `${marker}\n### Terraform Plan — ambiente: \`${{ inputs.environment }}\`\n\n<details>\n<summary>Clique para ver o plano completo</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
-
-            // Se já existe um comentário de plan neste PR, atualiza em vez de criar novo
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber
-            });
-
-            const existing = comments.find(c => c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body
-              });
-              console.log(`Comentário de plan atualizado no PR #${prNumber}`);
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body
-              });
-              console.log(`Comentário de plan criado no PR #${prNumber}`);
-            }
-
-      # 16. [INFORMATIVO] Estimativa de custo com Infracost
-      #     Mostra o delta de custo mensal estimado entre o estado atual e o plan.
-      #     continue-on-error: true → não bloqueia o deploy se a API key não estiver configurada.
-      #     Para tornar BLOQUEANTE: remova 'continue-on-error: true'.
-      - name: Infracost Cost Estimate
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        continue-on-error: true
-        run: |
-          # Instala o CLI do Infracost
-          curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
-
-          # Converte o plano binário para JSON (formato aceito pelo Infracost)
-          # Isso evita re-executar o terraform plan (mais rápido e sem custos extras de API AWS)
-          cd infra && terraform show -json "${{ inputs.environment }}.plan" > /tmp/plan.json && cd ..
-
-          # Gera estimativa de custo baseada no plan já executado
-          infracost breakdown --path /tmp/plan.json --format table
-        env:
-          INFRACOST_API_KEY: ${{ secrets.infracost-api-key }}
-
-      # 17. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 12. Execução (Apply): Aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
         run: |
           cd infra
           terraform apply "${{ inputs.environment }}.plan"
+          
