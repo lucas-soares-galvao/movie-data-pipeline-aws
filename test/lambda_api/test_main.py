@@ -16,7 +16,9 @@ from unittest.mock import MagicMock, patch
 
 # As variáveis de ambiente precisam existir ANTES de importar main,
 # pois main.py as lê no momento em que é carregado pelo Python.
-os.environ.setdefault("TMDB_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123:secret:tmdb-test")
+os.environ.setdefault(
+    "TMDB_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123:secret:tmdb-test"
+)
 os.environ.setdefault("GLUE_ETL_JOB_NAME", "test-glue-etl-job")
 os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 
@@ -48,8 +50,8 @@ EVENTO_TV = {
 # Testes do lambda_handler
 # ---------------------------------------------------------------------------
 
-class TestLambdaHandler(unittest.TestCase):
 
+class TestLambdaHandler(unittest.TestCase):
     def setUp(self):
         """Objeto de contexto simulado (exigido pela assinatura do handler)."""
         self.mock_context = MagicMock()
@@ -63,7 +65,13 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     def test_retorna_status_200_para_movie(
-        self, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
 
@@ -79,7 +87,13 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     def test_retorna_status_200_para_tv(
-        self, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
 
@@ -97,7 +111,13 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     def test_busca_api_key_uma_unica_vez(
-        self, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
 
@@ -115,7 +135,13 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     def test_collect_genre_chamado_com_tipo_movie(
-        self, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
 
@@ -132,7 +158,13 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     def test_collect_configuration_chamado_com_tipo_tv(
-        self, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
 
@@ -152,7 +184,14 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.boto3")
     @patch("main.datetime")
     def test_loop_executa_para_cada_ano(
-        self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2027  # Simula ano atual = 2027
@@ -174,7 +213,14 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.boto3")
     @patch("main.datetime")
     def test_collect_discover_usa_folder_correto_para_movie(
-        self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025  # 1 único ano para simplificar
@@ -193,7 +239,14 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.boto3")
     @patch("main.datetime")
     def test_collect_discover_usa_folder_correto_para_tv(
-        self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025
@@ -214,7 +267,14 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.boto3")
     @patch("main.datetime")
     def test_glue_recebe_argumentos_padronizados(
-        self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025  # 1 único ano
@@ -222,9 +282,9 @@ class TestLambdaHandler(unittest.TestCase):
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
         # Verifica os args base e table_name de cada chamada ao Glue
-        chamada_genre  = mock_trigger.call_args_list[0]
+        chamada_genre = mock_trigger.call_args_list[0]
         chamada_config = mock_trigger.call_args_list[1]
-        chamada_disc   = mock_trigger.call_args_list[2]
+        chamada_disc = mock_trigger.call_args_list[2]
 
         # glue_base_args (3º arg posicional) deve conter apenas MEDIA_TYPE e DATABASE
         for chamada in (chamada_genre, chamada_config, chamada_disc):
@@ -233,9 +293,9 @@ class TestLambdaHandler(unittest.TestCase):
             self.assertEqual(args_base["DATABASE"], "tmdb_db")
 
         # table_name varia conforme o contexto (keyword arg)
-        self.assertEqual(chamada_genre[1].get("table_name"),  "genre_movie")
+        self.assertEqual(chamada_genre[1].get("table_name"), "genre_movie")
         self.assertEqual(chamada_config[1].get("table_name"), "configuration_languages")
-        self.assertEqual(chamada_disc[1].get("table_name"),   "discover_movie")
+        self.assertEqual(chamada_disc[1].get("table_name"), "discover_movie")
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -245,7 +305,14 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.boto3")
     @patch("main.datetime")
     def test_glue_acionado_para_genre_e_configuration_sem_year(
-        self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         """As chamadas do Glue para genre e configuration não devem receber year."""
         mock_get_key.return_value = "api-key-teste"
@@ -275,7 +342,14 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.boto3")
     @patch("main.datetime")
     def test_glue_no_loop_recebe_year_e_table_type_corretos(
-        self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config, mock_discover, mock_trigger
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
     ):
         """As chamadas do Glue dentro do loop devem receber year e table_type='discover'."""
         mock_get_key.return_value = "api-key-teste"

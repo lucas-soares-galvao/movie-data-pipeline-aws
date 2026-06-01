@@ -25,8 +25,8 @@ from src.utils import (
 # get_tmdb_api_key
 # ---------------------------------------------------------------------------
 
-class TestGetTmdbApiKey(unittest.TestCase):
 
+class TestGetTmdbApiKey(unittest.TestCase):
     @patch("src.utils.boto3")
     def test_retorna_chave_do_secrets_manager(self, mock_boto3):
         # Prepara o cliente simulado do Secrets Manager
@@ -49,8 +49,8 @@ class TestGetTmdbApiKey(unittest.TestCase):
 # fetch_tmdb_data
 # ---------------------------------------------------------------------------
 
-class TestFetchTmdbData(unittest.TestCase):
 
+class TestFetchTmdbData(unittest.TestCase):
     def _mock_resposta(self, dados):
         """Cria um objeto de resposta HTTP simulado."""
         mock_resp = MagicMock()
@@ -81,7 +81,9 @@ class TestFetchTmdbData(unittest.TestCase):
 
     @patch("src.utils.requests")
     def test_filme_usa_parametro_primary_release_year(self, mock_requests):
-        mock_requests.get.return_value = self._mock_resposta({"total_pages": 1, "results": []})
+        mock_requests.get.return_value = self._mock_resposta(
+            {"total_pages": 1, "results": []}
+        )
 
         fetch_tmdb_data("key", "movie", 2020, 1)
 
@@ -91,7 +93,9 @@ class TestFetchTmdbData(unittest.TestCase):
 
     @patch("src.utils.requests")
     def test_serie_usa_parametro_first_air_date_year(self, mock_requests):
-        mock_requests.get.return_value = self._mock_resposta({"total_pages": 1, "results": []})
+        mock_requests.get.return_value = self._mock_resposta(
+            {"total_pages": 1, "results": []}
+        )
 
         fetch_tmdb_data("key", "tv", 2020, 1)
 
@@ -104,13 +108,15 @@ class TestFetchTmdbData(unittest.TestCase):
 # save_to_s3
 # ---------------------------------------------------------------------------
 
-class TestSaveToS3(unittest.TestCase):
 
+class TestSaveToS3(unittest.TestCase):
     def test_salva_json_no_s3_com_parametros_corretos(self):
         mock_s3 = MagicMock()
         dados = {"id": 1, "titulo": "Filme Teste"}
 
-        save_to_s3(mock_s3, "meu-bucket", dados, "tmdb/discover/movie/ano=2023/pagina_001.json")
+        save_to_s3(
+            mock_s3, "meu-bucket", dados, "tmdb/discover/movie/ano=2023/pagina_001.json"
+        )
 
         mock_s3.put_object.assert_called_once()
         kwargs = mock_s3.put_object.call_args[1]
@@ -122,7 +128,9 @@ class TestSaveToS3(unittest.TestCase):
         mock_s3 = MagicMock()
         dados = {"id": 1, "titulo": "Filme Teste"}
 
-        save_to_s3(mock_s3, "meu-bucket", dados, "tmdb/discover/movie/ano=2023/pagina_001.json")
+        save_to_s3(
+            mock_s3, "meu-bucket", dados, "tmdb/discover/movie/ano=2023/pagina_001.json"
+        )
 
         kwargs = mock_s3.put_object.call_args[1]
         # Decodifica o corpo e verifica que os dados foram preservados
@@ -135,8 +143,8 @@ class TestSaveToS3(unittest.TestCase):
 # trigger_glue_job
 # ---------------------------------------------------------------------------
 
-class TestTriggerGlueJob(unittest.TestCase):
 
+class TestTriggerGlueJob(unittest.TestCase):
     def test_inicia_job_e_retorna_run_id(self):
         mock_glue = MagicMock()
         mock_glue.start_job_run.return_value = {"JobRunId": "jr_abc123"}
@@ -229,8 +237,8 @@ class TestTriggerGlueJob(unittest.TestCase):
 # fetch_tmdb_reference
 # ---------------------------------------------------------------------------
 
-class TestFetchTmdbReference(unittest.TestCase):
 
+class TestFetchTmdbReference(unittest.TestCase):
     @patch("src.utils.requests")
     def test_busca_endpoint_sem_params_extras(self, mock_requests):
         dados = [{"iso_639_1": "pt", "english_name": "Portuguese"}]
@@ -251,7 +259,9 @@ class TestFetchTmdbReference(unittest.TestCase):
         mock_resp.json.return_value = dados
         mock_requests.get.return_value = mock_resp
 
-        resultado = fetch_tmdb_reference("minha-key", "/genre/movie/list", {"language": "pt-BR"})
+        resultado = fetch_tmdb_reference(
+            "minha-key", "/genre/movie/list", {"language": "pt-BR"}
+        )
 
         params = mock_requests.get.call_args[1]["params"]
         self.assertEqual(params["language"], "pt-BR")
@@ -262,8 +272,8 @@ class TestFetchTmdbReference(unittest.TestCase):
 # collect_genre_data
 # ---------------------------------------------------------------------------
 
-class TestCollectGenreData(unittest.TestCase):
 
+class TestCollectGenreData(unittest.TestCase):
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_reference")
     def test_movie_coleta_generos_de_filmes(self, mock_fetch, mock_save):
@@ -314,8 +324,8 @@ class TestCollectGenreData(unittest.TestCase):
 # collect_configuration_data
 # ---------------------------------------------------------------------------
 
-class TestCollectConfigurationData(unittest.TestCase):
 
+class TestCollectConfigurationData(unittest.TestCase):
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_reference")
     def test_movie_coleta_idiomas(self, mock_fetch, mock_save):
@@ -353,8 +363,8 @@ class TestCollectConfigurationData(unittest.TestCase):
 # collect_discover_data
 # ---------------------------------------------------------------------------
 
-class TestCollectDiscoverData(unittest.TestCase):
 
+class TestCollectDiscoverData(unittest.TestCase):
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_data")
     def test_salva_todas_as_paginas_disponiveis(self, mock_fetch, mock_save):
@@ -362,7 +372,9 @@ class TestCollectDiscoverData(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": [], "total_pages": 3}
         mock_s3 = MagicMock()
 
-        collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+        collect_discover_data(
+            "key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023
+        )
 
         # 3 páginas salvas + 1 chamada extra para detectar o fim = 4 chamadas ao fetch
         self.assertEqual(mock_fetch.call_count, 4)
@@ -375,7 +387,9 @@ class TestCollectDiscoverData(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": [], "total_pages": 1}
         mock_s3 = MagicMock()
 
-        collect_discover_data("key", mock_s3, "meu-bucket", "tv", "tmdb/discover/tv", 2010)
+        collect_discover_data(
+            "key", mock_s3, "meu-bucket", "tv", "tmdb/discover/tv", 2010
+        )
 
         # 1 página salva + 1 chamada extra para detectar o fim = 2 chamadas ao fetch
         self.assertEqual(mock_fetch.call_count, 2)
@@ -387,7 +401,9 @@ class TestCollectDiscoverData(unittest.TestCase):
         mock_fetch.return_value = {"page": 1, "results": [], "total_pages": 1}
         mock_s3 = MagicMock()
 
-        collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+        collect_discover_data(
+            "key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023
+        )
 
         # Verifica o caminho do arquivo salvo na primeira (e única) página
         s3_key_usado = mock_save.call_args[0][3]
@@ -395,12 +411,21 @@ class TestCollectDiscoverData(unittest.TestCase):
 
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_data")
-    def test_salva_apenas_results_sem_metadados_de_paginacao(self, mock_fetch, mock_save):
+    def test_salva_apenas_results_sem_metadados_de_paginacao(
+        self, mock_fetch, mock_save
+    ):
         filmes = [{"id": 1, "title": "Filme A"}, {"id": 2, "title": "Filme B"}]
-        mock_fetch.return_value = {"page": 1, "results": filmes, "total_pages": 1, "total_results": 2}
+        mock_fetch.return_value = {
+            "page": 1,
+            "results": filmes,
+            "total_pages": 1,
+            "total_results": 2,
+        }
         mock_s3 = MagicMock()
 
-        collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+        collect_discover_data(
+            "key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023
+        )
 
         # O 3º argumento posicional de save_to_s3 é o dado salvo
         dado_salvo = mock_save.call_args[0][2]

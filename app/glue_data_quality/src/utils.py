@@ -30,6 +30,7 @@ logger.setLevel(logging.INFO)
 # Leitura de argumentos do job
 # ---------------------------------------------------------------------------
 
+
 def get_parameters_glue() -> Dict[str, Any]:
     """
     Lê os argumentos obrigatórios e opcionais passados ao job Glue pelo Glue ETL.
@@ -60,6 +61,7 @@ def get_parameters_glue() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Ruleset (conjunto de regras DQDL)
 # ---------------------------------------------------------------------------
+
 
 def get_ruleset(table_name: str) -> str:
     """
@@ -99,7 +101,13 @@ def get_ruleset(table_name: str) -> str:
 # Leitura da tabela no Glue Catalog
 # ---------------------------------------------------------------------------
 
-def read_table_from_catalog(glue_context: GlueContext, database: str, table_name: str, year: Optional[str] = None):
+
+def read_table_from_catalog(
+    glue_context: GlueContext,
+    database: str,
+    table_name: str,
+    year: Optional[str] = None,
+):
     """
     Lê uma tabela registrada no Glue Catalog e a retorna como DynamicFrame.
 
@@ -135,6 +143,7 @@ def read_table_from_catalog(glue_context: GlueContext, database: str, table_name
 # ---------------------------------------------------------------------------
 # Avaliação da qualidade dos dados
 # ---------------------------------------------------------------------------
+
 
 def evaluate_data_quality(
     glue_context: GlueContext,
@@ -205,7 +214,9 @@ def evaluate_data_quality(
         .withColumnRenamed("Outcome", "outcome")
         .withColumnRenamed("FailureReason", "failure_reason")
         .withColumnRenamed("EvaluatedMetrics", "evaluated_metrics")
-        .drop("EvaluatedRule")  # coluna extra do Glue DQ não mapeada no schema do Catalog
+        .drop(
+            "EvaluatedRule"
+        )  # coluna extra do Glue DQ não mapeada no schema do Catalog
     )
 
     # EvaluatedMetrics é retornada pelo Glue DQ como map<string, double> — tipo complexo
@@ -214,10 +225,14 @@ def evaluate_data_quality(
     df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
 
     # Adiciona colunas de contexto para rastreabilidade e particionamento
-    df = df.withColumn("partition", lit(year).cast(StringType()))  # ano da partição (None para gêneros/config)
-    df = df.withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))  # horário em São Paulo
-    df = df.withColumn("source_database", lit(database))   # banco de dados avaliado
-    df = df.withColumn("source_table", lit(table_name))    # partição no S3
+    df = df.withColumn(
+        "partition", lit(year).cast(StringType())
+    )  # ano da partição (None para gêneros/config)
+    df = df.withColumn(
+        "datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo")
+    )  # horário em São Paulo
+    df = df.withColumn("source_database", lit(database))  # banco de dados avaliado
+    df = df.withColumn("source_table", lit(table_name))  # partição no S3
 
     logger.info(f"Avaliação concluída. Regras avaliadas: {df.count()}")
     return df
@@ -226,6 +241,7 @@ def evaluate_data_quality(
 # ---------------------------------------------------------------------------
 # Gravação dos resultados no S3
 # ---------------------------------------------------------------------------
+
 
 def write_results_to_s3(
     df,
@@ -268,9 +284,10 @@ def write_results_to_s3(
     )
 
     (
-        df.write
-        .mode("overwrite")
-        .partitionBy("source_table")   # source_table vira subpasta; partition fica no Parquet
+        df.write.mode("overwrite")
+        .partitionBy(
+            "source_table"
+        )  # source_table vira subpasta; partition fica no Parquet
         .parquet(s3_path)
     )
 

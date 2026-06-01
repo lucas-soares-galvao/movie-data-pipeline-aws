@@ -56,7 +56,7 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
             prefix = src_pkg + "."
             for key in list(sys.modules.keys()):
                 if key.startswith(prefix):
-                    sys.modules["src." + key[len(prefix):]] = sys.modules[key]
+                    sys.modules["src." + key[len(prefix) :]] = sys.modules[key]
     except ImportError:
         pass
 
@@ -74,7 +74,7 @@ def _apply_suite_aliases(suite: str) -> None:
         prefix = src_pkg + "."
         for key in list(sys.modules.keys()):
             if key.startswith(prefix):
-                sys.modules["src." + key[len(prefix):]] = sys.modules[key]
+                sys.modules["src." + key[len(prefix) :]] = sys.modules[key]
 
     app_dir = _SUITE_TO_APP[suite]
     app_dir_str = str(app_dir)

@@ -17,7 +17,9 @@ class TestRulesetsDq:
     def test_all_expected_tables_are_present(self):
         """Todas as tabelas conhecidas devem ter um bloco de regras."""
         for table in EXPECTED_TABLES:
-            assert table in rulesets_dq, f"Tabela '{table}' não encontrada em rulesets_dq"
+            assert table in rulesets_dq, (
+                f"Tabela '{table}' não encontrada em rulesets_dq"
+            )
 
     def test_each_table_has_at_least_one_rule(self):
         """Cada tabela deve ter pelo menos uma regra definida."""

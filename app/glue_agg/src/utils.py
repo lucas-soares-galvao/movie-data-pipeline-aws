@@ -126,6 +126,7 @@ LEFT JOIN {database}.tb_configuration_countries_tmdb ctry
 # Utilitários gerais
 # ---------------------------------------------------------------------------
 
+
 def get_resolved_option(args: list) -> Dict[str, Any]:
     """
     Converte a lista de argumentos do Glue em um dicionário.
@@ -161,6 +162,7 @@ def get_parameters_glue() -> Dict[str, Any]:
 # Execução da query Athena
 # ---------------------------------------------------------------------------
 
+
 def run_athena_query(database: str, s3_bucket_temp: str) -> pd.DataFrame:
     """
     Executa a query de unificação no Athena e retorna o resultado como DataFrame.
@@ -192,6 +194,7 @@ def run_athena_query(database: str, s3_bucket_temp: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Gravação na camada SPEC
 # ---------------------------------------------------------------------------
+
 
 def write_parquet_to_spec(
     df: pd.DataFrame,

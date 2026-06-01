@@ -30,7 +30,13 @@ from datetime import datetime
 
 import boto3
 
-from src.utils import collect_configuration_data, collect_discover_data, collect_genre_data, get_tmdb_api_key, trigger_glue_job
+from src.utils import (
+    collect_configuration_data,
+    collect_discover_data,
+    collect_genre_data,
+    get_tmdb_api_key,
+    trigger_glue_job,
+)
 
 # ---------------------------------------------------------------------------
 # Configuração de log (os registros aparecem no CloudWatch automaticamente)
@@ -41,13 +47,16 @@ logger.setLevel(logging.INFO)
 # ---------------------------------------------------------------------------
 # Variáveis de ambiente — definidas no Terraform (infra/lambda_api.tf)
 # ---------------------------------------------------------------------------
-TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]      # ARN do segredo com a API key do TMDB
+TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]  # ARN do segredo com a API key do TMDB
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]  # Nome do job Glue ETL
-S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]          # Bucket SOR onde os dados brutos são salvos
+S3_BUCKET_SOR = os.environ[
+    "S3_BUCKET_SOR"
+]  # Bucket SOR onde os dados brutos são salvos
 
 # ---------------------------------------------------------------------------
 # Handler principal — chamado pela AWS ao invocar a Lambda
 # ---------------------------------------------------------------------------
+
 
 def lambda_handler(event, context):
     """
@@ -83,18 +92,18 @@ def lambda_handler(event, context):
     # Argumentos comuns a todas as chamadas do Glue ETL
     glue_base_args = {
         "MEDIA_TYPE": content_type,
-        "DATABASE":   event["database"],
+        "DATABASE": event["database"],
     }
 
     # Nomes das tabelas específicas para o tipo recebido
     if content_type == "movie":
-        table_genre         = event["table_genre_movie"]
+        table_genre = event["table_genre_movie"]
         table_configuration = event["table_configuration_languages"]
-        table_discover      = event["table_discover_movie"]
+        table_discover = event["table_discover_movie"]
     else:
-        table_genre         = event["table_genre_tv"]
+        table_genre = event["table_genre_tv"]
         table_configuration = event["table_configuration_countries"]
-        table_discover      = event["table_discover_tv"]
+        table_discover = event["table_discover_tv"]
 
     # Busca a chave de API uma única vez para não chamar o Secrets Manager repetidamente
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -107,15 +116,29 @@ def lambda_handler(event, context):
     logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
     collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
     logger.info("Acionando Glue ETL para tabela de gêneros...")
-    trigger_glue_job(glue_client, GLUE_ETL_JOB_NAME, glue_base_args, table_type="genre", table_name=table_genre)
+    trigger_glue_job(
+        glue_client,
+        GLUE_ETL_JOB_NAME,
+        glue_base_args,
+        table_type="genre",
+        table_name=table_genre,
+    )
 
     # Coleta configurações e aciona o Glue passando apenas a tabela de configuração
     logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
     collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
     logger.info("Acionando Glue ETL para tabela de configuração...")
-    trigger_glue_job(glue_client, GLUE_ETL_JOB_NAME, glue_base_args, table_type="configuration", table_name=table_configuration)
+    trigger_glue_job(
+        glue_client,
+        GLUE_ETL_JOB_NAME,
+        glue_base_args,
+        table_type="configuration",
+        table_name=table_configuration,
+    )
 
-    logger.info(f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {current_year}...")
+    logger.info(
+        f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {current_year}..."
+    )
 
     for year in range(start_year, current_year + 1):
         logger.info(f"=== Ano: {year} | Tipo: {content_type} ===")
@@ -131,11 +154,17 @@ def lambda_handler(event, context):
         )
 
         # Aciona o Glue ETL passando a tabela de discover, o ano e o tipo
-        trigger_glue_job(glue_client, GLUE_ETL_JOB_NAME, glue_base_args, table_type="discover", table_name=table_discover, year=year)
+        trigger_glue_job(
+            glue_client,
+            GLUE_ETL_JOB_NAME,
+            glue_base_args,
+            table_type="discover",
+            table_name=table_discover,
+            year=year,
+        )
 
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")
     return {
         "statusCode": 200,
         "body": f"Dados de '{content_type}' coletados de {start_year} a {current_year} com sucesso.",
     }
-
