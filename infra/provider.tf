@@ -26,4 +26,8 @@ terraform {
 provider "aws" {
   # Regiao padrao para criar/gerenciar os recursos.
   region = "sa-east-1"
+
+  default_tags {
+    tags = local.default_resource_tags
+  }
 }

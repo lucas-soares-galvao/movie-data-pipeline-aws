@@ -2,20 +2,16 @@
 
 name: "Terraform (Reusable)"
 
-# Define que este workflow é chamado por outro (workflow_call)
 on:
   workflow_call:
-    # Inputs: Parâmetros recebidos do pipeline principal (ex: 'dev', 'prod')
     inputs:
       environment:
         type: string
         required: true
-    # Outputs: Variáveis que serão passadas para o pipeline principal (ex: se a infraestrutura foi destruída ou não)
     outputs:
       was_destroyed:
         description: "Indica se a infraestrutura foi destruída"
         value: ${{ jobs.terraform.outputs.destroyed_status }}
-    # Secrets: Dados sensíveis necessários para conectar na AWS e no S3 do State
     secrets:
       aws-assume-role-arn:
         required: true
@@ -32,11 +28,9 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
 
-    # Outputs do job: Passa para o pipeline principal se a infraestrutura foi destruída ou não (usado para condicional de deploy da app)
     outputs:
       destroyed_status: ${{ steps.read-destroy-config.outputs.destroy }}
 
-    # Define que todos os comandos 'run' usarão o shell bash por padrão
     defaults:
       run:
         shell: bash
@@ -52,8 +46,7 @@ jobs:
         with:
           terraform_version: 1.8.3
 
-      # 3. Autenticação na AWS usando OIDC (OpenID Connect)
-      # Isso evita o uso de chaves fixas (Access Keys), usando uma Role temporária mais segura
+      # 3. Autenticação na AWS usando OIDC — evita chaves fixas (Access Keys)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -63,7 +56,6 @@ jobs:
 
       # 4. Build do pacote Lambda antes do plan
       # O data "archive_file" é avaliado durante o plan e exige que .lambda_build exista.
-      # O null_resource só executa o local-exec no apply, então o build precisa rodar explicitamente aqui.
       - name: Build Lambda Package
         run: |
           python infra/scripts/build_lambda_package.py \
@@ -71,16 +63,22 @@ jobs:
             --requirements app/lambda_api/requirements.txt \
             --dest infra/.lambda_build
 
-      # 5. Verifica se o ambiente deve ser destruído ou criado
-      # Ele lê um arquivo JSON local para saber se a flag de 'destroy' está ativa para aquele ambiente
+      # 5. Cache dos providers do Terraform para acelerar o init
+      - name: Cache Terraform Providers
+        uses: actions/cache@v4
+        with:
+          path: infra/.terraform
+          key: terraform-${{ hashFiles('infra/.terraform.lock.hcl') }}
+          restore-keys: terraform-
+
+      # 6. Verifica se o ambiente deve ser destruído ou criado
       - name: Read destroy configuration
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
 
-      # 5. Inicializa o Terraform configurando o Backend Remoto dinamicamente
-      # O bucket, a chave (nome do repo), a região e a tabela de lock (DynamoDB) vêm dos secrets
+      # 7. Inicializa o Terraform configurando o Backend Remoto dinamicamente
       - name: Terraform Init
         run: |
           cd infra && terraform init \
@@ -89,58 +87,40 @@ jobs:
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
-      # 6. Valida se a sintaxe do código Terraform está correta
+      # 8. Valida se a sintaxe do código Terraform está correta
       - name: Terraform Validate
         run: cd infra && terraform validate
 
-      # 7. TFLint - Linting para Terraform (detecção de má prática e erros potenciais)
-      - name: Setup and Run TFLint
+      # 9. TFLint — detecção de má prática e erros potenciais
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Run TFLint
         run: |
-          # Instala TFLint
-          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
-          
-          # Inicializa TFLint com configurações padrão
           cd infra
           tflint --init
-          
-          # Executa TFLint com formato legível
-          echo "🔍 Executando TFLint para validações de boas práticas..."
-          tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
+          tflint --format compact || echo "Avisos de TFLint detectados (verificar antes de deploy)"
 
-      # 8. Format Check - Verifica se o código está formatado corretamente
+      # 10. Format Check — verifica se o código está formatado corretamente
       - name: Terraform Format Check
         run: |
           cd infra
-          echo "🎨 Verificando formatação do código Terraform..."
           terraform fmt -check -recursive || {
-            echo "⚠ Código não formatado. Execute: terraform fmt -recursive"
-            exit 0  # Não falha a pipeline, apenas aviso
+            echo "Codigo nao formatado. Execute: terraform fmt -recursive"
+            exit 0
           }
 
-      # 9. Checkov - Policy validation (detecção de vulnerabilidades de segurança/compliance)
+      # 11. Checkov — validação de segurança e compliance
       - name: Checkov Security Scan
-        run: |
-          # Instala Checkov
-          pip install checkov
-          
-          cd infra
-          echo "🔒 Executando Checkov para validações de segurança e compliance..."
-          
-          # Executa Checkov com output em JSON para relatório
-          checkov -d . \
-                  --framework terraform \
-                  --quiet \
-                  --output json \
-                  --output-file checkov-report.json || echo "⚠ Problemas de segurança/compliance detectados"
-          
-          # Exibe um resumo em terminal
-          checkov -d . --framework terraform --quiet || {
-            echo "⚠ Verifique os problemas de segurança identificados acima"
-            exit 0  # Não falha a pipeline para permitir correções iterativas
-          }
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/
+          framework: terraform
+          quiet: true
+          soft_fail: true
+          output_format: cli
 
-      # 10. Operação de DESTROY (Executada apenas se a flag no JSON for 'true')
-      # Isolamento entre dev/prod é feito por buckets S3 separados (sem necessidade de workspace)
+      # 12. Operação de DESTROY (executada apenas se a flag no JSON for 'true')
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
@@ -150,8 +130,7 @@ jobs:
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
             -auto-approve
 
-      # 11. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
-      # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
+      # 13. Planejamento: gera o plano e salva em arquivo binário para garantir consistência no apply
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-plan
@@ -161,9 +140,7 @@ jobs:
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
             -out="${{ inputs.environment }}.plan"
 
-      # 12. Infracost - Estimativa de custo da infraestrutura
-      # Converte o plan binário para JSON (Infracost não suporta .plan binário),
-      # gera o breakdown e escreve no Step Summary (visível em push e PR).
+      # 14. Infracost — estimativa de custo da infraestrutura
       - name: Setup Infracost
         if: steps.read-destroy-config.outputs.destroy != 'true'
         uses: infracost/actions/setup@v3
@@ -185,21 +162,10 @@ jobs:
           echo "## Estimativa de Custo (Infracost) — ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
           infracost output --path /tmp/infracost.json --format table >> $GITHUB_STEP_SUMMARY
 
-      - name: Infracost PR Comment
-        if: steps.read-destroy-config.outputs.destroy != 'true' && github.event_name == 'pull_request'
-        run: |
-          infracost comment github \
-            --path /tmp/infracost.json \
-            --repo ${{ github.repository }} \
-            --github-token ${{ github.token }} \
-            --pull-request ${{ github.event.pull_request.number }} \
-            --behavior update
-
-      # 13. Execução (Apply): Aplica as mudanças planejadas no passo anterior
+      # 15. Execução: aplica as mudanças planejadas no passo anterior
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
         run: |
           cd infra
           terraform apply "${{ inputs.environment }}.plan"
-          

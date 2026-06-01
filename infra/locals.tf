@@ -1,6 +1,14 @@
 # Raciocinio: centraliza caminhos e nomes derivados para evitar repeticao e erro de referencia.
 
 locals {
+  default_resource_tags = {
+    Service     = "proj-eng-dados-filmes-aws"
+    Environment = local.environment_tag_value
+  }
+  environment_tag_value = {
+    dev   = "Dev"
+    prod  = "Prod"
+  }[lower(var.env)]
   lambda_api_src_path                 = "${path.root}/../app/${var.lambda_api_path_app}"
   lambda_api_requirements_path        = "${path.root}/../app/${var.lambda_api_path_app}/requirements.txt"
   lambda_api_build_path               = "${path.module}/.lambda_build"
