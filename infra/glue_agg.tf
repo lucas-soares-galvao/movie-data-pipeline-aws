@@ -2,7 +2,7 @@
 # e grava os dados particionados por media_type e year no bucket SPEC.
 # O AWS Wrangler registra/atualiza a tabela no Glue Catalog automaticamente.
 
-resource "aws_glue_job" "agg_job" {
+resource "aws_glue_job" "agg_job_pythonshell" {
   name         = local.envs.glue_agg_job_name
   description  = "Glue AGG Job — unifica discover movie e tv no bucket SPEC"
   role_arn     = aws_iam_role.glue_agg_role.arn
