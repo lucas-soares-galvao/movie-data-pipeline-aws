@@ -55,6 +55,7 @@ resource "aws_lambda_function" "simple_lambda" {
   s3_bucket        = local.envs.s3_bucket_aux
   s3_key           = aws_s3_object.lambda_deploy_package.key
   source_code_hash = data.archive_file.lambda_bundle.output_base64sha256
+  tags             = local.component_tags.lambda_api
 
   depends_on = [
     aws_iam_role_policy.lambda_logs,

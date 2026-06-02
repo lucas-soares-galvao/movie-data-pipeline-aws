@@ -5,11 +5,12 @@ resource "aws_glue_job" "data_quality_job" {
   description       = "Glue Data Quality Job"
   role_arn          = aws_iam_role.glue_dq_role.arn
   glue_version      = "5.0"
+  job_run_queuing_enabled = true
   max_retries       = 0
   timeout           = 30
   number_of_workers = 2
   worker_type       = "G.1X"
-  execution_class   = "STANDARD"
+  execution_class   = "FLEX"
 
   command {
     # Script principal do job armazenado no bucket auxiliar.
@@ -27,10 +28,11 @@ resource "aws_glue_job" "data_quality_job" {
     "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
     "--additional-python-modules" = local.glue_data_quality_additional_python_modules
     "--custom-logGroup-prefix"    = "/${local.envs.glue_data_quality_job_name}"
-    "--enable-metrics"            = ""
     "--S3_BUCKET_DATA_QUALITY"    = local.envs.s3_bucket_data_quality
     "--ENVIRONMENT"               = var.env
   }
+
+  tags = local.component_tags.glue_data_quality
 
 
   # Garante que artefatos e permissoes existam antes de criar o job.
@@ -45,7 +47,7 @@ resource "aws_glue_job" "data_quality_job" {
   ]
 
   execution_property {
-    max_concurrent_runs = 15
+    max_concurrent_runs = 2
   }
 }
 
@@ -56,6 +58,7 @@ resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
   key        = "${local.envs.glue_data_quality_job_name}/app/main.py"
   source     = "${local.glue_data_quality_src_path}/main.py"
   etag       = filemd5("${local.glue_data_quality_src_path}/main.py")
+  tags       = local.component_tags.glue_data_quality
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
@@ -74,5 +77,6 @@ resource "aws_s3_object" "deploy_app_bundle_data_quality" {
   key        = "${local.envs.glue_data_quality_job_name}/app_bundle.zip"
   source     = data.archive_file.glue_app_bundle_data_quality.output_path
   etag       = data.archive_file.glue_app_bundle_data_quality.output_md5
+  tags       = local.component_tags.glue_data_quality
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }

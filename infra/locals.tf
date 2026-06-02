@@ -4,11 +4,36 @@ locals {
   default_resource_tags = {
     Service     = "proj-eng-dados-filmes-aws"
     Environment = local.environment_tag_value
+    FinOps      = var.finops_tag_value
+  }
+  component_tags = {
+    shared = {
+      Component = "shared"
+    }
+    lambda_api = {
+      Component = "lambda_api"
+    }
+    eventbridge = {
+      Component = "eventbridge"
+    }
+    glue_etl = {
+      Component = "glue_etl"
+    }
+    glue_data_quality = {
+      Component = "glue_data_quality"
+    }
+    glue_agg = {
+      Component = "glue_agg"
+    }
+    glue_catalog = {
+      Component = "glue_catalog"
+    }
   }
   environment_tag_value = {
     dev   = "Dev"
     prod  = "Prod"
   }[lower(var.env)]
+  eventbridge_schedule_state        = lower(var.env) == "prod" ? "ENABLED" : "DISABLED"
   lambda_api_src_path                 = "${path.root}/../app/${var.lambda_api_path_app}"
   lambda_api_requirements_path        = "${path.root}/../app/${var.lambda_api_path_app}/requirements.txt"
   lambda_api_build_path               = "${path.module}/.lambda_build"

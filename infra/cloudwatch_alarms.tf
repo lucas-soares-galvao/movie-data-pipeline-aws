@@ -13,6 +13,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
   dimensions = {
     FunctionName = local.envs.lambda_api_name
   }
+  tags = local.component_tags.lambda_api
 }
 
 # Alarme de falha no EventBridge (somando as duas regras agendadas da pipeline)
@@ -60,6 +61,8 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
     label       = "EventBridgeFailedInvocations"
     return_data = true
   }
+
+  tags = local.component_tags.eventbridge
 }
 
 # Notificação customizada de falha da Lambda (quando alarme entra em ALARM)
@@ -77,6 +80,8 @@ resource "aws_cloudwatch_event_rule" "lambda_alarm_failed_state_change" {
       }
     }
   })
+
+  tags = local.component_tags.lambda_api
 }
 
 resource "aws_cloudwatch_event_target" "lambda_alarm_failed_state_change_target" {
@@ -112,6 +117,8 @@ resource "aws_cloudwatch_event_rule" "eventbridge_alarm_failed_state_change" {
       }
     }
   })
+
+  tags = local.component_tags.eventbridge
 }
 
 resource "aws_cloudwatch_event_target" "eventbridge_alarm_failed_state_change_target" {

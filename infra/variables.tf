@@ -11,6 +11,12 @@ variable "env" {
   }
 }
 
+variable "finops_tag_value" {
+  description = "Valor da tag FinOps aplicada aos recursos AWS compativeis para acompanhamento de custo"
+  type        = string
+  default     = "true"
+}
+
 ############## IAM Roles and Policies ##############
 variable "iam_role_glue" {
   description = "Nome da role IAM para jobs Glue"

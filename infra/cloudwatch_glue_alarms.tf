@@ -12,6 +12,8 @@ resource "aws_cloudwatch_event_rule" "glue_etl_failed" {
       state   = ["FAILED", "TIMEOUT", "STOPPED"]
     }
   })
+
+  tags = local.component_tags.glue_etl
 }
 
 resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
@@ -45,6 +47,8 @@ resource "aws_cloudwatch_event_rule" "glue_data_quality_failed" {
       state   = ["FAILED", "TIMEOUT", "STOPPED"]
     }
   })
+
+  tags = local.component_tags.glue_data_quality
 }
 
 resource "aws_cloudwatch_event_target" "glue_data_quality_failed_target" {
@@ -78,6 +82,8 @@ resource "aws_cloudwatch_event_rule" "glue_agg_succeeded" {
       state   = ["SUCCEEDED"]
     }
   })
+
+  tags = local.component_tags.glue_agg
 }
 
 resource "aws_cloudwatch_event_target" "glue_agg_succeeded_target" {
@@ -110,6 +116,8 @@ resource "aws_cloudwatch_event_rule" "glue_agg_failed" {
       state   = ["FAILED", "TIMEOUT", "STOPPED"]
     }
   })
+
+  tags = local.component_tags.glue_agg
 }
 
 resource "aws_cloudwatch_event_target" "glue_agg_failed_target" {

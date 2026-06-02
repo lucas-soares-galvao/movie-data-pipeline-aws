@@ -3,21 +3,18 @@
 # O AWS Wrangler registra/atualiza a tabela no Glue Catalog automaticamente.
 
 resource "aws_glue_job" "agg_job" {
-  name              = local.envs.glue_agg_job_name
-  description       = "Glue AGG Job — unifica discover movie e tv no bucket SPEC"
-  role_arn          = aws_iam_role.glue_agg_role.arn
-  glue_version      = "5.0"
-  max_retries       = 0
-  timeout           = 30
-  number_of_workers = 2
-  worker_type       = "G.1X"
-  execution_class   = "STANDARD"
+  name         = local.envs.glue_agg_job_name
+  description  = "Glue AGG Job — unifica discover movie e tv no bucket SPEC"
+  role_arn     = aws_iam_role.glue_agg_role.arn
+  max_retries  = 0
+  timeout      = 30
+  max_capacity = 0.0625
 
   command {
     # Script principal do job armazenado no bucket auxiliar.
     script_location = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app/main.py"
-    name            = "glueetl"
-    python_version  = "3"
+    name            = "pythonshell"
+    python_version  = "3.9"
   }
 
   notification_property {
@@ -29,13 +26,14 @@ resource "aws_glue_job" "agg_job" {
     "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app_bundle.zip"
     "--additional-python-modules" = local.glue_agg_additional_python_modules
     "--custom-logGroup-prefix"    = "/${local.envs.glue_agg_job_name}"
-    "--enable-metrics"            = ""
     "--S3_BUCKET_SPEC"            = local.envs.s3_bucket_spec
     "--S3_BUCKET_TEMP"            = local.envs.s3_bucket_temp
     "--DATABASE"                  = var.glue_catalog_database_name
     "--TABLE_NAME"                = var.glue_agg_spec_table_name
     "--ENVIRONMENT"               = var.env
   }
+
+  tags = local.component_tags.glue_agg
 
   # Garante que artefatos e permissoes existam antes de criar o job.
   depends_on = [
@@ -63,6 +61,7 @@ resource "aws_s3_object" "deploy_scripts_bucket_agg" {
   key        = "${local.envs.glue_agg_job_name}/app/main.py"
   source     = "${local.glue_agg_src_path}/main.py"
   etag       = filemd5("${local.glue_agg_src_path}/main.py")
+  tags       = local.component_tags.glue_agg
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
 
@@ -81,31 +80,6 @@ resource "aws_s3_object" "deploy_app_bundle_agg" {
   key        = "${local.envs.glue_agg_job_name}/app_bundle.zip"
   source     = data.archive_file.glue_app_bundle_agg.output_path
   etag       = data.archive_file.glue_app_bundle_agg.output_md5
+  tags       = local.component_tags.glue_agg
   depends_on = [aws_s3_bucket.auxiliary_bucket]
-}
-
-
-# ---------------------------------------------------------------------------
-# Trigger CONDITIONAL — dispara o Glue AGG somente apos o Glue ETL SUCCEEDED.
-# Isso garante que os dados do SOT estejam completos antes da agregacao no SPEC.
-# ---------------------------------------------------------------------------
-resource "aws_glue_trigger" "glue_agg_after_etl" {
-  name    = "glue-agg-after-etl-${var.env}"
-  type    = "CONDITIONAL"
-  enabled = true
-
-  # Acao: iniciar o job AGG quando a condicao for satisfeita.
-  actions {
-    job_name = aws_glue_job.agg_job.name
-  }
-
-  # Condicao: so dispara quando o job ETL terminar com SUCCEEDED.
-  predicate {
-    conditions {
-      job_name = aws_glue_job.etl_job.name
-      state    = "SUCCEEDED"
-    }
-  }
-
-  depends_on = [aws_glue_job.agg_job, aws_glue_job.etl_job]
 }
