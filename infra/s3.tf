@@ -32,11 +32,16 @@ resource "aws_s3_bucket_lifecycle_configuration" "auxiliary_bucket_lifecycle" {
   bucket = aws_s3_bucket.auxiliary_bucket.id
 
   rule {
-    id     = "abort-incomplete-uploads"
+    id     = "cost-optimization"
     status = "Enabled"
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
     }
   }
 }
@@ -227,11 +232,16 @@ resource "aws_s3_bucket_lifecycle_configuration" "sot_bucket_lifecycle" {
   bucket = aws_s3_bucket.sot_bucket.id
 
   rule {
-    id     = "abort-incomplete-uploads"
+    id     = "cost-optimization"
     status = "Enabled"
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
+    }
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
     }
   }
 }
@@ -289,11 +299,16 @@ resource "aws_s3_bucket_lifecycle_configuration" "spec_bucket_lifecycle" {
   bucket = aws_s3_bucket.spec_bucket.id
 
   rule {
-    id     = "abort-incomplete-uploads"
+    id     = "cost-optimization"
     status = "Enabled"
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
+    }
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
     }
   }
 }
