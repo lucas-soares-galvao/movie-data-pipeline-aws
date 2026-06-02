@@ -2,6 +2,7 @@
 
 resource "aws_glue_catalog_database" "tmdb_database" {
   name = var.glue_catalog_database_name
+  tags = local.component_tags.glue_catalog
 }
 
 
