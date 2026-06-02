@@ -28,6 +28,40 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "auxiliary_bucket"
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "auxiliary_bucket_lifecycle" {
+  bucket = aws_s3_bucket.auxiliary_bucket.id
+
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "auxiliary_bucket_ssl" {
+  bucket = aws_s3_bucket.auxiliary_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.auxiliary_bucket.arn,
+        "${aws_s3_bucket.auxiliary_bucket.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+}
+
 
 # --------------------------------------------------------------------------
 # Bucket temporario para resultados de queries do Athena.
@@ -63,10 +97,35 @@ resource "aws_s3_bucket_lifecycle_configuration" "temporary_bucket_lifecycle" {
     id     = "delete-after-1-day"
     status = "Enabled"
 
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
     expiration {
       days = 1
     }
   }
+}
+
+resource "aws_s3_bucket_policy" "temporary_bucket_ssl" {
+  bucket = aws_s3_bucket.temporary_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.temporary_bucket.arn,
+        "${aws_s3_bucket.temporary_bucket.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
 }
 
 
@@ -97,6 +156,45 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "sor_bucket" {
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "sor_bucket_lifecycle" {
+  bucket = aws_s3_bucket.sor_bucket.id
+
+  rule {
+    id     = "cost-optimization"
+    status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "sor_bucket_ssl" {
+  bucket = aws_s3_bucket.sor_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.sor_bucket.arn,
+        "${aws_s3_bucket.sor_bucket.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+}
+
 
 # --------------------------------------------------------------------------
 # Bucket SOT (System of Truth) — dados transformados e organizados pelo Glue ETL.
@@ -123,6 +221,40 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "sot_bucket" {
       sse_algorithm = "AES256"
     }
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "sot_bucket_lifecycle" {
+  bucket = aws_s3_bucket.sot_bucket.id
+
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "sot_bucket_ssl" {
+  bucket = aws_s3_bucket.sot_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.sot_bucket.arn,
+        "${aws_s3_bucket.sot_bucket.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
 }
 
 
@@ -153,6 +285,40 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "spec_bucket" {
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "spec_bucket_lifecycle" {
+  bucket = aws_s3_bucket.spec_bucket.id
+
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "spec_bucket_ssl" {
+  bucket = aws_s3_bucket.spec_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.spec_bucket.arn,
+        "${aws_s3_bucket.spec_bucket.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+}
+
 
 # --------------------------------------------------------------------------
 # Bucket Data Quality — resultados das verificacoes de qualidade de dados.
@@ -179,4 +345,43 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data_quality_buck
       sse_algorithm = "AES256"
     }
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "data_quality_bucket_lifecycle" {
+  bucket = aws_s3_bucket.data_quality_bucket.id
+
+  rule {
+    id     = "cost-optimization"
+    status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "data_quality_bucket_ssl" {
+  bucket = aws_s3_bucket.data_quality_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.data_quality_bucket.arn,
+        "${aws_s3_bucket.data_quality_bucket.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
 }
