@@ -1,6 +1,6 @@
 # Raciocinio: define o job Glue ETL que converte SOR em SOT e publica no catalogo.
 
-resource "aws_glue_job" "etl_job" {
+resource "aws_glue_job" "etl_job_pythonshell" {
   name         = local.envs.glue_etl_job_name
   description  = "Glue ETL Job"
   role_arn     = aws_iam_role.glue_etl_role.arn
@@ -50,7 +50,7 @@ resource "aws_glue_job" "etl_job" {
     aws_iam_role_policy.glue_etl_sor_sot,
     aws_iam_role_policy.glue_etl_catalog,
     aws_glue_job.data_quality_job,
-    aws_glue_job.agg_job,
+    aws_glue_job.agg_job_pythonshell,
     aws_cloudwatch_log_group.glue_etl_error,
     aws_cloudwatch_log_group.glue_etl_output
   ]
