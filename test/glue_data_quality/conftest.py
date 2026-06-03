@@ -23,7 +23,7 @@ def _make_module(name, **attrs):
 sys.modules.setdefault("awsglue", _make_module("awsglue"))
 sys.modules.setdefault(
     "awsglue.utils",
-    _make_module("awsglue.utils", getResolvedOptions=None),
+    _make_module("awsglue.utils", getResolvedOptions=None, GlueArgumentError=Exception),
 )
 sys.modules.setdefault(
     "awsglue.context", _make_module("awsglue.context", GlueContext=None)

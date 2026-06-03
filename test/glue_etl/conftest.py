@@ -16,4 +16,5 @@ awsglue_utils_module = sys.modules.setdefault(
     "awsglue.utils", ModuleType("awsglue.utils")
 )
 awsglue_utils_module.getResolvedOptions = MagicMock()
+awsglue_utils_module.GlueArgumentError = Exception
 awsglue_module.utils = awsglue_utils_module
