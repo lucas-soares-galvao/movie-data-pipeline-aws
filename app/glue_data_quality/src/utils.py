@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 
 from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
-from awsglue.utils import getResolvedOptions
+from awsglue.utils import GlueArgumentError, getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
 from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit
 from pyspark.sql.types import StringType
@@ -52,7 +52,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
-    except SystemExit:
+    except (SystemExit, GlueArgumentError):
         pass
 
     return args
