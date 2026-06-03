@@ -31,7 +31,7 @@ class TestGetParametersGlue:
         """Os quatro argumentos obrigatórios devem estar no retorno."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, Exception()],
+            side_effect=[{**self._REQUIRED}, SystemExit()],
         ):
             result = get_parameters_glue()
 
@@ -54,7 +54,7 @@ class TestGetParametersGlue:
         """YEAR não deve estar no retorno quando o argumento não for enviado."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, Exception("not found")],
+            side_effect=[{**self._REQUIRED}, SystemExit("not found")],
         ):
             result = get_parameters_glue()
 
@@ -64,7 +64,7 @@ class TestGetParametersGlue:
         """Ausência de YEAR não pode lançar exceção — é argumento opcional."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, Exception()],
+            side_effect=[{**self._REQUIRED}, SystemExit()],
         ):
             # Não deve lançar nada
             get_parameters_glue()
