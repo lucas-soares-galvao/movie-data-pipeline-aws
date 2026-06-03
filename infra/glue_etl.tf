@@ -76,7 +76,7 @@ resource "aws_s3_object" "deploy_scripts_bucket_etl" {
 data "archive_file" "glue_app_bundle_etl" {
   type        = "zip"
   output_path = "${path.module}/glue_app_bundle_etl.zip"
-  source_dir  = local.glue_etl_src_path
+  source_dir  = "${local.glue_etl_src_path}/src"
 }
 
 

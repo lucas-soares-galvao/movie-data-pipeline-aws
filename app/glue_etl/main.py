@@ -16,12 +16,8 @@ A Lambda aciona este job com --TABLE_TYPE em cada run:
 """
 
 import logging
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from src.utils import (
+from utils import (
     get_parameters_glue,
     read_from_sor,
     trigger_agg,
