@@ -70,7 +70,7 @@ resource "aws_s3_object" "deploy_scripts_bucket_agg" {
 data "archive_file" "glue_app_bundle_agg" {
   type        = "zip"
   output_path = "${path.module}/glue_app_bundle_agg.zip"
-  source_dir  = local.glue_agg_src_path
+  source_dir  = "${local.glue_agg_src_path}/src"
 }
 
 

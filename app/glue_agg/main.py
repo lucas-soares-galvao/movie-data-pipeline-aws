@@ -14,12 +14,8 @@ ao gravar no SPEC, dispensando definição manual da tabela no Catalog.
 """
 
 import logging
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from src.utils import (
+from utils import (
     get_parameters_glue,
     run_athena_query,
     write_parquet_to_spec,
