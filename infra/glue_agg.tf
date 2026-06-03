@@ -66,20 +66,11 @@ resource "aws_s3_object" "deploy_scripts_bucket_agg" {
 }
 
 
-# Empacota src/ como subdiretorio no zip para que `from src.utils import ...` funcione.
+# Empacota todos os modulos Python da aplicacao em um unico zip reutilizavel.
 data "archive_file" "glue_app_bundle_agg" {
   type        = "zip"
   output_path = "${path.module}/glue_app_bundle_agg.zip"
-
-  source {
-    content  = file("${local.glue_agg_src_path}/src/__init__.py")
-    filename = "src/__init__.py"
-  }
-
-  source {
-    content  = file("${local.glue_agg_src_path}/src/utils.py")
-    filename = "src/utils.py"
-  }
+  source_dir  = local.glue_agg_src_path
 }
 
 
