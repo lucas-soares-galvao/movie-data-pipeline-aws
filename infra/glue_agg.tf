@@ -23,7 +23,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
 
   default_arguments = {
     "--job-language"              = "python"
-    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app_bundle.zip"
+    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app/utils.py"
     "--additional-python-modules" = local.glue_agg_additional_python_modules
     "--custom-logGroup-prefix"    = "/${local.envs.glue_agg_job_name}"
     "--S3_BUCKET_SPEC"            = local.envs.s3_bucket_spec
@@ -66,20 +66,12 @@ resource "aws_s3_object" "deploy_scripts_bucket_agg" {
 }
 
 
-# Empacota todos os modulos Python da aplicacao em um unico zip reutilizavel.
-data "archive_file" "glue_app_bundle_agg" {
-  type        = "zip"
-  output_path = "${path.module}/glue_app_bundle_agg.zip"
-  source_dir  = "${local.glue_agg_src_path}/src"
-}
-
-
-# Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
+# Envia o modulo auxiliar para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_bundle_agg" {
   bucket     = aws_s3_bucket.auxiliary_bucket.id
-  key        = "${local.envs.glue_agg_job_name}/app_bundle.zip"
-  source     = data.archive_file.glue_app_bundle_agg.output_path
-  etag       = data.archive_file.glue_app_bundle_agg.output_md5
+  key        = "${local.envs.glue_agg_job_name}/app/utils.py"
+  source     = "${local.glue_agg_src_path}/src/utils.py"
+  etag       = filemd5("${local.glue_agg_src_path}/src/utils.py")
   tags       = local.component_tags.glue_agg
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
