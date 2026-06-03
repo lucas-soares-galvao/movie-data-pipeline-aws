@@ -40,11 +40,13 @@ locals {
   glue_etl_src_path                   = "${path.root}/../app/${var.glue_etl_path_app}"
   glue_etl_requirements_path          = "${path.root}/../app/${var.glue_etl_path_app}/requirements.txt"
   glue_etl_wheel_build_path           = "${path.module}/.glue_etl_build"
+  glue_etl_wheel_filename             = "glue_etl_src-0.0.0-py3-none-any.whl"
   glue_data_quality_src_path          = "${path.root}/../app/${var.glue_data_quality_path_app}"
   glue_data_quality_requirements_path = "${path.root}/../app/${var.glue_data_quality_path_app}/requirements.txt"
   glue_agg_src_path                   = "${path.root}/../app/${var.glue_agg_path_app}"
   glue_agg_requirements_path          = "${path.root}/../app/${var.glue_agg_path_app}/requirements.txt"
   glue_agg_wheel_build_path           = "${path.module}/.glue_agg_build"
+  glue_agg_wheel_filename             = "glue_agg_src-0.0.0-py3-none-any.whl"
   glue_etl_additional_python_modules = join(",", [
     for line in split("\n", file(local.glue_etl_requirements_path)) : trimspace(line)
     if trimspace(line) != "" && !startswith(trimspace(line), "#")

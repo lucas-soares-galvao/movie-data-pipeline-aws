@@ -24,7 +24,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     # Pacote (wheel) com os modulos auxiliares importados pelo script principal.
     # Jobs Python Shell so adicionam .whl/.egg ao sys.path via --extra-py-files (.zip
     # nao e suportado aqui — somente em jobs Spark), por isso usamos um wheel.
-    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app_bundle.whl"
+    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename}"
     # Dependencias do Glue ETL instaladas no proprio runtime Linux do Glue.
     "--additional-python-modules" = local.glue_etl_additional_python_modules
     # Prefixo personalizado para os grupos /<job>/error e /<job>/output.
@@ -91,8 +91,8 @@ resource "null_resource" "glue_etl_wheel_build" {
 # Envia o wheel para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_wheel_etl" {
   bucket      = aws_s3_bucket.auxiliary_bucket.id
-  key         = "${local.envs.glue_etl_job_name}/app_bundle.whl"
-  source      = "${local.glue_etl_wheel_build_path}/app_bundle.whl"
+  key         = "${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename}"
+  source      = "${local.glue_etl_wheel_build_path}/${local.glue_etl_wheel_filename}"
   source_hash = null_resource.glue_etl_wheel_build.triggers.source_hash
   tags        = local.component_tags.glue_etl
   depends_on  = [null_resource.glue_etl_wheel_build, aws_s3_bucket.auxiliary_bucket]

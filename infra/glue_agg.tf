@@ -26,7 +26,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
     # Pacote (wheel) com os modulos auxiliares importados pelo script principal.
     # Jobs Python Shell so adicionam .whl/.egg ao sys.path via --extra-py-files (.zip
     # nao e suportado aqui — somente em jobs Spark), por isso usamos um wheel.
-    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app_bundle.whl"
+    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename}"
     "--additional-python-modules" = local.glue_agg_additional_python_modules
     "--custom-logGroup-prefix"    = "/${local.envs.glue_agg_job_name}"
     "--S3_BUCKET_SPEC"            = local.envs.s3_bucket_spec
@@ -86,8 +86,8 @@ resource "null_resource" "glue_agg_wheel_build" {
 # Envia o wheel para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_wheel_agg" {
   bucket      = aws_s3_bucket.auxiliary_bucket.id
-  key         = "${local.envs.glue_agg_job_name}/app_bundle.whl"
-  source      = "${local.glue_agg_wheel_build_path}/app_bundle.whl"
+  key         = "${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename}"
+  source      = "${local.glue_agg_wheel_build_path}/${local.glue_agg_wheel_filename}"
   source_hash = null_resource.glue_agg_wheel_build.triggers.source_hash
   tags        = local.component_tags.glue_agg
   depends_on  = [null_resource.glue_agg_wheel_build, aws_s3_bucket.auxiliary_bucket]
