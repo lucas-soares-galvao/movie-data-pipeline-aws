@@ -17,7 +17,7 @@ A Lambda aciona este job com --TABLE_TYPE em cada run:
 
 import logging
 
-from utils import (
+from src.utils import (
     get_parameters_glue,
     read_from_sor,
     trigger_agg,

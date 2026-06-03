@@ -15,7 +15,7 @@ ao gravar no SPEC, dispensando definição manual da tabela no Catalog.
 
 import logging
 
-from utils import (
+from src.utils import (
     get_parameters_glue,
     run_athena_query,
     write_parquet_to_spec,
