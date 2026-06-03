@@ -49,9 +49,11 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
     if app_dir is None:
         return
 
-    # Evict the cached 'src' and 'main' namespaces so the next import picks the right one.
+    # Evict the cached 'src', 'main', and flat 'utils' namespaces so the next import
+    # picks the right module for this suite.  'utils' is registered as a top-level
+    # module when main.py does 'from utils import ...', so it must also be cleared.
     for key in list(sys.modules.keys()):
-        if key == "src" or key.startswith("src.") or key == "main":
+        if key in ("src", "main", "utils") or key.startswith("src."):
             del sys.modules[key]
 
     # Promote this suite's app directory (and its src/ sub-dir) to the front of sys.path,
