@@ -52,7 +52,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
-    except Exception:
+    except SystemExit:
         pass
 
     return args
