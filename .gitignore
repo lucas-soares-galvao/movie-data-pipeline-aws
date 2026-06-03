@@ -39,6 +39,7 @@ infra/glue_app_bundle*.zip
 infra/lambda_bundle*.zip
 infra/.lambda_build/
 infra/.glue_etl_build/
+infra/.glue_agg_build/
 infra/.glue_data_quality_build/
 # terraform.tfvars pode conter account_id e ARNs sensíveis.
 # Os valores reais são injetados pelo CI/CD via GitHub Secrets.
