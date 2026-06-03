@@ -91,7 +91,7 @@ def get_parameters_glue() -> Dict[str, Any]:
 
     try:
         args.update(get_resolved_option(["YEAR"]))
-    except Exception:
+    except SystemExit:
         pass
 
     return args
