@@ -9,6 +9,10 @@ from types import ModuleType
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "app", "glue_agg")
 )
+# utils.py fica em src/ — expõe o diretório para que 'from utils import' funcione localmente.
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "app", "glue_agg", "src")
+)
 
 # Simula bibliotecas do AWS Glue que nao estao disponiveis fora do runtime.
 awsglue_module = sys.modules.setdefault("awsglue", ModuleType("awsglue"))

@@ -36,9 +36,13 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
         if key == "src" or key.startswith("src.") or key == "main":
             del sys.modules[key]
 
-    # Promote this suite's app directory to the front of sys.path.
+    # Promote this suite's app directory (and its src/ sub-dir) to the front of sys.path.
+    # src/ must be included so that 'from utils import ...' in main.py resolves correctly.
     app_dir_str = str(app_dir)
-    sys.path[:] = [app_dir_str] + [p for p in sys.path if p != app_dir_str]
+    src_dir_str = str(app_dir / "src")
+    sys.path[:] = [src_dir_str, app_dir_str] + [
+        p for p in sys.path if p not in (app_dir_str, src_dir_str)
+    ]
 
     # Pre-import the fully-qualified utils module and alias it as 'src.utils'
     # so that patches on app.X.src.utils also affect code using
@@ -78,7 +82,10 @@ def _apply_suite_aliases(suite: str) -> None:
 
     app_dir = _SUITE_TO_APP[suite]
     app_dir_str = str(app_dir)
-    sys.path[:] = [app_dir_str] + [p for p in sys.path if p != app_dir_str]
+    src_dir_str = str(app_dir / "src")
+    sys.path[:] = [src_dir_str, app_dir_str] + [
+        p for p in sys.path if p not in (app_dir_str, src_dir_str)
+    ]
 
 
 def pytest_runtest_setup(item):
