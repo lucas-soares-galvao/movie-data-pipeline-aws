@@ -167,8 +167,8 @@ def run_athena_query(database: str, s3_bucket_temp: str) -> pd.DataFrame:
     """
     Executa a query de unificação no Athena e retorna o resultado como DataFrame.
 
-    Usa wr.athena.read_sql_query com ctas_approach=False para evitar criação de
-    tabela temporária e manter os tipos de dados originais do resultado.
+    Usa wr.athena.read_sql_query com ctas_approach=True para suportar colunas
+    do tipo ARRAY (genre_ids, origin_country) presentes no resultado da query.
 
     Args:
         database:       Nome do banco de dados no Glue Catalog (substituído na query).
@@ -185,7 +185,7 @@ def run_athena_query(database: str, s3_bucket_temp: str) -> pd.DataFrame:
         sql=query,
         database=database,
         s3_output=s3_output,
-        ctas_approach=False,
+        ctas_approach=True,
     )
     logger.info(f"Query executada com sucesso. {len(df)} registros retornados.")
     return df
