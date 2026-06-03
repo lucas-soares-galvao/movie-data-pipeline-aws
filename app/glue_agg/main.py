@@ -14,6 +14,10 @@ ao gravar no SPEC, dispensando definição manual da tabela no Catalog.
 """
 
 import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from src.utils import (
     get_parameters_glue,
