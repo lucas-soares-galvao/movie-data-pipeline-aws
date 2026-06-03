@@ -3,7 +3,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
   name                = "lambda-api-movie-${var.env}"
   description         = "Dispara a Lambda para filmes"
-  schedule_expression = "cron(55 15 * * ? *)" # Todos os dias as 15:55 UTC
+  schedule_expression = "cron(15 16 * * ? *)" # Todos os dias as 15:55 UTC
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -11,7 +11,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv" {
   name                = "lambda-api-tv-${var.env}"
   description         = "Dispara a Lambda para series"
-  schedule_expression = "cron(05 16 * * ? *)" # Todos os dias as 16:05 UTC
+  schedule_expression = "cron(25 16 * * ? *)" # Todos os dias as 16:05 UTC
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
