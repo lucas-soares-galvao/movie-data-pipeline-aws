@@ -22,8 +22,11 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   }
 
   default_arguments = {
-    "--job-language"              = "python"
-    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app_bundle.zip"
+    "--job-language" = "python"
+    # Pacote (wheel) com os modulos auxiliares importados pelo script principal.
+    # Jobs Python Shell so adicionam .whl/.egg ao sys.path via --extra-py-files (.zip
+    # nao e suportado aqui — somente em jobs Spark), por isso usamos um wheel.
+    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/app_bundle.whl"
     "--additional-python-modules" = local.glue_agg_additional_python_modules
     "--custom-logGroup-prefix"    = "/${local.envs.glue_agg_job_name}"
     "--S3_BUCKET_SPEC"            = local.envs.s3_bucket_spec
@@ -38,7 +41,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   # Garante que artefatos e permissoes existam antes de criar o job.
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_agg,
-    aws_s3_object.deploy_app_bundle_agg,
+    aws_s3_object.deploy_app_wheel_agg,
     aws_iam_role_policy_attachment.glue_agg_service_role,
     aws_iam_role_policy_attachment.glue_agg_read_code,
     aws_iam_role_policy.glue_agg_logs,
@@ -66,20 +69,26 @@ resource "aws_s3_object" "deploy_scripts_bucket_agg" {
 }
 
 
-# Empacota todos os modulos Python da aplicacao em um unico zip reutilizavel.
-data "archive_file" "glue_app_bundle_agg" {
-  type        = "zip"
-  output_path = "${path.module}/glue_app_bundle_agg.zip"
-  source_dir  = local.glue_agg_src_path
+# Empacota o pacote `src` da aplicacao como wheel (.whl) — formato exigido pelo
+# Glue Python Shell para que `from src.utils import ...` funcione em runtime.
+resource "null_resource" "glue_agg_wheel_build" {
+  triggers = {
+    source_hash  = sha256(join("", [for f in fileset(local.glue_agg_src_path, "src/**/*.py") : filesha256("${local.glue_agg_src_path}/${f}")]))
+    builder_hash = filesha256("${path.module}/scripts/build_glue_wheel.py")
+  }
+
+  provisioner "local-exec" {
+    command = "python ${path.module}/scripts/build_glue_wheel.py --src ${local.glue_agg_src_path} --dest ${local.glue_agg_wheel_build_path} --name glue_agg_src"
+  }
 }
 
 
-# Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
-resource "aws_s3_object" "deploy_app_bundle_agg" {
-  bucket     = aws_s3_bucket.auxiliary_bucket.id
-  key        = "${local.envs.glue_agg_job_name}/app_bundle.zip"
-  source     = data.archive_file.glue_app_bundle_agg.output_path
-  etag       = data.archive_file.glue_app_bundle_agg.output_md5
-  tags       = local.component_tags.glue_agg
-  depends_on = [aws_s3_bucket.auxiliary_bucket]
+# Envia o wheel para o S3, usado em --extra-py-files no job Glue.
+resource "aws_s3_object" "deploy_app_wheel_agg" {
+  bucket      = aws_s3_bucket.auxiliary_bucket.id
+  key         = "${local.envs.glue_agg_job_name}/app_bundle.whl"
+  source      = "${local.glue_agg_wheel_build_path}/app_bundle.whl"
+  source_hash = null_resource.glue_agg_wheel_build.triggers.source_hash
+  tags        = local.component_tags.glue_agg
+  depends_on  = [null_resource.glue_agg_wheel_build, aws_s3_bucket.auxiliary_bucket]
 }
