@@ -13,6 +13,7 @@ import logging
 import sys
 from typing import Any, Dict, Optional
 
+import awswrangler as wr
 from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import GlueArgumentError, getResolvedOptions
@@ -247,18 +248,19 @@ def write_results_to_s3(
     df,
     s3_bucket_data_quality: str,
     table_name: str,
+    database: str,
     year: Optional[str] = None,
 ) -> None:
     """
     Grava o DataFrame com os resultados do Data Quality no S3 como Parquet,
-    particionado pela coluna source_table.
+    particionado pela coluna source_table, e atualiza o Glue Catalog automaticamente.
+
+    Usa o AWS Wrangler (mesmo padrão do Glue ETL) para registrar as partições
+    no Catalog após a escrita, eliminando a necessidade de MSCK REPAIR TABLE no Athena.
 
     A coluna 'partition' (ano) é mantida como dado normal dentro do Parquet —
-    não é usada no partitionBy — para evitar que o Spark remova seu valor do
-    arquivo e o Athena retorne null ao consultar a tabela.
-
-    O modo "dynamic" garante que apenas a partição source_table presente no
-    DataFrame seja substituída, sem apagar resultados de outras tabelas.
+    não é usada em partition_cols — para evitar que o Wrangler remova seu valor
+    do arquivo e o Athena retorne null ao consultar a tabela.
 
     Caminho de escrita:
       s3://<bucket>/tmdb/tb_data_quality_tmdb/
@@ -269,26 +271,25 @@ def write_results_to_s3(
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada (informativo para o log).
+        database:               Nome do banco de dados no Glue Catalog.
         year:                   Ano da partição (informativo; já está na coluna
                                 'partition' do DataFrame).
     """
     output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
-    # Ativa o overwrite dinâmico: substitui apenas a partição source_table presente
-    # no DataFrame, sem apagar resultados de outras tabelas.
-    df.sparkSession.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-
     logger.info(
         f"Gravando resultados em {s3_path} | source_table='{table_name}' | partition='{year}'"
     )
 
-    (
-        df.write.mode("overwrite")
-        .partitionBy(
-            "source_table"
-        )  # source_table vira subpasta; partition fica no Parquet
-        .parquet(s3_path)
+    wr.s3.to_parquet(
+        df=df.toPandas(),
+        path=s3_path,
+        dataset=True,
+        database=database,
+        table=output_table,
+        partition_cols=["source_table"],
+        mode="overwrite_partitions",
     )
 
     logger.info(f"Resultados de '{table_name}' gravados com sucesso!")
