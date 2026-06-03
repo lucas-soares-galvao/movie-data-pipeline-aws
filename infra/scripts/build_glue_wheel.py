@@ -7,6 +7,11 @@ de forma deterministica, um wheel contendo apenas o pacote `src` do app, para qu
 
 As dependencias de runtime (ex.: awswrangler) continuam vindo de --additional-python-modules,
 por isso o wheel e construido com --no-deps.
+
+O Glue Python Shell faz `pip install` do wheel passado em --extra-py-files, entao o nome do
+arquivo precisa seguir o padrao PEP 427 ({nome}-{versao}-py3-none-any.whl). Por isso NAO
+renomeamos o artefato: mantemos o nome canonico gerado pelo build (deterministico, pois
+controlamos --name e a versao 0.0.0). O Terraform referencia esse mesmo nome.
 """
 
 import argparse
@@ -18,8 +23,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Nome de arquivo deterministico do artefato final (independente de versao/nome da dist).
-OUTPUT_WHEEL_NAME = "app_bundle.whl"
+# Versao fixa da distribuicao — define o nome canonico do wheel: {name}-{VERSION}-py3-none-any.whl
+VERSION = "0.0.0"
 
 
 def _handle_remove_readonly(func, path, exc_info):
@@ -55,7 +60,7 @@ def build_wheel(src: Path, dest: Path, name: str) -> None:
             "\n"
             "[project]\n"
             f'name = "{name}"\n'
-            'version = "0.0.0"\n'
+            f'version = "{VERSION}"\n'
             "\n"
             "[tool.setuptools]\n"
             'packages = ["src"]\n',
@@ -80,12 +85,13 @@ def build_wheel(src: Path, dest: Path, name: str) -> None:
     if not wheels:
         raise RuntimeError(f"Nenhum wheel gerado em: {dest}")
 
-    # Renomeia para um nome deterministico usado pelo Terraform / --extra-py-files.
-    built = wheels[0]
-    final = dest / OUTPUT_WHEEL_NAME
-    if final.exists():
-        final.unlink()
-    built.rename(final)
+    # Mantem o nome canonico (PEP 427) exigido pelo `pip install` do Glue Python Shell.
+    # O Terraform referencia o mesmo nome: {name}-{VERSION}-py3-none-any.whl
+    expected = f"{name}-{VERSION}-py3-none-any.whl"
+    if not (dest / expected).exists():
+        raise RuntimeError(
+            f"Wheel esperado '{expected}' nao encontrado; gerado: {[w.name for w in wheels]}"
+        )
 
 
 def main() -> None:
