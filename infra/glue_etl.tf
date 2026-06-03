@@ -21,8 +21,10 @@ resource "aws_glue_job" "etl_job_pythonshell" {
 
   default_arguments = {
     "--job-language" = "python"
-    # Pacote com os modulos auxiliares importados pelo script principal.
-    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app_bundle.zip"
+    # Pacote (wheel) com os modulos auxiliares importados pelo script principal.
+    # Jobs Python Shell so adicionam .whl/.egg ao sys.path via --extra-py-files (.zip
+    # nao e suportado aqui — somente em jobs Spark), por isso usamos um wheel.
+    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app_bundle.whl"
     # Dependencias do Glue ETL instaladas no proprio runtime Linux do Glue.
     "--additional-python-modules" = local.glue_etl_additional_python_modules
     # Prefixo personalizado para os grupos /<job>/error e /<job>/output.
@@ -43,7 +45,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
   # Garante que artefatos e permissoes existam antes de criar o job.
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_etl,
-    aws_s3_object.deploy_app_bundle_etl,
+    aws_s3_object.deploy_app_wheel_etl,
     aws_iam_role_policy_attachment.glue_etl_service_role,
     aws_iam_role_policy_attachment.glue_etl_read_code,
     aws_iam_role_policy.glue_etl_logs,
@@ -72,20 +74,26 @@ resource "aws_s3_object" "deploy_scripts_bucket_etl" {
 }
 
 
-# Empacota todos os modulos Python da aplicacao em um unico zip reutilizavel.
-data "archive_file" "glue_app_bundle_etl" {
-  type        = "zip"
-  output_path = "${path.module}/glue_app_bundle_etl.zip"
-  source_dir  = local.glue_etl_src_path
+# Empacota o pacote `src` da aplicacao como wheel (.whl) — formato exigido pelo
+# Glue Python Shell para que `from src.utils import ...` funcione em runtime.
+resource "null_resource" "glue_etl_wheel_build" {
+  triggers = {
+    source_hash  = sha256(join("", [for f in fileset(local.glue_etl_src_path, "src/**/*.py") : filesha256("${local.glue_etl_src_path}/${f}")]))
+    builder_hash = filesha256("${path.module}/scripts/build_glue_wheel.py")
+  }
+
+  provisioner "local-exec" {
+    command = "python ${path.module}/scripts/build_glue_wheel.py --src ${local.glue_etl_src_path} --dest ${local.glue_etl_wheel_build_path} --name glue_etl_src"
+  }
 }
 
 
-# Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
-resource "aws_s3_object" "deploy_app_bundle_etl" {
-  bucket     = aws_s3_bucket.auxiliary_bucket.id
-  key        = "${local.envs.glue_etl_job_name}/app_bundle.zip"
-  source     = data.archive_file.glue_app_bundle_etl.output_path
-  etag       = data.archive_file.glue_app_bundle_etl.output_md5
-  tags       = local.component_tags.glue_etl
-  depends_on = [aws_s3_bucket.auxiliary_bucket]
+# Envia o wheel para o S3, usado em --extra-py-files no job Glue.
+resource "aws_s3_object" "deploy_app_wheel_etl" {
+  bucket      = aws_s3_bucket.auxiliary_bucket.id
+  key         = "${local.envs.glue_etl_job_name}/app_bundle.whl"
+  source      = "${local.glue_etl_wheel_build_path}/app_bundle.whl"
+  source_hash = null_resource.glue_etl_wheel_build.triggers.source_hash
+  tags        = local.component_tags.glue_etl
+  depends_on  = [null_resource.glue_etl_wheel_build, aws_s3_bucket.auxiliary_bucket]
 }
