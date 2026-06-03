@@ -1,18 +1,8 @@
 """Raciocinio: prepara mocks do runtime Glue para testar AGG localmente com previsibilidade."""
 
 import sys
-import os
 from unittest.mock import MagicMock
 from types import ModuleType
-
-# Permite que os modulos do job Glue resolvam 'src.utils' como no runtime do AWS Glue.
-sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "..", "..", "app", "glue_agg")
-)
-# utils.py fica em src/ — expõe o diretório para que 'from utils import' funcione localmente.
-sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "..", "..", "app", "glue_agg", "src")
-)
 
 # Simula bibliotecas do AWS Glue que nao estao disponiveis fora do runtime.
 awsglue_module = sys.modules.setdefault("awsglue", ModuleType("awsglue"))
