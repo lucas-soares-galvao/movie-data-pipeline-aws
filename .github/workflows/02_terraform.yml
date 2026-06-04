@@ -63,15 +63,22 @@ jobs:
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: sa-east-1
 
-      # 4. Build do pacote Lambda antes do plan
-      # O data "archive_file" é avaliado durante o plan e exige que .lambda_build exista.
+      # 4. Build dos pacotes Lambda antes do plan
+      # O data "archive_file" é avaliado durante o plan e exige que os diretórios de build existam.
       # O null_resource só executa o local-exec no apply, então o build precisa rodar explicitamente aqui.
-      - name: Build Lambda Package
+      - name: Build Lambda Package (lambda_api)
         run: |
           python infra/scripts/build_lambda_package.py \
             --src app/lambda_api \
             --requirements app/lambda_api/requirements.txt \
             --dest infra/.lambda_build
+
+      - name: Build Lambda Package (lambda_recommender)
+        run: |
+          python infra/scripts/build_lambda_package.py \
+            --src app/lambda_recommender \
+            --requirements app/lambda_recommender/requirements.txt \
+            --dest infra/.lambda_recommender_build
 
       # 5. Verifica se o ambiente deve ser destruído ou criado
       # Ele lê um arquivo JSON local para saber se a flag de 'destroy' está ativa para aquele ambiente
