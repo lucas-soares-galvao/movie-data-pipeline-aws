@@ -84,16 +84,11 @@ EOT
 {"message":"[Pipeline Falha]\nEtapa: Glue AGG\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
-  lambda_recommender_src_path          = "${path.root}/../app/${var.lambda_recommender_path_app}"
-  lambda_recommender_requirements_path = "${path.root}/../app/${var.lambda_recommender_path_app}/requirements.txt"
-  lambda_recommender_build_path        = "${path.module}/.lambda_recommender_build"
-
   envs = {
     glue_etl_job_name          = "${var.glue_etl_job_name}-${var.env}"
     glue_data_quality_job_name = "${var.glue_data_quality_job_name}-${var.env}"
     glue_agg_job_name          = "${var.glue_agg_job_name}-${var.env}"
     lambda_api_name            = "${var.lambda_api_name}-${var.env}"
-    lambda_recommender_name    = "${var.lambda_recommender_name}-${var.env}"
     iam_role_glue              = "${var.iam_role_glue}-${var.env}"
     iam_role_lambda            = "${var.iam_role_lambda}-${var.env}"
     s3_bucket_aux              = "${var.s3_bucket_aux}-${var.env}"

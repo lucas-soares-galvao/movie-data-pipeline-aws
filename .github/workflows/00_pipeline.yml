@@ -49,7 +49,6 @@ jobs:
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
       aws-tmdb-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD }}
-      aws-openai-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_OPENAI_SECRET_ARN_DEV || secrets.AWS_OPENAI_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_OPENAI_SECRET_ARN_DEV || secrets.AWS_OPENAI_SECRET_ARN_PROD }}
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
   # 5. Auto PR para Feature: Promove o código de feature/* para develop

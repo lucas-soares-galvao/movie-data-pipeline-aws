@@ -113,23 +113,6 @@ variable "lambda_api_name" {
   default     = "lambda-api"
 }
 
-variable "lambda_recommender_path_app" {
-  description = "Caminho para os modulos Python da Lambda de recomendacao"
-  type        = string
-  default     = "lambda_recommender"
-}
-
-variable "lambda_recommender_name" {
-  description = "Nome da funcao Lambda de recomendacao por ambiente"
-  type        = string
-  default     = "lambda-recommender"
-}
-
-variable "openai_secret_arn" {
-  description = "ARN do segredo no Secrets Manager com a chave da OpenAI API"
-  type        = string
-}
-
 ############### GLUE ##############
 variable "glue_etl_path_app" {
   description = "Caminho para os modulos Python da aplicacao do Glue ETL"
