@@ -1,6 +1,6 @@
 # Raciocinio: parametriza o ambiente prod com isolamento e naming proprios de producao.
-# Os valores sensíveis (tmdb_secret_arn) são injetados pelo CI/CD
-# via GitHub Secret AWS_TMDB_SECRET_ARN_PROD e não devem ser commitados.
+# Os valores sensíveis (tmdb_secret_arn, openai_secret_arn) são injetados pelo CI/CD
+# via GitHub Secrets AWS_TMDB_SECRET_ARN_PROD e AWS_OPENAI_SECRET_ARN_PROD e não devem ser commitados.
 
 env             = "prod"
 tmdb_secret_arn      = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_PROD"
