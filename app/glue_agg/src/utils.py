@@ -42,6 +42,8 @@ movies AS (
         original_language,
         CAST(adult AS BOOLEAN)       AS adult,
         genre_ids,
+        poster_path,
+        backdrop_path,
         popularity,
         vote_average,
         vote_count,
@@ -61,6 +63,8 @@ tv_shows AS (
         original_language,
         CAST(NULL AS BOOLEAN)  AS adult,
         genre_ids,
+        poster_path,
+        backdrop_path,
         popularity,
         vote_average,
         vote_count,
@@ -104,6 +108,14 @@ SELECT
     lang.english_name                        AS language_name,
     u.genre_ids,
     gn.genre_names,
+    CASE
+        WHEN COALESCE(TRIM(u.poster_path), '') = '' THEN NULL
+        ELSE CONCAT('https://image.tmdb.org/t/p/w780', u.poster_path)
+    END                                      AS poster_url,
+    CASE
+        WHEN COALESCE(TRIM(u.backdrop_path), '') = '' THEN NULL
+        ELSE CONCAT('https://image.tmdb.org/t/p/w1280', u.backdrop_path)
+    END                                      AS backdrop_url,
     u.popularity,
     u.vote_average,
     u.vote_count,
