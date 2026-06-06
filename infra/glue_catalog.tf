@@ -47,6 +47,11 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
+      name = "backdrop_path"
+      type = "string"
+    }
+
+    columns {
       name = "release_date"
       type = "string"
     }
@@ -74,6 +79,11 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     columns {
       name = "popularity"
       type = "double"
+    }
+
+    columns {
+      name = "poster_path"
+      type = "string"
     }
 
     columns {
