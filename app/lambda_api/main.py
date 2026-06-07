@@ -161,6 +161,7 @@ def lambda_handler(event, context):
             table_type="discover",
             table_name=table_discover,
             year=year,
+            tmdb_secret_arn=TMDB_SECRET_ARN,
         )
 
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")

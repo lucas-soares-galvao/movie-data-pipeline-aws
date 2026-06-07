@@ -51,33 +51,6 @@ def get_tmdb_api_key(secret_arn: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def fetch_tmdb_detail(api_key: str, content_type: str, item_id: int) -> dict:
-    """
-    Busca os detalhes de um filme ou série na API do TMDB pelo ID.
-
-    Endpoints utilizados:
-      - Filmes: https://api.themoviedb.org/3/movie/{id}  → retorna "runtime" (minutos)
-      - Séries: https://api.themoviedb.org/3/tv/{id}     → retorna "episode_run_time",
-                                                            "number_of_seasons",
-                                                            "number_of_episodes"
-
-    Args:
-        api_key:      Chave de API do TMDB.
-        content_type: "movie" para filmes ou "tv" para séries.
-        item_id:      ID do título no TMDB.
-
-    Returns:
-        Dicionário com os dados de detalhe retornados pela API.
-    """
-    base_url = "https://api.themoviedb.org/3"
-    response = requests.get(
-        f"{base_url}/{content_type}/{item_id}",
-        params={"api_key": api_key, "language": "pt-BR"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
-
 
 def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> dict:
     """
@@ -169,6 +142,7 @@ def trigger_glue_job(
     table_type: str,
     table_name: str,
     year: int = None,
+    tmdb_secret_arn: str = None,
 ) -> str:
     """
     Inicia o job Glue ETL para processar dados do TMDB.
@@ -195,9 +169,11 @@ def trigger_glue_job(
         "--TABLE_NAME": table_name,
     }
 
-    # O ano só é informado quando o job processa tabelas de discover
+    # O ano e o ARN do secret só são informados quando o job processa tabelas de discover
     if year is not None:
         arguments["--YEAR"] = str(year)
+        if tmdb_secret_arn:
+            arguments["--TMDB_SECRET_ARN"] = tmdb_secret_arn
 
     for key, value in glue_catalog_args.items():
         arguments[f"--{key.upper()}"] = str(value)
@@ -307,37 +283,6 @@ def collect_configuration_data(
 # ---------------------------------------------------------------------------
 
 
-def _enrich_with_runtime(api_key: str, content_type: str, items: list) -> list:
-    """
-    Enriquece cada item da lista com dados de duração buscados no endpoint de detalhe.
-
-    Para filmes, adiciona o campo "runtime" (int, minutos).
-    Para séries, adiciona "episode_run_time" (array<int>), "number_of_seasons" (int)
-    e "number_of_episodes" (int).
-
-    Itens que falharem na chamada de detalhe recebem os campos com valor None/[].
-    """
-    enriched = []
-    for item in items:
-        try:
-            detail = fetch_tmdb_detail(api_key, content_type, item["id"])
-            if content_type == "movie":
-                item["runtime"] = detail.get("runtime")
-            else:
-                item["episode_run_time"] = detail.get("episode_run_time", [])
-                item["number_of_seasons"] = detail.get("number_of_seasons")
-                item["number_of_episodes"] = detail.get("number_of_episodes")
-        except Exception as exc:
-            logger.warning(f"Falha ao buscar detalhe do id={item['id']}: {exc}")
-            if content_type == "movie":
-                item["runtime"] = None
-            else:
-                item["episode_run_time"] = []
-                item["number_of_seasons"] = None
-                item["number_of_episodes"] = None
-        enriched.append(item)
-    return enriched
-
 
 def collect_discover_data(
     api_key: str, s3_client, bucket: str, content_type: str, folder: str, year: int
@@ -349,9 +294,7 @@ def collect_discover_data(
     A função para automaticamente se o TMDB informar que não há mais páginas,
     evitando chamadas desnecessárias à API.
 
-    Cada item é enriquecido com dados de duração via endpoint de detalhe antes de
-    ser salvo (runtime para filmes; episode_run_time, number_of_seasons e
-    number_of_episodes para séries).
+    O enriquecimento com runtime/episódios é feito posteriormente pelo Glue ETL.
 
     Args:
         api_key:      Chave de API do TMDB.
@@ -375,7 +318,7 @@ def collect_discover_data(
             )
             break
 
-        results = _enrich_with_runtime(api_key, content_type, data["results"])
+        results = data["results"]
 
         # Salva apenas a lista de filmes/séries, sem os metadados de paginação
         # Exemplo de caminho gerado: tmdb/discover/movie/ano=2023/pagina_001.json

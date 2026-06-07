@@ -43,7 +43,7 @@ class TestRunDiscover:
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023")
+            mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023", secret_arn=None)
 
     def test_writes_to_discover_table_with_year_partition(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
@@ -77,7 +77,7 @@ class TestRunDiscover:
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022")
+            mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022", secret_arn=None)
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
@@ -141,7 +141,7 @@ class TestRunGenre:
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "genre", None)
+            mock_read.assert_called_once_with("my-sor", "movie", "genre", None, secret_arn=None)
 
     def test_writes_to_genre_table_without_partition(self):
         df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
@@ -204,7 +204,7 @@ class TestRunConfiguration:
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "configuration", None)
+            mock_read.assert_called_once_with("my-sor", "movie", "configuration", None, secret_arn=None)
 
     def test_writes_to_configuration_table_without_partition(self):
         df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
@@ -239,7 +239,7 @@ class TestRunConfiguration:
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "tv", "configuration", None)
+            mock_read.assert_called_once_with("my-sor", "tv", "configuration", None, secret_arn=None)
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
