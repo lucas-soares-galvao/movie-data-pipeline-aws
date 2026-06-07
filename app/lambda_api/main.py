@@ -110,7 +110,8 @@ def lambda_handler(event, context):
     api_key = get_tmdb_api_key(TMDB_SECRET_ARN)
 
     current_year = datetime.now().year
-    start_year = current_year - 1
+    start_year   = current_year - 1
+    end_year     = current_year
 
     # Coleta gêneros e aciona o Glue passando apenas a tabela de gêneros
     logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
@@ -137,10 +138,10 @@ def lambda_handler(event, context):
     )
 
     logger.info(
-        f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {current_year}..."
+        f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {end_year}..."
     )
 
-    for year in range(start_year, current_year + 1):
+    for year in range(start_year, end_year + 1):
         logger.info(f"=== Ano: {year} | Tipo: {content_type} ===")
 
         # Coleta o tipo recebido no evento para o ano atual
@@ -153,7 +154,9 @@ def lambda_handler(event, context):
             year=year,
         )
 
-        # Aciona o Glue ETL passando a tabela de discover, o ano e o tipo
+        # Aciona o Glue ETL passando a tabela de discover, o ano e o tipo.
+        # start_year e end_year são repassados para que o glue_details
+        # filtre apenas os IDs dos anos atualizados neste ciclo.
         trigger_glue_job(
             glue_client,
             GLUE_ETL_JOB_NAME,
@@ -161,6 +164,8 @@ def lambda_handler(event, context):
             table_type="discover",
             table_name=table_discover,
             year=year,
+            start_year=start_year,
+            end_year=end_year,
         )
 
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")

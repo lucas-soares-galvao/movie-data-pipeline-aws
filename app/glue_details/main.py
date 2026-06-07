@@ -17,6 +17,7 @@ Por que este job existe?
 """
 
 import logging
+import sys
 
 from src.utils import (
     collect_and_write_details,
@@ -28,6 +29,10 @@ from src.utils import (
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(_h)
 
 
 def main() -> None:
@@ -43,6 +48,8 @@ def main() -> None:
     table_details_tv     = args["TABLE_DETAILS_TV"]
     secret_arn     = args["TMDB_SECRET_ARN"]
     agg_job_name   = args["GLUE_AGG_JOB_NAME"]
+    start_year     = int(args["START_YEAR"])
+    end_year       = int(args["END_YEAR"])
 
     # Busca a chave uma única vez — evita múltiplas chamadas ao Secrets Manager
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -54,6 +61,8 @@ def main() -> None:
         table_discover_movie=table_discover_movie,
         table_discover_tv=table_discover_tv,
         s3_bucket_temp=s3_bucket_temp,
+        start_year=start_year,
+        end_year=end_year,
     )
 
     # Coleta e grava detalhes de filmes

@@ -14,6 +14,7 @@ ao gravar no SPEC, dispensando definição manual da tabela no Catalog.
 """
 
 import logging
+import sys
 
 from src.utils import (
     get_parameters_glue,
@@ -24,6 +25,10 @@ from src.utils import (
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(_h)
 
 
 def main() -> None:

@@ -14,6 +14,7 @@ Query executada:
 
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict
 
 import awswrangler as wr
@@ -22,7 +23,8 @@ from awsglue.utils import getResolvedOptions
 from deep_translator import GoogleTranslator
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+
+_TRANSLATE_MAX_WORKERS = 10
 
 # ---------------------------------------------------------------------------
 # Query de unificação e enriquecimento das tabelas de discover.
@@ -253,19 +255,22 @@ def traduzir_colunas_en(df: pd.DataFrame) -> pd.DataFrame:
     if not mask.any():
         return df
 
-    translator = GoogleTranslator(source="en", target="pt")
     total = mask.sum()
-    logger.info(f"Traduzindo {total} registros com original_language='en'.")
+    logger.info(f"Traduzindo {total} registros com original_language='en' ({_TRANSLATE_MAX_WORKERS} workers).")
+
+    def _translate(texto: str) -> str:
+        if not texto:
+            return ""
+        try:
+            return GoogleTranslator(source="en", target="pt").translate(texto)
+        except Exception as exc:
+            logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
+            return texto
 
     for col in ("title", "overview"):
         valores = df.loc[mask, col].fillna("").tolist()
-        traduzidos = []
-        for texto in valores:
-            try:
-                traduzidos.append(translator.translate(texto) if texto else "")
-            except Exception as exc:
-                logger.warning(f"Falha ao traduzir campo '{col}': {exc}. Mantendo original.")
-                traduzidos.append(texto)
+        with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+            traduzidos = list(executor.map(_translate, valores))
         df.loc[mask, col] = traduzidos
 
     return df

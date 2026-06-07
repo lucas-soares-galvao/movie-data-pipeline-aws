@@ -43,7 +43,6 @@ SOR_KEYS = {
 }
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +91,11 @@ def get_parameters_glue() -> Dict[str, Any]:
 
     try:
         args.update(get_resolved_option(["YEAR"]))
+    except SystemExit:
+        pass
+
+    try:
+        args.update(get_resolved_option(["START_YEAR", "END_YEAR"]))
     except SystemExit:
         pass
 
@@ -270,7 +274,7 @@ def trigger_agg(agg_job_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def trigger_details(details_job_name: str) -> str:
+def trigger_details(details_job_name: str, start_year: int, end_year: int) -> str:
     """
     Aciona o job Glue Details para buscar runtime/temporadas via API TMDB.
 
@@ -278,18 +282,25 @@ def trigger_details(details_job_name: str) -> str:
     processo de discover a completar, garantindo que os IDs de filmes e séries
     já estão disponíveis no SOT antes da coleta de detalhes.
 
-    O Glue Details é responsável por chamar /movie/{id} e /tv/{id} para cada
-    ID descoberto e gravar as tabelas tb_details_movie_tmdb e tb_details_tv_tmdb
-    no SOT. Ao final, ele mesmo aciona o Glue AGG.
+    start_year e end_year delimitam quais anos o Glue Details deve processar,
+    evitando re-fetch desnecessário de IDs de anos históricos não atualizados.
 
     Args:
         details_job_name: Nome do job Glue Details cadastrado na AWS.
+        start_year:       Primeiro ano do intervalo de discover processado neste ciclo.
+        end_year:         Último ano do intervalo de discover processado neste ciclo.
 
     Returns:
         O ID de execução do job (JobRunId).
     """
     glue_client = boto3.client("glue")
-    response = glue_client.start_job_run(JobName=details_job_name)
+    response = glue_client.start_job_run(
+        JobName=details_job_name,
+        Arguments={
+            "--START_YEAR": str(start_year),
+            "--END_YEAR":   str(end_year),
+        },
+    )
     run_id = response["JobRunId"]
     logger.info(f"Job Details '{details_job_name}' iniciado. RunId: {run_id}")
     return run_id

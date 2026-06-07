@@ -17,6 +17,7 @@ A Lambda aciona este job com --TABLE_TYPE em cada run:
 """
 
 import logging
+import sys
 
 from src.utils import (
     get_parameters_glue,
@@ -28,6 +29,10 @@ from src.utils import (
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(_h)
 
 _TABLE_TYPE_TO_PARTITION = {
     "discover": ["year"],
@@ -54,7 +59,9 @@ def main() -> None:
     table_name = args["TABLE_NAME"]
     dq_job_name      = args["GLUE_DATA_QUALITY_JOB_NAME"]
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
-    year = args.get("YEAR")
+    year       = args.get("YEAR")
+    start_year = args.get("START_YEAR")
+    end_year   = args.get("END_YEAR")
 
     partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
     mode = _TABLE_TYPE_TO_MODE[table_type]
@@ -84,7 +91,11 @@ def main() -> None:
     # e, ao terminar, aciona o AGG. Isso garante que discover e detalhes de
     # filmes e séries estejam no SOT antes da unificação na camada SPEC.
     if media_type == "tv" and table_type == "discover":
-        trigger_details(details_job_name=details_job_name)
+        trigger_details(
+            details_job_name=details_job_name,
+            start_year=int(start_year),
+            end_year=int(end_year),
+        )
 
     logger.info("Job Glue ETL finalizado com sucesso!")
 

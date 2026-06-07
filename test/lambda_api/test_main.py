@@ -366,6 +366,34 @@ class TestLambdaHandler(unittest.TestCase):
         self.assertEqual(chamada_ano_2026[1].get("year"), 2026)
         self.assertEqual(chamada_ano_2026[1].get("table_type"), "discover")
 
+    @patch("main.trigger_glue_job")
+    @patch("main.collect_discover_data")
+    @patch("main.collect_configuration_data")
+    @patch("main.collect_genre_data")
+    @patch("main.get_tmdb_api_key")
+    @patch("main.boto3")
+    @patch("main.datetime")
+    def test_glue_discover_recebe_start_year_e_end_year(
+        self,
+        mock_dt,
+        mock_boto3,
+        mock_get_key,
+        mock_genre,
+        mock_config,
+        mock_discover,
+        mock_trigger,
+    ):
+        """Todas as chamadas de discover repassam start_year e end_year."""
+        mock_get_key.return_value = "api-key-teste"
+        mock_dt.now.return_value.year = 2026  # start=2025, end=2026
+
+        main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+        # genre(0) + configuration(1) + discover_2025(2) + discover_2026(3)
+        for chamada in mock_trigger.call_args_list[2:]:
+            self.assertEqual(chamada[1].get("start_year"), 2025)
+            self.assertEqual(chamada[1].get("end_year"), 2026)
+
 
 if __name__ == "__main__":
     unittest.main()

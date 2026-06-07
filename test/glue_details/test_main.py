@@ -14,6 +14,8 @@ _BASE = {
     "TABLE_DETAILS_TV": "tb_details_tv_tmdb",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_AGG_JOB_NAME": "agg-job",
+    "START_YEAR": "2025",
+    "END_YEAR": "2026",
 }
 
 _MOVIE_IDS = [1, 2]
@@ -50,6 +52,8 @@ class TestMain:
                 table_discover_movie="tb_discover_movie_tmdb",
                 table_discover_tv="tb_discover_tv_tmdb",
                 s3_bucket_temp="my-temp",
+                start_year=2025,
+                end_year=2026,
             )
 
     def test_collects_movie_details(self):
