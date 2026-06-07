@@ -12,37 +12,35 @@ import src.utils as u
 
 
 class TestFetchIdsFromSot:
-    def _run(self, start_year=2025, end_year=2026, movie_ids=None, tv_ids=None):
-        df_movie = pd.DataFrame({"id": movie_ids or [1, 2]})
-        df_tv    = pd.DataFrame({"id": tv_ids    or [10, 20]})
-
-        with patch("src.utils.wr.athena.read_sql_query", side_effect=[df_movie, df_tv]) as mock_athena:
+    def _run(self, year="2025", ids=None, table="tb_discover_movie_tmdb"):
+        df = pd.DataFrame({"id": ids or [1, 2]})
+        with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
             result = u.fetch_ids_from_sot(
                 database="db_tmdb",
-                table_discover_movie="tb_discover_movie_tmdb",
-                table_discover_tv="tb_discover_tv_tmdb",
+                table_discover=table,
                 s3_bucket_temp="my-temp",
-                start_year=start_year,
-                end_year=end_year,
+                year=year,
             )
         return result, mock_athena
 
-    def test_sql_contains_year_between_filter(self):
-        _, mock_athena = self._run(start_year=2025, end_year=2026)
-        for call in mock_athena.call_args_list:
-            sql = call.kwargs["sql"]
-            assert "WHERE year BETWEEN 2025 AND 2026" in sql
+    def test_sql_contains_year_equality_filter(self):
+        _, mock_athena = self._run(year="2025")
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "WHERE year = '2025'" in sql
 
-    def test_returns_movie_and_tv_ids(self):
-        (movie_ids, tv_ids), _ = self._run(movie_ids=[1, 2], tv_ids=[10, 20])
-        assert movie_ids == [1, 2]
-        assert tv_ids    == [10, 20]
+    def test_returns_list_of_ids(self):
+        result, _ = self._run(ids=[1, 2])
+        assert result == [1, 2]
 
-    def test_year_filter_uses_passed_years(self):
-        _, mock_athena = self._run(start_year=2000, end_year=2024)
-        for call in mock_athena.call_args_list:
-            sql = call.kwargs["sql"]
-            assert "BETWEEN 2000 AND 2024" in sql
+    def test_year_filter_uses_passed_year(self):
+        _, mock_athena = self._run(year="2000")
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "WHERE year = '2000'" in sql
+
+    def test_queries_correct_table(self):
+        _, mock_athena = self._run(table="tb_discover_tv_tmdb")
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "tb_discover_tv_tmdb" in sql
 
 
 # ---------------------------------------------------------------------------

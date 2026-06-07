@@ -285,7 +285,25 @@ class TestTriggerDetails:
             **overrides,
         }
 
-    def test_details_triggered_when_media_type_is_tv(self):
+    def test_details_triggered_for_movie_discover(self):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        args = self._discover_args(MEDIA_TYPE="movie", TABLE_NAME="tb_discover_movie_tmdb")
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_details") as mock_details,
+        ):
+            m.main()
+            mock_details.assert_called_once_with(
+                details_job_name="details-job",
+                media_type="movie",
+                year="2023",
+                end_year="2026",
+            )
+
+    def test_details_triggered_for_tv_discover(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
         with (
@@ -298,27 +316,13 @@ class TestTriggerDetails:
             m.main()
             mock_details.assert_called_once_with(
                 details_job_name="details-job",
-                start_year=2025,
-                end_year=2026,
+                media_type="tv",
+                year="2023",
+                end_year="2026",
             )
 
-    def test_details_not_triggered_when_media_type_is_movie(self):
-        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
-        args = self._discover_args(
-            MEDIA_TYPE="movie", TABLE_NAME="tb_discover_movie_tmdb"
-        )
-        with (
-            patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "read_from_sor", return_value=df_mock),
-            patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details") as mock_details,
-        ):
-            m.main()
-            mock_details.assert_not_called()
-
     def test_details_not_triggered_for_genre_tv(self):
-        # Mesmo com media_type=tv, TABLE_TYPE=genre nao deve acionar o Details.
+        # TABLE_TYPE=genre nunca aciona Details, independente do media_type.
         df_mock = pd.DataFrame([{"id": 28, "name": "Drama"}])
         args = {
             **_BASE,
@@ -336,7 +340,7 @@ class TestTriggerDetails:
             m.main()
             mock_details.assert_not_called()
 
-    def test_details_triggered_exactly_once_for_tv_discover(self):
+    def test_details_triggered_exactly_once_per_discover_run(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
         with (
