@@ -95,6 +95,10 @@ EOT
 {"message":"[Pipeline Falha]\nEtapa: Glue AGG\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
+  glue_details_failed_input_template = <<-EOT
+{"message":"[Pipeline Falha]\nEtapa: Glue Details\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
+EOT
+
   envs = {
     glue_etl_job_name          = "${var.glue_etl_job_name}-${var.env}"
     glue_data_quality_job_name = "${var.glue_data_quality_job_name}-${var.env}"

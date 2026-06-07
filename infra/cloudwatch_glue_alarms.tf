@@ -138,3 +138,38 @@ resource "aws_cloudwatch_event_target" "glue_agg_failed_target" {
     input_template = local.glue_agg_failed_input_template
   }
 }
+
+resource "aws_cloudwatch_event_rule" "glue_details_failed" {
+  name        = "glue-details-failed-${var.env}"
+  description = "Notifica quando o job Glue Details falha ou e interrompido"
+
+  event_pattern = jsonencode({
+    source        = ["aws.glue"]
+    "detail-type" = ["Glue Job State Change"]
+    detail = {
+      jobName = [local.envs.glue_details_job_name]
+      state   = ["FAILED", "TIMEOUT", "STOPPED"]
+    }
+  })
+
+  tags = local.component_tags.glue_details
+}
+
+resource "aws_cloudwatch_event_target" "glue_details_failed_target" {
+  rule      = aws_cloudwatch_event_rule.glue_details_failed.name
+  target_id = "glue-details-failed-sns"
+  arn       = aws_sns_topic.glue_details_failure_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      job_name   = "$.detail.jobName"
+      state      = "$.detail.state"
+      job_run_id = "$.detail.jobRunId"
+      reason     = "$.detail.message"
+      event_time = "$.time"
+      region     = "$.region"
+    }
+
+    input_template = local.glue_details_failed_input_template
+  }
+}

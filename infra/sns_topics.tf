@@ -81,3 +81,16 @@ resource "aws_sns_topic_subscription" "glue_agg_failure_email" {
   protocol  = "email"
   endpoint  = var.glue_agg_notification_email
 }
+
+# SNS Topic para notificações de falha do Glue Details
+resource "aws_sns_topic" "glue_details_failure_notifications" {
+  name         = "glue-details-failure-notifications"
+  display_name = "[${upper(var.env)}] PIPELINE - FALHA - GLUE DETAILS"
+  tags         = local.component_tags.glue_details
+}
+
+resource "aws_sns_topic_subscription" "glue_details_failure_email" {
+  topic_arn = aws_sns_topic.glue_details_failure_notifications.arn
+  protocol  = "email"
+  endpoint  = var.glue_details_notification_email
+}

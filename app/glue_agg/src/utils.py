@@ -99,7 +99,7 @@ genre_names AS (
 
 -- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
 movie_details AS (
-    SELECT id, runtime
+    SELECT id, runtime, title_en, overview_en, poster_path_en, backdrop_path_en
     FROM {database}.tb_details_movie_tmdb
 ),
 
@@ -111,29 +111,39 @@ tv_details AS (
         id,
         number_of_seasons,
         number_of_episodes,
-        element_at(episode_run_time, 1) AS episode_runtime_minutes
+        element_at(episode_run_time, 1) AS episode_runtime_minutes,
+        title_en,
+        overview_en,
+        poster_path_en,
+        backdrop_path_en
     FROM {database}.tb_details_tv_tmdb
 )
 
 SELECT
     u.id,
     u.media_type,
-    u.title,
+    COALESCE(NULLIF(TRIM(u.title), ''), md.title_en, tv.title_en)       AS title,
     u.original_title,
-    u.overview,
+    COALESCE(NULLIF(TRIM(u.overview), ''), md.overview_en, tv.overview_en) AS overview,
     u.air_date,
     u.original_language,
-    lang.english_name                        AS language_name,
+    lang.english_name                                                    AS language_name,
     u.genre_ids,
     gn.genre_names,
     CASE
-        WHEN COALESCE(TRIM(u.poster_path), '') = '' THEN NULL
-        ELSE CONCAT('https://image.tmdb.org/t/p/w780', u.poster_path)
-    END                                      AS poster_url,
+        WHEN COALESCE(NULLIF(TRIM(u.poster_path), ''),
+                      md.poster_path_en, tv.poster_path_en) IS NULL THEN NULL
+        ELSE CONCAT('https://image.tmdb.org/t/p/w342',
+                    COALESCE(NULLIF(TRIM(u.poster_path), ''),
+                             md.poster_path_en, tv.poster_path_en))
+    END                                                                  AS poster_url,
     CASE
-        WHEN COALESCE(TRIM(u.backdrop_path), '') = '' THEN NULL
-        ELSE CONCAT('https://image.tmdb.org/t/p/w1280', u.backdrop_path)
-    END                                      AS backdrop_url,
+        WHEN COALESCE(NULLIF(TRIM(u.backdrop_path), ''),
+                      md.backdrop_path_en, tv.backdrop_path_en) IS NULL THEN NULL
+        ELSE CONCAT('https://image.tmdb.org/t/p/w780',
+                    COALESCE(NULLIF(TRIM(u.backdrop_path), ''),
+                             md.backdrop_path_en, tv.backdrop_path_en))
+    END                                                                  AS backdrop_url,
     u.popularity,
     u.vote_average,
     u.vote_count,
