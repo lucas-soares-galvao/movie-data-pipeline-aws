@@ -134,7 +134,8 @@ def recomendar(preferencia: str) -> list[dict]:
                     "duracao (string formatada: '90 min' para filmes; "
                     "'45 min/ep (2 temporadas, 20 episódios)' para séries; null se indisponível). "
                     "Responda APENAS com o JSON, sem texto extra. "
-                    "Responda sempre em português."
+                    "Responda sempre em português. "
+                    "Se a sinopse de algum título estiver em inglês, traduza-a para o português antes de exibir."
                 ),
             },
             {"role": "user", "content": preferencia},

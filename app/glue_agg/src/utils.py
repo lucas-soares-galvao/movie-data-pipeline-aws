@@ -37,7 +37,7 @@ movies AS (
         'movie'                      AS media_type,
         title,
         original_title,
-        description                  AS overview,
+        overview,
         release_date                 AS air_date,
         original_language,
         CAST(adult AS BOOLEAN)       AS adult,

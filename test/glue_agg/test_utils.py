@@ -25,6 +25,7 @@ class TestRunAthenaQuery:
             assert "number_of_seasons" in sql
             assert "number_of_episodes" in sql
             assert "episode_run_time" in sql
+            assert "overview" in sql
 
     def test_uses_expected_wrangler_execution_args(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:

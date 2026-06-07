@@ -54,6 +54,7 @@ def main() -> None:
     dq_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
     agg_job_name = args["GLUE_AGG_JOB_NAME"]
     year = args.get("YEAR")
+    secret_arn = args.get("TMDB_SECRET_ARN")
 
     partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
     mode = _TABLE_TYPE_TO_MODE[table_type]
@@ -62,7 +63,7 @@ def main() -> None:
         f"Processando table_type={table_type} | media_type={media_type} | year={year}"
     )
 
-    df = read_from_sor(s3_bucket_sor, media_type, table_type, year)
+    df = read_from_sor(s3_bucket_sor, media_type, table_type, year, secret_arn=secret_arn)
     write_parquet_to_sot(
         df=df,
         s3_bucket_sot=s3_bucket_sot,

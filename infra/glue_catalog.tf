@@ -42,7 +42,7 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
-      name = "description"
+      name = "overview"
       type = "string"
     }
 
