@@ -14,6 +14,7 @@ from src.utils import (
     collect_discover_data,
     collect_genre_data,
     fetch_tmdb_data,
+    fetch_tmdb_detail,
     fetch_tmdb_reference,
     get_tmdb_api_key,
     save_to_s3,
@@ -102,6 +103,52 @@ class TestFetchTmdbData(unittest.TestCase):
         params = mock_requests.get.call_args[1]["params"]
         self.assertIn("first_air_date_year", params)
         self.assertEqual(params["first_air_date_year"], 2020)
+
+
+# ---------------------------------------------------------------------------
+# fetch_tmdb_detail
+# ---------------------------------------------------------------------------
+
+
+class TestFetchTmdbDetail(unittest.TestCase):
+    def _mock_resposta(self, dados):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = dados
+        return mock_resp
+
+    @patch("src.utils.requests")
+    def test_filme_chama_endpoint_correto(self, mock_requests):
+        mock_requests.get.return_value = self._mock_resposta({"id": 550, "runtime": 139})
+
+        resultado = fetch_tmdb_detail("minha-key", "movie", 550)
+
+        url_chamada = mock_requests.get.call_args[0][0]
+        self.assertIn("/movie/550", url_chamada)
+        self.assertEqual(resultado["runtime"], 139)
+
+    @patch("src.utils.requests")
+    def test_serie_chama_endpoint_correto(self, mock_requests):
+        mock_requests.get.return_value = self._mock_resposta(
+            {"id": 1396, "episode_run_time": [47], "number_of_seasons": 5, "number_of_episodes": 62}
+        )
+
+        resultado = fetch_tmdb_detail("minha-key", "tv", 1396)
+
+        url_chamada = mock_requests.get.call_args[0][0]
+        self.assertIn("/tv/1396", url_chamada)
+        self.assertEqual(resultado["episode_run_time"], [47])
+        self.assertEqual(resultado["number_of_seasons"], 5)
+        self.assertEqual(resultado["number_of_episodes"], 62)
+
+    @patch("src.utils.requests")
+    def test_passa_api_key_nos_params(self, mock_requests):
+        mock_requests.get.return_value = self._mock_resposta({})
+
+        fetch_tmdb_detail("chave-secreta", "movie", 1)
+
+        params = mock_requests.get.call_args[1]["params"]
+        self.assertEqual(params["api_key"], "chave-secreta")
+        self.assertEqual(params["language"], "pt-BR")
 
 
 # ---------------------------------------------------------------------------
@@ -409,10 +456,11 @@ class TestCollectDiscoverData(unittest.TestCase):
         s3_key_usado = mock_save.call_args[0][3]
         self.assertEqual(s3_key_usado, "tmdb/discover/movie/ano=2023/pagina_001.json")
 
+    @patch("src.utils.fetch_tmdb_detail")
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_data")
     def test_salva_apenas_results_sem_metadados_de_paginacao(
-        self, mock_fetch, mock_save
+        self, mock_fetch, mock_save, mock_detail
     ):
         filmes = [{"id": 1, "title": "Filme A"}, {"id": 2, "title": "Filme B"}]
         mock_fetch.return_value = {
@@ -421,6 +469,7 @@ class TestCollectDiscoverData(unittest.TestCase):
             "total_pages": 1,
             "total_results": 2,
         }
+        mock_detail.return_value = {"runtime": 120}
         mock_s3 = MagicMock()
 
         collect_discover_data(
@@ -429,8 +478,14 @@ class TestCollectDiscoverData(unittest.TestCase):
 
         # O 3º argumento posicional de save_to_s3 é o dado salvo
         dado_salvo = mock_save.call_args[0][2]
-        # Deve ser apenas a lista de filmes, sem "page", "total_pages", etc.
-        self.assertEqual(dado_salvo, filmes)
+        # Deve ser a lista de filmes enriquecida com runtime, sem metadados de paginação
+        ids_salvos = [item["id"] for item in dado_salvo]
+        self.assertEqual(ids_salvos, [1, 2])
+        self.assertNotIn("page", dado_salvo)
+        self.assertNotIn("total_pages", dado_salvo)
+        for item in dado_salvo:
+            self.assertIn("runtime", item)
+            self.assertEqual(item["runtime"], 120)
 
 
 if __name__ == "__main__":
