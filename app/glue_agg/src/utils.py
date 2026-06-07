@@ -95,6 +95,24 @@ genre_names AS (
     LEFT JOIN genres_combined g
         ON g.id = t.genre_id
     GROUP BY u.id, u.media_type
+),
+
+-- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
+movie_details AS (
+    SELECT id, runtime
+    FROM {database}.tb_details_movie_tmdb
+),
+
+-- Quantidade de temporadas, episódios e duração média por episódio das séries.
+-- element_at(episode_run_time, 1) pega o primeiro valor do array retornado pelo TMDB
+-- (a API geralmente retorna um único elemento com a duração padrão do episódio).
+tv_details AS (
+    SELECT
+        id,
+        number_of_seasons,
+        number_of_episodes,
+        element_at(episode_run_time, 1) AS episode_runtime_minutes
+    FROM {database}.tb_details_tv_tmdb
 )
 
 SELECT
@@ -122,7 +140,13 @@ SELECT
     u.origin_country,
     ctry.native_name                         AS origin_country_name,
     u.adult,
-    u.year
+    u.year,
+    -- Duração do filme em minutos (NULL para séries)
+    md.runtime                               AS runtime_minutes,
+    -- Dados de séries (NULL para filmes)
+    tv.number_of_seasons,
+    tv.number_of_episodes,
+    tv.episode_runtime_minutes
 FROM unified u
 LEFT JOIN genre_names gn
     ON  gn.id         = u.id
@@ -131,6 +155,10 @@ LEFT JOIN {database}.tb_configuration_languages_tmdb lang
     ON lang.iso_639_1 = u.original_language
 LEFT JOIN {database}.tb_configuration_countries_tmdb ctry
     ON ctry.iso_3166_1 = element_at(u.origin_country, 1)
+LEFT JOIN movie_details md
+    ON  md.id = u.id AND u.media_type = 'movie'
+LEFT JOIN tv_details tv
+    ON  tv.id = u.id AND u.media_type = 'tv'
 """
 
 

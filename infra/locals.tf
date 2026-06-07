@@ -25,6 +25,9 @@ locals {
     glue_agg = {
       Component = "glue_agg"
     }
+    glue_details = {
+      Component = "glue_details"
+    }
     glue_catalog = {
       Component = "glue_catalog"
     }
@@ -47,6 +50,10 @@ locals {
   glue_agg_requirements_path          = "${path.root}/../app/${var.glue_agg_path_app}/requirements.txt"
   glue_agg_wheel_build_path           = "${path.module}/.glue_agg_build"
   glue_agg_wheel_filename             = "glue_agg_src-0.0.0-py3-none-any.whl"
+  glue_details_src_path               = "${path.root}/../app/${var.glue_details_path_app}"
+  glue_details_requirements_path      = "${path.root}/../app/${var.glue_details_path_app}/requirements.txt"
+  glue_details_wheel_build_path       = "${path.module}/.glue_details_build"
+  glue_details_wheel_filename         = "glue_details_src-0.0.0-py3-none-any.whl"
   glue_etl_additional_python_modules = join(",", [
     for line in split("\n", file(local.glue_etl_requirements_path)) : trimspace(line)
     if trimspace(line) != "" && !startswith(trimspace(line), "#")
@@ -57,6 +64,10 @@ locals {
   ])
   glue_agg_additional_python_modules = join(",", [
     for line in split("\n", file(local.glue_agg_requirements_path)) : trimspace(line)
+    if trimspace(line) != "" && !startswith(trimspace(line), "#")
+  ])
+  glue_details_additional_python_modules = join(",", [
+    for line in split("\n", file(local.glue_details_requirements_path)) : trimspace(line)
     if trimspace(line) != "" && !startswith(trimspace(line), "#")
   ])
 
@@ -88,6 +99,7 @@ EOT
     glue_etl_job_name          = "${var.glue_etl_job_name}-${var.env}"
     glue_data_quality_job_name = "${var.glue_data_quality_job_name}-${var.env}"
     glue_agg_job_name          = "${var.glue_agg_job_name}-${var.env}"
+    glue_details_job_name      = "${var.glue_details_job_name}-${var.env}"
     lambda_api_name            = "${var.lambda_api_name}-${var.env}"
     iam_role_glue              = "${var.iam_role_glue}-${var.env}"
     iam_role_lambda            = "${var.iam_role_lambda}-${var.env}"

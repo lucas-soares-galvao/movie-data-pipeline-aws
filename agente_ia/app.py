@@ -23,6 +23,7 @@ st.markdown("""
     border: 1px solid rgba(249,115,22,0.2);
   }
   .nota { color: #f97316; font-weight: bold; font-size: 14px; margin: 4px 0; }
+  .duracao { color: #a3a3a3; font-size: 11px; margin: 2px 0 4px 0; }
   .sinopse { color: #d4d4d4; font-size: 12px; margin-top: 6px; line-height: 1.5; }
   .motivo {
     color: #a3a3a3;
@@ -60,6 +61,7 @@ if st.button("Recomendar", type="primary") and preferencia:
                 sinopse = t.get("sinopse") or ""
                 generos = t.get("generos") or []
                 motivo = t.get("motivo") or ""
+                duracao = t.get("duracao") or ""
 
                 if poster:
                     st.image(poster, use_container_width=True)
@@ -76,6 +78,7 @@ if st.button("Recomendar", type="primary") and preferencia:
                   </span>
                   <div style="margin: 6px 0">{generos_html}</div>
                   {f'<p class="nota">★ {nota}</p>' if nota else ''}
+                  {f'<p class="duracao">⏱ {duracao}</p>' if duracao else ''}
                   <p class="sinopse">{sinopse}</p>
                   <p class="motivo">💡 {motivo}</p>
                 </div>

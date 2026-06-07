@@ -86,6 +86,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "TABLE_TYPE",
         "GLUE_DATA_QUALITY_JOB_NAME",
         "GLUE_AGG_JOB_NAME",
+        "GLUE_DETAILS_JOB_NAME",
     ]
     args = get_resolved_option(required_args)
 
@@ -261,4 +262,34 @@ def trigger_agg(agg_job_name: str) -> str:
     response = glue_client.start_job_run(JobName=agg_job_name)
     run_id = response["JobRunId"]
     logger.info(f"Job AGG '{agg_job_name}' iniciado. RunId: {run_id}")
+    return run_id
+
+
+# ---------------------------------------------------------------------------
+# Acionamento do Glue Details
+# ---------------------------------------------------------------------------
+
+
+def trigger_details(details_job_name: str) -> str:
+    """
+    Aciona o job Glue Details para buscar runtime/temporadas via API TMDB.
+
+    Chamado no run de media_type="tv" + table_type="discover" — o último
+    processo de discover a completar, garantindo que os IDs de filmes e séries
+    já estão disponíveis no SOT antes da coleta de detalhes.
+
+    O Glue Details é responsável por chamar /movie/{id} e /tv/{id} para cada
+    ID descoberto e gravar as tabelas tb_details_movie_tmdb e tb_details_tv_tmdb
+    no SOT. Ao final, ele mesmo aciona o Glue AGG.
+
+    Args:
+        details_job_name: Nome do job Glue Details cadastrado na AWS.
+
+    Returns:
+        O ID de execução do job (JobRunId).
+    """
+    glue_client = boto3.client("glue")
+    response = glue_client.start_job_run(JobName=details_job_name)
+    run_id = response["JobRunId"]
+    logger.info(f"Job Details '{details_job_name}' iniciado. RunId: {run_id}")
     return run_id

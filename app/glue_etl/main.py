@@ -7,7 +7,8 @@ Este arquivo contém apenas a lógica principal do fluxo:
   3. Chama read_from_sor para ler os dados do SOR (dispatch por table_type).
   4. Chama write_parquet_to_sot para gravar no SOT em Parquet e atualizar o Catalog.
   5. Aciona o job Glue Data Quality para validar a tabela recém-escrita.
-  6. Se media_type="tv", aciona o job Glue AGG para unificar discover movie e tv no SPEC.
+  6. Se media_type="tv" e table_type="discover", aciona o Glue Details para buscar
+     runtime/temporadas via API TMDB. O Glue Details, ao concluir, aciona o Glue AGG.
 
 A Lambda aciona este job com --TABLE_TYPE em cada run:
   - "genre"         : processa a tabela de gêneros.
@@ -22,6 +23,7 @@ from src.utils import (
     read_from_sor,
     trigger_agg,
     trigger_data_quality,
+    trigger_details,
     write_parquet_to_sot,
 )
 
@@ -51,8 +53,9 @@ def main() -> None:
     database = args["DATABASE"]
     table_type = args["TABLE_TYPE"]
     table_name = args["TABLE_NAME"]
-    dq_job_name = args["GLUE_DATA_QUALITY_JOB_NAME"]
-    agg_job_name = args["GLUE_AGG_JOB_NAME"]
+    dq_job_name      = args["GLUE_DATA_QUALITY_JOB_NAME"]
+    agg_job_name     = args["GLUE_AGG_JOB_NAME"]
+    details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year = args.get("YEAR")
 
     partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
@@ -78,10 +81,12 @@ def main() -> None:
         year=year,
     )
 
-    # Dispara o AGG somente no run de tv + discover — o último processo a concluir,
-    # garantindo que movie e tv já estão disponíveis no SOT antes da agregação.
+    # Dispara o Details somente no run de tv + discover — o último processo de
+    # discover a concluir. O Glue Details coleta runtime/temporadas via API TMDB
+    # e, ao terminar, aciona o AGG. Isso garante que discover e detalhes de
+    # filmes e séries estejam no SOT antes da unificação na camada SPEC.
     if media_type == "tv" and table_type == "discover":
-        trigger_agg(agg_job_name=agg_job_name)
+        trigger_details(details_job_name=details_job_name)
 
     logger.info("Job Glue ETL finalizado com sucesso!")
 

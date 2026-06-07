@@ -1,0 +1,4 @@
+# Raciocinio: fixa dependencias de runtime do Glue Details para execucao previsivel no job.
+
+awswrangler
+requests

@@ -35,3 +35,23 @@ class TestRunAthenaQuery:
             assert kwargs["database"] == "db_tmdb"
             assert kwargs["s3_output"] == "s3://my-temp/athena/glue_agg/"
             assert kwargs["ctas_approach"] is True
+
+    def test_query_contains_details_movie_join(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+            assert "tb_details_movie_tmdb" in sql
+            assert "runtime_minutes" in sql
+
+    def test_query_contains_details_tv_join(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+            assert "tb_details_tv_tmdb" in sql
+            assert "number_of_seasons" in sql
+            assert "number_of_episodes" in sql
+            assert "episode_runtime_minutes" in sql
