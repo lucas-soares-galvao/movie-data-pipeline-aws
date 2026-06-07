@@ -19,6 +19,7 @@ from typing import Any, Dict
 import awswrangler as wr
 import pandas as pd
 from awsglue.utils import getResolvedOptions
+from deep_translator import GoogleTranslator
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -238,6 +239,35 @@ def run_athena_query(database: str, s3_bucket_temp: str) -> pd.DataFrame:
         ctas_approach=True,
     )
     logger.info(f"Query executada com sucesso. {len(df)} registros retornados.")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Tradução de campos em inglês para português
+# ---------------------------------------------------------------------------
+
+
+def traduzir_colunas_en(df: pd.DataFrame) -> pd.DataFrame:
+    """Traduz overview e title para pt quando original_language == 'en'."""
+    mask = df["original_language"] == "en"
+    if not mask.any():
+        return df
+
+    translator = GoogleTranslator(source="en", target="pt")
+    total = mask.sum()
+    logger.info(f"Traduzindo {total} registros com original_language='en'.")
+
+    for col in ("title", "overview"):
+        valores = df.loc[mask, col].fillna("").tolist()
+        traduzidos = []
+        for texto in valores:
+            try:
+                traduzidos.append(translator.translate(texto) if texto else "")
+            except Exception as exc:
+                logger.warning(f"Falha ao traduzir campo '{col}': {exc}. Mantendo original.")
+                traduzidos.append(texto)
+        df.loc[mask, col] = traduzidos
+
     return df
 
 

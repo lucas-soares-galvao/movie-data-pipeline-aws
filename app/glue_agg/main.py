@@ -18,6 +18,7 @@ import logging
 from src.utils import (
     get_parameters_glue,
     run_athena_query,
+    traduzir_colunas_en,
     write_parquet_to_spec,
 )
 
@@ -39,6 +40,7 @@ def main() -> None:
     )
 
     df = run_athena_query(database=database, s3_bucket_temp=s3_bucket_temp)
+    df = traduzir_colunas_en(df)
     write_parquet_to_spec(
         df=df,
         s3_bucket_spec=s3_bucket_spec,

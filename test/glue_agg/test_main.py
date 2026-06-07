@@ -26,6 +26,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK) as mock_query,
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df),
             patch.object(m, "write_parquet_to_spec"),
         ):
             m.main()
@@ -38,6 +39,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df),
             patch.object(m, "write_parquet_to_spec") as mock_write,
         ):
             m.main()
@@ -53,6 +55,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=df_custom),
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df),
             patch.object(m, "write_parquet_to_spec") as mock_write,
         ):
             m.main()
@@ -63,6 +66,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df),
             patch.object(m, "write_parquet_to_spec"),
         ):
             m.main()  # deve concluir sem levantar excecao
@@ -71,6 +75,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df),
             patch.object(m, "write_parquet_to_spec") as mock_write,
         ):
             m.main()
@@ -80,7 +85,41 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK) as mock_query,
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df),
             patch.object(m, "write_parquet_to_spec"),
         ):
             m.main()
             assert mock_query.call_count == 1
+
+    def test_translation_called_between_query_and_write(self):
+        call_order = []
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
+            patch.object(
+                m,
+                "run_athena_query",
+                side_effect=lambda **_: call_order.append("query") or _DF_MOCK,
+            ),
+            patch.object(
+                m,
+                "traduzir_colunas_en",
+                side_effect=lambda df: call_order.append("translate") or df,
+            ),
+            patch.object(
+                m,
+                "write_parquet_to_spec",
+                side_effect=lambda **_: call_order.append("write"),
+            ),
+        ):
+            m.main()
+            assert call_order == ["query", "translate", "write"]
+
+    def test_translation_called_exactly_once(self):
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
+            patch.object(m, "run_athena_query", return_value=_DF_MOCK),
+            patch.object(m, "traduzir_colunas_en", side_effect=lambda df: df) as mock_translate,
+            patch.object(m, "write_parquet_to_spec"),
+        ):
+            m.main()
+            assert mock_translate.call_count == 1
