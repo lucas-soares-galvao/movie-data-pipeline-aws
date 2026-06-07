@@ -21,6 +21,10 @@ class TestRunAthenaQuery:
             assert "https://image.tmdb.org/t/p/w1280" in sql
             assert "tb_discover_movie_tmdb" in sql
             assert "tb_discover_tv_tmdb" in sql
+            assert "runtime" in sql
+            assert "number_of_seasons" in sql
+            assert "number_of_episodes" in sql
+            assert "episode_run_time" in sql
 
     def test_uses_expected_wrangler_execution_args(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
