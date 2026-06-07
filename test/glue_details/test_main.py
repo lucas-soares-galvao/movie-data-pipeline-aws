@@ -14,6 +14,7 @@ _BASE = {
     "TABLE_DETAILS_TV": "tb_details_tv_tmdb",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_AGG_JOB_NAME": "agg-job",
+    "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "MEDIA_TYPE": "movie",
     "YEAR": "2025",
     "END_YEAR": "2025",
@@ -29,6 +30,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123") as mock_key,
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg"),
         ):
             m.main()
@@ -42,6 +44,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg"),
         ):
             m.main()
@@ -59,6 +62,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg"),
         ):
             m.main()
@@ -75,6 +79,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details") as mock_collect,
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg"),
         ):
             m.main()
@@ -84,6 +89,23 @@ class TestMain:
             assert call.kwargs["ids"] == _IDS
             assert call.kwargs["table_name"] == "tb_details_movie_tmdb"
 
+    def test_triggers_data_quality_with_table_and_year(self):
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality") as mock_dq,
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_details_movie_tmdb",
+                database="db_tmdb",
+                year="2025",
+            )
+
     def test_collect_called_once_for_tv(self):
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
@@ -91,6 +113,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details") as mock_collect,
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg"),
         ):
             m.main()
@@ -107,6 +130,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg") as mock_agg,
         ):
             m.main()
@@ -118,6 +142,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg") as mock_agg,
         ):
             m.main()
@@ -130,6 +155,7 @@ class TestMain:
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_data_quality"),
             patch.object(m, "trigger_agg") as mock_agg,
         ):
             m.main()

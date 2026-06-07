@@ -81,6 +81,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "TABLE_DETAILS_TV",
         "TMDB_SECRET_ARN",
         "GLUE_AGG_JOB_NAME",
+        "GLUE_DATA_QUALITY_JOB_NAME",
         "MEDIA_TYPE",
         "YEAR",
         "END_YEAR",
@@ -301,6 +302,48 @@ def collect_and_write_details(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
+
+
+# ---------------------------------------------------------------------------
+# Acionamento do Glue Data Quality
+# ---------------------------------------------------------------------------
+
+
+def trigger_data_quality(
+    dq_job_name: str,
+    table_name: str,
+    database: str,
+    year: Optional[str] = None,
+) -> str:
+    """
+    Aciona o job Glue Data Quality para validar uma tabela no SOT.
+
+    Args:
+        dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
+        table_name:  Nome da tabela a validar (usado para buscar o ruleset).
+        database:    Nome do banco de dados no Glue Catalog.
+        year:        Ano da partição.
+
+    Returns:
+        O ID de execução do job (JobRunId).
+    """
+    arguments = {
+        "--TABLE_NAME": table_name,
+        "--DATABASE": database,
+    }
+    if year is not None:
+        arguments["--YEAR"] = year
+
+    glue_client = boto3.client("glue")
+    response = glue_client.start_job_run(
+        JobName=dq_job_name,
+        Arguments=arguments,
+    )
+    run_id = response["JobRunId"]
+    logger.info(
+        f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}"
+    )
+    return run_id
 
 
 # ---------------------------------------------------------------------------

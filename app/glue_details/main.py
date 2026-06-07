@@ -26,6 +26,7 @@ from src.utils import (
     get_parameters_glue,
     get_tmdb_api_key,
     trigger_agg,
+    trigger_data_quality,
 )
 
 logger = logging.getLogger()
@@ -49,6 +50,7 @@ def main() -> None:
     table_details_tv     = args["TABLE_DETAILS_TV"]
     secret_arn     = args["TMDB_SECRET_ARN"]
     agg_job_name   = args["GLUE_AGG_JOB_NAME"]
+    dq_job_name    = args["GLUE_DATA_QUALITY_JOB_NAME"]
     media_type     = args["MEDIA_TYPE"]
     year           = args["YEAR"]
     end_year       = args["END_YEAR"]
@@ -76,6 +78,12 @@ def main() -> None:
         s3_bucket_sot=s3_bucket_sot,
         table_name=table_details,
         database=database,
+    )
+    trigger_data_quality(
+        dq_job_name=dq_job_name,
+        table_name=table_details,
+        database=database,
+        year=year,
     )
 
     # Aciona o AGG somente no último run do ciclo: tv + ano mais recente

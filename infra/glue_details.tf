@@ -34,8 +34,9 @@ resource "aws_glue_job" "details_job_pythonshell" {
     "--TABLE_DETAILS_MOVIE"       = var.glue_catalog_table_details_movie_name
     "--TABLE_DETAILS_TV"          = var.glue_catalog_table_details_tv_name
     "--TMDB_SECRET_ARN"           = var.tmdb_secret_arn
-    "--GLUE_AGG_JOB_NAME"         = local.envs.glue_agg_job_name
-    "--ENVIRONMENT"               = var.env
+    "--GLUE_AGG_JOB_NAME"          = local.envs.glue_agg_job_name
+    "--GLUE_DATA_QUALITY_JOB_NAME" = local.envs.glue_data_quality_job_name
+    "--ENVIRONMENT"                = var.env
   }
 
   tags = local.component_tags.glue_details
@@ -51,6 +52,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
     aws_iam_role_policy.glue_details_athena,
     aws_iam_role_policy.glue_details_secrets,
     aws_iam_role_policy.glue_details_start_agg,
+    aws_iam_role_policy.glue_details_start_dq,
     aws_glue_job.agg_job_pythonshell,
     aws_cloudwatch_log_group.glue_details_error,
     aws_cloudwatch_log_group.glue_details_output,
@@ -250,6 +252,20 @@ resource "aws_iam_role_policy" "glue_details_start_agg" {
       Effect   = "Allow"
       Action   = ["glue:StartJobRun"]
       Resource = ["arn:aws:glue:*:*:job/${local.envs.glue_agg_job_name}"]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_details_start_dq" {
+  name = "glue-details-start-dq"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["glue:StartJobRun"]
+      Resource = ["arn:aws:glue:*:*:job/${local.envs.glue_data_quality_job_name}"]
     }]
   })
 }
