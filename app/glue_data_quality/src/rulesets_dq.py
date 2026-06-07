@@ -46,4 +46,19 @@ rulesets_dq = {
         'ColumnValues "vote_average" between 0 and 10',
         "RowCount > 0",
     ],
+    "tb_details_movie_tmdb": [
+        # Detalhes de filmes: cada linha corresponde a um ID único com runtime em minutos
+        'IsComplete "id"',
+        'IsUnique "id"',
+        'ColumnValues "runtime" >= 0',
+        "RowCount > 0",
+    ],
+    "tb_details_tv_tmdb": [
+        # Detalhes de séries: temporadas e episódios devem ser valores positivos
+        'IsComplete "id"',
+        'IsUnique "id"',
+        'ColumnValues "number_of_seasons" >= 1',
+        'ColumnValues "number_of_episodes" >= 1',
+        "RowCount > 0",
+    ],
 }

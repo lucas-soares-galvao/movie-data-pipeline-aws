@@ -1,0 +1,4 @@
+# Raciocinio: fixa dependencias necessarias para rodar testes do Glue Details.
+
+awswrangler
+requests

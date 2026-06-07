@@ -195,6 +195,24 @@ resource "aws_iam_role_policy" "glue_etl_start_dq" {
 }
 
 # =========================
+# ETL - Start Details Job
+# =========================
+# Permite que o Glue ETL inicie o job Details ao final do run tv + discover.
+resource "aws_iam_role_policy" "glue_etl_start_details" {
+  name = "glue-etl-start-details"
+  role = aws_iam_role.glue_etl_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["glue:StartJobRun"]
+      Resource = ["arn:aws:glue:*:*:job/${local.envs.glue_details_job_name}"]
+    }]
+  })
+}
+
+# =========================
 # DQ - Read SOT
 # =========================
 resource "aws_iam_role_policy" "glue_dq_read_sot" {

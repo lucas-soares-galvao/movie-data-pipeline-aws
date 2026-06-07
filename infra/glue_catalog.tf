@@ -316,6 +316,86 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   }
 }
 
+resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
+  name          = var.glue_catalog_table_details_movie_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_movie_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "runtime"
+      type = "int"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
+  name          = var.glue_catalog_table_details_tv_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_tv_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "number_of_seasons"
+      type = "int"
+    }
+    columns {
+      name = "number_of_episodes"
+      type = "int"
+    }
+    columns {
+      name    = "episode_run_time"
+      type    = "array<int>"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
 resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   name          = var.glue_catalog_table_data_quality_name
   database_name = aws_glue_catalog_database.tmdb_database.name

@@ -150,6 +150,18 @@ variable "glue_agg_job_name" {
   default     = "glue-agg"
 }
 
+variable "glue_details_path_app" {
+  description = "Caminho para os modulos Python da aplicacao do Glue Details"
+  type        = string
+  default     = "glue_details"
+}
+
+variable "glue_details_job_name" {
+  description = "Nome do job Glue Details a ser criado por ambiente"
+  type        = string
+  default     = "glue-details"
+}
+
 variable "glue_agg_spec_table_name" {
   description = "Nome da tabela unificada gravada no bucket SPEC pelo Glue AGG"
   type        = string
@@ -203,6 +215,18 @@ variable "glue_catalog_table_data_quality_name" {
   description = "Nome da tabela no Glue Catalog para resultados de Data Quality"
   type        = string
   default     = "tb_data_quality_tmdb"
+}
+
+variable "glue_catalog_table_details_movie_name" {
+  description = "Nome da tabela no Glue Catalog para detalhes de filmes (runtime)"
+  type        = string
+  default     = "tb_details_movie_tmdb"
+}
+
+variable "glue_catalog_table_details_tv_name" {
+  description = "Nome da tabela no Glue Catalog para detalhes de series (temporadas, episodios)"
+  type        = string
+  default     = "tb_details_tv_tmdb"
 }
 
 ############# CLOUDWATCH LOGS ##############

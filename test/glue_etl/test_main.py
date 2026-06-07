@@ -15,6 +15,7 @@ _BASE = {
     "DATABASE": "db_tmdb",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "GLUE_AGG_JOB_NAME": "agg-job",
+    "GLUE_DETAILS_JOB_NAME": "details-job",
 }
 
 
@@ -40,7 +41,7 @@ class TestRunDiscover:
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023")
@@ -52,7 +53,7 @@ class TestRunDiscover:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -74,7 +75,7 @@ class TestRunDiscover:
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot") as mock_write,
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022")
@@ -94,7 +95,7 @@ class TestRunDiscover:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             assert mock_write.call_count == 1
@@ -106,7 +107,7 @@ class TestRunDiscover:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_dq.assert_called_once_with(
@@ -138,7 +139,7 @@ class TestRunGenre:
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "genre", None)
@@ -150,7 +151,7 @@ class TestRunGenre:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -169,7 +170,7 @@ class TestRunGenre:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_dq.assert_called_once_with(
@@ -201,7 +202,7 @@ class TestRunConfiguration:
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "configuration", None)
@@ -213,7 +214,7 @@ class TestRunConfiguration:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -236,7 +237,7 @@ class TestRunConfiguration:
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot") as mock_write,
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "tv", "configuration", None)
@@ -256,7 +257,7 @@ class TestRunConfiguration:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_agg"),
+            patch.object(m, "trigger_details"),
         ):
             m.main()
             mock_dq.assert_called_once_with(
@@ -268,11 +269,11 @@ class TestRunConfiguration:
 
 
 # ---------------------------------------------------------------------------
-# Disparo condicional do Glue AGG
+# Disparo condicional do Glue Details
 # ---------------------------------------------------------------------------
 
 
-class TestTriggerAgg:
+class TestTriggerDetails:
     def _discover_args(self, **overrides):
         return {
             **_BASE,
@@ -282,7 +283,7 @@ class TestTriggerAgg:
             **overrides,
         }
 
-    def test_agg_triggered_when_media_type_is_tv(self):
+    def test_details_triggered_when_media_type_is_tv(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
         with (
@@ -290,12 +291,12 @@ class TestTriggerAgg:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg") as mock_agg,
+            patch.object(m, "trigger_details") as mock_details,
         ):
             m.main()
-            mock_agg.assert_called_once_with(agg_job_name="agg-job")
+            mock_details.assert_called_once_with(details_job_name="details-job")
 
-    def test_agg_not_triggered_when_media_type_is_movie(self):
+    def test_details_not_triggered_when_media_type_is_movie(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         args = self._discover_args(
             MEDIA_TYPE="movie", TABLE_NAME="tb_discover_movie_tmdb"
@@ -305,13 +306,13 @@ class TestTriggerAgg:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg") as mock_agg,
+            patch.object(m, "trigger_details") as mock_details,
         ):
             m.main()
-            mock_agg.assert_not_called()
+            mock_details.assert_not_called()
 
-    def test_agg_not_triggered_for_genre_tv(self):
-        # Mesmo com media_type=tv, TABLE_TYPE=genre nao deve acionar o AGG.
+    def test_details_not_triggered_for_genre_tv(self):
+        # Mesmo com media_type=tv, TABLE_TYPE=genre nao deve acionar o Details.
         df_mock = pd.DataFrame([{"id": 28, "name": "Drama"}])
         args = {
             **_BASE,
@@ -324,12 +325,12 @@ class TestTriggerAgg:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg") as mock_agg,
+            patch.object(m, "trigger_details") as mock_details,
         ):
             m.main()
-            mock_agg.assert_not_called()
+            mock_details.assert_not_called()
 
-    def test_agg_triggered_exactly_once_for_tv_discover(self):
+    def test_details_triggered_exactly_once_for_tv_discover(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
         with (
@@ -337,7 +338,7 @@ class TestTriggerAgg:
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
             patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_agg") as mock_agg,
+            patch.object(m, "trigger_details") as mock_details,
         ):
             m.main()
-            assert mock_agg.call_count == 1
+            assert mock_details.call_count == 1

@@ -10,6 +10,7 @@ _SUITE_TO_APP: dict[str, Path] = {
     "glue_agg": _APP_ROOT / "glue_agg",
     "glue_data_quality": _APP_ROOT / "glue_data_quality",
     "glue_etl": _APP_ROOT / "glue_etl",
+    "glue_details": _APP_ROOT / "glue_details",
     "lambda_api": _APP_ROOT / "lambda_api",
 }
 
@@ -18,6 +19,7 @@ _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_agg": "app.glue_agg.src.utils",
     "glue_data_quality": "app.glue_data_quality.src.utils",
     "glue_etl": "app.glue_etl.src.utils",
+    "glue_details": "app.glue_details.src.utils",
     "lambda_api": "app.lambda_api.src.utils",
 }
 
