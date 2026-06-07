@@ -274,21 +274,25 @@ def trigger_agg(agg_job_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def trigger_details(details_job_name: str, start_year: int, end_year: int) -> str:
+def trigger_details(
+    details_job_name: str,
+    media_type: str,
+    year: str,
+    end_year: str,
+) -> str:
     """
     Aciona o job Glue Details para buscar runtime/temporadas via API TMDB.
 
-    Chamado no run de media_type="tv" + table_type="discover" — o último
-    processo de discover a completar, garantindo que os IDs de filmes e séries
-    já estão disponíveis no SOT antes da coleta de detalhes.
-
-    start_year e end_year delimitam quais anos o Glue Details deve processar,
-    evitando re-fetch desnecessário de IDs de anos históricos não atualizados.
+    Chamado em todo run de discover (movie e tv), passando o media_type e o
+    ano exato processado. O Glue Details busca detalhes apenas para esse
+    media_type/ano e aciona o AGG somente no último run (tv + end_year).
 
     Args:
         details_job_name: Nome do job Glue Details cadastrado na AWS.
-        start_year:       Primeiro ano do intervalo de discover processado neste ciclo.
-        end_year:         Último ano do intervalo de discover processado neste ciclo.
+        media_type:       "movie" ou "tv".
+        year:             Ano de discover processado neste run.
+        end_year:         Último ano do intervalo — usado pelo Details para
+                          decidir se aciona o AGG.
 
     Returns:
         O ID de execução do job (JobRunId).
@@ -297,8 +301,9 @@ def trigger_details(details_job_name: str, start_year: int, end_year: int) -> st
     response = glue_client.start_job_run(
         JobName=details_job_name,
         Arguments={
-            "--START_YEAR": str(start_year),
-            "--END_YEAR":   str(end_year),
+            "--MEDIA_TYPE": media_type,
+            "--YEAR":       year,
+            "--END_YEAR":   end_year,
         },
     )
     run_id = response["JobRunId"]

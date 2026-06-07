@@ -60,7 +60,6 @@ def main() -> None:
     dq_job_name      = args["GLUE_DATA_QUALITY_JOB_NAME"]
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year       = args.get("YEAR")
-    start_year = args.get("START_YEAR")
     end_year   = args.get("END_YEAR")
 
     partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
@@ -86,15 +85,16 @@ def main() -> None:
         year=year,
     )
 
-    # Dispara o Details somente no run de tv + discover — o último processo de
-    # discover a concluir. O Glue Details coleta runtime/temporadas via API TMDB
-    # e, ao terminar, aciona o AGG. Isso garante que discover e detalhes de
-    # filmes e séries estejam no SOT antes da unificação na camada SPEC.
-    if media_type == "tv" and table_type == "discover":
+    # Dispara o Details em todo run de discover — um run por media_type/ano.
+    # O Glue Details coleta runtime/temporadas via API TMDB para o ano recebido
+    # e aciona o AGG apenas no último run (tv + end_year), quando todos os
+    # detalhes de filmes e séries já estão no SOT.
+    if table_type == "discover":
         trigger_details(
             details_job_name=details_job_name,
-            start_year=int(start_year),
-            end_year=int(end_year),
+            media_type=media_type,
+            year=year,
+            end_year=end_year,
         )
 
     logger.info("Job Glue ETL finalizado com sucesso!")

@@ -256,24 +256,24 @@ class TestTriggerDetails:
         glue_mock.start_job_run.return_value = {"JobRunId": run_id}
         return glue_mock
 
-    def test_passes_start_year_and_end_year_as_arguments(self):
+    def test_passes_media_type_year_and_end_year_as_arguments(self):
         glue_mock = self._make_glue_mock()
         with patch("boto3.client", return_value=glue_mock):
-            trigger_details("details-job", start_year=2025, end_year=2026)
+            trigger_details("details-job", media_type="movie", year="2025", end_year="2026")
             _, kwargs = glue_mock.start_job_run.call_args
-            assert kwargs["Arguments"]["--START_YEAR"] == "2025"
+            assert kwargs["Arguments"]["--MEDIA_TYPE"] == "movie"
+            assert kwargs["Arguments"]["--YEAR"] == "2025"
             assert kwargs["Arguments"]["--END_YEAR"] == "2026"
 
-    def test_years_are_converted_to_string(self):
+    def test_tv_media_type_forwarded(self):
         glue_mock = self._make_glue_mock()
         with patch("boto3.client", return_value=glue_mock):
-            trigger_details("details-job", start_year=2024, end_year=2024)
+            trigger_details("details-job", media_type="tv", year="2024", end_year="2025")
             _, kwargs = glue_mock.start_job_run.call_args
-            assert isinstance(kwargs["Arguments"]["--START_YEAR"], str)
-            assert isinstance(kwargs["Arguments"]["--END_YEAR"], str)
+            assert kwargs["Arguments"]["--MEDIA_TYPE"] == "tv"
 
     def test_returns_job_run_id(self):
         glue_mock = self._make_glue_mock(run_id="run-det-xyz")
         with patch("boto3.client", return_value=glue_mock):
-            run_id = trigger_details("details-job", start_year=2025, end_year=2026)
+            run_id = trigger_details("details-job", media_type="tv", year="2025", end_year="2025")
             assert run_id == "run-det-xyz"
