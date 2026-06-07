@@ -232,6 +232,43 @@ class TestTriggerGlueJob(unittest.TestCase):
         self.assertEqual(args_glue["--TABLE_NAME"], "genre_movie")
         self.assertNotIn("--YEAR", args_glue)
 
+    def test_discover_inclui_start_year_e_end_year(self):
+        """Chamadas de discover repassam START_YEAR e END_YEAR ao Glue."""
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.return_value = {"JobRunId": "jr_sy"}
+
+        trigger_glue_job(
+            mock_glue,
+            "meu-glue-job",
+            {"database": "tmdb_db"},
+            table_type="discover",
+            table_name="discover_movie",
+            year=2025,
+            start_year=2025,
+            end_year=2026,
+        )
+
+        args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
+        self.assertEqual(args_glue["--START_YEAR"], "2025")
+        self.assertEqual(args_glue["--END_YEAR"], "2026")
+
+    def test_genre_nao_inclui_start_year_e_end_year(self):
+        """Chamadas de genre/configuration não recebem START_YEAR nem END_YEAR."""
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.return_value = {"JobRunId": "jr_no_sy"}
+
+        trigger_glue_job(
+            mock_glue,
+            "meu-glue-job",
+            {"database": "tmdb_db"},
+            table_type="genre",
+            table_name="genre_movie",
+        )
+
+        args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
+        self.assertNotIn("--START_YEAR", args_glue)
+        self.assertNotIn("--END_YEAR", args_glue)
+
 
 # ---------------------------------------------------------------------------
 # fetch_tmdb_reference

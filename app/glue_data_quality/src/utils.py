@@ -24,7 +24,6 @@ from pyspark.sql.types import StringType
 from src.rulesets_dq import rulesets_dq
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 
 # ---------------------------------------------------------------------------

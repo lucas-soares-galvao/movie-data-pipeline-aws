@@ -17,6 +17,7 @@ O Glue ETL passa os argumentos --TABLE_NAME, --DATABASE e opcionalmente --YEAR.
 """
 
 import logging
+import sys
 
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
@@ -31,6 +32,10 @@ from src.utils import (
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(_h)
 
 
 def main() -> None:

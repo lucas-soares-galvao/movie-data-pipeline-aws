@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import read_from_sor, trigger_data_quality, write_parquet_to_sot
+from src.utils import read_from_sor, trigger_data_quality, trigger_details, write_parquet_to_sot
 
 
 # ---------------------------------------------------------------------------
@@ -243,3 +243,37 @@ class TestTriggerDataQuality:
         with patch("boto3.client", return_value=glue_mock):
             run_id = trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
             assert run_id == "run-abc"
+
+
+# ---------------------------------------------------------------------------
+# trigger_details
+# ---------------------------------------------------------------------------
+
+
+class TestTriggerDetails:
+    def _make_glue_mock(self, run_id="run-det-123") -> MagicMock:
+        glue_mock = MagicMock()
+        glue_mock.start_job_run.return_value = {"JobRunId": run_id}
+        return glue_mock
+
+    def test_passes_start_year_and_end_year_as_arguments(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_details("details-job", start_year=2025, end_year=2026)
+            _, kwargs = glue_mock.start_job_run.call_args
+            assert kwargs["Arguments"]["--START_YEAR"] == "2025"
+            assert kwargs["Arguments"]["--END_YEAR"] == "2026"
+
+    def test_years_are_converted_to_string(self):
+        glue_mock = self._make_glue_mock()
+        with patch("boto3.client", return_value=glue_mock):
+            trigger_details("details-job", start_year=2024, end_year=2024)
+            _, kwargs = glue_mock.start_job_run.call_args
+            assert isinstance(kwargs["Arguments"]["--START_YEAR"], str)
+            assert isinstance(kwargs["Arguments"]["--END_YEAR"], str)
+
+    def test_returns_job_run_id(self):
+        glue_mock = self._make_glue_mock(run_id="run-det-xyz")
+        with patch("boto3.client", return_value=glue_mock):
+            run_id = trigger_details("details-job", start_year=2025, end_year=2026)
+            assert run_id == "run-det-xyz"

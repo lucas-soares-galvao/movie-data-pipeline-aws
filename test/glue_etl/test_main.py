@@ -16,6 +16,8 @@ _BASE = {
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "GLUE_AGG_JOB_NAME": "agg-job",
     "GLUE_DETAILS_JOB_NAME": "details-job",
+    "START_YEAR": "2025",
+    "END_YEAR": "2026",
 }
 
 
@@ -294,7 +296,11 @@ class TestTriggerDetails:
             patch.object(m, "trigger_details") as mock_details,
         ):
             m.main()
-            mock_details.assert_called_once_with(details_job_name="details-job")
+            mock_details.assert_called_once_with(
+                details_job_name="details-job",
+                start_year=2025,
+                end_year=2026,
+            )
 
     def test_details_not_triggered_when_media_type_is_movie(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
