@@ -19,7 +19,7 @@ import logging
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import awswrangler as wr
 import boto3
@@ -64,6 +64,9 @@ def get_parameters_glue() -> Dict[str, Any]:
       TABLE_DETAILS_TV         — nome da tabela de detalhes de séries (destino)
       TMDB_SECRET_ARN          — ARN do segredo com a API key do TMDB
       GLUE_AGG_JOB_NAME        — nome do job Glue AGG a ser acionado ao final
+      MEDIA_TYPE               — "movie" ou "tv"
+      YEAR                     — ano de discover a processar
+      END_YEAR                 — último ano do ciclo (usado para decidir se aciona AGG)
 
     Returns:
         Dicionário com todos os argumentos resolvidos.
@@ -78,7 +81,8 @@ def get_parameters_glue() -> Dict[str, Any]:
         "TABLE_DETAILS_TV",
         "TMDB_SECRET_ARN",
         "GLUE_AGG_JOB_NAME",
-        "START_YEAR",
+        "MEDIA_TYPE",
+        "YEAR",
         "END_YEAR",
     ]
     return get_resolved_option(required_args)
@@ -114,58 +118,40 @@ def get_tmdb_api_key(secret_arn: str) -> str:
 
 def fetch_ids_from_sot(
     database: str,
-    table_discover_movie: str,
-    table_discover_tv: str,
+    table_discover: str,
     s3_bucket_temp: str,
-    start_year: int,
-    end_year: int,
-) -> Tuple[List[int], List[int]]:
+    year: str,
+) -> List[int]:
     """
-    Busca os IDs distintos das tabelas de discover no SOT via Athena,
-    limitados ao intervalo [start_year, end_year].
+    Busca os IDs distintos da tabela de discover no SOT via Athena,
+    filtrados pelo ano exato recebido.
 
     Usar o SOT (e não o SOR) garante que os IDs retornados já passaram
-    pela validação do Glue ETL e estão deduplicados entre anos.
-    O filtro de anos evita re-fetch desnecessário de IDs históricos
-    quando apenas um subconjunto de anos foi atualizado neste ciclo.
+    pela validação do Glue ETL e estão deduplicados.
 
     Args:
-        database:             Nome do banco de dados no Glue Catalog.
-        table_discover_movie: Nome da tabela de discover de filmes.
-        table_discover_tv:    Nome da tabela de discover de séries.
-        s3_bucket_temp:       Bucket S3 para os resultados temporários do Athena.
-        start_year:           Primeiro ano do intervalo a processar.
-        end_year:             Último ano do intervalo a processar.
+        database:       Nome do banco de dados no Glue Catalog.
+        table_discover: Nome da tabela de discover (movie ou tv).
+        s3_bucket_temp: Bucket S3 para os resultados temporários do Athena.
+        year:           Ano a processar (string, ex: "2025").
 
     Returns:
-        Tupla (movie_ids, tv_ids) com listas de inteiros.
+        Lista de IDs inteiros.
     """
-    s3_output   = f"s3://{s3_bucket_temp}/athena/glue_details/"
-    year_filter = f"WHERE year BETWEEN {start_year} AND {end_year}"
+    s3_output = f"s3://{s3_bucket_temp}/athena/glue_details/"
+    query = f"SELECT DISTINCT id FROM {database}.{table_discover} WHERE year = '{year}'"
 
-    query_movie = f"SELECT DISTINCT id FROM {database}.{table_discover_movie} {year_filter}"
-    query_tv    = f"SELECT DISTINCT id FROM {database}.{table_discover_tv}    {year_filter}"
-
-    logger.info(f"Buscando IDs de filmes em '{table_discover_movie}'...")
-    df_movie = wr.athena.read_sql_query(
-        sql=query_movie,
+    logger.info(f"Buscando IDs em '{table_discover}' para year={year}...")
+    df = wr.athena.read_sql_query(
+        sql=query,
         database=database,
         s3_output=s3_output,
         ctas_approach=False,
     )
 
-    logger.info(f"Buscando IDs de séries em '{table_discover_tv}'...")
-    df_tv = wr.athena.read_sql_query(
-        sql=query_tv,
-        database=database,
-        s3_output=s3_output,
-        ctas_approach=False,
-    )
-
-    movie_ids = df_movie["id"].astype(int).tolist()
-    tv_ids = df_tv["id"].astype(int).tolist()
-    logger.info(f"IDs encontrados: {len(movie_ids)} filmes, {len(tv_ids)} séries.")
-    return movie_ids, tv_ids
+    ids = df["id"].astype(int).tolist()
+    logger.info(f"IDs encontrados: {len(ids)}.")
+    return ids
 
 
 # ---------------------------------------------------------------------------

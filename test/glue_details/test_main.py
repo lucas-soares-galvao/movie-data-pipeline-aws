@@ -14,12 +14,12 @@ _BASE = {
     "TABLE_DETAILS_TV": "tb_details_tv_tmdb",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_AGG_JOB_NAME": "agg-job",
-    "START_YEAR": "2025",
-    "END_YEAR": "2026",
+    "MEDIA_TYPE": "movie",
+    "YEAR": "2025",
+    "END_YEAR": "2025",
 }
 
-_MOVIE_IDS = [1, 2]
-_TV_IDS = [10, 20]
+_IDS = [1, 2]
 
 
 class TestMain:
@@ -27,7 +27,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123") as mock_key,
-            patch.object(m, "fetch_ids_from_sot", return_value=(_MOVIE_IDS, _TV_IDS)),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "trigger_agg"),
         ):
@@ -36,72 +36,101 @@ class TestMain:
                 "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb"
             )
 
-    def test_fetches_ids_from_sot(self):
+    def test_fetches_ids_for_movie_using_discover_movie_table(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
-            patch.object(
-                m, "fetch_ids_from_sot", return_value=(_MOVIE_IDS, _TV_IDS)
-            ) as mock_ids,
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "trigger_agg"),
         ):
             m.main()
             mock_ids.assert_called_once_with(
                 database="db_tmdb",
-                table_discover_movie="tb_discover_movie_tmdb",
-                table_discover_tv="tb_discover_tv_tmdb",
+                table_discover="tb_discover_movie_tmdb",
                 s3_bucket_temp="my-temp",
-                start_year=2025,
-                end_year=2026,
+                year="2025",
             )
 
-    def test_collects_movie_details(self):
+    def test_fetches_ids_for_tv_using_discover_tv_table(self):
+        args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
+            patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_ids.assert_called_once_with(
+                database="db_tmdb",
+                table_discover="tb_discover_tv_tmdb",
+                s3_bucket_temp="my-temp",
+                year="2024",
+            )
+
+    def test_collect_called_once_for_movie(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_sot", return_value=(_MOVIE_IDS, _TV_IDS)),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details") as mock_collect,
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            first_call = mock_collect.call_args_list[0]
-            assert first_call.kwargs["content_type"] == "movie"
-            assert first_call.kwargs["ids"] == _MOVIE_IDS
-            assert first_call.kwargs["table_name"] == "tb_details_movie_tmdb"
+            assert mock_collect.call_count == 1
+            call = mock_collect.call_args
+            assert call.kwargs["content_type"] == "movie"
+            assert call.kwargs["ids"] == _IDS
+            assert call.kwargs["table_name"] == "tb_details_movie_tmdb"
 
-    def test_collects_tv_details(self):
+    def test_collect_called_once_for_tv(self):
+        args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
-            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_sot", return_value=(_MOVIE_IDS, _TV_IDS)),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details") as mock_collect,
             patch.object(m, "trigger_agg"),
         ):
             m.main()
-            second_call = mock_collect.call_args_list[1]
-            assert second_call.kwargs["content_type"] == "tv"
-            assert second_call.kwargs["ids"] == _TV_IDS
-            assert second_call.kwargs["table_name"] == "tb_details_tv_tmdb"
+            assert mock_collect.call_count == 1
+            call = mock_collect.call_args
+            assert call.kwargs["content_type"] == "tv"
+            assert call.kwargs["ids"] == _IDS
+            assert call.kwargs["table_name"] == "tb_details_tv_tmdb"
 
-    def test_collect_called_twice_movie_then_tv(self):
+    def test_triggers_agg_when_tv_and_last_year(self):
+        args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2025", "END_YEAR": "2025"}
         with (
-            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_sot", return_value=(_MOVIE_IDS, _TV_IDS)),
-            patch.object(m, "collect_and_write_details") as mock_collect,
-            patch.object(m, "trigger_agg"),
-        ):
-            m.main()
-            assert mock_collect.call_count == 2
-
-    def test_triggers_agg_after_both_collections(self):
-        with (
-            patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_sot", return_value=(_MOVIE_IDS, _TV_IDS)),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "trigger_agg") as mock_agg,
         ):
             m.main()
             mock_agg.assert_called_once_with(agg_job_name="agg-job")
+
+    def test_does_not_trigger_agg_for_movie(self):
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_agg") as mock_agg,
+        ):
+            m.main()
+            mock_agg.assert_not_called()
+
+    def test_does_not_trigger_agg_for_tv_non_last_year(self):
+        args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "collect_and_write_details"),
+            patch.object(m, "trigger_agg") as mock_agg,
+        ):
+            m.main()
+            mock_agg.assert_not_called()
