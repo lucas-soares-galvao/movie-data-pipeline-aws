@@ -17,8 +17,8 @@ class TestRunAthenaQuery:
 
             assert "AS poster_url" in sql
             assert "AS backdrop_url" in sql
+            assert "https://image.tmdb.org/t/p/w342" in sql
             assert "https://image.tmdb.org/t/p/w780" in sql
-            assert "https://image.tmdb.org/t/p/w1280" in sql
             assert "tb_discover_movie_tmdb" in sql
             assert "tb_discover_tv_tmdb" in sql
             assert "overview" in sql

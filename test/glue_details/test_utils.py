@@ -93,18 +93,19 @@ class TestCollectAndWriteDetails:
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib
 
-        responses = [
-            req_lib.RequestException("timeout"),
-            {"id": 2, "runtime": 90, "release_date": "2023-01-01"},
-        ]
+        # side_effect como função garante que ID 1 sempre falha e ID 2 sempre
+        # tem sucesso, independente da ordem de execução das threads
+        def side_effect(_key, _type, item_id):
+            if item_id == 1:
+                raise req_lib.RequestException("timeout")
+            return {"id": 2, "runtime": 90, "release_date": "2023-01-01"}
 
         with (
-            patch("src.utils.fetch_tmdb_details", side_effect=responses),
+            patch("src.utils.fetch_tmdb_details", side_effect=side_effect),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", [1, 2], "movie", "sot", "tb_details_movie_tmdb", "db")
             df_written = mock_write.call_args.kwargs["df"]
-            # ID 1 falhou, apenas ID 2 deve estar no DataFrame
             assert len(df_written) == 1
             assert df_written.iloc[0]["id"] == 2
 

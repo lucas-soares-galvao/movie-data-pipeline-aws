@@ -343,6 +343,22 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       name = "runtime"
       type = "int"
     }
+    columns {
+      name = "title_en"
+      type = "string"
+    }
+    columns {
+      name = "overview_en"
+      type = "string"
+    }
+    columns {
+      name = "poster_path_en"
+      type = "string"
+    }
+    columns {
+      name = "backdrop_path_en"
+      type = "string"
+    }
   }
 
   partition_keys {
@@ -386,6 +402,22 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     columns {
       name    = "episode_run_time"
       type    = "array<int>"
+    }
+    columns {
+      name = "title_en"
+      type = "string"
+    }
+    columns {
+      name = "overview_en"
+      type = "string"
+    }
+    columns {
+      name = "poster_path_en"
+      type = "string"
+    }
+    columns {
+      name = "backdrop_path_en"
+      type = "string"
     }
   }
 

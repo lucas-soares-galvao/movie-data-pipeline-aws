@@ -17,7 +17,9 @@ Por que este job existe separado da Lambda API?
 import json
 import logging
 import sys
-from typing import Any, Dict, List, Tuple
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional, Tuple
 
 import awswrangler as wr
 import boto3
@@ -188,7 +190,7 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     """
     endpoint = "movie" if content_type == "movie" else "tv"
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}"
-    params = {"api_key": api_key, "language": "pt-BR"}
+    params = {"api_key": api_key, "language": "en-US"}
 
     response = requests.get(url, params=params, timeout=30)
     response.raise_for_status()
@@ -200,6 +202,38 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 
+_TMDB_MAX_WORKERS = 20  # ~20 req/s concorrentes — bem abaixo do limite de 40 req/s do TMDB
+
+
+def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
+    if content_type == "movie":
+        release_date = detalhe.get("release_date") or ""
+        year = release_date[:4] if release_date else None
+        return {
+            "id":               detalhe.get("id"),
+            "runtime":          detalhe.get("runtime"),
+            "title_en":         detalhe.get("title"),
+            "overview_en":      detalhe.get("overview"),
+            "poster_path_en":   detalhe.get("poster_path"),
+            "backdrop_path_en": detalhe.get("backdrop_path"),
+            "year":             year,
+        }
+    else:
+        first_air_date = detalhe.get("first_air_date") or ""
+        year = first_air_date[:4] if first_air_date else None
+        return {
+            "id":                 detalhe.get("id"),
+            "number_of_seasons":  detalhe.get("number_of_seasons"),
+            "number_of_episodes": detalhe.get("number_of_episodes"),
+            "episode_run_time":   detalhe.get("episode_run_time", []),
+            "title_en":           detalhe.get("name"),
+            "overview_en":        detalhe.get("overview"),
+            "poster_path_en":     detalhe.get("poster_path"),
+            "backdrop_path_en":   detalhe.get("backdrop_path"),
+            "year":               year,
+        }
+
+
 def collect_and_write_details(
     api_key: str,
     ids: List[int],
@@ -209,7 +243,7 @@ def collect_and_write_details(
     database: str,
 ) -> None:
     """
-    Chama a API de detalhes para cada ID e grava o resultado no SOT como Parquet.
+    Chama a API de detalhes para cada ID em paralelo e grava o resultado no SOT como Parquet.
 
     Para filmes extrai: id, runtime, year (ano de lançamento).
     Para séries extrai: id, number_of_seasons, number_of_episodes,
@@ -217,8 +251,11 @@ def collect_and_write_details(
 
     O campo year é extraído da data de lançamento/estreia e usado como
     coluna de partição, mantendo o mesmo padrão das tabelas de discover.
-    Quando um ID não retornar os dados esperados, o registro é incluído
-    com os campos ausentes como None (sem interromper o processamento).
+    Quando um ID não retornar os dados esperados, o registro é ignorado
+    sem interromper o processamento dos demais.
+
+    As chamadas à API são feitas em paralelo com ThreadPoolExecutor limitado
+    a _TMDB_MAX_WORKERS workers para respeitar o rate limit do TMDB (~40 req/s).
 
     Args:
         api_key:       Chave de API do TMDB.
@@ -229,36 +266,22 @@ def collect_and_write_details(
         database:      Nome do banco de dados no Glue Catalog.
     """
     registros = []
+    lock = threading.Lock()
 
-    for item_id in ids:
+    def fetch_and_parse(item_id: int) -> None:
         try:
             detalhe = fetch_tmdb_details(api_key, content_type, item_id)
+            registro = _parse_detail(detalhe, content_type)
+            with lock:
+                registros.append(registro)
         except requests.RequestException as exc:
-            # Falha em um ID não deve interromper o processamento dos demais
             logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
-            continue
 
-        if content_type == "movie":
-            # release_date formato: "YYYY-MM-DD" — pega só o ano
-            release_date = detalhe.get("release_date") or ""
-            year = release_date[:4] if release_date else None
-
-            registros.append({
-                "id":      detalhe.get("id"),
-                "runtime": detalhe.get("runtime"),
-                "year":    year,
-            })
-        else:
-            first_air_date = detalhe.get("first_air_date") or ""
-            year = first_air_date[:4] if first_air_date else None
-
-            registros.append({
-                "id":                  detalhe.get("id"),
-                "number_of_seasons":   detalhe.get("number_of_seasons"),
-                "number_of_episodes":  detalhe.get("number_of_episodes"),
-                "episode_run_time":    detalhe.get("episode_run_time", []),
-                "year":                year,
-            })
+    logger.info(f"Buscando detalhes de {len(ids)} IDs ({content_type}) com {_TMDB_MAX_WORKERS} workers...")
+    with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
+        futures = {executor.submit(fetch_and_parse, item_id): item_id for item_id in ids}
+        for future in as_completed(futures):
+            future.result()  # propaga exceções inesperadas além de RequestException
 
     if not registros:
         logger.warning(f"Nenhum detalhe coletado para '{content_type}'. Nada gravado.")
