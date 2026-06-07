@@ -60,7 +60,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
   ]
 
   execution_property {
-    max_concurrent_runs = 10
+    max_concurrent_runs = 8
   }
 }
 
