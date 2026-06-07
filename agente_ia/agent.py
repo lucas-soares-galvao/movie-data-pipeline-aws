@@ -70,8 +70,7 @@ def buscar_titulos_spec(
 
     sql = f"""
         SELECT title, media_type, year, genre_names, overview,
-               vote_average, poster_url,
-               runtime, number_of_seasons, number_of_episodes
+               vote_average, poster_url
         FROM {os.getenv('SPEC_TABLE', 'tb_discover_unified_tmdb')}
         WHERE {" AND ".join(filtros)}
         ORDER BY popularity DESC
@@ -131,8 +130,6 @@ def recomendar(preferencia: str) -> list[dict]:
                     "Cada item deve ter: titulo, tipo ('filme' ou 'série'), ano (inteiro), "
                     "generos (lista de strings), sinopse, nota (float ou null), "
                     "poster_url (string ou null), motivo (por que recomenda este título), "
-                    "duracao (string formatada: '90 min' para filmes; "
-                    "'45 min/ep (2 temporadas, 20 episódios)' para séries; null se indisponível). "
                     "Responda APENAS com o JSON, sem texto extra. "
                     "Responda sempre em português. "
                     "Se a sinopse de algum título estiver em inglês, traduza-a para o português antes de exibir."
