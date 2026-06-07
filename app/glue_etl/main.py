@@ -60,7 +60,6 @@ def main() -> None:
     dq_job_name      = args["GLUE_DATA_QUALITY_JOB_NAME"]
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year       = args.get("YEAR")
-    start_year = args.get("START_YEAR")
     end_year   = args.get("END_YEAR")
 
     partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
