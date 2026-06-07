@@ -51,7 +51,6 @@ def get_tmdb_api_key(secret_arn: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-
 def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> dict:
     """
     Busca uma página de dados de filmes ou séries na API do TMDB.
@@ -142,7 +141,6 @@ def trigger_glue_job(
     table_type: str,
     table_name: str,
     year: int = None,
-    tmdb_secret_arn: str = None,
 ) -> str:
     """
     Inicia o job Glue ETL para processar dados do TMDB.
@@ -169,11 +167,9 @@ def trigger_glue_job(
         "--TABLE_NAME": table_name,
     }
 
-    # O ano e o ARN do secret só são informados quando o job processa tabelas de discover
+    # O ano só é informado quando o job processa tabelas de discover
     if year is not None:
         arguments["--YEAR"] = str(year)
-        if tmdb_secret_arn:
-            arguments["--TMDB_SECRET_ARN"] = tmdb_secret_arn
 
     for key, value in glue_catalog_args.items():
         arguments[f"--{key.upper()}"] = str(value)
@@ -283,7 +279,6 @@ def collect_configuration_data(
 # ---------------------------------------------------------------------------
 
 
-
 def collect_discover_data(
     api_key: str, s3_client, bucket: str, content_type: str, folder: str, year: int
 ) -> None:
@@ -294,15 +289,14 @@ def collect_discover_data(
     A função para automaticamente se o TMDB informar que não há mais páginas,
     evitando chamadas desnecessárias à API.
 
-    O enriquecimento com runtime/episódios é feito posteriormente pelo Glue ETL.
-
     Args:
-        api_key:      Chave de API do TMDB.
-        s3_client:    Cliente boto3 do S3.
-        bucket:       Nome do bucket S3 de destino.
-        content_type: "movie" (filmes) ou "tv" (séries) — parâmetro da API do TMDB.
-        folder:       Nome da pasta no S3: "filmes" ou "series".
-        year:         Ano de lançamento/estreia do conteúdo.
+        api_key:       Chave de API do TMDB.
+        s3_client:     Cliente boto3 do S3.
+        bucket:        Nome do bucket S3 de destino.
+        content_type:  "movie" (filmes) ou "tv" (séries) — parâmetro da API do TMDB.
+        folder:        Nome da pasta no S3: "filmes" ou "series".
+        year:          Ano de lançamento/estreia do conteúdo.
+        current_month: Mês atual no formato "MM" (ex.: "05" para maio).
     """
     logger.info(f"Coletando {folder} do ano {year}...")
 
@@ -318,9 +312,7 @@ def collect_discover_data(
             )
             break
 
-        results = data["results"]
-
         # Salva apenas a lista de filmes/séries, sem os metadados de paginação
         # Exemplo de caminho gerado: tmdb/discover/movie/ano=2023/pagina_001.json
         s3_key = f"{folder}/ano={year}/pagina_{page:03d}.json"
-        save_to_s3(s3_client, bucket, results, s3_key)
+        save_to_s3(s3_client, bucket, data["results"], s3_key)

@@ -95,11 +95,6 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
       name = "vote_count"
       type = "int"
     }
-
-    columns {
-      name = "runtime"
-      type = "int"
-    }
   }
 
   partition_keys {
@@ -179,21 +174,6 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
     }
     columns {
       name = "vote_count"
-      type = "int"
-    }
-
-    columns {
-      name = "episode_run_time"
-      type = "array<int>"
-    }
-
-    columns {
-      name = "number_of_seasons"
-      type = "int"
-    }
-
-    columns {
-      name = "number_of_episodes"
       type = "int"
     }
   }

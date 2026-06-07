@@ -22,13 +22,11 @@ Tipos de tabela (TABLE_TYPE) enviados pela Lambda ao acionar o job:
 import json
 import logging
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 import boto3
 import awswrangler as wr
 import pandas as pd
-import requests
 from awsglue.utils import getResolvedOptions
 
 SOR_KEYS = {
@@ -96,88 +94,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     except SystemExit:
         pass
 
-    try:
-        args.update(get_resolved_option(["TMDB_SECRET_ARN"]))
-    except SystemExit:
-        pass
-
     return args
-
-
-# ---------------------------------------------------------------------------
-# Enriquecimento com dados de detalhe do TMDB
-# ---------------------------------------------------------------------------
-
-
-def _get_tmdb_api_key(secret_arn: str) -> str:
-    client = boto3.client("secretsmanager")
-    response = client.get_secret_value(SecretId=secret_arn)
-    secret = json.loads(response["SecretString"])
-    return secret["tmdb_api_key"]
-
-
-def _fetch_tmdb_detail(api_key: str, media_type: str, item_id: int) -> dict:
-    response = requests.get(
-        f"https://api.themoviedb.org/3/{media_type}/{item_id}",
-        params={"api_key": api_key, "language": "pt-BR"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    detail = response.json()
-
-    if not detail.get("overview", "").strip():
-        response_en = requests.get(
-            f"https://api.themoviedb.org/3/{media_type}/{item_id}",
-            params={"api_key": api_key, "language": "en-US"},
-            timeout=30,
-        )
-        response_en.raise_for_status()
-        detail["overview"] = response_en.json().get("overview", "")
-
-    return detail
-
-
-def enrich_with_runtime(
-    df: pd.DataFrame, api_key: str, media_type: str, max_workers: int = 8
-) -> pd.DataFrame:
-    """
-    Enriquece o DataFrame com dados de duração via endpoint de detalhe do TMDB.
-
-    Usa ThreadPoolExecutor para paralelizar as chamadas respeitando o rate limit
-    do TMDB (~40 req/10s). Itens com falha recebem os campos como None.
-    """
-    records = df.to_dict(orient="records")
-    enriched = [None] * len(records)
-
-    def fetch_one(idx: int, item: dict) -> tuple:
-        try:
-            detail = _fetch_tmdb_detail(api_key, media_type, item["id"])
-            if not item.get("overview", "").strip():
-                item["overview"] = detail.get("overview", "")
-            if media_type == "movie":
-                item["runtime"] = detail.get("runtime")
-            else:
-                item["episode_run_time"] = detail.get("episode_run_time", [])
-                item["number_of_seasons"] = detail.get("number_of_seasons")
-                item["number_of_episodes"] = detail.get("number_of_episodes")
-        except Exception as exc:
-            logger.warning(f"Falha ao buscar detalhe id={item.get('id')}: {exc}")
-            if media_type == "movie":
-                item["runtime"] = None
-            else:
-                item["episode_run_time"] = []
-                item["number_of_seasons"] = None
-                item["number_of_episodes"] = None
-        return idx, item
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(fetch_one, i, rec): i for i, rec in enumerate(records)}
-        for future in as_completed(futures):
-            idx, item = future.result()
-            enriched[idx] = item
-
-    logger.info(f"Enriquecimento concluído: {len(enriched)} itens processados.")
-    return pd.DataFrame(enriched)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +107,6 @@ def read_from_sor(
     media_type: str,
     table_type: str,
     year: Optional[str] = None,
-    secret_arn: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR de acordo com o tipo de tabela (table_type).
@@ -226,9 +142,6 @@ def read_from_sor(
     if table_type == "discover":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
         df["year"] = year
-        if secret_arn:
-            api_key = _get_tmdb_api_key(secret_arn)
-            df = enrich_with_runtime(df, api_key, media_type)
     else:
         s3_client = boto3.client("s3")
         response = s3_client.get_object(Bucket=s3_bucket_sor, Key=s3_key)

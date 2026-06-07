@@ -37,7 +37,7 @@ movies AS (
         'movie'                      AS media_type,
         title,
         original_title,
-        overview,
+        description                  AS overview,
         release_date                 AS air_date,
         original_language,
         CAST(adult AS BOOLEAN)       AS adult,
@@ -48,23 +48,20 @@ movies AS (
         vote_average,
         vote_count,
         year,
-        CAST(NULL AS ARRAY<VARCHAR>) AS origin_country,
-        runtime,
-        CAST(NULL AS INT)            AS number_of_seasons,
-        CAST(NULL AS INT)            AS number_of_episodes
+        CAST(NULL AS ARRAY<VARCHAR>) AS origin_country
     FROM {database}.tb_discover_movie_tmdb
 ),
 
 tv_shows AS (
     SELECT
         id,
-        'tv'                                              AS media_type,
-        name                                              AS title,
-        original_name                                     AS original_title,
+        'tv'                   AS media_type,
+        name                   AS title,
+        original_name          AS original_title,
         overview,
-        first_air_date                                    AS air_date,
+        first_air_date         AS air_date,
         original_language,
-        CAST(NULL AS BOOLEAN)                             AS adult,
+        CAST(NULL AS BOOLEAN)  AS adult,
         genre_ids,
         poster_path,
         backdrop_path,
@@ -72,10 +69,7 @@ tv_shows AS (
         vote_average,
         vote_count,
         year,
-        origin_country,
-        COALESCE(element_at(episode_run_time, 1), NULL)  AS runtime,
-        number_of_seasons,
-        number_of_episodes
+        origin_country
     FROM {database}.tb_discover_tv_tmdb
 ),
 
@@ -128,10 +122,7 @@ SELECT
     u.origin_country,
     ctry.native_name                         AS origin_country_name,
     u.adult,
-    u.year,
-    u.runtime,
-    u.number_of_seasons,
-    u.number_of_episodes
+    u.year
 FROM unified u
 LEFT JOIN genre_names gn
     ON  gn.id         = u.id
