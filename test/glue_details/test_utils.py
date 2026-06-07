@@ -2,9 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-import pytest
-
 import src.utils as u
 
 
@@ -18,7 +15,7 @@ class TestFetchTmdbDetails:
         mock_response = MagicMock()
         mock_response.json.return_value = {"id": 1, "runtime": 120}
         with patch("src.utils.requests.get", return_value=mock_response) as mock_get:
-            result = u.fetch_tmdb_details("key-123", "movie", 1)
+            u.fetch_tmdb_details("key-123", "movie", 1)
             url = mock_get.call_args[0][0]
             assert "/movie/1" in url
 
@@ -31,7 +28,7 @@ class TestFetchTmdbDetails:
             "episode_run_time": [45],
         }
         with patch("src.utils.requests.get", return_value=mock_response) as mock_get:
-            result = u.fetch_tmdb_details("key-123", "tv", 10)
+            u.fetch_tmdb_details("key-123", "tv", 10)
             url = mock_get.call_args[0][0]
             assert "/tv/10" in url
 

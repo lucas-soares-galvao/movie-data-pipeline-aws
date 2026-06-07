@@ -21,7 +21,6 @@ import logging
 from src.utils import (
     get_parameters_glue,
     read_from_sor,
-    trigger_agg,
     trigger_data_quality,
     trigger_details,
     write_parquet_to_sot,
@@ -54,7 +53,6 @@ def main() -> None:
     table_type = args["TABLE_TYPE"]
     table_name = args["TABLE_NAME"]
     dq_job_name      = args["GLUE_DATA_QUALITY_JOB_NAME"]
-    agg_job_name     = args["GLUE_AGG_JOB_NAME"]
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year = args.get("YEAR")
 
