@@ -27,12 +27,13 @@ from src.utils import (
     write_parquet_to_sot,
 )
 
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    force=True,
+)
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    _h = logging.StreamHandler(sys.stdout)
-    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logger.addHandler(_h)
 
 _TABLE_TYPE_TO_PARTITION = {
     "discover": ["year"],
