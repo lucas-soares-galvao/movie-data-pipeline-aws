@@ -46,6 +46,11 @@ variable "glue_data_quality_notification_email" {
   type        = string
   default     = "lsgalvao1000@gmail.com"
 }
+variable "glue_data_quality_metrics_notification_email" {
+  description = "E-mail para receber notificações de avaliação de métricas do Glue Data Quality"
+  type        = string
+  default     = "lsgalvao1000@gmail.com"
+}
 variable "glue_etl_notification_email" {
   description = "E-mail para receber notificações de execução do Glue ETL"
   type        = string

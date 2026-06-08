@@ -26,7 +26,7 @@ class TestGetParametersGlue:
         "DATABASE": "db_tmdb",
         "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
         "ENVIRONMENT": "dev",
-        "SNS_TOPIC_ARN": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-failure-notifications",
+        "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
     }
 
     def test_returns_required_args(self):
