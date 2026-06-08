@@ -301,11 +301,12 @@ class TestTriggerDetails:
                 media_type="movie",
                 year="2023",
                 end_year="2026",
+                database="db_tmdb",
             )
 
     def test_details_triggered_for_tv_discover(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
-        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
+        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb", DATABASE="db_tv_tmdb")
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
@@ -319,6 +320,7 @@ class TestTriggerDetails:
                 media_type="tv",
                 year="2023",
                 end_year="2026",
+                database="db_tv_tmdb",
             )
 
     def test_details_not_triggered_for_genre_tv(self):

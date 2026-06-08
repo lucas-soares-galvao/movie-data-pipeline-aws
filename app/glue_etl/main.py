@@ -98,6 +98,7 @@ def main() -> None:
             media_type=media_type,
             year=year,
             end_year=end_year,
+            database=database,
         )
 
     logger.info("Job Glue ETL finalizado com sucesso!")
