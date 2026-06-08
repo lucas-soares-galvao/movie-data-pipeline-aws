@@ -30,12 +30,13 @@ from src.utils import (
     write_results_to_s3,
 )
 
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    force=True,
+)
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    _h = logging.StreamHandler(sys.stdout)
-    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logger.addHandler(_h)
 
 
 def main() -> None:
