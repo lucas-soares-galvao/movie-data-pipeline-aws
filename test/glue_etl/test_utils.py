@@ -283,6 +283,18 @@ class TestDeriveCanonicalName:
         # " Plus Premium" aparece antes de " Premium" na lista, então é removido primeiro
         assert derive_canonical_name("Canal Plus Premium") == "Canal"
 
+    def test_sufixo_amazon_channel_minusculo(self):
+        # API retorna "channel" em minúsculo para alguns provedores
+        assert derive_canonical_name("Adrenalina Pura Amazon channel") == "Adrenalina Pura"
+
+    def test_paramount_plus_premium(self):
+        # " Plus Premium" → "Paramount" → override → "Paramount+"
+        assert derive_canonical_name("Paramount Plus Premium") == "Paramount+"
+
+    def test_mgm_plus_amazon_channel(self):
+        # " Amazon Channel" → "MGM Plus" → override → "MGM+"
+        assert derive_canonical_name("MGM Plus Amazon Channel") == "MGM+"
+
 
 # ---------------------------------------------------------------------------
 # trigger_agg

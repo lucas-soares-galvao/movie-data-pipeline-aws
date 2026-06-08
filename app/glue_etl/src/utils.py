@@ -56,6 +56,8 @@ _CANONICAL_SUFFIXES = [
 
 _CANONICAL_OVERRIDES = {
     "Paramount Plus": "Paramount+",
+    "Paramount":      "Paramount+",   # "Paramount Plus Premium" → strip " Plus Premium" → aqui
+    "MGM Plus":       "MGM+",         # "MGM Plus Amazon Channel" → strip sufixo → aqui
     "Claro video":    "Claro Video",
 }
 
@@ -63,8 +65,9 @@ _CANONICAL_OVERRIDES = {
 def derive_canonical_name(name: str) -> str:
     """Remove sufixos de canal/variante e aplica overrides manuais para normalizar o nome."""
     result = name
+    lower = result.lower()
     for suffix in _CANONICAL_SUFFIXES:
-        if result.endswith(suffix):
+        if lower.endswith(suffix.lower()):
             result = result[: -len(suffix)]
             break
     return _CANONICAL_OVERRIDES.get(result, result)
