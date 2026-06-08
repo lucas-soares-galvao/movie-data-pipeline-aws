@@ -14,6 +14,7 @@ import sys
 from typing import Any, Dict, Optional
 
 import awswrangler as wr
+import boto3
 from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import GlueArgumentError, getResolvedOptions
@@ -46,6 +47,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "DATABASE",
         "S3_BUCKET_DATA_QUALITY",
         "ENVIRONMENT",
+        "SNS_TOPIC_ARN",
     ]
     args = getResolvedOptions(sys.argv, required_args)
 
@@ -292,3 +294,53 @@ def write_results_to_s3(
     )
 
     logger.info(f"Resultados de '{table_name}' gravados com sucesso!")
+
+
+# ---------------------------------------------------------------------------
+# Notificação SNS para outcomes Failed
+# ---------------------------------------------------------------------------
+
+
+def notify_failed_outcomes(
+    df,
+    table_name: str,
+    sns_topic_arn: str,
+    environment: str,
+) -> None:
+    """
+    Verifica se alguma regra DQ teve outcome "Failed" e publica no SNS.
+
+    O job termina com SUCCEEDED mesmo quando regras falham — essa função
+    garante que o time seja notificado sobre falhas de métricas de dados,
+    não apenas sobre crashes do job.
+
+    Args:
+        df:            Spark DataFrame com os resultados da avaliação (colunas rule, outcome, failure_reason).
+        table_name:    Nome da tabela avaliada.
+        sns_topic_arn: ARN do tópico SNS para publicar a notificação.
+        environment:   Ambiente (dev, prod) para compor o subject do e-mail.
+    """
+    failed_df = df.filter(col("outcome") == "Failed")
+    count = failed_df.count()
+
+    if count == 0:
+        logger.info(f"Todas as regras passaram para '{table_name}'.")
+        return
+
+    rows = failed_df.select("rule", "failure_reason").collect()
+    lines = [
+        "[DQ Métrica Falha]",
+        f"Ambiente: {environment}",
+        f"Tabela: {table_name}",
+        f"Regras com falha ({count}):",
+    ]
+    for row in rows:
+        lines.append(f"  • {row['rule']} → {row['failure_reason']}")
+
+    message = "\n".join(lines)
+    boto3.client("sns").publish(
+        TopicArn=sns_topic_arn,
+        Subject=f"[{environment.upper()}] DQ Métrica Falha - {table_name}",
+        Message=message,
+    )
+    logger.warning(f"{count} regra(s) falharam para '{table_name}'. Notificação SNS enviada.")

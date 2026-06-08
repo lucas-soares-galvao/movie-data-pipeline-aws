@@ -30,6 +30,7 @@ resource "aws_glue_job" "data_quality_job" {
     "--custom-logGroup-prefix"    = "/${local.envs.glue_data_quality_job_name}"
     "--S3_BUCKET_DATA_QUALITY"    = local.envs.s3_bucket_data_quality
     "--ENVIRONMENT"               = var.env
+    "--SNS_TOPIC_ARN"             = aws_sns_topic.glue_data_quality_failure_notifications.arn
   }
 
   tags = local.component_tags.glue_data_quality
