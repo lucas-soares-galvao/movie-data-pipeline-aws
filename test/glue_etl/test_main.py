@@ -116,7 +116,7 @@ class TestRunDiscover:
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
                 table_name="tb_discover_movie_tmdb",
-                database="db_unified_tmdb",
+                database="db_tmdb",
                 year="2023",
             )
 
@@ -179,7 +179,7 @@ class TestRunGenre:
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
                 table_name="tb_genre_movie_tmdb",
-                database="db_unified_tmdb",
+                database="db_tmdb",
                 year=None,
             )
 
@@ -266,7 +266,7 @@ class TestRunConfiguration:
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
                 table_name="tb_configuration_languages_tmdb",
-                database="db_unified_tmdb",
+                database="db_tmdb",
                 year=None,
             )
 
