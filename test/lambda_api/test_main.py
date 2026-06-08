@@ -32,6 +32,7 @@ import main  # noqa: E402  (importação após configuração de env vars)
 EVENTO_MOVIE = {
     "type": "movie",
     "database": "tmdb_db",
+    "database_unified": "tmdb_unified_db",
     "table_discover_movie": "discover_movie",
     "table_genre_movie": "genre_movie",
     "table_configuration_languages": "configuration_languages",
@@ -40,6 +41,7 @@ EVENTO_MOVIE = {
 EVENTO_TV = {
     "type": "tv",
     "database": "tmdb_db",
+    "database_unified": "tmdb_unified_db",
     "table_discover_tv": "discover_tv",
     "table_genre_tv": "genre_tv",
     "table_configuration_countries": "configuration_countries",
@@ -286,11 +288,15 @@ class TestLambdaHandler(unittest.TestCase):
         chamada_config = mock_trigger.call_args_list[1]
         chamada_disc = mock_trigger.call_args_list[2]
 
-        # glue_base_args (3º arg posicional) deve conter apenas MEDIA_TYPE e DATABASE
-        for chamada in (chamada_genre, chamada_config, chamada_disc):
+        # genre e discover usam o database do media type; configuration usa o unificado
+        for chamada in (chamada_genre, chamada_disc):
             args_base = chamada[0][2]
             self.assertEqual(args_base["MEDIA_TYPE"], "movie")
             self.assertEqual(args_base["DATABASE"], "tmdb_db")
+
+        args_config = chamada_config[0][2]
+        self.assertEqual(args_config["MEDIA_TYPE"], "movie")
+        self.assertEqual(args_config["DATABASE"], "tmdb_unified_db")
 
         # table_name varia conforme o contexto (keyword arg)
         self.assertEqual(chamada_genre[1].get("table_name"), "genre_movie")

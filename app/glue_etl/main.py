@@ -57,7 +57,8 @@ def main() -> None:
     s3_bucket_sor = args["S3_BUCKET_SOR"]
     s3_bucket_sot = args["S3_BUCKET_SOT"]
     media_type = args["MEDIA_TYPE"]
-    database = args["DATABASE"]
+    database          = args["DATABASE"]
+    database_unified  = args["DATABASE_UNIFIED"]
     table_type = args["TABLE_TYPE"]
     table_name = args["TABLE_NAME"]
     dq_job_name      = args["GLUE_DATA_QUALITY_JOB_NAME"]
@@ -84,7 +85,7 @@ def main() -> None:
     trigger_data_quality(
         dq_job_name=dq_job_name,
         table_name=table_name,
-        database=database,
+        database=database_unified,
         year=year,
     )
 
