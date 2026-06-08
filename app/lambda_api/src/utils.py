@@ -280,6 +280,44 @@ def collect_configuration_data(
         save_to_s3(s3_client, bucket, data, "tmdb/configuration/countries/paises.json")
 
 
+def collect_watch_providers_ref(
+    api_key: str, s3_client, bucket: str, content_type: str
+) -> None:
+    """
+    Coleta a lista global de provedores de streaming do TMDB para o tipo de
+    conteúdo recebido e salva no S3.
+
+      content_type="movie" → /watch/providers/movie → tmdb/watch_providers_ref/movie/watch_providers_ref.json
+      content_type="tv"    → /watch/providers/tv    → tmdb/watch_providers_ref/tv/watch_providers_ref.json
+
+    O campo display_priorities.BR indica a prioridade de exibição no Brasil
+    (menor número = maior prioridade). É salvo como display_priority_br.
+
+    Args:
+        api_key:      Chave de API do TMDB.
+        s3_client:    Cliente boto3 do S3.
+        bucket:       Nome do bucket S3 de destino.
+        content_type: "movie" ou "tv".
+    """
+    logger.info(f"Coletando referência: /watch/providers/{content_type}")
+    data = fetch_tmdb_reference(
+        api_key,
+        f"/watch/providers/{content_type}",
+        {"watch_region": "BR"},
+    )
+    providers = [
+        {
+            "provider_id":         p["provider_id"],
+            "provider_name":       p["provider_name"],
+            "logo_path":           p.get("logo_path"),
+            "display_priority_br": p.get("display_priorities", {}).get("BR"),
+        }
+        for p in data.get("results", [])
+    ]
+    s3_key = f"tmdb/watch_providers_ref/{content_type}/watch_providers_ref.json"
+    save_to_s3(s3_client, bucket, providers, s3_key)
+
+
 # ---------------------------------------------------------------------------
 # Coleta e salvamento por ano
 # ---------------------------------------------------------------------------

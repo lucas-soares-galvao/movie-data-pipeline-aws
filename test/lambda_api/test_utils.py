@@ -13,6 +13,7 @@ from src.utils import (
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
+    collect_watch_providers_ref,
     fetch_tmdb_data,
     fetch_tmdb_reference,
     get_tmdb_api_key,
@@ -472,6 +473,107 @@ class TestCollectDiscoverData(unittest.TestCase):
         self.assertEqual(ids_salvos, [1, 2])
         self.assertNotIn("page", dado_salvo)
         self.assertNotIn("total_pages", dado_salvo)
+
+
+# ---------------------------------------------------------------------------
+# collect_watch_providers_ref
+# ---------------------------------------------------------------------------
+
+
+class TestCollectWatchProvidersRef(unittest.TestCase):
+    def _api_response(self, results):
+        return {"results": results}
+
+    def _provider(self, pid, name, logo, priority_br):
+        return {
+            "provider_id": pid,
+            "provider_name": name,
+            "logo_path": logo,
+            "display_priorities": {"BR": priority_br},
+        }
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_movie_chama_endpoint_correto(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/watch/providers/movie")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_tv_chama_endpoint_correto(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "tv")
+
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/watch/providers/tv")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_envia_watch_region_br(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        params = mock_fetch.call_args[0][2]
+        self.assertEqual(params, {"watch_region": "BR"})
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_s3_key_movie(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/watch_providers_ref/movie/watch_providers_ref.json")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_s3_key_tv(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "tv")
+
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/watch_providers_ref/tv/watch_providers_ref.json")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_extrai_campos_corretos_do_provider(self, mock_fetch, mock_save):
+        provider = self._provider(8, "Netflix", "/netflix.png", 1)
+        mock_fetch.return_value = self._api_response([provider])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertEqual(len(dados_salvos), 1)
+        self.assertEqual(dados_salvos[0]["provider_id"], 8)
+        self.assertEqual(dados_salvos[0]["provider_name"], "Netflix")
+        self.assertEqual(dados_salvos[0]["logo_path"], "/netflix.png")
+        self.assertEqual(dados_salvos[0]["display_priority_br"], 1)
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_display_priority_br_none_quando_ausente(self, mock_fetch, mock_save):
+        provider = {"provider_id": 9, "provider_name": "Prime", "logo_path": None}
+        mock_fetch.return_value = self._api_response([provider])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertIsNone(dados_salvos[0]["display_priority_br"])
 
 
 if __name__ == "__main__":

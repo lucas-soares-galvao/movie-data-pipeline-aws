@@ -28,7 +28,6 @@ resource "aws_glue_job" "details_job_pythonshell" {
     "--custom-logGroup-prefix"    = "/${local.envs.glue_details_job_name}"
     "--S3_BUCKET_SOT"             = local.envs.s3_bucket_sot
     "--S3_BUCKET_TEMP"            = local.envs.s3_bucket_temp
-    "--DATABASE"                  = var.glue_catalog_database_name
     "--TABLE_DISCOVER_MOVIE"      = var.glue_catalog_table_discover_movie_name
     "--TABLE_DISCOVER_TV"         = var.glue_catalog_table_discover_tv_name
     "--TABLE_DETAILS_MOVIE"           = var.glue_catalog_table_details_movie_name

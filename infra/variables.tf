@@ -173,10 +173,22 @@ variable "glue_agg_spec_table_name" {
   default     = "tb_discover_unified_tmdb"
 }
 
-variable "glue_catalog_database_name" {
-  description = "Nome do banco no Glue Catalog para a tabela TMDB"
+variable "glue_catalog_database_movie_name" {
+  description = "Nome do banco no Glue Catalog para tabelas de filmes TMDB"
   type        = string
-  default     = "db_tmdb"
+  default     = "db_movie_tmdb"
+}
+
+variable "glue_catalog_database_tv_name" {
+  description = "Nome do banco no Glue Catalog para tabelas de séries TMDB"
+  type        = string
+  default     = "db_tv_tmdb"
+}
+
+variable "glue_catalog_database_unified_name" {
+  description = "Nome do banco no Glue Catalog para a tabela unificada e referências TMDB"
+  type        = string
+  default     = "db_unified_tmdb"
 }
 
 variable "glue_catalog_table_discover_movie_name" {
@@ -244,6 +256,18 @@ variable "glue_catalog_table_watch_providers_tv_name" {
   description = "Nome da tabela no Glue Catalog para watch providers BR de series"
   type        = string
   default     = "tb_watch_providers_tv_tmdb"
+}
+
+variable "glue_catalog_table_watch_providers_ref_movie_name" {
+  description = "Nome da tabela no Glue Catalog para a lista de referência de provedores de filmes"
+  type        = string
+  default     = "tb_watch_providers_ref_movie_tmdb"
+}
+
+variable "glue_catalog_table_watch_providers_ref_tv_name" {
+  description = "Nome da tabela no Glue Catalog para a lista de referência de provedores de series"
+  type        = string
+  default     = "tb_watch_providers_ref_tv_tmdb"
 }
 
 ############# CLOUDWATCH LOGS ##############

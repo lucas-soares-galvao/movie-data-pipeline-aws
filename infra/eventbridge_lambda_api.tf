@@ -3,7 +3,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
   name                = "lambda-api-movie-${var.env}"
   description         = "Dispara a Lambda para filmes"
-  schedule_expression = "cron(15 02 * * ? *)" # Todos os dias as 02:15 UTC
+  schedule_expression = "cron(35 13 * * ? *)" # Todos os dias as 13:35 UTC
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -11,7 +11,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv" {
   name                = "lambda-api-tv-${var.env}"
   description         = "Dispara a Lambda para series"
-  schedule_expression = "cron(20 02 * * ? *)" # Todos os dias as 02:20 UTC
+  schedule_expression = "cron(40 13 * * ? *)" # Todos os dias as 13:40 UTC
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -22,11 +22,13 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_target" {
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
-    type                          = "movie",
-    database                      = var.glue_catalog_database_name,
-    table_discover_movie          = var.glue_catalog_table_discover_movie_name,
-    table_genre_movie             = var.glue_catalog_table_genre_movie_name,
-    table_configuration_languages = var.glue_catalog_table_configuration_languages_name
+    type                            = "movie",
+    database                        = var.glue_catalog_database_movie_name,
+    database_unified                = var.glue_catalog_database_unified_name,
+    table_discover_movie            = var.glue_catalog_table_discover_movie_name,
+    table_genre_movie               = var.glue_catalog_table_genre_movie_name,
+    table_configuration_languages   = var.glue_catalog_table_configuration_languages_name,
+    table_watch_providers_ref_movie = var.glue_catalog_table_watch_providers_ref_movie_name
   })
 }
 
@@ -37,10 +39,12 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_target" {
 
   input = jsonencode({
     type                          = "tv",
-    database                      = var.glue_catalog_database_name,
+    database                      = var.glue_catalog_database_tv_name,
+    database_unified              = var.glue_catalog_database_unified_name,
     table_discover_tv             = var.glue_catalog_table_discover_tv_name,
     table_genre_tv                = var.glue_catalog_table_genre_tv_name,
-    table_configuration_countries = var.glue_catalog_table_configuration_countries_name
+    table_configuration_countries = var.glue_catalog_table_configuration_countries_name,
+    table_watch_providers_ref_tv  = var.glue_catalog_table_watch_providers_ref_tv_name
   })
 }
 

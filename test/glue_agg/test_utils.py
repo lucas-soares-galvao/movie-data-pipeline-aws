@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import run_athena_query, traduzir_colunas_en
+from src.utils import run_athena_query, traduzir_colunas_en, write_parquet_to_spec
 
 
 class TestRunAthenaQuery:
     def test_passes_sql_with_image_columns_to_wrangler(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
 
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
@@ -28,17 +28,17 @@ class TestRunAthenaQuery:
 
     def test_uses_expected_wrangler_execution_args(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
 
             mock_read.assert_called_once()
             _, kwargs = mock_read.call_args
-            assert kwargs["database"] == "db_tmdb"
+            assert kwargs["database"] == "db_unified_tmdb"
             assert kwargs["s3_output"] == "s3://my-temp/athena/glue_agg/"
             assert kwargs["ctas_approach"] is True
 
     def test_query_contains_details_movie_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
@@ -47,7 +47,7 @@ class TestRunAthenaQuery:
 
     def test_query_contains_details_tv_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
@@ -58,7 +58,7 @@ class TestRunAthenaQuery:
 
     def test_query_contains_watch_providers_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
@@ -139,3 +139,32 @@ class TestTraduzirColunasEn:
             result = traduzir_colunas_en(df)
 
         assert result.loc[0, "overview"] == ""
+
+
+class TestWriteParquetToSpec:
+    def test_constroi_caminho_s3_correto(self):
+        df = pd.DataFrame({"col": [1]})
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+
+            _, kwargs = mock_write.call_args
+            assert kwargs["path"] == "s3://my-spec/tb_unified/"
+
+    def test_usa_partition_cols_e_mode_corretos(self):
+        df = pd.DataFrame({"col": [1]})
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+
+            _, kwargs = mock_write.call_args
+            assert kwargs["partition_cols"] == ["media_type", "year"]
+            assert kwargs["mode"] == "overwrite_partitions"
+            assert kwargs["dataset"] is True
+
+    def test_registra_tabela_no_catalog(self):
+        df = pd.DataFrame({"col": [1]})
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+
+            _, kwargs = mock_write.call_args
+            assert kwargs["database"] == "db_spec"
+            assert kwargs["table"] == "tb_unified"
