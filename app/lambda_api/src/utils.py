@@ -141,7 +141,6 @@ def trigger_glue_job(
     table_type: str,
     table_name: str,
     year: int = None,
-    start_year: int = None,
     end_year: int = None,
 ) -> str:
     """
@@ -172,8 +171,6 @@ def trigger_glue_job(
     # O ano só é informado quando o job processa tabelas de discover
     if year is not None:
         arguments["--YEAR"] = str(year)
-    if start_year is not None:
-        arguments["--START_YEAR"] = str(start_year)
     if end_year is not None:
         arguments["--END_YEAR"] = str(end_year)
 

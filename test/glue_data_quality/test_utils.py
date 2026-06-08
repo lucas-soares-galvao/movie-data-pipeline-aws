@@ -24,21 +24,23 @@ class TestGetParametersGlue:
     _REQUIRED = {
         "TABLE_NAME": "tb_genre_movie_tmdb",
         "DATABASE": "db_tmdb",
+        "DATABASE_RESULTS": "db_unified_tmdb",
         "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
         "ENVIRONMENT": "dev",
         "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
     }
 
     def test_returns_required_args(self):
-        """Os quatro argumentos obrigatórios devem estar no retorno."""
+        """Os argumentos obrigatórios devem estar no retorno."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, SystemExit(), SystemExit()],
+            side_effect=[{**self._REQUIRED}, SystemExit()],
         ):
             result = get_parameters_glue()
 
         assert result["TABLE_NAME"] == "tb_genre_movie_tmdb"
         assert result["DATABASE"] == "db_tmdb"
+        assert result["DATABASE_RESULTS"] == "db_unified_tmdb"
         assert result["S3_BUCKET_DATA_QUALITY"] == "my-dq-bucket"
         assert result["ENVIRONMENT"] == "dev"
 
@@ -47,7 +49,7 @@ class TestGetParametersGlue:
         year_args = {"YEAR": "2023"}
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, year_args, SystemExit()],
+            side_effect=[{**self._REQUIRED}, year_args],
         ):
             result = get_parameters_glue()
 
@@ -57,7 +59,7 @@ class TestGetParametersGlue:
         """YEAR não deve estar no retorno quando o argumento não for enviado."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, SystemExit("not found"), SystemExit()],
+            side_effect=[{**self._REQUIRED}, SystemExit("not found")],
         ):
             result = get_parameters_glue()
 
@@ -67,20 +69,15 @@ class TestGetParametersGlue:
         """Ausência de YEAR não pode lançar exceção — é argumento opcional."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, SystemExit(), SystemExit()],
+            side_effect=[{**self._REQUIRED}, SystemExit()],
         ):
-            # Não deve lançar nada
             get_parameters_glue()
 
-    def test_adds_database_results_when_available(self):
-        """DATABASE_RESULTS deve ser incluído quando enviado pelo Glue ETL."""
+    def test_returns_database_results(self):
+        """DATABASE_RESULTS deve estar no retorno como argumento obrigatório."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[
-                {**self._REQUIRED},
-                SystemExit(),
-                {"DATABASE_RESULTS": "db_unified_tmdb"},
-            ],
+            side_effect=[{**self._REQUIRED}, SystemExit()],
         ):
             result = get_parameters_glue()
 

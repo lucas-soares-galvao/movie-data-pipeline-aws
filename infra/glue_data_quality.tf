@@ -31,6 +31,7 @@ resource "aws_glue_job" "data_quality_job" {
     "--S3_BUCKET_DATA_QUALITY"    = local.envs.s3_bucket_data_quality
     "--ENVIRONMENT"               = var.env
     "--SNS_TOPIC_ARN_DQ_METRICS"  = aws_sns_topic.glue_data_quality_metrics_notifications.arn
+    "--DATABASE_RESULTS"          = var.glue_catalog_database_unified_name
   }
 
   tags = local.component_tags.glue_data_quality
