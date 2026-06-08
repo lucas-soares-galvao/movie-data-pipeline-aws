@@ -64,7 +64,7 @@ _CANONICAL_OVERRIDES = {
 
 def derive_canonical_name(name: str) -> str:
     """Remove sufixos de canal/variante e aplica overrides manuais para normalizar o nome."""
-    result = name
+    result = name.strip()
     lower = result.lower()
     for suffix in _CANONICAL_SUFFIXES:
         if lower.endswith(suffix.lower()):
