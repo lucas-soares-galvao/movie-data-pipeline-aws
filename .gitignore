@@ -49,4 +49,3 @@ infra/.glue_data_quality_build/
 # --- Sistema ---
 .DS_Store
 Thumbs.db
-infra/.terraform.lock.hcl
