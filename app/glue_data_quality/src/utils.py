@@ -47,7 +47,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "DATABASE",
         "S3_BUCKET_DATA_QUALITY",
         "ENVIRONMENT",
-        "SNS_TOPIC_ARN",
+        "SNS_TOPIC_ARN_DQ_METRICS",
     ]
     args = getResolvedOptions(sys.argv, required_args)
 

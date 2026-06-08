@@ -14,6 +14,20 @@ resource "aws_sns_topic_subscription" "glue_data_quality_failure_email" {
   endpoint  = var.glue_data_quality_notification_email
 }
 
+# SNS Topic para notificações de resultado da avaliação de métricas do Glue Data Quality
+resource "aws_sns_topic" "glue_data_quality_metrics_notifications" {
+  name         = "glue-data-quality-metrics-notifications"
+  display_name = "[${upper(var.env)}] QUALIDADE - AVALIAÇÃO DE MÉTRICAS"
+  tags         = local.component_tags.glue_data_quality
+}
+
+# Assinatura de e-mail no SNS para resultado da avaliação de métricas do Glue Data Quality
+resource "aws_sns_topic_subscription" "glue_data_quality_metrics_email" {
+  topic_arn = aws_sns_topic.glue_data_quality_metrics_notifications.arn
+  protocol  = "email"
+  endpoint  = var.glue_data_quality_metrics_notification_email
+}
+
 # SNS Topic para notificações de falha do Glue ETL
 resource "aws_sns_topic" "glue_etl_failure_notifications" {
   name         = "glue-etl-failure-notifications"
