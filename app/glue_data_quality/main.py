@@ -55,6 +55,7 @@ def main() -> None:
     args = get_parameters_glue()
     table_name = args["TABLE_NAME"]
     database = args["DATABASE"]
+    database_results = args.get("DATABASE_RESULTS", database)
     s3_bucket_data_quality = args["S3_BUCKET_DATA_QUALITY"]
     environment = args["ENVIRONMENT"]
     sns_topic_arn_dq_metrics = args["SNS_TOPIC_ARN_DQ_METRICS"]
@@ -83,7 +84,13 @@ def main() -> None:
     # --- 6. Grava o resultado no bucket de Data Quality ---
     # Para discover: particionado por source_table + partition (ano), sobrescrevendo
     # apenas aquele ano. Para genre/config: sobrescreve apenas source_table.
-    write_results_to_s3(df_results, s3_bucket_data_quality, table_name, database, year)
+    write_results_to_s3(
+        df_results,
+        s3_bucket_data_quality,
+        table_name,
+        database_results,
+        year,
+    )
 
     notify_failed_outcomes(df_results, table_name, sns_topic_arn_dq_metrics, environment)
 

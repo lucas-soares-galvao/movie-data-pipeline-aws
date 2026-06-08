@@ -248,6 +248,7 @@ def trigger_data_quality(
     dq_job_name: str,
     table_name: str,
     database: str,
+    database_results: str,
     year: Optional[str] = None,
 ) -> str:
     """
@@ -256,7 +257,8 @@ def trigger_data_quality(
     Args:
         dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
         table_name:  Nome da tabela a validar (usado para buscar o ruleset).
-        database:    Nome do banco de dados no Glue Catalog.
+        database:    Nome do banco de dados de origem no Glue Catalog.
+        database_results: Nome do banco de dados de destino da tb_data_quality_tmdb.
         year:        Ano da partição. Informado apenas para discover.
 
     Returns:
@@ -265,6 +267,7 @@ def trigger_data_quality(
     arguments = {
         "--TABLE_NAME": table_name,
         "--DATABASE": database,
+        "--DATABASE_RESULTS": database_results,
     }
     if year is not None:
         arguments["--YEAR"] = year
