@@ -57,7 +57,7 @@ def main() -> None:
     database = args["DATABASE"]
     s3_bucket_data_quality = args["S3_BUCKET_DATA_QUALITY"]
     environment = args["ENVIRONMENT"]
-    sns_topic_arn = args["SNS_TOPIC_ARN"]
+    sns_topic_arn_dq_metrics = args["SNS_TOPIC_ARN_DQ_METRICS"]
     year = args.get("YEAR")  # None para tabelas sem partição (gêneros, config)
 
     logger.info(
@@ -85,7 +85,7 @@ def main() -> None:
     # apenas aquele ano. Para genre/config: sobrescreve apenas source_table.
     write_results_to_s3(df_results, s3_bucket_data_quality, table_name, database, year)
 
-    notify_failed_outcomes(df_results, table_name, sns_topic_arn, environment)
+    notify_failed_outcomes(df_results, table_name, sns_topic_arn_dq_metrics, environment)
 
     logger.info("Job Glue Data Quality finalizado com sucesso!")
 
