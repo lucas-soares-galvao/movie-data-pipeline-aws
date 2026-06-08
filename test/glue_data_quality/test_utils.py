@@ -33,7 +33,7 @@ class TestGetParametersGlue:
         """Os quatro argumentos obrigatórios devem estar no retorno."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, SystemExit()],
+            side_effect=[{**self._REQUIRED}, SystemExit(), SystemExit()],
         ):
             result = get_parameters_glue()
 
@@ -46,7 +46,8 @@ class TestGetParametersGlue:
         """YEAR deve ser incluído quando o Glue ETL passar o argumento."""
         year_args = {"YEAR": "2023"}
         with patch(
-            "src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, year_args]
+            "src.utils.getResolvedOptions",
+            side_effect=[{**self._REQUIRED}, year_args, SystemExit()],
         ):
             result = get_parameters_glue()
 
@@ -56,7 +57,7 @@ class TestGetParametersGlue:
         """YEAR não deve estar no retorno quando o argumento não for enviado."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, SystemExit("not found")],
+            side_effect=[{**self._REQUIRED}, SystemExit("not found"), SystemExit()],
         ):
             result = get_parameters_glue()
 
@@ -66,10 +67,24 @@ class TestGetParametersGlue:
         """Ausência de YEAR não pode lançar exceção — é argumento opcional."""
         with patch(
             "src.utils.getResolvedOptions",
-            side_effect=[{**self._REQUIRED}, SystemExit()],
+            side_effect=[{**self._REQUIRED}, SystemExit(), SystemExit()],
         ):
             # Não deve lançar nada
             get_parameters_glue()
+
+    def test_adds_database_results_when_available(self):
+        """DATABASE_RESULTS deve ser incluído quando enviado pelo Glue ETL."""
+        with patch(
+            "src.utils.getResolvedOptions",
+            side_effect=[
+                {**self._REQUIRED},
+                SystemExit(),
+                {"DATABASE_RESULTS": "db_unified_tmdb"},
+            ],
+        ):
+            result = get_parameters_glue()
+
+        assert result["DATABASE_RESULTS"] == "db_unified_tmdb"
 
 
 # ---------------------------------------------------------------------------
