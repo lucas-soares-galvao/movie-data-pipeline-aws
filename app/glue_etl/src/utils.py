@@ -316,6 +316,7 @@ def trigger_details(
     media_type: str,
     year: str,
     end_year: str,
+    database: str,
 ) -> str:
     """
     Aciona o job Glue Details para buscar runtime/temporadas via API TMDB.
@@ -330,6 +331,7 @@ def trigger_details(
         year:             Ano de discover processado neste run.
         end_year:         Último ano do intervalo — usado pelo Details para
                           decidir se aciona o AGG.
+        database:         Nome do banco no Glue Catalog correspondente ao media_type.
 
     Returns:
         O ID de execução do job (JobRunId).
@@ -341,6 +343,7 @@ def trigger_details(
             "--MEDIA_TYPE": media_type,
             "--YEAR":       year,
             "--END_YEAR":   end_year,
+            "--DATABASE":   database,
         },
     )
     run_id = response["JobRunId"]

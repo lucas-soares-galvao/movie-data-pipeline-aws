@@ -9,7 +9,9 @@ import main as m
 _BASE_ARGS = {
     "S3_BUCKET_SPEC": "my-spec",
     "S3_BUCKET_TEMP": "my-temp",
-    "DATABASE": "db_tmdb",
+    "DB_MOVIE":   "db_movie_tmdb",
+    "DB_TV":      "db_tv_tmdb",
+    "DB_UNIFIED": "db_unified_tmdb",
     "TABLE_NAME": "tb_discover_unified_tmdb",
 }
 
@@ -31,7 +33,9 @@ class TestMain:
         ):
             m.main()
             mock_query.assert_called_once_with(
-                database="db_tmdb",
+                db_movie="db_movie_tmdb",
+                db_tv="db_tv_tmdb",
+                db_unified="db_unified_tmdb",
                 s3_bucket_temp="my-temp",
             )
 
@@ -47,7 +51,7 @@ class TestMain:
                 df=_DF_MOCK,
                 s3_bucket_spec="my-spec",
                 table_name="tb_discover_unified_tmdb",
-                database="db_tmdb",
+                database="db_unified_tmdb",
             )
 
     def test_write_receives_dataframe_returned_by_query(self):
