@@ -108,6 +108,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "S3_BUCKET_SOT",
         "MEDIA_TYPE",
         "DATABASE",
+        "DATABASE_UNIFIED",
         "TABLE_NAME",
         "TABLE_TYPE",
         "GLUE_DATA_QUALITY_JOB_NAME",

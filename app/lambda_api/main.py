@@ -93,6 +93,14 @@ def lambda_handler(event, context):
     glue_base_args = {
         "MEDIA_TYPE": content_type,
         "DATABASE": event["database"],
+        "DATABASE_UNIFIED": event["database_unified"],
+    }
+
+    # Tabelas de configuração são referências globais — pertencem ao db unificado
+    glue_unified_args = {
+        "MEDIA_TYPE": content_type,
+        "DATABASE": event["database_unified"],
+        "DATABASE_UNIFIED": event["database_unified"],
     }
 
     # Nomes das tabelas específicas para o tipo recebido
@@ -132,7 +140,7 @@ def lambda_handler(event, context):
     trigger_glue_job(
         glue_client,
         GLUE_ETL_JOB_NAME,
-        glue_base_args,
+        glue_unified_args,
         table_type="configuration",
         table_name=table_configuration,
     )
