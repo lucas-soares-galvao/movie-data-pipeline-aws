@@ -43,22 +43,26 @@ def main() -> None:
     """Coleta detalhes da API TMDB para um media_type/ano e grava no SOT."""
     args = get_parameters_glue()
 
+    # --- Infraestrutura (buckets, banco, segredo, jobs downstream) ---
     s3_bucket_sot  = args["S3_BUCKET_SOT"]
     s3_bucket_temp = args["S3_BUCKET_TEMP"]
     database       = args["DATABASE"]
+    secret_arn     = args["TMDB_SECRET_ARN"]
+    agg_job_name   = args["GLUE_AGG_JOB_NAME"]
+    dq_job_name    = args["GLUE_DATA_QUALITY_JOB_NAME"]
+
+    # --- Tabelas do Glue Catalog ---
     table_discover_movie = args["TABLE_DISCOVER_MOVIE"]
     table_discover_tv    = args["TABLE_DISCOVER_TV"]
     table_details_movie  = args["TABLE_DETAILS_MOVIE"]
     table_details_tv     = args["TABLE_DETAILS_TV"]
-    secret_arn     = args["TMDB_SECRET_ARN"]
-    agg_job_name   = args["GLUE_AGG_JOB_NAME"]
-    dq_job_name    = args["GLUE_DATA_QUALITY_JOB_NAME"]
+    table_watch_providers_movie = args["TABLE_WATCH_PROVIDERS_MOVIE"]
+    table_watch_providers_tv    = args["TABLE_WATCH_PROVIDERS_TV"]
+
+    # --- Parâmetros de execução do ciclo ---
     media_type     = args["MEDIA_TYPE"]
     year           = args["YEAR"]
     end_year       = args["END_YEAR"]
-
-    table_watch_providers_movie = args["TABLE_WATCH_PROVIDERS_MOVIE"]
-    table_watch_providers_tv    = args["TABLE_WATCH_PROVIDERS_TV"]
 
     table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
     table_details         = table_details_movie         if media_type == "movie" else table_details_tv

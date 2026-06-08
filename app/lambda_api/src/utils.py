@@ -340,7 +340,6 @@ def collect_discover_data(
         content_type:  "movie" (filmes) ou "tv" (séries) — parâmetro da API do TMDB.
         folder:        Nome da pasta no S3: "filmes" ou "series".
         year:          Ano de lançamento/estreia do conteúdo.
-        current_month: Mês atual no formato "MM" (ex.: "05" para maio).
     """
     logger.info(f"Coletando {folder} do ano {year}...")
 

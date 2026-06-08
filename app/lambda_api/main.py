@@ -96,7 +96,9 @@ def lambda_handler(event, context):
         "DATABASE_UNIFIED": event["database_unified"],
     }
 
-    # Tabelas de configuração são referências globais — pertencem ao db unificado
+    # Configurações (países/idiomas) são referências globais compartilhadas entre filmes e séries.
+    # Por isso usam DATABASE_UNIFIED: o banco que centraliza tabelas que não pertencem a
+    # apenas um tipo de mídia (ao contrário de discover/gêneros, que são separados por movie/tv).
     glue_unified_args = {
         "MEDIA_TYPE": content_type,
         "DATABASE": event["database_unified"],

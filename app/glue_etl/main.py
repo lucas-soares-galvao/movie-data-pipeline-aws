@@ -35,6 +35,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
+# Tabelas de dispatch: mapeiam table_type para o comportamento de escrita no SOT.
+# "discover" usa overwrite_partitions (sobrescreve só o ano recebido, preservando os demais).
+# Os demais tipos sobrescrevem a tabela inteira a cada run, pois não têm partição.
 _TABLE_TYPE_TO_PARTITION = {
     "discover":            ["year"],
     "genre":               None,

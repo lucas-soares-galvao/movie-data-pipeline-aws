@@ -53,6 +53,8 @@ def main() -> None:
         db_unified=db_unified,
         s3_bucket_temp=s3_bucket_temp,
     )
+    # O TMDB retorna title/overview em inglês; traduzimos para pt-BR aqui porque
+    # a camada SPEC é o produto final consumido pelo usuário.
     df = traduzir_colunas_en(df)
     write_parquet_to_spec(
         df=df,
