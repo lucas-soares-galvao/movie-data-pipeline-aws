@@ -415,7 +415,7 @@ class TestLambdaHandler(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     @patch("main.datetime")
-    def test_glue_discover_recebe_start_year_e_end_year(
+    def test_glue_discover_recebe_end_year(
         self,
         mock_dt,
         mock_boto3,
@@ -426,7 +426,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_discover,
         mock_trigger,
     ):
-        """Todas as chamadas de discover repassam start_year e end_year."""
+        """Todas as chamadas de discover repassam end_year."""
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2026  # start=2025, end=2026
 
@@ -434,7 +434,6 @@ class TestLambdaHandler(unittest.TestCase):
 
         # genre(0) + configuration(1) + watch_providers_ref(2) + discover_2025(3) + discover_2026(4)
         for chamada in mock_trigger.call_args_list[3:]:
-            self.assertEqual(chamada[1].get("start_year"), 2025)
             self.assertEqual(chamada[1].get("end_year"), 2026)
 
 

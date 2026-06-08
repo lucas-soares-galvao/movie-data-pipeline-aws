@@ -13,11 +13,9 @@ _BASE = {
     "S3_BUCKET_SOT": "my-sot",
     "MEDIA_TYPE": "movie",
     "DATABASE": "db_tmdb",
-    "DATABASE_UNIFIED": "db_unified_tmdb",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "GLUE_AGG_JOB_NAME": "agg-job",
     "GLUE_DETAILS_JOB_NAME": "details-job",
-    "START_YEAR": "2025",
     "END_YEAR": "2026",
 }
 
@@ -117,7 +115,6 @@ class TestRunDiscover:
                 dq_job_name="dq-job",
                 table_name="tb_discover_movie_tmdb",
                 database="db_tmdb",
-                database_results="db_unified_tmdb",
                 year="2023",
             )
 
@@ -181,7 +178,6 @@ class TestRunGenre:
                 dq_job_name="dq-job",
                 table_name="tb_genre_movie_tmdb",
                 database="db_tmdb",
-                database_results="db_unified_tmdb",
                 year=None,
             )
 
@@ -269,7 +265,6 @@ class TestRunConfiguration:
                 dq_job_name="dq-job",
                 table_name="tb_configuration_languages_tmdb",
                 database="db_tmdb",
-                database_results="db_unified_tmdb",
                 year=None,
             )
 

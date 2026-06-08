@@ -181,8 +181,7 @@ def lambda_handler(event, context):
         )
 
         # Aciona o Glue ETL passando a tabela de discover, o ano e o tipo.
-        # start_year e end_year são repassados para que o glue_details
-        # filtre apenas os IDs dos anos atualizados neste ciclo.
+        # end_year é repassado para que o glue_details filtre apenas os IDs dos anos atualizados neste ciclo.
         trigger_glue_job(
             glue_client,
             GLUE_ETL_JOB_NAME,
@@ -190,7 +189,6 @@ def lambda_handler(event, context):
             table_type="discover",
             table_name=table_discover,
             year=year,
-            start_year=start_year,
             end_year=end_year,
         )
 

@@ -117,12 +117,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     args = get_resolved_option(required_args)
 
     try:
-        args.update(get_resolved_option(["YEAR"]))
-    except SystemExit:
-        pass
-
-    try:
-        args.update(get_resolved_option(["START_YEAR", "END_YEAR"]))
+        args.update(get_resolved_option(["YEAR", "END_YEAR"]))
     except SystemExit:
         pass
 
