@@ -8,6 +8,7 @@ import main as m
 _BASE_ARGS = {
     "TABLE_NAME": "tb_genre_movie_tmdb",
     "DATABASE": "db_tmdb",
+    "DATABASE_RESULTS": "db_unified_tmdb",
     "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
     "ENVIRONMENT": "dev",
     "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
@@ -216,12 +217,18 @@ class TestWriteResultsToS3Call:
         assert table_arg == "tb_genre_movie_tmdb"
 
     def test_calls_write_with_database(self):
-        """write_results_to_s3 deve receber o DATABASE dos args para registrar
-        a partição no Glue Catalog via AWS Wrangler."""
-        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
+        """write_results_to_s3 deve receber o DATABASE_RESULTS dos args para registrar
+        tb_data_quality_tmdb sempre no banco unificado do Glue Catalog."""
+        mocks = _run_main(
+            args={
+                **_BASE_ARGS,
+                "DATABASE": "db_tmdb",
+                "DATABASE_RESULTS": "db_unified_tmdb",
+            }
+        )
 
         database_arg = mocks["mock_write"].call_args[0][3]
-        assert database_arg == "db_tmdb"
+        assert database_arg == "db_unified_tmdb"
 
     def test_calls_write_with_none_year_when_not_in_args(self):
         """write_results_to_s3 deve receber year=None quando YEAR não está nos args

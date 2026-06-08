@@ -37,6 +37,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     Lê os argumentos obrigatórios e opcionais passados ao job Glue pelo Glue ETL.
 
     Argumentos obrigatórios: TABLE_NAME, DATABASE, S3_BUCKET_DATA_QUALITY, ENVIRONMENT.
+    Argumento opcional:      DATABASE_RESULTS (banco de destino da tb_data_quality_tmdb).
     Argumento opcional:      YEAR (presente apenas para tabelas de discover).
 
     Returns:
@@ -54,6 +55,11 @@ def get_parameters_glue() -> Dict[str, Any]:
     # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
+    except (SystemExit, GlueArgumentError):
+        pass
+
+    try:
+        args.update(getResolvedOptions(sys.argv, ["DATABASE_RESULTS"]))
     except (SystemExit, GlueArgumentError):
         pass
 
