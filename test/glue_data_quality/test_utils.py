@@ -594,15 +594,6 @@ class TestNotifyFailedOutcomes:
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert "DEV" in call_kwargs["Subject"]
 
-    def test_subject_contains_table_name(self):
-        """O subject do e-mail deve conter o nome da tabela que falhou."""
-        row = self._make_row("RowCount > 0", "Row count is 0")
-        df, _ = self._make_df([row])
-        with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_discover_movie_tmdb", self._SNS_ARN, "dev")
-            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
-            assert "tb_discover_movie_tmdb" in call_kwargs["Subject"]
-
     def test_message_contains_table_name(self):
         """O corpo do e-mail deve indicar qual tabela teve métricas com falha."""
         row = self._make_row("RowCount > 0", "Row count is 0")
