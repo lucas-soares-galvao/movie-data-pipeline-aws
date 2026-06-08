@@ -31,16 +31,43 @@ from awsglue.utils import getResolvedOptions
 
 SOR_KEYS = {
     "movie": {
-        "genre": "tmdb/genre/movie/generos_filmes.json",
-        "configuration": "tmdb/configuration/languages/idiomas.json",
-        "discover": "tmdb/discover/movie/ano={year}/",
+        "genre":                "tmdb/genre/movie/generos_filmes.json",
+        "configuration":        "tmdb/configuration/languages/idiomas.json",
+        "discover":             "tmdb/discover/movie/ano={year}/",
+        "watch_providers_ref":  "tmdb/watch_providers_ref/movie/watch_providers_ref.json",
     },
     "tv": {
-        "genre": "tmdb/genre/tv/generos_series.json",
-        "configuration": "tmdb/configuration/countries/paises.json",
-        "discover": "tmdb/discover/tv/ano={year}/",
+        "genre":                "tmdb/genre/tv/generos_series.json",
+        "configuration":        "tmdb/configuration/countries/paises.json",
+        "discover":             "tmdb/discover/tv/ano={year}/",
+        "watch_providers_ref":  "tmdb/watch_providers_ref/tv/watch_providers_ref.json",
     },
 }
+
+_CANONICAL_SUFFIXES = [
+    " Amazon Channel",
+    " Apple TV Channel",
+    " Apple Channel",
+    " Plus Premium",
+    " Premium",
+    " Standard with Ads",
+    " with Ads",
+]
+
+_CANONICAL_OVERRIDES = {
+    "Paramount Plus": "Paramount+",
+    "Claro video":    "Claro Video",
+}
+
+
+def derive_canonical_name(name: str) -> str:
+    """Remove sufixos de canal/variante e aplica overrides manuais para normalizar o nome."""
+    result = name
+    for suffix in _CANONICAL_SUFFIXES:
+        if result.endswith(suffix):
+            result = result[: -len(suffix)]
+            break
+    return _CANONICAL_OVERRIDES.get(result, result)
 
 logger = logging.getLogger()
 
@@ -132,10 +159,14 @@ def read_from_sor(
         configuration/countries/paises.json (tv) via boto3.
         O payload é um array direto de objetos.
 
+      "watch_providers_ref"
+        Lê tmdb/watch_providers_ref/{media_type}/watch_providers_ref.json via boto3.
+        Deriva canonical_name a partir de provider_name usando derive_canonical_name.
+
     Args:
         s3_bucket_sor: Nome do bucket SOR.
         media_type:    "movie" ou "tv".
-        table_type:    "discover", "genre" ou "configuration".
+        table_type:    "discover", "genre", "configuration" ou "watch_providers_ref".
         year:          Ano da partição. Obrigatório quando table_type="discover".
 
     Returns:
@@ -147,6 +178,12 @@ def read_from_sor(
     if table_type == "discover":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
         df["year"] = year
+    elif table_type == "watch_providers_ref":
+        s3_client = boto3.client("s3")
+        response = s3_client.get_object(Bucket=s3_bucket_sor, Key=s3_key)
+        data = json.loads(response["Body"].read())
+        df = pd.DataFrame(data)
+        df["canonical_name"] = df["provider_name"].apply(derive_canonical_name)
     else:
         s3_client = boto3.client("s3")
         response = s3_client.get_object(Bucket=s3_bucket_sor, Key=s3_key)

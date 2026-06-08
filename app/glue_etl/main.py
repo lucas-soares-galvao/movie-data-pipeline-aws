@@ -36,15 +36,17 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 _TABLE_TYPE_TO_PARTITION = {
-    "discover": ["year"],
-    "genre": None,
-    "configuration": None,
+    "discover":            ["year"],
+    "genre":               None,
+    "configuration":       None,
+    "watch_providers_ref": None,
 }
 
 _TABLE_TYPE_TO_MODE = {
-    "discover": "overwrite_partitions",
-    "genre": "overwrite",
-    "configuration": "overwrite",
+    "discover":            "overwrite_partitions",
+    "genre":               "overwrite",
+    "configuration":       "overwrite",
+    "watch_providers_ref": "overwrite",
 }
 
 

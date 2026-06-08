@@ -1,3 +1,10 @@
+"""
+Agente de recomendação de filmes e séries em 3 passos:
+  1. OpenAI lê o texto do usuário e extrai filtros estruturados (gênero, ano, etc.)
+  2. AWS Athena executa uma query SQL com esses filtros no data lake
+  3. OpenAI recebe os resultados reais e os formata como recomendações em JSON
+"""
+
 import os
 import json
 import boto3
@@ -10,7 +17,9 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ── Definição da tool para o OpenAI ──────────────────────────────────────────
-# O OpenAI lê isso e decide quais argumentos passar com base no texto do usuário
+# Isso é "function calling": o modelo não executa código — ele lê essa definição,
+# decide quais argumentos fazem sentido para o pedido do usuário, e nos devolve
+# esses argumentos como JSON. Nós é que executamos a função de verdade (PASSO 2).
 
 TOOL = {
     "type": "function",
@@ -70,7 +79,7 @@ def buscar_titulos_spec(
 
     sql = f"""
         SELECT title, media_type, year, genre_names, overview,
-               vote_average, poster_url,
+               vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
                streaming_providers
@@ -83,10 +92,10 @@ def buscar_titulos_spec(
     session = boto3.Session(region_name=os.getenv("AWS_REGION", "sa-east-1"))
     df = wr.athena.read_sql_query(
         sql=sql,
-        database=os.getenv("GLUE_DATABASE", "db_tmdb"),
+        database=os.getenv("GLUE_DATABASE", "db_unified_tmdb"),
         s3_output=os.getenv("ATHENA_S3_OUTPUT"),
         boto3_session=session,
-        ctas_approach=False,
+        ctas_approach=False,  # False = query direta; True (padrão) criaria uma tabela temporária no S3 via CTAS
     )
     return df.to_dict(orient="records")
 
@@ -94,6 +103,11 @@ def buscar_titulos_spec(
 # ── Função principal: 3 passos explícitos ────────────────────────────────────
 
 def recomendar(preferencia: str) -> list[dict]:
+    """
+    Orquestra os 3 passos do agente e retorna uma lista de dicionários,
+    cada um representando um título recomendado com título, sinopse, nota, etc.
+    Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
+    """
 
     # PASSO 1: OpenAI analisa o texto do usuário e decide quais filtros usar
     resposta = client.chat.completions.create(
@@ -121,6 +135,9 @@ def recomendar(preferencia: str) -> list[dict]:
         return []
 
     # PASSO 3: OpenAI recebe os títulos reais e gera as recomendações em JSON
+    # A lista de mensagens reconstrói o histórico da conversa para o modelo:
+    # system → pedido do usuário → mensagem anterior do modelo (com a tool call) → resultado da tool.
+    # Esse encadeamento é obrigatório pelo protocolo de tool use da API OpenAI.
     resposta_final = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -132,13 +149,14 @@ def recomendar(preferencia: str) -> list[dict]:
                     "do usuário e retorne um JSON com a chave 'titulos'. "
                     "Cada item deve ter: titulo, tipo ('filme' ou 'série'), ano (inteiro), "
                     "generos (lista de strings), sinopse, nota (float ou null), "
-                    "poster_url (string ou null), motivo (por que recomenda este título), "
+                    "poster_url (string ou null), backdrop_url (string ou null), motivo (por que recomenda este título), "
                     "duracao (string formatada ou null), "
                     "streaming_providers (string com nomes dos serviços separados por vírgula, ou null). "
                     "Para filmes, formate duracao a partir de runtime_minutes: ex. '1h 52min'. "
                     "Para séries, formate duracao combinando number_of_seasons, number_of_episodes "
                     "e episode_runtime_minutes: ex. '3 temporadas · 36 eps · ~45 min/ep'. "
-                    "Se os dados de duração forem null, defina duracao como null. "
+                    "Se episode_runtime_minutes for null ou ausente, omita essa parte: ex. '3 temporadas · 36 eps'. "
+                    "Se todos os dados de duração forem null, defina duracao como null. "
                     "Copie streaming_providers exatamente como recebido (ex: 'Netflix, Amazon Prime Video'), "
                     "ou null se o campo estiver ausente ou vazio. "
                     "Responda APENAS com o JSON, sem texto extra. "
@@ -158,6 +176,8 @@ def recomendar(preferencia: str) -> list[dict]:
 
     conteudo = resposta_final.choices[0].message.content or ""
     conteudo = conteudo.strip()
+    # O modelo às vezes devolve o JSON envolto em ```json ... ``` mesmo sendo instruído a não fazer isso.
+    # Esse bloco remove esse envoltório antes de parsear com json.loads.
     if conteudo.startswith("```"):
         conteudo = conteudo.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     if not conteudo:
