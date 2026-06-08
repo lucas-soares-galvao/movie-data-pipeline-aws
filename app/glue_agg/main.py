@@ -38,20 +38,15 @@ def main() -> None:
 
     s3_bucket_spec = args["S3_BUCKET_SPEC"]
     s3_bucket_temp = args["S3_BUCKET_TEMP"]
-    db_movie = args["DB_MOVIE"]
-    db_tv = args["DB_TV"]
-    db_unified = args["DB_UNIFIED"]
+    database = args["DATABASE"]
     table_name = args["TABLE_NAME"]
 
     logger.info(
-        f"Iniciando Glue AGG | tabela destino: '{table_name}' | "
-        f"db_movie='{db_movie}' | db_tv='{db_tv}' | db_unified='{db_unified}'"
+        f"Iniciando Glue AGG | tabela destino: '{table_name}' | database='{database}'"
     )
 
     df = run_athena_query(
-        db_movie=db_movie,
-        db_tv=db_tv,
-        db_unified=db_unified,
+        database=database,
         s3_bucket_temp=s3_bucket_temp,
     )
     df = traduzir_colunas_en(df)
@@ -59,7 +54,7 @@ def main() -> None:
         df=df,
         s3_bucket_spec=s3_bucket_spec,
         table_name=table_name,
-        database=db_unified,
+        database=database,
     )
 
     logger.info("Job Glue AGG finalizado com sucesso!")

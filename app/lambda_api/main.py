@@ -34,7 +34,6 @@ from src.utils import (
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
-    collect_watch_providers_ref,
     get_tmdb_api_key,
     trigger_glue_job,
 )
@@ -90,15 +89,10 @@ def lambda_handler(event, context):
     # "type" define se esta execução é para filmes ou séries
     content_type = event["type"]  # "movie" ou "tv"
 
-    # Argumentos comuns à maioria das chamadas do Glue ETL (tabelas tipo-específicas)
+    # Argumentos comuns a todas as chamadas do Glue ETL
     glue_base_args = {
         "MEDIA_TYPE": content_type,
         "DATABASE": event["database"],
-    }
-    # Banco unificado: usado para tabelas de configuração (languages/countries)
-    glue_unified_args = {
-        "MEDIA_TYPE": content_type,
-        "DATABASE": event["database_unified"],
     }
 
     # Nomes das tabelas específicas para o tipo recebido
@@ -106,12 +100,10 @@ def lambda_handler(event, context):
         table_genre = event["table_genre_movie"]
         table_configuration = event["table_configuration_languages"]
         table_discover = event["table_discover_movie"]
-        table_watch_providers_ref = event["table_watch_providers_ref_movie"]
     else:
         table_genre = event["table_genre_tv"]
         table_configuration = event["table_configuration_countries"]
         table_discover = event["table_discover_tv"]
-        table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
     # Busca a chave de API uma única vez para não chamar o Secrets Manager repetidamente
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -134,28 +126,15 @@ def lambda_handler(event, context):
     )
 
     # Coleta configurações e aciona o Glue passando apenas a tabela de configuração
-    # Configuração vai para db_unified_tmdb (compartilhada entre movie e tv)
     logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
     collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
     logger.info("Acionando Glue ETL para tabela de configuração...")
     trigger_glue_job(
         glue_client,
         GLUE_ETL_JOB_NAME,
-        glue_unified_args,
+        glue_base_args,
         table_type="configuration",
         table_name=table_configuration,
-    )
-
-    # Coleta lista de referência de provedores e aciona o Glue
-    logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
-    collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
-    logger.info("Acionando Glue ETL para tabela de watch providers ref...")
-    trigger_glue_job(
-        glue_client,
-        GLUE_ETL_JOB_NAME,
-        glue_base_args,
-        table_type="watch_providers_ref",
-        table_name=table_watch_providers_ref,
     )
 
     logger.info(
