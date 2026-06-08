@@ -341,7 +341,7 @@ def notify_failed_outcomes(
     message = "\n".join(lines)
     boto3.client("sns").publish(
         TopicArn=sns_topic_arn,
-        Subject=f"[{environment.upper()}] DQ Métrica Falha - {table_name}",
+        Subject=f"[{environment.upper()}] DQ Métrica Falha",
         Message=message,
     )
     logger.warning(f"{count} regra(s) falharam para '{table_name}'. Notificação SNS enviada.")
