@@ -271,9 +271,12 @@ resource "aws_iam_role_policy" "glue_dq_sns_publish" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["sns:Publish"]
-      Resource = [aws_sns_topic.glue_data_quality_failure_notifications.arn]
+      Effect = "Allow"
+      Action = ["sns:Publish"]
+      Resource = [
+        aws_sns_topic.glue_data_quality_failure_notifications.arn,
+        aws_sns_topic.glue_data_quality_metrics_notifications.arn
+      ]
     }]
   })
 }
@@ -346,6 +349,26 @@ data "aws_iam_policy_document" "glue_data_quality_failure_topic_policy" {
 resource "aws_sns_topic_policy" "glue_data_quality_failure_topic_policy" {
   arn    = aws_sns_topic.glue_data_quality_failure_notifications.arn
   policy = data.aws_iam_policy_document.glue_data_quality_failure_topic_policy.json
+}
+
+data "aws_iam_policy_document" "glue_data_quality_metrics_topic_policy" {
+  statement {
+    sid    = "AllowGlueDQRolePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.glue_dq_role.arn]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.glue_data_quality_metrics_notifications.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "glue_data_quality_metrics_topic_policy" {
+  arn    = aws_sns_topic.glue_data_quality_metrics_notifications.arn
+  policy = data.aws_iam_policy_document.glue_data_quality_metrics_topic_policy.json
 }
 
 data "aws_iam_policy_document" "lambda_failure_topic_policy" {
