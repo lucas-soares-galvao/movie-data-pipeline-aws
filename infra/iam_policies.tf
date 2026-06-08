@@ -262,6 +262,23 @@ resource "aws_iam_role_policy" "glue_dq_write_results" {
 }
 
 # =========================
+# DQ - SNS Publish (notificação de métrica Failed)
+# =========================
+resource "aws_iam_role_policy" "glue_dq_sns_publish" {
+  name = "glue-dq-sns-publish"
+  role = aws_iam_role.glue_dq_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sns:Publish"]
+      Resource = [aws_sns_topic.glue_data_quality_failure_notifications.arn]
+    }]
+  })
+}
+
+# =========================
 # SNS TOPIC POLICIES
 # =========================
 data "aws_caller_identity" "current" {}
@@ -310,6 +327,19 @@ data "aws_iam_policy_document" "glue_data_quality_failure_topic_policy" {
       variable = "aws:SourceArn"
       values   = [aws_cloudwatch_event_rule.glue_data_quality_failed.arn]
     }
+  }
+
+  statement {
+    sid    = "AllowGlueDQRolePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.glue_dq_role.arn]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.glue_data_quality_failure_notifications.arn]
   }
 }
 

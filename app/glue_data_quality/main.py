@@ -26,6 +26,7 @@ from src.utils import (
     evaluate_data_quality,
     get_parameters_glue,
     get_ruleset,
+    notify_failed_outcomes,
     read_table_from_catalog,
     write_results_to_s3,
 )
@@ -55,6 +56,8 @@ def main() -> None:
     table_name = args["TABLE_NAME"]
     database = args["DATABASE"]
     s3_bucket_data_quality = args["S3_BUCKET_DATA_QUALITY"]
+    environment = args["ENVIRONMENT"]
+    sns_topic_arn = args["SNS_TOPIC_ARN"]
     year = args.get("YEAR")  # None para tabelas sem partição (gêneros, config)
 
     logger.info(
@@ -81,6 +84,8 @@ def main() -> None:
     # Para discover: particionado por source_table + partition (ano), sobrescrevendo
     # apenas aquele ano. Para genre/config: sobrescreve apenas source_table.
     write_results_to_s3(df_results, s3_bucket_data_quality, table_name, database, year)
+
+    notify_failed_outcomes(df_results, table_name, sns_topic_arn, environment)
 
     logger.info("Job Glue Data Quality finalizado com sucesso!")
 
