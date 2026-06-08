@@ -14,6 +14,7 @@ Este arquivo contém apenas a lógica principal do fluxo, em ordem:
 
 Este job é acionado pelo Glue ETL logo após gravar cada tabela no SOT.
 O Glue ETL passa os argumentos --TABLE_NAME, --DATABASE e opcionalmente --YEAR.
+--DATABASE_RESULTS é fixo no default_arguments do job (infra/glue_data_quality.tf).
 """
 
 import logging
@@ -55,7 +56,7 @@ def main() -> None:
     args = get_parameters_glue()
     table_name = args["TABLE_NAME"]
     database = args["DATABASE"]
-    database_results = args.get("DATABASE_RESULTS", database)
+    database_results = args["DATABASE_RESULTS"]
     s3_bucket_data_quality = args["S3_BUCKET_DATA_QUALITY"]
     environment = args["ENVIRONMENT"]
     sns_topic_arn_dq_metrics = args["SNS_TOPIC_ARN_DQ_METRICS"]

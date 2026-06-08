@@ -77,4 +77,18 @@ rulesets_dq = {
         'IsComplete "provider_name"',
         "RowCount > 0",
     ],
+    "tb_watch_providers_ref_movie_tmdb": [
+        # Tabela de referência SOT: um registro por provedor único; provider_id é a chave natural
+        'IsComplete "provider_id"',
+        'IsUnique "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
+    "tb_watch_providers_ref_tv_tmdb": [
+        # Mesma estrutura da referência de filmes, mas para séries de TV
+        'IsComplete "provider_id"',
+        'IsUnique "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
 }
