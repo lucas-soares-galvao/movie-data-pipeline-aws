@@ -55,18 +55,20 @@ def get_parameters_glue() -> Dict[str, Any]:
     Lê os argumentos obrigatórios do job Glue Details.
 
     Argumentos obrigatórios:
-      S3_BUCKET_SOT            — bucket onde as tabelas de detalhe serão gravadas
-      S3_BUCKET_TEMP           — bucket temporário para os resultados do Athena
-      DATABASE                 — nome do banco no Glue Catalog
-      TABLE_DISCOVER_MOVIE     — nome da tabela de discover de filmes no Catalog
-      TABLE_DISCOVER_TV        — nome da tabela de discover de séries no Catalog
-      TABLE_DETAILS_MOVIE      — nome da tabela de detalhes de filmes (destino)
-      TABLE_DETAILS_TV         — nome da tabela de detalhes de séries (destino)
-      TMDB_SECRET_ARN          — ARN do segredo com a API key do TMDB
-      GLUE_AGG_JOB_NAME        — nome do job Glue AGG a ser acionado ao final
-      MEDIA_TYPE               — "movie" ou "tv"
-      YEAR                     — ano de discover a processar
-      END_YEAR                 — último ano do ciclo (usado para decidir se aciona AGG)
+      S3_BUCKET_SOT                — bucket onde as tabelas de detalhe serão gravadas
+      S3_BUCKET_TEMP               — bucket temporário para os resultados do Athena
+      DATABASE                     — nome do banco no Glue Catalog
+      TABLE_DISCOVER_MOVIE         — nome da tabela de discover de filmes no Catalog
+      TABLE_DISCOVER_TV            — nome da tabela de discover de séries no Catalog
+      TABLE_DETAILS_MOVIE          — nome da tabela de detalhes de filmes (destino)
+      TABLE_DETAILS_TV             — nome da tabela de detalhes de séries (destino)
+      TABLE_WATCH_PROVIDERS_MOVIE  — nome da tabela de watch providers de filmes (destino)
+      TABLE_WATCH_PROVIDERS_TV     — nome da tabela de watch providers de séries (destino)
+      TMDB_SECRET_ARN              — ARN do segredo com a API key do TMDB
+      GLUE_AGG_JOB_NAME            — nome do job Glue AGG a ser acionado ao final
+      MEDIA_TYPE                   — "movie" ou "tv"
+      YEAR                         — ano de discover a processar
+      END_YEAR                     — último ano do ciclo (usado para decidir se aciona AGG)
 
     Returns:
         Dicionário com todos os argumentos resolvidos.
@@ -79,6 +81,8 @@ def get_parameters_glue() -> Dict[str, Any]:
         "TABLE_DISCOVER_TV",
         "TABLE_DETAILS_MOVIE",
         "TABLE_DETAILS_TV",
+        "TABLE_WATCH_PROVIDERS_MOVIE",
+        "TABLE_WATCH_PROVIDERS_TV",
         "TMDB_SECRET_ARN",
         "GLUE_AGG_JOB_NAME",
         "GLUE_DATA_QUALITY_JOB_NAME",
@@ -290,6 +294,143 @@ def collect_and_write_details(
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(
         f"Gravando {len(df)} registros de detalhes em {s3_path} | "
+        f"particao=[year] | mode=overwrite_partitions"
+    )
+    wr.s3.to_parquet(
+        df=df,
+        path=s3_path,
+        dataset=True,
+        partition_cols=["year"],
+        mode="overwrite_partitions",
+        database=database,
+        table=table_name,
+    )
+    logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
+
+
+# ---------------------------------------------------------------------------
+# TMDB API — watch providers por região (BR)
+# ---------------------------------------------------------------------------
+
+
+def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) -> dict:
+    """
+    Busca os provedores de streaming para um filme ou série na região BR.
+
+    Endpoints:
+      - Filme: https://api.themoviedb.org/3/movie/{id}/watch/providers
+      - Série:  https://api.themoviedb.org/3/tv/{id}/watch/providers
+
+    Retorna o dicionário da região "BR" (pode ser vazio se não houver dados).
+
+    Args:
+        api_key:      Chave de API do TMDB.
+        content_type: "movie" ou "tv".
+        item_id:      ID do filme ou série no TMDB.
+
+    Returns:
+        Dicionário com as chaves "flatrate", "rent", "buy" (cada uma é lista de providers),
+        ou dicionário vazio se BR não estiver disponível.
+    """
+    endpoint = "movie" if content_type == "movie" else "tv"
+    url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}/watch/providers"
+    params = {"api_key": api_key}
+
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
+    results = response.json().get("results", {})
+    return results.get("BR", {})
+
+
+def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> List[dict]:
+    """
+    Converte a seção BR da resposta de watch/providers em uma lista de registros normalizados.
+
+    Cada provedor de cada categoria (flatrate, rent, buy) gera um registro separado.
+    Provedores sem provider_name são ignorados.
+
+    Args:
+        br_data: Seção "BR" da resposta da API (pode ser vazio).
+        item_id: ID do título no TMDB.
+        year:    Ano de partição (string).
+
+    Returns:
+        Lista de dicionários com os campos: id, provider_type, provider_id,
+        provider_name, logo_path, year.
+    """
+    records = []
+    for provider_type in ("flatrate", "rent", "buy"):
+        for p in br_data.get(provider_type, []):
+            name = p.get("provider_name")
+            if not name:
+                continue
+            records.append({
+                "id":            item_id,
+                "provider_type": provider_type,
+                "provider_id":   p.get("provider_id"),
+                "provider_name": name,
+                "logo_path":     p.get("logo_path"),
+                "year":          year,
+            })
+    return records
+
+
+def collect_and_write_watch_providers(
+    api_key: str,
+    ids: List[int],
+    content_type: str,
+    s3_bucket_sot: str,
+    table_name: str,
+    database: str,
+    year: str,
+) -> None:
+    """
+    Busca os provedores de streaming BR para cada ID em paralelo e grava no SOT.
+
+    Cada título pode gerar múltiplos registros (um por provedor × categoria).
+    Títulos sem provedores BR são silenciosamente ignorados.
+
+    Args:
+        api_key:       Chave de API do TMDB.
+        ids:           Lista de IDs a consultar.
+        content_type:  "movie" ou "tv".
+        s3_bucket_sot: Nome do bucket SOT de destino.
+        table_name:    Nome da tabela no Glue Catalog.
+        database:      Nome do banco de dados no Glue Catalog.
+        year:          Ano de partição (string).
+    """
+    registros: List[dict] = []
+    lock = threading.Lock()
+
+    def fetch_and_parse(item_id: int) -> None:
+        try:
+            br_data = fetch_tmdb_watch_providers(api_key, content_type, item_id)
+            parsed = _parse_watch_providers(br_data, item_id, year)
+            if parsed:
+                with lock:
+                    registros.extend(parsed)
+        except requests.RequestException as exc:
+            logger.warning(f"Erro ao buscar watch providers do ID {item_id}: {exc}")
+
+    logger.info(
+        f"Buscando watch providers BR de {len(ids)} IDs ({content_type}) "
+        f"com {_TMDB_MAX_WORKERS} workers..."
+    )
+    with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
+        futures = {executor.submit(fetch_and_parse, item_id): item_id for item_id in ids}
+        for future in as_completed(futures):
+            future.result()
+
+    if not registros:
+        logger.warning(f"Nenhum watch provider BR coletado para '{content_type}'. Nada gravado.")
+        return
+
+    df = pd.DataFrame(registros)
+    df = df.dropna(subset=["year"])
+
+    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
+    logger.info(
+        f"Gravando {len(df)} registros de watch providers em {s3_path} | "
         f"particao=[year] | mode=overwrite_partitions"
     )
     wr.s3.to_parquet(

@@ -234,6 +234,18 @@ variable "glue_catalog_table_details_tv_name" {
   default     = "tb_details_tv_tmdb"
 }
 
+variable "glue_catalog_table_watch_providers_movie_name" {
+  description = "Nome da tabela no Glue Catalog para watch providers BR de filmes"
+  type        = string
+  default     = "tb_watch_providers_movie_tmdb"
+}
+
+variable "glue_catalog_table_watch_providers_tv_name" {
+  description = "Nome da tabela no Glue Catalog para watch providers BR de series"
+  type        = string
+  default     = "tb_watch_providers_tv_tmdb"
+}
+
 ############# CLOUDWATCH LOGS ##############
 variable "log_retention_days" {
   description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"

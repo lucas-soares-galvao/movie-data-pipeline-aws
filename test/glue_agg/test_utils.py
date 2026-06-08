@@ -56,6 +56,16 @@ class TestRunAthenaQuery:
             assert "number_of_episodes" in sql
             assert "episode_runtime_minutes" in sql
 
+    def test_query_contains_watch_providers_join(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(database="db_tmdb", s3_bucket_temp="my-temp")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+            assert "tb_watch_providers_movie_tmdb" in sql
+            assert "tb_watch_providers_tv_tmdb" in sql
+            assert "streaming_providers" in sql
+
 
 class TestTraduzirColunasEn:
     def _make_df(self, rows):

@@ -12,6 +12,8 @@ EXPECTED_TABLES = [
     "tb_discover_tv_tmdb",
     "tb_details_movie_tmdb",
     "tb_details_tv_tmdb",
+    "tb_watch_providers_movie_tmdb",
+    "tb_watch_providers_tv_tmdb",
 ]
 
 

@@ -31,9 +31,11 @@ resource "aws_glue_job" "details_job_pythonshell" {
     "--DATABASE"                  = var.glue_catalog_database_name
     "--TABLE_DISCOVER_MOVIE"      = var.glue_catalog_table_discover_movie_name
     "--TABLE_DISCOVER_TV"         = var.glue_catalog_table_discover_tv_name
-    "--TABLE_DETAILS_MOVIE"       = var.glue_catalog_table_details_movie_name
-    "--TABLE_DETAILS_TV"          = var.glue_catalog_table_details_tv_name
-    "--TMDB_SECRET_ARN"           = var.tmdb_secret_arn
+    "--TABLE_DETAILS_MOVIE"           = var.glue_catalog_table_details_movie_name
+    "--TABLE_DETAILS_TV"              = var.glue_catalog_table_details_tv_name
+    "--TABLE_WATCH_PROVIDERS_MOVIE"   = var.glue_catalog_table_watch_providers_movie_name
+    "--TABLE_WATCH_PROVIDERS_TV"      = var.glue_catalog_table_watch_providers_tv_name
+    "--TMDB_SECRET_ARN"               = var.tmdb_secret_arn
     "--GLUE_AGG_JOB_NAME"          = local.envs.glue_agg_job_name
     "--GLUE_DATA_QUALITY_JOB_NAME" = local.envs.glue_data_quality_job_name
     "--ENVIRONMENT"                = var.env
@@ -179,8 +181,12 @@ resource "aws_iam_role_policy" "glue_details_s3" {
         Sid    = "WriteDetailsSOT"
         Effect = "Allow"
         Action = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
-        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_movie_name}/*",
-                    "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_tv_name}/*"]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_movie_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_tv_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_movie_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_tv_name}/*"
+        ]
       }
     ]
   })

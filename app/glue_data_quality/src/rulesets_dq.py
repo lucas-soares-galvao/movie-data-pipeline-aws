@@ -61,4 +61,18 @@ rulesets_dq = {
         'ColumnValues "number_of_episodes" >= 1',
         "RowCount > 0",
     ],
+    "tb_watch_providers_movie_tmdb": [
+        'IsComplete "id"',
+        'IsComplete "provider_type"',
+        'IsComplete "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
+    "tb_watch_providers_tv_tmdb": [
+        'IsComplete "id"',
+        'IsComplete "provider_type"',
+        'IsComplete "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
 }

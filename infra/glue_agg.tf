@@ -53,7 +53,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   ]
 
   execution_property {
-    max_concurrent_runs = 2
+    max_concurrent_runs = 1
   }
 }
 

@@ -120,6 +120,26 @@ tv_details AS (
         poster_path_en,
         backdrop_path_en
     FROM {database}.tb_details_tv_tmdb
+),
+
+-- Provedores de streaming BR (flatrate) por filme, agregados como string separada por vírgula.
+movie_providers AS (
+    SELECT
+        id,
+        array_join(array_agg(DISTINCT provider_name ORDER BY provider_name), ', ') AS streaming_providers
+    FROM {database}.tb_watch_providers_movie_tmdb
+    WHERE provider_type = 'flatrate'
+    GROUP BY id
+),
+
+-- Provedores de streaming BR (flatrate) por série, agregados como string separada por vírgula.
+tv_providers AS (
+    SELECT
+        id,
+        array_join(array_agg(DISTINCT provider_name ORDER BY provider_name), ', ') AS streaming_providers
+    FROM {database}.tb_watch_providers_tv_tmdb
+    WHERE provider_type = 'flatrate'
+    GROUP BY id
 )
 
 SELECT
@@ -159,7 +179,9 @@ SELECT
     -- Dados de séries (NULL para filmes)
     tv.number_of_seasons,
     tv.number_of_episodes,
-    tv.episode_runtime_minutes
+    tv.episode_runtime_minutes,
+    -- Provedores de streaming BR onde o título está disponível (flatrate)
+    COALESCE(mp.streaming_providers, tp.streaming_providers) AS streaming_providers
 FROM unified u
 LEFT JOIN genre_names gn
     ON  gn.id         = u.id
@@ -172,6 +194,10 @@ LEFT JOIN movie_details md
     ON  md.id = u.id AND u.media_type = 'movie'
 LEFT JOIN tv_details tv
     ON  tv.id = u.id AND u.media_type = 'tv'
+LEFT JOIN movie_providers mp
+    ON  mp.id = u.id AND u.media_type = 'movie'
+LEFT JOIN tv_providers tp
+    ON  tp.id = u.id AND u.media_type = 'tv'
 """
 
 

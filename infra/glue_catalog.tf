@@ -428,6 +428,102 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
 }
 
 
+resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
+  name          = var.glue_catalog_table_watch_providers_movie_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_movie_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "provider_type"
+      type = "string"
+    }
+    columns {
+      name = "provider_id"
+      type = "int"
+    }
+    columns {
+      name = "provider_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
+  name          = var.glue_catalog_table_watch_providers_tv_name
+  database_name = aws_glue_catalog_database.tmdb_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_tv_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "provider_type"
+      type = "string"
+    }
+    columns {
+      name = "provider_id"
+      type = "int"
+    }
+    columns {
+      name = "provider_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
 resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   name          = var.glue_catalog_table_data_quality_name
   database_name = aws_glue_catalog_database.tmdb_database.name

@@ -22,6 +22,7 @@ import sys
 
 from src.utils import (
     collect_and_write_details,
+    collect_and_write_watch_providers,
     fetch_ids_from_sot,
     get_parameters_glue,
     get_tmdb_api_key,
@@ -55,8 +56,12 @@ def main() -> None:
     year           = args["YEAR"]
     end_year       = args["END_YEAR"]
 
-    table_discover = table_discover_movie if media_type == "movie" else table_discover_tv
-    table_details  = table_details_movie  if media_type == "movie" else table_details_tv
+    table_watch_providers_movie = args["TABLE_WATCH_PROVIDERS_MOVIE"]
+    table_watch_providers_tv    = args["TABLE_WATCH_PROVIDERS_TV"]
+
+    table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
+    table_details         = table_details_movie         if media_type == "movie" else table_details_tv
+    table_watch_providers = table_watch_providers_movie if media_type == "movie" else table_watch_providers_tv
 
     # Busca a chave uma única vez — evita múltiplas chamadas ao Secrets Manager
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -79,9 +84,28 @@ def main() -> None:
         table_name=table_details,
         database=database,
     )
+
+    logger.info(f"Coletando watch providers BR de {len(ids)} itens ({media_type}, year={year})...")
+    collect_and_write_watch_providers(
+        api_key=api_key,
+        ids=ids,
+        content_type=media_type,
+        s3_bucket_sot=s3_bucket_sot,
+        table_name=table_watch_providers,
+        database=database,
+        year=year,
+    )
+
     trigger_data_quality(
         dq_job_name=dq_job_name,
         table_name=table_details,
+        database=database,
+        year=year,
+    )
+
+    trigger_data_quality(
+        dq_job_name=dq_job_name,
+        table_name=table_watch_providers,
         database=database,
         year=year,
     )
