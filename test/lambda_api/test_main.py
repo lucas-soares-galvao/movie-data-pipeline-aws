@@ -36,6 +36,7 @@ EVENTO_MOVIE = {
     "table_discover_movie": "discover_movie",
     "table_genre_movie": "genre_movie",
     "table_configuration_languages": "configuration_languages",
+    "table_watch_providers_ref_movie": "watch_providers_ref_movie",
 }
 
 EVENTO_TV = {
@@ -45,6 +46,7 @@ EVENTO_TV = {
     "table_discover_tv": "discover_tv",
     "table_genre_tv": "genre_tv",
     "table_configuration_countries": "configuration_countries",
+    "table_watch_providers_ref_tv": "watch_providers_ref_tv",
 }
 
 
@@ -62,6 +64,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -72,6 +75,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -84,6 +88,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -94,6 +99,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -108,6 +114,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -118,6 +125,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -132,6 +140,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -142,6 +151,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -155,6 +165,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -165,6 +176,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -180,6 +192,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -192,6 +205,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -202,13 +216,14 @@ class TestLambdaHandler(unittest.TestCase):
 
         # start_year = 2027 - 1 = 2026 → range(2026, 2028) = 2 anos
         self.assertEqual(mock_discover.call_count, 2)
-        # genre(1) + configuration(1) + 2×discover = 4 trigger_glue_job calls
-        self.assertEqual(mock_trigger.call_count, 4)
+        # genre(1) + configuration(1) + watch_providers_ref(1) + 2xdiscover = 5
+        self.assertEqual(mock_trigger.call_count, 5)
 
     # --- collect_discover_data ---
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -221,6 +236,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -235,6 +251,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -247,6 +264,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -263,6 +281,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -275,6 +294,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -286,7 +306,8 @@ class TestLambdaHandler(unittest.TestCase):
         # Verifica os args base e table_name de cada chamada ao Glue
         chamada_genre = mock_trigger.call_args_list[0]
         chamada_config = mock_trigger.call_args_list[1]
-        chamada_disc = mock_trigger.call_args_list[2]
+        chamada_watch_ref = mock_trigger.call_args_list[2]
+        chamada_disc = mock_trigger.call_args_list[3]
 
         # genre e discover usam o database do media type; configuration usa o unificado
         for chamada in (chamada_genre, chamada_disc):
@@ -298,13 +319,19 @@ class TestLambdaHandler(unittest.TestCase):
         self.assertEqual(args_config["MEDIA_TYPE"], "movie")
         self.assertEqual(args_config["DATABASE"], "tmdb_unified_db")
 
+        args_watch_ref = chamada_watch_ref[0][2]
+        self.assertEqual(args_watch_ref["MEDIA_TYPE"], "movie")
+        self.assertEqual(args_watch_ref["DATABASE"], "tmdb_db")
+
         # table_name varia conforme o contexto (keyword arg)
         self.assertEqual(chamada_genre[1].get("table_name"), "genre_movie")
         self.assertEqual(chamada_config[1].get("table_name"), "configuration_languages")
+        self.assertEqual(chamada_watch_ref[1].get("table_name"), "watch_providers_ref_movie")
         self.assertEqual(chamada_disc[1].get("table_name"), "discover_movie")
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -317,6 +344,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -326,9 +354,9 @@ class TestLambdaHandler(unittest.TestCase):
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-        # genre(1) + configuration(1) + discover(2) = 4 total
-        # start_year = 2025 - 1 = 2024 → range(2024, 2026) = [2024, 2025]
-        self.assertEqual(mock_trigger.call_count, 4)
+        # genre(1) + configuration(1) + watch_providers_ref(1) + discover(2) = 5
+        # start_year = 2025 - 1 = 2024 -> range(2024, 2026) = [2024, 2025]
+        self.assertEqual(mock_trigger.call_count, 5)
 
         # 1ª chamada: genre — sem year, table_type="genre"
         chamada_genre = mock_trigger.call_args_list[0]
@@ -340,8 +368,14 @@ class TestLambdaHandler(unittest.TestCase):
         self.assertIsNone(chamada_config[1].get("year"))
         self.assertEqual(chamada_config[1].get("table_type"), "configuration")
 
+        # 3a chamada: watch_providers_ref — sem year, table_type="watch_providers_ref"
+        chamada_watch_ref = mock_trigger.call_args_list[2]
+        self.assertIsNone(chamada_watch_ref[1].get("year"))
+        self.assertEqual(chamada_watch_ref[1].get("table_type"), "watch_providers_ref")
+
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -354,6 +388,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -363,9 +398,9 @@ class TestLambdaHandler(unittest.TestCase):
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-        # genre(0) + configuration(1) + discover_2025(2) + discover_2026(3)
-        chamada_ano_2025 = mock_trigger.call_args_list[2]
-        chamada_ano_2026 = mock_trigger.call_args_list[3]
+        # genre(0) + configuration(1) + watch_providers_ref(2) + discover_2025(3) + discover_2026(4)
+        chamada_ano_2025 = mock_trigger.call_args_list[3]
+        chamada_ano_2026 = mock_trigger.call_args_list[4]
 
         self.assertEqual(chamada_ano_2025[1].get("year"), 2025)
         self.assertEqual(chamada_ano_2025[1].get("table_type"), "discover")
@@ -374,6 +409,7 @@ class TestLambdaHandler(unittest.TestCase):
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
+    @patch("main.collect_watch_providers_ref")
     @patch("main.collect_configuration_data")
     @patch("main.collect_genre_data")
     @patch("main.get_tmdb_api_key")
@@ -386,6 +422,7 @@ class TestLambdaHandler(unittest.TestCase):
         mock_get_key,
         mock_genre,
         mock_config,
+        mock_watch_ref,
         mock_discover,
         mock_trigger,
     ):
@@ -395,8 +432,8 @@ class TestLambdaHandler(unittest.TestCase):
 
         main.lambda_handler(EVENTO_MOVIE, self.mock_context)
 
-        # genre(0) + configuration(1) + discover_2025(2) + discover_2026(3)
-        for chamada in mock_trigger.call_args_list[2:]:
+        # genre(0) + configuration(1) + watch_providers_ref(2) + discover_2025(3) + discover_2026(4)
+        for chamada in mock_trigger.call_args_list[3:]:
             self.assertEqual(chamada[1].get("start_year"), 2025)
             self.assertEqual(chamada[1].get("end_year"), 2026)
 

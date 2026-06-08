@@ -34,6 +34,7 @@ from src.utils import (
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
+    collect_watch_providers_ref,
     get_tmdb_api_key,
     trigger_glue_job,
 )
@@ -110,10 +111,12 @@ def lambda_handler(event, context):
         table_genre = event["table_genre_movie"]
         table_configuration = event["table_configuration_languages"]
         table_discover = event["table_discover_movie"]
+        table_watch_providers_ref = event["table_watch_providers_ref_movie"]
     else:
         table_genre = event["table_genre_tv"]
         table_configuration = event["table_configuration_countries"]
         table_discover = event["table_discover_tv"]
+        table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
     # Busca a chave de API uma única vez para não chamar o Secrets Manager repetidamente
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -145,6 +148,19 @@ def lambda_handler(event, context):
         glue_unified_args,
         table_type="configuration",
         table_name=table_configuration,
+    )
+
+    # Coleta referência de provedores de streaming e aciona o Glue ETL
+    # para popular as tabelas tb_watch_providers_ref_{movie|tv}_tmdb.
+    logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
+    collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
+    logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
+    trigger_glue_job(
+        glue_client,
+        GLUE_ETL_JOB_NAME,
+        glue_base_args,
+        table_type="watch_providers_ref",
+        table_name=table_watch_providers_ref,
     )
 
     logger.info(
