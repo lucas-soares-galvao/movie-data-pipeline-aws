@@ -247,6 +247,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit") as mock_lit,
             patch("src.utils.current_timestamp") as mock_ts,
             patch("src.utils.from_utc_timestamp") as mock_utc,
+            patch("src.utils.when") as mock_when,
+            patch("src.utils.StringType") as mock_type,
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -263,6 +265,8 @@ class TestEvaluateDataQuality:
             "mock_lit": mock_lit,
             "mock_ts": mock_ts,
             "mock_utc": mock_utc,
+            "mock_when": mock_when,
+            "mock_type": mock_type,
             "dq_result_mock": dq_result_mock,
             "dynamic_frame": dynamic_frame,
         }
@@ -382,6 +386,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -420,6 +426,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
             mock_dyn.fromDF.return_value = filtered_dynamic_frame
@@ -453,6 +461,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
 
