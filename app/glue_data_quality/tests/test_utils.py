@@ -1,8 +1,7 @@
 """Testes unitários para app/glue_data_quality/src/utils.py."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pandas as pd
 import pytest
 
 from app.glue_data_quality.src.utils import get_ruleset, notify_failed_outcomes
@@ -32,7 +31,7 @@ class TestGetRuleset:
     def test_rules_separated_by_comma(self):
         ruleset = get_ruleset("tb_genre_movie_tmdb")
         # Cada regra deve estar em linha separada por vírgula
-        lines = [l.strip() for l in ruleset.splitlines() if l.strip() not in ("Rules = [", "]")]
+        lines = [line.strip() for line in ruleset.splitlines() if line.strip() not in ("Rules = [", "]")]
         for line in lines[:-1]:
             assert line.endswith(","), f"Linha sem vírgula: {line!r}"
 

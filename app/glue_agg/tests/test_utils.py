@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from app.glue_agg.src.utils import (
     _DISCOVER_UNIFIED_QUERY,
@@ -47,7 +46,7 @@ class TestRunAthenaQuery:
     def test_calls_read_sql_query_with_ctas(self, mock_wr):
         mock_wr.athena.read_sql_query.return_value = pd.DataFrame([{"id": 1}])
 
-        df = run_athena_query("db_movie", "db_tv", "db_unified", "my-temp-bucket")
+        run_athena_query("db_movie", "db_tv", "db_unified", "my-temp-bucket")
 
         mock_wr.athena.read_sql_query.assert_called_once()
         call_kwargs = mock_wr.athena.read_sql_query.call_args.kwargs

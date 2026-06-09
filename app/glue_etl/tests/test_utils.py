@@ -4,12 +4,9 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from app.glue_etl.src.utils import (
     SOR_KEYS,
-    _CANONICAL_OVERRIDES,
-    _CANONICAL_SUFFIXES,
     derive_canonical_name,
     read_from_sor,
     trigger_agg,
