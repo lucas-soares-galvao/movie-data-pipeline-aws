@@ -36,8 +36,21 @@ st.markdown("""
     margin: 2px;
     border: 1px solid rgba(249,115,22,0.2);
   }
-  .nota { color: #f97316; font-weight: bold; font-size: 14px; margin: 4px 0; }
-  .duracao { color: #a3a3a3; font-size: 11px; margin: 2px 0 4px 0; }
+  .meta-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0;
+  }
+  .meta-icon {
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+  }
+  .nota { color: #f97316; font-weight: bold; font-size: 16px; }
+  .duracao { color: #a3a3a3; font-size: 14px; }
   .sinopse { color: #d4d4d4; font-size: 12px; margin-top: 6px; line-height: 1.5; flex: 1; }
   .motivo {
     color: #a3a3a3;
@@ -55,20 +68,14 @@ st.markdown("""
     font-size: 11px;
     display: inline-block;
     margin: 2px;
-    border: 1px solid rgba(34,197,94,0.2);
     vertical-align: middle;
   }
   .providers-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 2px;
-    margin: 2px 0 4px 0;
-  }
-  .providers-icon {
-    font-size: 13px;
-    line-height: 1;
-    flex-shrink: 0;
+    gap: 4px;
+    margin: 2px 0;
   }
   .providers-label {
     color: #737373;
@@ -124,7 +131,7 @@ if st.button("Recomendar", type="primary") and preferencia:
                     for p in streaming_providers.split(",")
                     if p.strip()
                 )
-                providers_html = f'<div class="providers-row"><span class="providers-icon">📺</span>{badges}</div>'
+                providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{badges}</div>'
 
             cards_html.append(f"""
             <div class="card">
@@ -135,8 +142,8 @@ if st.button("Recomendar", type="primary") and preferencia:
                   &nbsp;({t.get('ano', '')}) — {t.get('tipo', '')}
                 </span>
                 <div style="margin: 6px 0">{generos_html}</div>
-                {f'<p class="nota">★ {nota}</p>' if nota else ''}
-                {f'<p class="duracao">⏱ {duracao}</p>' if duracao else ''}
+                {f'<div class="meta-row"><span class="meta-icon">★</span><span class="nota">{nota}</span></div>' if nota else ''}
+                {f'<div class="meta-row"><span class="meta-icon">⏱</span><span class="duracao">{duracao}</span></div>' if duracao else ''}
                 {providers_html}
                 <p class="sinopse">{sinopse}</p>
                 <p class="motivo">💡 {motivo}</p>

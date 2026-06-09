@@ -118,6 +118,9 @@ def lambda_handler(event, context):
         table_discover = event["table_discover_tv"]
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
+    only_discover = event.get("only_discover", False)
+    skip_discover = event.get("skip_discover", False)
+
     # Busca a chave de API uma única vez para não chamar o Secrets Manager repetidamente
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_tmdb_api_key(TMDB_SECRET_ARN)
@@ -126,42 +129,52 @@ def lambda_handler(event, context):
     start_year   = int(event.get("start_year", current_year - 1))
     end_year     = int(event.get("end_year",   current_year))
 
-    # Coleta gêneros e aciona o Glue passando apenas a tabela de gêneros
-    logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
-    collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
-    logger.info("Acionando Glue ETL para tabela de gêneros...")
-    trigger_glue_job(
-        glue_client,
-        GLUE_ETL_JOB_NAME,
-        glue_base_args,
-        table_type="genre",
-        table_name=table_genre,
-    )
+    if not only_discover:
+        # Coleta gêneros e aciona o Glue passando apenas a tabela de gêneros
+        logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
+        collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
+        logger.info("Acionando Glue ETL para tabela de gêneros...")
+        trigger_glue_job(
+            glue_client,
+            GLUE_ETL_JOB_NAME,
+            glue_base_args,
+            table_type="genre",
+            table_name=table_genre,
+        )
 
-    # Coleta configurações e aciona o Glue passando apenas a tabela de configuração
-    logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
-    collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
-    logger.info("Acionando Glue ETL para tabela de configuração...")
-    trigger_glue_job(
-        glue_client,
-        GLUE_ETL_JOB_NAME,
-        glue_unified_args,
-        table_type="configuration",
-        table_name=table_configuration,
-    )
+        # Coleta configurações e aciona o Glue passando apenas a tabela de configuração
+        logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
+        collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
+        logger.info("Acionando Glue ETL para tabela de configuração...")
+        trigger_glue_job(
+            glue_client,
+            GLUE_ETL_JOB_NAME,
+            glue_unified_args,
+            table_type="configuration",
+            table_name=table_configuration,
+        )
 
-    # Coleta referência de provedores de streaming e aciona o Glue ETL
-    # para popular as tabelas tb_watch_providers_ref_{movie|tv}_tmdb.
-    logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
-    collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
-    logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
-    trigger_glue_job(
-        glue_client,
-        GLUE_ETL_JOB_NAME,
-        glue_base_args,
-        table_type="watch_providers_ref",
-        table_name=table_watch_providers_ref,
-    )
+        # Coleta referência de provedores de streaming e aciona o Glue ETL
+        # para popular as tabelas tb_watch_providers_ref_{movie|tv}_tmdb.
+        logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
+        collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
+        logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
+        trigger_glue_job(
+            glue_client,
+            GLUE_ETL_JOB_NAME,
+            glue_base_args,
+            table_type="watch_providers_ref",
+            table_name=table_watch_providers_ref,
+        )
+    else:
+        logger.info("only_discover=True: pulando coleta de genre, configuration e watch_providers_ref.")
+
+    if skip_discover:
+        logger.info("skip_discover=True: pulando coleta de discover.")
+        return {
+            "statusCode": 200,
+            "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",
+        }
 
     logger.info(
         f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {end_year}..."
