@@ -1,9 +1,77 @@
 """Testes unitários para app/glue_details/src/utils.py."""
 
 import pandas as pd
+import pytest
+import requests
 from unittest.mock import MagicMock, patch
 
 import src.utils as u
+
+
+# ---------------------------------------------------------------------------
+# _tmdb_get
+# ---------------------------------------------------------------------------
+
+
+def _make_response(status_code=200, json_data=None, headers=None):
+    r = MagicMock()
+    r.status_code = status_code
+    r.json.return_value = json_data if json_data is not None else {}
+    r.headers = headers or {}
+    r.raise_for_status.return_value = None
+    return r
+
+
+class TestTmdbGet:
+    def test_retorna_json_em_sucesso(self):
+        with patch("src.utils.requests.get", return_value=_make_response(200, {"ok": True})), \
+             patch("src.utils.time.sleep") as mock_sleep:
+            result = u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        assert result == {"ok": True}
+        mock_sleep.assert_not_called()
+
+    def test_retry_em_status_transiente_e_retorna_em_sucesso(self):
+        with patch("src.utils.requests.get", side_effect=[_make_response(500), _make_response(200, {"ok": True})]) as mock_get, \
+             patch("src.utils.time.sleep") as mock_sleep:
+            result = u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        assert result == {"ok": True}
+        assert mock_get.call_count == 2
+        mock_sleep.assert_called_once()
+
+    def test_retry_em_429_usa_retry_after(self):
+        with patch("src.utils.requests.get", side_effect=[
+            _make_response(429, headers={"Retry-After": "5"}),
+            _make_response(200, {}),
+        ]), patch("src.utils.time.sleep") as mock_sleep:
+            u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        wait = mock_sleep.call_args[0][0]
+        assert wait >= 5
+
+    def test_retry_em_connection_error_e_retorna_em_sucesso(self):
+        with patch("src.utils.requests.get", side_effect=[
+            requests.exceptions.ConnectionError("timeout"),
+            _make_response(200, {"ok": True}),
+        ]) as mock_get, patch("src.utils.time.sleep") as mock_sleep:
+            result = u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        assert result == {"ok": True}
+        assert mock_get.call_count == 2
+        mock_sleep.assert_called_once()
+
+    def test_levanta_apos_esgotar_tentativas_http(self):
+        r500 = _make_response(500)
+        r500.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
+        with patch("src.utils.requests.get", return_value=r500) as mock_get, \
+             patch("src.utils.time.sleep"):
+            with pytest.raises(requests.exceptions.HTTPError):
+                u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        assert mock_get.call_count == 3
+
+    def test_levanta_apos_esgotar_tentativas_connection(self):
+        with patch("src.utils.requests.get", side_effect=requests.exceptions.ConnectionError("fail")) as mock_get, \
+             patch("src.utils.time.sleep"):
+            with pytest.raises(requests.exceptions.ConnectionError):
+                u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        assert mock_get.call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +154,15 @@ class TestFetchTmdbDetails:
 
 class TestCollectAndWriteDetails:
     def _mock_movie_response(self, item_id: int) -> dict:
-        return {"id": item_id, "runtime": 100, "release_date": "2023-05-10"}
+        return {
+            "id": item_id,
+            "runtime": 100,
+            "release_date": "2023-05-10",
+            "title": "Filme A",
+            "overview": "Sinopse A",
+            "poster_path": "/p.jpg",
+            "backdrop_path": "/b.jpg",
+        }
 
     def _mock_tv_response(self, item_id: int) -> dict:
         return {
@@ -95,6 +171,10 @@ class TestCollectAndWriteDetails:
             "number_of_episodes": 20,
             "episode_run_time": [45],
             "first_air_date": "2022-03-01",
+            "name": "Série A",
+            "overview": "Sinopse A",
+            "poster_path": "/p.jpg",
+            "backdrop_path": "/b.jpg",
         }
 
     def test_movie_writes_runtime_and_year(self):
@@ -111,6 +191,11 @@ class TestCollectAndWriteDetails:
             assert "id" in df_written.columns
             assert "runtime" in df_written.columns
             assert "year" in df_written.columns
+            assert "title_en" in df_written.columns
+            assert "overview_en" in df_written.columns
+            assert "poster_path_en" in df_written.columns
+            assert "backdrop_path_en" in df_written.columns
+            assert df_written.iloc[0]["title_en"] == "Filme A"
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
@@ -127,6 +212,11 @@ class TestCollectAndWriteDetails:
             assert "number_of_seasons" in df_written.columns
             assert "number_of_episodes" in df_written.columns
             assert "episode_run_time" in df_written.columns
+            assert "title_en" in df_written.columns
+            assert "overview_en" in df_written.columns
+            assert "poster_path_en" in df_written.columns
+            assert "backdrop_path_en" in df_written.columns
+            assert df_written.iloc[0]["title_en"] == "Série A"
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib

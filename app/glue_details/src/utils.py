@@ -16,8 +16,10 @@ Por que este job existe separado da Lambda API?
 
 import json
 import logging
+import random
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
@@ -26,10 +28,61 @@ import boto3
 import pandas as pd
 import requests
 from awsglue.utils import getResolvedOptions
+from requests.exceptions import ConnectionError, Timeout
 
 logger = logging.getLogger()
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
+
+# Códigos HTTP que indicam problema temporário no servidor — vale tentar de novo.
+# 429 = muitas requisições (rate limit), 5xx = erro interno do servidor.
+_TMDB_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+
+
+def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
+    """Executa GET na API do TMDB com retry em erros transientes."""
+    for attempt in range(max_retries):
+        is_last_attempt = attempt == max_retries - 1
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            if response.status_code in _TMDB_TRANSIENT_STATUS:
+                if is_last_attempt:
+                    logger.error(
+                        f"HTTP {response.status_code} após {max_retries} tentativas. "
+                        f"Todas as tentativas esgotadas para {url}."
+                    )
+                    # raise_for_status() lança uma exceção HTTPError para qualquer
+                    # status 4xx ou 5xx, interrompendo a execução da função.
+                    response.raise_for_status()
+                # Para 429, o TMDB informa no header quanto tempo esperar;
+                # para os demais erros, usa backoff exponencial (1s → 2s → 4s).
+                if response.status_code == 429 and "Retry-After" in response.headers:
+                    wait = int(response.headers["Retry-After"]) + random.uniform(0, 1)
+                else:
+                    wait = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(
+                    f"HTTP {response.status_code} (tentativa {attempt + 1}/{max_retries}). "
+                    f"Aguardando {wait:.1f}s..."
+                )
+                time.sleep(wait)
+                continue  # volta ao início do loop para fazer uma nova tentativa
+            # Se chegou aqui, o status não é transiente.
+            # raise_for_status() lança exceção se for qualquer outro erro (ex: 401, 404).
+            response.raise_for_status()
+            return response.json()
+        except (ConnectionError, Timeout) as e:
+            if is_last_attempt:
+                logger.error(
+                    f"Erro de conexão após {max_retries} tentativas: {e}. "
+                    f"Todas as tentativas esgotadas para {url}."
+                )
+                raise
+            wait = (2 ** attempt) + random.uniform(0, 1)  # backoff exponencial
+            logger.warning(
+                f"Erro de conexão (tentativa {attempt + 1}/{max_retries}): {e}. "
+                f"Aguardando {wait:.1f}s..."
+            )
+            time.sleep(wait)
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +245,7 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}"
     params = {"api_key": api_key, "language": "en-US"}
 
-    response = requests.get(url, params=params, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    return _tmdb_get(url, params)
 
 
 # ---------------------------------------------------------------------------
@@ -336,9 +387,7 @@ def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) ->
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}/watch/providers"
     params = {"api_key": api_key}
 
-    response = requests.get(url, params=params, timeout=30)
-    response.raise_for_status()
-    results = response.json().get("results", {})
+    results = _tmdb_get(url, params).get("results", {})
     return results.get("BR", {})
 
 
