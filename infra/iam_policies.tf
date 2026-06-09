@@ -185,6 +185,7 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
           "glue:CreateTable",
           "glue:UpdateTable",
           "glue:CreatePartition",
+          "glue:BatchCreatePartition",
         ]
         Resource = [
           "arn:aws:glue:*:*:catalog",
@@ -280,6 +281,53 @@ resource "aws_iam_role_policy" "glue_dq_write_results" {
         "arn:aws:s3:::${local.envs.s3_bucket_data_quality}/*"
       ]
     }]
+  })
+}
+
+# =========================
+# DQ - Glue Catalog
+# =========================
+resource "aws_iam_role_policy" "glue_dq_catalog" {
+  name = "glue-dq-catalog"
+  role = aws_iam_role.glue_dq_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadCatalog"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetPartitions",
+        ]
+        Resource = [
+          "arn:aws:glue:*:*:catalog",
+          "arn:aws:glue:*:*:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:*:*:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:*:*:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:*:*:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:*:*:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:*:*:table/${var.glue_catalog_database_unified_name}/*",
+        ]
+      },
+      {
+        Sid    = "WriteResultsTable"
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTable",
+          "glue:UpdateTable",
+          "glue:CreatePartition",
+          "glue:BatchCreatePartition",
+        ]
+        Resource = [
+          "arn:aws:glue:*:*:catalog",
+          "arn:aws:glue:*:*:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:*:*:table/${var.glue_catalog_database_unified_name}/*",
+        ]
+      }
+    ]
   })
 }
 
