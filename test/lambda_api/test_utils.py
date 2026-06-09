@@ -9,7 +9,10 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from src.utils import (
+    _tmdb_get,
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
@@ -20,6 +23,79 @@ from src.utils import (
     save_to_s3,
     trigger_glue_job,
 )
+
+
+# ---------------------------------------------------------------------------
+# _tmdb_get
+# ---------------------------------------------------------------------------
+
+
+class TestTmdbGet(unittest.TestCase):
+    def _make_response(self, status_code=200, json_data=None, headers=None):
+        r = MagicMock()
+        r.status_code = status_code
+        r.json.return_value = json_data if json_data is not None else {}
+        r.headers = headers or {}
+        r.raise_for_status.return_value = None
+        return r
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retorna_json_em_sucesso(self, mock_get, mock_sleep):
+        mock_get.return_value = self._make_response(200, {"ok": True})
+        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(resultado, {"ok": True})
+        mock_sleep.assert_not_called()
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retry_em_status_transiente_e_retorna_em_sucesso(self, mock_get, mock_sleep):
+        mock_get.side_effect = [self._make_response(500), self._make_response(200, {"ok": True})]
+        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(resultado, {"ok": True})
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retry_em_429_usa_retry_after(self, mock_get, mock_sleep):
+        mock_get.side_effect = [
+            self._make_response(429, headers={"Retry-After": "5"}),
+            self._make_response(200, {}),
+        ]
+        _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        wait = mock_sleep.call_args[0][0]
+        self.assertGreaterEqual(wait, 5)
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retry_em_connection_error_e_retorna_em_sucesso(self, mock_get, mock_sleep):
+        mock_get.side_effect = [
+            requests.exceptions.ConnectionError("timeout"),
+            self._make_response(200, {"ok": True}),
+        ]
+        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(resultado, {"ok": True})
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_levanta_apos_esgotar_tentativas_http(self, mock_get, mock_sleep):
+        r500 = self._make_response(500)
+        r500.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
+        mock_get.return_value = r500
+        with self.assertRaises(requests.exceptions.HTTPError):
+            _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(mock_get.call_count, 3)
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_levanta_apos_esgotar_tentativas_connection(self, mock_get, mock_sleep):
+        mock_get.side_effect = requests.exceptions.ConnectionError("fail")
+        with self.assertRaises(requests.exceptions.ConnectionError):
+            _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(mock_get.call_count, 3)
 
 
 # ---------------------------------------------------------------------------

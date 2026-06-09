@@ -56,6 +56,19 @@ st.markdown("""
     display: inline-block;
     margin: 2px;
     border: 1px solid rgba(34,197,94,0.2);
+    vertical-align: middle;
+  }
+  .providers-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin: 2px 0 4px 0;
+  }
+  .providers-icon {
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
   }
   .providers-label {
     color: #737373;
@@ -111,7 +124,7 @@ if st.button("Recomendar", type="primary") and preferencia:
                     for p in streaming_providers.split(",")
                     if p.strip()
                 )
-                providers_html = f'<p class="duracao">📺 {badges}</p>'
+                providers_html = f'<div class="providers-row"><span class="providers-icon">📺</span>{badges}</div>'
 
             cards_html.append(f"""
             <div class="card">
