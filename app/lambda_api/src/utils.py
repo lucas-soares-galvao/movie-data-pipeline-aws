@@ -13,9 +13,11 @@ testar e reutilizar.
 
 import json
 import logging
+import time
 
 import boto3
 import requests
+from requests.exceptions import ConnectionError, Timeout
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -95,10 +97,18 @@ def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> di
     else:
         params["first_air_date_year"] = year
 
-    response = requests.get(url, params=params, timeout=30)
-    # Lança uma exceção automática se a API retornar erro (4xx, 5xx)
-    response.raise_for_status()
-    return response.json()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except (ConnectionError, Timeout) as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = 2 ** attempt  # 1s, 2s
+            logger.warning(f"Erro de conexão (tentativa {attempt + 1}/{max_retries}): {e}. Aguardando {wait}s...")
+            time.sleep(wait)
 
 
 # ---------------------------------------------------------------------------
