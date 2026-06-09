@@ -119,6 +119,7 @@ def lambda_handler(event, context):
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
     only_discover = event.get("only_discover", False)
+    skip_discover = event.get("skip_discover", False)
 
     # Busca a chave de API uma única vez para não chamar o Secrets Manager repetidamente
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -167,6 +168,13 @@ def lambda_handler(event, context):
         )
     else:
         logger.info("only_discover=True: pulando coleta de genre, configuration e watch_providers_ref.")
+
+    if skip_discover:
+        logger.info("skip_discover=True: pulando coleta de discover.")
+        return {
+            "statusCode": 200,
+            "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",
+        }
 
     logger.info(
         f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {end_year}..."

@@ -98,6 +98,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_weekly_target" {
 
   input = jsonencode({
     type                            = "movie",
+    skip_discover                   = true,
     database                        = var.glue_catalog_database_movie_name,
     database_unified                = var.glue_catalog_database_unified_name,
     table_discover_movie            = var.glue_catalog_table_discover_movie_name,
@@ -114,6 +115,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_weekly_target" {
 
   input = jsonencode({
     type                          = "tv",
+    skip_discover                 = true,
     database                      = var.glue_catalog_database_tv_name,
     database_unified              = var.glue_catalog_database_unified_name,
     table_discover_tv             = var.glue_catalog_table_discover_tv_name,

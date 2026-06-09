@@ -26,7 +26,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
   treat_missing_data  = "notBreaching"
 
   metric_query {
-    id          = "movie_failed"
+    id          = "movie_disc_failed"
     return_data = false
 
     metric {
@@ -35,13 +35,13 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
       period      = 60
       stat        = "Sum"
       dimensions = {
-        RuleName = aws_cloudwatch_event_rule.lambda_api_movie.name
+        RuleName = aws_cloudwatch_event_rule.lambda_api_movie_discover.name
       }
     }
   }
 
   metric_query {
-    id          = "tv_failed"
+    id          = "tv_disc_failed"
     return_data = false
 
     metric {
@@ -50,14 +50,44 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
       period      = 60
       stat        = "Sum"
       dimensions = {
-        RuleName = aws_cloudwatch_event_rule.lambda_api_tv.name
+        RuleName = aws_cloudwatch_event_rule.lambda_api_tv_discover.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "movie_week_failed"
+    return_data = false
+
+    metric {
+      metric_name = "FailedInvocations"
+      namespace   = "AWS/Events"
+      period      = 60
+      stat        = "Sum"
+      dimensions = {
+        RuleName = aws_cloudwatch_event_rule.lambda_api_movie_weekly.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "tv_week_failed"
+    return_data = false
+
+    metric {
+      metric_name = "FailedInvocations"
+      namespace   = "AWS/Events"
+      period      = 60
+      stat        = "Sum"
+      dimensions = {
+        RuleName = aws_cloudwatch_event_rule.lambda_api_tv_weekly.name
       }
     }
   }
 
   metric_query {
     id          = "total_failed"
-    expression  = "movie_failed+tv_failed"
+    expression  = "movie_disc_failed+tv_disc_failed+movie_week_failed+tv_week_failed"
     label       = "EventBridgeFailedInvocations"
     return_data = true
   }
