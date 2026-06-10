@@ -17,8 +17,6 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
-      aws-tmdb-secret-arn:
-        required: true
       openai-api-key:
         required: true
 
@@ -63,6 +61,7 @@ jobs:
           {
             echo "private_key<<EOF"
             terraform output -raw lightsail_private_key
+            echo
             echo "EOF"
           } >> $GITHUB_OUTPUT
           echo "access_key_id=$(terraform output -raw lightsail_agent_access_key_id)" >> $GITHUB_OUTPUT
@@ -82,15 +81,13 @@ jobs:
 
       - name: Create .env file on instance
         run: |
-          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-            "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo chown ubuntu:ubuntu /opt/filmbot/app/lightsail_ia"
           printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nOPENAI_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/athena-results/\nGLUE_DATABASE=db_unified_tmdb\nSPEC_TABLE=tb_discover_unified_tmdb\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
             "${{ steps.tf.outputs.secret_access_key }}" \
             "${{ secrets.openai-api-key }}" \
             "${{ inputs.environment }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-                "sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null"
+                "sudo tee /tmp/filmbot.env > /dev/null"
 
       - name: Deploy app
         run: |
@@ -101,22 +98,20 @@ jobs:
               cd /opt/filmbot
               sudo git pull
               sudo chown -R filmbot:filmbot /opt/filmbot
+              sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
               sudo systemctl restart filmbot
             else
-              echo "==> Primeiro deploy — executando setup.sh..."
-              sudo bash /opt/filmbot/app/lightsail_ia/deploy/setup.sh || true
-              # setup.sh clona o repo; se o dir não existir ainda, clona antes
-              if [ ! -d "/opt/filmbot/.git" ]; then
-                sudo git clone https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /opt/filmbot
-                sudo chown -R filmbot:filmbot /opt/filmbot
-                cd /opt/filmbot/app/lightsail_ia
-                sudo python3 -m venv .venv
-                sudo .venv/bin/pip install --upgrade pip -q
-                sudo .venv/bin/pip install -r requirements.txt -q
-                sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
-                sudo systemctl daemon-reload
-                sudo systemctl enable filmbot
-              fi
+              echo "==> Primeiro deploy — clonando repositório..."
+              sudo git clone https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /opt/filmbot
+              sudo chown -R filmbot:filmbot /opt/filmbot
+              sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
+              cd /opt/filmbot/app/lightsail_ia
+              sudo python3 -m venv .venv
+              sudo .venv/bin/pip install --upgrade pip -q
+              sudo .venv/bin/pip install -r requirements.txt -q
+              sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo systemctl daemon-reload
+              sudo systemctl enable filmbot
               sudo systemctl restart filmbot
             fi
             sudo systemctl status filmbot --no-pager
