@@ -24,7 +24,7 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "athena:GetQueryResults",
           "athena:GetWorkGroup",
         ]
-        Resource = "*"
+        Resource = "arn:aws:athena:sa-east-1:${data.aws_caller_identity.current.account_id}:workgroup/primary"
       },
       {
         Sid    = "S3Access"
@@ -50,7 +50,11 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "glue:GetDatabase",
           "glue:GetPartitions",
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
+        ]
       },
     ]
   })
@@ -97,12 +101,14 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
     from_port = 22
     to_port   = 22
     protocol  = "tcp"
+    cidrs     = var.lightsail_ssh_allowed_cidrs
   }
 
   port_info {
     from_port = 8501
     to_port   = 8501
     protocol  = "tcp"
+    cidrs     = ["0.0.0.0/0"]
   }
 }
 

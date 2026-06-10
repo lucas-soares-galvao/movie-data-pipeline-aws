@@ -34,37 +34,30 @@ variable "iam_role_lambda" {
 variable "glue_agg_notification_email" {
   description = "E-mail para receber notificacoes de execucao do Glue AGG"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 variable "glue_details_notification_email" {
   description = "E-mail para receber notificacoes de falha do Glue Details"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 variable "glue_data_quality_notification_email" {
   description = "E-mail para receber notificações de execução do Glue Data Quality"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 variable "glue_data_quality_metrics_notification_email" {
   description = "E-mail para receber notificações de avaliação de métricas do Glue Data Quality"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 variable "glue_etl_notification_email" {
   description = "E-mail para receber notificações de execução do Glue ETL"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 variable "lambda_notification_email" {
   description = "E-mail para receber notificações de execução da Lambda"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 variable "eventbridge_notification_email" {
   description = "E-mail para receber notificações de sucesso do EventBridge"
   type        = string
-  default     = "lsgalvao1000@gmail.com"
 }
 
 ############## S3 Buckets ##############
@@ -280,6 +273,12 @@ variable "lightsail_instance_name" {
   description = "Nome da instância Lightsail para o agente IA (FilmBot)"
   type        = string
   default     = "filmbot"
+}
+
+variable "lightsail_ssh_allowed_cidrs" {
+  description = "CIDRs permitidos na porta 22 do Lightsail. Restrinja ao IP do GitHub Actions ou VPN em ambientes produtivos."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }
 
 ############# CLOUDWATCH LOGS ##############

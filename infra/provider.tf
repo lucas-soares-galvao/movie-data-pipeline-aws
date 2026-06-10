@@ -36,3 +36,5 @@ provider "aws" {
   alias  = "lightsail"
   region = "us-east-1"
 }
+
+data "aws_caller_identity" "current" {}

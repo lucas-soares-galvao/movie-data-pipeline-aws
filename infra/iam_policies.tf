@@ -11,8 +11,8 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
       Effect = "Allow"
       Action = ["glue:StartJobRun", "glue:GetJobRun"]
       Resource = [
-        "arn:aws:glue:*:*:job/${local.envs.glue_etl_job_name}",
-        "arn:aws:glue:*:*:job/${local.envs.glue_agg_job_name}"
+        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_etl_job_name}",
+        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_agg_job_name}"
       ]
     }]
   })
@@ -171,11 +171,11 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
           "glue:GetPartitions",
         ]
         Resource = [
-          "arn:aws:glue:*:*:catalog",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
         ]
       },
       {
@@ -188,11 +188,11 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
           "glue:BatchCreatePartition",
         ]
         Resource = [
-          "arn:aws:glue:*:*:catalog",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
         ]
       }
     ]
@@ -212,7 +212,7 @@ resource "aws_iam_role_policy" "glue_etl_start_dq" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["glue:StartJobRun"]
-      Resource = ["arn:aws:glue:*:*:job/${local.envs.glue_data_quality_job_name}"]
+      Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_data_quality_job_name}"]
     }]
   })
 }
@@ -230,7 +230,7 @@ resource "aws_iam_role_policy" "glue_etl_start_details" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["glue:StartJobRun"]
-      Resource = ["arn:aws:glue:*:*:job/${local.envs.glue_details_job_name}"]
+      Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_details_job_name}"]
     }]
   })
 }
@@ -303,13 +303,13 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
           "glue:GetPartitions",
         ]
         Resource = [
-          "arn:aws:glue:*:*:catalog",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_tv_name}/*",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
         ]
       },
       {
@@ -322,9 +322,9 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
           "glue:BatchCreatePartition",
         ]
         Resource = [
-          "arn:aws:glue:*:*:catalog",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
         ]
       }
     ]
@@ -575,13 +575,13 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
           "glue:GetPartitions",
         ]
         Resource = [
-          "arn:aws:glue:*:*:catalog",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_tv_name}/*",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
         ]
       },
       {
@@ -594,9 +594,9 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
           "glue:CreatePartition",
         ]
         Resource = [
-          "arn:aws:glue:*:*:catalog",
-          "arn:aws:glue:*:*:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:*:*:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
         ]
       }
     ]
@@ -621,7 +621,7 @@ resource "aws_iam_role_policy" "glue_agg_athena" {
         "athena:StopQueryExecution",
         "athena:GetWorkGroup"
       ]
-      Resource = "*"
+      Resource = "arn:aws:athena:sa-east-1:${data.aws_caller_identity.current.account_id}:workgroup/primary"
     }]
   })
 }
