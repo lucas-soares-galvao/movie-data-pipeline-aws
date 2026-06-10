@@ -150,6 +150,15 @@ jobs:
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
             -auto-approve
 
+      # TEMPORÁRIO: Remove recursos Lightsail do estado para recriar com novo provider
+      - name: Terraform State Cleanup (Lightsail)
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          cd infra
+          terraform state rm aws_lightsail_key_pair.filmbot || true
+          terraform state rm aws_lightsail_instance.filmbot || true
+          terraform state rm aws_lightsail_instance_public_ports.filmbot || true
+
       # 11. Planejamento (Plan): Gera o plano de execução se NÃO for para destruir
       # Salva o resultado em um arquivo binário (.plan) para garantir que o Apply execute exatamente o que foi planejado
       - name: Terraform Plan
