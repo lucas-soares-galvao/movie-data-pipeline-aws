@@ -15,6 +15,7 @@ _SUITE_TO_APP: dict[str, Path] = {
 }
 
 # Subpacotes dentro de cada diretorio app que expoem um modulo src/utils.
+# Suites sem entrada aqui nao recebem alias src.utils.
 _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_agg": "app.glue_agg.src.utils",
     "glue_data_quality": "app.glue_data_quality.src.utils",
@@ -65,7 +66,10 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
     # Pre-import the fully-qualified utils module and alias it as 'src.utils'
     # so that patches on app.X.src.utils also affect code using
     # 'from src.utils import ...'.
-    fq_module = _SUITE_TO_SRC_MODULE[suite]
+    # Suites sem entrada em _SUITE_TO_SRC_MODULE saltam o alias.
+    fq_module = _SUITE_TO_SRC_MODULE.get(suite)
+    if fq_module is None:
+        return
     try:
         __import__(fq_module)
         mod = sys.modules[fq_module]

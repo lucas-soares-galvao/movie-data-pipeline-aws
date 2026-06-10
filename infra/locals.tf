@@ -36,8 +36,7 @@ locals {
     dev   = "Dev"
     prod  = "Prod"
   }[lower(var.env)]
-  # eventbridge_schedule_state        = lower(var.env) == "prod" ? "ENABLED" : "DISABLED"
-  eventbridge_schedule_state        = "ENABLED"
+  eventbridge_schedule_state        = lower(var.env) == "prod" ? "ENABLED" : "DISABLED"
   lambda_api_src_path                 = "${path.root}/../app/${var.lambda_api_path_app}"
   lambda_api_requirements_path        = "${path.root}/../app/${var.lambda_api_path_app}/requirements.txt"
   lambda_api_build_path               = "${path.module}/.lambda_build"
