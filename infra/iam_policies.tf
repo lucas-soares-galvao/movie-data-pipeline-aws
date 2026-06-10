@@ -354,7 +354,6 @@ resource "aws_iam_role_policy" "glue_dq_sns_publish" {
 # =========================
 # SNS TOPIC POLICIES
 # =========================
-data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "glue_etl_failure_topic_policy" {
   statement {
