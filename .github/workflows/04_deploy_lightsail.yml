@@ -93,6 +93,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} bash << 'ENDSSH'
             set -e
+            sudo useradd -m filmbot || true
             if [ -d "/opt/filmbot/.git" ]; then
               echo "==> Atualizando código existente..."
               cd /opt/filmbot
@@ -102,7 +103,6 @@ jobs:
               sudo systemctl restart filmbot
             else
               echo "==> Primeiro deploy — clonando repositório..."
-              sudo useradd -m filmbot || true
               sudo git clone https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /opt/filmbot
               sudo chown -R filmbot:filmbot /opt/filmbot
               sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
