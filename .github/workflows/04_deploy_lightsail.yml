@@ -105,7 +105,11 @@ jobs:
               sudo chown -R filmbot:filmbot /opt/filmbot
               sudo mkdir -p /opt/filmbot/app/lightsail_ia
               sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
-              sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
+              cd /opt/filmbot/app/lightsail_ia
+              sudo python3 -m venv .venv
+              sudo .venv/bin/pip install --upgrade pip -q
+              sudo .venv/bin/pip install -r requirements.txt -q
+              sudo cp deploy/filmbot.service /etc/systemd/system/filmbot.service
               sudo systemctl daemon-reload
               sudo systemctl enable filmbot
               sudo systemctl restart filmbot
