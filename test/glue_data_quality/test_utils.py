@@ -247,6 +247,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit") as mock_lit,
             patch("src.utils.current_timestamp") as mock_ts,
             patch("src.utils.from_utc_timestamp") as mock_utc,
+            patch("src.utils.when") as mock_when,
+            patch("src.utils.StringType") as mock_type,
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -263,6 +265,8 @@ class TestEvaluateDataQuality:
             "mock_lit": mock_lit,
             "mock_ts": mock_ts,
             "mock_utc": mock_utc,
+            "mock_when": mock_when,
+            "mock_type": mock_type,
             "dq_result_mock": dq_result_mock,
             "dynamic_frame": dynamic_frame,
         }
@@ -382,6 +386,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -420,6 +426,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
             mock_dyn.fromDF.return_value = filtered_dynamic_frame
@@ -453,6 +461,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -642,3 +652,21 @@ class TestNotifyFailedOutcomes:
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert 'IsComplete "id"' in call_kwargs["Message"]
             assert "RowCount > 0" in call_kwargs["Message"]
+
+    def test_message_contains_partition_when_year_provided(self):
+        """Quando year é fornecido, o corpo do e-mail deve indicar a partição avaliada."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_discover_movie_tmdb", self._SNS_ARN, "dev", year="2024")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "year=2024" in call_kwargs["Message"]
+
+    def test_message_does_not_contain_partition_when_year_is_none(self):
+        """Quando year não é fornecido, o corpo do e-mail não deve mencionar partição."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "Partição" not in call_kwargs["Message"]

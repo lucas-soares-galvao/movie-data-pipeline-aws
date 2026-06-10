@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import derive_canonical_name, read_from_sor, trigger_agg, trigger_data_quality, trigger_details, write_parquet_to_sot
+from src.utils import derive_canonical_name, get_parameters_glue, get_resolved_option, read_from_sor, trigger_agg, trigger_data_quality, trigger_details, write_parquet_to_sot
 
 
 # ---------------------------------------------------------------------------
@@ -437,3 +437,54 @@ class TestTriggerDetails:
                 database="db_tv_tmdb",
             )
             assert run_id == "run-det-xyz"
+
+
+# ---------------------------------------------------------------------------
+# get_resolved_option / get_parameters_glue
+# ---------------------------------------------------------------------------
+
+
+class TestGetResolvedOption:
+    def test_delegates_to_getResolvedOptions(self):
+        with patch("src.utils.getResolvedOptions", return_value={"S3_BUCKET_SOR": "my-sor"}) as mock_gro:
+            result = get_resolved_option(["S3_BUCKET_SOR"])
+        mock_gro.assert_called_once()
+        assert result == {"S3_BUCKET_SOR": "my-sor"}
+
+
+class TestGetParametersGlue:
+    def _required(self):
+        return {
+            "S3_BUCKET_SOR": "sor",
+            "S3_BUCKET_SOT": "sot",
+            "MEDIA_TYPE": "movie",
+            "DATABASE": "db",
+            "TABLE_NAME": "tb",
+            "TABLE_TYPE": "discover",
+            "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+            "GLUE_AGG_JOB_NAME": "agg-job",
+            "GLUE_DETAILS_JOB_NAME": "det-job",
+        }
+
+    def test_returns_required_args(self):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1)]):
+            result = get_parameters_glue()
+        assert result["S3_BUCKET_SOR"] == "sor"
+        assert result["TABLE_TYPE"] == "discover"
+
+    def test_includes_year_when_provided(self):
+        year_args = {"YEAR": "2024", "END_YEAR": "2025"}
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), year_args]):
+            result = get_parameters_glue()
+        assert result["YEAR"] == "2024"
+        assert result["END_YEAR"] == "2025"
+
+    def test_omits_year_when_not_provided(self):
+        def _side_effect(args):
+            if "YEAR" in args:
+                raise SystemExit(1)
+            return self._required()
+
+        with patch("src.utils.get_resolved_option", side_effect=_side_effect):
+            result = get_parameters_glue()
+        assert "YEAR" not in result

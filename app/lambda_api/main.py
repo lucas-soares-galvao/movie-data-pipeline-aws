@@ -97,15 +97,6 @@ def lambda_handler(event, context):
         "DATABASE_UNIFIED": event["database_unified"],
     }
 
-    # Configurações (países/idiomas) são referências globais compartilhadas entre filmes e séries.
-    # Por isso usam DATABASE_UNIFIED: o banco que centraliza tabelas que não pertencem a
-    # apenas um tipo de mídia (ao contrário de discover/gêneros, que são separados por movie/tv).
-    glue_unified_args = {
-        "MEDIA_TYPE": content_type,
-        "DATABASE": event["database_unified"],
-        "DATABASE_UNIFIED": event["database_unified"],
-    }
-
     # Nomes das tabelas específicas para o tipo recebido
     if content_type == "movie":
         table_genre = event["table_genre_movie"]
@@ -149,7 +140,7 @@ def lambda_handler(event, context):
         trigger_glue_job(
             glue_client,
             GLUE_ETL_JOB_NAME,
-            glue_unified_args,
+            glue_base_args,
             table_type="configuration",
             table_name=table_configuration,
         )

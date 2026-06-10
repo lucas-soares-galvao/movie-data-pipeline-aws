@@ -258,7 +258,7 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   name          = var.glue_catalog_table_configuration_languages_name
-  database_name = aws_glue_catalog_database.tmdb_unified_database.name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -293,7 +293,7 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   name          = var.glue_catalog_table_configuration_countries_name
-  database_name = aws_glue_catalog_database.tmdb_unified_database.name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -642,6 +642,11 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
 
     columns {
       name = "rule"
+      type = "string"
+    }
+
+    columns {
+      name = "category"
       type = "string"
     }
 

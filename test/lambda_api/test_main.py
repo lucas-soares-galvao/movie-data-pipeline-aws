@@ -309,7 +309,7 @@ class TestLambdaHandler(unittest.TestCase):
         chamada_watch_ref = mock_trigger.call_args_list[2]
         chamada_disc = mock_trigger.call_args_list[3]
 
-        # genre e discover usam o database do media type; configuration usa o unificado
+        # genre, discover e configuration usam o database do media type
         for chamada in (chamada_genre, chamada_disc):
             args_base = chamada[0][2]
             self.assertEqual(args_base["MEDIA_TYPE"], "movie")
@@ -317,7 +317,7 @@ class TestLambdaHandler(unittest.TestCase):
 
         args_config = chamada_config[0][2]
         self.assertEqual(args_config["MEDIA_TYPE"], "movie")
-        self.assertEqual(args_config["DATABASE"], "tmdb_unified_db")
+        self.assertEqual(args_config["DATABASE"], "tmdb_db")
 
         args_watch_ref = chamada_watch_ref[0][2]
         self.assertEqual(args_watch_ref["MEDIA_TYPE"], "movie")

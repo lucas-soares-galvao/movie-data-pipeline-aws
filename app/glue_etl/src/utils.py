@@ -176,6 +176,7 @@ def read_from_sor(
     if table_type == "discover":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
         df["year"] = year
+        df = df.drop_duplicates(subset=["id"])
     elif table_type == "watch_providers_ref":
         s3_client = boto3.client("s3")
         response = s3_client.get_object(Bucket=s3_bucket_sor, Key=s3_key)

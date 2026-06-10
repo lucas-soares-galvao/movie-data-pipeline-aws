@@ -93,7 +93,7 @@ def main() -> None:
         year,
     )
 
-    notify_failed_outcomes(df_results, table_name, sns_topic_arn_dq_metrics, environment)
+    notify_failed_outcomes(df_results, table_name, sns_topic_arn_dq_metrics, environment, year)
 
     logger.info("Job Glue Data Quality finalizado com sucesso!")
 
