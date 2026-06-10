@@ -69,15 +69,17 @@ resource "aws_iam_access_key" "lightsail_agent" {
 # ── Lightsail: key pair SSH ───────────────────────────────────────────────────
 
 resource "aws_lightsail_key_pair" "filmbot" {
-  name = "filmbot-key-${var.env}"
-  tags = merge(local.default_resource_tags, { Component = "lightsail_ia" })
+  provider = aws.us_east_1
+  name     = "filmbot-key-${var.env}"
+  tags     = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
 # ── Lightsail: instância ──────────────────────────────────────────────────────
 
 resource "aws_lightsail_instance" "filmbot" {
+  provider          = aws.us_east_1
   name              = "${var.lightsail_instance_name}-${var.env}"
-  availability_zone = "sa-east-1a"
+  availability_zone = "us-east-1a"
   blueprint_id      = "ubuntu_22_04"
   bundle_id         = "micro_3_0" # 1 GB RAM, 1 vCPU, 40 GB SSD — $5/mês
   key_pair_name     = aws_lightsail_key_pair.filmbot.name
@@ -87,6 +89,7 @@ resource "aws_lightsail_instance" "filmbot" {
 # ── Lightsail: abertura de portas ─────────────────────────────────────────────
 
 resource "aws_lightsail_instance_public_ports" "filmbot" {
+  provider      = aws.us_east_1
   instance_name = aws_lightsail_instance.filmbot.name
 
   port_info {
