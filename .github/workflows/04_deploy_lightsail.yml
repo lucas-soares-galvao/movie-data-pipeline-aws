@@ -97,6 +97,7 @@ jobs:
             sudo useradd -m filmbot || true
             if [ -d "/opt/filmbot/.git" ]; then
               echo "==> Atualizando código existente (branch: $BRANCH)..."
+              sudo git config --global --add safe.directory /opt/filmbot
               cd /opt/filmbot
               sudo git fetch origin
               sudo git checkout "$BRANCH"
