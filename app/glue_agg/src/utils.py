@@ -34,7 +34,7 @@ _TRANSLATE_MAX_WORKERS = 10
 _DISCOVER_UNIFIED_QUERY = """
 WITH
 
-movies AS (
+movies_ranked AS (
     SELECT
         id,
         'movie'                      AS media_type,
@@ -51,11 +51,16 @@ movies AS (
         vote_average,
         vote_count,
         year,
-        CAST(NULL AS ARRAY<VARCHAR>) AS origin_country
+        CAST(NULL AS ARRAY<VARCHAR>) AS origin_country,
+        ROW_NUMBER() OVER (PARTITION BY id ORDER BY year DESC, popularity DESC) AS rn
     FROM {db_movie}.tb_discover_movie_tmdb
 ),
 
-tv_shows AS (
+movies AS (
+    SELECT * FROM movies_ranked WHERE rn = 1
+),
+
+tv_shows_ranked AS (
     SELECT
         id,
         'tv'                   AS media_type,
@@ -72,8 +77,13 @@ tv_shows AS (
         vote_average,
         vote_count,
         year,
-        origin_country
+        origin_country,
+        ROW_NUMBER() OVER (PARTITION BY id ORDER BY year DESC, popularity DESC) AS rn
     FROM {db_tv}.tb_discover_tv_tmdb
+),
+
+tv_shows AS (
+    SELECT * FROM tv_shows_ranked WHERE rn = 1
 ),
 
 unified AS (
@@ -124,27 +134,45 @@ tv_details AS (
 
 -- Referência unificada de provedores (union de movie + tv), desduplicada por provider_id,
 -- com canonical_name normalizado e prioridade de exibição no BR.
+providers_ref_union AS (
+    SELECT * FROM {db_movie}.tb_watch_providers_ref_movie_tmdb
+    UNION
+    SELECT * FROM {db_tv}.tb_watch_providers_ref_tv_tmdb
+),
+
+providers_ref_ranked AS (
+    SELECT
+        provider_id,
+        provider_name,
+        canonical_name,
+        display_priority_br,
+        ROW_NUMBER() OVER (
+            PARTITION BY provider_id
+            ORDER BY COALESCE(display_priority_br, 999) ASC
+        ) AS rn
+    FROM providers_ref_union
+),
+
 provider_ref AS (
-    SELECT provider_name, canonical_name,
-           COALESCE(display_priority_br, 999) AS priority_br
-    FROM (
-        SELECT provider_name, canonical_name, display_priority_br,
-               ROW_NUMBER() OVER (
-                   PARTITION BY provider_id
-                   ORDER BY COALESCE(display_priority_br, 999) ASC
-               ) AS rn
-        FROM (
-            SELECT * FROM {db_movie}.tb_watch_providers_ref_movie_tmdb
-            UNION
-            SELECT * FROM {db_tv}.tb_watch_providers_ref_tv_tmdb
-        )
-    )
+    SELECT
+        provider_name,
+        canonical_name,
+        COALESCE(display_priority_br, 999) AS priority_br
+    FROM providers_ref_ranked
     WHERE rn = 1
 ),
 
 -- Provedores de streaming BR (flatrate) por filme:
 -- JOIN com provider_ref para normalizar nomes e obter prioridade,
 -- desduplicado por canonical_name, ordenado por prioridade BR crescente.
+movie_providers_ranked AS (
+    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    FROM {db_movie}.tb_watch_providers_movie_tmdb wp
+    JOIN provider_ref r ON r.provider_name = wp.provider_name
+    WHERE wp.provider_type = 'flatrate'
+    GROUP BY wp.id, r.canonical_name
+),
+
 movie_providers AS (
     SELECT
         id,
@@ -152,17 +180,19 @@ movie_providers AS (
             array_agg(canonical_name ORDER BY min_priority ASC),
             ', '
         ) AS streaming_providers
-    FROM (
-        SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
-        FROM {db_movie}.tb_watch_providers_movie_tmdb wp
-        JOIN provider_ref r ON r.provider_name = wp.provider_name
-        WHERE wp.provider_type = 'flatrate'
-        GROUP BY wp.id, r.canonical_name
-    )
+    FROM movie_providers_ranked
     GROUP BY id
 ),
 
 -- Provedores de streaming BR (flatrate) por série: mesma lógica.
+tv_providers_ranked AS (
+    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    FROM {db_tv}.tb_watch_providers_tv_tmdb wp
+    JOIN provider_ref r ON r.provider_name = wp.provider_name
+    WHERE wp.provider_type = 'flatrate'
+    GROUP BY wp.id, r.canonical_name
+),
+
 tv_providers AS (
     SELECT
         id,
@@ -170,13 +200,7 @@ tv_providers AS (
             array_agg(canonical_name ORDER BY min_priority ASC),
             ', '
         ) AS streaming_providers
-    FROM (
-        SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
-        FROM {db_tv}.tb_watch_providers_tv_tmdb wp
-        JOIN provider_ref r ON r.provider_name = wp.provider_name
-        WHERE wp.provider_type = 'flatrate'
-        GROUP BY wp.id, r.canonical_name
-    )
+    FROM tv_providers_ranked
     GROUP BY id
 )
 

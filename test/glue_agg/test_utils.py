@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import run_athena_query, traduzir_colunas_en, write_parquet_to_spec
+from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, traduzir_colunas_en, write_parquet_to_spec
 
 
 class TestRunAthenaQuery:
@@ -168,3 +168,35 @@ class TestWriteParquetToSpec:
             _, kwargs = mock_write.call_args
             assert kwargs["database"] == "db_spec"
             assert kwargs["table"] == "tb_unified"
+
+
+# ---------------------------------------------------------------------------
+# get_resolved_option / get_parameters_glue
+# ---------------------------------------------------------------------------
+
+
+class TestGetResolvedOption:
+    def test_delegates_to_getResolvedOptions(self):
+        with patch("src.utils.getResolvedOptions", return_value={"TABLE_NAME": "tb_unified"}) as mock_gro:
+            result = get_resolved_option(["TABLE_NAME"])
+        mock_gro.assert_called_once()
+        assert result == {"TABLE_NAME": "tb_unified"}
+
+
+class TestGetParametersGlue:
+    def _required(self):
+        return {
+            "S3_BUCKET_SPEC": "spec",
+            "S3_BUCKET_TEMP": "tmp",
+            "DB_MOVIE": "db_movie",
+            "DB_TV": "db_tv",
+            "DB_UNIFIED": "db_unified",
+            "TABLE_NAME": "tb_unified",
+        }
+
+    def test_returns_all_required_args(self):
+        with patch("src.utils.get_resolved_option", return_value=self._required()):
+            result = get_parameters_glue()
+        assert result["S3_BUCKET_SPEC"] == "spec"
+        assert result["DB_UNIFIED"] == "db_unified"
+        assert result["TABLE_NAME"] == "tb_unified"

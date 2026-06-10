@@ -19,7 +19,7 @@ from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import GlueArgumentError, getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit
+from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit, when
 from pyspark.sql.types import StringType
 
 from src.rulesets_dq import rulesets_dq
@@ -226,6 +226,15 @@ def evaluate_data_quality(
     # que falha no commit de staging do S3 ao escrever Parquet particionado.
     # O cast para StringType serializa o mapa como string, garantindo compatibilidade.
     df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
+
+    # Classifica cada regra pela dimensão de qualidade com base no prefixo DQDL
+    df = df.withColumn(
+        "category",
+        when(col("rule").startswith("IsComplete"), "completude")
+        .when(col("rule").startswith("IsUnique"), "unicidade")
+        .when(col("rule").startswith("ColumnValues"), "validade")
+        .when(col("rule").startswith("RowCount"), "integridade"),
+    )
 
     # Adiciona colunas de contexto para rastreabilidade e particionamento
     df = df.withColumn(

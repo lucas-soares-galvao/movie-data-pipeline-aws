@@ -430,3 +430,55 @@ class TestTriggerAgg:
 
         mock_glue.start_job_run.assert_called_once_with(JobName="agg-job")
         assert run_id == "jr-123"
+
+
+# ---------------------------------------------------------------------------
+# get_resolved_option / get_parameters_glue / get_tmdb_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestGetResolvedOption:
+    def test_delegates_to_getResolvedOptions(self):
+        with patch("src.utils.getResolvedOptions", return_value={"DATABASE": "db"}) as mock_gro:
+            result = u.get_resolved_option(["DATABASE"])
+        mock_gro.assert_called_once()
+        assert result == {"DATABASE": "db"}
+
+
+class TestGetParametersGlue:
+    def _required(self):
+        return {
+            "S3_BUCKET_SOT": "sot",
+            "S3_BUCKET_TEMP": "tmp",
+            "DATABASE": "db",
+            "TABLE_DISCOVER_MOVIE": "tdm",
+            "TABLE_DISCOVER_TV": "tdt",
+            "TABLE_DETAILS_MOVIE": "det_m",
+            "TABLE_DETAILS_TV": "det_tv",
+            "TABLE_WATCH_PROVIDERS_MOVIE": "wp_m",
+            "TABLE_WATCH_PROVIDERS_TV": "wp_tv",
+            "TMDB_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:1:secret:tmdb",
+            "GLUE_AGG_JOB_NAME": "agg-job",
+            "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+            "MEDIA_TYPE": "movie",
+            "YEAR": "2024",
+            "END_YEAR": "2025",
+        }
+
+    def test_returns_all_required_args(self):
+        with patch("src.utils.get_resolved_option", return_value=self._required()):
+            result = u.get_parameters_glue()
+        assert result["MEDIA_TYPE"] == "movie"
+        assert result["YEAR"] == "2024"
+        assert result["TMDB_SECRET_ARN"] == "arn:aws:secretsmanager:us-east-1:1:secret:tmdb"
+
+
+class TestGetTmdbApiKey:
+    def test_returns_api_key_from_secret(self):
+        import json
+        secret_value = json.dumps({"tmdb_api_key": "my-secret-key"})
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {"SecretString": secret_value}
+        with patch("src.utils.boto3.client", return_value=mock_client):
+            key = u.get_tmdb_api_key("arn:aws:secretsmanager:us-east-1:1:secret:tmdb")
+        assert key == "my-secret-key"

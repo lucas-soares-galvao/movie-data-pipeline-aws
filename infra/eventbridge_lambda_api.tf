@@ -9,7 +9,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_discover" {
   name                = "lambda-api-movie-discover-${var.env}"
   description         = "Dispara a Lambda para discover de filmes (diário)"
   # schedule_expression = "cron(00 12 * * ? *)" # Todos os dias as 09:00 (SAO PAULO) / 12:00 (UTC)
-  schedule_expression = "cron(55 15 * * ? *)" # Todos os dias as 09:00 (SAO PAULO) / 12:00 (UTC)
+  schedule_expression = "cron(40 00 * * ? *)" # Todos os dias as 09:00 (SAO PAULO) / 12:00 (UTC)
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -18,7 +18,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_tv_discover" {
   name                = "lambda-api-tv-discover-${var.env}"
   description         = "Dispara a Lambda para discover de series (diário)"
   # schedule_expression = "cron(05 12 * * ? *)" # Todos os dias as 09:05 (SAO PAULO) / 12:05 (UTC)
-  schedule_expression = "cron(00 16 * * ? *)" # Todos os dias as 09:05 (SAO PAULO) / 12:05 (UTC)
+  schedule_expression = "cron(45 00 * * ? *)" # Todos os dias as 09:05 (SAO PAULO) / 12:05 (UTC)
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -81,7 +81,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
   name                = "lambda-api-movie-weekly-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (semanal)"
   # schedule_expression = "cron(00 12 ? * SUN *)" # Todo domingo as 09:00 (SAO PAULO) / 12:00 (UTC)
-  schedule_expression = "cron(55 15 * * ? *)" # Todo domingo as 09:00 (SAO PAULO) / 12:00 (UTC)
+  schedule_expression = "cron(40 00 * * ? *)" # Todo domingo as 09:00 (SAO PAULO) / 12:00 (UTC)
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -90,7 +90,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
   name                = "lambda-api-tv-weekly-${var.env}"
   description         = "Dispara a Lambda para series com payload completo (semanal)"
   # schedule_expression = "cron(05 12 ? * SUN *)" # Todo domingo as 09:05 (SAO PAULO) / 12:05 (UTC)
-  schedule_expression = "cron(00 16 * * ? *)" # Todo domingo as 09:05 (SAO PAULO) / 12:05 (UTC)
+  schedule_expression = "cron(45 00 * * ? *)" # Todo domingo as 09:05 (SAO PAULO) / 12:05 (UTC)
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
