@@ -106,11 +106,24 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
   }
 }
 
+# ── Lightsail: IP estático ────────────────────────────────────────────────────
+
+resource "aws_lightsail_static_ip" "filmbot" {
+  provider = aws.lightsail
+  name     = "filmbot-static-ip-${var.env}"
+}
+
+resource "aws_lightsail_static_ip_attachment" "filmbot" {
+  provider       = aws.lightsail
+  static_ip_name = aws_lightsail_static_ip.filmbot.name
+  instance_name  = aws_lightsail_instance.filmbot.name
+}
+
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 output "lightsail_public_ip" {
-  description = "IP público da instância Lightsail — acesse http://<ip>:8501"
-  value       = aws_lightsail_instance.filmbot.public_ip_address
+  description = "IP público fixo da instância Lightsail — acesse http://<ip>:8501"
+  value       = aws_lightsail_static_ip.filmbot.ip_address
 }
 
 output "lightsail_private_key" {
