@@ -91,20 +91,25 @@ jobs:
 
       - name: Deploy app
         run: |
-          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} bash << 'ENDSSH'
+          DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
+          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
             set -e
             sudo useradd -m filmbot || true
             if [ -d "/opt/filmbot/.git" ]; then
-              echo "==> Atualizando código existente..."
+              echo "==> Atualizando código existente (branch: $BRANCH)..."
               cd /opt/filmbot
-              sudo git pull
+              sudo git fetch origin
+              sudo git checkout "$BRANCH"
+              sudo git pull origin "$BRANCH"
               sudo chown -R filmbot:filmbot /opt/filmbot
+              sudo mkdir -p /opt/filmbot/app/lightsail_ia
               sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
               sudo systemctl restart filmbot
             else
-              echo "==> Primeiro deploy — clonando repositório..."
-              sudo git clone https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /opt/filmbot
+              echo "==> Primeiro deploy (branch: $BRANCH)..."
+              sudo git clone -b "$BRANCH" https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /opt/filmbot
               sudo chown -R filmbot:filmbot /opt/filmbot
+              sudo mkdir -p /opt/filmbot/app/lightsail_ia
               sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
               cd /opt/filmbot/app/lightsail_ia
               sudo python3 -m venv .venv
