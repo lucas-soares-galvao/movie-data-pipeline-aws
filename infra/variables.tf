@@ -275,6 +275,13 @@ variable "glue_catalog_table_watch_providers_ref_tv_name" {
   default     = "tb_watch_providers_ref_tv_tmdb"
 }
 
+############# LIGHTSAIL IA ##############
+variable "lightsail_instance_name" {
+  description = "Nome da instância Lightsail para o agente IA (FilmBot)"
+  type        = string
+  default     = "filmbot"
+}
+
 ############# CLOUDWATCH LOGS ##############
 variable "log_retention_days" {
   description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"
