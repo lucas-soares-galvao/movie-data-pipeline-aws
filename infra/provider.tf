@@ -33,10 +33,6 @@ provider "aws" {
 }
 
 provider "aws" {
-  alias  = "us_east_1"
+  alias  = "lightsail"
   region = "us-east-1"
-
-  default_tags {
-    tags = local.default_resource_tags
-  }
 }
