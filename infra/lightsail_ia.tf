@@ -33,6 +33,7 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "s3:GetObject",
           "s3:PutObject",
           "s3:ListBucket",
+          "s3:GetBucketLocation",
         ]
         Resource = [
           "arn:aws:s3:::${local.envs.s3_bucket_spec}",

@@ -1,6 +1,6 @@
 # Raciocinio: faz deploy do app Streamlit (FilmBot) na instância Lightsail.
 # Lê os outputs do Terraform (IP, chave SSH, credenciais IAM) e conecta via SSH.
-# Primeiro deploy: roda setup.sh (clone + systemd). Deploys seguintes: git pull + restart.
+# Primeiro deploy: clona o repo, cria venv e instala systemd. Deploys seguintes: git pull + restart.
 
 name: "Deploy Lightsail (Reusable)"
 
