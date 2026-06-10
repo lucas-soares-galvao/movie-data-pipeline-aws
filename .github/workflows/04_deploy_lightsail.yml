@@ -105,6 +105,9 @@ jobs:
               sudo chown -R filmbot:filmbot /opt/filmbot
               sudo mkdir -p /opt/filmbot/app/lightsail_ia
               sudo mv /tmp/filmbot.env /opt/filmbot/app/lightsail_ia/.env
+              sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo systemctl daemon-reload
+              sudo systemctl enable filmbot
               sudo systemctl restart filmbot
             else
               echo "==> Primeiro deploy (branch: $BRANCH)..."
