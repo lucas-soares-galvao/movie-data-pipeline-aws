@@ -339,17 +339,23 @@ def notify_failed_outcomes(
         logger.info(f"Todas as regras passaram para '{table_name}'.")
         return
 
-    rows = failed_df.select("rule", "failure_reason").collect()
+    first_row = df.select("datetime_process", "source_database").first()
+    datetime_process = first_row["datetime_process"]
+    source_database = first_row["source_database"]
+
+    rows = failed_df.select("rule", "failure_reason", "category").collect()
     lines = [
         "[DQ Métrica Falha]",
         f"Ambiente: {environment}",
+        f"Banco: {source_database}",
         f"Tabela: {table_name}",
+        f"Data/Hora: {datetime_process.strftime('%d/%m/%Y %H:%M:%S')}",
     ]
     if year is not None:
         lines.append(f"Partição: year={year}")
     lines.append(f"Regras com falha ({count}):")
     for row in rows:
-        lines.append(f"  • {row['rule']} → {row['failure_reason']}")
+        lines.append(f"  • [{row['category']}] {row['rule']} → {row['failure_reason']}")
 
     message = "\n".join(lines)
     boto3.client("sns").publish(

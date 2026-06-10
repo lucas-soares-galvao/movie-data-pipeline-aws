@@ -31,6 +31,9 @@ locals {
     glue_catalog = {
       Component = "glue_catalog"
     }
+    app_runner_ia = {
+      Component = "app_runner_ia"
+    }
   }
   environment_tag_value = {
     dev   = "Dev"
@@ -114,6 +117,8 @@ EOT
     s3_bucket_sot              = "${var.s3_bucket_sot}-${var.env}"
     s3_bucket_spec             = "${var.s3_bucket_spec}-${var.env}"
     s3_bucket_data_quality     = "${var.s3_bucket_data_quality}-${var.env}"
+    app_runner_ia_name         = "app-runner-ia-${var.env}"
+    app_runner_ia_ecr_name     = "app-runner-ia-${var.env}"
   }
 }
 

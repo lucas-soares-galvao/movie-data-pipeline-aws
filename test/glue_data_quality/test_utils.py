@@ -566,17 +566,30 @@ class TestWriteResultsToS3:
 class TestNotifyFailedOutcomes:
     _SNS_ARN = "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-failure-notifications"
 
-    def _make_row(self, rule: str, failure_reason: str):
+    def _make_row(self, rule: str, failure_reason: str, category: str = "completude"):
         row = MagicMock()
-        row.__getitem__ = lambda self, key: {"rule": rule, "failure_reason": failure_reason}[key]
+        row.__getitem__ = lambda self, key: {
+            "rule": rule,
+            "failure_reason": failure_reason,
+            "category": category,
+        }[key]
         return row
 
     def _make_df(self, failed_rows: list):
         """Cria um Spark DataFrame mock com a lista de linhas em failed_rows."""
+        from datetime import datetime
+
         df = MagicMock()
         failed_df = MagicMock()
         failed_df.count.return_value = len(failed_rows)
         failed_df.select.return_value.collect.return_value = failed_rows
+
+        first_row = MagicMock()
+        first_row.__getitem__ = lambda self, key: {
+            "datetime_process": datetime(2026, 6, 9, 21, 30, 45),
+            "source_database": "movies_db",
+        }[key]
+        df.select.return_value.first.return_value = first_row
         df.filter.return_value = failed_df
         return df, failed_df
 

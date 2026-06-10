@@ -275,6 +275,24 @@ variable "glue_catalog_table_watch_providers_ref_tv_name" {
   default     = "tb_watch_providers_ref_tv_tmdb"
 }
 
+############### APP RUNNER IA ##############
+variable "app_runner_ia_cpu" {
+  description = "CPU alocada para o App Runner IA (ex: '1 vCPU')"
+  type        = string
+  default     = "1 vCPU"
+}
+
+variable "app_runner_ia_memory" {
+  description = "Memória alocada para o App Runner IA (ex: '2 GB')"
+  type        = string
+  default     = "2 GB"
+}
+
+variable "openai_secret_arn" {
+  description = "ARN do segredo no Secrets Manager com a chave da OpenAI"
+  type        = string
+}
+
 ############# CLOUDWATCH LOGS ##############
 variable "log_retention_days" {
   description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"
