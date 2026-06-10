@@ -94,7 +94,7 @@ jobs:
           DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
           ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
             set -e
-            sudo apt-get install -y python3-venv python3-pip git -q
+            sudo apt-get update -q && sudo apt-get install -y python3-venv python3-pip git -q
             sudo useradd -m filmbot || true
             if [ -d "/opt/filmbot/.git" ]; then
               echo "==> Atualizando código existente (branch: $BRANCH)..."
