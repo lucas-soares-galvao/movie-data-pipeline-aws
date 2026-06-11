@@ -38,8 +38,7 @@ POR QUE USAR "FUNCTION CALLING" (TOOL USE)?
 
 TECNOLOGIAS UTILIZADAS:
   - openai (Python SDK): acessa o GPT-4o para interpretação e formatação
-  - awswrangler (wr.athena.read_sql_query): executa SQL no Athena
-  - boto3: cria a sessão AWS com região configurada
+  - boto3 (Athena API nativa): executa SQL no Athena sem dependências pesadas
   - python-dotenv: carrega variáveis de ambiente do arquivo .env
 
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
@@ -50,11 +49,11 @@ VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
   ATHENA_S3_OUTPUT   → caminho S3 para resultados temporários do Athena
 """
 
+import gc
 import os
 import json
+import time
 import boto3
-import awswrangler as wr
-from openai import OpenAI
 from dotenv import load_dotenv
 
 # Carrega as variáveis de ambiente do arquivo .env (na mesma pasta do app).
@@ -62,9 +61,17 @@ from dotenv import load_dotenv
 # com as variáveis do Terraform output. Em desenvolvimento, o .env é criado manualmente.
 load_dotenv()
 
-# Instancia o cliente do OpenAI uma única vez (reutilizado em todas as chamadas).
-# api_key é lido da variável de ambiente OPENAI_API_KEY.
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Cliente OpenAI inicializado sob demanda na primeira chamada para evitar alocar
+# ~20-30 MB de memória antes de qualquer busca do usuário.
+_openai_client = None
+
+
+def _get_openai_client():
+    from openai import OpenAI
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 # ==============================================================================
 # DEFINIÇÃO DA TOOL (Function Calling)
@@ -180,18 +187,44 @@ def buscar_titulos_spec(
         LIMIT {int(limite)}
     """
 
-    # Cria a sessão AWS com a região definida na variável de ambiente
-    session = boto3.Session(region_name=os.getenv("AWS_REGION", "sa-east-1"))
-    df = wr.athena.read_sql_query(
-        sql=sql,
-        database=os.getenv("GLUE_DATABASE", "db_unified_tmdb"),
-        s3_output=os.getenv("ATHENA_S3_OUTPUT"),  # onde salvar os resultados temporários
-        boto3_session=session,
-        ctas_approach=False,  # query direta (sem criar tabela temporária no S3 via CTAS)
+    athena = boto3.client("athena", region_name=os.getenv("AWS_REGION", "sa-east-1"))
+
+    # Dispara a query no Athena
+    exec_response = athena.start_query_execution(
+        QueryString=sql,
+        QueryExecutionContext={"Database": os.getenv("GLUE_DATABASE", "db_unified_tmdb")},
+        ResultConfiguration={"OutputLocation": os.getenv("ATHENA_S3_OUTPUT")},
     )
-    # Converte o DataFrame Pandas para lista de dicionários — formato fácil de serializar
-    # para JSON e passar ao OpenAI no Passo 3
-    return df.to_dict(orient="records")
+    execution_id = exec_response["QueryExecutionId"]
+
+    # Aguarda a conclusão (polling simples com backoff fixo de 1 s)
+    while True:
+        status = athena.get_query_execution(QueryExecutionId=execution_id)
+        state = status["QueryExecution"]["Status"]["State"]
+        if state == "SUCCEEDED":
+            break
+        if state in ("FAILED", "CANCELLED"):
+            reason = status["QueryExecution"]["Status"].get("StateChangeReason", "")
+            raise RuntimeError(f"Athena query {state}: {reason}")
+        time.sleep(1)
+
+    # Lê os resultados paginados e monta lista de dicionários
+    paginator = athena.get_paginator("get_query_results")
+    records = []
+    columns = None
+    for page in paginator.paginate(QueryExecutionId=execution_id):
+        rows = page["ResultSet"]["Rows"]
+        if columns is None:
+            # Primeira linha é o cabeçalho
+            columns = [col["VarCharValue"] for col in rows[0]["Data"]]
+            rows = rows[1:]
+        for row in rows:
+            values = [item.get("VarCharValue") for item in row["Data"]]
+            records.append(dict(zip(columns, values)))
+
+    # Libera memória dos objetos de resposta do boto3 antes de passar ao OpenAI
+    gc.collect()
+    return records
 
 
 # ==============================================================================
@@ -221,6 +254,7 @@ def recomendar(preferencia: str) -> list[dict]:
     # tool_choice="required" força o modelo a sempre usar a tool definida.
     # Sem isso, o modelo poderia responder em texto livre se não entendesse
     # como usar a tool — o que quebraria o processamento no Passo 2.
+    client = _get_openai_client()
     resposta = client.chat.completions.create(
         model="gpt-4o",
         messages=[
