@@ -75,6 +75,7 @@ resource "aws_iam_access_key" "lightsail_agent" {
 # ── Lightsail: key pair SSH ───────────────────────────────────────────────────
 
 resource "aws_lightsail_key_pair" "filmbot" {
+  count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
   name     = "filmbot-key-${var.env}"
   tags     = merge(local.default_resource_tags, { Component = "lightsail_ia" })
@@ -83,20 +84,22 @@ resource "aws_lightsail_key_pair" "filmbot" {
 # ── Lightsail: instância ──────────────────────────────────────────────────────
 
 resource "aws_lightsail_instance" "filmbot" {
+  count             = var.lightsail_enabled ? 1 : 0
   provider          = aws.lightsail
   name              = "${var.lightsail_instance_name}-${var.env}"
   availability_zone = "us-east-1a"
   blueprint_id      = "ubuntu_22_04"
   bundle_id         = "micro_3_0" # 1 GB RAM, 1 vCPU, 40 GB SSD — $5/mês
-  key_pair_name     = aws_lightsail_key_pair.filmbot.name
+  key_pair_name     = aws_lightsail_key_pair.filmbot[0].name
   tags              = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
 # ── Lightsail: abertura de portas ─────────────────────────────────────────────
 
 resource "aws_lightsail_instance_public_ports" "filmbot" {
+  count         = var.lightsail_enabled ? 1 : 0
   provider      = aws.lightsail
-  instance_name = aws_lightsail_instance.filmbot.name
+  instance_name = aws_lightsail_instance.filmbot[0].name
 
   port_info {
     from_port = 22
@@ -116,26 +119,28 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
 # ── Lightsail: IP estático ────────────────────────────────────────────────────
 
 resource "aws_lightsail_static_ip" "filmbot" {
+  count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
   name     = "filmbot-static-ip-${var.env}"
 }
 
 resource "aws_lightsail_static_ip_attachment" "filmbot" {
+  count          = var.lightsail_enabled ? 1 : 0
   provider       = aws.lightsail
-  static_ip_name = aws_lightsail_static_ip.filmbot.name
-  instance_name  = aws_lightsail_instance.filmbot.name
+  static_ip_name = aws_lightsail_static_ip.filmbot[0].name
+  instance_name  = aws_lightsail_instance.filmbot[0].name
 }
 
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 output "lightsail_public_ip" {
   description = "IP público fixo da instância Lightsail — acesse http://<ip>:8501"
-  value       = aws_lightsail_static_ip.filmbot.ip_address
+  value       = var.lightsail_enabled ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
 }
 
 output "lightsail_private_key" {
   description = "Chave privada SSH para acessar a instância via ssh -i <key> ubuntu@<ip>"
-  value       = aws_lightsail_key_pair.filmbot.private_key
+  value       = var.lightsail_enabled ? aws_lightsail_key_pair.filmbot[0].private_key : ""
   sensitive   = true
 }
 
