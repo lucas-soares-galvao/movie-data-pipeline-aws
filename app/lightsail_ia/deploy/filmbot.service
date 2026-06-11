@@ -10,7 +10,9 @@ EnvironmentFile=/opt/filmbot/app/lightsail_ia/.env
 ExecStart=/opt/filmbot/app/lightsail_ia/.venv/bin/streamlit run app.py \
   --server.port 8501 \
   --server.address 0.0.0.0 \
-  --server.headless true
+  --server.headless true \
+  --browser.gatherUsageStats false \
+  --server.maxUploadSize 5
 Restart=always
 RestartSec=10
 
