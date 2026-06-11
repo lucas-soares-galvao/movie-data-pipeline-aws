@@ -109,6 +109,20 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
   }
 
   port_info {
+    from_port = 80
+    to_port   = 80
+    protocol  = "tcp"
+    cidrs     = ["0.0.0.0/0"]
+  }
+
+  port_info {
+    from_port = 443
+    to_port   = 443
+    protocol  = "tcp"
+    cidrs     = ["0.0.0.0/0"]
+  }
+
+  port_info {
     from_port = 8501
     to_port   = 8501
     protocol  = "tcp"
@@ -134,7 +148,7 @@ resource "aws_lightsail_static_ip_attachment" "filmbot" {
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 output "lightsail_public_ip" {
-  description = "IP público fixo da instância Lightsail — acesse http://<ip>:8501"
+  description = "IP público fixo da instância Lightsail — use este IP no A record do is-a.dev (filmbot.is-a.dev)"
   value       = var.lightsail_enabled ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
 }
 

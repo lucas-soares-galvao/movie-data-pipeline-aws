@@ -1,0 +1,11 @@
+{
+  "owner": {
+    "username": "lucas-soares-galvao",
+    "email": "claudepedroelucas@gmail.com"
+  },
+  "record": {
+    "A": ["<LIGHTSAIL_STATIC_IP>"],
+    "PROXIED": true
+  },
+  "description": "FilmBot — app de recomendação de filmes e séries com IA hospedado em AWS Lightsail"
+}
