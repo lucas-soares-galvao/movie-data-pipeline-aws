@@ -11,6 +11,15 @@ set -e
 REPO_URL="https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git"
 APP_DIR="/opt/filmbot"
 
+# Swap de 1 GB — necessário para rodar na instância nano_3_0 (512 MB RAM)
+if [ ! -f /swapfile ]; then
+  fallocate -l 1G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 apt-get update && apt-get install -y python3-pip python3-venv git
 
 useradd -m filmbot || true  # ignora erro se o usuário já existir
