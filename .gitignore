@@ -46,6 +46,9 @@ infra/.glue_data_quality_build/
 # Os arquivos no repositório contêm apenas placeholders.
 # terraform.tfvars
 
+# --- Streamlit secrets (nunca commitar) ---
+**/.streamlit/secrets.toml
+
 # --- Sistema ---
 .DS_Store
 Thumbs.db

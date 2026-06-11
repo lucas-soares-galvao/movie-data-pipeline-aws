@@ -57,6 +57,8 @@ on:
         required: true
       aws-tmdb-secret-arn:        # ARN do segredo no Secrets Manager com a chave da API TMDB
         required: true
+      notification-email:         # E-mail para alertas SNS (não commitado no tfvars)
+        required: true
       infracost-api-key:          # Chave da API Infracost para estimar custos da infra
         required: true
 
@@ -267,6 +269,18 @@ jobs:
       # "-var-file" passa as variáveis específicas do ambiente (dev ou prod).
       # "-auto-approve" não pede confirmação (necessário em automação).
       # =========================================================================
+      # =========================================================================
+      # PASSO 10b: Injetar e-mail de notificação no tfvars
+      # =========================================================================
+      # O placeholder REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL no tfvars
+      # é substituído aqui pelo valor real do GitHub Secret NOTIFICATION_EMAIL.
+      # Isso evita commitar e-mails pessoais no repositório.
+      # =========================================================================
+      - name: Inject notification email into tfvars
+        run: |
+          sed -i 's/REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL/${{ secrets.notification-email }}/g' \
+            infra/envs/${{ inputs.environment }}/terraform.tfvars
+
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy

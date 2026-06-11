@@ -158,6 +158,9 @@ def buscar_titulos_spec(
     Returns:
         Lista de dicionários, cada um representando um título com todos os campos da SPEC.
     """
+    # Garante que limite está entre 1 e 30 — evita que o GPT cause queries gigantes no Athena
+    limite = max(1, min(int(limite), 30))
+
     # Começa com os filtros que sempre devem ser aplicados
     filtros = ["vote_count >= 50", f"vote_average >= {float(nota_minima)}"]
 

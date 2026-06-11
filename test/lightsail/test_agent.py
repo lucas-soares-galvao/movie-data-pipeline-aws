@@ -254,6 +254,25 @@ class TestBuscarTitulosSpec(unittest.TestCase):
         sql_executado = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
         self.assertIn("LIMIT 10", sql_executado)
 
+    @patch("agent.boto3")
+    def test_limite_e_limitado_ao_maximo_de_30(self, mock_boto3):
+        mock_athena = _setup_athena_mock(mock_boto3)
+
+        agent.buscar_titulos_spec(limite=100)
+
+        sql_executado = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        self.assertIn("LIMIT 30", sql_executado)
+        self.assertNotIn("LIMIT 100", sql_executado)
+
+    @patch("agent.boto3")
+    def test_limite_minimo_e_1(self, mock_boto3):
+        mock_athena = _setup_athena_mock(mock_boto3)
+
+        agent.buscar_titulos_spec(limite=0)
+
+        sql_executado = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        self.assertIn("LIMIT 1", sql_executado)
+
 
 # ── Testes de recomendar ───────────────────────────────────────────────────────
 

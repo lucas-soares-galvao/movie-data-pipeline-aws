@@ -47,6 +47,23 @@ from agent import recomendar
 st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
 
 # ==============================================================================
+# AUTENTICAÇÃO
+# ==============================================================================
+# Protege o app com senha configurada em .streamlit/secrets.toml (não commitado).
+# Isso evita abuso da API OpenAI e Athena por quem descobrir o IP da instância.
+# secrets.toml esperado:
+#   [auth]
+#   password = "sua-senha-forte"
+if not st.session_state.get("autenticado"):
+    senha = st.text_input("Senha de acesso:", type="password")
+    if senha and senha == st.secrets.get("auth", {}).get("password", ""):
+        st.session_state["autenticado"] = True
+        st.rerun()
+    elif senha:
+        st.error("Senha incorreta.")
+    st.stop()
+
+# ==============================================================================
 # ESTILOS VISUAIS (CSS)
 # ==============================================================================
 # Streamlit permite injetar CSS personalizado via st.markdown com unsafe_allow_html=True.

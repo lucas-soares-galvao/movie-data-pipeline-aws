@@ -44,6 +44,8 @@ on:
         required: true
       openai-api-key:             # Chave da API OpenAI para o agente de recomendação
         required: true
+      filmbot-password:           # Senha de acesso ao app Streamlit (proteção contra abuso)
+        required: true
 
 jobs:
   deploy:
@@ -190,6 +192,19 @@ jobs:
             "${{ inputs.environment }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.env"
+
+      # =========================================================================
+      # PASSO 7b: Criar secrets.toml do Streamlit na instância
+      # =========================================================================
+      # O Streamlit lê .streamlit/secrets.toml para autenticação do app.
+      # A senha fica apenas no GitHub Secret FILMBOT_PASSWORD — nunca no repo.
+      # =========================================================================
+      - name: Create Streamlit secrets.toml on instance
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        run: |
+          printf '[auth]\npassword = "%s"\n' "${{ secrets.filmbot-password }}" \
+            | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+                "sudo mkdir -p /opt/filmbot/app/lightsail_ia/.streamlit && sudo tee /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml"
 
       # =========================================================================
       # PASSO 8: Fazer o Deploy do Aplicativo

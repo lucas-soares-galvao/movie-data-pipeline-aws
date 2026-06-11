@@ -14,10 +14,10 @@ lightsail_enabled = false
 log_retention_days = 1
 
 # E-mails de notificacao SNS por componente.
-glue_agg_notification_email                  = "lsgalvao1000@gmail.com"
-glue_details_notification_email              = "lsgalvao1000@gmail.com"
-glue_data_quality_notification_email         = "lsgalvao1000@gmail.com"
-glue_data_quality_metrics_notification_email = "lsgalvao1000@gmail.com"
-glue_etl_notification_email                  = "lsgalvao1000@gmail.com"
-lambda_notification_email                    = "lsgalvao1000@gmail.com"
-eventbridge_notification_email               = "lsgalvao1000@gmail.com"
+glue_agg_notification_email                  = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+glue_details_notification_email              = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+glue_data_quality_notification_email         = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+glue_data_quality_metrics_notification_email = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+glue_etl_notification_email                  = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+lambda_notification_email                    = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+eventbridge_notification_email               = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
