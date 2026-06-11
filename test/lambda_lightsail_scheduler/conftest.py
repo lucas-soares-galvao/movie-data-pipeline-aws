@@ -1,14 +1,30 @@
 """
 conftest.py — Configuração de testes para o Lambda lightsail_scheduler.
 
-Adiciona app/lambda_lightsail_scheduler ao sys.path para que os testes
-importem main.py diretamente, e define a variável de ambiente obrigatória
-LIGHTSAIL_INSTANCE_NAME com um valor fictício de teste.
+Define a variável de ambiente obrigatória LIGHTSAIL_INSTANCE_NAME e registra
+o módulo do scheduler em sys.modules sob o nome único
+"lambda_lightsail_scheduler_main".
+
+Por que nome único em vez de "main"?
+  O projeto tem vários main.py (lambda_api, glue_etl, etc.) e o pytest
+  usa um único sys.modules compartilhado para toda a sessão de testes.
+  Registrar sob "main" sobrescreveria o main.py de outra suite e quebraria
+  seus testes. Um nome único isola completamente o módulo.
 """
 
+import importlib.util
 import os
 import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../app/lambda_lightsail_scheduler"))
+from pathlib import Path
 
 os.environ.setdefault("LIGHTSAIL_INSTANCE_NAME", "test-instance")
+
+_SCHEDULER_PATH = Path(__file__).resolve().parent.parent.parent / "app" / "lambda_lightsail_scheduler"
+
+_spec = importlib.util.spec_from_file_location(
+    "lambda_lightsail_scheduler_main",
+    _SCHEDULER_PATH / "main.py",
+)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+sys.modules["lambda_lightsail_scheduler_main"] = _mod
