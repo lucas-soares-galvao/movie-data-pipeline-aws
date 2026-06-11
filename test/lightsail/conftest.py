@@ -4,12 +4,15 @@ conftest.py — Configuração de testes para o módulo Lightsail (FilmBot).
 ==============================================================================
 POR QUE PRECISAMOS DESTE conftest.py?
 ==============================================================================
-O código do app Lightsail (agent.py) lê variáveis de ambiente no momento
-em que é importado:
-  client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+O código do app Lightsail (agent.py) chama load_dotenv() no momento em que
+é importado. Algumas variáveis de ambiente são lidas dentro das funções
+(ex: buscar_titulos_spec lê ATHENA_S3_OUTPUT em cada chamada). Para evitar
+erros por variáveis ausentes durante os testes, definimos valores fictícios
+aqui antes de qualquer import.
 
-Se OPENAI_API_KEY não existir no ambiente, o cliente OpenAI falha ao inicializar
-— e isso acontece ANTES dos testes rodarem, só na importação do módulo.
+O cliente OpenAI é inicializado sob demanda via _get_openai_client(), então
+OPENAI_API_KEY não precisa ser válida — as chamadas reais são interceptadas
+por @patch nos testes.
 
 SOLUÇÃO: Definir as variáveis de ambiente ANTES de qualquer import.
 O conftest.py do pytest roda antes de qualquer arquivo de teste, então
