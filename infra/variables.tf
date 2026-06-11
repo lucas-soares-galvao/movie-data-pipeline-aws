@@ -297,6 +297,12 @@ variable "glue_catalog_database_unified_name" {
   default     = "db_unified_tmdb"
 }
 
+variable "lightsail_enabled" {
+  description = "Habilita a instância Lightsail. false = instância destruída (reduz custo em dev)."
+  type        = bool
+  default     = true
+}
+
 variable "glue_catalog_table_discover_movie_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de filmes da TMDB"
   type        = string

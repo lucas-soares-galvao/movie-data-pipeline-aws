@@ -60,17 +60,37 @@ O GPT-4o recebe os resultados reais do Athena e formata como JSON com campos ami
 
 ## Deploy
 
-O app roda como serviço `systemd` (`filmbot.service`) na instância Lightsail. O script `deploy/setup.sh` instala dependências e configura o serviço. O Terraform provisiona a instância e configura a abertura das portas 80/443 e 22 (SSH).
+### Produção (Lightsail)
+
+O app roda como serviço `systemd` (`filmbot.service`) na instância Lightsail. O script `deploy/setup.sh` instala dependências e configura o serviço. O Terraform provisiona a instância (portas 8501 e 22) e o CI/CD faz o deploy via SSH ao fazer push na branch `main`.
+
+### Desenvolvimento local
+
+Em dev, a instância Lightsail está desabilitada (`lightsail_enabled = false`). Para rodar localmente:
+
+```bash
+# 1. Gerar o .env com as credenciais da conta dev (requer Terraform inicializado)
+OPENAI_API_KEY=sk-... bash infra/scripts/export_env_local.sh
+
+# 2. Rodar
+cd app/lightsail_ia
+pip install -r requirements.txt
+streamlit run app.py   # http://localhost:8501
+```
+
+Use `.env.example` como referência para as variáveis necessárias.
 
 ## Variáveis de ambiente necessárias
 
 | Variável | Uso |
 |---|---|
 | `OPENAI_API_KEY` | Chave da API OpenAI para o GPT-4o |
-| `AWS_DEFAULT_REGION` | Região AWS para consultas Athena |
-| `S3_BUCKET_TEMP` | Bucket temporário para resultados de queries Athena |
+| `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
+| `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
+| `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
+| `ATHENA_S3_OUTPUT` | Bucket temporário para resultados de queries Athena |
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
-| `SPEC_TABLE_NAME` | Nome da tabela unificada (ex: `tb_discover_unified_tmdb`) |
+| `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_discover_unified_tmdb`) |
 
 ## Tecnologias
 
