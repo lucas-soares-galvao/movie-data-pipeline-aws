@@ -55,12 +55,110 @@ st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
 #   [auth]
 #   password = "sua-senha-forte"
 if not st.session_state.get("autenticado"):
-    senha = st.text_input("Senha de acesso:", type="password")
-    if senha and senha == st.secrets.get("auth", {}).get("password", ""):
-        st.session_state["autenticado"] = True
-        st.rerun()
-    elif senha:
-        st.error("Senha incorreta.")
+    st.markdown("""
+    <style>
+      /* Oculta header/toolbar do Streamlit na tela de login */
+      [data-testid="stHeader"] { display: none; }
+      [data-testid="stToolbar"] { display: none; }
+      [data-testid="stDecoration"] { display: none; }
+
+      /* Fundo cinematográfico */
+      [data-testid="stAppViewContainer"] {
+        background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+        min-height: 100vh;
+      }
+
+      /* Card de login centralizado */
+      .login-card {
+        background: rgba(17, 17, 17, 0.92);
+        border: 1px solid rgba(249,115,22,0.18);
+        border-radius: 20px;
+        padding: 40px 36px 32px;
+        box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(249,115,22,0.06);
+        margin-bottom: 8px;
+      }
+      .login-title {
+        font-size: 32px;
+        font-weight: 800;
+        color: #ffffff;
+        margin: 0 0 6px 0;
+        letter-spacing: -0.5px;
+      }
+      .login-subtitle {
+        font-size: 14px;
+        color: #737373;
+        margin: 0 0 24px 0;
+      }
+      .login-divider {
+        border: none;
+        border-top: 2px solid #f97316;
+        opacity: 0.5;
+        margin: 0 0 24px 0;
+      }
+
+      /* Sobrescreve o input de senha */
+      [data-testid="stTextInput"] input {
+        background: #1a1a1a !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 10px !important;
+        color: #f5f5f5 !important;
+        font-size: 15px !important;
+        padding: 10px 14px !important;
+      }
+      [data-testid="stTextInput"] input:focus {
+        border-color: rgba(249,115,22,0.5) !important;
+        box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
+      }
+
+      /* Sobrescreve o botão */
+      [data-testid="stButton"] > button {
+        background: linear-gradient(135deg, #f97316, #ea580c) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        padding: 10px 0 !important;
+        width: 100% !important;
+        margin-top: 8px !important;
+        transition: opacity 0.15s ease !important;
+      }
+      [data-testid="stButton"] > button:hover {
+        opacity: 0.88 !important;
+      }
+
+      /* Erro customizado */
+      .login-error {
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.25);
+        color: #fca5a5;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 13px;
+        margin-top: 10px;
+      }
+    </style>
+    """, unsafe_allow_html=True)
+
+    _, col, _ = st.columns([1, 1.1, 1])
+    with col:
+        st.markdown("""
+        <div class="login-card">
+          <p class="login-title">🎬 FilmBot</p>
+          <p class="login-subtitle">Seu assistente de recomendações de filmes e séries</p>
+          <hr class="login-divider">
+        </div>
+        """, unsafe_allow_html=True)
+
+        senha = st.text_input("", placeholder="Digite a senha de acesso...", type="password", label_visibility="collapsed")
+        entrar = st.button("Entrar →", use_container_width=True)
+
+        if entrar and senha == st.secrets.get("auth", {}).get("password", ""):
+            st.session_state["autenticado"] = True
+            st.rerun()
+        elif entrar and senha:
+            st.markdown('<div class="login-error">❌ Senha incorreta. Tente novamente.</div>', unsafe_allow_html=True)
+
     st.stop()
 
 # ==============================================================================
@@ -127,6 +225,7 @@ st.markdown("""
   }
   .nota { color: #f97316; font-weight: bold; font-size: 16px; }
   .duracao { color: #a3a3a3; font-size: 14px; }
+  .data-lancamento { color: #a3a3a3; font-size: 14px; }
   .sinopse { color: #d4d4d4; font-size: 12px; margin-top: 6px; line-height: 1.5; flex: 1; }
   .motivo {
     color: #a3a3a3;
@@ -166,8 +265,15 @@ st.markdown("""
 # ==============================================================================
 # CABEÇALHO E CAMPO DE ENTRADA
 # ==============================================================================
-st.title("🎬 FilmBot — Recomendações do seu data lake")
-st.caption("Os dados vêm da tabela SPEC do pipeline AWS (TMDB)")
+col_titulo, col_sair = st.columns([9, 1])
+with col_titulo:
+    st.title("🎬 FilmBot — Recomendações do seu data lake")
+    st.caption("Os dados vêm da tabela SPEC do pipeline AWS (TMDB)")
+with col_sair:
+    st.write("")  # empurra o botão para baixo, alinhando com o título
+    if st.button("Sair", use_container_width=True):
+        st.session_state["autenticado"] = False
+        st.rerun()
 
 # Campo de texto onde o usuário digita sua preferência em linguagem natural.
 # O Streamlit armazena o valor na variável "preferencia" a cada re-execução.
@@ -211,6 +317,7 @@ if st.button("Recomendar", type="primary") and preferencia:
             # Reconstrói a string de duração removendo partes vazias
             # Ex: " · 36 eps · " → "36 eps"
             duracao = " · ".join(part.strip() for part in duracao.split(" · ") if part.strip())
+            data_lancamento = t.get("data_lancamento") or ""
             streaming_providers = t.get("streaming_providers") or ""
 
             # HTML da imagem do card (largura 100%, altura fixa 200px, crop centralizado)
@@ -247,6 +354,7 @@ if st.button("Recomendar", type="primary") and preferencia:
                 <div style="margin: 6px 0">{generos_html}</div>
                 {f'<div class="meta-row"><span class="meta-icon">★</span><span class="nota">{nota}</span></div>' if nota else ''}
                 {f'<div class="meta-row"><span class="meta-icon">⏱</span><span class="duracao">{duracao}</span></div>' if duracao else ''}
+                {f'<div class="meta-row"><span class="meta-icon">📅</span><span class="data-lancamento">{data_lancamento}</span></div>' if data_lancamento else ''}
                 {providers_html}
                 <p class="sinopse">{sinopse}</p>
                 <p class="motivo">💡 {motivo}</p>

@@ -91,6 +91,7 @@ TITULO_FAKE = {
     "number_of_episodes": None,
     "episode_runtime_minutes": None,
     "streaming_providers": "Netflix",
+    "air_date": "1980-05-23",
 }
 
 RESPOSTA_OPENAI_FAKE = json.dumps(
@@ -108,6 +109,7 @@ RESPOSTA_OPENAI_FAKE = json.dumps(
                 "motivo": "Clássico do terror psicológico.",
                 "duracao": "2h 26min",
                 "streaming_providers": "Netflix",
+                "data_lancamento": "maio de 1980",
             }
         ]
     }
@@ -120,7 +122,7 @@ COLUMNS = [
     "vote_average", "poster_url", "backdrop_url",
     "runtime_minutes", "number_of_seasons",
     "number_of_episodes", "episode_runtime_minutes",
-    "streaming_providers",
+    "streaming_providers", "air_date",
 ]
 
 
@@ -343,6 +345,17 @@ class TestRecomendar(unittest.TestCase):
         agent.recomendar("filmes de terror dos anos 80")
 
         mock_buscar.assert_called_once_with(**filtros)
+
+    @patch("agent._get_openai_client")
+    @patch("agent.buscar_titulos_spec")
+    def test_retorna_data_lancamento_formatada(self, mock_buscar, mock_get_client):
+        mock_buscar.return_value = [TITULO_FAKE]
+        mock_get_client.return_value = _mock_openai_client({"tipo": "movie"}, RESPOSTA_OPENAI_FAKE)
+
+        resultado = agent.recomendar("filmes de terror")
+
+        self.assertIn("data_lancamento", resultado[0])
+        self.assertEqual(resultado[0]["data_lancamento"], "maio de 1980")
 
 
 if __name__ == "__main__":

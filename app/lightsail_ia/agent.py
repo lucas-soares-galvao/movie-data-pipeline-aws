@@ -179,7 +179,7 @@ def buscar_titulos_spec(
 
     # Monta a query SQL com todos os filtros unidos por AND
     sql = f"""
-        SELECT title, media_type, year, genre_names, overview,
+        SELECT title, media_type, year, air_date, genre_names, overview,
                vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
@@ -307,6 +307,8 @@ def recomendar(preferencia: str) -> list[dict]:
                     "generos (lista de strings), sinopse, nota (float ou null), "
                     "poster_url (string ou null), backdrop_url (string ou null), motivo (por que recomenda este título), "
                     "duracao (string formatada ou null), "
+                    "data_lancamento (string com mês por extenso em português e ano, ex: 'Julho 2025', "
+                    "extraído do campo air_date no formato 'YYYY-MM-DD'; se air_date for null ou vazio, defina como null), "
                     "streaming_providers (string com nomes dos serviços separados por vírgula, ou null). "
                     "Para filmes, formate duracao a partir de runtime_minutes: ex. '1h 52min'. "
                     "Para séries, formate duracao combinando number_of_seasons, number_of_episodes "
