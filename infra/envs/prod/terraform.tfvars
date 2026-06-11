@@ -5,9 +5,7 @@
 env             = "prod"
 tmdb_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_PROD"
 
-# Instância Lightsail desabilitada — FilmBot não está em uso no momento.
-# Para reativar: mudar para true e fazer push na main.
-lightsail_enabled = false
+lightsail_enabled = true
 
 # Retencao de logs mais longa em prod para permitir investigar incidentes
 # que aparecem dias depois da execucao (ex.: anomalias em dados historicos).
