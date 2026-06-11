@@ -74,9 +74,11 @@ Um tópico SNS por componente do pipeline (Lambda, Glue ETL, Glue Details, Glue 
 
 ### Servidor — Lightsail (`lightsail_ia.tf`)
 
-- Instância `filmbot-{env}` para hospedar o app Streamlit
-- Portas abertas: 80 (HTTP), 443 (HTTPS), 22 (SSH — CIDR configurável)
-- User data para instalação inicial de dependências
+- Instância `filmbot-{env}` (`micro_3_0` — 1 vCPU, 1 GB RAM, $5/mês) para hospedar o app Streamlit
+- Portas abertas: 8501 (Streamlit) e 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`)
+- IP estático fixo (`filmbot-static-ip-{env}`) para URL estável
+- IAM user `filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
+- Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
 
 ### Permissões — IAM (`iam_roles.tf`, `iam_policies.tf`)
 

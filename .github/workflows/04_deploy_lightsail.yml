@@ -117,6 +117,7 @@ jobs:
 
           PUBLIC_IP=$(terraform output -raw lightsail_public_ip)
           echo "public_ip=${PUBLIC_IP}" >> $GITHUB_OUTPUT
+          echo "lightsail_enabled=$([[ -n "$PUBLIC_IP" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
 
           PRIVATE_KEY=$(terraform output -raw lightsail_private_key)
           echo "::add-mask::${PRIVATE_KEY}"
@@ -150,6 +151,7 @@ jobs:
       # pode estar ainda inicializando (especialmente no primeiro boot).
       # =========================================================================
       - name: Setup SSH key
+        if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ steps.tf.outputs.private_key }}" > ~/.ssh/filmbot_key
@@ -179,6 +181,7 @@ jobs:
       # - GLUE_DATABASE e SPEC_TABLE → Banco e tabela com os dados de filmes/séries
       # =========================================================================
       - name: Create .env file on instance
+        if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
           printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nOPENAI_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/athena-results/\nGLUE_DATABASE=db_unified_tmdb\nSPEC_TABLE=tb_discover_unified_tmdb\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
@@ -218,6 +221,7 @@ jobs:
       # remoto em um único bloco, sem precisar de múltiplos passos SSH.
       # =========================================================================
       - name: Deploy app
+        if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
           DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
           ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
@@ -265,4 +269,5 @@ jobs:
       # ser acessado no navegador. Porta 8501 é o padrão do Streamlit.
       # =========================================================================
       - name: Show app URL
+        if: steps.tf.outputs.lightsail_enabled == 'true'
         run: echo "FilmBot disponível em http://${{ steps.tf.outputs.public_ip }}:8501"
