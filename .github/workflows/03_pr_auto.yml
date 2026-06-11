@@ -1,86 +1,148 @@
-# Raciocinio: automatiza abertura e atualizacao de PR para reduzir operacao manual no fluxo de entrega.
+# =============================================================================
+# ARQUIVO: 03_pr_auto.yml — Criação Automática de Pull Requests
+# =============================================================================
+#
+# O QUE É UM PULL REQUEST (PR)?
+# Um Pull Request é uma solicitação para que o código de uma branch (ramo)
+# seja mesclado (merged) em outra branch. É o mecanismo central de revisão
+# de código em times de desenvolvimento.
+#
+# ANALOGIA: Imagine que o código é um livro escrito em colaboração.
+# Cada autor escreve em seu próprio rascunho (branch feature/*). Quando
+# termina, ele faz um "pedido de revisão" (PR) para que o editor (develop)
+# revise e incorpore o texto. O editor chefe (main/prod) só recebe texto
+# que já passou pela revisão do editor.
+#
+# FLUXO DE BRANCHES DESTE PROJETO:
+#   feature/* ──(PR automático)──► develop ──(PR automático)──► main
+#              [dev revisar]                  [aprovar para prod]
+#
+# POR QUE AUTOMATIZAR?
+# Abrir PRs manualmente a cada push é trabalhoso e esquecível.
+# Este workflow automatiza a abertura E atualização do PR, mantendo o
+# fluxo de entrega fluindo sem intervenção manual desnecessária.
+# =============================================================================
 
 name: Auto PR Pipeline (Reusable)
 
-# Define que este workflow é chamado por outro (workflow_call)
+# Este workflow é chamado por outros (workflow_call)
 on:
   workflow_call:
     inputs:
-      # Recebe explicitamente a branch de origem que deve ser promovida
+      # A branch de origem que precisa ser promovida
+      # Ex: "feature/adicionar-filtro-genero" ou "develop"
       branch_name:
         required: true
         type: string
 
-# Permissões necessárias para interagir com o repositório e criar PRs
+# Permissões necessárias para criar e editar PRs no GitHub
 permissions:
-  contents: write      # Necessário para editar conteúdos ou fazer merge
-  pull-requests: write # Necessário para criar e editar Pull Requests
+  contents: write       # Permite ler e escrever conteúdo do repositório
+  pull-requests: write  # Permite criar, editar e fechar Pull Requests
 
 jobs:
   promote:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Faz o checkout do código para ter acesso aos arquivos (como a pasta infra)
+      # =========================================================================
+      # PASSO 1: Baixar o Código
+      # =========================================================================
+      # Necessário para ter acesso aos arquivos do projeto (incluindo o Terraform)
+      # que será validado no passo seguinte antes de abrir o PR.
+      # =========================================================================
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Define a branch de destino a partir da branch de origem recebida pelo workflow
+      # =========================================================================
+      # PASSO 2: Determinar a Branch de Destino
+      # =========================================================================
+      # A lógica é simples e baseada na branch de origem:
+      #   - Se vier de "feature/*" → destino é "develop"
+      #   - Se vier de "develop"   → destino é "main" (produção)
+      #   - Qualquer outra branch  → erro (evita PRs acidentais)
+      #
+      # O resultado ("develop" ou "main") é salvo em "steps.branch.outputs.base"
+      # para ser usado nos próximos passos.
+      # =========================================================================
       - name: Define base branch
         id: branch
         run: |
           SOURCE_BRANCH="${{ inputs.branch_name }}"
 
-          # Verifica a branch de origem para decidir o próximo passo na esteira
           if [[ "$SOURCE_BRANCH" == feature/* ]]; then
-            echo "base=develop" >> $GITHUB_OUTPUT    # De Feature para Develop
+            echo "base=develop" >> $GITHUB_OUTPUT
           elif [[ "$SOURCE_BRANCH" == "develop" ]]; then
-            echo "base=main" >> $GITHUB_OUTPUT       # De Develop para Main (Produção)
+            echo "base=main" >> $GITHUB_OUTPUT
           else
-            # Caso a branch não siga o padrão, a pipeline interrompe para evitar PRs errados
             echo "Branch não suportada"
             exit 1
           fi
 
-      # 3. Prepara o ambiente Terraform para validação sintática
+      # =========================================================================
+      # PASSO 3: Instalar o Terraform (para validação)
+      # =========================================================================
+      # Antes de abrir o PR, garantimos que o código Terraform que está sendo
+      # promovido não tem erros de sintaxe. Isso evita que código quebrado
+      # chegue à branch de destino.
+      # =========================================================================
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      # 4. Valida os arquivos de infraestrutura antes de abrir o PR
-      # Isso garante que você não promova código com erros de configuração de nuvem
+      # =========================================================================
+      # PASSO 4: Validar o Código Terraform Antes do PR
+      # =========================================================================
+      # "terraform init -backend=false" inicializa o Terraform localmente
+      # sem precisar conectar ao S3/DynamoDB (backend remoto).
+      # Só precisa verificar a sintaxe dos arquivos .tf, não o estado real.
+      #
+      # "terraform validate" checa se os arquivos têm:
+      #   - Sintaxe correta (sem typos, colchetes faltando, etc.)
+      #   - Referências válidas entre recursos
+      #   - Tipos de variáveis corretos
+      # =========================================================================
       - name: Terraform Validate
         run: |
           cd infra
-          terraform init -backend=false # Inicializa sem precisar de acesso ao S3/Estado remoto
+          terraform init -backend=false
           terraform validate
 
-      # 5. Gerenciamento do Pull Request via CLI do GitHub (gh)
+      # =========================================================================
+      # PASSO 5: Criar ou Atualizar o Pull Request
+      # =========================================================================
+      # Usa o CLI oficial do GitHub ("gh") para gerenciar o PR.
+      #
+      # LÓGICA:
+      # 1. Busca se já existe um PR aberto desta branch para o destino:
+      #    - "gh pr list --base develop --head feature/X" lista PRs abertos
+      #    - "--json number --jq '.[0].number // ""'" extrai o número ou "" se vazio
+      #
+      # 2. Se NÃO existe PR → Cria um novo com título e descrição automáticos
+      # 3. Se JÁ existe PR → Apenas atualiza título/descrição (o código já
+      #    foi atualizado automaticamente pelo git push)
+      #
+      # GITHUB_TOKEN: Token de autenticação gerado automaticamente pelo GitHub
+      # Actions para cada execução. Tem escopo limitado ao repositório atual
+      # e expira quando o workflow termina — muito mais seguro que tokens pessoais.
+      # =========================================================================
       - name: Create or Update PR
         run: |
-          # Recupera as variáveis de destino (BASE) e origem (HEAD)
           BASE=${{ steps.branch.outputs.base }}
           HEAD=${{ inputs.branch_name }}
 
-          # Verifica se já existe um PR aberto entre essas duas branches
-          # O comando busca o número do PR; se não existir, retorna vazio ""
           PR_NUMBER=$(gh pr list --base "$BASE" --head "$HEAD" --json number --jq '.[0].number // ""')
 
           if [ -z "$PR_NUMBER" ]; then
-            # Se não houver PR aberto, cria um novo
             gh pr create \
               --base "$BASE" \
               --head "$HEAD" \
               --title "Auto PR: $HEAD → $BASE" \
               --body "PR criado automaticamente via Pipeline CI/CD."
           else
-            # Se já houver um PR, apenas atualiza o título e a descrição
-            # (O código no PR é atualizado automaticamente pelo push do Git)
             gh pr edit "$PR_NUMBER" \
               --title "Auto PR: $HEAD → $BASE" \
               --body "PR atualizado automaticamente via Pipeline CI/CD."
             echo "PR já existente: #$PR_NUMBER"
           fi
         env:
-          # O GITHUB_TOKEN é gerado automaticamente pelo GitHub para autenticar o comando 'gh'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          

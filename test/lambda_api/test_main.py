@@ -1,13 +1,37 @@
 """
 test_main.py — Testes unitários do handler principal da Lambda.
 
-As funções auxiliares (collect_and_save, trigger_glue_job, etc.) já foram
-testadas em test_utils.py. Aqui testamos apenas a lógica de orquestração
-do lambda_handler: se ele chama as funções certas, com os argumentos certos,
-na ordem certa.
+==============================================================================
+O QUE SÃO TESTES UNITÁRIOS?
+==============================================================================
+Testes unitários verificam uma única "unidade" de código (função ou método)
+de forma isolada — sem depender de sistemas externos (AWS, TMDB, banco de dados).
 
-Os decoradores @patch substituem as dependências externas por objetos simulados
-(Mocks), sem chamar AWS ou TMDB de verdade.
+ANALOGIA: Como testar o motor de um carro sem colocar o carro na rua.
+  Você mede RPM, temperatura, pressão — tudo em bancada controlada.
+  Se algo der errado, você sabe exatamente onde está o problema.
+
+POR QUE MOCKAR (SIMULAR) AS DEPENDÊNCIAS EXTERNAS?
+  - Velocidade: chamadas reais à AWS ou TMDB levam segundos; mocks são instantâneos
+  - Determinismo: APIs externas podem falhar ou retornar dados diferentes
+  - Custo: chamadas AWS custam dinheiro; testes rodam centenas de vezes
+  - Isolamento: um bug na TMDB não deve quebrar nossos testes locais
+
+COMO O @patch FUNCIONA?
+  @patch("main.get_tmdb_api_key") → antes do teste, substitui a função
+  get_tmdb_api_key em main.py por um MagicMock(). O Mock aceita qualquer
+  chamada e retorna o que configuramos (ex: mock_get_key.return_value = "chave").
+  Após o teste, a função original é restaurada automaticamente.
+
+O QUE ESTE ARQUIVO TESTA?
+  A lógica de orquestração do lambda_handler:
+  - Se ele chama as funções certas (collect_genre, collect_discover, etc.)
+  - Com os argumentos certos (content_type, folder, database, year)
+  - Na ordem correta (referências antes do discover)
+  - O comportamento dos flags skip_discover e only_discover
+
+As funções auxiliares (collect_and_save, trigger_glue_job, etc.) já foram
+testadas individualmente em test_utils.py.
 """
 
 import os
@@ -15,7 +39,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 # As variáveis de ambiente precisam existir ANTES de importar main,
-# pois main.py as lê no momento em que é carregado pelo Python.
+# pois main.py as lê no momento em que é carregado pelo Python:
+#   TMDB_SECRET_ARN = os.getenv("TMDB_SECRET_ARN")
+# Se a variável não existir, a importação falharia antes dos testes rodarem.
 os.environ.setdefault(
     "TMDB_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123:secret:tmdb-test"
 )
@@ -25,10 +51,14 @@ os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 import main  # noqa: E402  (importação após configuração de env vars)
 
 
-# ---------------------------------------------------------------------------
-# Eventos simulados do EventBridge — espelham o que o Terraform configura
-# ---------------------------------------------------------------------------
-
+# ==============================================================================
+# EVENTOS SIMULADOS DO EVENTBRIDGE
+# ==============================================================================
+# O EventBridge dispara a Lambda com um evento JSON que contém as informações
+# do pipeline: tipo (movie/tv), nomes dos bancos de dados e das tabelas.
+# Esses dicionários espelham exatamente o que o Terraform configura como
+# "input" nos targets do EventBridge (ver infra/eventbridge_lambda_api.tf).
+# Usamos os mesmos campos para garantir que os testes testam o comportamento real.
 EVENTO_MOVIE = {
     "type": "movie",
     "database": "tmdb_db",
@@ -50,17 +80,25 @@ EVENTO_TV = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Testes do lambda_handler
-# ---------------------------------------------------------------------------
+# ==============================================================================
+# TESTES DO lambda_handler
+# ==============================================================================
 
 
 class TestLambdaHandler(unittest.TestCase):
     def setUp(self):
-        """Objeto de contexto simulado (exigido pela assinatura do handler)."""
+        """
+        Cria o objeto de contexto simulado exigido pela assinatura do handler Lambda.
+
+        Todo handler Lambda recebe (event, context). O "context" contém informações
+        sobre a execução (tempo restante, nome da função, etc.). Nos testes, não
+        precisamos dessas informações, então usamos um MagicMock() genérico.
+        """
         self.mock_context = MagicMock()
 
-    # --- Resposta HTTP ---
+    # --- Testes de resposta HTTP (statusCode) ---
+    # Verificam que o lambda_handler sempre retorna a estrutura correta de resposta.
+    # Lambda HTTP precisa retornar {"statusCode": 200, "body": "..."} para o API Gateway.
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -438,7 +476,15 @@ class TestLambdaHandler(unittest.TestCase):
 
 
 class TestSkipDiscover(unittest.TestCase):
-    """Testa o flag skip_discover que pula o loop de discover e retorna após as referências."""
+    """
+    Testa o flag skip_discover que pula o loop de discover.
+
+    QUANDO USAR skip_discover:
+      O EventBridge tem dois schedules: um diário (only_discover) e um semanal (skip_discover).
+      skip_discover=True = "atualizo apenas os dados de referência (gêneros, idiomas, países,
+      plataformas de streaming), sem coletar o discover novamente esta semana".
+      Isso economiza chamadas à API TMDB em dias onde os dados de discover não mudam muito.
+    """
 
     def setUp(self):
         self.mock_context = MagicMock()
@@ -526,7 +572,14 @@ class TestSkipDiscover(unittest.TestCase):
 
 
 class TestOnlyDiscover(unittest.TestCase):
-    """Testa o flag only_discover que pula genre, configuration e watch_providers_ref."""
+    """
+    Testa o flag only_discover que pula as coletas de referência.
+
+    QUANDO USAR only_discover:
+      O EventBridge diário usa only_discover=True. Coleta apenas os filmes/séries
+      novos do discover sem recoletar gêneros, idiomas e países (que raramente
+      mudam) — tornando a execução mais rápida e barata.
+    """
 
     def setUp(self):
         self.mock_context = MagicMock()
