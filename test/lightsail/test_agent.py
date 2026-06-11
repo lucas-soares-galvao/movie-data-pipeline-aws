@@ -1,12 +1,59 @@
 """
 test_agent.py — Testes unitários do agente de recomendação de filmes.
 
-Testamos as duas funções públicas de agent.py:
-  - buscar_titulos_spec(): monta a query SQL e consulta o Athena
-  - recomendar(): orquestra os 3 passos (OpenAI → Athena → OpenAI)
+==============================================================================
+O QUE ESTE ARQUIVO TESTA?
+==============================================================================
+Testa as duas funções públicas de agent.py:
 
-Todas as dependências externas (OpenAI, Athena/awswrangler) são substituídas
-por Mocks para que os testes rodem sem credenciais ou conexão de rede.
+  buscar_titulos_spec()  → monta o SQL com os filtros recebidos e consulta
+                           o Athena, retornando lista de dicionários com
+                           os títulos encontrados na camada SPEC (Gold layer)
+
+  recomendar()           → orquestra os 3 passos do agente de IA:
+    PASSO 1: GPT-4o lê o texto do usuário e devolve filtros como JSON
+    PASSO 2: Athena é consultado com esses filtros
+    PASSO 3: GPT-4o formata os resultados como recomendações
+
+Todas as dependências externas (OpenAI, Athena/awswrangler, boto3) são
+substituídas por Mocks para que os testes rodem sem credenciais ou rede.
+
+==============================================================================
+HELPER _mock_openai_client()
+==============================================================================
+O GPT-4o é chamado DUAS VEZES em recomendar():
+  1ª chamada → retorna uma "tool_call" com os filtros SQL como JSON
+  2ª chamada → retorna o JSON final com as recomendações formatadas
+
+Para simular isso, _mock_openai_client() configura o mock com side_effect
+como uma lista [resposta_passo1, resposta_passo3] — o mock devolve o
+primeiro item na 1ª chamada e o segundo na 2ª chamada automaticamente.
+
+==============================================================================
+FIXTURES TITULOS_FAKE e RESPOSTA_OPENAI_FAKE
+==============================================================================
+TITULO_FAKE simula uma linha da tabela SPEC retornada pelo Athena.
+RESPOSTA_OPENAI_FAKE simula o JSON que o GPT-4o retorna no Passo 3,
+com a lista "titulos" contendo os dados formatados para o app Streamlit.
+
+==============================================================================
+CLASSES DE TESTE
+==============================================================================
+  TestBuscarTitulosSpec → testa a construção do SQL (filtros opcionais)
+    - sem resultados → retorna lista vazia
+    - com resultados → retorna lista de dicionários
+    - filtro tipo (movie/tv) → aparece no SQL como media_type = '...'
+    - filtro ano → aparece no SQL como year = '...'
+    - filtro gênero → aparece no SQL com o nome do gênero
+    - limite → aparece no SQL como LIMIT N
+
+  TestRecomendar → testa o fluxo completo dos 3 passos
+    - Athena sem resultados → retorna lista vazia (pula o Passo 3)
+    - OpenAI é chamado exatamente 2 vezes por requisição
+    - retorno é lista de dicionários com a estrutura de recomendações
+    - remove markdown code fences (```json...```) antes do json.loads
+    - OpenAI retornando string vazia → retorna lista vazia
+    - filtros extraídos no Passo 1 são passados para buscar_titulos_spec()
 """
 
 import json

@@ -49,6 +49,7 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "glue:GetTable",
           "glue:GetDatabase",
           "glue:GetPartitions",
+          "glue:GetPartition",
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",

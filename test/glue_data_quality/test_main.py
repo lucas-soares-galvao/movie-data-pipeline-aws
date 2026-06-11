@@ -1,4 +1,47 @@
-"""Testes de integração para app/glue_data_quality/main.py."""
+"""
+test_main.py — Testes de integração para app/glue_data_quality/main.py.
+
+==============================================================================
+O QUE ESTE ARQUIVO TESTA?
+==============================================================================
+Testa a função main() do Glue Data Quality, verificando se cada etapa
+do pipeline é chamada com os argumentos corretos.
+
+ETAPAS DO PIPELINE TESTADAS:
+  1. SparkContext.getOrCreate()    → inicializa o motor Spark
+  2. GlueContext(sc)               → cria o contexto Glue passando o Spark
+  3. get_parameters_glue()         → lê argumentos do job (TABLE_NAME, DATABASE, etc.)
+  4. get_ruleset(table_name)       → busca as regras DQDL para a tabela
+  5. read_table_from_catalog(...)  → lê a tabela do Glue Catalog como DynamicFrame
+  6. evaluate_data_quality(...)    → avalia as regras e retorna DataFrame de resultados
+  7. write_results_to_s3(...)      → salva resultados na tabela tb_data_quality_tmdb
+  8. notify_failed_outcomes(...)   → envia email via SNS se alguma regra falhou
+
+POR QUE SparkContext E GlueContext PRECISAM DE MOCKS ESPECIAIS?
+  O conftest.py registra SparkContext=None e GlueContext=None como stubs,
+  porque o Spark não está disponível localmente. Mas main() chama:
+    sc = SparkContext.getOrCreate()
+    glue_context = GlueContext(sc)
+  Se fossem None, ".getOrCreate()" falharia com "NoneType has no attribute...".
+  Por isso, _run_main() faz patch.object(m, "SparkContext") e "GlueContext",
+  substituindo os None do conftest por MagicMock() que suporta qualquer chamada.
+
+HELPER _run_main():
+  Função de conveniência que executa main() com todos os colaboradores
+  simulados. Retorna um dicionário com todos os mocks para que cada teste
+  possa inspecionar as chamadas realizadas de forma independente.
+
+  Por que retornar um dict ao invés de usar fixtures?
+    Permite que cada teste passe argumentos diferentes (args, ruleset,
+    dynamic_frame, df_results) sem precisar recriar os mocks manualmente.
+
+CLASSES DE TESTE:
+  TestContextCreation            → criação do Spark e GlueContext
+  TestGetRulesetCall             → chamada de get_ruleset com TABLE_NAME
+  TestReadTableFromCatalogCall   → chamada de read_table com DATABASE, TABLE_NAME, YEAR
+  TestEvaluateDataQualityCall    → chamada de evaluate com todos os argumentos
+  TestWriteResultsToS3Call       → chamada de write com DATABASE_RESULTS (não DATABASE)
+"""
 
 from unittest.mock import MagicMock, patch
 

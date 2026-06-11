@@ -1,6 +1,29 @@
 """
 test_utils.py — Testes unitários das funções auxiliares da Lambda.
 
+==============================================================================
+O QUE ESTE ARQUIVO TESTA?
+==============================================================================
+Cada função utilitária de app/lambda_api/src/utils.py é testada aqui de forma
+isolada. Cobrindo:
+
+  _tmdb_get           → retry com backoff: 429, 500, ConnectionError, esgotamento
+  get_tmdb_api_key    → busca a chave no Secrets Manager corretamente
+  fetch_tmdb_data     → URL correta para movie vs tv, parâmetros de ano
+  save_to_s3          → bucket, key, content-type corretos no S3
+  trigger_glue_job    → argumentos --KEY corretos, com/sem year, com/sem end_year
+  fetch_tmdb_reference → endpoint correto, params extras
+  collect_genre_data   → endpoint /genre/movie/list vs /genre/tv/list
+  collect_configuration_data → /configuration/languages vs /configuration/countries
+  collect_discover_data → paginação, formato do S3 key
+  collect_watch_providers_ref → endpoint, watch_region=BR, campos extraídos
+
+PADRÃO DOS TESTES:
+  - @patch("src.utils.requests.get") → substitui a chamada HTTP por um Mock
+  - @patch("src.utils.boto3") → substitui o cliente AWS por um Mock
+  - MagicMock().return_value = ... → configura o que o mock retorna
+  - assertEqual / assertIn / assertNotIn → verifica o resultado
+
 Cada teste isola uma única função usando Mock, simulando as chamadas
 externas (AWS, TMDB) sem fazer requisições reais.
 """

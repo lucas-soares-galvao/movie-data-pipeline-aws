@@ -1,4 +1,51 @@
-"""Testes unitários para app/glue_details/src/utils.py."""
+"""
+test_utils.py — Testes unitários para app/glue_details/src/utils.py.
+
+==============================================================================
+O QUE ESTE ARQUIVO TESTA?
+==============================================================================
+Testa cada função utilitária do Glue Details de forma isolada, substituindo
+chamadas à API TMDB, ao Athena e ao S3 por mocks.
+
+FUNÇÕES TESTADAS:
+  _tmdb_get()                      → requisição HTTP com retry exponencial:
+                                      - sucesso na 1ª tentativa (sem sleep)
+                                      - retry em status transitórios (500, 429)
+                                      - respeita o cabeçalho Retry-After do 429
+                                      - retry em ConnectionError
+                                      - levanta exceção após 3 tentativas falhas
+
+  fetch_ids_from_sot()             → consulta Athena para buscar IDs de filmes/séries
+                                      da tabela de discover (SOT layer)
+
+  fetch_tmdb_details()             → chama o endpoint /movie/{id} ou /tv/{id}
+
+  collect_and_write_details()      → busca detalhes para todos os IDs em paralelo,
+                                      salva como Parquet no S3 particionado por ano.
+                                      Testes incluem: falha de ID individual,
+                                      todos os IDs falham, partição de ano
+
+  fetch_tmdb_watch_providers()     → chama /movie/{id}/watch/providers ou /tv/{id}/...
+                                      extrai apenas a seção "BR" (Brasil)
+
+  _parse_watch_providers()         → converte dict BR em lista de registros,
+                                      separa por tipo (flatrate/rent/buy),
+                                      ignora entradas sem nome
+
+  collect_and_write_watch_providers() → coleta providers para todos os IDs,
+                                        salva como Parquet particionado por ano
+
+  trigger_data_quality()           → dispara job DQ via boto3 com TABLE, DB e YEAR
+  trigger_agg()                    → dispara job AGG via boto3
+
+  get_resolved_option() / get_parameters_glue() / get_tmdb_api_key()
+                                   → leitura de argumentos do Glue e segredos
+                                      do Secrets Manager
+
+HELPER _make_response():
+  Cria uma resposta HTTP simulada com status_code, json() e headers
+  configuráveis. Reutilizado em todos os testes de _tmdb_get.
+"""
 
 import pandas as pd
 import pytest
