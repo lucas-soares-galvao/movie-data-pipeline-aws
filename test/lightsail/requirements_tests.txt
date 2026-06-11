@@ -4,6 +4,4 @@ pytest
 pytest-cov
 openai
 boto3
-awswrangler
 python-dotenv
-pandas
