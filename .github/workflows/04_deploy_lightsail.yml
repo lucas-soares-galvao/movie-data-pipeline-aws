@@ -262,7 +262,10 @@ jobs:
               sudo systemctl restart filmbot
             else
               echo "==> Primeiro deploy (branch: $BRANCH)..."
-              sudo git clone -b "$BRANCH" https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /opt/filmbot
+              sudo git clone -b "$BRANCH" https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /tmp/filmbot_new
+              sudo cp -rn /tmp/filmbot_new/. /opt/filmbot/
+              sudo rm -rf /tmp/filmbot_new
+              sudo git config --global --add safe.directory /opt/filmbot
               sudo chown -R filmbot:filmbot /opt/filmbot
               sudo chown filmbot:filmbot /opt/filmbot/app/lightsail_ia/.env
               cd /opt/filmbot/app/lightsail_ia
