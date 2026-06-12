@@ -14,6 +14,7 @@ import boto3
 import pandas as pd
 import requests
 from awsglue.utils import getResolvedOptions
+from deep_translator import GoogleTranslator
 from requests.exceptions import ConnectionError, Timeout
 
 logger = logging.getLogger()
@@ -198,7 +199,8 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     return _tmdb_get(url, params)
 
 
-_TMDB_MAX_WORKERS = 20  # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
+_TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
+_TRANSLATE_MAX_WORKERS = 10  # traduções EN→PT paralelas via Google Translate
 
 
 def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
@@ -208,13 +210,14 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
         # Extrai o ano dos primeiros 4 caracteres da data no formato "YYYY-MM-DD"
         year = release_date[:4] if release_date else None
         return {
-            "id":               detalhe.get("id"),
-            "runtime":          detalhe.get("runtime"),
-            "title_en":         detalhe.get("title"),
-            "overview_en":      detalhe.get("overview"),
-            "poster_path_en":   detalhe.get("poster_path"),   # "/abc123.jpg" (sem URL base)
-            "backdrop_path_en": detalhe.get("backdrop_path"),
-            "year":             year,                          # usado como partição no S3
+            "id":                detalhe.get("id"),
+            "runtime":           detalhe.get("runtime"),
+            "title_en":          detalhe.get("title"),
+            "overview_en":       detalhe.get("overview"),
+            "poster_path_en":    detalhe.get("poster_path"),   # "/abc123.jpg" (sem URL base)
+            "backdrop_path_en":  detalhe.get("backdrop_path"),
+            "original_language": detalhe.get("original_language"),  # usado para filtrar tradução
+            "year":              year,                               # usado como partição no S3
         }
     else:  # tv
         first_air_date = detalhe.get("first_air_date") or ""
@@ -230,8 +233,45 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "overview_en":        detalhe.get("overview"),
             "poster_path_en":     detalhe.get("poster_path"),
             "backdrop_path_en":   detalhe.get("backdrop_path"),
+            "original_language":  detalhe.get("original_language"),
             "year":               year,
         }
+
+
+def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona colunas title_pt e overview_pt ao DataFrame de detalhes.
+
+    Traduz apenas registros com original_language='en' (EN→PT via Google Translate).
+    Para outros idiomas, title_pt e overview_pt ficam nulos — o glue_agg usará o título
+    original do discover nesses casos.
+    """
+    df["title_pt"] = None
+    df["overview_pt"] = None
+
+    mask = df["original_language"] == "en"
+    if not mask.any():
+        return df
+
+    def _translate(texto: str) -> str:
+        if not texto:
+            return ""
+        try:
+            return GoogleTranslator(source="en", target="pt").translate(texto)
+        except Exception as exc:
+            logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
+            return texto
+
+    total = mask.sum()
+    logger.info(f"Traduzindo {total} registros com original_language='en' ({_TRANSLATE_MAX_WORKERS} workers).")
+
+    for col_en, col_pt in (("title_en", "title_pt"), ("overview_en", "overview_pt")):
+        valores = df.loc[mask, col_en].fillna("").tolist()
+        with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+            traduzidos = list(executor.map(_translate, valores))
+        df.loc[mask, col_pt] = traduzidos
+
+    return df
 
 
 def collect_and_write_details(
@@ -283,6 +323,10 @@ def collect_and_write_details(
     # Remove linhas sem year — registros sem data de lançamento não podem ser particionados
     # e causariam erro ao tentar criar a pasta "year=None/" no S3
     df = df.dropna(subset=["year"])
+
+    df = _adicionar_traducoes_pt(df)
+    # original_language foi usado apenas para filtrar a tradução; já existe em tb_discover
+    df = df.drop(columns=["original_language"])
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(

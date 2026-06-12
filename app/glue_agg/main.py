@@ -9,7 +9,6 @@ import sys
 from src.utils import (
     get_parameters_glue,
     run_athena_query,
-    traduzir_colunas_en,
     write_parquet_to_spec,
 )
 
@@ -43,9 +42,6 @@ def main() -> None:
         db_unified=db_unified,
         s3_bucket_temp=s3_bucket_temp,
     )
-
-    # Tradução feita aqui (não no app) para manter o Streamlit rápido.
-    df = traduzir_colunas_en(df)
 
     write_parquet_to_spec(
         df=df,

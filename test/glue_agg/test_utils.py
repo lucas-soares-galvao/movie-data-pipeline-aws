@@ -1,8 +1,8 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 
-from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, traduzir_colunas_en, write_parquet_to_spec
+from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, write_parquet_to_spec
 
 
 class TestRunAthenaQuery:
@@ -64,79 +64,6 @@ class TestRunAthenaQuery:
             assert "tb_watch_providers_tv_tmdb" in sql
             assert "streaming_providers" in sql
 
-
-class TestTraduzirColunasEn:
-    def _make_df(self, rows):
-        return pd.DataFrame(rows)
-
-    def test_traduz_title_e_overview_quando_original_language_en(self):
-        df = self._make_df([
-            {"original_language": "en", "title": "The Matrix", "overview": "A hacker discovers reality."},
-            {"original_language": "pt", "title": "Cidade de Deus", "overview": "Um jovem no Rio de Janeiro."},
-        ])
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda texto: f"[PT] {texto}"
-
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
-            result = traduzir_colunas_en(df)
-
-        assert result.loc[0, "title"] == "[PT] The Matrix"
-        assert result.loc[0, "overview"] == "[PT] A hacker discovers reality."
-        assert result.loc[1, "title"] == "Cidade de Deus"
-        assert result.loc[1, "overview"] == "Um jovem no Rio de Janeiro."
-
-    def test_retorna_df_inalterado_quando_sem_registros_en(self):
-        df = self._make_df([
-            {"original_language": "pt", "title": "Tropa de Elite", "overview": "Descricao."},
-            {"original_language": "es", "title": "Roma", "overview": "Descripcion."},
-        ])
-        with patch("src.utils.GoogleTranslator") as mock_cls:
-            result = traduzir_colunas_en(df)
-            mock_cls.assert_not_called()
-
-        pd.testing.assert_frame_equal(result, df)
-
-    def test_nao_altera_original_title(self):
-        df = self._make_df([
-            {
-                "original_language": "en",
-                "title": "Inception",
-                "original_title": "Inception",
-                "overview": "A thief enters dreams.",
-            }
-        ])
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda texto: f"[PT] {texto}"
-
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
-            result = traduzir_colunas_en(df)
-
-        assert result.loc[0, "original_title"] == "Inception"
-
-    def test_fallback_mantém_texto_original_em_caso_de_erro(self):
-        df = self._make_df([
-            {"original_language": "en", "title": "Dune", "overview": "Desert planet."},
-        ])
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = Exception("timeout")
-
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
-            result = traduzir_colunas_en(df)
-
-        assert result.loc[0, "title"] == "Dune"
-        assert result.loc[0, "overview"] == "Desert planet."
-
-    def test_overview_vazio_nao_chama_translate(self):
-        df = self._make_df([
-            {"original_language": "en", "title": "Unknown", "overview": ""},
-        ])
-        mock_translator = MagicMock()
-        mock_translator.translate.return_value = "algo"
-
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
-            result = traduzir_colunas_en(df)
-
-        assert result.loc[0, "overview"] == ""
 
 
 class TestWriteParquetToSpec:

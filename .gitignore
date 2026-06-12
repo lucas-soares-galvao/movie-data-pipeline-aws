@@ -53,3 +53,4 @@ infra/.glue_data_quality_build/
 .DS_Store
 Thumbs.db
 scripts/backfill_historico.py
+scripts/backfill_traducao.py

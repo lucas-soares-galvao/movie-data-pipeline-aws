@@ -160,6 +160,7 @@ class TestCollectAndWriteDetails:
             "overview": "Sinopse A",
             "poster_path": "/p.jpg",
             "backdrop_path": "/b.jpg",
+            "original_language": "en",
         }
 
     def _mock_tv_response(self, item_id: int) -> dict:
@@ -173,14 +174,18 @@ class TestCollectAndWriteDetails:
             "overview": "Sinopse A",
             "poster_path": "/p.jpg",
             "backdrop_path": "/b.jpg",
+            "original_language": "en",
         }
 
     def test_movie_writes_runtime_and_year(self):
         ids = [1, 2]
         responses = [self._mock_movie_response(i) for i in ids]
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", ids, "movie", "sot", "tb_details_movie_tmdb", "db")
@@ -190,18 +195,25 @@ class TestCollectAndWriteDetails:
             assert "runtime" in df_written.columns
             assert "year" in df_written.columns
             assert "title_en" in df_written.columns
+            assert "title_pt" in df_written.columns
             assert "overview_en" in df_written.columns
+            assert "overview_pt" in df_written.columns
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
+            assert "original_language" not in df_written.columns
             assert df_written.iloc[0]["title_en"] == "Filme A"
+            assert df_written.iloc[0]["title_pt"] == "[PT] Filme A"
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
         ids = [10, 20]
         responses = [self._mock_tv_response(i) for i in ids]
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", ids, "tv", "sot", "tb_details_tv_tmdb", "db")
@@ -211,10 +223,14 @@ class TestCollectAndWriteDetails:
             assert "number_of_episodes" in df_written.columns
             assert "episode_run_time" in df_written.columns
             assert "title_en" in df_written.columns
+            assert "title_pt" in df_written.columns
             assert "overview_en" in df_written.columns
+            assert "overview_pt" in df_written.columns
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
+            assert "original_language" not in df_written.columns
             assert df_written.iloc[0]["title_en"] == "Série A"
+            assert df_written.iloc[0]["title_pt"] == "[PT] Série A"
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib
@@ -247,9 +263,12 @@ class TestCollectAndWriteDetails:
 
     def test_writes_with_year_partition(self):
         responses = [self._mock_movie_response(1)]
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: t
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
