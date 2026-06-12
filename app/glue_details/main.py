@@ -54,7 +54,7 @@ def main() -> None:
     table_watch_providers = table_watch_providers_movie if media_type == "movie" else table_watch_providers_tv
 
     # Busca a chave uma vez antes do loop — Secrets Manager tem custo por chamada.
-    logger.info(f"Buscando chave de API do TMDB no Secrets Manager...")
+    logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_tmdb_api_key(secret_arn)
 
     # ── DETAILS ───────────────────────────────────────────────────────────────
@@ -127,10 +127,10 @@ def main() -> None:
 
     # tv + end_year é o último run do ciclo; só neste ponto todos os JOINs do AGG são possíveis.
     if media_type == "tv" and year == end_year:
-        logger.info(f"Último run do ciclo (tv + end_year) — acionando Glue AGG...")
+        logger.info("Último run do ciclo (tv + end_year) — acionando Glue AGG...")
         trigger_agg(agg_job_name=agg_job_name)
 
-    logger.info(f"Job Glue Details finalizado com sucesso!")
+    logger.info("Job Glue Details finalizado com sucesso!")
 
 
 if __name__ == "__main__":
