@@ -12,15 +12,13 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 
 1. Lê os argumentos do job (media_type, year, end_year, databases, nomes dos buckets e jobs)
 2. Busca a chave da API TMDB no Secrets Manager
-3. Consulta o Athena para obter a lista de IDs únicos da tabela `discover` para o ano especificado (deduplicados e filtrados de IDs inválidos)
-4. Para cada ID, faz duas chamadas paralelas à API TMDB (via `ThreadPoolExecutor`):
-   - `/movie/{id}` ou `/tv/{id}` → retorna `runtime` (filmes) ou `number_of_seasons` + `number_of_episodes` (séries)
-   - `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` → retorna plataformas de streaming no Brasil
-5. Escreve os resultados como Parquet na SOT:
-   - Tabela `tb_details_{movie|tv}_tmdb`
-   - Tabela `tb_watch_providers_{movie|tv}_tmdb`
-6. Aciona o Glue Data Quality para cada tabela gravada
-7. **Somente na última execução** (quando `media_type="tv"` e `year == end_year`): aciona o Glue AGG para unificação final
+3. Consulta o Athena para obter a lista de todos os IDs únicos da tabela `discover` para o ano especificado
+4. **Delta de detalhes (refresh mensal):** consulta a tabela `tb_details_*` e exclui IDs já processados no mês atual. Somente os IDs novos ou de meses anteriores são buscados na API
+5. Para cada ID novo, chama `/movie/{id}` ou `/tv/{id}` (via `ThreadPoolExecutor`) e grava em `tb_details_{movie|tv}_tmdb`
+6. **Watch providers (refresh mensal):** consulta a tabela `tb_watch_providers_*` e seleciona IDs sem registro, com data nula ou atualizados antes do mês atual
+7. Para cada ID stale, chama `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` e grava em `tb_watch_providers_{movie|tv}_tmdb`
+8. Aciona o Glue Data Quality para cada tabela gravada
+9. **Somente na última execução** (quando `media_type="tv"` e `year == end_year`): aciona o Glue AGG para unificação final
 
 Chamadas à API usam retry com backoff exponencial e jitter para lidar com rate limits do TMDB.
 
@@ -43,10 +41,12 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
 | `get_tmdb_api_key(secret_arn)` | Busca a chave da API no Secrets Manager |
-| `fetch_ids_from_sot(media_type, year, database, s3_bucket_temp)` | Consulta Athena para listar IDs únicos do discover |
+| `fetch_ids_from_sot(...)` | Consulta Athena para listar todos os IDs únicos do discover |
+| `fetch_existing_ids_from_details(...)` | Retorna IDs já processados no mês atual — usados para calcular o delta de detalhes |
+| `fetch_ids_stale_watch_providers(...)` | Retorna IDs sem watch providers ou atualizados antes do mês atual |
 | `_tmdb_get(url, api_key)` | GET com retry/backoff para lidar com rate limits |
-| `collect_and_write_details(ids, media_type, api_key, bucket, database)` | Faz chamadas paralelas e grava tabela de detalhes |
-| `collect_and_write_watch_providers(ids, media_type, api_key, bucket, database)` | Faz chamadas paralelas e grava tabela de watch providers |
+| `collect_and_write_details(ids, ...)` | Faz chamadas paralelas e grava tabela de detalhes |
+| `collect_and_write_watch_providers(ids, ...)` | Faz chamadas paralelas e grava tabela de watch providers |
 | `trigger_data_quality(...)` | Aciona o job de qualidade de dados |
 | `trigger_agg(...)` | Aciona o Glue AGG na última execução |
 

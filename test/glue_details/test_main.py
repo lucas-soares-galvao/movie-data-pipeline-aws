@@ -23,12 +23,29 @@ _BASE = {
 _IDS = [1, 2]
 
 
+def _base_patches(args=None, existing_ids=None, stale_ids=None):
+    """Retorna context managers base para todos os testes de main()."""
+    return (
+        patch.object(m, "get_parameters_glue", return_value=args or _BASE),
+        patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+        patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+        patch.object(m, "fetch_existing_ids_from_details", return_value=existing_ids if existing_ids is not None else []),
+        patch.object(m, "fetch_ids_stale_watch_providers", return_value=stale_ids if stale_ids is not None else _IDS),
+        patch.object(m, "collect_and_write_details"),
+        patch.object(m, "collect_and_write_watch_providers"),
+        patch.object(m, "trigger_data_quality"),
+        patch.object(m, "trigger_agg"),
+    )
+
+
 class TestMain:
     def test_fetches_api_key_from_secrets_manager(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123") as mock_key,
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -44,6 +61,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -63,6 +82,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -81,6 +102,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details") as mock_collect,
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -90,7 +113,7 @@ class TestMain:
             assert mock_collect.call_count == 1
             call = mock_collect.call_args
             assert call.kwargs["content_type"] == "movie"
-            assert call.kwargs["ids"] == _IDS
+            assert set(call.kwargs["ids"]) == set(_IDS)
             assert call.kwargs["table_name"] == "tb_details_movie_tmdb"
 
     def test_collect_watch_providers_called_with_correct_args_for_movie(self):
@@ -98,6 +121,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers") as mock_wp,
             patch.object(m, "trigger_data_quality"),
@@ -117,6 +142,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers") as mock_wp,
             patch.object(m, "trigger_data_quality"),
@@ -134,6 +161,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality") as mock_dq,
@@ -160,6 +189,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details") as mock_collect,
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -169,7 +200,7 @@ class TestMain:
             assert mock_collect.call_count == 1
             call = mock_collect.call_args
             assert call.kwargs["content_type"] == "tv"
-            assert call.kwargs["ids"] == _IDS
+            assert set(call.kwargs["ids"]) == set(_IDS)
             assert call.kwargs["table_name"] == "tb_details_tv_tmdb"
 
     def test_triggers_agg_when_tv_and_last_year(self):
@@ -178,6 +209,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -191,6 +224,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -205,6 +240,8 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_tmdb_api_key", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
             patch.object(m, "trigger_data_quality"),
@@ -212,3 +249,33 @@ class TestMain:
         ):
             m.main()
             mock_agg.assert_not_called()
+
+    def test_skip_collect_details_when_no_new_ids(self):
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=_IDS),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
+            patch.object(m, "collect_and_write_details") as mock_collect,
+            patch.object(m, "collect_and_write_watch_providers"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_collect.assert_not_called()
+
+    def test_skip_collect_watch_providers_when_no_stale_ids(self):
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=[]),
+            patch.object(m, "collect_and_write_details"),
+            patch.object(m, "collect_and_write_watch_providers") as mock_wp,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_agg"),
+        ):
+            m.main()
+            mock_wp.assert_not_called()

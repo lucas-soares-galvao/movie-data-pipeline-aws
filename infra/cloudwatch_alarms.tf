@@ -65,7 +65,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
       period      = 60
       stat        = "Sum"
       dimensions = {
-        RuleName = aws_cloudwatch_event_rule.lambda_api_movie_weekly.name
+        RuleName = aws_cloudwatch_event_rule.lambda_api_movie_monthly.name
       }
     }
   }
@@ -80,7 +80,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
       period      = 60
       stat        = "Sum"
       dimensions = {
-        RuleName = aws_cloudwatch_event_rule.lambda_api_tv_weekly.name
+        RuleName = aws_cloudwatch_event_rule.lambda_api_tv_monthly.name
       }
     }
   }

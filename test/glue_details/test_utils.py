@@ -499,3 +499,106 @@ class TestGetTmdbApiKey:
         with patch("src.utils.boto3.client", return_value=mock_client):
             key = u.get_tmdb_api_key("arn:aws:secretsmanager:us-east-1:1:secret:tmdb")
         assert key == "my-secret-key"
+
+
+# ---------------------------------------------------------------------------
+# fetch_existing_ids_from_details
+# ---------------------------------------------------------------------------
+
+
+class TestFetchExistingIdsFromDetails:
+    def _run(self, year="2025", ids=None, table="tb_details_movie_tmdb", raise_exc=False):
+        if raise_exc:
+            with patch("src.utils.wr.athena.read_sql_query", side_effect=Exception("err")):
+                return u.fetch_existing_ids_from_details(
+                    database="db_tmdb",
+                    table_details=table,
+                    s3_bucket_temp="my-temp",
+                    year=year,
+                ), None
+        df = pd.DataFrame({"id": ids if ids is not None else [1, 2]})
+        with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
+            result = u.fetch_existing_ids_from_details(
+                database="db_tmdb",
+                table_details=table,
+                s3_bucket_temp="my-temp",
+                year=year,
+            )
+        return result, mock_athena
+
+    def test_sql_filtra_pelo_ano(self):
+        _, mock_athena = self._run(year="2025")
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "WHERE year = '2025'" in sql
+
+    def test_sql_filtra_mes_atual(self):
+        _, mock_athena = self._run()
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "date_trunc('month', current_date)" in sql
+
+    def test_retorna_lista_de_ids(self):
+        result, _ = self._run(ids=[10, 20, 30])
+        assert result == [10, 20, 30]
+
+    def test_retorna_lista_vazia_em_erro(self):
+        result, _ = self._run(raise_exc=True)
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_ids_stale_watch_providers
+# ---------------------------------------------------------------------------
+
+
+class TestFetchIdsStaleWatchProviders:
+    def _run(
+        self,
+        year="2025",
+        ids=None,
+        table_discover="tb_discover_movie_tmdb",
+        table_wp="tb_watch_providers_movie_tmdb",
+        raise_exc=False,
+    ):
+        if raise_exc:
+            with patch("src.utils.wr.athena.read_sql_query", side_effect=Exception("err")):
+                return u.fetch_ids_stale_watch_providers(
+                    database="db_tmdb",
+                    table_discover=table_discover,
+                    table_watch_providers=table_wp,
+                    s3_bucket_temp="my-temp",
+                    year=year,
+                ), None
+        df = pd.DataFrame({"id": ids if ids is not None else [1, 2]})
+        with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
+            result = u.fetch_ids_stale_watch_providers(
+                database="db_tmdb",
+                table_discover=table_discover,
+                table_watch_providers=table_wp,
+                s3_bucket_temp="my-temp",
+                year=year,
+            )
+        return result, mock_athena
+
+    def test_sql_filtra_pelo_ano(self):
+        _, mock_athena = self._run(year="2025")
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "d.year = '2025'" in sql
+
+    def test_sql_inclui_condicao_mensal(self):
+        _, mock_athena = self._run()
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "date_trunc('month', current_date)" in sql
+
+    def test_sql_inclui_join_com_watch_providers(self):
+        _, mock_athena = self._run(table_wp="tb_watch_providers_movie_tmdb")
+        sql = mock_athena.call_args.kwargs["sql"]
+        assert "tb_watch_providers_movie_tmdb" in sql
+        assert "LEFT JOIN" in sql.upper()
+
+    def test_retorna_lista_de_ids(self):
+        result, _ = self._run(ids=[5, 10])
+        assert result == [5, 10]
+
+    def test_retorna_lista_vazia_em_erro(self):
+        result, _ = self._run(raise_exc=True)
+        assert result == []

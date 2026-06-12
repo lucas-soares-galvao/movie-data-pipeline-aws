@@ -58,7 +58,7 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 2 regras de schedule:
 - **Diária** (`only_discover=True`): coleta apenas filmes/séries novos do discover
-- **Semanal** (`skip_discover=True`): atualiza apenas dados de referência (gêneros, idiomas, plataformas)
+- **Mensal (dia 1)** (`skip_discover=True`): atualiza apenas dados de referência (gêneros, idiomas, plataformas)
 
 ### Notificações — SNS (`sns_topics.tf`)
 

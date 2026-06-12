@@ -123,7 +123,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "temporary_bucket_lifecycle" {
     }
 
     expiration {
-      days = 1  # Deleta automaticamente após 1 dia
+      days = 1 # Deleta automaticamente após 1 dia
     }
   }
 }
