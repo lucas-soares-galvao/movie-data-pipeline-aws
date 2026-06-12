@@ -1,4 +1,6 @@
-"""Testes de integração para app/glue_data_quality/main.py."""
+# SparkContext=None e GlueContext=None são stubs do conftest. _run_main() os
+# substitui por MagicMock para que .getOrCreate() e GlueContext(sc) não falhem
+# com "NoneType has no attribute...".
 
 from unittest.mock import MagicMock, patch
 
@@ -8,8 +10,10 @@ import main as m
 _BASE_ARGS = {
     "TABLE_NAME": "tb_genre_movie_tmdb",
     "DATABASE": "db_tmdb",
+    "DATABASE_RESULTS": "db_unified_tmdb",
     "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
     "ENVIRONMENT": "dev",
+    "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
 }
 
 
@@ -27,8 +31,6 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
     sc_mock = MagicMock()
     glue_context_mock = MagicMock()
 
-    # SparkContext e GlueContext são None no conftest (stubs) — precisam ser
-    # substituídos por MagicMock para que .getOrCreate() e GlueContext(sc) funcionem.
     with (
         patch.object(m, "SparkContext") as mock_sc_cls,
         patch.object(m, "GlueContext") as mock_gc_cls,
@@ -39,6 +41,7 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
         ) as mock_read,
         patch.object(m, "evaluate_data_quality", return_value=df_results) as mock_eval,
         patch.object(m, "write_results_to_s3") as mock_write,
+        patch.object(m, "notify_failed_outcomes"),
     ):
         mock_sc_cls.getOrCreate.return_value = sc_mock
         mock_gc_cls.return_value = glue_context_mock
@@ -57,11 +60,6 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
     }
 
 
-# ---------------------------------------------------------------------------
-# Criação dos contextos Spark / Glue
-# ---------------------------------------------------------------------------
-
-
 class TestContextCreation:
     def test_creates_spark_context(self):
         """SparkContext.getOrCreate() deve ser chamado para iniciar o Spark."""
@@ -72,11 +70,6 @@ class TestContextCreation:
         """GlueContext deve ser criado passando o SparkContext como argumento."""
         mocks = _run_main()
         mocks["mock_gc_cls"].assert_called_once_with(mocks["sc_mock"])
-
-
-# ---------------------------------------------------------------------------
-# Chamada de get_ruleset
-# ---------------------------------------------------------------------------
 
 
 class TestGetRulesetCall:
@@ -90,11 +83,6 @@ class TestGetRulesetCall:
         args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb"}
         mocks = _run_main(args=args)
         mocks["mock_ruleset"].assert_called_once_with("tb_discover_movie_tmdb")
-
-
-# ---------------------------------------------------------------------------
-# Chamada de read_table_from_catalog
-# ---------------------------------------------------------------------------
 
 
 class TestReadTableFromCatalogCall:
@@ -131,11 +119,6 @@ class TestReadTableFromCatalogCall:
         mocks = _run_main(args=args)
         _, _, _, year = mocks["mock_read"].call_args[0]
         assert year == "2002"
-
-
-# ---------------------------------------------------------------------------
-# Chamada de evaluate_data_quality
-# ---------------------------------------------------------------------------
 
 
 class TestEvaluateDataQualityCall:
@@ -184,11 +167,6 @@ class TestEvaluateDataQualityCall:
         assert year_arg == "2002"
 
 
-# ---------------------------------------------------------------------------
-# Chamada de write_results_to_s3
-# ---------------------------------------------------------------------------
-
-
 class TestWriteResultsToS3Call:
     def test_calls_write_with_df_results(self):
         """write_results_to_s3 deve receber o DataFrame retornado por evaluate."""
@@ -214,12 +192,18 @@ class TestWriteResultsToS3Call:
         assert table_arg == "tb_genre_movie_tmdb"
 
     def test_calls_write_with_database(self):
-        """write_results_to_s3 deve receber o DATABASE dos args para registrar
-        a partição no Glue Catalog via AWS Wrangler."""
-        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
+        """write_results_to_s3 deve receber o DATABASE_RESULTS dos args para registrar
+        tb_data_quality_tmdb sempre no banco unificado do Glue Catalog."""
+        mocks = _run_main(
+            args={
+                **_BASE_ARGS,
+                "DATABASE": "db_tmdb",
+                "DATABASE_RESULTS": "db_unified_tmdb",
+            }
+        )
 
         database_arg = mocks["mock_write"].call_args[0][3]
-        assert database_arg == "db_tmdb"
+        assert database_arg == "db_unified_tmdb"
 
     def test_calls_write_with_none_year_when_not_in_args(self):
         """write_results_to_s3 deve receber year=None quando YEAR não está nos args

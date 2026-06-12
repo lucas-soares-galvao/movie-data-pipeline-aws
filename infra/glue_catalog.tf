@@ -1,14 +1,24 @@
 # Raciocinio: declara metadados do Glue Catalog para consulta consistente dos dados SOT.
 
-resource "aws_glue_catalog_database" "tmdb_database" {
-  name = var.glue_catalog_database_name
+resource "aws_glue_catalog_database" "tmdb_movie_database" {
+  name = var.glue_catalog_database_movie_name
+  tags = local.component_tags.glue_catalog
+}
+
+resource "aws_glue_catalog_database" "tmdb_tv_database" {
+  name = var.glue_catalog_database_tv_name
+  tags = local.component_tags.glue_catalog
+}
+
+resource "aws_glue_catalog_database" "tmdb_unified_database" {
+  name = var.glue_catalog_database_unified_name
   tags = local.component_tags.glue_catalog
 }
 
 
 resource "aws_glue_catalog_table" "tb_movie_tmdb" {
   name          = var.glue_catalog_table_discover_movie_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -42,7 +52,12 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
-      name = "description"
+      name = "overview"
+      type = "string"
+    }
+
+    columns {
+      name = "backdrop_path"
       type = "string"
     }
 
@@ -77,6 +92,11 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
+      name = "poster_path"
+      type = "string"
+    }
+
+    columns {
       name = "vote_average"
       type = "double"
     }
@@ -96,7 +116,7 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   name          = var.glue_catalog_table_discover_tv_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -176,7 +196,7 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
   name          = var.glue_catalog_table_genre_movie_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -207,7 +227,7 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
   name          = var.glue_catalog_table_genre_tv_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -238,7 +258,7 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   name          = var.glue_catalog_table_configuration_languages_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -273,7 +293,7 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
 
 resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   name          = var.glue_catalog_table_configuration_countries_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -306,9 +326,303 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   }
 }
 
+resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
+  name          = var.glue_catalog_table_details_movie_name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_movie_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "runtime"
+      type = "int"
+    }
+    columns {
+      name = "title_en"
+      type = "string"
+    }
+    columns {
+      name = "overview_en"
+      type = "string"
+    }
+    columns {
+      name = "poster_path_en"
+      type = "string"
+    }
+    columns {
+      name = "backdrop_path_en"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
+  name          = var.glue_catalog_table_details_tv_name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_tv_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "number_of_seasons"
+      type = "int"
+    }
+    columns {
+      name = "number_of_episodes"
+      type = "int"
+    }
+    columns {
+      name    = "episode_run_time"
+      type    = "array<int>"
+    }
+    columns {
+      name = "title_en"
+      type = "string"
+    }
+    columns {
+      name = "overview_en"
+      type = "string"
+    }
+    columns {
+      name = "poster_path_en"
+      type = "string"
+    }
+    columns {
+      name = "backdrop_path_en"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
+  name          = var.glue_catalog_table_watch_providers_movie_name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_movie_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "provider_type"
+      type = "string"
+    }
+    columns {
+      name = "provider_id"
+      type = "int"
+    }
+    columns {
+      name = "provider_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
+  name          = var.glue_catalog_table_watch_providers_tv_name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_tv_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "provider_type"
+      type = "string"
+    }
+    columns {
+      name = "provider_id"
+      type = "int"
+    }
+    columns {
+      name = "provider_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "year"
+    type = "string"
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
+  name          = var.glue_catalog_table_watch_providers_ref_movie_name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_ref_movie_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "provider_id"
+      type = "int"
+    }
+    columns {
+      name = "provider_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
+    columns {
+      name = "display_priority_br"
+      type = "int"
+    }
+    columns {
+      name = "canonical_name"
+      type = "string"
+    }
+  }
+}
+
+
+resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
+  name          = var.glue_catalog_table_watch_providers_ref_tv_name
+  database_name = aws_glue_catalog_database.tmdb_tv_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_ref_tv_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "provider_id"
+      type = "int"
+    }
+    columns {
+      name = "provider_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
+    columns {
+      name = "display_priority_br"
+      type = "int"
+    }
+    columns {
+      name = "canonical_name"
+      type = "string"
+    }
+  }
+}
+
+
 resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   name          = var.glue_catalog_table_data_quality_name
-  database_name = aws_glue_catalog_database.tmdb_database.name
+  database_name = aws_glue_catalog_database.tmdb_unified_database.name
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
@@ -328,6 +642,11 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
 
     columns {
       name = "rule"
+      type = "string"
+    }
+
+    columns {
+      name = "category"
       type = "string"
     }
 

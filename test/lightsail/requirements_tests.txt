@@ -1,0 +1,7 @@
+# Raciocinio: fixa dependencias necessarias para rodar testes do agente IA Lightsail.
+
+pytest
+pytest-cov
+openai
+boto3
+python-dotenv

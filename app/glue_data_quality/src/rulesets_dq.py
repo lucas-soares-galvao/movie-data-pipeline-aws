@@ -1,37 +1,32 @@
-"""Raciocinio: concentra regras por tabela para desacoplar validacao da logica de execucao."""
+"""rulesets_dq.py — Regras DQDL de qualidade de dados por tabela."""
 
 rulesets_dq = {
     "tb_configuration_countries_tmdb": [
-        # Exemplo de regra para a tabela de países
         'IsComplete "iso_3166_1"',
         'IsUnique "iso_3166_1"',
         'IsComplete "english_name"',
-        'IsComplete "name"',
+        'IsComplete "native_name"',
         "RowCount > 0",
     ],
     "tb_configuration_languages_tmdb": [
-        # Exemplo de regra para a tabela de idiomas
         'IsComplete "iso_639_1"',
         'IsUnique "iso_639_1"',
         'IsComplete "english_name"',
         "RowCount > 0",
     ],
     "tb_genre_movie_tmdb": [
-        # Exemplo de regra para a tabela de gêneros de filmes
         'IsComplete "id"',
         'IsUnique "id"',
         'IsComplete "name"',
         "RowCount > 0",
     ],
     "tb_genre_tv_tmdb": [
-        # Exemplo de regra para a tabela de gêneros de TV
         'IsComplete "id"',
         'IsUnique "id"',
         'IsComplete "name"',
         "RowCount > 0",
     ],
     "tb_discover_movie_tmdb": [
-        # Exemplo de regra para a tabela de filmes descobertos
         'IsComplete "id"',
         'IsUnique "id"',
         'IsComplete "title"',
@@ -39,11 +34,50 @@ rulesets_dq = {
         "RowCount > 0",
     ],
     "tb_discover_tv_tmdb": [
-        # Exemplo de regra para a tabela de séries descobertas
         'IsComplete "id"',
         'IsUnique "id"',
-        'IsComplete "name"',
+        'IsComplete "name"',  # séries usam "name", não "title"
         'ColumnValues "vote_average" between 0 and 10',
+        "RowCount > 0",
+    ],
+    "tb_details_movie_tmdb": [
+        'IsComplete "id"',
+        'IsUnique "id"',
+        # runtime pode ser 0 (duração não informada pela API), mas nunca negativo
+        'ColumnValues "runtime" >= 0',
+        "RowCount > 0",
+    ],
+    "tb_details_tv_tmdb": [
+        'IsComplete "id"',
+        'IsUnique "id"',
+        'ColumnValues "number_of_seasons" >= 1',   # série ativa deve ter ao menos 1 temporada
+        'ColumnValues "number_of_episodes" >= 1',  # série deve ter ao menos 1 episódio cadastrado
+        "RowCount > 0",
+    ],
+    "tb_watch_providers_movie_tmdb": [
+        'IsComplete "id"',
+        'IsComplete "provider_type"',
+        'IsComplete "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
+    "tb_watch_providers_tv_tmdb": [
+        'IsComplete "id"',
+        'IsComplete "provider_type"',
+        'IsComplete "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
+    "tb_watch_providers_ref_movie_tmdb": [
+        'IsComplete "provider_id"',
+        'IsUnique "provider_id"',
+        'IsComplete "provider_name"',
+        "RowCount > 0",
+    ],
+    "tb_watch_providers_ref_tv_tmdb": [
+        'IsComplete "provider_id"',
+        'IsUnique "provider_id"',
+        'IsComplete "provider_name"',
         "RowCount > 0",
     ],
 }

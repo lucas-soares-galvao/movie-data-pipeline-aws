@@ -1,0 +1,159 @@
+name: "Deploy Lightsail (Reusable)"
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+    secrets:
+      aws-assume-role-arn:
+        required: true
+      aws-statefile-s3-bucket:
+        required: true
+      aws-lock-dynamodb-table:
+        required: true
+      openai-api-key:
+        required: true
+      filmbot-password:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # terraform_wrapper: false necessário para ler outputs como texto puro
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-assume-role-arn }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: sa-east-1
+
+      - name: Terraform Init
+        run: |
+          cd infra && terraform init \
+            -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="region=sa-east-1" \
+            -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
+
+      - name: Get Terraform Outputs
+        id: tf
+        run: |
+          cd infra
+
+          PUBLIC_IP=$(terraform output -raw lightsail_public_ip)
+          echo "public_ip=${PUBLIC_IP}" >> $GITHUB_OUTPUT
+          echo "lightsail_enabled=$([[ -n "$PUBLIC_IP" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+
+          PRIVATE_KEY=$(terraform output -raw lightsail_private_key)
+          echo "::add-mask::${PRIVATE_KEY}"
+          {
+            echo "private_key<<EOF"
+            echo "${PRIVATE_KEY}"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          ACCESS_KEY_ID=$(terraform output -raw lightsail_agent_access_key_id)
+          echo "::add-mask::${ACCESS_KEY_ID}"
+          echo "access_key_id=${ACCESS_KEY_ID}" >> $GITHUB_OUTPUT
+
+          SECRET_ACCESS_KEY=$(terraform output -raw lightsail_agent_secret_access_key)
+          echo "::add-mask::${SECRET_ACCESS_KEY}"
+          echo "secret_access_key=${SECRET_ACCESS_KEY}" >> $GITHUB_OUTPUT
+
+      # chmod 600 obrigatório — SSH rejeita chaves com permissões mais abertas
+      - name: Setup SSH key
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ steps.tf.outputs.private_key }}" > ~/.ssh/filmbot_key
+          chmod 600 ~/.ssh/filmbot_key
+          for i in $(seq 1 12); do
+            ssh-keyscan -T 5 -H "${{ steps.tf.outputs.public_ip }}" >> ~/.ssh/known_hosts 2>/dev/null && break
+            echo "Tentativa $i/12 — aguardando SSH..."
+            sleep 10
+          done
+
+      # Credenciais criadas diretamente no destino final (não em /tmp — world-readable)
+      - name: Create .env file on instance
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        run: |
+          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nOPENAI_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/athena-results/\nGLUE_DATABASE=db_unified_tmdb\nSPEC_TABLE=tb_discover_unified_tmdb\n' \
+            "${{ steps.tf.outputs.access_key_id }}" \
+            "${{ steps.tf.outputs.secret_access_key }}" \
+            "${{ secrets.openai-api-key }}" \
+            "${{ inputs.environment }}" \
+            | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+                "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.env"
+
+      - name: Create Streamlit secrets.toml on instance
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        run: |
+          printf '[auth]\npassword = "%s"\n' "${{ secrets.filmbot-password }}" \
+            | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+                "sudo mkdir -p /opt/filmbot/app/lightsail_ia/.streamlit && sudo tee /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml"
+
+      - name: Deploy app
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        run: |
+          DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
+          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
+            set -e
+            sudo apt-get update -q && sudo apt-get install -y python3-venv python3-pip git -q
+            sudo useradd -m filmbot || true
+            if [ -d "/opt/filmbot/.git" ]; then
+              echo "==> Atualizando código existente (branch: $BRANCH)..."
+              sudo git config --global --add safe.directory /opt/filmbot
+              cd /opt/filmbot
+              sudo git fetch origin
+              sudo git checkout "$BRANCH"
+              sudo git pull origin "$BRANCH"
+              sudo chown -R filmbot:filmbot /opt/filmbot
+              sudo chown filmbot:filmbot /opt/filmbot/app/lightsail_ia/.env
+              cd /opt/filmbot/app/lightsail_ia
+              sudo python3 -m venv .venv
+              sudo .venv/bin/pip install --upgrade pip -q
+              sudo .venv/bin/pip install -r requirements.txt -q
+              sudo cp deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo systemctl daemon-reload
+              sudo systemctl enable filmbot
+              sudo systemctl restart filmbot
+            else
+              echo "==> Primeiro deploy (branch: $BRANCH)..."
+              sudo git clone -b "$BRANCH" https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /tmp/filmbot_new
+              sudo cp -rn /tmp/filmbot_new/. /opt/filmbot/
+              sudo rm -rf /tmp/filmbot_new
+              sudo git config --global --add safe.directory /opt/filmbot
+              sudo chown -R filmbot:filmbot /opt/filmbot
+              sudo chown filmbot:filmbot /opt/filmbot/app/lightsail_ia/.env
+              cd /opt/filmbot/app/lightsail_ia
+              sudo python3 -m venv .venv
+              sudo .venv/bin/pip install --upgrade pip -q
+              sudo .venv/bin/pip install -r requirements.txt -q
+              sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo systemctl daemon-reload
+              sudo systemctl enable filmbot
+              sudo systemctl restart filmbot
+            fi
+            sudo systemctl status filmbot --no-pager
+          ENDSSH
+
+      - name: Show app URL
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        run: echo "FilmBot disponível em http://${{ steps.tf.outputs.public_ip }}:8501"

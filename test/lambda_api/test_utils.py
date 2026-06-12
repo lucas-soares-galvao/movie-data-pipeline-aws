@@ -1,24 +1,94 @@
-"""
-test_utils.py — Testes unitários das funções auxiliares da Lambda.
-
-Cada teste isola uma única função usando Mock, simulando as chamadas
-externas (AWS, TMDB) sem fazer requisições reais.
-"""
-
 import json
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from src.utils import (
+    _tmdb_get,
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
+    collect_watch_providers_ref,
     fetch_tmdb_data,
     fetch_tmdb_reference,
     get_tmdb_api_key,
     save_to_s3,
     trigger_glue_job,
 )
+
+
+# ---------------------------------------------------------------------------
+# _tmdb_get
+# ---------------------------------------------------------------------------
+
+
+class TestTmdbGet(unittest.TestCase):
+    def _make_response(self, status_code=200, json_data=None, headers=None):
+        r = MagicMock()
+        r.status_code = status_code
+        r.json.return_value = json_data if json_data is not None else {}
+        r.headers = headers or {}
+        r.raise_for_status.return_value = None
+        return r
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retorna_json_em_sucesso(self, mock_get, mock_sleep):
+        mock_get.return_value = self._make_response(200, {"ok": True})
+        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(resultado, {"ok": True})
+        mock_sleep.assert_not_called()
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retry_em_status_transiente_e_retorna_em_sucesso(self, mock_get, mock_sleep):
+        mock_get.side_effect = [self._make_response(500), self._make_response(200, {"ok": True})]
+        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(resultado, {"ok": True})
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retry_em_429_usa_retry_after(self, mock_get, mock_sleep):
+        mock_get.side_effect = [
+            self._make_response(429, headers={"Retry-After": "5"}),
+            self._make_response(200, {}),
+        ]
+        _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        wait = mock_sleep.call_args[0][0]
+        self.assertGreaterEqual(wait, 5)
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_retry_em_connection_error_e_retorna_em_sucesso(self, mock_get, mock_sleep):
+        mock_get.side_effect = [
+            requests.exceptions.ConnectionError("timeout"),
+            self._make_response(200, {"ok": True}),
+        ]
+        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(resultado, {"ok": True})
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_levanta_apos_esgotar_tentativas_http(self, mock_get, mock_sleep):
+        r500 = self._make_response(500)
+        r500.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
+        mock_get.return_value = r500
+        with self.assertRaises(requests.exceptions.HTTPError):
+            _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(mock_get.call_count, 3)
+
+    @patch("src.utils.time.sleep")
+    @patch("src.utils.requests.get")
+    def test_levanta_apos_esgotar_tentativas_connection(self, mock_get, mock_sleep):
+        mock_get.side_effect = requests.exceptions.ConnectionError("fail")
+        with self.assertRaises(requests.exceptions.ConnectionError):
+            _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        self.assertEqual(mock_get.call_count, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +302,40 @@ class TestTriggerGlueJob(unittest.TestCase):
         self.assertEqual(args_glue["--TABLE_NAME"], "genre_movie")
         self.assertNotIn("--YEAR", args_glue)
 
+    def test_discover_inclui_end_year(self):
+        """Chamadas de discover repassam END_YEAR ao Glue."""
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.return_value = {"JobRunId": "jr_sy"}
+
+        trigger_glue_job(
+            mock_glue,
+            "meu-glue-job",
+            {"database": "tmdb_db"},
+            table_type="discover",
+            table_name="discover_movie",
+            year=2025,
+            end_year=2026,
+        )
+
+        args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
+        self.assertEqual(args_glue["--END_YEAR"], "2026")
+
+    def test_genre_nao_inclui_end_year(self):
+        """Chamadas de genre/configuration não recebem END_YEAR."""
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.return_value = {"JobRunId": "jr_no_sy"}
+
+        trigger_glue_job(
+            mock_glue,
+            "meu-glue-job",
+            {"database": "tmdb_db"},
+            table_type="genre",
+            table_name="genre_movie",
+        )
+
+        args_glue = mock_glue.start_job_run.call_args[1]["Arguments"]
+        self.assertNotIn("--END_YEAR", args_glue)
+
 
 # ---------------------------------------------------------------------------
 # fetch_tmdb_reference
@@ -429,8 +533,113 @@ class TestCollectDiscoverData(unittest.TestCase):
 
         # O 3º argumento posicional de save_to_s3 é o dado salvo
         dado_salvo = mock_save.call_args[0][2]
-        # Deve ser apenas a lista de filmes, sem "page", "total_pages", etc.
-        self.assertEqual(dado_salvo, filmes)
+        # Deve ser a lista bruta de filmes sem metadados de paginação
+        # (enriquecimento com runtime é responsabilidade do Glue ETL)
+        ids_salvos = [item["id"] for item in dado_salvo]
+        self.assertEqual(ids_salvos, [1, 2])
+        self.assertNotIn("page", dado_salvo)
+        self.assertNotIn("total_pages", dado_salvo)
+
+
+# ---------------------------------------------------------------------------
+# collect_watch_providers_ref
+# ---------------------------------------------------------------------------
+
+
+class TestCollectWatchProvidersRef(unittest.TestCase):
+    def _api_response(self, results):
+        return {"results": results}
+
+    def _provider(self, pid, name, logo, priority_br):
+        return {
+            "provider_id": pid,
+            "provider_name": name,
+            "logo_path": logo,
+            "display_priorities": {"BR": priority_br},
+        }
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_movie_chama_endpoint_correto(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/watch/providers/movie")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_tv_chama_endpoint_correto(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "tv")
+
+        endpoint = mock_fetch.call_args[0][1]
+        self.assertEqual(endpoint, "/watch/providers/tv")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_envia_watch_region_br(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        params = mock_fetch.call_args[0][2]
+        self.assertEqual(params, {"watch_region": "BR"})
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_s3_key_movie(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/watch_providers_ref/movie/watch_providers_ref.json")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_s3_key_tv(self, mock_fetch, mock_save):
+        mock_fetch.return_value = self._api_response([])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "tv")
+
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/watch_providers_ref/tv/watch_providers_ref.json")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_extrai_campos_corretos_do_provider(self, mock_fetch, mock_save):
+        provider = self._provider(8, "Netflix", "/netflix.png", 1)
+        mock_fetch.return_value = self._api_response([provider])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertEqual(len(dados_salvos), 1)
+        self.assertEqual(dados_salvos[0]["provider_id"], 8)
+        self.assertEqual(dados_salvos[0]["provider_name"], "Netflix")
+        self.assertEqual(dados_salvos[0]["logo_path"], "/netflix.png")
+        self.assertEqual(dados_salvos[0]["display_priority_br"], 1)
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils.fetch_tmdb_reference")
+    def test_display_priority_br_none_quando_ausente(self, mock_fetch, mock_save):
+        provider = {"provider_id": 9, "provider_name": "Prime", "logo_path": None}
+        mock_fetch.return_value = self._api_response([provider])
+        mock_s3 = MagicMock()
+
+        collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertIsNone(dados_salvos[0]["display_priority_br"])
 
 
 if __name__ == "__main__":

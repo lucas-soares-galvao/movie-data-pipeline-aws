@@ -1,5 +1,3 @@
-"""Testes unitários para app/glue_data_quality/src/utils.py."""
-
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,27 +6,24 @@ from src.utils import (
     evaluate_data_quality,
     get_parameters_glue,
     get_ruleset,
+    notify_failed_outcomes,
     read_table_from_catalog,
     write_results_to_s3,
 )
 
 
-# ---------------------------------------------------------------------------
-# get_parameters_glue
-# ---------------------------------------------------------------------------
-
-
 class TestGetParametersGlue:
-    # Argumentos que o Glue sempre envia
     _REQUIRED = {
         "TABLE_NAME": "tb_genre_movie_tmdb",
         "DATABASE": "db_tmdb",
+        "DATABASE_RESULTS": "db_unified_tmdb",
         "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
         "ENVIRONMENT": "dev",
+        "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
     }
 
     def test_returns_required_args(self):
-        """Os quatro argumentos obrigatórios devem estar no retorno."""
+        """Os argumentos obrigatórios devem estar no retorno."""
         with patch(
             "src.utils.getResolvedOptions",
             side_effect=[{**self._REQUIRED}, SystemExit()],
@@ -37,6 +32,7 @@ class TestGetParametersGlue:
 
         assert result["TABLE_NAME"] == "tb_genre_movie_tmdb"
         assert result["DATABASE"] == "db_tmdb"
+        assert result["DATABASE_RESULTS"] == "db_unified_tmdb"
         assert result["S3_BUCKET_DATA_QUALITY"] == "my-dq-bucket"
         assert result["ENVIRONMENT"] == "dev"
 
@@ -44,7 +40,8 @@ class TestGetParametersGlue:
         """YEAR deve ser incluído quando o Glue ETL passar o argumento."""
         year_args = {"YEAR": "2023"}
         with patch(
-            "src.utils.getResolvedOptions", side_effect=[{**self._REQUIRED}, year_args]
+            "src.utils.getResolvedOptions",
+            side_effect=[{**self._REQUIRED}, year_args],
         ):
             result = get_parameters_glue()
 
@@ -66,8 +63,17 @@ class TestGetParametersGlue:
             "src.utils.getResolvedOptions",
             side_effect=[{**self._REQUIRED}, SystemExit()],
         ):
-            # Não deve lançar nada
             get_parameters_glue()
+
+    def test_returns_database_results(self):
+        """DATABASE_RESULTS deve estar no retorno como argumento obrigatório."""
+        with patch(
+            "src.utils.getResolvedOptions",
+            side_effect=[{**self._REQUIRED}, SystemExit()],
+        ):
+            result = get_parameters_glue()
+
+        assert result["DATABASE_RESULTS"] == "db_unified_tmdb"
 
 
 # ---------------------------------------------------------------------------
@@ -118,11 +124,6 @@ class TestGetRuleset:
         for table in rulesets_dq:
             result = get_ruleset(table)
             assert result.startswith("Rules = [")
-
-
-# ---------------------------------------------------------------------------
-# read_table_from_catalog
-# ---------------------------------------------------------------------------
 
 
 class TestReadTableFromCatalog:
@@ -193,11 +194,6 @@ class TestReadTableFromCatalog:
         assert "2023" in kwargs["push_down_predicate"]
 
 
-# ---------------------------------------------------------------------------
-# evaluate_data_quality
-# ---------------------------------------------------------------------------
-
-
 class TestEvaluateDataQuality:
     def _make_chainable_df(self):
         """
@@ -233,6 +229,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit") as mock_lit,
             patch("src.utils.current_timestamp") as mock_ts,
             patch("src.utils.from_utc_timestamp") as mock_utc,
+            patch("src.utils.when") as mock_when,
+            patch("src.utils.StringType") as mock_type,
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -249,6 +247,8 @@ class TestEvaluateDataQuality:
             "mock_lit": mock_lit,
             "mock_ts": mock_ts,
             "mock_utc": mock_utc,
+            "mock_when": mock_when,
+            "mock_type": mock_type,
             "dq_result_mock": dq_result_mock,
             "dynamic_frame": dynamic_frame,
         }
@@ -368,6 +368,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -406,6 +408,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
             mock_dyn.fromDF.return_value = filtered_dynamic_frame
@@ -439,6 +443,8 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.when"),
+            patch("src.utils.StringType"),
         ):
             mock_edq.apply.return_value = dq_result_mock
 
@@ -459,11 +465,6 @@ class TestEvaluateDataQuality:
         mock_dyn.fromDF.assert_not_called()
         call_kwargs = mock_edq.apply.call_args[1]
         assert call_kwargs["frame"] is dynamic_frame
-
-
-# ---------------------------------------------------------------------------
-# write_results_to_s3
-# ---------------------------------------------------------------------------
 
 
 class TestWriteResultsToS3:
@@ -532,3 +533,125 @@ class TestWriteResultsToS3:
         """wr.s3.to_parquet deve ser chamado exatamente uma vez por execução."""
         _, mock_wr = self._run()
         mock_wr.s3.to_parquet.assert_called_once()
+
+
+class TestNotifyFailedOutcomes:
+    _SNS_ARN = "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-failure-notifications"
+
+    def _make_row(self, rule: str, failure_reason: str, category: str = "completude"):
+        row = MagicMock()
+        row.__getitem__ = lambda self, key: {
+            "rule": rule,
+            "failure_reason": failure_reason,
+            "category": category,
+        }[key]
+        return row
+
+    def _make_df(self, failed_rows: list):
+        """Cria um Spark DataFrame mock com a lista de linhas em failed_rows."""
+        from datetime import datetime
+
+        df = MagicMock()
+        failed_df = MagicMock()
+        failed_df.count.return_value = len(failed_rows)
+        failed_df.select.return_value.collect.return_value = failed_rows
+
+        first_row = MagicMock()
+        first_row.__getitem__ = lambda self, key: {
+            "datetime_process": datetime(2026, 6, 9, 21, 30, 45),
+            "source_database": "movies_db",
+        }[key]
+        df.select.return_value.first.return_value = first_row
+        df.filter.return_value = failed_df
+        return df, failed_df
+
+    def test_does_not_publish_when_all_rules_pass(self):
+        """Quando nenhuma regra falha, sns.publish não deve ser chamado."""
+        df, _ = self._make_df([])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            mock_boto3.client.return_value.publish.assert_not_called()
+
+    def test_publishes_when_any_rule_fails(self):
+        """Quando ao menos uma regra falha, sns.publish deve ser chamado uma vez."""
+        row = self._make_row('IsComplete "id"', "Column id has null values")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            mock_boto3.client.return_value.publish.assert_called_once()
+
+    def test_subject_contains_environment_uppercased(self):
+        """O subject do e-mail deve conter o ambiente em maiúsculas."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_discover_movie_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "DEV" in call_kwargs["Subject"]
+
+    def test_message_contains_table_name(self):
+        """O corpo do e-mail deve indicar qual tabela teve métricas com falha."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_tv_tmdb", self._SNS_ARN, "prod")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "tb_genre_tv_tmdb" in call_kwargs["Message"]
+
+    def test_message_contains_failed_rule(self):
+        """O corpo do e-mail deve listar a regra que falhou."""
+        row = self._make_row('IsUnique "id"', "Duplicate values found")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert 'IsUnique "id"' in call_kwargs["Message"]
+
+    def test_message_contains_failure_reason(self):
+        """O corpo do e-mail deve incluir o motivo da falha de cada regra."""
+        row = self._make_row('IsComplete "id"', "Column id has null values")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "Column id has null values" in call_kwargs["Message"]
+
+    def test_publishes_to_correct_topic_arn(self):
+        """sns.publish deve usar o ARN do tópico recebido como parâmetro."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert call_kwargs["TopicArn"] == self._SNS_ARN
+
+    def test_message_lists_all_failed_rules(self):
+        """Quando múltiplas regras falham, todas devem aparecer no corpo do e-mail."""
+        rows = [
+            self._make_row('IsComplete "id"', "Null values found"),
+            self._make_row("RowCount > 0", "Row count is 0"),
+        ]
+        df, _ = self._make_df(rows)
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_discover_tv_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert 'IsComplete "id"' in call_kwargs["Message"]
+            assert "RowCount > 0" in call_kwargs["Message"]
+
+    def test_message_contains_partition_when_year_provided(self):
+        """Quando year é fornecido, o corpo do e-mail deve indicar a partição avaliada."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_discover_movie_tmdb", self._SNS_ARN, "dev", year="2024")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "year=2024" in call_kwargs["Message"]
+
+    def test_message_does_not_contain_partition_when_year_is_none(self):
+        """Quando year não é fornecido, o corpo do e-mail não deve mencionar partição."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
+            assert "Partição" not in call_kwargs["Message"]

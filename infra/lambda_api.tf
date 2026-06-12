@@ -1,12 +1,13 @@
-# Raciocinio: empacota codigo, publica artefato e cria funcao Lambda com configuracao operacional.
+# =============================================================================
+# lambda_api.tf — Função Lambda que coleta dados da API TMDB
+# Deploy: código Python → build_lambda_package.py → .zip → S3 AUX → Lambda
+# =============================================================================
 
 resource "null_resource" "lambda_build" {
   triggers = {
     source_hash       = sha256(join("", [for f in fileset(local.lambda_api_src_path, "**/*.py") : filesha256("${local.lambda_api_src_path}/${f}")]))
     requirements_hash = filesha256(local.lambda_api_requirements_path)
     builder_hash      = filesha256("${path.module}/scripts/build_lambda_package.py")
-    # Nota: 'always_run = timestamp()' foi removido para evitar rebuild desnecessario a cada apply.
-    # O rebuild e disparado automaticamente quando qualquer arquivo .py ou requirements.txt mudar.
   }
 
   provisioner "local-exec" {
@@ -31,7 +32,6 @@ resource "aws_s3_object" "lambda_deploy_package" {
   etag       = data.archive_file.lambda_bundle.output_md5
   depends_on = [aws_s3_bucket.auxiliary_bucket]
 }
-
 
 resource "aws_lambda_function" "simple_lambda" {
   function_name = local.envs.lambda_api_name

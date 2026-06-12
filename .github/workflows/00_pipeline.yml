@@ -1,9 +1,5 @@
-# Raciocinio: orquestra a esteira CI/CD chamando workflows reutilizaveis em ordem controlada.
-
 name: Pipeline CI/CD
 
-# Define os gatilhos: a esteira roda sempre que houver um push nessas branches específicas
-# ou quando for disparada manualmente para testes/debug.
 on:
   push:
     branches: [feature/*, develop, main]
@@ -18,7 +14,6 @@ on:
           - dev
           - prod
 
-# Permissões padrão para o token do GitHub (necessário para autenticação OIDC/AWS)
 permissions:
   id-token: write
   contents: read
@@ -27,31 +22,41 @@ permissions:
 
 jobs:
 
-  # 1. Job de Testes: Chama o workflow reutilizável que criamos (01_test.yml)
-  # Roda para todas as branches configuradas no 'on'
   test:
     uses: ./.github/workflows/01_test.yml
 
-  # 3. Job de Terraform: Realiza o deploy da infraestrutura
   terraform:
-    needs: test # Só inicia se o job 'test' terminar com sucesso
-    # Condição: roda em branches de ambiente ou manualmente via workflow_dispatch
+    needs: test
     if: |
-      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && 
+      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
       needs.test.result == 'success'
     uses: ./.github/workflows/02_terraform.yml
     with:
-      # Em execução manual usa o input; em push usa mapeamento por branch
       environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
     secrets:
-      # Seleção de secrets por ambiente (manual por input, push por branch)
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
       aws-tmdb-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD }}
+      notification-email: ${{ secrets.NOTIFICATION_EMAIL }}
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-  # 5. Auto PR para Feature: Promove o código de feature/* para develop
+  deploy-lightsail:
+    needs: terraform
+    if: |
+      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
+      needs.terraform.result == 'success' &&
+      needs.terraform.outputs.was_destroyed != 'true'
+    uses: ./.github/workflows/04_deploy_lightsail.yml
+    with:
+      environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
+    secrets:
+      aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+      openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+      filmbot-password: ${{ secrets.FILMBOT_PASSWORD }}
+
   auto-pr-feature:
     needs: test
     if: |
@@ -60,21 +65,18 @@ jobs:
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
-    permissions: # Permissões extras para criar PR e editar conteúdo
+    permissions:
       contents: write
       pull-requests: write
 
-  # 6. Auto PR para Ambientes: promove develop -> main apos deploy Terraform bem-sucedido
   auto-pr-environment:
-    needs: [terraform] # So inicia quando o workflow de Terraform conclui com sucesso
-    # Só roda para develop (main não tem destino posterior para promover)
+    needs: [deploy-lightsail]
     if: |
       github.ref_name == 'develop' &&
-      needs.terraform.result == 'success'
+      needs.deploy-lightsail.result == 'success'
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions:
       contents: write
       pull-requests: write
-      

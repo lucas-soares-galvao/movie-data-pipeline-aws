@@ -1,43 +1,26 @@
-"""
-utils.py — Funções auxiliares do job Glue Data Quality.
-
-Responsabilidades:
-  - Ler os argumentos do job (TABLE_NAME, DATABASE, S3_BUCKET_DATA_QUALITY, ENVIRONMENT)
-  - Buscar o ruleset (conjunto de regras DQDL) da tabela em rulesets_dq.py
-  - Ler a tabela do Glue Catalog como DynamicFrame
-  - Avaliar a qualidade dos dados com EvaluateDataQuality
-  - Gravar o resultado da avaliação no S3 como Parquet, particionado por source_table
-"""
+"""utils.py — Funções auxiliares do job Glue Data Quality."""
 
 import logging
 import sys
 from typing import Any, Dict, Optional
 
 import awswrangler as wr
+import boto3
 from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import GlueArgumentError, getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
-from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit
+from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit, when
 from pyspark.sql.types import StringType
 
 from src.rulesets_dq import rulesets_dq
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-
-# ---------------------------------------------------------------------------
-# Leitura de argumentos do job
-# ---------------------------------------------------------------------------
 
 
 def get_parameters_glue() -> Dict[str, Any]:
     """
-    Lê os argumentos obrigatórios e opcionais passados ao job Glue pelo Glue ETL.
-
-    Argumentos obrigatórios: TABLE_NAME, DATABASE, S3_BUCKET_DATA_QUALITY, ENVIRONMENT.
-    Argumento opcional:      YEAR (presente apenas para tabelas de discover).
+    Lê os argumentos do job Glue Data Quality.
 
     Returns:
         Dicionário com todos os argumentos resolvidos.
@@ -45,62 +28,50 @@ def get_parameters_glue() -> Dict[str, Any]:
     required_args = [
         "TABLE_NAME",
         "DATABASE",
+        "DATABASE_RESULTS",
         "S3_BUCKET_DATA_QUALITY",
         "ENVIRONMENT",
+        "SNS_TOPIC_ARN_DQ_METRICS",
     ]
     args = getResolvedOptions(sys.argv, required_args)
 
     # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
+    # (tabelas de gênero e configuração não têm partição por ano)
+    # Se não existir o argumento YEAR, o try/except evita que o job quebre
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
     except (SystemExit, GlueArgumentError):
-        pass
+        pass  # não há YEAR — tabela sem partição por ano; ok continuar
 
     return args
 
 
-# ---------------------------------------------------------------------------
-# Ruleset (conjunto de regras DQDL)
-# ---------------------------------------------------------------------------
-
-
 def get_ruleset(table_name: str) -> str:
     """
-    Busca as regras de qualidade definidas em rulesets_dq.py para a tabela e
-    monta a string no formato DQDL exigida pelo Glue Data Quality.
-
-    Formato DQDL:
-      Rules = [
-        IsComplete "id",
-        IsUnique "id",
-        RowCount > 0
-      ]
+    Retorna as regras DQDL para a tabela, montadas como string para o Glue Data Quality.
 
     Args:
         table_name: Nome da tabela no Glue Catalog.
 
     Returns:
-        String com as regras no formato DQDL.
+        String com as regras no formato DQDL (Rules = [...]).
 
     Raises:
-        KeyError: Se não houver regras definidas para a tabela.
+        KeyError: Se não houver regras definidas para a tabela em rulesets_dq.py.
     """
     rules = rulesets_dq.get(table_name)
     if rules is None:
+        # Erro proposital: não faz sentido executar DQ numa tabela sem regras definidas.
+        # Isso avisa o desenvolvedor para adicionar as regras em rulesets_dq.py
+        # antes de colocar a tabela no pipeline.
         raise KeyError(
             f"Nenhuma regra de DQ definida para a tabela '{table_name}'. "
             f"Adicione as regras em rulesets_dq.py."
         )
 
-    # Junta as regras separadas por vírgula no formato que o Glue entende
     ruleset = "Rules = [\n  " + ",\n  ".join(rules) + "\n]"
     logger.info(f"Ruleset para '{table_name}':\n{ruleset}")
     return ruleset
-
-
-# ---------------------------------------------------------------------------
-# Leitura da tabela no Glue Catalog
-# ---------------------------------------------------------------------------
 
 
 def read_table_from_catalog(
@@ -110,16 +81,10 @@ def read_table_from_catalog(
     year: Optional[str] = None,
 ):
     """
-    Lê uma tabela registrada no Glue Catalog e a retorna como DynamicFrame.
+    Lê uma tabela do Glue Catalog como DynamicFrame.
 
-    O DynamicFrame é o formato padrão do AWS Glue para representar dados
-    distribuídos (semelhante ao DataFrame do Spark, mas com suporte extra
-    a esquemas flexíveis e tipos aninhados).
-
-    Quando `year` é informado (tabelas de discover particionadas por ano), aplica
-    um `push_down_predicate` para ler **apenas** a partição recém-escrita. Isso
-    evita que o Glue tente acessar arquivos de outras partições que possam ter
-    metadados obsoletos no Catalog após re-escritas anteriores.
+    Quando year é informado, aplica push_down_predicate para ler apenas a partição
+    recém-escrita e evitar acesso a metadados obsoletos de outras partições.
 
     Args:
         glue_context: Contexto do Glue criado no main.py.
@@ -136,14 +101,13 @@ def read_table_from_catalog(
         "table_name": table_name,
     }
     if year is not None:
+        # push_down_predicate = "filtro de partição empurrado para baixo"
+        # Em vez de carregar TODOS os dados e depois filtrar em memória,
+        # o Glue instrui o S3 a já retornar apenas os arquivos da pasta "year=XXXX/".
+        # Isso é muito mais rápido e barato para tabelas grandes com vários anos.
         kwargs["push_down_predicate"] = f"year = '{year}'"
         logger.info(f"Aplicando filtro de partição: year = '{year}'")
     return glue_context.create_dynamic_frame.from_catalog(**kwargs)
-
-
-# ---------------------------------------------------------------------------
-# Avaliação da qualidade dos dados
-# ---------------------------------------------------------------------------
 
 
 def evaluate_data_quality(
@@ -155,21 +119,10 @@ def evaluate_data_quality(
     year: Optional[str] = None,
 ):
     """
-    Executa a avaliação de qualidade dos dados com o EvaluateDataQuality do Glue.
+    Avalia as regras DQDL contra o DynamicFrame e retorna DataFrame com resultados.
 
-    O Glue DQ retorna um DynamicFrame com colunas em PascalCase:
-      - Rule             : expressão da regra (ex.: 'IsComplete "id"')
-      - Outcome          : "Passed" ou "Failed"
-      - FailureReason    : motivo da falha (null se passou)
-      - EvaluatedMetrics : métricas calculadas para a regra
-
-    As colunas são renomeadas para snake_case (necessário para que o Athena
-    consiga ler failure_reason corretamente) e as seguintes colunas de contexto
-    são adicionadas:
-      - partition        : ano da partição da tabela avaliada (None se não aplicável)
-      - datetime_process : timestamp do momento da avaliação
-      - source_database  : banco de dados no Glue Catalog
-      - source_table     : nome da tabela avaliada (usada como partição no S3)
+    Colunas do resultado: rule, outcome, failure_reason, evaluated_metrics,
+    category, partition, datetime_process, source_database, source_table.
 
     Args:
         glue_context:  Contexto do Glue.
@@ -184,31 +137,27 @@ def evaluate_data_quality(
     """
     logger.info(f"Avaliando qualidade de dados da tabela '{table_name}'...")
 
-    # Para tabelas de discover (particionadas por ano), filtra o DataFrame pelo ano da partição
-    # antes de avaliar. Isso garante que o Glue DQ avalie apenas os dados do ano solicitado,
-    # mesmo que o push_down_predicate do Catalog já tenha filtrado a partição no S3.
+    # Para tabelas de discover (particionadas por ano), aplica filtro duplo:
+    # 1. push_down_predicate no read_table_from_catalog (filtro no S3 — evita ler arquivos errados)
+    # 2. Este filtro no DataFrame Spark (garante que apenas linhas do ano correto são avaliadas)
+    # O filtro duplo é necessário porque o Glue Catalog às vezes inclui metadados de outras
+    # partições no cache, então o push_down_predicate sozinho pode não ser suficiente.
     if year is not None:
         df_source = dynamic_frame.toDF().filter(col("year") == year)
         dynamic_frame = DynamicFrame.fromDF(df_source, glue_context, "filtered_frame")
         logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
 
-    # Executa as regras sobre o DynamicFrame e retorna outro DynamicFrame com os resultados
     dq_results = EvaluateDataQuality.apply(
         frame=dynamic_frame,
         ruleset=ruleset,
         publishing_options={
-            # Nome do contexto que aparece nos resultados publicados no Glue Studio
             "dataQualityEvaluationContext": table_name,
-            # Publica métricas no CloudWatch para monitoramento
             "enableDataQualityCloudWatchMetrics": True,
-            # Publica os resultados no painel de Data Quality do Glue Studio
             "enableDataQualityResultsPublishing": True,
         },
     )
 
-    # Converte DynamicFrame → Spark DataFrame e renomeia colunas PascalCase → snake_case.
-    # Sem o rename, o Athena leria "FailureReason" como coluna desconhecida e retornaria null
-    # no campo failure_reason do schema, mesmo quando a regra falha.
+    # Glue DQ devolve colunas em PascalCase; Athena espera snake_case para ler failure_reason corretamente.
     df = (
         dq_results.toDF()
         .withColumnRenamed("Rule", "rule")
@@ -217,31 +166,31 @@ def evaluate_data_quality(
         .withColumnRenamed("EvaluatedMetrics", "evaluated_metrics")
         .drop(
             "EvaluatedRule"
-        )  # coluna extra do Glue DQ não mapeada no schema do Catalog
+        )  # coluna interna do Glue DQ que não faz parte do nosso schema
     )
 
-    # EvaluatedMetrics é retornada pelo Glue DQ como map<string, double> — tipo complexo
-    # que falha no commit de staging do S3 ao escrever Parquet particionado.
-    # O cast para StringType serializa o mapa como string, garantindo compatibilidade.
+    # EvaluatedMetrics é map<string, double> — o Wrangler não serializa esse tipo em Parquet.
     df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
 
-    # Adiciona colunas de contexto para rastreabilidade e particionamento
+    # Classifica cada regra pela dimensão de qualidade com base no prefixo DQDL
+    # para permitir filtros no Athena (ex: "Quais regras de completude falharam?").
     df = df.withColumn(
-        "partition", lit(year).cast(StringType())
-    )  # ano da partição (None para gêneros/config)
+        "category",
+        when(col("rule").startswith("IsComplete"), "completude")
+        .when(col("rule").startswith("IsUnique"), "unicidade")
+        .when(col("rule").startswith("ColumnValues"), "validade")
+        .when(col("rule").startswith("RowCount"), "integridade"),
+    )
+
+    df = df.withColumn("partition", lit(year).cast(StringType()))
     df = df.withColumn(
         "datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo")
-    )  # horário em São Paulo
-    df = df.withColumn("source_database", lit(database))  # banco de dados avaliado
-    df = df.withColumn("source_table", lit(table_name))  # partição no S3
+    )
+    df = df.withColumn("source_database", lit(database))
+    df = df.withColumn("source_table", lit(table_name))
 
     logger.info(f"Avaliação concluída. Regras avaliadas: {df.count()}")
     return df
-
-
-# ---------------------------------------------------------------------------
-# Gravação dos resultados no S3
-# ---------------------------------------------------------------------------
 
 
 def write_results_to_s3(
@@ -252,28 +201,17 @@ def write_results_to_s3(
     year: Optional[str] = None,
 ) -> None:
     """
-    Grava o DataFrame com os resultados do Data Quality no S3 como Parquet,
-    particionado pela coluna source_table, e atualiza o Glue Catalog automaticamente.
+    Grava os resultados DQ em tb_data_quality_tmdb, particionado por source_table.
 
-    Usa o AWS Wrangler (mesmo padrão do Glue ETL) para registrar as partições
-    no Catalog após a escrita, eliminando a necessidade de MSCK REPAIR TABLE no Athena.
-
-    A coluna 'partition' (ano) é mantida como dado normal dentro do Parquet —
-    não é usada em partition_cols — para evitar que o Wrangler remova seu valor
-    do arquivo e o Athena retorne null ao consultar a tabela.
-
-    Caminho de escrita:
-      s3://<bucket>/tmdb/tb_data_quality_tmdb/
-        └── source_table=<table_name>/
-              └── part-00000.parquet  (contém a coluna partition como dado)
+    A coluna 'partition' (ano) fica como dado no Parquet — não em partition_cols —
+    para evitar que o Wrangler remova o valor e o Athena retorne null.
 
     Args:
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
-        table_name:             Nome da tabela avaliada (informativo para o log).
+        table_name:             Nome da tabela avaliada.
         database:               Nome do banco de dados no Glue Catalog.
-        year:                   Ano da partição (informativo; já está na coluna
-                                'partition' do DataFrame).
+        year:                   Ano da partição (informativo).
     """
     output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
@@ -293,3 +231,60 @@ def write_results_to_s3(
     )
 
     logger.info(f"Resultados de '{table_name}' gravados com sucesso!")
+
+
+def notify_failed_outcomes(
+    df,
+    table_name: str,
+    sns_topic_arn: str,
+    environment: str,
+    year: Optional[str] = None,
+) -> None:
+    """
+    Verifica se alguma regra DQ teve outcome "Failed" e publica no SNS.
+
+    O job termina com SUCCEEDED mesmo quando regras falham — essa função
+    garante que o time seja notificado sobre falhas de métricas de dados,
+    não apenas sobre crashes do job.
+
+    Args:
+        df:            Spark DataFrame com os resultados da avaliação (colunas rule, outcome, failure_reason).
+        table_name:    Nome da tabela avaliada.
+        sns_topic_arn: ARN do tópico SNS para publicar a notificação.
+        environment:   Ambiente (dev, prod) para compor o subject do e-mail.
+        year:          Partição avaliada, se aplicável.
+    """
+    failed_df = df.filter(col("outcome") == "Failed")
+    count = failed_df.count()
+
+    if count == 0:
+        logger.info(f"Todas as regras passaram para '{table_name}'.")
+        return
+
+    first_row = df.select("datetime_process", "source_database").first()
+    datetime_process = first_row["datetime_process"]
+    source_database = first_row["source_database"]
+
+    rows = failed_df.select("rule", "failure_reason", "category").collect()
+
+    lines = [
+        "[DQ Métrica Falha]",
+        f"Ambiente: {environment}",
+        f"Banco: {source_database}",
+        f"Tabela: {table_name}",
+        f"Data/Hora: {datetime_process.strftime('%d/%m/%Y %H:%M:%S')}",
+    ]
+    if year is not None:
+        lines.append(f"Partição: year={year}")
+    lines.append(f"Regras com falha ({count}):")
+    for row in rows:
+        lines.append(f"  • [{row['category']}] {row['rule']} → {row['failure_reason']}")
+
+    message = "\n".join(lines)
+
+    boto3.client("sns").publish(
+        TopicArn=sns_topic_arn,
+        Subject=f"[{environment.upper()}] DQ Métrica Falha",
+        Message=message,
+    )
+    logger.warning(f"{count} regra(s) falharam para '{table_name}'. Notificação SNS enviada.")

@@ -1,14 +1,10 @@
-# Raciocinio: define o job Glue AGG que executa a query de unificacao via Athena
-# e grava os dados particionados por media_type e year no bucket SPEC.
-# O AWS Wrangler registra/atualiza a tabela no Glue Catalog automaticamente.
-
 resource "aws_glue_job" "agg_job_pythonshell" {
   name         = local.envs.glue_agg_job_name
   description  = "Glue AGG Job — unifica discover movie e tv no bucket SPEC"
   role_arn     = aws_iam_role.glue_agg_role.arn
   max_retries  = 0
-  timeout      = 30
-  max_capacity = 0.0625
+  timeout      = local.glue_etl_timeout_min
+  max_capacity = local.pythonshell_min_capacity
 
   command {
     # Script principal do job armazenado no bucket auxiliar.
@@ -31,7 +27,9 @@ resource "aws_glue_job" "agg_job_pythonshell" {
     "--custom-logGroup-prefix"    = "/${local.envs.glue_agg_job_name}"
     "--S3_BUCKET_SPEC"            = local.envs.s3_bucket_spec
     "--S3_BUCKET_TEMP"            = local.envs.s3_bucket_temp
-    "--DATABASE"                  = var.glue_catalog_database_name
+    "--DB_MOVIE"                  = var.glue_catalog_database_movie_name
+    "--DB_TV"                     = var.glue_catalog_database_tv_name
+    "--DB_UNIFIED"                = var.glue_catalog_database_unified_name
     "--TABLE_NAME"                = var.glue_agg_spec_table_name
     "--ENVIRONMENT"               = var.env
   }
@@ -53,12 +51,11 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   ]
 
   execution_property {
-    max_concurrent_runs = 2
+    max_concurrent_runs = 1
   }
 }
 
 
-# Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket_agg" {
   bucket     = aws_s3_bucket.auxiliary_bucket.id
   key        = "${local.envs.glue_agg_job_name}/app/main.py"
@@ -69,8 +66,6 @@ resource "aws_s3_object" "deploy_scripts_bucket_agg" {
 }
 
 
-# Empacota o pacote `src` da aplicacao como wheel (.whl) — formato exigido pelo
-# Glue Python Shell para que `from src.utils import ...` funcione em runtime.
 resource "null_resource" "glue_agg_wheel_build" {
   triggers = {
     source_hash  = sha256(join("", [for f in fileset(local.glue_agg_src_path, "src/**/*.py") : filesha256("${local.glue_agg_src_path}/${f}")]))
@@ -83,7 +78,6 @@ resource "null_resource" "glue_agg_wheel_build" {
 }
 
 
-# Envia o wheel para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_wheel_agg" {
   bucket      = aws_s3_bucket.auxiliary_bucket.id
   key         = "${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename}"

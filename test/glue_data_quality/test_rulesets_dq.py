@@ -1,8 +1,10 @@
-"""Testes unitários para app/glue_data_quality/src/rulesets_dq.py."""
+# rulesets_dq é a "especificação de qualidade" do pipeline — regra mal-formatada
+# ou tabela faltando faz o job Glue DQ falhar silenciosamente. Estes testes são
+# um "contrato de cobertura": garantem que toda tabela conhecida tem regras
+# e que estão no formato DQDL correto.
 
 from src.rulesets_dq import rulesets_dq
 
-# Tabelas que devem obrigatoriamente ter regras definidas
 EXPECTED_TABLES = [
     "tb_configuration_countries_tmdb",
     "tb_configuration_languages_tmdb",
@@ -10,6 +12,10 @@ EXPECTED_TABLES = [
     "tb_genre_tv_tmdb",
     "tb_discover_movie_tmdb",
     "tb_discover_tv_tmdb",
+    "tb_details_movie_tmdb",
+    "tb_details_tv_tmdb",
+    "tb_watch_providers_movie_tmdb",
+    "tb_watch_providers_tv_tmdb",
 ]
 
 
@@ -62,6 +68,8 @@ class TestRulesetsDq:
             "tb_genre_tv_tmdb",
             "tb_discover_movie_tmdb",
             "tb_discover_tv_tmdb",
+            "tb_details_movie_tmdb",
+            "tb_details_tv_tmdb",
         ]
         for table in tables_with_id:
             rules = rulesets_dq[table]

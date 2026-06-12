@@ -1,7 +1,10 @@
-# Raciocinio: cria roles e anexos para separar responsabilidades e aplicar menor privilegio.
+# =============================================================================
+# iam_roles.tf — Roles IAM dos serviços (Lambda, Glue, EventBridge, Lightsail)
+# =============================================================================
 
 resource "aws_iam_role" "lambda_function" {
   name = "${local.envs.lambda_api_name}-function"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -12,12 +15,22 @@ resource "aws_iam_role" "lambda_function" {
   })
 }
 
-# Raciocinio: nao usa AWSLambdaBasicExecutionRole pois ela concede logs:CreateLogGroup,
-# o que permitiria a Lambda criar um grupo de logs sem retencao fora do controle do Terraform.
-# A policy abaixo permite apenas escrever logs no grupo pre-existente criado pelo Terraform.
+# =============================================================================
+# POLICY INLINE DE LOGS DA LAMBDA
+# =============================================================================
+# Permite que a Lambda grave logs no CloudWatch (essencial para monitoramento).
+#
+# POR QUE NÃO USAR A MANAGED POLICY "AWSLambdaBasicExecutionRole"?
+# A policy gerenciada pela AWS concede "logs:CreateLogGroup", que permitiria
+# à Lambda criar grupos de log sem a retenção definida pelo Terraform.
+# Usando uma policy customizada, só permitimos escrever em grupos de log
+# que já existem (criados pelo cloudwatch_logs.tf com retenção de 30 dias).
+# Isso garante controle total sobre a configuração de logs.
+# =============================================================================
 resource "aws_iam_role_policy" "lambda_logs" {
   name = "${local.envs.lambda_api_name}-logs"
   role = aws_iam_role.lambda_function.id
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -35,9 +48,6 @@ resource "aws_iam_role_policy" "lambda_logs" {
   })
 }
 
-# =========================
-# GLUE ETL ROLE
-# =========================
 resource "aws_iam_role" "glue_etl_role" {
   name = "${local.envs.iam_role_glue}-etl"
 
@@ -57,9 +67,6 @@ resource "aws_iam_role_policy_attachment" "glue_etl_service_role" {
 }
 
 
-# =========================
-# GLUE DATA QUALITY ROLE
-# =========================
 resource "aws_iam_role" "glue_dq_role" {
   name = "${local.envs.iam_role_glue}-dq"
 
@@ -78,9 +85,7 @@ resource "aws_iam_role_policy_attachment" "glue_dq_service_role" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }
 
-# =========================
-# GLUE AGG ROLE
-# =========================
+# =============================================================================
 resource "aws_iam_role" "glue_agg_role" {
   name = "${local.envs.iam_role_glue}-agg"
 
@@ -101,5 +106,28 @@ resource "aws_iam_role_policy_attachment" "glue_agg_service_role" {
 
 resource "aws_iam_role_policy_attachment" "glue_agg_read_code" {
   role       = aws_iam_role.glue_agg_role.name
+  policy_arn = aws_iam_policy.glue_shared_read_code.arn
+}
+
+resource "aws_iam_role" "glue_details_role" {
+  name = "${local.envs.iam_role_glue}-details"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "glue.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "glue_details_service_role" {
+  role       = aws_iam_role.glue_details_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+resource "aws_iam_role_policy_attachment" "glue_details_read_code" {
+  role       = aws_iam_role.glue_details_role.name
   policy_arn = aws_iam_policy.glue_shared_read_code.arn
 }
