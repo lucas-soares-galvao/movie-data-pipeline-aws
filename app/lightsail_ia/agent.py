@@ -42,7 +42,7 @@ TECNOLOGIAS UTILIZADAS:
   - python-dotenv: carrega variáveis de ambiente do arquivo .env
 
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
-  OPENAI_API_KEY     → chave de acesso à API do OpenAI (se LLM_MODEL usar OpenAI)
+  LLM_API_KEY        → chave de acesso à API do provedor LLM em uso
   LLM_MODEL          → modelo LLM a usar (padrão: "gpt-4o"). Exemplos:
                         "deepseek/deepseek-chat" + DEEPSEEK_API_KEY
                         "claude-opus-4-8"        + ANTHROPIC_API_KEY
@@ -66,6 +66,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
+_LLM_API_KEY = os.getenv("LLM_API_KEY")
 
 # ==============================================================================
 # DEFINIÇÃO DA TOOL (Function Calling)
@@ -253,6 +254,7 @@ def recomendar(preferencia: str) -> list[dict]:
     # como usar a tool — o que quebraria o processamento no Passo 2.
     resposta = litellm.completion(
         model=_LLM_MODEL,
+        api_key=_LLM_API_KEY,
         messages=[
             {
                 "role": "system",
@@ -291,6 +293,7 @@ def recomendar(preferencia: str) -> list[dict]:
     # compatibilidade entre provedores (LiteLLM, OpenAI, DeepSeek, etc.).
     resposta_final = litellm.completion(
         model=_LLM_MODEL,
+        api_key=_LLM_API_KEY,
         messages=[
             {
                 "role": "system",

@@ -70,7 +70,7 @@ Em dev, a instância Lightsail está desabilitada (`lightsail_enabled = false`).
 
 ```bash
 # 1. Gerar o .env com as credenciais da conta dev (requer Terraform inicializado)
-OPENAI_API_KEY=sk-... bash infra/scripts/export_env_local.sh
+LLM_API_KEY=sk-... bash infra/scripts/export_env_local.sh
 
 # 2. Rodar
 cd app/lightsail_ia
@@ -84,7 +84,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 
 | Variável | Uso |
 |---|---|
-| `OPENAI_API_KEY` | Chave da API OpenAI para o GPT-4o |
+| `LLM_API_KEY` | Chave de API do provedor LLM em uso |
 | `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
 | `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
 | `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
