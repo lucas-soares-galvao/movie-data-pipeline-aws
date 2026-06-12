@@ -1,47 +1,6 @@
-"""
-test_main.py — Testes de integração para app/glue_data_quality/main.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa a função main() do Glue Data Quality, verificando se cada etapa
-do pipeline é chamada com os argumentos corretos.
-
-ETAPAS DO PIPELINE TESTADAS:
-  1. SparkContext.getOrCreate()    → inicializa o motor Spark
-  2. GlueContext(sc)               → cria o contexto Glue passando o Spark
-  3. get_parameters_glue()         → lê argumentos do job (TABLE_NAME, DATABASE, etc.)
-  4. get_ruleset(table_name)       → busca as regras DQDL para a tabela
-  5. read_table_from_catalog(...)  → lê a tabela do Glue Catalog como DynamicFrame
-  6. evaluate_data_quality(...)    → avalia as regras e retorna DataFrame de resultados
-  7. write_results_to_s3(...)      → salva resultados na tabela tb_data_quality_tmdb
-  8. notify_failed_outcomes(...)   → envia email via SNS se alguma regra falhou
-
-POR QUE SparkContext E GlueContext PRECISAM DE MOCKS ESPECIAIS?
-  O conftest.py registra SparkContext=None e GlueContext=None como stubs,
-  porque o Spark não está disponível localmente. Mas main() chama:
-    sc = SparkContext.getOrCreate()
-    glue_context = GlueContext(sc)
-  Se fossem None, ".getOrCreate()" falharia com "NoneType has no attribute...".
-  Por isso, _run_main() faz patch.object(m, "SparkContext") e "GlueContext",
-  substituindo os None do conftest por MagicMock() que suporta qualquer chamada.
-
-HELPER _run_main():
-  Função de conveniência que executa main() com todos os colaboradores
-  simulados. Retorna um dicionário com todos os mocks para que cada teste
-  possa inspecionar as chamadas realizadas de forma independente.
-
-  Por que retornar um dict ao invés de usar fixtures?
-    Permite que cada teste passe argumentos diferentes (args, ruleset,
-    dynamic_frame, df_results) sem precisar recriar os mocks manualmente.
-
-CLASSES DE TESTE:
-  TestContextCreation            → criação do Spark e GlueContext
-  TestGetRulesetCall             → chamada de get_ruleset com TABLE_NAME
-  TestReadTableFromCatalogCall   → chamada de read_table com DATABASE, TABLE_NAME, YEAR
-  TestEvaluateDataQualityCall    → chamada de evaluate com todos os argumentos
-  TestWriteResultsToS3Call       → chamada de write com DATABASE_RESULTS (não DATABASE)
-"""
+# SparkContext=None e GlueContext=None são stubs do conftest. _run_main() os
+# substitui por MagicMock para que .getOrCreate() e GlueContext(sc) não falhem
+# com "NoneType has no attribute...".
 
 from unittest.mock import MagicMock, patch
 
@@ -72,8 +31,6 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
     sc_mock = MagicMock()
     glue_context_mock = MagicMock()
 
-    # SparkContext e GlueContext são None no conftest (stubs) — precisam ser
-    # substituídos por MagicMock para que .getOrCreate() e GlueContext(sc) funcionem.
     with (
         patch.object(m, "SparkContext") as mock_sc_cls,
         patch.object(m, "GlueContext") as mock_gc_cls,
@@ -103,11 +60,6 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
     }
 
 
-# ---------------------------------------------------------------------------
-# Criação dos contextos Spark / Glue
-# ---------------------------------------------------------------------------
-
-
 class TestContextCreation:
     def test_creates_spark_context(self):
         """SparkContext.getOrCreate() deve ser chamado para iniciar o Spark."""
@@ -118,11 +70,6 @@ class TestContextCreation:
         """GlueContext deve ser criado passando o SparkContext como argumento."""
         mocks = _run_main()
         mocks["mock_gc_cls"].assert_called_once_with(mocks["sc_mock"])
-
-
-# ---------------------------------------------------------------------------
-# Chamada de get_ruleset
-# ---------------------------------------------------------------------------
 
 
 class TestGetRulesetCall:
@@ -136,11 +83,6 @@ class TestGetRulesetCall:
         args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb"}
         mocks = _run_main(args=args)
         mocks["mock_ruleset"].assert_called_once_with("tb_discover_movie_tmdb")
-
-
-# ---------------------------------------------------------------------------
-# Chamada de read_table_from_catalog
-# ---------------------------------------------------------------------------
 
 
 class TestReadTableFromCatalogCall:
@@ -177,11 +119,6 @@ class TestReadTableFromCatalogCall:
         mocks = _run_main(args=args)
         _, _, _, year = mocks["mock_read"].call_args[0]
         assert year == "2002"
-
-
-# ---------------------------------------------------------------------------
-# Chamada de evaluate_data_quality
-# ---------------------------------------------------------------------------
 
 
 class TestEvaluateDataQualityCall:
@@ -228,11 +165,6 @@ class TestEvaluateDataQualityCall:
         mocks = _run_main(args=args)
         year_arg = mocks["mock_eval"].call_args[0][5]
         assert year_arg == "2002"
-
-
-# ---------------------------------------------------------------------------
-# Chamada de write_results_to_s3
-# ---------------------------------------------------------------------------
 
 
 class TestWriteResultsToS3Call:

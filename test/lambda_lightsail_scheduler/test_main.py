@@ -1,18 +1,5 @@
-"""
-test_main.py — Testes unitários do Lambda lightsail_scheduler.
-
-Testa a função lambda_handler() de main.py, que recebe um evento com a
-chave "action" e inicia ou para a instância Lightsail via boto3.
-
-O módulo é importado como "lambda_lightsail_scheduler_main" (nome único
-registrado no conftest.py) para evitar conflito com os outros main.py do
-projeto (lambda_api, glue_etl, etc.) que compartilham o mesmo sys.modules.
-
-  test_stop_chama_stop_instance        → action="stop" chama stop_instance e retorna status correto
-  test_start_chama_start_instance      → action="start" chama start_instance e retorna status correto
-  test_acao_desconhecida_levanta_value_error → action inválida levanta ValueError
-  test_sem_instance_name_levanta_key_error  → env var ausente levanta KeyError
-"""
+# Importado como "lambda_lightsail_scheduler_main" (registrado no conftest.py)
+# para evitar conflito com os outros main.py do projeto em sys.modules.
 
 import os
 import unittest

@@ -89,6 +89,8 @@ Um tópico SNS por componente do pipeline (Lambda, Glue ETL, Glue Details, Glue 
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
+A Lambda usa uma **policy inline customizada** para logs em vez de `AWSLambdaBasicExecutionRole` (policy gerenciada da AWS). Motivo: a policy gerenciada inclui `logs:CreateLogGroup`, que permitiria à Lambda criar grupos de log sem a retenção configurada pelo Terraform. Com a policy customizada, só permitimos `CreateLogStream` e `PutLogEvents` em grupos que o `cloudwatch_logs.tf` já criou com retenção controlada.
+
 ## CI/CD — GitHub Actions (`.github/workflows/`)
 
 | Arquivo | Papel |
@@ -104,7 +106,7 @@ Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o Git
 ## Como aplicar
 
 ### Pré-requisitos
-- Terraform instalado (versão compatível com `provider.tf`)
+- Terraform `>= 1.5.0` instalado (provider AWS `~> 6.0` — ver `provider.tf`)
 - AWS CLI configurado com credenciais do ambiente-alvo
 - Arquivo `.tfvars` preenchido para o ambiente
 

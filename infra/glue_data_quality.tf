@@ -1,5 +1,3 @@
-# Raciocinio: define o job Glue Data Quality com argumentos e dependencias de execucao.
-
 resource "aws_glue_job" "data_quality_job" {
   name              = local.envs.glue_data_quality_job_name
   description       = "Glue Data Quality Job"
@@ -14,6 +12,8 @@ resource "aws_glue_job" "data_quality_job" {
 
   command {
     # Script principal do job armazenado no bucket auxiliar.
+    # Usa "glueetl" (Spark) em vez de "pythonshell" porque o SDK de Data Quality
+    # da AWS (awsglue.transforms.EvaluateDataQuality) só está disponível no runtime Spark.
     script_location = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_data_quality_job_name}/app/main.py"
     name            = "glueetl"
     python_version  = "3"
@@ -54,7 +54,6 @@ resource "aws_glue_job" "data_quality_job" {
 }
 
 
-# Publica o script principal executado pelo Glue no bucket auxiliar.
 resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
   bucket     = aws_s3_bucket.auxiliary_bucket.id
   key        = "${local.envs.glue_data_quality_job_name}/app/main.py"
@@ -65,7 +64,6 @@ resource "aws_s3_object" "deploy_scripts_bucket_data_quality" {
 }
 
 
-# Empacota todos os modulos Python da aplicacao em um unico zip reutilizavel.
 data "archive_file" "glue_app_bundle_data_quality" {
   type        = "zip"
   output_path = "${path.module}/glue_app_bundle_data_quality.zip"
@@ -73,7 +71,6 @@ data "archive_file" "glue_app_bundle_data_quality" {
 }
 
 
-# Envia o pacote zipado para o S3, usado em --extra-py-files no job Glue.
 resource "aws_s3_object" "deploy_app_bundle_data_quality" {
   bucket     = aws_s3_bucket.auxiliary_bucket.id
   key        = "${local.envs.glue_data_quality_job_name}/app_bundle.zip"

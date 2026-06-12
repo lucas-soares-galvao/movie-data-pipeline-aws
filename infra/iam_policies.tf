@@ -1,5 +1,3 @@
-# Raciocinio: concentra politicas minimas necessarias para Lambda/Glue acessarem servicos AWS.
-
 # Permite que a Lambda dispare e monitore os jobs Glue ETL e AGG.
 # Resource restrito aos ARNs dos jobs especificos para limitar o escopo de acesso.
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
@@ -47,9 +45,6 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   })
 }
 
-# =========================
-# READ CODE (AMBOS)
-# =========================
 # IMPORTANTE: O nome inclui o ambiente (${var.env}) para evitar conflito
 # quando dev e prod sao provisionados na mesma conta AWS.
 # Nomes de IAM Policy sao unicos por conta, entao sem sufixo haveria erro.
@@ -73,7 +68,6 @@ resource "aws_iam_policy" "glue_shared_read_code" {
   })
 }
 
-# attach nas duas roles
 resource "aws_iam_role_policy_attachment" "glue_etl_read_code" {
   role       = aws_iam_role.glue_etl_role.name
   policy_arn = aws_iam_policy.glue_shared_read_code.arn
@@ -121,9 +115,6 @@ resource "aws_iam_role_policy" "glue_dq_logs" {
     ]
   })
 }
-# =========================
-# ETL - SOR → SOT
-# =========================
 resource "aws_iam_role_policy" "glue_etl_sor_sot" {
   name = "glue-etl-sor-sot"
   role = aws_iam_role.glue_etl_role.name
@@ -153,9 +144,6 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
   })
 }
 
-# =========================
-# ETL - Glue Catalog
-# =========================
 resource "aws_iam_role_policy" "glue_etl_catalog" {
   name = "glue-etl-catalog"
   role = aws_iam_role.glue_etl_role.name
@@ -199,9 +187,6 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
   })
 }
 
-# =========================
-# ETL - Start DQ Job
-# =========================
 # Permite que o Glue ETL inicie o job de Data Quality ao final do processamento.
 resource "aws_iam_role_policy" "glue_etl_start_dq" {
   name = "glue-etl-start-dq"
@@ -217,9 +202,6 @@ resource "aws_iam_role_policy" "glue_etl_start_dq" {
   })
 }
 
-# =========================
-# ETL - Start Details Job
-# =========================
 # Permite que o Glue ETL inicie o job Details ao final do run tv + discover.
 resource "aws_iam_role_policy" "glue_etl_start_details" {
   name = "glue-etl-start-details"
@@ -235,9 +217,6 @@ resource "aws_iam_role_policy" "glue_etl_start_details" {
   })
 }
 
-# =========================
-# DQ - Read SOT
-# =========================
 resource "aws_iam_role_policy" "glue_dq_read_sot" {
   name = "glue-dq-read-sot"
   role = aws_iam_role.glue_dq_role.name
@@ -259,9 +238,6 @@ resource "aws_iam_role_policy" "glue_dq_read_sot" {
   })
 }
 
-# =========================
-# DQ - Write results
-# =========================
 resource "aws_iam_role_policy" "glue_dq_write_results" {
   name = "glue-dq-write-results"
   role = aws_iam_role.glue_dq_role.name
@@ -284,9 +260,6 @@ resource "aws_iam_role_policy" "glue_dq_write_results" {
   })
 }
 
-# =========================
-# DQ - Glue Catalog
-# =========================
 resource "aws_iam_role_policy" "glue_dq_catalog" {
   name = "glue-dq-catalog"
   role = aws_iam_role.glue_dq_role.name
@@ -331,9 +304,6 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
   })
 }
 
-# =========================
-# DQ - SNS Publish (notificação de métrica Failed)
-# =========================
 resource "aws_iam_role_policy" "glue_dq_sns_publish" {
   name = "glue-dq-sns-publish"
   role = aws_iam_role.glue_dq_role.name
@@ -350,10 +320,6 @@ resource "aws_iam_role_policy" "glue_dq_sns_publish" {
     }]
   })
 }
-
-# =========================
-# SNS TOPIC POLICIES
-# =========================
 
 data "aws_iam_policy_document" "glue_etl_failure_topic_policy" {
   statement {
@@ -492,9 +458,6 @@ resource "aws_sns_topic_policy" "eventbridge_failure_topic_policy" {
   policy = data.aws_iam_policy_document.eventbridge_failure_topic_policy.json
 }
 
-# =========================
-# AGG - Logs
-# =========================
 resource "aws_iam_role_policy" "glue_agg_logs" {
   name = "glue-agg-logs"
   role = aws_iam_role.glue_agg_role.name
@@ -514,9 +477,6 @@ resource "aws_iam_role_policy" "glue_agg_logs" {
   })
 }
 
-# =========================
-# AGG - S3 (SOT leitura Athena + TEMP + SPEC escrita)
-# =========================
 resource "aws_iam_role_policy" "glue_agg_s3" {
   name = "glue-agg-s3"
   role = aws_iam_role.glue_agg_role.name
@@ -555,9 +515,6 @@ resource "aws_iam_role_policy" "glue_agg_s3" {
   })
 }
 
-# =========================
-# AGG - Glue Catalog (leitura SOT + escrita SPEC)
-# =========================
 resource "aws_iam_role_policy" "glue_agg_catalog" {
   name = "glue-agg-catalog"
   role = aws_iam_role.glue_agg_role.name
@@ -602,9 +559,6 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
   })
 }
 
-# =========================
-# AGG - Athena
-# =========================
 resource "aws_iam_role_policy" "glue_agg_athena" {
   name = "glue-agg-athena"
   role = aws_iam_role.glue_agg_role.name
@@ -625,9 +579,6 @@ resource "aws_iam_role_policy" "glue_agg_athena" {
   })
 }
 
-# =========================
-# AGG - SNS Topic Policies
-# =========================
 data "aws_iam_policy_document" "glue_agg_success_topic_policy" {
   statement {
     sid    = "AllowEventBridgePublish"
@@ -704,5 +655,175 @@ data "aws_iam_policy_document" "glue_details_failure_topic_policy" {
 resource "aws_sns_topic_policy" "glue_details_failure_topic_policy" {
   arn    = aws_sns_topic.glue_details_failure_notifications.arn
   policy = data.aws_iam_policy_document.glue_details_failure_topic_policy.json
+}
+
+# =============================================================================
+# POLÍTICAS IAM — GLUE DETAILS
+# =============================================================================
+
+resource "aws_iam_role_policy" "glue_details_logs" {
+  name = "glue-details-logs"
+  role = aws_iam_role.glue_details_role.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "WriteCustomGlueLogs"
+      Effect = "Allow"
+      Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+      Resource = [
+        "arn:aws:logs:*:*:log-group:/${local.envs.glue_details_job_name}/*",
+        "arn:aws:logs:*:*:log-group:/${local.envs.glue_details_job_name}/*:log-stream:*"
+      ]
+    }]
+  })
+}
+
+# Leitura do SOT (tabelas de discover via Athena) + escrita das tabelas de detalhe
+resource "aws_iam_role_policy" "glue_details_s3" {
+  name = "glue-details-s3"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}",
+          "arn:aws:s3:::${local.envs.s3_bucket_temp}"
+        ]
+      },
+      {
+        Sid    = "ReadSOTForAthena"
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
+      },
+      {
+        Sid    = "AthenaTemp"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/athena/glue_details/*"]
+      },
+      {
+        Sid    = "WriteDetailsSOT"
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_movie_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_tv_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_movie_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_tv_name}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_details_catalog" {
+  name = "glue-details-catalog"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadCatalog"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetPartitions",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+        ]
+      },
+      {
+        Sid    = "WriteDetailsTable"
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTable",
+          "glue:UpdateTable",
+          "glue:BatchCreatePartition",
+          "glue:CreatePartition",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_details_athena" {
+  name = "glue-details-athena"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "athena:StartQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults",
+        "athena:StopQueryExecution",
+        "athena:GetWorkGroup"
+      ]
+      Resource = "arn:aws:athena:sa-east-1:${data.aws_caller_identity.current.account_id}:workgroup/primary"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_details_secrets" {
+  name = "glue-details-secrets"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = var.tmdb_secret_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_details_start_agg" {
+  name = "glue-details-start-agg"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["glue:StartJobRun"]
+      Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_agg_job_name}"]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_details_start_dq" {
+  name = "glue-details-start-dq"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["glue:StartJobRun"]
+      Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_data_quality_job_name}"]
+    }]
+  })
 }
 

@@ -1,50 +1,21 @@
-# =============================================================================
-# ARQUIVO: 04_deploy_lightsail.yml — Deploy do App FilmBot no AWS Lightsail
-# =============================================================================
-#
-# O QUE É AWS LIGHTSAIL?
-# Lightsail é um serviço AWS de servidores virtuais simplificados (VPS).
-# É como alugar um computador na nuvem que fica ligado 24/7.
-# Neste projeto, o Lightsail hospeda o aplicativo web FilmBot (Streamlit).
-#
-# O QUE ESTE WORKFLOW FAZ?
-# 1. Conecta na AWS via OIDC (login seguro temporário)
-# 2. Lê os outputs do Terraform (IP do servidor, chave SSH, credenciais)
-# 3. Conecta ao servidor via SSH (protocolo seguro de acesso remoto)
-# 4. Se for o primeiro deploy: clona o repositório e configura tudo
-# 5. Se já existir: atualiza o código com git pull e reinicia o serviço
-#
-# O QUE É SSH?
-# SSH (Secure Shell) é como "controle remoto de terminal" para servidores.
-# Você usa uma chave privada (como uma senha criptografada) para se
-# autenticar e executar comandos no servidor remoto de forma segura.
-#
-# O QUE É UM SERVIÇO SYSTEMD?
-# Systemd é o gerenciador de processos do Linux. Ele garante que o app
-# Streamlit inicialize automaticamente quando o servidor ligar, e o
-# reinicia automaticamente se ele travar — como um "guardião de processo".
-# =============================================================================
-
 name: "Deploy Lightsail (Reusable)"
 
 on:
   workflow_call:
     inputs:
-      # Ambiente de destino: 'dev' ou 'prod'
-      # Determina em qual servidor Lightsail o deploy será feito
       environment:
         type: string
         required: true
     secrets:
       aws-assume-role-arn:
         required: true
-      aws-statefile-s3-bucket:    # Bucket do state Terraform (para ler outputs)
+      aws-statefile-s3-bucket:
         required: true
-      aws-lock-dynamodb-table:    # Tabela de lock do Terraform
+      aws-lock-dynamodb-table:
         required: true
-      openai-api-key:             # Chave da API OpenAI para o agente de recomendação
+      openai-api-key:
         required: true
-      filmbot-password:           # Senha de acesso ao app Streamlit (proteção contra abuso)
+      filmbot-password:
         required: true
 
 jobs:
@@ -56,25 +27,15 @@ jobs:
         shell: bash
 
     steps:
-      # =========================================================================
-      # PASSO 1: Baixar o Código
-      # =========================================================================
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # =========================================================================
-      # PASSO 2 e 3: Instalar Terraform e Autenticar na AWS
-      # =========================================================================
-      # Precisamos do Terraform não para criar recursos, mas para LER os outputs
-      # do estado atual (IP do servidor, chave SSH, credenciais IAM).
-      # "terraform_wrapper: false" evita que o Terraform envolva outputs em JSON
-      # adicional, permitindo lê-los como texto puro.
-      # =========================================================================
+      # terraform_wrapper: false necessário para ler outputs como texto puro
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.3
-          terraform_wrapper: false  # Necessário para ler outputs como texto limpo
+          terraform_wrapper: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -83,12 +44,6 @@ jobs:
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: sa-east-1
 
-      # =========================================================================
-      # PASSO 4: Inicializar o Terraform (para acessar o state remoto)
-      # =========================================================================
-      # Conecta ao backend S3 onde o estado da infraestrutura está guardado.
-      # Sem isso, não conseguimos ler os outputs (IP, chave SSH, etc.).
-      # =========================================================================
       - name: Terraform Init
         run: |
           cd infra && terraform init \
@@ -97,21 +52,6 @@ jobs:
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
-      # =========================================================================
-      # PASSO 5: Ler os Outputs do Terraform
-      # =========================================================================
-      # O Terraform salva valores de saída no state file após o "apply".
-      # Aqui lemos os valores que precisamos para acessar o servidor:
-      #
-      # - lightsail_public_ip         → Endereço IP público do servidor Lightsail
-      # - lightsail_private_key       → Chave SSH privada para autenticar no servidor
-      # - lightsail_agent_access_key_id     → AWS Access Key ID para o app rodar na instância
-      # - lightsail_agent_secret_access_key → AWS Secret Key para o app rodar na instância
-      #
-      # "echo '::add-mask::${VALUE}'" oculta o valor nos logs do GitHub Actions.
-      # Qualquer output que contenha este valor aparecerá como "***" nos logs.
-      # O formato "heredoc" (<<EOF...EOF) é necessário para chaves multi-linha.
-      # =========================================================================
       - name: Get Terraform Outputs
         id: tf
         run: |
@@ -137,21 +77,7 @@ jobs:
           echo "::add-mask::${SECRET_ACCESS_KEY}"
           echo "secret_access_key=${SECRET_ACCESS_KEY}" >> $GITHUB_OUTPUT
 
-      # =========================================================================
-      # PASSO 6: Configurar a Chave SSH para Conexão
-      # =========================================================================
-      # A chave privada SSH precisa ser salva em um arquivo local para que
-      # o comando "ssh" possa usá-la para autenticação.
-      #
-      # "chmod 600" define permissão de leitura APENAS para o usuário atual.
-      # Se as permissões forem mais abertas, o SSH rejeita a chave por segurança.
-      #
-      # "ssh-keyscan" tenta se conectar ao servidor e salvar sua "impressão digital"
-      # (fingerprint) em known_hosts. Isso evita o prompt interativo "Are you sure
-      # you want to connect to this host?" ao conectar pela primeira vez.
-      # O loop tenta 12 vezes com 10s de espera — necessário pois o servidor
-      # pode estar ainda inicializando (especialmente no primeiro boot).
-      # =========================================================================
+      # chmod 600 obrigatório — SSH rejeita chaves com permissões mais abertas
       - name: Setup SSH key
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
@@ -164,24 +90,7 @@ jobs:
             sleep 10
           done
 
-      # =========================================================================
-      # PASSO 7: Criar Arquivo .env no Servidor
-      # =========================================================================
-      # O aplicativo FilmBot precisa de credenciais para acessar a AWS e a OpenAI.
-      # Essas credenciais são passadas via arquivo ".env" (variáveis de ambiente).
-      #
-      # SEGURANÇA: O arquivo é criado diretamente no caminho final com permissão
-      # 600 (somente o dono pode ler). Evitamos escrever em /tmp primeiro porque
-      # /tmp é legível por qualquer processo no sistema ("world-readable").
-      #
-      # Conteúdo do .env criado:
-      # - AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY → Credenciais do IAM User
-      #   da instância Lightsail (com permissão mínima para Athena e S3)
-      # - AWS_REGION → Região AWS onde os dados estão (São Paulo)
-      # - OPENAI_API_KEY → Chave para chamar a API do ChatGPT (agente FilmBot)
-      # - ATHENA_S3_OUTPUT → Bucket S3 onde o Athena salva resultados das queries
-      # - GLUE_DATABASE e SPEC_TABLE → Banco e tabela com os dados de filmes/séries
-      # =========================================================================
+      # Credenciais criadas diretamente no destino final (não em /tmp — world-readable)
       - name: Create .env file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
@@ -193,12 +102,6 @@ jobs:
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.env"
 
-      # =========================================================================
-      # PASSO 7b: Criar secrets.toml do Streamlit na instância
-      # =========================================================================
-      # O Streamlit lê .streamlit/secrets.toml para autenticação do app.
-      # A senha fica apenas no GitHub Secret FILMBOT_PASSWORD — nunca no repo.
-      # =========================================================================
       - name: Create Streamlit secrets.toml on instance
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
@@ -206,35 +109,6 @@ jobs:
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/filmbot/app/lightsail_ia/.streamlit && sudo tee /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml"
 
-      # =========================================================================
-      # PASSO 8: Fazer o Deploy do Aplicativo
-      # =========================================================================
-      # Conecta ao servidor via SSH e executa um script de deploy.
-      # O script distingue dois cenários:
-      #
-      # CENÁRIO A — Primeiro Deploy (diretório /opt/filmbot não existe):
-      #   1. Instala dependências do sistema (python3, git)
-      #   2. Cria usuário de sistema "filmbot" (isolamento de segurança)
-      #   3. Clona o repositório Git no servidor
-      #   4. Define as permissões corretas (usuário filmbot é dono dos arquivos)
-      #   5. Cria um ambiente virtual Python (venv) para isolar dependências
-      #   6. Instala as bibliotecas Python do requirements.txt
-      #   7. Copia o arquivo filmbot.service para o systemd
-      #   8. Habilita e inicia o serviço
-      #
-      # CENÁRIO B — Deploy de Atualização (já existe):
-      #   1. git pull atualiza o código para a versão mais recente
-      #   2. Reinstala dependências (caso requirements.txt tenha mudado)
-      #   3. Reinicia o serviço para pegar as novas mudanças
-      #
-      # BRANCH_DEPLOY:
-      # - environment='dev'  → usa branch 'develop'
-      # - environment='prod' → usa branch 'main'
-      # Assim o servidor de dev sempre tem o código de develop e prod tem main.
-      #
-      # 'ENDSSH' (heredoc SSH): permite executar múltiplos comandos no servidor
-      # remoto em um único bloco, sem precisar de múltiplos passos SSH.
-      # =========================================================================
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
@@ -280,12 +154,6 @@ jobs:
             sudo systemctl status filmbot --no-pager
           ENDSSH
 
-      # =========================================================================
-      # PASSO 9: Exibir a URL de Acesso ao App
-      # =========================================================================
-      # Ao final do deploy, exibe no log o endereço onde o FilmBot pode
-      # ser acessado no navegador. Porta 8501 é o padrão do Streamlit.
-      # =========================================================================
       - name: Show app URL
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: echo "FilmBot disponível em http://${{ steps.tf.outputs.public_ip }}:8501"

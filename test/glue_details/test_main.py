@@ -1,26 +1,3 @@
-"""
-test_main.py — Testes de integração para app/glue_details/main.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa a lógica de orquestração do job Glue Details: se as funções certas
-são chamadas com os argumentos corretos, incluindo:
-  - Busca da API key no Secrets Manager (uma vez por job)
-  - Seleção da tabela correta (movie vs tv) para buscar IDs
-  - Coleta de detalhes com content_type e table_name corretos
-  - Coleta de watch providers com os argumentos certos
-  - Disparo do Data Quality para ambas as tabelas (details + watch_providers)
-  - Disparo do AGG apenas quando media_type="tv" E year==end_year
-  - NÃO disparo do AGG para filmes ou para anos intermediários de séries
-
-PADRÃO DE TESTE:
-  Usa patch.object(m, "funcao_name") para substituir cada função do módulo
-  por um MagicMock(). O teste então verifica como esse mock foi chamado.
-  Usa o "context manager" Python (with (...) as ...) para fazer múltiplos
-  patches de uma vez — cada patch é automaticamente revertido ao sair do bloco.
-"""
-
 from unittest.mock import patch
 
 import main as m

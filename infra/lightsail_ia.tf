@@ -1,8 +1,6 @@
 # Raciocinio: provisiona a instância Lightsail para hospedar o agente IA (Streamlit)
 # e o IAM User com política mínima para que o app acesse Athena, S3 e Glue.
 
-# ── IAM User dedicado para o agente IA ───────────────────────────────────────
-
 resource "aws_iam_user" "lightsail_agent" {
   name = "filmbot-agent-${var.env}"
   tags = merge(local.default_resource_tags, { Component = "lightsail_ia" })
@@ -72,16 +70,12 @@ resource "aws_iam_access_key" "lightsail_agent" {
   user = aws_iam_user.lightsail_agent.name
 }
 
-# ── Lightsail: key pair SSH ───────────────────────────────────────────────────
-
 resource "aws_lightsail_key_pair" "filmbot" {
   count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
   name     = "filmbot-key-${var.env}"
   tags     = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
-
-# ── Lightsail: instância ──────────────────────────────────────────────────────
 
 resource "aws_lightsail_instance" "filmbot" {
   count             = var.lightsail_enabled ? 1 : 0
@@ -93,8 +87,6 @@ resource "aws_lightsail_instance" "filmbot" {
   key_pair_name     = aws_lightsail_key_pair.filmbot[0].name
   tags              = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
-
-# ── Lightsail: abertura de portas ─────────────────────────────────────────────
 
 resource "aws_lightsail_instance_public_ports" "filmbot" {
   count         = var.lightsail_enabled ? 1 : 0
@@ -130,8 +122,6 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
   }
 }
 
-# ── Lightsail: IP estático ────────────────────────────────────────────────────
-
 resource "aws_lightsail_static_ip" "filmbot" {
   count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
@@ -144,8 +134,6 @@ resource "aws_lightsail_static_ip_attachment" "filmbot" {
   static_ip_name = aws_lightsail_static_ip.filmbot[0].name
   instance_name  = aws_lightsail_instance.filmbot[0].name
 }
-
-# ── Outputs ───────────────────────────────────────────────────────────────────
 
 output "lightsail_public_ip" {
   description = "IP público fixo da instância Lightsail — use este IP no A record do is-a.dev (filmbot.is-a.dev)"
