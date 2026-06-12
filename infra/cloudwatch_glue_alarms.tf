@@ -1,5 +1,3 @@
-# Raciocinio: cria eventos de monitoramento do Glue e notifica estados relevantes de execucao.
-
 resource "aws_cloudwatch_event_rule" "glue_etl_failed" {
   name        = "glue-etl-failed-${var.env}"
   description = "Notifica quando o job Glue ETL falha ou e interrompido"

@@ -1,46 +1,10 @@
-"""
-test_rulesets_dq.py — Testes unitários para app/glue_data_quality/src/rulesets_dq.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa a estrutura do dicionário `rulesets_dq` que define as regras de
-qualidade de dados para cada tabela do pipeline.
-
-POR QUE TESTAR UM DICIONÁRIO?
-  rulesets_dq é a "especificação de qualidade" do pipeline — qualquer erro
-  aqui (regra mal-formatada, tabela faltando, lista vazia) faz o job Glue DQ
-  falhar silenciosamente ou pular validações. Estes testes funcionam como
-  um "contrato de cobertura": garantem que toda tabela conhecida tem regras
-  e que as regras têm o formato correto do DQDL.
-
-SOBRE O FORMATO DQDL (Data Quality Definition Language):
-  As regras são strings como:
-    'IsComplete "id"'                → coluna "id" não pode ter nulos
-    'IsUnique "id"'                  → coluna "id" não pode ter duplicatas
-    'RowCount > 0'                   → tabela deve ter ao menos 1 linha
-    'ColumnValues "vote_average" between 0 and 10'  → intervalo válido
-  get_ruleset() concatena essas strings num bloco "Rules = [...]".
-
-TABELAS ESPERADAS (EXPECTED_TABLES):
-  São todas as tabelas do pipeline que passam pelo job de Data Quality.
-  Se uma tabela nova for adicionada ao pipeline mas não tiver regras em
-  rulesets_dq, os testes vão falhar com uma mensagem clara indicando qual
-  tabela está faltando.
-
-TESTES:
-  test_all_expected_tables_are_present     → cobertura: toda tabela tem entrada
-  test_each_table_has_at_least_one_rule    → nenhuma tabela tem lista vazia
-  test_all_rules_are_strings               → formato correto (DQDL é string)
-  test_no_empty_rules                      → sem strings vazias ou com só espaços
-  test_all_tables_have_row_count_rule      → toda tabela verifica se tem linhas
-  test_discover_tables_validate_vote_average → tabelas de discover validam nota
-  test_tables_with_id_have_completeness_and_uniqueness → id deve ser completo e único
-"""
+# rulesets_dq é a "especificação de qualidade" do pipeline — regra mal-formatada
+# ou tabela faltando faz o job Glue DQ falhar silenciosamente. Estes testes são
+# um "contrato de cobertura": garantem que toda tabela conhecida tem regras
+# e que estão no formato DQDL correto.
 
 from src.rulesets_dq import rulesets_dq
 
-# Tabelas que devem obrigatoriamente ter regras definidas
 EXPECTED_TABLES = [
     "tb_configuration_countries_tmdb",
     "tb_configuration_languages_tmdb",

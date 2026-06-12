@@ -1,56 +1,4 @@
-"""
-utils.py — Funções auxiliares do job Glue Details.
-
-==============================================================================
-O QUE ESTE ARQUIVO FAZ?
-==============================================================================
-Este arquivo contém todas as funções de suporte do job Glue Details.
-É organizado em blocos temáticos:
-
-  1. Retry com backoff exponencial (_tmdb_get):
-     Garante que erros temporários de rede não derrubem o job inteiro.
-     ANALOGIA: Como discar várias vezes se der sinal de ocupado, esperando
-     um pouco mais a cada tentativa (1s → 2s → 4s).
-
-  2. Leitura de argumentos do Glue (get_parameters_glue):
-     O Glue passa parâmetros via linha de comando; esta função os organiza
-     em um dicionário Python.
-
-  3. Secrets Manager (get_tmdb_api_key):
-     Busca a chave de API do TMDB guardada com segurança na AWS.
-
-  4. Fetch de IDs via Athena (fetch_ids_from_sot):
-     Consulta SQL no data lake para saber quais IDs precisam de detalhes.
-
-  5. Coleta de detalhes (collect_and_write_details):
-     Para cada ID, chama a API do TMDB em paralelo (ThreadPool) e grava
-     os dados enriquecidos no SOT.
-
-  6. Coleta de watch providers (collect_and_write_watch_providers):
-     Para cada ID, descobre quais plataformas de streaming (Netflix, Prime, etc.)
-     têm aquele título disponível no Brasil (região BR).
-
-  7. Acionamento downstream (trigger_data_quality, trigger_agg):
-     Dispara os próximos jobs do pipeline sem esperar a conclusão deles.
-
-TECNOLOGIAS UTILIZADAS:
-  - requests + ThreadPoolExecutor: chamadas HTTP paralelas à API do TMDB
-  - AWS Wrangler (wr.s3.to_parquet): grava em Parquet e registra no Glue Catalog
-  - wr.athena.read_sql_query: consulta SQL no data lake via Athena
-  - Boto3 (secretsmanager + glue): acessa AWS de forma programática
-
-Responsabilidades:
-  - Ler argumentos do job
-  - Buscar IDs distintos das tabelas de discover no SOT via Athena
-  - Chamar o endpoint de detalhes da API TMDB (/movie/{id} ou /tv/{id})
-  - Gravar os detalhes diretamente no SOT como Parquet particionado por year
-  - Acionar o job Glue AGG ao final
-
-Por que este job existe separado da Lambda API?
-  A Lambda já opera no limite máximo de timeout (900 s). Buscar detalhes
-  individuais para cada ID descoberto adicionaria milhares de chamadas extras
-  à execução. O Glue PythonShell não tem essa restrição de 15 minutos.
-"""
+"""utils.py — Funções auxiliares do job Glue Details."""
 
 import json
 import logging
@@ -85,25 +33,18 @@ _TMDB_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
 
 def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
     """
-    Executa GET na API do TMDB com retry automático em erros transientes.
-
-    ANALOGIA (backoff exponencial): Como tentar ligar para alguém ocupado.
-    Na 1ª tentativa falhou? Espera 1s. Na 2ª? Espera 2s. Na 3ª? Espera 4s.
-    O tempo de espera dobra a cada tentativa — isso evita sobrecarregar o servidor
-    que já está com problemas. O "+random" é um "jitter" para evitar que múltiplos
-    workers acordem ao mesmo tempo e ataquem o servidor simultaneamente.
+    GET na API do TMDB com retry e backoff exponencial em erros transientes.
 
     Args:
         url:         URL completa do endpoint da API do TMDB.
-        params:      Parâmetros de query string (api_key, language, etc.).
+        params:      Parâmetros de query string.
         max_retries: Número máximo de tentativas antes de desistir.
 
     Returns:
         Dicionário Python com a resposta JSON da API.
 
     Raises:
-        HTTPError: Se o servidor responder com erro não-transiente (401, 404, etc.)
-                   ou se todas as tentativas de erros transientes falharem.
+        HTTPError: Se o servidor responder com erro não-transiente ou tentativas esgotadas.
         ConnectionError / Timeout: Se não conseguir conectar após max_retries tentativas.
     """
     for attempt in range(max_retries):
@@ -116,8 +57,6 @@ def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
                         f"HTTP {response.status_code} após {max_retries} tentativas. "
                         f"Todas as tentativas esgotadas para {url}."
                     )
-                    # raise_for_status() lança uma exceção HTTPError para qualquer
-                    # status 4xx ou 5xx, interrompendo a execução desta função.
                     response.raise_for_status()
                 # Para 429, o TMDB informa no header "Retry-After" quanto tempo esperar.
                 # Para os demais erros transientes, usa backoff exponencial (1s → 2s → 4s).
@@ -132,14 +71,12 @@ def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
                     f"Aguardando {wait:.1f}s..."
                 )
                 time.sleep(wait)
-                continue  # volta ao início do loop para fazer uma nova tentativa
-            # Se chegou aqui, o status não é transiente (não está em _TMDB_TRANSIENT_STATUS).
-            # raise_for_status() lança exceção se for qualquer outro código de erro (ex: 401, 404).
-            # Se o status for 200 OK, não lança nada e retorna a resposta.
+                continue
+            # Se chegou aqui, o status não é transiente — raise_for_status() lança exceção
+            # para qualquer outro erro 4xx/5xx (ex: 401, 404). Para 200 OK retorna normalmente.
             response.raise_for_status()
             return response.json()
         except (ConnectionError, Timeout) as e:
-            # Erros de rede (sem conexão, timeout de TCP) — vale tentar novamente
             if is_last_attempt:
                 logger.error(
                     f"Erro de conexão após {max_retries} tentativas: {e}. "
@@ -154,43 +91,14 @@ def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
             time.sleep(wait)
 
 
-# ---------------------------------------------------------------------------
-# Utilitários gerais
-# ---------------------------------------------------------------------------
-
-
 def get_resolved_option(args: list) -> Dict[str, Any]:
-    """
-    Converte a lista de argumentos do Glue em um dicionário.
-
-    Args:
-        args: Lista de nomes de argumentos a resolver (sem o prefixo "--").
-
-    Returns:
-        Dicionário mapeando nome do argumento para seu valor.
-    """
+    """Wrapper de getResolvedOptions — converte lista de nomes em dicionário nome→valor."""
     return getResolvedOptions(sys.argv, args)
 
 
 def get_parameters_glue() -> Dict[str, Any]:
     """
     Lê os argumentos obrigatórios do job Glue Details.
-
-    Argumentos obrigatórios:
-      S3_BUCKET_SOT                — bucket onde as tabelas de detalhe serão gravadas
-      S3_BUCKET_TEMP               — bucket temporário para os resultados do Athena
-      DATABASE                     — nome do banco no Glue Catalog
-      TABLE_DISCOVER_MOVIE         — nome da tabela de discover de filmes no Catalog
-      TABLE_DISCOVER_TV            — nome da tabela de discover de séries no Catalog
-      TABLE_DETAILS_MOVIE          — nome da tabela de detalhes de filmes (destino)
-      TABLE_DETAILS_TV             — nome da tabela de detalhes de séries (destino)
-      TABLE_WATCH_PROVIDERS_MOVIE  — nome da tabela de watch providers de filmes (destino)
-      TABLE_WATCH_PROVIDERS_TV     — nome da tabela de watch providers de séries (destino)
-      TMDB_SECRET_ARN              — ARN do segredo com a API key do TMDB
-      GLUE_AGG_JOB_NAME            — nome do job Glue AGG a ser acionado ao final
-      MEDIA_TYPE                   — "movie" ou "tv"
-      YEAR                         — ano de discover a processar
-      END_YEAR                     — último ano do ciclo (usado para decidir se aciona AGG)
 
     Returns:
         Dicionário com todos os argumentos resolvidos.
@@ -215,16 +123,11 @@ def get_parameters_glue() -> Dict[str, Any]:
     return get_resolved_option(required_args)
 
 
-# ---------------------------------------------------------------------------
-# Secrets Manager
-# ---------------------------------------------------------------------------
-
-
 def get_tmdb_api_key(secret_arn: str) -> str:
     """
-    Busca a chave de API do TMDB armazenada no AWS Secrets Manager.
+    Busca a chave de API do TMDB no Secrets Manager.
 
-    O segredo deve estar no formato JSON: {"tmdb_api_key": "sua-chave-aqui"}
+    Formato do segredo: {"tmdb_api_key": "sua-chave-aqui"}
 
     Args:
         secret_arn: ARN do segredo cadastrado no Secrets Manager.
@@ -238,11 +141,6 @@ def get_tmdb_api_key(secret_arn: str) -> str:
     return secret["tmdb_api_key"]
 
 
-# ---------------------------------------------------------------------------
-# Leitura dos IDs do SOT via Athena
-# ---------------------------------------------------------------------------
-
-
 def fetch_ids_from_sot(
     database: str,
     table_discover: str,
@@ -250,18 +148,9 @@ def fetch_ids_from_sot(
     year: str,
 ) -> List[int]:
     """
-    Busca os IDs distintos da tabela de discover no SOT via Athena,
-    filtrados pelo ano exato recebido.
+    Busca IDs distintos da tabela de discover no SOT via Athena, filtrados pelo ano.
 
-    POR QUE USAR O SOT E NÃO O SOR?
-      - SOR (Bronze): dados brutos, pode ter duplicatas (vários arquivos JSON por página)
-      - SOT (Silver): dados já processados pelo Glue ETL, deduplicados e validados
-      Buscar do SOT garante que vamos enriquecer apenas IDs únicos e válidos.
-
-    COMO FUNCIONA O ATHENA?
-      O Athena é um serviço que executa queries SQL diretamente nos arquivos Parquet
-      do S3, sem precisar carregar tudo em memória. O s3_output é onde os resultados
-      temporários da query ficam antes de serem lidos pelo Wrangler.
+    Usa o SOT (não o SOR) porque os IDs já foram deduplicados pelo Glue ETL.
 
     Args:
         database:       Nome do banco de dados no Glue Catalog.
@@ -285,32 +174,14 @@ def fetch_ids_from_sot(
         ctas_approach=False,  # False = query direta (mais simples, sem criar tabela temporária no S3)
     )
 
-    # Converte a coluna "id" do DataFrame para uma lista de inteiros Python
     ids = df["id"].astype(int).tolist()
     logger.info(f"IDs encontrados: {len(ids)}.")
     return ids
 
 
-# ---------------------------------------------------------------------------
-# TMDB API — detalhes individuais
-# ---------------------------------------------------------------------------
-
-
 def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     """
     Busca os detalhes de um filme ou série pelo ID na API do TMDB.
-
-    Endpoints utilizados:
-      - Filme: https://api.themoviedb.org/3/movie/{id}
-      - Série:  https://api.themoviedb.org/3/tv/{id}
-
-    Para filmes, o campo relevante é:
-      - runtime (int): duração em minutos
-
-    Para séries, os campos relevantes são:
-      - number_of_seasons  (int): total de temporadas
-      - number_of_episodes (int): total de episódios
-      - episode_run_time   (list[int]): lista com duração(ões) típica(s) por episódio
 
     Args:
         api_key:      Chave de API do TMDB.
@@ -327,47 +198,22 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     return _tmdb_get(url, params)
 
 
-# ---------------------------------------------------------------------------
-# Coleta + gravação no SOT
-# ---------------------------------------------------------------------------
-
-
-_TMDB_MAX_WORKERS = 20  # ~20 req/s concorrentes — bem abaixo do limite de 40 req/s do TMDB
-# Por que 20 e não mais? A API do TMDB tem um rate limit (~40 req/s).
-# Com ThreadPoolExecutor(20) e timeout=30s, nunca ultrapassamos esse limite,
-# evitando respostas 429 (Too Many Requests) que atrasariam o processamento.
+_TMDB_MAX_WORKERS = 20  # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
 
 
 def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
-    """
-    Extrai apenas os campos relevantes da resposta da API de detalhes.
-
-    A API retorna dezenas de campos por título. Extraímos apenas os que
-    serão usados no Glue AGG e no app Streamlit.
-
-    Para FILMES extrai:
-      - runtime: duração em minutos (ex: 162 → "2h 42min" no app)
-      - title_en, overview_en: título e sinopse em inglês (para fallback e tradução)
-      - poster_path_en, backdrop_path_en: caminhos de imagem (sem URL base)
-      - year: extraído dos primeiros 4 chars de release_date ("2022-12-16" → "2022")
-
-    Para SÉRIES extrai:
-      - number_of_seasons, number_of_episodes: total de temporadas e episódios
-      - episode_run_time: lista com duração(ões) típica(s) de episódio em minutos
-      - title_en, overview_en, poster_path_en, backdrop_path_en: mesmos que filmes
-      - year: extraído de first_air_date (data de estreia da série)
-    """
+    """Extrai os campos relevantes da resposta de /movie/{id} ou /tv/{id}."""
     if content_type == "movie":
         release_date = detalhe.get("release_date") or ""
         # Extrai o ano dos primeiros 4 caracteres da data no formato "YYYY-MM-DD"
         year = release_date[:4] if release_date else None
         return {
             "id":               detalhe.get("id"),
-            "runtime":          detalhe.get("runtime"),       # duração total em minutos
-            "title_en":         detalhe.get("title"),         # título original em inglês
-            "overview_en":      detalhe.get("overview"),      # sinopse em inglês
+            "runtime":          detalhe.get("runtime"),
+            "title_en":         detalhe.get("title"),
+            "overview_en":      detalhe.get("overview"),
             "poster_path_en":   detalhe.get("poster_path"),   # "/abc123.jpg" (sem URL base)
-            "backdrop_path_en": detalhe.get("backdrop_path"), # imagem de fundo
+            "backdrop_path_en": detalhe.get("backdrop_path"),
             "year":             year,                          # usado como partição no S3
         }
     else:  # tv
@@ -375,12 +221,12 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
         year = first_air_date[:4] if first_air_date else None
         return {
             "id":                 detalhe.get("id"),
-            "number_of_seasons":  detalhe.get("number_of_seasons"),  # total de temporadas
-            "number_of_episodes": detalhe.get("number_of_episodes"),  # total de episódios
+            "number_of_seasons":  detalhe.get("number_of_seasons"),
+            "number_of_episodes": detalhe.get("number_of_episodes"),
             # episode_run_time é uma lista (pode ter mais de um valor para séries com
             # episódios de duração variável). Tipicamente tem um único elemento.
             "episode_run_time":   detalhe.get("episode_run_time", []),
-            "title_en":           detalhe.get("name"),         # séries usam "name", não "title"
+            "title_en":           detalhe.get("name"),  # séries usam "name", não "title"
             "overview_en":        detalhe.get("overview"),
             "poster_path_en":     detalhe.get("poster_path"),
             "backdrop_path_en":   detalhe.get("backdrop_path"),
@@ -397,42 +243,26 @@ def collect_and_write_details(
     database: str,
 ) -> None:
     """
-    Chama a API de detalhes para cada ID em paralelo e grava o resultado no SOT como Parquet.
+    Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
 
-    Para filmes extrai: id, runtime, year (ano de lançamento).
-    Para séries extrai: id, number_of_seasons, number_of_episodes,
-                        episode_run_time (array<int>), year (ano de estreia).
-
-    O campo year é extraído da data de lançamento/estreia e usado como
-    coluna de partição, mantendo o mesmo padrão das tabelas de discover.
-    Quando um ID não retornar os dados esperados, o registro é ignorado
-    sem interromper o processamento dos demais.
-
-    As chamadas à API são feitas em paralelo com ThreadPoolExecutor limitado
-    a _TMDB_MAX_WORKERS workers para respeitar o rate limit do TMDB (~40 req/s).
+    IDs que falharem na API são descartados silenciosamente.
 
     Args:
         api_key:       Chave de API do TMDB.
         ids:           Lista de IDs a consultar.
         content_type:  "movie" ou "tv".
         s3_bucket_sot: Nome do bucket SOT de destino.
-        table_name:    Nome da tabela no Glue Catalog (e prefixo no S3).
+        table_name:    Nome da tabela no Glue Catalog.
         database:      Nome do banco de dados no Glue Catalog.
     """
-    # Lista compartilhada entre threads — acumulará todos os registros coletados
     registros = []
-    # threading.Lock() garante acesso exclusivo à lista quando múltiplas threads
-    # tentam adicionar registros ao mesmo tempo (evita corrupção de dados por
-    # condição de corrida — "race condition")
-    lock = threading.Lock()
+    lock = threading.Lock()  # evita race condition ao acumular registros entre threads
 
     def fetch_and_parse(item_id: int) -> None:
-        """Função chamada por cada thread: busca detalhes de um ID e adiciona ao resultado."""
         try:
             detalhe = fetch_tmdb_details(api_key, content_type, item_id)
             registro = _parse_detail(detalhe, content_type)
             with lock:
-                # "with lock" garante que apenas uma thread por vez adiciona à lista
                 registros.append(registro)
         except requests.RequestException as exc:
             # Se um ID falhar (ex: ID deletado da TMDB), apenas registra o aviso
@@ -440,10 +270,6 @@ def collect_and_write_details(
             logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
 
     logger.info(f"Buscando detalhes de {len(ids)} IDs ({content_type}) com {_TMDB_MAX_WORKERS} workers...")
-    # ThreadPoolExecutor gerencia um pool de threads:
-    # - Envia todas as tarefas de uma vez (submit)
-    # - Executa até 20 simultaneamente
-    # - as_completed() aguarda cada uma terminar e captura erros inesperados
     with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
         futures = {executor.submit(fetch_and_parse, item_id): item_id for item_id in ids}
         for future in as_completed(futures):
@@ -468,8 +294,8 @@ def collect_and_write_details(
     wr.s3.to_parquet(
         df=df,
         path=s3_path,
-        dataset=True,             # registra/atualiza a tabela no Glue Catalog automaticamente
-        partition_cols=["year"],  # cria subpastas year=2022/, year=2023/, etc.
+        dataset=True,
+        partition_cols=["year"],
         mode="overwrite_partitions",
         database=database,
         table=table_name,
@@ -477,20 +303,9 @@ def collect_and_write_details(
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
 
 
-# ---------------------------------------------------------------------------
-# TMDB API — watch providers por região (BR)
-# ---------------------------------------------------------------------------
-
-
 def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) -> dict:
     """
-    Busca os provedores de streaming para um filme ou série na região BR.
-
-    Endpoints:
-      - Filme: https://api.themoviedb.org/3/movie/{id}/watch/providers
-      - Série:  https://api.themoviedb.org/3/tv/{id}/watch/providers
-
-    Retorna o dicionário da região "BR" (pode ser vazio se não houver dados).
+    Busca provedores de streaming para um título na região BR.
 
     Args:
         api_key:      Chave de API do TMDB.
@@ -498,8 +313,7 @@ def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) ->
         item_id:      ID do filme ou série no TMDB.
 
     Returns:
-        Dicionário com as chaves "flatrate", "rent", "buy" (cada uma é lista de providers),
-        ou dicionário vazio se BR não estiver disponível.
+        Dicionário com chaves "flatrate", "rent", "buy", ou vazio se BR não disponível.
     """
     endpoint = "movie" if content_type == "movie" else "tv"
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}/watch/providers"
@@ -511,34 +325,17 @@ def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) ->
 
 def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> List[dict]:
     """
-    Converte a seção BR da resposta de watch/providers em registros normalizados.
+    Converte a seção BR de watch/providers em registros normalizados (um por provedor × tipo).
 
-    A API retorna provedores agrupados por categoria:
-      - flatrate: assinatura (ex: Netflix, Prime Video — você paga mensalmente)
-      - rent:     aluguel (ex: paga por título por tempo limitado)
-      - buy:      compra definitiva (ex: compra digital no Google Play)
-
-    Cada provedor de cada categoria gera um registro separado na tabela,
-    permitindo filtrar por tipo no Athena e no app.
-
-    Exemplo de br_data:
-      {
-        "flatrate": [
-          {"provider_id": 8, "provider_name": "Netflix", "logo_path": "/logo.png"}
-        ],
-        "rent": [
-          {"provider_id": 3, "provider_name": "Google Play Movies", "logo_path": "/..."}
-        ]
-      }
+    Tipos: flatrate (assinatura), rent (aluguel), buy (compra).
 
     Args:
-        br_data: Seção "BR" da resposta da API (pode ser vazio se título não disponível no BR).
+        br_data: Seção "BR" da resposta da API (pode ser vazio se BR não disponível).
         item_id: ID do título no TMDB.
-        year:    Ano de partição (string).
+        year:    Ano de partição.
 
     Returns:
-        Lista de dicionários com os campos: id, provider_type, provider_id,
-        provider_name, logo_path, year. Lista vazia se não há provedores no BR.
+        Lista de registros com: id, provider_type, provider_id, provider_name, logo_path, year.
     """
     records = []
     for provider_type in ("flatrate", "rent", "buy"):
@@ -548,11 +345,11 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
                 continue  # ignora provedores sem nome (dados incompletos da API)
             records.append({
                 "id":            item_id,
-                "provider_type": provider_type,  # "flatrate", "rent" ou "buy"
-                "provider_id":   p.get("provider_id"),   # ID numérico da plataforma
-                "provider_name": name,                    # ex: "Netflix"
-                "logo_path":     p.get("logo_path"),      # caminho da logo (sem URL base)
-                "year":          year,                    # partição no S3
+                "provider_type": provider_type,
+                "provider_id":   p.get("provider_id"),
+                "provider_name": name,
+                "logo_path":     p.get("logo_path"),
+                "year":          year,
             })
     return records
 
@@ -567,10 +364,7 @@ def collect_and_write_watch_providers(
     year: str,
 ) -> None:
     """
-    Busca os provedores de streaming BR para cada ID em paralelo e grava no SOT.
-
-    Cada título pode gerar múltiplos registros (um por provedor × categoria).
-    Títulos sem provedores BR são silenciosamente ignorados.
+    Busca provedores de streaming BR para cada ID em paralelo e grava no SOT.
 
     Args:
         api_key:       Chave de API do TMDB.
@@ -579,7 +373,7 @@ def collect_and_write_watch_providers(
         s3_bucket_sot: Nome do bucket SOT de destino.
         table_name:    Nome da tabela no Glue Catalog.
         database:      Nome do banco de dados no Glue Catalog.
-        year:          Ano de partição (string).
+        year:          Ano de partição.
     """
     registros: List[dict] = []
     lock = threading.Lock()
@@ -627,11 +421,6 @@ def collect_and_write_watch_providers(
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
 
 
-# ---------------------------------------------------------------------------
-# Acionamento do Glue Data Quality
-# ---------------------------------------------------------------------------
-
-
 def trigger_data_quality(
     dq_job_name: str,
     table_name: str,
@@ -639,16 +428,16 @@ def trigger_data_quality(
     year: Optional[str] = None,
 ) -> str:
     """
-    Aciona o job Glue Data Quality para validar uma tabela no SOT.
+    Dispara o job Glue Data Quality sem aguardar.
 
     Args:
         dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
-        table_name:  Nome da tabela a validar (usado para buscar o ruleset).
+        table_name:  Nome da tabela a validar.
         database:    Nome do banco de dados no Glue Catalog.
         year:        Ano da partição.
 
     Returns:
-        O ID de execução do job (JobRunId).
+        JobRunId da execução.
     """
     arguments = {
         "--TABLE_NAME": table_name,
@@ -669,23 +458,15 @@ def trigger_data_quality(
     return run_id
 
 
-# ---------------------------------------------------------------------------
-# Acionamento do Glue AGG
-# ---------------------------------------------------------------------------
-
-
 def trigger_agg(agg_job_name: str) -> str:
     """
-    Aciona o job Glue AGG para unificar os dados de discover com os detalhes no SPEC.
-
-    Chamado ao final do glue_details, quando os detalhes de filmes e séries
-    já estão disponíveis no SOT e o AGG pode fazer os JOINs com segurança.
+    Dispara o job Glue AGG.
 
     Args:
         agg_job_name: Nome do job Glue AGG cadastrado na AWS.
 
     Returns:
-        O ID de execução do job (JobRunId).
+        JobRunId da execução.
     """
     glue_client = boto3.client("glue")
     response = glue_client.start_job_run(JobName=agg_job_name)

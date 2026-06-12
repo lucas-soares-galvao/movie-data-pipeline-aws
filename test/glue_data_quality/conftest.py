@@ -1,28 +1,9 @@
 """
 conftest.py — Configuração de testes para o módulo Glue Data Quality.
 
-==============================================================================
-POR QUE ESTE conftest.py É MAIS COMPLEXO QUE OS OUTROS?
-==============================================================================
-O Glue Data Quality usa MAIS bibliotecas externas que os outros módulos:
-  - awsglue (SDK do Glue — padrão em todos os módulos Glue)
-  - awsgluedq (motor de avaliação de regras DQ — específico do DQ)
-  - pyspark (Apache Spark — necessário para o GlueContext e DynamicFrames)
-
-O PySpark também não está disponível localmente (é um sistema distribuído
-que normalmente roda em clusters). Precisamos de stubs para TODOS eles.
-
-STUBS CRIADOS:
-  awsglue.*      → SDK principal do Glue (GlueContext, DynamicFrame, utils)
-  awsgluedq.*    → Motor de Data Quality (EvaluateDataQuality)
-  pyspark.*      → Apache Spark (SparkContext, funções SQL, tipos)
-
-OBSERVAÇÃO sobre pyspark.sql.functions:
-  Algumas funções do PySpark (col, when, lit, etc.) precisam de MagicMock()
-  em vez de None, porque o código de produção CHAMA essas funções e usa o
-  resultado. Se fossem None, o código falharia com "NoneType is not callable".
-
-Raciocinio: simula dependencias Glue/PySpark para executar testes fora do runtime AWS.
+Stubs para awsglue, awsgluedq e pyspark (nenhum deles existe fora do runtime AWS/Glue).
+Atenção: funções PySpark como col() e when() precisam ser MagicMock() — não None —
+porque o código as chama diretamente. None causaria "NoneType is not callable".
 """
 
 import sys

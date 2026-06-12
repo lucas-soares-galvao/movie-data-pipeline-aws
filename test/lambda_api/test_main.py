@@ -1,39 +1,3 @@
-"""
-test_main.py — Testes unitários do handler principal da Lambda.
-
-==============================================================================
-O QUE SÃO TESTES UNITÁRIOS?
-==============================================================================
-Testes unitários verificam uma única "unidade" de código (função ou método)
-de forma isolada — sem depender de sistemas externos (AWS, TMDB, banco de dados).
-
-ANALOGIA: Como testar o motor de um carro sem colocar o carro na rua.
-  Você mede RPM, temperatura, pressão — tudo em bancada controlada.
-  Se algo der errado, você sabe exatamente onde está o problema.
-
-POR QUE MOCKAR (SIMULAR) AS DEPENDÊNCIAS EXTERNAS?
-  - Velocidade: chamadas reais à AWS ou TMDB levam segundos; mocks são instantâneos
-  - Determinismo: APIs externas podem falhar ou retornar dados diferentes
-  - Custo: chamadas AWS custam dinheiro; testes rodam centenas de vezes
-  - Isolamento: um bug na TMDB não deve quebrar nossos testes locais
-
-COMO O @patch FUNCIONA?
-  @patch("main.get_tmdb_api_key") → antes do teste, substitui a função
-  get_tmdb_api_key em main.py por um MagicMock(). O Mock aceita qualquer
-  chamada e retorna o que configuramos (ex: mock_get_key.return_value = "chave").
-  Após o teste, a função original é restaurada automaticamente.
-
-O QUE ESTE ARQUIVO TESTA?
-  A lógica de orquestração do lambda_handler:
-  - Se ele chama as funções certas (collect_genre, collect_discover, etc.)
-  - Com os argumentos certos (content_type, folder, database, year)
-  - Na ordem correta (referências antes do discover)
-  - O comportamento dos flags skip_discover e only_discover
-
-As funções auxiliares (collect_and_save, trigger_glue_job, etc.) já foram
-testadas individualmente em test_utils.py.
-"""
-
 import os
 import unittest
 from unittest.mock import MagicMock, patch
@@ -51,14 +15,8 @@ os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 import main  # noqa: E402  (importação após configuração de env vars)
 
 
-# ==============================================================================
-# EVENTOS SIMULADOS DO EVENTBRIDGE
-# ==============================================================================
-# O EventBridge dispara a Lambda com um evento JSON que contém as informações
-# do pipeline: tipo (movie/tv), nomes dos bancos de dados e das tabelas.
-# Esses dicionários espelham exatamente o que o Terraform configura como
-# "input" nos targets do EventBridge (ver infra/eventbridge_lambda_api.tf).
-# Usamos os mesmos campos para garantir que os testes testam o comportamento real.
+# Espelham o "input" dos targets do EventBridge em infra/eventbridge_lambda_api.tf —
+# usar os mesmos campos garante que os testes cobrem o payload real.
 EVENTO_MOVIE = {
     "type": "movie",
     "database": "tmdb_db",
@@ -80,25 +38,9 @@ EVENTO_TV = {
 }
 
 
-# ==============================================================================
-# TESTES DO lambda_handler
-# ==============================================================================
-
-
 class TestLambdaHandler(unittest.TestCase):
     def setUp(self):
-        """
-        Cria o objeto de contexto simulado exigido pela assinatura do handler Lambda.
-
-        Todo handler Lambda recebe (event, context). O "context" contém informações
-        sobre a execução (tempo restante, nome da função, etc.). Nos testes, não
-        precisamos dessas informações, então usamos um MagicMock() genérico.
-        """
         self.mock_context = MagicMock()
-
-    # --- Testes de resposta HTTP (statusCode) ---
-    # Verificam que o lambda_handler sempre retorna a estrutura correta de resposta.
-    # Lambda HTTP precisa retornar {"statusCode": 200, "body": "..."} para o API Gateway.
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")

@@ -2,16 +2,12 @@
 # para economizar ~37% do custo mensal sem prejuízo de disponibilidade diurna.
 # Ativo apenas quando var.lightsail_enabled = true (produção).
 
-# ── Pacote da Lambda (.zip sem dependências externas) ─────────────────────────
-
 data "archive_file" "lightsail_scheduler_bundle" {
   count       = var.lightsail_enabled ? 1 : 0
   type        = "zip"
   output_path = "${path.module}/lightsail_scheduler_bundle.zip"
   source_file = "${path.root}/../app/lambda_lightsail_scheduler/main.py"
 }
-
-# ── IAM Role para a Lambda ────────────────────────────────────────────────────
 
 resource "aws_iam_role" "lightsail_scheduler" {
   count = var.lightsail_enabled ? 1 : 0
@@ -29,7 +25,6 @@ resource "aws_iam_role" "lightsail_scheduler" {
   tags = local.component_tags.lightsail_scheduler
 }
 
-# Permissão para parar/iniciar a instância Lightsail específica
 resource "aws_iam_role_policy" "lightsail_scheduler_control" {
   count = var.lightsail_enabled ? 1 : 0
   name  = "lightsail-scheduler-control-${var.env}"
@@ -50,7 +45,6 @@ resource "aws_iam_role_policy" "lightsail_scheduler_control" {
   })
 }
 
-# Permissão para escrever logs no CloudWatch
 resource "aws_iam_role_policy" "lightsail_scheduler_logs" {
   count = var.lightsail_enabled ? 1 : 0
   name  = "lightsail-scheduler-logs-${var.env}"
@@ -73,16 +67,12 @@ resource "aws_iam_role_policy" "lightsail_scheduler_logs" {
   })
 }
 
-# ── CloudWatch Log Group ──────────────────────────────────────────────────────
-
 resource "aws_cloudwatch_log_group" "lightsail_scheduler" {
   count             = var.lightsail_enabled ? 1 : 0
   name              = "/aws/lambda/lightsail-scheduler-${var.env}"
   retention_in_days = var.log_retention_days
   tags              = local.component_tags.lightsail_scheduler
 }
-
-# ── Lambda Function ───────────────────────────────────────────────────────────
 
 resource "aws_lambda_function" "lightsail_scheduler" {
   count         = var.lightsail_enabled ? 1 : 0
@@ -111,8 +101,6 @@ resource "aws_lambda_function" "lightsail_scheduler" {
   ]
 }
 
-# ── EventBridge: parar às 23:00 BRT (02:00 UTC) ──────────────────────────────
-
 resource "aws_cloudwatch_event_rule" "lightsail_stop" {
   count               = var.lightsail_enabled ? 1 : 0
   name                = "lightsail-stop-${var.env}"
@@ -138,8 +126,6 @@ resource "aws_lambda_permission" "allow_eventbridge_lightsail_stop" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.lightsail_stop[0].arn
 }
-
-# ── EventBridge: iniciar às 08:00 BRT (11:00 UTC) ────────────────────────────
 
 resource "aws_cloudwatch_event_rule" "lightsail_start" {
   count               = var.lightsail_enabled ? 1 : 0

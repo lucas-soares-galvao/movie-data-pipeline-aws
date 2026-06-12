@@ -1,44 +1,8 @@
 # =============================================================================
-# ARQUIVO: sns_topics.tf — Tópicos SNS para Notificações por Email
-# =============================================================================
+# sns_topics.tf — Tópicos SNS para notificações por email (um por componente)
 #
-# O QUE É AWS SNS?
-# SNS (Simple Notification Service) é o serviço de notificações da AWS.
-# Funciona como um "sistema de alerta": quando algo acontece (falha ou sucesso),
-# o SNS envia uma mensagem para os assinantes cadastrados.
-#
-# ANALOGIA: Como um grupo de WhatsApp para alertas de sistema.
-# - Quando a Lambda falha → mensagem vai para "grupo Lambda"
-# - Quando o Glue ETL falha → mensagem vai para "grupo Glue ETL"
-# - Quando o pipeline termina com sucesso → mensagem vai para "grupo Sucesso"
-#
-# MODELO PUBLISH/SUBSCRIBE (Pub/Sub):
-# ┌──────────────────┐     publica     ┌──────────────────┐
-# │  CloudWatch      │ ──────────────► │   SNS Topic      │
-# │  Alarm           │                 │ (canal temático)  │
-# └──────────────────┘                 └────────┬─────────┘
-#                                               │ entrega
-#                                    ┌──────────┼──────────┐
-#                                    ▼          ▼          ▼
-#                                 Email      Lambda     HTTP
-#                               (assinante) (opcional) (optional)
-#
-# TÓPICOS DESTE PROJETO:
-# Um tópico por componente, separando as notificações por responsabilidade:
-# 1. glue_data_quality_failure    → Falha no Glue Data Quality
-# 2. glue_data_quality_metrics    → Resultado da avaliação de métricas de DQ
-# 3. glue_etl_failure             → Falha no Glue ETL
-# 4. lambda_failure               → Falha na Lambda
-# 5. eventbridge_failure          → Falha no EventBridge
-# 6. glue_agg_success             → Sucesso final do pipeline (Glue AGG concluído)
-# 7. glue_agg_failure             → Falha no Glue AGG
-# 8. glue_details_failure         → Falha no Glue Details
-#
-# ASSINATURAS (subscriptions):
-# Cada tópico tem pelo menos uma assinatura de email.
-# Quando um tópico recebe uma mensagem, o SNS envia para todos os assinantes.
-# O email de destino vem das variáveis do Terraform (.tfvars) — configurável
-# por ambiente (dev e prod podem ter emails diferentes).
+# Tópicos: glue_data_quality_failure/metrics, glue_etl_failure, lambda_failure,
+#          eventbridge_failure, glue_agg_success/failure, glue_details_failure
 # =============================================================================
 
 # =============================================================================

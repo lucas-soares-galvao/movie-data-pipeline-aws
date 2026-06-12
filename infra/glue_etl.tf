@@ -1,47 +1,21 @@
 # =============================================================================
-# ARQUIVO: glue_etl.tf — Job Glue ETL (Transformação SOR → SOT)
-# =============================================================================
-#
-# O QUE É AWS GLUE?
-# AWS Glue é o serviço de ETL (Extract, Transform, Load) gerenciado da AWS.
-# ETL significa: Extrair dados de uma fonte, Transformar para um formato útil,
-# Carregar em um destino.
-#
-# ANALOGIA: Como um processador de alimentos industrial.
-# - Extrai: pega os ingredientes (JSON bruto do SOR)
-# - Transforma: processa, limpa, estrutura (converte para Parquet com schema)
-# - Carrega: coloca o resultado no recipiente final (SOT no S3)
-#
-# DOIS TIPOS DE JOB GLUE:
-# 1. PythonShell → Python simples, sem Spark, para volumes menores de dados.
-#    Capacidade: 0.0625 DPU (menor unidade de processamento).
-#    Mais barato e mais rápido de inicializar.
-# 2. Spark → Processamento distribuído para grandes volumes.
-#    Capacidade: 2+ DPUs. Demora mais para inicializar mas escala bem.
-#
-# Este arquivo define um job PythonShell que:
-# 1. Recebe argumentos dinâmicos (TABLE_TYPE, MEDIA_TYPE, YEAR)
-# 2. Lê o JSON correspondente do bucket SOR
-# 3. Converte para DataFrame Pandas, achata estruturas aninhadas
-# 4. Grava em Parquet no bucket SOT com schema registrado no Glue Catalog
-# 5. Dispara o job de Data Quality após a gravação
-# 6. Se for "discover", também dispara o job Glue Details
+# glue_etl.tf — Job Glue ETL PythonShell (SOR → SOT)
 # =============================================================================
 
 resource "aws_glue_job" "etl_job_pythonshell" {
   name         = local.envs.glue_etl_job_name
   description  = "Glue ETL Job"
   role_arn     = aws_iam_role.glue_etl_role.arn
-  max_retries  = 0      # Sem retry automático — falhas são notificadas para investigação
-  timeout      = 30     # 30 minutos é mais que suficiente para conversão JSON→Parquet
-  max_capacity = 0.0625 # Menor unidade de DPU (Data Processing Unit) — 1/16 de DPU
+  max_retries  = 0
+  timeout      = local.glue_etl_timeout_min
+  max_capacity = local.pythonshell_min_capacity
 
   command {
     # Caminho no S3 para o script principal do job.
     # O Glue baixa e executa este arquivo quando o job inicia.
     script_location = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_etl_job_name}/app/main.py"
-    name            = "pythonshell"   # Tipo do job: Python simples sem Spark
-    python_version  = "3.9"           # Versão do Python no runtime do Glue
+    name            = "pythonshell"
+    python_version  = "3.9"
   }
 
   notification_property {

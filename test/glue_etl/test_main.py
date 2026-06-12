@@ -1,36 +1,3 @@
-"""
-test_main.py — Testes de integração para app/glue_etl/main.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa a função main() do Glue ETL, verificando se ela orquestra corretamente
-cada etapa do pipeline dependendo do tipo de tabela (TABLE_TYPE):
-
-  TABLE_TYPE="discover"     → lê JSON da SOR, escreve Parquet na SOT com
-                               partição por ano, dispara DQ e Details
-  TABLE_TYPE="genre"        → lê JSON da SOR, escreve Parquet na SOT sem
-                               partição, dispara DQ mas NÃO dispara Details
-  TABLE_TYPE="configuration" → igual ao genre (sem partição, sem Details)
-
-SOBRE O PADRÃO _BASE + _args():
-  _BASE contém os argumentos que todo run precisa.
-  Cada classe de teste define um método _args() que acrescenta os argumentos
-  específicos daquele TABLE_TYPE (ex: TABLE_TYPE, TABLE_NAME, YEAR).
-  Isso evita repetição e torna cada teste focado só no que muda.
-
-SOBRE O patch.object:
-  Cada colaborador de main() é substituído por um MagicMock, permitindo
-  verificar se foi chamado, com quais argumentos, e quantas vezes.
-  Os mocks são revertidos automaticamente ao sair do bloco "with (...)".
-
-CLASSES DE TESTE:
-  TestRunDiscover       → TABLE_TYPE=discover (filmes e séries com partição)
-  TestRunGenre          → TABLE_TYPE=genre (gêneros sem partição de ano)
-  TestRunConfiguration  → TABLE_TYPE=configuration (idiomas/países)
-  TestTriggerDetails    → regra de disparo condicional do job Glue Details
-"""
-
 from unittest.mock import patch
 
 import pandas as pd

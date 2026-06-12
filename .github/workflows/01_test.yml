@@ -1,64 +1,17 @@
-# =============================================================================
-# ARQUIVO: 01_test.yml — Verificação de Qualidade do Código (Quality Gates)
-# =============================================================================
-#
-# O QUE SÃO "QUALITY GATES"?
-# São barreiras de qualidade que o código precisa passar antes de ser
-# aceito. Se o código reprovar em qualquer barreira, o pipeline para e
-# nada vai para produção.
-#
-# ANALOGIA: Imagine uma fábrica de alimentos. Antes de um lote ir para
-# as prateleiras, ele passa por inspeções (sabor, validade, higiene).
-# Se reprovar em qualquer inspeção, o lote não vai à venda.
-# Aqui o "lote" é o código e as "inspeções" são os testes automáticos.
-#
-# BARREIRAS DESTE ARQUIVO (em ordem):
-#   1. Linting (Ruff)       → O código segue as boas práticas de escrita?
-#   2. Type Check (mypy)    → Os tipos de dados estão sendo usados certo?
-#   3. Security (Bandit)    → Há vulnerabilidades de segurança no código?
-#   4. Dependencies (Safety)→ As bibliotecas usadas têm falhas conhecidas?
-#   5. Testes (pytest)      → O código faz o que deveria fazer?
-#   6. Cobertura (Coverage) → Pelo menos 70% do código foi testado?
-# =============================================================================
-
 name: Test (Reusable)
 
-# "workflow_call" significa que este arquivo só é chamado por outro workflow
-# (no caso, pelo 00_pipeline.yml). Ele não roda sozinho.
 on:
   workflow_call:
 
 jobs:
   test:
-    # A máquina virtual onde os testes vão rodar.
-    # "ubuntu-latest" é Linux, gratuito no GitHub Actions.
     runs-on: ubuntu-latest
-
-    # Se os testes demorarem mais de 15 minutos, algo está errado.
-    # O timeout evita cobranças desnecessárias de máquina parada.
     timeout-minutes: 15
 
     steps:
-      # =========================================================================
-      # PASSO 1: Baixar o Código do Repositório
-      # =========================================================================
-      # A máquina virtual começa completamente vazia. Este passo faz o
-      # equivalente a um "git clone" para trazer o código para ela.
-      # "actions/checkout@v4" é uma ação oficial mantida pelo GitHub.
-      # =========================================================================
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # =========================================================================
-      # PASSO 2: Instalar o Python
-      # =========================================================================
-      # A máquina Linux não tem Python pré-instalado na versão que precisamos.
-      # Este passo instala o Python 3.12 e configura um cache de dependências
-      # para acelerar execuções futuras (não baixar as mesmas bibliotecas toda vez).
-      #
-      # "cache-dependency-path" aponta para os arquivos requirements.txt de cada
-      # módulo — se eles não mudaram, o cache reutiliza o que já foi baixado.
-      # =========================================================================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -68,19 +21,6 @@ jobs:
             app/**/requirements.txt
             test/**/requirements_tests.txt
 
-      # =========================================================================
-      # PASSO 3: Instalar as Bibliotecas Necessárias
-      # =========================================================================
-      # "pip" é o gerenciador de pacotes do Python (como uma "loja de apps").
-      # Este passo instala:
-      #   - Ferramentas de qualidade: pytest, ruff, mypy, bandit, safety
-      #   - Dependências de cada módulo de teste (pasta test/)
-      #   - Dependências de cada módulo da aplicação (pasta app/)
-      #
-      # O "for file in $(find test ...)" percorre todas as pastas de teste e
-      # instala cada requirements_tests.txt encontrado — assim cada módulo
-      # tem suas dependências específicas instaladas.
-      # =========================================================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -97,56 +37,15 @@ jobs:
             fi
           done
 
-      # =========================================================================
-      # PASSO 4: Configurar o PYTHONPATH
-      # =========================================================================
-      # O Python precisa saber onde procurar os módulos do projeto quando
-      # faz "import". Sem isso, aparece erro: "ModuleNotFoundError".
-      #
-      # PYTHONPATH é uma variável de ambiente que diz ao Python:
-      # "Procure módulos também neste diretório."
-      #
-      # GITHUB_WORKSPACE = pasta raiz onde o código foi baixado (passo 1).
-      # ">> $GITHUB_ENV" torna a variável permanente para todos os passos seguintes.
-      # =========================================================================
       - name: Configure PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
-      # =========================================================================
-      # PASSO 5: Linting com Ruff
-      # =========================================================================
-      # "Linting" é a verificação de estilo e boas práticas do código.
-      #
-      # ANALOGIA: Como um corretor ortográfico, mas para código Python.
-      # Ele não verifica se o código funciona — verifica se está "bem escrito":
-      #   - Variáveis não utilizadas
-      #   - Imports desnecessários
-      #   - Linhas muito longas
-      #   - Convenções de nomes (PEP 8)
-      #
-      # Ruff é extremamente rápido (escrito em Rust) — verifica milhares de
-      # arquivos em menos de 1 segundo.
-      # =========================================================================
       - name: Lint with Ruff
         run: |
           ruff check app/ test/
           echo "Ruff linting concluido"
 
-      # =========================================================================
-      # PASSO 6: Verificação de Tipos com mypy
-      # =========================================================================
-      # Python é uma linguagem de "tipagem dinâmica": você pode escrever
-      # x = 5 e depois x = "texto" sem erro. Isso é flexível mas pode causar
-      # bugs difíceis de encontrar.
-      #
-      # "Type hints" (dicas de tipo) permitem anotar o código:
-      # def somar(a: int, b: int) -> int: ...
-      #
-      # mypy verifica se essas anotações estão corretas ANTES de rodar o código.
-      # "--ignore-missing-imports" ignora bibliotecas sem anotações de tipo.
-      #
-      # Este passo não falha o pipeline (exit code 0 sempre) — apenas avisa.
-      # =========================================================================
+      # Não falha o pipeline — apenas avisa sobre problemas de tipo
       - name: Type Check with mypy
         run: |
           if ! mypy app/ --ignore-missing-imports; then
@@ -154,19 +53,7 @@ jobs:
           fi
           echo "Mypy type checking concluido"
 
-      # =========================================================================
-      # PASSO 7: Análise de Segurança com Bandit
-      # =========================================================================
-      # Bandit procura padrões comuns de vulnerabilidade em código Python.
-      # Ex: uso de funções inseguras (eval, exec), senhas hardcoded, etc.
-      #
-      # "-r app/" → Analisa recursivamente toda a pasta app/
-      # "-ll"     → Só reporta issues de severidade MÉDIA e ALTA (ignora baixa)
-      # "-f json" → Salva resultado em formato JSON para ferramentas externas
-      #
-      # Este passo não falha o pipeline — apenas avisa sobre os problemas.
-      # O desenvolvedor deve verificar e corrigir antes do próximo ciclo.
-      # =========================================================================
+      # Não falha o pipeline — apenas avisa sobre problemas de segurança
       - name: Security Scan with Bandit
         run: |
           if ! bandit -r app/ -ll -f json -o bandit-report.json; then
@@ -175,17 +62,7 @@ jobs:
           echo "Bandit security scan concluido"
           bandit -r app/ -ll || echo "Resumo do Bandit com alertas"
 
-      # =========================================================================
-      # PASSO 8: Verificação de Dependências com Safety
-      # =========================================================================
-      # Bibliotecas Python podem ter vulnerabilidades descobertas após serem
-      # publicadas. Safety consulta um banco de dados de vulnerabilidades
-      # conhecidas (CVEs) e avisa se alguma biblioteca instalada está na lista.
-      #
-      # ANALOGIA: Como verificar se um remédio tem recall antes de tomar.
-      #
-      # Este passo também não falha o pipeline — apenas avisa.
-      # =========================================================================
+      # Não falha o pipeline — apenas avisa sobre CVEs em dependências
       - name: Check Dependencies with Safety
         run: |
           if ! safety check --json --output safety-report.json; then
@@ -193,24 +70,6 @@ jobs:
           fi
           echo "Safety dependency check concluido"
 
-      # =========================================================================
-      # PASSO 9: Execução dos Testes com Barreira de Cobertura
-      # =========================================================================
-      # Este é o passo mais importante — ele FALHA o pipeline se algo estiver errado.
-      #
-      # pytest → Framework que descobre e executa os arquivos test_*.py
-      #
-      # Flags explicadas:
-      # --cov=app             → Mede quanto do código em "app/" foi executado
-      #                          durante os testes (cobertura de código)
-      # --cov-report=term-missing → Mostra no terminal quais linhas NÃO foram
-      #                              testadas (para o dev saber onde melhorar)
-      # --cov-report=xml      → Gera arquivo coverage.xml (para SonarQube, etc.)
-      # --cov-fail-under=70   → FALHA se menos de 70% do código foi coberto
-      #
-      # ANALOGIA: "Cobertura" é como saber se você revisou todas as páginas
-      # do livro para a prova. Se só estudou 69%, pode reprovar.
-      # =========================================================================
       - name: Run tests with Coverage Gate
         run: |
           pytest --cov=app \
@@ -218,13 +77,6 @@ jobs:
                  --cov-report=xml \
                  --cov-fail-under=70
 
-      # =========================================================================
-      # PASSO 10: Resumo Final de Qualidade
-      # =========================================================================
-      # "if: always()" → Este passo sempre roda, mesmo se algum anterior falhou.
-      # Isso garante que o desenvolvedor sempre vê o resumo completo do que
-      # foi verificado, independentemente do resultado.
-      # =========================================================================
       - name: Quality Gate Summary
         if: always()
         run: |

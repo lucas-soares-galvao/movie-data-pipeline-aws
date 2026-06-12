@@ -1,70 +1,24 @@
-# =============================================================================
-# ARQUIVO: 03_pr_auto.yml — Criação Automática de Pull Requests
-# =============================================================================
-#
-# O QUE É UM PULL REQUEST (PR)?
-# Um Pull Request é uma solicitação para que o código de uma branch (ramo)
-# seja mesclado (merged) em outra branch. É o mecanismo central de revisão
-# de código em times de desenvolvimento.
-#
-# ANALOGIA: Imagine que o código é um livro escrito em colaboração.
-# Cada autor escreve em seu próprio rascunho (branch feature/*). Quando
-# termina, ele faz um "pedido de revisão" (PR) para que o editor (develop)
-# revise e incorpore o texto. O editor chefe (main/prod) só recebe texto
-# que já passou pela revisão do editor.
-#
-# FLUXO DE BRANCHES DESTE PROJETO:
-#   feature/* ──(PR automático)──► develop ──(PR automático)──► main
-#              [dev revisar]                  [aprovar para prod]
-#
-# POR QUE AUTOMATIZAR?
-# Abrir PRs manualmente a cada push é trabalhoso e esquecível.
-# Este workflow automatiza a abertura E atualização do PR, mantendo o
-# fluxo de entrega fluindo sem intervenção manual desnecessária.
-# =============================================================================
-
 name: Auto PR Pipeline (Reusable)
 
-# Este workflow é chamado por outros (workflow_call)
 on:
   workflow_call:
     inputs:
-      # A branch de origem que precisa ser promovida
-      # Ex: "feature/adicionar-filtro-genero" ou "develop"
       branch_name:
         required: true
         type: string
 
-# Permissões necessárias para criar e editar PRs no GitHub
 permissions:
-  contents: write       # Permite ler e escrever conteúdo do repositório
-  pull-requests: write  # Permite criar, editar e fechar Pull Requests
+  contents: write
+  pull-requests: write
 
 jobs:
   promote:
     runs-on: ubuntu-latest
 
     steps:
-      # =========================================================================
-      # PASSO 1: Baixar o Código
-      # =========================================================================
-      # Necessário para ter acesso aos arquivos do projeto (incluindo o Terraform)
-      # que será validado no passo seguinte antes de abrir o PR.
-      # =========================================================================
       - name: Checkout
         uses: actions/checkout@v4
 
-      # =========================================================================
-      # PASSO 2: Determinar a Branch de Destino
-      # =========================================================================
-      # A lógica é simples e baseada na branch de origem:
-      #   - Se vier de "feature/*" → destino é "develop"
-      #   - Se vier de "develop"   → destino é "main" (produção)
-      #   - Qualquer outra branch  → erro (evita PRs acidentais)
-      #
-      # O resultado ("develop" ou "main") é salvo em "steps.branch.outputs.base"
-      # para ser usado nos próximos passos.
-      # =========================================================================
       - name: Define base branch
         id: branch
         run: |
@@ -79,52 +33,16 @@ jobs:
             exit 1
           fi
 
-      # =========================================================================
-      # PASSO 3: Instalar o Terraform (para validação)
-      # =========================================================================
-      # Antes de abrir o PR, garantimos que o código Terraform que está sendo
-      # promovido não tem erros de sintaxe. Isso evita que código quebrado
-      # chegue à branch de destino.
-      # =========================================================================
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      # =========================================================================
-      # PASSO 4: Validar o Código Terraform Antes do PR
-      # =========================================================================
-      # "terraform init -backend=false" inicializa o Terraform localmente
-      # sem precisar conectar ao S3/DynamoDB (backend remoto).
-      # Só precisa verificar a sintaxe dos arquivos .tf, não o estado real.
-      #
-      # "terraform validate" checa se os arquivos têm:
-      #   - Sintaxe correta (sem typos, colchetes faltando, etc.)
-      #   - Referências válidas entre recursos
-      #   - Tipos de variáveis corretos
-      # =========================================================================
+      # Valida sintaxe Terraform antes de abrir PR (sem conectar ao backend remoto)
       - name: Terraform Validate
         run: |
           cd infra
           terraform init -backend=false
           terraform validate
 
-      # =========================================================================
-      # PASSO 5: Criar ou Atualizar o Pull Request
-      # =========================================================================
-      # Usa o CLI oficial do GitHub ("gh") para gerenciar o PR.
-      #
-      # LÓGICA:
-      # 1. Busca se já existe um PR aberto desta branch para o destino:
-      #    - "gh pr list --base develop --head feature/X" lista PRs abertos
-      #    - "--json number --jq '.[0].number // ""'" extrai o número ou "" se vazio
-      #
-      # 2. Se NÃO existe PR → Cria um novo com título e descrição automáticos
-      # 3. Se JÁ existe PR → Apenas atualiza título/descrição (o código já
-      #    foi atualizado automaticamente pelo git push)
-      #
-      # GITHUB_TOKEN: Token de autenticação gerado automaticamente pelo GitHub
-      # Actions para cada execução. Tem escopo limitado ao repositório atual
-      # e expira quando o workflow termina — muito mais seguro que tokens pessoais.
-      # =========================================================================
       - name: Create or Update PR
         run: |
           BASE=${{ steps.branch.outputs.base }}

@@ -1,44 +1,3 @@
-"""
-test_utils.py — Testes unitários para app/glue_agg/src/utils.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa cada função utilitária do Glue AGG de forma isolada.
-
-FUNÇÕES TESTADAS:
-
-  run_athena_query()
-    Verifica que o SQL gerado contém os elementos obrigatórios:
-      - Colunas de imagem com URL completa (https://image.tmdb.org/t/p/...)
-      - Aliases poster_url e backdrop_url
-      - Referências às tabelas de discover (movie e tv), details e watch_providers
-      - Colunas de metadados: overview, air_date, origin_country_name, etc.
-    Também verifica os argumentos passados ao awswrangler:
-      - database correto (db_unified_tmdb)
-      - s3_output com o prefixo correto
-      - ctas_approach=True (Athena cria uma tabela temporária para a query)
-
-  traduzir_colunas_en()
-    Testa o comportamento de tradução EN→PT seletiva:
-      - Traduz title e overview quando original_language == "en"
-      - Não altera registros em outros idiomas (pt, es, fr, etc.)
-      - Não altera original_title (preserva o título original da TMDB)
-      - Fallback: mantém o texto original se a tradução falhar (timeout, etc.)
-      - overview vazio ("") não é enviado para tradução (evita chamada desnecessária)
-
-  write_parquet_to_spec()
-    Verifica escrita correta na camada SPEC (Gold layer):
-      - Caminho S3: s3://<bucket>/<table_name>/
-      - partition_cols=["media_type", "year"] (particionamento duplo)
-      - mode="overwrite_partitions" (sobrescreve apenas as partições presentes)
-      - dataset=True (registra no Glue Catalog automaticamente)
-      - database e table corretos no Glue Catalog
-
-  get_resolved_option() / get_parameters_glue()
-    Delegação correta para o SDK do Glue (getResolvedOptions).
-"""
-
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -207,11 +166,6 @@ class TestWriteParquetToSpec:
             _, kwargs = mock_write.call_args
             assert kwargs["database"] == "db_spec"
             assert kwargs["table"] == "tb_unified"
-
-
-# ---------------------------------------------------------------------------
-# get_resolved_option / get_parameters_glue
-# ---------------------------------------------------------------------------
 
 
 class TestGetResolvedOption:

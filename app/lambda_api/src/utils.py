@@ -1,21 +1,4 @@
-"""
-utils.py — Funções Auxiliares da Lambda API
-
-==============================================================================
-POR QUE SEPARAR EM utils.py?
-==============================================================================
-O arquivo main.py cuida do "fluxo geral" (orquestração).
-Este arquivo cuida dos "detalhes de implementação":
-  - Como fazer uma requisição HTTP com retry
-  - Como buscar uma senha no Secrets Manager
-  - Como salvar um arquivo no S3
-  - Como disparar um job Glue
-
-Separar assim tem três vantagens:
-1. Testabilidade: cada função pode ser testada isoladamente (mockar só o boto3)
-2. Legibilidade: main.py fica limpo, utils.py tem os detalhes
-3. Reutilização: funções como get_tmdb_api_key() são usadas por outros jobs também
-"""
+"""utils.py — Funções auxiliares da Lambda API."""
 
 import json
 import logging
@@ -44,21 +27,7 @@ _TMDB_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
 
 def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
     """
-    Executa uma requisição HTTP GET para a API do TMDB com retry automático.
-
-    O QUE É RETRY COM BACKOFF EXPONENCIAL?
-    Se a API retornar erro temporário (como rate limit), em vez de desistir
-    imediatamente, a função tenta novamente após aguardar um tempo crescente:
-    - 1ª falha: espera ~1 segundo
-    - 2ª falha: espera ~2 segundos
-    - 3ª falha: espera ~4 segundos (e lança exceção se ainda falhar)
-
-    "Exponencial" porque o tempo dobra a cada tentativa: 2^0=1, 2^1=2, 2^2=4.
-    O "+random.uniform(0,1)" adiciona um valor aleatório entre 0 e 1 segundo
-    para evitar que múltiplos processos façam retry ao mesmo tempo (fenômeno
-    chamado "thundering herd").
-
-    Para erro 429 com cabeçalho "Retry-After", usa o tempo indicado pelo TMDB.
+    GET na API do TMDB com retry e backoff exponencial em erros transientes.
 
     Args:
         url:         URL completa do endpoint TMDB
@@ -81,8 +50,6 @@ def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
                         f"HTTP {response.status_code} após {max_retries} tentativas. "
                         f"Todas as tentativas esgotadas para {url}."
                     )
-                    # raise_for_status() converte o código de erro HTTP em uma exceção Python.
-                    # Ex: status 429 → lança requests.exceptions.HTTPError
                     response.raise_for_status()
 
                 # Para 429, o TMDB informa no header Retry-After quantos segundos esperar.
@@ -97,7 +64,7 @@ def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
                     f"Aguardando {wait:.1f}s..."
                 )
                 time.sleep(wait)
-                continue  # Volta ao início do loop para tentar novamente
+                continue
 
             # Se o código HTTP não é transiente, lança exceção para qualquer erro 4xx/5xx.
             # Ex: 401 (API key inválida), 404 (endpoint não existe) → falha imediata.
@@ -120,61 +87,27 @@ def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
             time.sleep(wait)
 
 
-# ==============================================================================
-# SECRETS MANAGER — Busca Segura de Credenciais
-# ==============================================================================
-
-
 def get_tmdb_api_key(secret_arn: str) -> str:
     """
-    Busca a chave de API do TMDB armazenada no AWS Secrets Manager.
+    Busca a chave de API do TMDB no Secrets Manager.
 
-    POR QUE USAR SECRETS MANAGER EM VEZ DE VARIÁVEL DE AMBIENTE?
-    Variáveis de ambiente podem ser lidas por qualquer pessoa com acesso ao console AWS.
-    O Secrets Manager criptografa o valor e registra cada acesso em logs de auditoria.
-    Além disso, a rotação automática de chaves é possível sem redeploy da Lambda.
-
-    FORMATO DO SEGREDO:
-    O segredo deve ser um JSON com a chave "tmdb_api_key":
-    {"tmdb_api_key": "abc123xyz..."}
+    Formato do segredo: {"tmdb_api_key": "abc123xyz..."}
 
     Args:
-        secret_arn: ARN completo do segredo. Ex: arn:aws:secretsmanager:sa-east-1:123456:secret:tmdb-key
+        secret_arn: ARN completo do segredo no Secrets Manager
 
     Returns:
         A chave de API do TMDB como string
     """
     client = boto3.client("secretsmanager")
-    # get_secret_value retorna um dicionário; o valor está em "SecretString"
     response = client.get_secret_value(SecretId=secret_arn)
-    # json.loads converte a string JSON em dicionário Python
     secret = json.loads(response["SecretString"])
     return secret["tmdb_api_key"]
 
 
-# ==============================================================================
-# API TMDB — Chamadas Paginadas (Discover)
-# ==============================================================================
-
-
 def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> dict:
     """
-    Busca UMA página de resultados da API TMDB (discover de filmes ou séries).
-
-    O QUE É O ENDPOINT "DISCOVER"?
-    O endpoint /discover permite filtrar títulos por múltiplos critérios.
-    Aqui usamos: ordenado por popularidade decrescente, filtrado por ano.
-
-    PAGINAÇÃO:
-    O TMDB retorna 20 resultados por página. Para pegar mais, incrementamos a página.
-    Cada chamada retorna "total_pages" para saber quando parar.
-
-    PARÂMETROS ENVIADOS À API:
-    - api_key:             Autenticação
-    - language: "pt-BR"   Títulos e descrições em português do Brasil
-    - sort_by:  "popularity.desc" → Mais populares primeiro
-    - page:                Número da página solicitada
-    - primary_release_year (movie) ou first_air_date_year (tv): Filtro por ano
+    Busca uma página do endpoint /discover do TMDB, filtrada por ano e ordenada por popularidade.
 
     Args:
         api_key:      Chave de autenticação da API TMDB
@@ -197,8 +130,6 @@ def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> di
         "page": page,
     }
 
-    # O parâmetro de filtro por ano tem nome diferente para cada tipo de conteúdo:
-    # filmes usam "primary_release_year", séries usam "first_air_date_year"
     if content_type == "movie":
         params["primary_release_year"] = year
     else:
@@ -207,26 +138,15 @@ def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> di
     return _tmdb_get(url, params)
 
 
-# ==============================================================================
-# S3 — Persistência de Dados Brutos
-# ==============================================================================
-
-
 def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
     """
     Serializa um dicionário Python para JSON e salva no S3.
 
-    POR QUE SALVAR CADA PÁGINA COMO UM ARQUIVO SEPARADO?
-    1. Idempotência: se a Lambda falhar no meio, os arquivos já salvos não precisam
-       ser coletados novamente — o reprocessamento recomeça de onde parou.
-    2. Paralelismo: o Glue ETL pode processar múltiplos arquivos em paralelo.
-    3. Rastreabilidade: é possível inspecionar cada página individualmente para debug.
-
     Args:
-        s3_client: Cliente boto3 já instanciado (evita criar nova conexão a cada chamada)
-        bucket:    Nome do bucket S3 destino (ex: "lsg-sa-east-1-bucket-sor-prod")
+        s3_client: Cliente boto3 já instanciado
+        bucket:    Nome do bucket S3 destino
         data:      Dados Python a serializar (dict ou list)
-        s3_key:    Caminho do arquivo no bucket (ex: "tmdb/discover/movie/ano=2024/pagina_001.json")
+        s3_key:    Caminho do arquivo no bucket
     """
     # ensure_ascii=False preserva caracteres UTF-8 como acentos (ã, é, ç)
     # sem isso, "Ação" seria salvo como "ção" — ilegível para humanos
@@ -241,11 +161,6 @@ def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
     logger.info(f"Arquivo salvo: s3://{bucket}/{s3_key}")
 
 
-# ==============================================================================
-# GLUE ETL — Disparo de Jobs de Processamento
-# ==============================================================================
-
-
 def trigger_glue_job(
     glue_client,
     job_name: str,
@@ -256,49 +171,30 @@ def trigger_glue_job(
     end_year: int = None,
 ) -> str:
     """
-    Inicia uma execução do job Glue ETL com os argumentos dinâmicos desta coleta.
-
-    COMO FUNCIONA O DISPARO DO GLUE?
-    start_job_run() chama o Glue para iniciar o job em segundo plano.
-    A Lambda NÃO espera o job terminar — ela dispara e continua para o próximo ano.
-    Isso permite paralelismo: múltiplas execuções do Glue ETL rodando ao mesmo tempo
-    (uma para cada ano coletado), cada uma com seus próprios argumentos.
-
-    TIPOS DE TABELA (table_type):
-    - "genre"            → Processa tabela de gêneros (sem partição por ano)
-    - "configuration"    → Processa tabela de idiomas/países (sem partição por ano)
-    - "watch_providers_ref" → Processa lista de plataformas (sem partição por ano)
-    - "discover"         → Processa lista de títulos do ano (particionado por ano)
-
-    O job Glue usa o TABLE_TYPE para saber: como ler os dados, como estruturar
-    o Parquet, quais colunas são chave de partição, e se deve disparar jobs downstream.
+    Dispara o Glue ETL sem aguardar — cada chamada roda em paralelo.
 
     Args:
-        glue_client:       Cliente boto3 do Glue (compartilhado entre chamadas)
-        job_name:          Nome do job registrado na AWS (ex: "glue-etl-prod")
+        glue_client:       Cliente boto3 do Glue
+        job_name:          Nome do job registrado na AWS
         glue_catalog_args: Dict com MEDIA_TYPE, DATABASE, DATABASE_UNIFIED
         table_type:        "genre", "configuration", "watch_providers_ref" ou "discover"
-        table_name:        Nome da tabela no Glue Catalog para registrar os dados
+        table_name:        Nome da tabela no Glue Catalog
         year:              Ano dos dados (apenas para discover)
         end_year:          Último ano do ciclo (para o Details saber quando disparar o AGG)
 
     Returns:
-        JobRunId: ID único desta execução (útil para consultar status no console AWS)
+        JobRunId desta execução
     """
-    # O Glue exige que argumentos customizados tenham o prefixo "--"
-    # Ex: "--TABLE_TYPE": "discover" → no job Python: getResolvedOptions(args, ["TABLE_TYPE"])
     arguments = {
         "--TABLE_TYPE": table_type,
         "--TABLE_NAME": table_name,
     }
 
-    # Argumentos opcionais — só adicionados quando relevantes
     if year is not None:
         arguments["--YEAR"] = str(year)
     if end_year is not None:
         arguments["--END_YEAR"] = str(end_year)
 
-    # Adiciona os argumentos base (MEDIA_TYPE, DATABASE, etc.) com prefixo "--"
     for key, value in glue_catalog_args.items():
         arguments[f"--{key.upper()}"] = str(value)
 
@@ -319,23 +215,9 @@ def trigger_glue_job(
     return run_id
 
 
-# ==============================================================================
-# API TMDB — Dados de Referência (sem paginação)
-# ==============================================================================
-
-
 def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict = None) -> dict:
     """
-    Busca dados de referência do TMDB — endpoints que retornam lista simples, sem paginação.
-
-    Usado para:
-    - /genre/movie/list      → Lista de gêneros de filmes
-    - /genre/tv/list         → Lista de gêneros de séries
-    - /configuration/languages → Lista de idiomas suportados
-    - /configuration/countries → Lista de países suportados
-    - /watch/providers/movie → Lista de plataformas de streaming para filmes
-
-    Diferente do discover (que pagina), esses endpoints retornam tudo de uma vez.
+    Busca um endpoint de referência do TMDB (retorna lista completa, sem paginação).
 
     Args:
         api_key:  Chave de API TMDB
@@ -350,26 +232,13 @@ def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict = None) -> di
 
     query = {"api_key": api_key}
     if params:
-        # dict.update() mescla os parâmetros extras com o api_key
         query.update(params)
 
     return _tmdb_get(url, query)
 
 
 def collect_genre_data(api_key: str, s3_client, bucket: str, content_type: str) -> None:
-    """
-    Coleta a lista completa de gêneros do TMDB e salva no S3.
-
-    EXEMPLO DE DADO RETORNADO:
-    [{"id": 28, "name": "Ação"}, {"id": 12, "name": "Aventura"}, ...]
-
-    Este dado é uma tabela de referência estática — usada para enriquecer
-    os títulos do discover com os nomes dos gêneros (o discover só retorna IDs).
-
-    Mapeamento de endpoint por tipo:
-    - movie → /genre/movie/list → tmdb/genre/movie/generos_filmes.json
-    - tv    → /genre/tv/list   → tmdb/genre/tv/generos_series.json
-    """
+    """Coleta gêneros do TMDB e salva no S3 SOR."""
     if content_type == "movie":
         logger.info("Coletando referência: /genre/movie/list")
         data = fetch_tmdb_reference(api_key, "/genre/movie/list", {"language": "pt-BR"})
@@ -387,22 +256,7 @@ def collect_genre_data(api_key: str, s3_client, bucket: str, content_type: str) 
 def collect_configuration_data(
     api_key: str, s3_client, bucket: str, content_type: str
 ) -> None:
-    """
-    Coleta dados de configuração do TMDB (idiomas para filmes, países para séries).
-
-    EXEMPLO DE DADO DE IDIOMAS:
-    [{"iso_639_1": "pt", "english_name": "Portuguese", "name": "Português"}, ...]
-
-    EXEMPLO DE DADO DE PAÍSES:
-    [{"iso_3166_1": "BR", "english_name": "Brazil", "native_name": "Brasil"}, ...]
-
-    Esses dados são usados para traduzir códigos de idioma/país em nomes legíveis
-    na camada de agregação (Glue AGG).
-
-    Mapeamento:
-    - movie → /configuration/languages → tmdb/configuration/languages/idiomas.json
-    - tv    → /configuration/countries → tmdb/configuration/countries/paises.json
-    """
+    """Coleta idiomas (movie) ou países (tv) do TMDB e salva no S3 SOR."""
     if content_type == "movie":
         logger.info("Coletando referência: /configuration/languages")
         data = fetch_tmdb_reference(api_key, "/configuration/languages")
@@ -418,26 +272,7 @@ def collect_configuration_data(
 def collect_watch_providers_ref(
     api_key: str, s3_client, bucket: str, content_type: str
 ) -> None:
-    """
-    Coleta a lista de plataformas de streaming disponíveis no Brasil (BR).
-
-    EXEMPLO DE DADO RETORNADO (após extração):
-    [
-      {"provider_id": 8,   "provider_name": "Netflix",      "display_priority_br": 1},
-      {"provider_id": 119, "provider_name": "Amazon Prime", "display_priority_br": 2},
-      ...
-    ]
-
-    "display_priority_br" indica a ordem de exibição no Brasil:
-    menor número = plataforma mais relevante/popular no Brasil.
-
-    Esta tabela de referência é cruzada com os dados de watch_providers dos títulos
-    para exibir os nomes das plataformas (Netflix, Prime) em vez de só IDs numéricos.
-
-    Mapeamento:
-    - movie → /watch/providers/movie → tmdb/watch_providers_ref/movie/watch_providers_ref.json
-    - tv    → /watch/providers/tv   → tmdb/watch_providers_ref/tv/watch_providers_ref.json
-    """
+    """Coleta plataformas de streaming disponíveis no Brasil e salva no S3 SOR."""
     logger.info(f"Coletando referência: /watch/providers/{content_type}")
     data = fetch_tmdb_reference(
         api_key,
@@ -445,8 +280,6 @@ def collect_watch_providers_ref(
         {"watch_region": "BR"},  # Filtra apenas plataformas disponíveis no Brasil
     )
 
-    # Extrai apenas os campos necessários de cada plataforma
-    # "p.get(campo)" é equivalente a p[campo] mas retorna None em vez de KeyError se não existir
     providers = [
         {
             "provider_id":         p["provider_id"],
@@ -461,32 +294,13 @@ def collect_watch_providers_ref(
     save_to_s3(s3_client, bucket, providers, s3_key)
 
 
-# ==============================================================================
-# COLETA DE DISCOVER — Paginação Completa por Ano
-# ==============================================================================
-
-
 def collect_discover_data(
     api_key: str, s3_client, bucket: str, content_type: str, folder: str, year: int
 ) -> None:
     """
-    Coleta TODAS as páginas disponíveis de discover para um ano específico.
+    Coleta todas as páginas do discover para um ano, salvando um JSON por página no S3.
 
-    ESTRATÉGIA DE PAGINAÇÃO:
-    1. Solicita a página 1
-    2. O TMDB retorna "total_pages" no response
-    3. Se a página atual é maior que total_pages, para
-    4. Caso contrário, solicita a próxima página
-    5. Repete até MAX_PAGES (100) ou até não haver mais páginas
-
-    EXEMPLO DE ARQUIVOS GERADOS NO S3:
-    tmdb/discover/movie/ano=2024/pagina_001.json  ← 20 filmes
-    tmdb/discover/movie/ano=2024/pagina_002.json  ← próximos 20 filmes
-    ...
-    tmdb/discover/movie/ano=2024/pagina_087.json  ← últimos filmes de 2024
-
-    O formato "pagina_{page:03d}" garante ordenação correta no S3:
-    "pagina_001" < "pagina_002" < ... < "pagina_100" (padding com zeros)
+    Para até MAX_PAGES (100) ou total_pages, o que for menor.
 
     Args:
         api_key:       Chave de API TMDB
@@ -501,8 +315,6 @@ def collect_discover_data(
     for page in range(1, MAX_PAGES + 1):
         data = fetch_tmdb_data(api_key, content_type, year, page)
 
-        # total_pages informa quantas páginas realmente existem para este filtro.
-        # Ex: filmes de 2024 podem ter 250 páginas; filmes de 1950 podem ter apenas 5.
         total_pages = data.get("total_pages", 0)
         if page > total_pages:
             logger.info(
@@ -510,7 +322,5 @@ def collect_discover_data(
             )
             break
 
-        # Salva apenas o array "results" (lista de títulos), descartando metadados de paginação.
-        # O Glue ETL não precisa saber que eram 50 páginas totais — ele só precisa dos títulos.
         s3_key = f"{folder}/ano={year}/pagina_{page:03d}.json"
         save_to_s3(s3_client, bucket, data["results"], s3_key)

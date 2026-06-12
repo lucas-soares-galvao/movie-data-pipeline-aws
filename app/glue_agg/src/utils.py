@@ -1,46 +1,4 @@
-"""
-utils.py — Funções auxiliares do job Glue AGG.
-
-==============================================================================
-O QUE ESTE ARQUIVO FAZ?
-==============================================================================
-Este arquivo contém as funções que transformam os dados separados de filmes
-e séries em uma tabela unificada e enriquecida na camada SPEC (Gold layer).
-
-ANALOGIA: Como um chef que recebe ingredientes separados (farinha, ovos, leite)
-  de diferentes fornecedores, combina tudo em uma receita única e entrega o
-  produto final ao consumidor. O "produto final" aqui é a tabela que o app
-  Streamlit usa para fazer recomendações.
-
-ESTRUTURA DO ARQUIVO:
-  1. _DISCOVER_UNIFIED_QUERY: SQL grande que une todos os dados
-     (descoberta + detalhes + gêneros + idiomas + streaming)
-  2. get_parameters_glue(): lê os argumentos do job
-  3. run_athena_query(): executa o SQL no Athena e retorna um DataFrame
-  4. traduzir_colunas_en(): traduz títulos/sinopses do inglês para português
-  5. write_parquet_to_spec(): salva o resultado final no bucket SPEC
-
-O QUE O SQL FAZ (em alto nível)?
-  - Pega todos os filmes descobertos (tb_discover_movie_tmdb)
-  - Pega todas as séries descobertas (tb_discover_tv_tmdb)
-  - Junta ambos (UNION ALL — como empilhar duas planilhas)
-  - Enriquece com: nomes de gêneros, nome do idioma original, nome do país de origem
-  - Adiciona detalhes: duração do filme ou temporadas/episódios da série
-  - Adiciona streaming: quais plataformas têm o título disponível no Brasil
-  - Remove duplicatas mantendo a ocorrência mais recente e popular
-  - Resultado: uma única tabela com filmes e séries juntos, com todas as informações
-
-TECNOLOGIAS UTILIZADAS:
-  - AWS Wrangler (wr.athena.read_sql_query): executa SQL no Athena e retorna Pandas DataFrame
-  - deep_translator (GoogleTranslator): traduz inglês → português via Google Translate
-  - ThreadPoolExecutor: paraleliza as traduções para reduzir o tempo total
-  - AWS Wrangler (wr.s3.to_parquet): salva em Parquet no S3 e registra no Glue Catalog
-
-Responsabilidades:
-  - Ler argumentos do job
-  - Executar a query de unificação/enriquecimento no Athena via AWS Wrangler
-  - Escrever o resultado como Parquet particionado por media_type e year no bucket SPEC
-"""
+"""utils.py — Funções auxiliares do job Glue AGG."""
 
 import logging
 import sys
@@ -56,17 +14,8 @@ logger = logging.getLogger()
 
 _TRANSLATE_MAX_WORKERS = 10  # número de traduções simultâneas via Google Translate
 
-# ---------------------------------------------------------------------------
-# Query de unificação e enriquecimento das tabelas de discover.
-#
-# Esta query é um SQL complexo dividido em CTEs (Common Table Expressions).
-# CTEs são "subconsultas nomeadas" — como variáveis dentro de um SQL.
-# Leia como: "primeiro calcula X, depois Y, depois combina X e Y".
-#
 # Os placeholders {db_movie}, {db_tv}, {db_unified} são substituídos em
 # tempo de execução com os nomes reais dos bancos de dados no Glue Catalog.
-# (Ex: db_movie → "db_movie_tmdb", db_tv → "db_tv_tmdb")
-# ---------------------------------------------------------------------------
 _DISCOVER_UNIFIED_QUERY = """
 WITH
 -- ============================================================================
@@ -111,7 +60,6 @@ movies_ranked AS (
 ),
 
 movies AS (
-    -- Mantém apenas a linha com rn=1 de cada ID (a mais recente e popular)
     SELECT * FROM movies_ranked WHERE rn = 1
 ),
 
@@ -307,15 +255,13 @@ SELECT
                              md.backdrop_path_en, tv.backdrop_path_en))
     END                                                                     AS backdrop_url,
     u.popularity,
-    u.vote_average,   -- nota de 0 a 10 (média dos votos dos usuários na TMDB)
-    u.vote_count,     -- número total de votos (usado para filtrar títulos pouco avaliados)
+    u.vote_average,
+    u.vote_count,
     u.origin_country,
     ctry.native_name                          AS origin_country_name,
     u.adult,
     u.year,
-    -- Duração do filme em minutos (NULL para séries — séries têm episódios)
     md.runtime                                AS runtime_minutes,
-    -- Dados de séries (NULL para filmes — filmes não têm temporadas)
     tv.number_of_seasons,
     tv.number_of_episodes,
     tv.episode_runtime_minutes,
@@ -343,30 +289,14 @@ LEFT JOIN tv_providers tp
 """
 
 
-# ---------------------------------------------------------------------------
-# Utilitários gerais
-# ---------------------------------------------------------------------------
-
-
 def get_resolved_option(args: list) -> Dict[str, Any]:
-    """
-    Converte a lista de argumentos do Glue em um dicionário.
-
-    Args:
-        args: Lista de nomes de argumentos a resolver (sem o prefixo "--").
-
-    Returns:
-        Dicionário mapeando nome do argumento para seu valor.
-    """
+    """Wrapper de getResolvedOptions — converte lista de nomes em dicionário nome→valor."""
     return getResolvedOptions(sys.argv, args)
 
 
 def get_parameters_glue() -> Dict[str, Any]:
     """
     Lê os argumentos obrigatórios do job Glue AGG.
-
-    Argumentos obrigatórios: S3_BUCKET_SPEC, S3_BUCKET_TEMP, DB_MOVIE, DB_TV,
-    DB_UNIFIED, TABLE_NAME.
 
     Returns:
         Dicionário com todos os argumentos resolvidos.
@@ -382,11 +312,6 @@ def get_parameters_glue() -> Dict[str, Any]:
     return get_resolved_option(required_args)
 
 
-# ---------------------------------------------------------------------------
-# Execução da query Athena
-# ---------------------------------------------------------------------------
-
-
 def run_athena_query(
     db_movie: str,
     db_tv: str,
@@ -396,14 +321,13 @@ def run_athena_query(
     """
     Executa a query de unificação no Athena e retorna o resultado como DataFrame.
 
-    Usa wr.athena.read_sql_query com ctas_approach=True para suportar colunas
-    do tipo ARRAY (genre_ids, origin_country) presentes no resultado da query.
+    Usa ctas_approach=True para suportar colunas ARRAY (genre_ids, origin_country).
 
     Args:
         db_movie:       Banco de dados de filmes no Glue Catalog.
         db_tv:          Banco de dados de séries no Glue Catalog.
-        db_unified:     Banco de dados unificado (configurações e tabela final).
-        s3_bucket_temp: Nome do bucket S3 para os resultados temporários do Athena.
+        db_unified:     Banco de dados unificado.
+        s3_bucket_temp: Bucket S3 para os resultados temporários do Athena.
 
     Returns:
         DataFrame com o resultado da query.
@@ -428,36 +352,16 @@ def run_athena_query(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Tradução de campos em inglês para português
-# ---------------------------------------------------------------------------
-
-
 def traduzir_colunas_en(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Traduz as colunas 'title' e 'overview' do inglês para português,
-    mas apenas para títulos cujo idioma original é inglês ('en').
-
-    POR QUE SÓ INGLÊS?
-      A TMDB armazena title e overview no idioma original do título.
-      Um filme francês já vem em francês; um brasileiro já vem em português.
-      Mas filmes americanos/britânicos vêm em inglês — estes precisam ser
-      traduzidos para que o app Streamlit exiba tudo em português.
-
-    POR QUE TRADUZIR AQUI E NÃO NO APP?
-      Tradução é lenta. Fazer no Glue AGG (processamento offline) garante que
-      o app Streamlit responda rapidamente — os dados já estão traduzidos no SPEC.
-
-    TECNOLOGIA: deep_translator.GoogleTranslator — usa a API do Google Translate
-      sem precisar de chave de API (usa o endpoint público).
+    Traduz 'title' e 'overview' para português apenas para original_language='en'.
 
     Args:
         df: DataFrame com colunas 'title', 'overview' e 'original_language'.
 
     Returns:
-        DataFrame com title e overview traduzidos para registros em inglês.
+        DataFrame com title e overview traduzidos nos registros em inglês.
     """
-    # Cria uma máscara booleana: True para linhas onde o idioma original é inglês
     mask = df["original_language"] == "en"
     if not mask.any():
         return df  # nenhum título em inglês — nada a traduzir
@@ -477,21 +381,13 @@ def traduzir_colunas_en(df: pd.DataFrame) -> pd.DataFrame:
             logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
             return texto
 
-    # Traduz title e overview em paralelo para reduzir o tempo total
     for col in ("title", "overview"):
         valores = df.loc[mask, col].fillna("").tolist()
-        # executor.map() aplica _translate em paralelo para cada item da lista
         with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
             traduzidos = list(executor.map(_translate, valores))
-        # Atualiza apenas as linhas com original_language='en' no DataFrame
         df.loc[mask, col] = traduzidos
 
     return df
-
-
-# ---------------------------------------------------------------------------
-# Gravação na camada SPEC
-# ---------------------------------------------------------------------------
 
 
 def write_parquet_to_spec(

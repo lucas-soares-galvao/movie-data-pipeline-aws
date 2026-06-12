@@ -65,5 +65,5 @@ LEFT JOIN tb_watch_providers_* wp ON ...
 
 - **awswrangler** — consulta Athena, escrita Parquet, registro no Glue Catalog
 - **pandas** — manipulação do DataFrame resultante
-- **deep_translator** (Google Translate API) — tradução de título e sinopse
+- **deep-translator** — biblioteca Python open-source para tradução de título e sinopse (usa o Google Translate sem a API paga do Google Cloud)
 - **ThreadPoolExecutor** — paralelização das traduções

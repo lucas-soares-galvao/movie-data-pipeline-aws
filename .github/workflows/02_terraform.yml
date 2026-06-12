@@ -1,72 +1,35 @@
-# =============================================================================
-# ARQUIVO: 02_terraform.yml — Deploy da Infraestrutura na AWS com Terraform
-# =============================================================================
-#
-# O QUE É TERRAFORM?
-# Terraform é uma ferramenta de "Infraestrutura como Código" (IaC).
-# Em vez de clicar em botões no console da AWS para criar servidores,
-# você escreve arquivos de configuração (.tf) que descrevem o que quer,
-# e o Terraform cria tudo automaticamente.
-#
-# ANALOGIA: Como uma planta arquitetônica. A planta (código .tf) descreve
-# a casa que você quer. O Terraform é o construtor que executa a planta.
-# Se você mudar a planta, o Terraform só reconstrói o que mudou.
-#
-# FLUXO DO TERRAFORM:
-#   1. init    → "Baixa as ferramentas necessárias" (providers AWS, etc.)
-#   2. validate→ "Verifica se a planta tem erros de sintaxe"
-#   3. plan    → "Calcula o que vai mudar, mas não muda ainda" (preview)
-#   4. apply   → "Executa as mudanças na AWS"
-#   (destroy)  → "Remove toda a infraestrutura" (só quando explicitamente pedido)
-#
-# AMBIENTES (dev/prod):
-# Este projeto tem dois ambientes separados na AWS:
-#   - dev  → Para testar mudanças (branch develop)
-#   - prod → Onde os usuários reais acessam (branch main)
-# Cada um tem seus próprios recursos e credenciais isoladas.
-# =============================================================================
-
 name: "Terraform (Reusable)"
 
-# Este workflow é chamado por outros (workflow_call).
-# Ele recebe parâmetros do chamador (inputs), retorna informações (outputs),
-# e exige que o chamador forneça credenciais sensíveis (secrets).
 on:
   workflow_call:
-    # INPUTS: Dados que o pipeline principal (00_pipeline.yml) envia para cá
     inputs:
       environment:
         type: string
-        required: true   # Obrigatório — sem ambiente definido, não há como prosseguir
+        required: true
 
-    # OUTPUTS: Informações que este workflow envia de volta ao chamador
-    # "was_destroyed" avisa o pipeline principal se a infra foi destruída,
-    # para que ele pule o deploy do app (não faz sentido deployar sem servidor)
     outputs:
       was_destroyed:
         description: "Indica se a infraestrutura foi destruída"
         value: ${{ jobs.terraform.outputs.destroyed_status }}
 
-    # SECRETS: Credenciais sensíveis que NÃO devem aparecer nos logs
     secrets:
-      aws-assume-role-arn:        # ARN da Role IAM que este workflow vai "assumir" na AWS
+      aws-assume-role-arn:
         required: true
-      aws-statefile-s3-bucket:    # Bucket S3 onde o Terraform guarda o estado da infra
+      aws-statefile-s3-bucket:
         required: true
-      aws-lock-dynamodb-table:    # Tabela DynamoDB que evita dois Terraforms rodando ao mesmo tempo
+      aws-lock-dynamodb-table:
         required: true
-      aws-tmdb-secret-arn:        # ARN do segredo no Secrets Manager com a chave da API TMDB
+      aws-tmdb-secret-arn:
         required: true
-      notification-email:         # E-mail para alertas SNS (não commitado no tfvars)
+      notification-email:
         required: true
-      infracost-api-key:          # Chave da API Infracost para estimar custos da infra
+      infracost-api-key:
         required: true
 
 jobs:
   terraform:
     runs-on: ubuntu-latest
 
-    # Este output passa "was_destroyed" para o nível de workflow (acima)
     outputs:
       destroyed_status: ${{ steps.read-destroy-config.outputs.destroy }}
 
@@ -75,39 +38,14 @@ jobs:
         shell: bash
 
     steps:
-      # =========================================================================
-      # PASSO 1: Baixar o Código
-      # =========================================================================
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # =========================================================================
-      # PASSO 2: Instalar o Terraform CLI
-      # =========================================================================
-      # O Terraform é instalado na versão exata 1.8.3 para garantir
-      # comportamento idêntico em todos os deploys (evitar surpresas de versão).
-      # =========================================================================
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.3
 
-      # =========================================================================
-      # PASSO 3: Autenticação na AWS com OIDC (Sem Senha Fixa)
-      # =========================================================================
-      # PROBLEMA TRADICIONAL: Guardar "AWS_ACCESS_KEY_ID" e "AWS_SECRET_ACCESS_KEY"
-      # como secrets no GitHub é um risco de segurança — se vazar, alguém tem
-      # acesso permanente à sua conta AWS.
-      #
-      # SOLUÇÃO OIDC (OpenID Connect):
-      # O GitHub e a AWS estabelecem uma "confiança mútua". O GitHub gera um
-      # token temporário de identidade (JWT), a AWS verifica se veio do GitHub
-      # e concede credenciais temporárias (válidas por ~1 hora) para essa sessão.
-      #
-      # "role-to-assume" → A Role IAM que será assumida (tem permissões específicas)
-      # "role-session-name" → Nome da sessão (aparece nos logs de auditoria da AWS)
-      # "aws-region" → sa-east-1 = São Paulo (região principal deste projeto)
-      # =========================================================================
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -115,17 +53,7 @@ jobs:
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: sa-east-1
 
-      # =========================================================================
-      # PASSO 4: Construir o Pacote da Função Lambda
-      # =========================================================================
-      # O Terraform, durante o "plan", já precisa que o arquivo .zip da Lambda
-      # exista (ele referencia o arquivo para calcular hashes e verificar mudanças).
-      # Por isso, o build precisa acontecer ANTES do terraform plan.
-      #
-      # O script build_lambda_package.py empacota o código Python da Lambda
-      # junto com suas dependências em um único arquivo .zip, que depois é
-      # enviado para o S3 e de lá para a Lambda.
-      # =========================================================================
+      # O plan referencia o .zip da Lambda para calcular hashes; precisa existir antes do plan
       - name: Build Lambda Package
         run: |
           python infra/scripts/build_lambda_package.py \
@@ -133,44 +61,12 @@ jobs:
             --requirements app/lambda_api/requirements.txt \
             --dest infra/.lambda_build
 
-      # =========================================================================
-      # PASSO 5: Verificar se deve Destruir ou Criar Infraestrutura
-      # =========================================================================
-      # O arquivo "destroy_config.json" na pasta infra/ controla se uma
-      # infraestrutura deve ser destruída. Exemplo do arquivo:
-      #   { "dev": false, "prod": false }
-      #
-      # "jq" é uma ferramenta para ler JSON no terminal:
-      # jq -r '.${{ inputs.environment }}' lê o valor do ambiente atual.
-      #
-      # O resultado ("true" ou "false") é salvo no output do step para
-      # ser usado nas condições dos próximos passos.
-      # =========================================================================
       - name: Read destroy configuration
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
 
-      # =========================================================================
-      # PASSO 6: Inicializar o Terraform (terraform init)
-      # =========================================================================
-      # O "init" prepara o ambiente Terraform:
-      #   1. Baixa os "providers" (plugins para comunicar com AWS, etc.)
-      #   2. Configura o backend remoto (onde o estado da infra é guardado)
-      #
-      # BACKEND REMOTO (S3 + DynamoDB):
-      # O Terraform salva um arquivo "terraform.tfstate" que guarda o estado
-      # atual da infraestrutura (o que existe na AWS). Guardá-lo no S3 permite
-      # que qualquer máquina (ou workflow) acesse o mesmo estado.
-      #
-      # O DynamoDB funciona como um "cadeado": quando o Terraform está rodando,
-      # ele cria um registro na tabela. Se outro Terraform tentar rodar ao mesmo
-      # tempo, ele vê o "cadeado" e espera — evitando conflitos.
-      #
-      # "-backend-config" passa as configurações do backend dinamicamente
-      # (assim o mesmo código funciona para dev e prod com buckets diferentes).
-      # =========================================================================
       - name: Terraform Init
         run: |
           cd infra && terraform init \
@@ -179,72 +75,30 @@ jobs:
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
-      # =========================================================================
-      # PASSO 7: Validar a Sintaxe do Terraform
-      # =========================================================================
-      # "terraform validate" verifica se os arquivos .tf têm erros de sintaxe
-      # e referências inválidas ANTES de tentar criar qualquer recurso.
-      # Falha rapidamente se houver erro, evitando desperdício de tempo.
-      # =========================================================================
       - name: Terraform Validate
         run: cd infra && terraform validate
 
-      # =========================================================================
-      # PASSO 8: Linting do Terraform com TFLint
-      # =========================================================================
-      # Assim como o Ruff faz linting de Python, o TFLint faz linting de .tf.
-      # Ele detecta:
-      #   - Tipos de instâncias AWS inválidos (ex: "t2.microo" com erro de typo)
-      #   - Variáveis declaradas mas não usadas
-      #   - Práticas não recomendadas para cada provider
-      #
-      # "tflint --init" baixa os plugins do provider AWS para verificações específicas.
-      # Este passo não falha o pipeline — apenas avisa.
-      # =========================================================================
+      # Não falha o pipeline — apenas avisa sobre boas práticas
       - name: Setup and Run TFLint
         run: |
           curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
           cd infra
           tflint --init
-          echo "🔍 Executando TFLint para validações de boas práticas..."
           tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
 
-      # =========================================================================
-      # PASSO 9: Verificar Formatação do Código Terraform
-      # =========================================================================
-      # "terraform fmt" formata automaticamente os arquivos .tf com indentação
-      # padronizada. "terraform fmt -check" verifica se eles já estão formatados
-      # sem alterar nada — se não estiver, avisa o desenvolvedor.
-      #
-      # Código formatado de forma consistente é mais fácil de revisar em PRs.
-      # =========================================================================
       - name: Terraform Format Check
         run: |
           cd infra
-          echo "🎨 Verificando formatação do código Terraform..."
           terraform fmt -check -recursive || {
             echo "⚠ Código não formatado. Execute: terraform fmt -recursive"
             exit 0
           }
 
-      # =========================================================================
-      # PASSO 10: Análise de Segurança da Infraestrutura com Checkov
-      # =========================================================================
-      # Checkov analisa o código Terraform e verifica se os recursos seguem
-      # boas práticas de segurança e conformidade (compliance).
-      # Exemplos de o que ele verifica:
-      #   - Buckets S3 com acesso público habilitado (risco de exposição de dados)
-      #   - Funções Lambda sem VPC (isolamento de rede)
-      #   - Roles IAM com permissões excessivas (*:*)
-      #   - Logs de auditoria desativados
-      #
-      # Reporta problemas mas não falha o pipeline (para permitir correção gradual).
-      # =========================================================================
+      # Não falha o pipeline — avisa sobre segurança e compliance
       - name: Checkov Security Scan
         run: |
           pip install checkov
           cd infra
-          echo "🔒 Executando Checkov para validações de segurança e compliance..."
           checkov -d . \
                   --framework terraform \
                   --quiet \
@@ -255,27 +109,7 @@ jobs:
             exit 0
           }
 
-      # =========================================================================
-      # PASSO 11: Destruir a Infraestrutura (somente se destroy_config = true)
-      # =========================================================================
-      # "terraform destroy" remove TODOS os recursos criados pelo Terraform
-      # para aquele ambiente. Isso é usado para:
-      #   - Reduzir custos em ambientes de dev quando não estão em uso
-      #   - Recriar a infraestrutura do zero para resolver problemas
-      #
-      # ATENÇÃO: É uma operação DESTRUTIVA. Os dados nos S3 buckets também
-      # podem ser perdidos (dependendo da configuração de lifecycle).
-      #
-      # "-var-file" passa as variáveis específicas do ambiente (dev ou prod).
-      # "-auto-approve" não pede confirmação (necessário em automação).
-      # =========================================================================
-      # =========================================================================
-      # PASSO 10b: Injetar e-mail de notificação no tfvars
-      # =========================================================================
-      # O placeholder REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL no tfvars
-      # é substituído aqui pelo valor real do GitHub Secret NOTIFICATION_EMAIL.
-      # Isso evita commitar e-mails pessoais no repositório.
-      # =========================================================================
+      # Substitui placeholder no tfvars pelo email real (evita commitar emails no repo)
       - name: Inject notification email into tfvars
         run: |
           sed -i 's/REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL/${{ secrets.notification-email }}/g' \
@@ -290,21 +124,6 @@ jobs:
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
             -auto-approve
 
-      # =========================================================================
-      # PASSO 12: Planejar as Mudanças (terraform plan)
-      # =========================================================================
-      # O "plan" compara:
-      #   - O estado atual da AWS (lido do arquivo .tfstate no S3)
-      #   - O que o código .tf descreve (estado desejado)
-      #   E calcula o que precisa ser criado, modificado ou removido.
-      #
-      # IMPORTANTE: O plan não muda NADA na AWS — é só uma prévia.
-      # O resultado é salvo em "${environment}.plan" (arquivo binário) para
-      # garantir que o "apply" execute exatamente o que foi planejado,
-      # sem surpresas de mudanças no código entre o plan e o apply.
-      #
-      # Condição: Só roda se NÃO for uma operação de destroy.
-      # =========================================================================
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-plan
@@ -314,20 +133,6 @@ jobs:
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
             -out="${{ inputs.environment }}.plan"
 
-      # =========================================================================
-      # PASSO 13: Estimar o Custo com Infracost
-      # =========================================================================
-      # Infracost lê o arquivo do plan e estima quanto a infraestrutura vai
-      # custar por mês na AWS, ANTES de criar qualquer recurso.
-      #
-      # Por que existe:
-      # Infraestrutura em nuvem custa dinheiro. Saber o custo estimado antes
-      # de fazer deploy ajuda a evitar surpresas na fatura.
-      #
-      # "terraform show -json" converte o plan binário para JSON legível.
-      # "infracost breakdown" calcula os custos por recurso.
-      # ">> $GITHUB_STEP_SUMMARY" exibe o resultado diretamente no GitHub Actions.
-      # =========================================================================
       - name: Setup Infracost
         if: steps.read-destroy-config.outputs.destroy != 'true'
         uses: infracost/actions/setup@v3
@@ -349,7 +154,6 @@ jobs:
           echo "## Estimativa de Custo (Infracost) — ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
           infracost output --path /tmp/infracost.json --format table >> $GITHUB_STEP_SUMMARY
 
-      # Publica a estimativa de custo como comentário no Pull Request (quando aplicável)
       - name: Infracost PR Comment
         if: steps.read-destroy-config.outputs.destroy != 'true' && github.event_name == 'pull_request'
         run: |
@@ -360,16 +164,6 @@ jobs:
             --pull-request ${{ github.event.pull_request.number }} \
             --behavior update
 
-      # =========================================================================
-      # PASSO 14: Aplicar as Mudanças (terraform apply)
-      # =========================================================================
-      # Este passo REALMENTE cria, modifica ou remove recursos na AWS.
-      # Ele usa o arquivo ".plan" gerado no passo anterior, garantindo que
-      # o que foi planejado é exatamente o que será executado.
-      #
-      # ANALOGIA: O "plan" é a aprovação do orçamento. O "apply" é a obra.
-      # Você aprova o orçamento antes de começar a construir.
-      # =========================================================================
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
