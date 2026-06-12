@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Gera app/lightsail_ia/.env com as credenciais do ambiente dev lidas do Terraform.
-# Uso: OPENAI_API_KEY=sk-... bash infra/scripts/export_env_local.sh
+# Uso: LLM_API_KEY=sk-... bash infra/scripts/export_env_local.sh
 set -euo pipefail
 
-: "${OPENAI_API_KEY:?Defina OPENAI_API_KEY antes de rodar este script}"
+: "${LLM_API_KEY:?Defina LLM_API_KEY antes de rodar este script}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
@@ -15,7 +15,7 @@ ACCESS_KEY=$(terraform output -raw lightsail_agent_access_key_id)
 SECRET_KEY=$(terraform output -raw lightsail_agent_secret_access_key)
 
 cat > "$ENV_FILE" <<EOF
-OPENAI_API_KEY=$OPENAI_API_KEY
+LLM_API_KEY=$LLM_API_KEY
 
 AWS_REGION=sa-east-1
 AWS_ACCESS_KEY_ID=$ACCESS_KEY

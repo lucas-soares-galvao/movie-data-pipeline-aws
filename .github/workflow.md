@@ -162,5 +162,5 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | `AWS_TMDB_SECRET_ARN_DEV` / `_PROD` | dev / prod | ARN do segredo da API TMDB |
 | `NOTIFICATION_EMAIL` | ambos | E-mails de alerta da infra |
 | `INFRACOST_API_KEY` | ambos | Estimativa de custo no PR |
-| `OPENAI_API_KEY` | ambos | LLM no FilmBot (Lightsail) |
+| `LLM_API_KEY` | ambos | LLM no FilmBot (Lightsail) |
 | `FILMBOT_PASSWORD` | ambos | Autenticação no Streamlit |

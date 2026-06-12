@@ -19,7 +19,7 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 
 | Variável | Valor de teste |
 |---|---|
-| `OPENAI_API_KEY` | `"test-openai-key"` |
+| `LLM_API_KEY` | `"test-llm-key"` |
 | `AWS_REGION` | `"sa-east-1"` |
 | `GLUE_DATABASE` | `"db_unified_tmdb"` |
 | `SPEC_TABLE` | `"tb_discover_unified_tmdb"` |
