@@ -10,8 +10,8 @@ O estado do Terraform é armazenado remotamente em um bucket S3 com backend conf
 
 | Ambiente | Conta AWS | Arquivo de variáveis |
 |---|---|---|
-| `dev` | `298984097610` | `infra/envs/dev/terraform.tfvars` |
-| `prod` | `216126109924` | `infra/envs/prod/terraform.tfvars` |
+| `dev` | `<AWS_ACCOUNT_ID_DEV>` | `infra/envs/dev/terraform.tfvars` |
+| `prod` | `<AWS_ACCOUNT_ID_PROD>` | `infra/envs/prod/terraform.tfvars` |
 
 Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, garantindo isolamento total entre ambientes na mesma conta (quando aplicável) ou contas separadas.
 
