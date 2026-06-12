@@ -695,15 +695,15 @@ resource "aws_iam_role_policy" "glue_details_s3" {
         ]
       },
       {
-        Sid    = "ReadSOTForAthena"
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
+        Sid      = "ReadSOTForAthena"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
       },
       {
-        Sid    = "AthenaTemp"
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Sid      = "AthenaTemp"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/athena/glue_details/*"]
       },
       {

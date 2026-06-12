@@ -19,7 +19,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_discover" {
   name                = "lambda-api-movie-discover-${var.env}"
   description         = "Dispara a Lambda para discover de filmes (diário)"
-  schedule_expression = "cron(00 12 * * ? *)"  # Todos os dias às 12:00 UTC / 09:00 BRT
+  schedule_expression = "cron(00 12 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -28,7 +28,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_discover" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_discover" {
   name                = "lambda-api-tv-discover-${var.env}"
   description         = "Dispara a Lambda para discover de series (diário)"
-  schedule_expression = "cron(05 12 * * ? *)"  # Todos os dias às 12:05 UTC / 09:05 BRT
+  schedule_expression = "cron(05 12 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -107,7 +107,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_discover" {
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
   name                = "lambda-api-movie-monthly-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (mensal, dia 1)"
-  schedule_expression = "cron(00 12 1 * ? *)"  # Todo dia 1 do mês às 12:00 UTC / 09:00 BRT
+  schedule_expression = "cron(00 12 1 * ? *)" # Todo dia 1 do mês às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -115,7 +115,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_monthly" {
   name                = "lambda-api-tv-monthly-${var.env}"
   description         = "Dispara a Lambda para series com payload completo (mensal, dia 1)"
-  schedule_expression = "cron(05 12 1 * ? *)"  # Todo dia 1 do mês às 12:05 UTC / 09:05 BRT
+  schedule_expression = "cron(05 12 1 * ? *)" # Todo dia 1 do mês às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -127,7 +127,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
 
   input = jsonencode({
     type                            = "movie",
-    skip_discover                   = true,  # Pula o discover (já rodou na execução diária)
+    skip_discover                   = true, # Pula o discover (já rodou na execução diária)
     database                        = var.glue_catalog_database_movie_name,
     database_unified                = var.glue_catalog_database_unified_name,
     table_discover_movie            = var.glue_catalog_table_discover_movie_name,

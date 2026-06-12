@@ -422,8 +422,8 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "int"
     }
     columns {
-      name    = "episode_run_time"
-      type    = "array<int>"
+      name = "episode_run_time"
+      type = "array<int>"
     }
     columns {
       name = "title_en"

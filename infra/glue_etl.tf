@@ -19,7 +19,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
   }
 
   notification_property {
-    notify_delay_after = 3  # Envia notificação de "job demorado" após 3 minutos
+    notify_delay_after = 3 # Envia notificação de "job demorado" após 3 minutos
   }
 
   default_arguments = {
