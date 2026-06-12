@@ -6,9 +6,6 @@ locals {
 
   # Capacidade mínima de DPU para jobs PythonShell (1/16 de DPU)
   pythonshell_min_capacity = 0.0625
-  # Timeouts por job (em minutos)
-  glue_etl_timeout_min     = 60
-  glue_details_timeout_min = 120
 
   default_resource_tags = {
     Service     = "proj-eng-dados-filmes-aws"

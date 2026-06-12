@@ -7,7 +7,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
   description  = "Glue ETL Job"
   role_arn     = aws_iam_role.glue_etl_role.arn
   max_retries  = 0
-  timeout      = local.glue_etl_timeout_min
+  timeout      = 15
   max_capacity = local.pythonshell_min_capacity
 
   command {
