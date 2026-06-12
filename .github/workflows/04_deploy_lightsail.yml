@@ -13,7 +13,7 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
-      openai-api-key:
+      llm-api-key:
         required: true
       filmbot-password:
         required: true
@@ -94,10 +94,10 @@ jobs:
       - name: Create .env file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
-          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nOPENAI_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/athena-results/\nGLUE_DATABASE=db_unified_tmdb\nSPEC_TABLE=tb_discover_unified_tmdb\n' \
+          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nLLM_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/athena-results/\nGLUE_DATABASE=db_unified_tmdb\nSPEC_TABLE=tb_discover_unified_tmdb\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
             "${{ steps.tf.outputs.secret_access_key }}" \
-            "${{ secrets.openai-api-key }}" \
+            "${{ secrets.llm-api-key }}" \
             "${{ inputs.environment }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.env"
