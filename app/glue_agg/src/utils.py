@@ -2,17 +2,13 @@
 
 import logging
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict
 
 import awswrangler as wr
 import pandas as pd
 from awsglue.utils import getResolvedOptions
-from deep_translator import GoogleTranslator
 
 logger = logging.getLogger()
-
-_TRANSLATE_MAX_WORKERS = 10  # número de traduções simultâneas via Google Translate
 
 # Os placeholders {db_movie}, {db_tv}, {db_unified} são substituídos em
 # tempo de execução com os nomes reais dos bancos de dados no Glue Catalog.
@@ -125,8 +121,9 @@ genre_names AS (
 ),
 
 -- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
+-- title_pt/overview_pt são as traduções EN→PT gravadas pelo Glue Details (only for original_language='en').
 movie_details AS (
-    SELECT id, runtime, title_en, overview_en, poster_path_en, backdrop_path_en
+    SELECT id, runtime, title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
     FROM {db_movie}.tb_details_movie_tmdb
 ),
 
@@ -140,7 +137,9 @@ tv_details AS (
         number_of_episodes,
         element_at(episode_run_time, 1) AS episode_runtime_minutes,
         title_en,
+        title_pt,
         overview_en,
+        overview_pt,
         poster_path_en,
         backdrop_path_en
     FROM {db_tv}.tb_details_tv_tmdb
@@ -224,13 +223,12 @@ tv_providers AS (
 SELECT
     u.id,
     u.media_type,
-    -- COALESCE(NULLIF(x, ''), fallback1, fallback2):
-    -- Tenta usar o campo do discover primeiro. Se estiver vazio ou nulo,
-    -- cai para o campo em inglês da tabela de detalhes.
-    -- Ex: se title está vazio no discover, usa title_en dos detalhes.
-    COALESCE(NULLIF(TRIM(u.title), ''), md.title_en, tv.title_en)          AS title,
+    -- Prioriza a tradução PT gravada pelo Glue Details (title_pt/overview_pt),
+    -- que existe apenas para original_language='en'. Para outros idiomas title_pt é NULL
+    -- e o COALESCE cai para o título original do discover ou para o fallback em inglês.
+    COALESCE(md.title_pt, tv.title_pt, NULLIF(TRIM(u.title), ''), md.title_en, tv.title_en)          AS title,
     u.original_title,
-    COALESCE(NULLIF(TRIM(u.overview), ''), md.overview_en, tv.overview_en) AS overview,
+    COALESCE(md.overview_pt, tv.overview_pt, NULLIF(TRIM(u.overview), ''), md.overview_en, tv.overview_en) AS overview,
     u.air_date,
     u.original_language,
     lang.english_name                                                       AS language_name,
@@ -351,43 +349,6 @@ def run_athena_query(
     logger.info(f"Query executada com sucesso. {len(df)} registros retornados.")
     return df
 
-
-def traduzir_colunas_en(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Traduz 'title' e 'overview' para português apenas para original_language='en'.
-
-    Args:
-        df: DataFrame com colunas 'title', 'overview' e 'original_language'.
-
-    Returns:
-        DataFrame com title e overview traduzidos nos registros em inglês.
-    """
-    mask = df["original_language"] == "en"
-    if not mask.any():
-        return df  # nenhum título em inglês — nada a traduzir
-
-    total = mask.sum()
-    logger.info(f"Traduzindo {total} registros com original_language='en' ({_TRANSLATE_MAX_WORKERS} workers).")
-
-    def _translate(texto: str) -> str:
-        """Traduz um único texto de inglês para português. Retorna original em caso de erro."""
-        if not texto:
-            return ""
-        try:
-            return GoogleTranslator(source="en", target="pt").translate(texto)
-        except Exception as exc:
-            # Se a tradução falhar (ex: rate limit do Google), mantém o texto original.
-            # Preferimos um título em inglês a um job falhando por problema de tradução.
-            logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
-            return texto
-
-    for col in ("title", "overview"):
-        valores = df.loc[mask, col].fillna("").tolist()
-        with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-            traduzidos = list(executor.map(_translate, valores))
-        df.loc[mask, col] = traduzidos
-
-    return df
 
 
 def write_parquet_to_spec(

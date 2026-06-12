@@ -2,3 +2,4 @@
 
 awswrangler
 requests
+deep-translator

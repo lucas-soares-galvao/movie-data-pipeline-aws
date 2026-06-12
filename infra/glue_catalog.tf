@@ -358,7 +358,15 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
+      name = "title_pt"
+      type = "string"
+    }
+    columns {
       name = "overview_en"
+      type = "string"
+    }
+    columns {
+      name = "overview_pt"
       type = "string"
     }
     columns {
@@ -418,7 +426,15 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "string"
     }
     columns {
+      name = "title_pt"
+      type = "string"
+    }
+    columns {
       name = "overview_en"
+      type = "string"
+    }
+    columns {
+      name = "overview_pt"
       type = "string"
     }
     columns {
