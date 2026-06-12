@@ -424,4 +424,3 @@ def write_parquet_to_spec(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SPEC.")
-    
