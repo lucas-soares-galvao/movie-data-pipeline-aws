@@ -1,31 +1,3 @@
-"""
-test_utils.py — Testes unitários para app/glue_etl/src/utils.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa cada função utilitária do Glue ETL de forma isolada, substituindo
-as dependências externas (AWS S3, Glue, awswrangler) por mocks.
-
-FUNÇÕES TESTADAS:
-  read_from_sor()           → lê dados brutos do S3 (SOR layer)
-                              Subcasos: discover (awswrangler.s3.read_json)
-                                        genre / configuration (boto3 S3 get_object)
-                                        watch_providers_ref (boto3 + canonical_name)
-  write_parquet_to_sot()    → escreve Parquet no S3 e registra no Glue Catalog
-  derive_canonical_name()   → normaliza nomes de provedores (Netflix, Max, etc.)
-  trigger_agg()             → dispara o job Glue AGG via boto3 Glue client
-  trigger_data_quality()    → dispara o job DQ via boto3, com ou sem YEAR
-  trigger_details()         → dispara o job Details via boto3 passando todos
-                               os argumentos (MEDIA_TYPE, YEAR, END_YEAR, DATABASE)
-  get_resolved_option()     → delega para getResolvedOptions do SDK Glue
-  get_parameters_glue()     → lê argumentos obrigatórios e opcionais do job
-
-HELPER _make_s3_mock():
-  Cria um cliente S3 simulado que devolve um payload JSON serializado
-  como se fosse o body de um objeto S3. Reutilizado em vários testes.
-"""
-
 import json
 from unittest.mock import MagicMock, patch
 

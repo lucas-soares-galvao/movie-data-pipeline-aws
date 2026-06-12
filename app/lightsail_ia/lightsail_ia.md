@@ -91,6 +91,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 | `ATHENA_S3_OUTPUT` | Bucket temporário para resultados de queries Athena |
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
 | `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_discover_unified_tmdb`) |
+| `FILMBOT_PASSWORD` | Senha de acesso à interface Streamlit |
 
 ## Tecnologias
 

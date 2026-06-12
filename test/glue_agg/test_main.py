@@ -1,34 +1,6 @@
-"""
-test_main.py — Testes de integração para app/glue_agg/main.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa a função main() do Glue AGG, verificando se as três etapas do pipeline
-são chamadas na ordem certa e com os argumentos corretos:
-
-  PASSO 1: run_athena_query()      → executa o SQL de unificação no Athena
-  PASSO 2: traduzir_colunas_en()   → traduz title/overview inglês → português
-  PASSO 3: write_parquet_to_spec() → salva o DataFrame na camada SPEC (Gold)
-
-TESTE ESPECIAL — test_translation_called_between_query_and_write:
-  Este é o teste mais importante do arquivo. Ele verifica que as três funções
-  são chamadas NESTA ORDEM EXATA: query → translate → write.
-
-  Técnica usada: uma lista call_order[] é compartilhada entre os três
-  side_effects. Cada mock acrescenta seu nome à lista quando é chamado.
-  Ao final, verificamos que a lista é ["query", "translate", "write"].
-
-  Por que importa a ordem?
-    Se write fosse chamada antes de translate, os títulos em inglês seriam
-    salvos na camada SPEC. O app de recomendação mostraria textos em inglês.
-
-SOBRE _DF_MOCK e _BASE_ARGS:
-  _BASE_ARGS simula os argumentos que o Glue injeta no job.
-  _DF_MOCK simula o DataFrame retornado pelo Athena — pequeno o suficiente
-  para os testes serem rápidos, mas com as colunas relevantes (id, media_type,
-  title, year) para testar o contrato da função.
-"""
+# test_translation_called_between_query_and_write verifica a ordem exata
+# query → translate → write. Se write ocorrer antes, títulos em inglês são
+# salvos na SPEC e o app exibe textos no idioma errado.
 
 from unittest.mock import patch
 

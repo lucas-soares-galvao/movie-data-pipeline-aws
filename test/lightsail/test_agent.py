@@ -1,72 +1,9 @@
-"""
-test_agent.py — Testes unitários do agente de recomendação de filmes.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa as duas funções públicas de agent.py:
-
-  buscar_titulos_spec()  → monta o SQL com os filtros recebidos e consulta
-                           o Athena via boto3 nativo, retornando lista de
-                           dicionários com os títulos encontrados na camada
-                           SPEC (Gold layer)
-
-  recomendar()           → orquestra os 3 passos do agente de IA:
-    PASSO 1: GPT-4o lê o texto do usuário e devolve filtros como JSON
-    PASSO 2: Athena é consultado com esses filtros
-    PASSO 3: GPT-4o formata os resultados como recomendações
-
-Todas as dependências externas (OpenAI, boto3/Athena) são substituídas por
-Mocks para que os testes rodem sem credenciais ou rede.
-
-==============================================================================
-HELPER _setup_athena_mock()
-==============================================================================
-O agent.py usa a API nativa do boto3 Athena em três etapas:
-  1. start_query_execution() → dispara a query e retorna QueryExecutionId
-  2. get_query_execution()   → verifica o estado (polling até SUCCEEDED)
-  3. get_paginator().paginate() → lê os resultados paginados
-
-_setup_athena_mock() configura um MagicMock que simula essas três etapas,
-opcionalmente incluindo linhas de dados (rows_data) no resultado.
-
-==============================================================================
-HELPER _mock_openai_client()
-==============================================================================
-O GPT-4o é chamado DUAS VEZES em recomendar():
-  1ª chamada → retorna uma "tool_call" com os filtros SQL como JSON
-  2ª chamada → retorna o JSON final com as recomendações formatadas
-
-Para simular isso, _mock_openai_client() configura o mock com side_effect
-como uma lista [resposta_passo1, resposta_passo3] — o mock devolve o
-primeiro item na 1ª chamada e o segundo na 2ª chamada automaticamente.
-
-==============================================================================
-FIXTURES TITULOS_FAKE e RESPOSTA_OPENAI_FAKE
-==============================================================================
-TITULO_FAKE simula uma linha da tabela SPEC retornada pelo Athena.
-RESPOSTA_OPENAI_FAKE simula o JSON que o GPT-4o retorna no Passo 3,
-com a lista "titulos" contendo os dados formatados para o app Streamlit.
-
-==============================================================================
-CLASSES DE TESTE
-==============================================================================
-  TestBuscarTitulosSpec → testa a construção do SQL (filtros opcionais)
-    - sem resultados → retorna lista vazia
-    - com resultados → retorna lista de dicionários
-    - filtro tipo (movie/tv) → aparece no SQL como media_type = '...'
-    - filtro ano → aparece no SQL como year = '...'
-    - filtro gênero → aparece no SQL com o nome do gênero
-    - limite → aparece no SQL como LIMIT N
-
-  TestRecomendar → testa o fluxo completo dos 3 passos
-    - Athena sem resultados → retorna lista vazia (pula o Passo 3)
-    - OpenAI é chamado exatamente 2 vezes por requisição
-    - retorno é lista de dicionários com a estrutura de recomendações
-    - remove markdown code fences (```json...```) antes do json.loads
-    - OpenAI retornando string vazia → retorna lista vazia
-    - filtros extraídos no Passo 1 são passados para buscar_titulos_spec()
-"""
+# _setup_athena_mock() simula as 3 etapas do boto3 Athena:
+#   start_query_execution → get_query_execution (polling) → get_paginator().paginate()
+# O mock precisa dessas 3 chamadas encadeadas porque agent.py as chama em sequência.
+#
+# _mock_openai_client() usa side_effect=[passo1, passo3] porque recomendar() chama
+# o GPT-4o duas vezes: 1ª para extrair filtros como JSON, 2ª para formatar respostas.
 
 import json
 import unittest
@@ -74,8 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import agent
 
-
-# ── Fixtures ─────────────────────────────────────────────────────────────────
 
 TITULO_FAKE = {
     "title": "O Iluminado",
@@ -197,9 +132,6 @@ def _mock_openai_client(tool_args: dict, resposta_final: str):
     return mock_client
 
 
-# ── Testes de buscar_titulos_spec ─────────────────────────────────────────────
-
-
 class TestBuscarTitulosSpec(unittest.TestCase):
 
     @patch("agent.boto3")
@@ -274,9 +206,6 @@ class TestBuscarTitulosSpec(unittest.TestCase):
 
         sql_executado = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
         self.assertIn("LIMIT 1", sql_executado)
-
-
-# ── Testes de recomendar ───────────────────────────────────────────────────────
 
 
 class TestRecomendar(unittest.TestCase):

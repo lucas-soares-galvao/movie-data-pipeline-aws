@@ -1,46 +1,21 @@
 # =============================================================================
-# ARQUIVO: locals.tf — Valores Derivados e Configurações Centralizadas
-# =============================================================================
-#
-# O QUE SÃO "LOCALS" NO TERRAFORM?
-# Locals são variáveis internas calculadas a partir de outras variáveis ou
-# expressões. Eles não são parâmetros de entrada (como variables.tf) —
-# são valores derivados que o próprio Terraform calcula.
-#
-# POR QUE USAR LOCALS?
-# 1. Evitar repetição: em vez de escrever "${var.env}-${var.nome}" em 20 lugares,
-#    você define uma vez em locals e reutiliza.
-# 2. Centralizar lógica: se a lógica de geração de nome mudar, basta mudar aqui.
-# 3. Clareza: nomes descritivos tornam o código mais legível.
-#
-# ANALOGIA: Como constantes em Python:
-#   BUCKET_SOR = f"lsg-sa-east-1-bucket-sor-{env}"
-#   # Em vez de escrever essa string em cada arquivo
+# locals.tf — Valores derivados e nomes de recursos centralizados
 # =============================================================================
 
 locals {
 
-  # ===========================================================================
-  # TAGS PADRÃO — Aplicadas em todos os recursos AWS
-  # ===========================================================================
-  # Tags são metadados (rótulos) que identificam recursos na AWS.
-  # Com estas tags, você consegue:
-  # - Filtrar recursos no console AWS por projeto
-  # - Calcular o custo separado por ambiente no AWS Cost Explorer
-  # - Identificar rapidamente a quem pertence um recurso durante incidentes
-  #
-  # Estas tags são aplicadas automaticamente pelo provider.tf (default_tags).
+  # Capacidade mínima de DPU para jobs PythonShell (1/16 de DPU)
+  pythonshell_min_capacity = 0.0625
+  # Timeouts por job (em minutos)
+  glue_etl_timeout_min     = 30
+  glue_details_timeout_min = 120
+
   default_resource_tags = {
-    Service     = "proj-eng-dados-filmes-aws"  # Nome do projeto
-    Environment = local.environment_tag_value   # "Dev" ou "Prod"
-    FinOps      = var.finops_tag_value          # "true" — ativa rastreamento de custo
+    Service     = "proj-eng-dados-filmes-aws"
+    Environment = local.environment_tag_value
+    FinOps      = var.finops_tag_value
   }
 
-  # ===========================================================================
-  # TAGS POR COMPONENTE — Para identificar qual parte do pipeline criou o recurso
-  # ===========================================================================
-  # Cada componente (Lambda, Glue ETL, etc.) tem uma tag "Component" diferente.
-  # Isso permite filtrar logs, alarmes e custos por componente específico.
   component_tags = {
     shared = {
       Component = "shared"

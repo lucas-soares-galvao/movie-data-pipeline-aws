@@ -1,52 +1,20 @@
 """
 conftest.py — Configuração global de testes (raiz do diretório test/).
 
-==============================================================================
-O QUE É UM conftest.py?
-==============================================================================
-O pytest procura arquivos conftest.py automaticamente antes de rodar os testes.
-O conftest.py é o lugar para:
-  - Definir "fixtures" (objetos reutilizáveis nos testes, como mocks e dados)
-  - Configurar o ambiente de testes antes de cada arquivo/teste
-  - Customizar o comportamento do pytest via hooks (funções especiais do pytest)
-
-ESTE conftest.py ESPECÍFICO resolve um problema de importação:
-  O projeto tem múltiplos módulos com a mesma estrutura interna:
-    app/lambda_api/src/utils.py
-    app/glue_etl/src/utils.py
-    app/glue_agg/src/utils.py
-    ...
-  Todos esses módulos têm um "src.utils" — mas são arquivos diferentes!
-  Python não consegue ter dois módulos com o mesmo nome em cache ao mesmo tempo.
-
-PROBLEMA SEM ESTA SOLUÇÃO:
-  Se você rodar os testes de lambda_api e depois os de glue_etl na mesma sessão,
-  o Python usaria o "src.utils" cacheado da lambda_api para os testes do glue_etl.
-  Isso causaria erros misteriosos e testes passando/falhando no lugar errado.
-
-SOLUÇÃO IMPLEMENTADA:
-  Antes de cada arquivo de teste, este conftest:
-  1. Remove do cache (sys.modules) os módulos src.* que estão lá
-  2. Coloca o diretório correto da suite no início de sys.path
-  3. Registra o módulo correto (ex: app.glue_etl.src.utils) como alias "src.utils"
-
-ANALOGIA: Como trocar os "óculos" antes de ler cada documento diferente.
-  Cada suite de testes precisa de "óculos" diferentes para enxergar o "src.utils"
-  correto. Este conftest troca os óculos automaticamente antes de cada arquivo.
-
-Raciocinio: isola resolucao de imports entre suites para evitar conflito entre pacotes src homonimos.
+Resolve conflito de imports entre suites: todos os jobs têm módulos com o mesmo
+nome interno (src.utils, src.main) mas implementações diferentes. Sem este conftest,
+Python reutilizaria o módulo em cache da suite anterior, causando falhas difíceis
+de depurar. Solução: antes de cada arquivo, limpa sys.modules dos módulos src.* e
+reconfigura sys.path para a suite correta.
 """
 
 import sys
 from pathlib import Path
 
-# Caminho absoluto para a pasta test/ (onde este arquivo está)
 _TEST_ROOT = Path(__file__).parent
-# Caminho absoluto para a pasta app/ (onde os módulos do projeto estão)
 _APP_ROOT = _TEST_ROOT.parent / "app"
 
-# Mapeamento: nome da suite de testes → pasta do app correspondente.
-# Ex: quando o pytest processa test/glue_agg/..., sabe que o app está em app/glue_agg/
+# Ex: quando o pytest processa test/glue_agg/..., o app correspondente é app/glue_agg/
 _SUITE_TO_APP: dict[str, Path] = {
     "glue_agg": _APP_ROOT / "glue_agg",
     "glue_data_quality": _APP_ROOT / "glue_data_quality",
@@ -55,8 +23,6 @@ _SUITE_TO_APP: dict[str, Path] = {
     "lambda_api": _APP_ROOT / "lambda_api",
 }
 
-# Mapeamento: nome da suite → nome completo do módulo utils no formato Python.
-# Isso permite importar o módulo correto e registrá-lo como alias "src.utils".
 # Suites sem entrada aqui não recebem alias src.utils (ex: lightsail usa estrutura diferente).
 _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_agg": "app.glue_agg.src.utils",

@@ -4,7 +4,7 @@
     "email": "lsgalvao1000@gmail.com"
   },
   "record": {
-    "A": ["34.196.6.0"],
+    "A": ["52.87.21.202"],
     "PROXIED": true
   },
   "description": "FilmBot — app de recomendação de filmes e séries com IA hospedado em AWS Lightsail"

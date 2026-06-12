@@ -1,42 +1,5 @@
-# =============================================================================
-# ARQUIVO: 00_pipeline.yml — Orquestrador Principal do Pipeline CI/CD
-# =============================================================================
-#
-# O QUE É UM PIPELINE CI/CD?
-# CI (Continuous Integration) = "Integração Contínua": cada vez que um
-# desenvolvedor sobe código novo, um processo automático verifica se está
-# correto (testes, linting) antes de aceitar as mudanças.
-# CD (Continuous Delivery) = "Entrega Contínua": após a verificação, o
-# código é automaticamente enviado para o servidor (AWS) sem precisar de
-# intervenção manual.
-#
-# ANALOGIA: Imagine uma linha de montagem de carro. Cada peça passa por
-# inspeção de qualidade antes de ser instalada. Se a peça falha, a linha
-# para. Aqui o "carro" é o software e a "inspeção" são os testes automáticos.
-#
-# ESTE ARQUIVO É O "GERENTE DA LINHA DE MONTAGEM":
-# Ele não executa as tarefas diretamente — ele chama outros arquivos
-# (01_test.yml, 02_terraform.yml, etc.) e define a ordem de execução.
-# =============================================================================
-
 name: Pipeline CI/CD
 
-# =============================================================================
-# GATILHOS (on:) — Quando este arquivo deve ser executado automaticamente?
-# =============================================================================
-#
-# O GitHub monitora o repositório e dispara este pipeline nos casos abaixo:
-#
-# 1. push — Quando alguém faz "git push" (envia código novo para o GitHub)
-#    - feature/*  → Branches de desenvolvimento de novas funcionalidades
-#                   Ex: "feature/adicionar-recomendacao-por-genero"
-#    - develop    → Branch de integração (junta todas as features prontas)
-#    - main       → Branch de produção (o que os usuários reais usam)
-#
-# 2. workflow_dispatch — Permite que um humano rode o pipeline manualmente
-#    Útil para: forçar um re-deploy, testar o pipeline, deploy de urgência
-#    O campo "environment" pede ao humano qual ambiente usar: 'dev' ou 'prod'
-# =============================================================================
 on:
   push:
     branches: [feature/*, develop, main]
@@ -51,83 +14,17 @@ on:
           - dev
           - prod
 
-# =============================================================================
-# PERMISSÕES (permissions:) — O que este workflow tem autorização para fazer?
-# =============================================================================
-#
-# O GitHub Actions roda em uma máquina virtual isolada. Para fazer certas
-# ações (criar PR, acessar a AWS), ele precisa de permissões explícitas.
-#
-# - id-token: write   → Necessário para usar OIDC (login seguro na AWS
-#                        sem precisar guardar senha fixa)
-# - contents: read    → Pode baixar o código do repositório
-# - actions: write    → Pode disparar e controlar outros workflows
-# - pull-requests: write → Pode criar e editar Pull Requests
-# =============================================================================
 permissions:
   id-token: write
   contents: read
   actions: write
   pull-requests: write
 
-# =============================================================================
-# JOBS — As etapas do pipeline (cada "job" roda em uma máquina separada)
-# =============================================================================
-#
-# ORDEM DE EXECUÇÃO (depende de "needs:"):
-#
-#  [PUSH em feature/*]
-#       │
-#       ▼
-#   (1) test ──────────────────────────────────► (5) auto-pr-feature
-#       │                                              (abre PR para develop)
-#       │ [PUSH em develop ou main]
-#       ▼
-#   (2) terraform (infra)
-#       │
-#       ▼
-#   (3) deploy-lightsail (app web)
-#       │
-#       ▼
-#   (4) auto-pr-environment
-#       (se develop: abre PR para main)
-# =============================================================================
 jobs:
 
-  # ===========================================================================
-  # JOB 1: test — Verificação de Qualidade do Código
-  # ===========================================================================
-  # O que faz: Chama o workflow 01_test.yml que executa todos os testes
-  # automáticos (pytest), verifica cobertura de código (>70%) e faz linting.
-  #
-  # Por que existe: Nenhum código com erro ou abaixo do padrão de qualidade
-  # deve chegar à infraestrutura da AWS. Este job é o "porteiro".
-  #
-  # Roda para: TODAS as branches (feature, develop e main)
-  # ===========================================================================
   test:
     uses: ./.github/workflows/01_test.yml
 
-  # ===========================================================================
-  # JOB 2: terraform — Deploy da Infraestrutura na AWS
-  # ===========================================================================
-  # O que faz: Chama o workflow 02_terraform.yml que cria/atualiza todos
-  # os recursos AWS (S3, Lambda, Glue, etc.) usando código Terraform.
-  #
-  # needs: test → Só roda se o job "test" terminar com sucesso (sem erros)
-  #
-  # Condição "if":
-  #   - Só roda em branches de ambiente (develop ou main) OU via disparo manual
-  #   - Em branches feature/* NÃO roda terraform (ainda não é hora de deploy)
-  #   - O resultado do test deve ser 'success'
-  #
-  # "with: environment" → Determina qual ambiente usar:
-  #   - Disparo manual: usa o input do humano
-  #   - Push em develop: usa 'dev'
-  #   - Push em main: usa 'prod'
-  #
-  # "secrets" → Cada ambiente (dev/prod) tem suas próprias credenciais AWS
-  # ===========================================================================
   terraform:
     needs: test
     if: |
@@ -144,18 +41,6 @@ jobs:
       notification-email: ${{ secrets.NOTIFICATION_EMAIL }}
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-  # ===========================================================================
-  # JOB 3: deploy-lightsail — Deploy do Aplicativo Web (FilmBot)
-  # ===========================================================================
-  # O que faz: Chama o workflow 04_deploy_lightsail.yml que conecta via SSH
-  # na instância Lightsail e atualiza o aplicativo Streamlit (FilmBot).
-  #
-  # needs: terraform → Só roda DEPOIS que a infraestrutura foi criada/atualizada
-  #
-  # Condição adicional: "needs.terraform.outputs.was_destroyed != 'true'"
-  # → Se o Terraform acabou de DESTRUIR a infraestrutura, não faz sentido
-  #   tentar fazer deploy de um app em um servidor que não existe mais.
-  # ===========================================================================
   deploy-lightsail:
     needs: terraform
     if: |
@@ -172,18 +57,6 @@ jobs:
       openai-api-key: ${{ secrets.OPENAI_API_KEY }}
       filmbot-password: ${{ secrets.FILMBOT_PASSWORD }}
 
-  # ===========================================================================
-  # JOB 4: auto-pr-feature — Abertura Automática de PR (Feature → Develop)
-  # ===========================================================================
-  # O que faz: Quando um desenvolvedor termina uma feature e faz push,
-  # este job abre automaticamente um Pull Request de feature/* → develop.
-  #
-  # Por que existe: Economiza o trabalho manual de abrir PR no GitHub.
-  # O PR ainda precisa ser revisado e aprovado por um humano antes do merge.
-  #
-  # Condição: Só roda em branches que começam com "feature/" e se os testes
-  # passaram. Não adianta abrir PR com código quebrado.
-  # ===========================================================================
   auto-pr-feature:
     needs: test
     if: |
@@ -196,18 +69,6 @@ jobs:
       contents: write
       pull-requests: write
 
-  # ===========================================================================
-  # JOB 5: auto-pr-environment — Abertura Automática de PR (Develop → Main)
-  # ===========================================================================
-  # O que faz: Após um deploy bem-sucedido em develop (ambiente dev),
-  # abre automaticamente um PR de develop → main para promoção a produção.
-  #
-  # Por que existe: Mantém o fluxo de entrega organizado:
-  #   feature/* → develop → main
-  # Cada promoção ainda requer aprovação humana (o PR precisa ser mergeado).
-  #
-  # Condição: Só roda em "develop" (main não tem destino posterior).
-  # ===========================================================================
   auto-pr-environment:
     needs: [deploy-lightsail]
     if: |

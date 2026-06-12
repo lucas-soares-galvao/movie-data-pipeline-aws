@@ -68,6 +68,21 @@ Qualquer alteração no código passa por um processo automatizado de validaçã
 
 ---
 
+## Tecnologias
+
+| Camada | Tecnologia |
+|---|---|
+| Linguagem | Python 3 |
+| Infraestrutura como código | Terraform `>= 1.5.0` |
+| CI/CD | GitHub Actions |
+| Processamento de dados | AWS Glue (PySpark), AWS Lambda |
+| Armazenamento | AWS S3 (arquitetura medalhão), AWS Glue Catalog, AWS Athena |
+| Observabilidade | AWS CloudWatch, AWS SNS |
+| Interface web | Streamlit (hospedado no AWS Lightsail) |
+| Inteligência artificial | OpenAI GPT-4o (recomendações e extração de filtros) |
+
+---
+
 ## Estrutura do repositório
 
 ```

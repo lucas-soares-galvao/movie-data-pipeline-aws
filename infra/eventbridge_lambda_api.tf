@@ -1,43 +1,8 @@
 # =============================================================================
-# ARQUIVO: eventbridge_lambda_api.tf — Agendamento Automático da Lambda
-# =============================================================================
+# eventbridge_lambda_api.tf — Agendamento automático da Lambda
 #
-# O QUE É O AWS EVENTBRIDGE?
-# EventBridge é o serviço de agendamento e roteamento de eventos da AWS.
-# Funciona como um "alarme despertador inteligente" para serviços AWS.
-# Você define quando e com quais dados a Lambda deve ser invocada.
-#
-# ANALOGIA: Como uma tarefa agendada (cron job) no Linux, mas na nuvem.
-# Em vez de precisar de um servidor sempre ligado para rodar o cron,
-# a AWS gerencia o agendamento e dispara a Lambda automaticamente.
-#
-# ESTRUTURA DO EVENTBRIDGE:
-# ┌─────────────────────────────┐
-# │   Rule (Regra de Agenda)    │  ← "quando disparar" (expressão cron)
-# │   cron(00 12 * * ? *)       │
-# └──────────────┬──────────────┘
-#                │
-#                ▼
-# ┌─────────────────────────────┐
-# │   Target (Alvo)             │  ← "o que invocar" (a Lambda)
-# │   + Input (Payload)         │  ← "com quais dados" (JSON passado ao handler)
-# └──────────────┬──────────────┘
-#                │
-#                ▼
-# ┌─────────────────────────────┐
-# │   Lambda Permission         │  ← "autorização para invocar"
-# │   (EventBridge → Lambda)    │
-# └─────────────────────────────┘
-#
-# ESTRATÉGIA DE COLETA:
-# - DIÁRIA (só discover): Atualiza listas de filmes/séries populares do ano corrente
-# - SEMANAL (payload completo): Atualiza tabelas de referência (gêneros, países, etc.)
-#   que mudam raramente, mas precisam de atualização periódica.
-#
-# DESABILITADO EM DEV:
-# "local.eventbridge_schedule_state" é "DISABLED" em dev e "ENABLED" em prod.
-# Em dev, as regras existem (para testar o Terraform) mas não disparam
-# automaticamente — você pode invocar a Lambda manualmente quando precisar.
+# Estratégia: diária (só discover) + semanal (referências: gêneros, países, etc.)
+# DESABILITADO em dev (local.eventbridge_schedule_state = "DISABLED") — invoque a Lambda manualmente.
 # =============================================================================
 
 # =============================================================================

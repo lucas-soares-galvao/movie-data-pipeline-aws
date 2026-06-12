@@ -1,20 +1,4 @@
-"""
-conftest.py — Configuração de testes para o módulo Glue Details.
-
-==============================================================================
-POR QUE PRECISAMOS DESTE conftest.py?
-==============================================================================
-O código do Glue Details importa bibliotecas do AWS Glue:
-  from awsglue.utils import getResolvedOptions
-
-Essas bibliotecas SÓ EXISTEM no runtime do AWS Glue (ambiente cloud).
-Para rodar os testes localmente, precisamos simular esses módulos.
-
-SOLUÇÃO: Mesma abordagem dos outros módulos Glue — registrar stubs em
-sys.modules antes que qualquer import real seja tentado.
-
-Raciocinio: prepara mocks do runtime Glue para testar Details localmente com previsibilidade.
-"""
+"""Stubs do AWS Glue SDK (awsglue não existe fora do runtime do Glue)."""
 
 import sys
 import os
@@ -27,7 +11,6 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "app", "glue_details")
 )
 
-# Registra módulo stub para o SDK do AWS Glue
 awsglue_module = sys.modules.setdefault("awsglue", ModuleType("awsglue"))
 awsglue_utils_module = sys.modules.setdefault(
     "awsglue.utils", ModuleType("awsglue.utils")

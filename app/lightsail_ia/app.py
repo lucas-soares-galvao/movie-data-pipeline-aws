@@ -183,8 +183,22 @@ st.markdown("""
 <style>
   .grid-filmes {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);  /* 4 colunas de tamanho igual */
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 16px;
+  }
+  @media (max-width: 768px) {
+    .grid-filmes {
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .login-title { font-size: 24px; }
+    .login-card { padding: 24px 20px 20px; }
+  }
+  @media (max-width: 480px) {
+    .grid-filmes {
+      grid-template-columns: 1fr;
+    }
+    .grid-filmes img { height: 160px; }
   }
   .card {
     background: #111;

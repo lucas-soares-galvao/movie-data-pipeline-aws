@@ -1,60 +1,3 @@
-"""
-test_utils.py — Testes unitários para app/glue_data_quality/src/utils.py.
-
-==============================================================================
-O QUE ESTE ARQUIVO TESTA?
-==============================================================================
-Testa cada função de utils.py do Glue Data Quality de forma isolada,
-com foco em contrato e comportamento, não em implementação interna.
-
-FUNÇÕES TESTADAS:
-
-  get_parameters_glue()
-    Verifica que argumentos obrigatórios são lidos corretamente, que YEAR
-    é incluído quando fornecido e omitido quando ausente (argumento opcional).
-
-  get_ruleset()
-    Verifica que a string DQDL gerada tem o formato correto ("Rules = [...]"),
-    contém todas as regras do dicionário rulesets_dq, e levanta KeyError para
-    tabelas sem regras definidas.
-
-  read_table_from_catalog()
-    Verifica que from_catalog é chamado com database e table_name corretos.
-    Testa o comportamento do push_down_predicate:
-      - Sem year: predicate NÃO é passado (tabelas sem partição de ano)
-      - Com year: predicate é "year = '<ano>'" (filtro a nível de S3)
-
-  evaluate_data_quality()
-    O teste mais complexo do arquivo. Verifica:
-      - EvaluateDataQuality.apply é chamado com o DynamicFrame e o ruleset
-      - publishing_options ativam métricas e resultados no Glue Studio
-      - O DynamicFrame é filtrado por ano ANTES da avaliação (quando year fornecido)
-      - Sem year, o DynamicFrame original é passado diretamente
-      - Todas as colunas PascalCase são renomeadas para snake_case (compatibilidade Athena)
-      - Colunas de metadados são adicionadas: partition, datetime_process,
-        source_database, source_table, category
-
-    HELPER _make_chainable_df():
-      Cria um mock onde withColumnRenamed/withColumn/drop retornam o próprio mock.
-      Isso permite que chamadas encadeadas como:
-        df.withColumnRenamed("Rule","rule").withColumn("partition",...)
-      funcionem sem erros de NoneType, pois cada chamada retorna o mesmo mock.
-
-    HELPER _run():
-      Semelhante ao _run_main() de test_main.py — executa evaluate_data_quality()
-      com todos os colaboradores externos simulados (EvaluateDataQuality, DynamicFrame,
-      col, lit, when, current_timestamp, from_utc_timestamp, StringType).
-
-  write_results_to_s3()
-    Verifica que o Spark DataFrame é convertido para Pandas antes da escrita,
-    o caminho S3 usa sempre "tb_data_quality_tmdb" (tabela de saída fixa),
-    mode="overwrite_partitions" e partition_cols=["source_table"].
-
-  notify_failed_outcomes()
-    Verifica que SNS.publish só é chamado quando há regras com falha,
-    e que o subject/message contém o ambiente, nome da tabela, regra e motivo.
-"""
-
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -69,13 +12,7 @@ from src.utils import (
 )
 
 
-# ---------------------------------------------------------------------------
-# get_parameters_glue
-# ---------------------------------------------------------------------------
-
-
 class TestGetParametersGlue:
-    # Argumentos que o Glue sempre envia
     _REQUIRED = {
         "TABLE_NAME": "tb_genre_movie_tmdb",
         "DATABASE": "db_tmdb",
@@ -189,11 +126,6 @@ class TestGetRuleset:
             assert result.startswith("Rules = [")
 
 
-# ---------------------------------------------------------------------------
-# read_table_from_catalog
-# ---------------------------------------------------------------------------
-
-
 class TestReadTableFromCatalog:
     def test_calls_from_catalog_with_correct_args(self):
         """Deve chamar from_catalog passando database e table_name corretos."""
@@ -260,11 +192,6 @@ class TestReadTableFromCatalog:
 
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
         assert "2023" in kwargs["push_down_predicate"]
-
-
-# ---------------------------------------------------------------------------
-# evaluate_data_quality
-# ---------------------------------------------------------------------------
 
 
 class TestEvaluateDataQuality:
@@ -540,11 +467,6 @@ class TestEvaluateDataQuality:
         assert call_kwargs["frame"] is dynamic_frame
 
 
-# ---------------------------------------------------------------------------
-# write_results_to_s3
-# ---------------------------------------------------------------------------
-
-
 class TestWriteResultsToS3:
     def _run(self, df_mock=None, bucket="my-dq-bucket", table="tb_genre_movie_tmdb", database="db_tmdb", year=None):
         df_mock = df_mock or MagicMock()
@@ -611,11 +533,6 @@ class TestWriteResultsToS3:
         """wr.s3.to_parquet deve ser chamado exatamente uma vez por execução."""
         _, mock_wr = self._run()
         mock_wr.s3.to_parquet.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# notify_failed_outcomes
-# ---------------------------------------------------------------------------
 
 
 class TestNotifyFailedOutcomes:
