@@ -30,10 +30,25 @@ EventBridge (schedule)
   └── Registra partição na tabela tb_data_quality_tmdb no Glue Catalog
        │
        ▼
-  Glue SPEC Job (unificação)
-  ├── Faz JOIN das tabelas de filmes e séries
-  ├── Salva resultado em Parquet no S3 SPEC
-  └── Registra tabela unificada no Glue Catalog
+  Glue Details (app/glue_details/)
+  ├── Lê tabelas discover do S3 SOT
+  ├── Busca detalhes complementares na API TMDB (runtime, temporadas, streaming BR)
+  ├── Salva em S3 SOT (tb_details_movie_tmdb / tb_details_tv_tmdb)
+  └── Dispara Glue AGG job
+       │
+       ▼
+  Glue AGG (app/glue_agg/)
+  ├── Une filmes e séries com seus detalhes
+  ├── Traduz title e overview do inglês para o português (deep-translator)
+  ├── Salva tabela unificada em S3 SPEC (tb_discover_unified_tmdb)
+  └── Registra tabela no Glue Catalog
+       │
+       ▼
+  FilmBot — Lightsail (app/lightsail_ia/)
+  ├── Usuário digita pedido em linguagem natural
+  ├── GPT-4o extrai filtros via Function Calling (etapa 1)
+  ├── Consulta tb_discover_unified_tmdb no Athena (etapa 2)
+  └── GPT-4o formata recomendações com poster, sinopse, streaming (etapa 3)
 ```
 
 ---
@@ -59,15 +74,27 @@ app/
 ├── glue_etl/
 │   ├── main.py              # resolve args Glue e chama run_etl()
 │   └── src/utils.py         # process_tmdb(), call_glue_data_quality(), run_etl()
-└── glue_data_quality/
-    ├── main.py              # orquestra DQ: lê catálogo, avalia, salva, registra
-    └── src/
-        ├── utils.py         # parse_args, build_ruleset, run_data_quality, write_results, register_partition
-        └── rulesets_dq.py   # dict de rulesets DQDL por nome de tabela
+├── glue_data_quality/
+│   ├── main.py              # orquestra DQ: lê catálogo, avalia, salva, registra
+│   └── src/
+│       ├── utils.py         # parse_args, build_ruleset, run_data_quality, write_results, register_partition
+│       └── rulesets_dq.py   # dict de rulesets DQDL por nome de tabela
+├── glue_details/
+│   ├── main.py              # resolve args Glue e chama run_details()
+│   └── src/utils.py         # busca detalhes TMDB, streaming providers, salva SOT
+├── glue_agg/
+│   ├── main.py              # resolve args Glue e chama run_agg()
+│   └── src/utils.py         # une filmes+séries, traduz, salva SPEC
+└── lightsail_ia/
+    ├── agent.py             # recomendar() + buscar_titulos_spec() (3 etapas: LLM → Athena → LLM)
+    └── app.py               # interface Streamlit (FilmBot)
 test/
 ├── lambda_api/
 ├── glue_etl/
-└── glue_data_quality/
+├── glue_data_quality/
+├── glue_details/
+├── glue_agg/
+└── lightsail/
 ```
 
 ---
@@ -84,11 +111,13 @@ test/
 | `tb_configuration_languages_tmdb` | Idiomas | — |
 | `tb_configuration_countries_tmdb` | Países | — |
 | `tb_data_quality_tmdb` | Resultados de DQ | `source_table` |
+| `tb_details_movie_tmdb` | Detalhes de filmes (runtime, streaming) | `year` |
+| `tb_details_tv_tmdb` | Detalhes de séries (temporadas, episódios, streaming) | `year` |
 
 ### Banco SPEC (ex: `db_tmdb_spec`)
 | Tabela | Conteúdo |
 |--------|----------|
-| `tb_media_tmdb` | União de filmes + séries |
+| `tb_discover_unified_tmdb` | União de filmes + séries com detalhes e tradução PT |
 
 ---
 

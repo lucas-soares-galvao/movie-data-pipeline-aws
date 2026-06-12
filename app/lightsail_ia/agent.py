@@ -37,12 +37,15 @@ POR QUE USAR "FUNCTION CALLING" (TOOL USE)?
   extrair os filtros de forma confiável para montar a query SQL.
 
 TECNOLOGIAS UTILIZADAS:
-  - openai (Python SDK): acessa o GPT-4o para interpretação e formatação
+  - litellm: interface unificada para múltiplos provedores de LLM (OpenAI, DeepSeek, Claude, etc.)
   - boto3 (Athena API nativa): executa SQL no Athena sem dependências pesadas
   - python-dotenv: carrega variáveis de ambiente do arquivo .env
 
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
-  OPENAI_API_KEY     → chave de acesso à API do OpenAI
+  OPENAI_API_KEY     → chave de acesso à API do OpenAI (se LLM_MODEL usar OpenAI)
+  LLM_MODEL          → modelo LLM a usar (padrão: "gpt-4o"). Exemplos:
+                        "deepseek/deepseek-chat" + DEEPSEEK_API_KEY
+                        "claude-opus-4-8"        + ANTHROPIC_API_KEY
   AWS_REGION         → região AWS (padrão: "sa-east-1")
   GLUE_DATABASE      → banco no Glue Catalog (padrão: "db_unified_tmdb")
   SPEC_TABLE         → tabela SPEC (padrão: "tb_discover_unified_tmdb")
@@ -54,6 +57,7 @@ import os
 import json
 import time
 import boto3
+import litellm
 from dotenv import load_dotenv
 
 # Carrega as variáveis de ambiente do arquivo .env (na mesma pasta do app).
@@ -61,17 +65,7 @@ from dotenv import load_dotenv
 # com as variáveis do Terraform output. Em desenvolvimento, o .env é criado manualmente.
 load_dotenv()
 
-# Cliente OpenAI inicializado sob demanda na primeira chamada para evitar alocar
-# ~20-30 MB de memória antes de qualquer busca do usuário.
-_openai_client = None
-
-
-def _get_openai_client():
-    from openai import OpenAI
-    global _openai_client
-    if _openai_client is None:
-        _openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    return _openai_client
+_LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 
 # ==============================================================================
 # DEFINIÇÃO DA TOOL (Function Calling)
@@ -252,14 +246,13 @@ def recomendar(preferencia: str) -> list[dict]:
     """
 
     # ------------------------------------------------------------------
-    # PASSO 1: GPT-4o analisa o texto e decide os filtros SQL
+    # PASSO 1: LLM analisa o texto e decide os filtros SQL
     # ------------------------------------------------------------------
     # tool_choice="required" força o modelo a sempre usar a tool definida.
     # Sem isso, o modelo poderia responder em texto livre se não entendesse
     # como usar a tool — o que quebraria o processamento no Passo 2.
-    client = _get_openai_client()
-    resposta = client.chat.completions.create(
-        model="gpt-4o",
+    resposta = litellm.completion(
+        model=_LLM_MODEL,
         messages=[
             {
                 "role": "system",
@@ -288,14 +281,16 @@ def recomendar(preferencia: str) -> list[dict]:
         return []  # nenhum título encontrado com esses filtros
 
     # ------------------------------------------------------------------
-    # PASSO 3: GPT-4o formata os títulos reais como recomendações
+    # PASSO 3: LLM formata os títulos reais como recomendações
     # ------------------------------------------------------------------
     # A conversa é reconstruída com o histórico completo para o modelo entender o contexto:
     #   system → mensagem do usuário → resposta anterior do modelo (com tool_call) → resultado da tool
-    # Esse encadeamento é obrigatório pelo protocolo de tool use da API OpenAI —
+    # Esse encadeamento é obrigatório pelo protocolo de tool use —
     # sem ele o modelo não sabe que a tool já foi chamada e tenta chamá-la de novo.
-    resposta_final = client.chat.completions.create(
-        model="gpt-4o",
+    # A mensagem do assistente é convertida para dict explicitamente para garantir
+    # compatibilidade entre provedores (LiteLLM, OpenAI, DeepSeek, etc.).
+    resposta_final = litellm.completion(
+        model=_LLM_MODEL,
         messages=[
             {
                 "role": "system",
@@ -324,8 +319,21 @@ def recomendar(preferencia: str) -> list[dict]:
             },
             {"role": "user", "content": preferencia},
             # Inclui a mensagem anterior do modelo (com a tool_call) no histórico.
-            # Isso é necessário para que o modelo saiba que a tool já foi chamada.
-            resposta.choices[0].message,
+            # Convertido para dict para compatibilidade entre provedores via LiteLLM.
+            {
+                "role": "assistant",
+                "content": resposta.choices[0].message.content,
+                "tool_calls": [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments,
+                        },
+                    }
+                ],
+            },
             {
                 "role": "tool",
                 "tool_call_id": tool_call.id,  # vincula o resultado à tool_call anterior

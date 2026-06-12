@@ -13,7 +13,8 @@ proj-eng-dados-filmes-aws/
 │       ├── 00_pipeline.yml        # Pipeline principal CI/CD (orquestrador)
 │       ├── 01_test.yml            # Workflow reutilizável: testes + quality gates
 │       ├── 02_terraform.yml       # Workflow reutilizável: infra Terraform
-│       └── 03_pr_auto.yml         # Workflow reutilizável: criação automática de PR
+│       ├── 03_pr_auto.yml         # Workflow reutilizável: criação automática de PR
+│       └── 04_deploy_lightsail.yml # Deploy do FilmBot via SSH no Lightsail
 ├── app/
 │   ├── lambda_api/
 │   │   ├── main.py                # Handler da Lambda (entry point)
@@ -23,18 +24,35 @@ proj-eng-dados-filmes-aws/
 │   │   ├── main.py                # Entry point do Glue ETL
 │   │   ├── requirements.txt
 │   │   └── src/utils.py           # process_tmdb, run_etl, call_glue_data_quality
-│   └── glue_data_quality/
-│       ├── main.py                # Entry point do Glue DQ
-│       ├── requirements.txt
-│       └── src/
-│           ├── utils.py           # parse_args, build_ruleset, run_data_quality, write_results
-│           └── rulesets_dq.py     # Dict de rulesets DQDL por nome de tabela
+│   ├── glue_data_quality/
+│   │   ├── main.py                # Entry point do Glue DQ
+│   │   ├── requirements.txt
+│   │   └── src/
+│   │       ├── utils.py           # parse_args, build_ruleset, run_data_quality, write_results
+│   │       └── rulesets_dq.py     # Dict de rulesets DQDL por nome de tabela
+│   ├── glue_details/
+│   │   ├── main.py                # Entry point do Glue Details
+│   │   ├── requirements.txt
+│   │   └── src/utils.py           # Busca detalhes complementares (runtime, temporadas, streaming)
+│   ├── glue_agg/
+│   │   ├── main.py                # Entry point do Glue AGG
+│   │   ├── requirements.txt
+│   │   └── src/utils.py           # Une filmes+séries, traduz título/sinopse, escreve SPEC
+│   ├── lightsail_ia/
+│   │   ├── agent.py               # Agente de recomendação: extrai filtros → Athena → formata
+│   │   ├── app.py                 # Interface Streamlit (FilmBot)
+│   │   ├── requirements.txt       # streamlit, litellm, boto3, python-dotenv
+│   │   └── deploy/setup.sh        # Configura systemd service no Lightsail
+│   └── lambda_lightsail_scheduler/
+│       ├── main.py                # Handler Lambda para ligar/desligar instância Lightsail
+│       └── requirements.txt
 ├── infra/
 │   ├── envs/
 │   │   ├── dev/terraform.tfvars   # Variáveis do ambiente dev (account_id, secret ARN)
 │   │   └── prod/terraform.tfvars  # Variáveis do ambiente prod (account_id, secret ARN)
 │   ├── scripts/
-│   │   └── build_lambda_package.py
+│   │   ├── build_lambda_package.py
+│   │   └── build_glue_wheel.py
 │   ├── provider.tf                # Provider AWS (sa-east-1) + backend S3 dinâmico
 │   ├── variables.tf               # Todas as variáveis Terraform
 │   ├── locals.tf                  # Nomes de recursos sufixados por env, templates de alarme
@@ -43,14 +61,19 @@ proj-eng-dados-filmes-aws/
 │   ├── iam_policies.tf            # Policies com privilégio mínimo
 │   ├── lambda_api.tf              # Função Lambda + package zip
 │   ├── glue_etl.tf                # Glue Job ETL + upload de scripts no S3
+│   ├── glue_details.tf            # Glue Job Details + upload de scripts no S3
+│   ├── glue_agg.tf                # Glue Job AGG + upload de scripts no S3
 │   ├── glue_data_quality.tf       # Glue Job Data Quality + upload de scripts
 │   ├── glue_catalog.tf            # Database e tabelas no Glue Catalog
+│   ├── lightsail_ia.tf            # Instância Lightsail + IAM user filmbot-agent
 │   ├── eventbridge_lambda_api.tf  # Regra EventBridge que aciona a Lambda
 │   ├── sns_topics.tf              # Tópicos SNS + subscrições de e-mail
 │   ├── cloudwatch_alarms.tf       # Alarmes Lambda e EventBridge
 │   ├── cloudwatch_glue_alarms.tf  # Alarmes Glue ETL e Data Quality
 │   ├── cloudwatch_logs.tf         # Log groups
 │   └── destroy_config.json        # Flag de destroy por ambiente: {"dev": false, "prod": false}
+├── scripts/
+│   └── backfill_traducao.py       # Adiciona title_pt/overview_pt a dados históricos no S3 SOT
 └── test/
     ├── conftest.py                 # Fixtures globais
     ├── lambda_api/
@@ -63,11 +86,23 @@ proj-eng-dados-filmes-aws/
     │   ├── requirements_tests.txt
     │   ├── test_main.py
     │   └── test_utils.py
-    └── glue_data_quality/
-        ├── conftest.py
+    ├── glue_data_quality/
+    │   ├── conftest.py
+    │   ├── requirements_tests.txt
+    │   ├── test_rulesets_dq.py
+    │   └── test_utils.py
+    ├── glue_details/
+    │   ├── conftest.py
+    │   ├── requirements_tests.txt
+    │   └── test_utils.py
+    ├── glue_agg/
+    │   ├── conftest.py
+    │   ├── requirements_tests.txt
+    │   └── test_utils.py
+    └── lightsail/
+        ├── conftest.py             # Setup de env vars (não tem fixtures)
         ├── requirements_tests.txt
-        ├── test_rulesets_dq.py
-        └── test_utils.py
+        └── test_agent.py           # Testes do agente de recomendação
 ```
 
 ---
@@ -216,6 +251,9 @@ app/<modulo>/
 | `lambda_api` | `boto3`, `requests` |
 | `glue_etl` | `awswrangler`, `boto3`, `pandas`, `awsglue` (Glue runtime) |
 | `glue_data_quality` | `awswrangler`, `awsgluedq`, `pyspark`, `awsglue` (Glue runtime) |
+| `glue_details` | `awswrangler`, `boto3`, `pandas`, `requests`, `awsglue` (Glue runtime) |
+| `glue_agg` | `awswrangler`, `boto3`, `pandas`, `deep-translator`, `awsglue` (Glue runtime) |
+| `lightsail_ia` | `streamlit`, `litellm`, `boto3`, `python-dotenv` |
 
 ---
 
