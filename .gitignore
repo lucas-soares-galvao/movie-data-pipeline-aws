@@ -49,6 +49,18 @@ infra/.glue_data_quality_build/
 # --- Streamlit secrets (nunca commitar) ---
 **/.streamlit/secrets.toml
 
+# --- Logs e temporários ---
+*.log
+*.tmp
+
+# --- Variantes de .env ---
+.env.*
+
+# --- Python packaging ---
+dist/
+build/
+*.egg-info/
+
 # --- Sistema ---
 .DS_Store
 Thumbs.db
