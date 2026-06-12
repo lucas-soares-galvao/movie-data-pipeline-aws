@@ -13,54 +13,51 @@ test/lightsail/
 └── test_agent.py             # Testes do agente de recomendação
 ```
 
-## Fixtures (`conftest.py`)
+## Setup (`conftest.py`)
 
-| Fixture | Tipo | Descrição |
-|---|---|---|
-| `mock_openai_client` | `MagicMock` | Substitui chamadas à API OpenAI (etapas 1 e 3) |
-| `mock_athena_query` | `MagicMock` | Substitui `awswrangler.athena.read_sql_query` |
-| `sample_filters` | `dict` | Filtros simulados retornados pelo GPT na etapa 1 |
-| `sample_athena_results` | `pd.DataFrame` | DataFrame simulado retornado pela query Athena |
-| `sample_recommendations` | `list[dict]` | Lista de recomendações simuladas retornadas pelo GPT na etapa 3 |
+O `conftest.py` não define fixtures pytest — apenas configura variáveis de ambiente obrigatórias antes do import de `agent.py`:
+
+| Variável | Valor de teste |
+|---|---|
+| `OPENAI_API_KEY` | `"test-openai-key"` |
+| `AWS_REGION` | `"sa-east-1"` |
+| `GLUE_DATABASE` | `"db_unified_tmdb"` |
+| `SPEC_TABLE` | `"tb_discover_unified_tmdb"` |
+| `ATHENA_S3_OUTPUT` | `"s3://test-bucket-temp/athena-results/"` |
+
+## Funções auxiliares de mock (`test_agent.py`)
+
+| Função | Descrição |
+|---|---|
+| `_setup_athena_mock(mock_boto3, rows_data)` | Configura o mock do `boto3` para simular as 3 etapas da API nativa do Athena: `start_query_execution` → `get_query_execution` (polling) → `get_paginator().paginate()`. `rows_data` define as linhas de resultado; `None` retorna apenas o header (resultado vazio). |
+| `_mock_litellm(tool_args, resposta_final)` | Retorna lista de 2 respostas para `side_effect` de `litellm.completion`: a 1ª simula a resposta da Etapa 1 (Function Calling com `tool_args`), a 2ª simula a Etapa 3 (texto JSON com recomendações). |
 
 ## Casos de teste — `test_agent.py`
 
-### Extração de filtros (Etapa 1)
+### `TestBuscarTitulosSpec` — Consulta ao Athena (Etapa 2)
 
 | Teste | O que verifica |
 |---|---|
-| `test_extracts_genre_from_user_input` | GPT extrai `genero` do texto livre do usuário |
-| `test_extracts_media_type_movie` | `tipo="movie"` extraído quando usuário menciona filmes |
-| `test_extracts_media_type_tv` | `tipo="tv"` extraído quando usuário menciona séries |
-| `test_extracts_minimum_rating` | `nota_minima` extraída corretamente |
-| `test_uses_function_calling_format` | Chamada ao OpenAI usa `tools` (Function Calling), não texto livre |
+| `test_retorna_lista_vazia_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
+| `test_retorna_registros_como_lista_de_dicts` | Converte corretamente rows do Athena em lista de dicts |
+| `test_filtro_tipo_incluido_na_query` | WHERE inclui `media_type = 'movie'` quando `tipo` é passado |
+| `test_filtro_ano_incluido_na_query` | WHERE inclui `year = '1990'` quando `ano` é passado |
+| `test_filtro_genero_incluido_na_query` | WHERE inclui `genre_names LIKE '%Terror%'` quando `genero` é passado |
+| `test_limite_aplicado_na_query` | LIMIT na query reflete o parâmetro `limite` |
+| `test_limite_e_limitado_ao_maximo_de_30` | Limita a `LIMIT 30` mesmo se `limite=100` for passado |
+| `test_limite_minimo_e_1` | Usa `LIMIT 1` quando `limite=0` for passado |
 
-### Consulta ao Athena (Etapa 2)
-
-| Teste | O que verifica |
-|---|---|
-| `test_queries_spec_table` | Query busca na tabela `tb_discover_unified_tmdb` |
-| `test_filters_by_vote_count` | Query inclui `vote_count >= 50` |
-| `test_filters_by_media_type_when_specified` | WHERE inclui `media_type = 'movie'` quando extraído |
-| `test_filters_by_genre_when_specified` | WHERE inclui `genre_names LIKE '%Terror%'` quando gênero extraído |
-| `test_returns_empty_list_when_no_results` | Retorna lista vazia sem erro quando Athena não encontra resultados |
-
-### Formatação de recomendações (Etapa 3)
+### `TestRecomendar` — Fluxo completo de recomendação
 
 | Teste | O que verifica |
 |---|---|
-| `test_formats_result_as_list_of_dicts` | Resultado final é uma lista de dicionários |
-| `test_includes_required_fields` | Cada item tem `titulo`, `tipo`, `ano`, `sinopse`, `nota`, `streaming_providers` |
-| `test_includes_motivo_field` | Cada item inclui `motivo` (justificativa da recomendação) |
-| `test_passes_athena_results_to_gpt` | Dados reais do Athena são passados para o GPT na etapa 3 |
-
-### Fluxo completo
-
-| Teste | O que verifica |
-|---|---|
-| `test_recomendar_returns_recommendations` | `recomendar()` retorna lista não vazia para input válido |
-| `test_recomendar_runs_three_steps_in_order` | GPT é chamado 2 vezes (etapa 1 e etapa 3), Athena 1 vez (etapa 2) |
-| `test_recomendar_handles_openai_error` | Erro na API OpenAI é tratado sem levantar exceção não capturada |
+| `test_retorna_lista_vazia_se_athena_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
+| `test_chama_llm_duas_vezes` | `litellm.completion` é chamado exatamente 2 vezes (etapas 1 e 3) |
+| `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
+| `test_remove_markdown_code_block_do_json` | Remove ` ```json ... ``` ` antes de parsear a resposta do LLM |
+| `test_retorna_lista_vazia_se_llm_retorna_string_vazia` | Retorna `[]` sem erro quando o LLM retorna string vazia na etapa 3 |
+| `test_passa_filtros_extraidos_pelo_llm_para_athena` | Filtros extraídos na etapa 1 são passados corretamente para `buscar_titulos_spec()` |
+| `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` está presente na resposta final |
 
 ## Como executar
 

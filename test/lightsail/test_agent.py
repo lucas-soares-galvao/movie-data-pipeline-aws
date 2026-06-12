@@ -2,8 +2,8 @@
 #   start_query_execution → get_query_execution (polling) → get_paginator().paginate()
 # O mock precisa dessas 3 chamadas encadeadas porque agent.py as chama em sequência.
 #
-# _mock_openai_client() usa side_effect=[passo1, passo3] porque recomendar() chama
-# o GPT-4o duas vezes: 1ª para extrair filtros como JSON, 2ª para formatar respostas.
+# _mock_litellm() usa side_effect=[passo1, passo3] porque recomendar() chama
+# o LLM duas vezes: 1ª para extrair filtros como JSON, 2ª para formatar respostas.
 
 import json
 import unittest
@@ -29,7 +29,7 @@ TITULO_FAKE = {
     "air_date": "1980-05-23",
 }
 
-RESPOSTA_OPENAI_FAKE = json.dumps(
+RESPOSTA_LLM_FAKE = json.dumps(
     {
         "titulos": [
             {
@@ -105,31 +105,27 @@ def _setup_athena_mock(mock_boto3, rows_data=None):
     return mock_athena
 
 
-def _mock_openai_client(tool_args: dict, resposta_final: str):
-    """Cria um client OpenAI mockado para os dois estágios da pipeline."""
-    mock_client = MagicMock()
-
-    # PASSO 1: resposta com tool_call (extração de filtros)
+def _mock_litellm(tool_args: dict, resposta_final: str):
+    """Retorna lista de 2 respostas para o side_effect de litellm.completion."""
     tool_call = MagicMock()
     tool_call.id = "call_test_123"
+    tool_call.function.name = "buscar_titulos_spec"
     tool_call.function.arguments = json.dumps(tool_args)
-    msg_passo1 = MagicMock()
-    msg_passo1.tool_calls = [tool_call]
-    choice_passo1 = MagicMock()
-    choice_passo1.message = msg_passo1
-    resposta_passo1 = MagicMock()
-    resposta_passo1.choices = [choice_passo1]
 
-    # PASSO 3: resposta final com JSON de recomendações
+    msg_passo1 = MagicMock()
+    msg_passo1.content = None
+    msg_passo1.tool_calls = [tool_call]
+
     msg_passo3 = MagicMock()
     msg_passo3.content = resposta_final
-    choice_passo3 = MagicMock()
-    choice_passo3.message = msg_passo3
-    resposta_passo3 = MagicMock()
-    resposta_passo3.choices = [choice_passo3]
 
-    mock_client.chat.completions.create.side_effect = [resposta_passo1, resposta_passo3]
-    return mock_client
+    passo1 = MagicMock()
+    passo1.choices = [MagicMock(message=msg_passo1)]
+
+    passo3 = MagicMock()
+    passo3.choices = [MagicMock(message=msg_passo3)]
+
+    return [passo1, passo3]
 
 
 class TestBuscarTitulosSpec(unittest.TestCase):
@@ -210,32 +206,31 @@ class TestBuscarTitulosSpec(unittest.TestCase):
 
 class TestRecomendar(unittest.TestCase):
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_retorna_lista_vazia_se_athena_sem_resultados(self, mock_buscar, mock_get_client):
+    def test_retorna_lista_vazia_se_athena_sem_resultados(self, mock_buscar, mock_completion):
         mock_buscar.return_value = []
-        mock_get_client.return_value = _mock_openai_client({"tipo": "movie"}, "")
+        mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, "")
 
         resultado = agent.recomendar("filmes de terror")
 
         self.assertEqual(resultado, [])
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_chama_openai_duas_vezes(self, mock_buscar, mock_get_client):
+    def test_chama_llm_duas_vezes(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
-        mock_client = _mock_openai_client({"tipo": "movie"}, RESPOSTA_OPENAI_FAKE)
-        mock_get_client.return_value = mock_client
+        mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, RESPOSTA_LLM_FAKE)
 
         agent.recomendar("filmes de terror")
 
-        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
+        self.assertEqual(mock_completion.call_count, 2)
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_retorna_lista_de_titulos(self, mock_buscar, mock_get_client):
+    def test_retorna_lista_de_titulos(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
-        mock_get_client.return_value = _mock_openai_client({"tipo": "movie"}, RESPOSTA_OPENAI_FAKE)
+        mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, RESPOSTA_LLM_FAKE)
 
         resultado = agent.recomendar("filmes de terror")
 
@@ -243,43 +238,43 @@ class TestRecomendar(unittest.TestCase):
         self.assertEqual(len(resultado), 1)
         self.assertEqual(resultado[0]["titulo"], "O Iluminado")
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_remove_markdown_code_block_do_json(self, mock_buscar, mock_get_client):
+    def test_remove_markdown_code_block_do_json(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
-        resposta_com_markdown = f"```json\n{RESPOSTA_OPENAI_FAKE}\n```"
-        mock_get_client.return_value = _mock_openai_client({"tipo": "movie"}, resposta_com_markdown)
+        resposta_com_markdown = f"```json\n{RESPOSTA_LLM_FAKE}\n```"
+        mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, resposta_com_markdown)
 
         resultado = agent.recomendar("filmes de terror")
 
         self.assertEqual(len(resultado), 1)
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_retorna_lista_vazia_se_openai_retorna_string_vazia(self, mock_buscar, mock_get_client):
+    def test_retorna_lista_vazia_se_llm_retorna_string_vazia(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
-        mock_get_client.return_value = _mock_openai_client({"tipo": "movie"}, "")
+        mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, "")
 
         resultado = agent.recomendar("filmes de terror")
 
         self.assertEqual(resultado, [])
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_passa_filtros_extraidos_pelo_openai_para_athena(self, mock_buscar, mock_get_client):
+    def test_passa_filtros_extraidos_pelo_llm_para_athena(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
         filtros = {"tipo": "movie", "genero": "Terror", "ano": 1980, "nota_minima": 7.0, "limite": 5}
-        mock_get_client.return_value = _mock_openai_client(filtros, RESPOSTA_OPENAI_FAKE)
+        mock_completion.side_effect = _mock_litellm(filtros, RESPOSTA_LLM_FAKE)
 
         agent.recomendar("filmes de terror dos anos 80")
 
         mock_buscar.assert_called_once_with(**filtros)
 
-    @patch("agent._get_openai_client")
+    @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
-    def test_retorna_data_lancamento_formatada(self, mock_buscar, mock_get_client):
+    def test_retorna_data_lancamento_formatada(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
-        mock_get_client.return_value = _mock_openai_client({"tipo": "movie"}, RESPOSTA_OPENAI_FAKE)
+        mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, RESPOSTA_LLM_FAKE)
 
         resultado = agent.recomendar("filmes de terror")
 

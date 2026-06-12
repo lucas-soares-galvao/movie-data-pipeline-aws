@@ -96,6 +96,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 ## Tecnologias
 
 - **Streamlit** — framework de interface web em Python
-- **OpenAI GPT-4o** — extração de filtros e formatação de recomendações
-- **awswrangler** — consultas Athena
+- **litellm** — abstração de chamadas LLM (suporta OpenAI, DeepSeek, Claude, etc.)
+- **OpenAI GPT-4o** — modelo padrão para extração de filtros e formatação de recomendações
+- **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
 - **AWS Lightsail** — instância de servidor para hospedar o app
