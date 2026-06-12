@@ -87,12 +87,7 @@ jobs:
           tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
 
       - name: Terraform Format Check
-        run: |
-          cd infra
-          terraform fmt -check -recursive || {
-            echo "⚠ Código não formatado. Execute: terraform fmt -recursive"
-            exit 0
-          }
+        run: cd infra && terraform fmt -check -recursive
 
       # Não falha o pipeline — avisa sobre segurança e compliance
       - name: Checkov Security Scan

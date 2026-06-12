@@ -1,14 +1,14 @@
 resource "aws_glue_job" "data_quality_job" {
-  name              = local.envs.glue_data_quality_job_name
-  description       = "Glue Data Quality Job"
-  role_arn          = aws_iam_role.glue_dq_role.arn
-  glue_version      = "5.0"
+  name                    = local.envs.glue_data_quality_job_name
+  description             = "Glue Data Quality Job"
+  role_arn                = aws_iam_role.glue_dq_role.arn
+  glue_version            = "5.0"
   job_run_queuing_enabled = true
-  max_retries       = 0
-  timeout           = 30
-  number_of_workers = 2
-  worker_type       = "G.1X"
-  execution_class   = "FLEX"
+  max_retries             = 0
+  timeout                 = 30
+  number_of_workers       = 2
+  worker_type             = "G.1X"
+  execution_class         = "FLEX"
 
   command {
     # Script principal do job armazenado no bucket auxiliar.

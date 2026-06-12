@@ -19,7 +19,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_discover" {
   name                = "lambda-api-movie-discover-${var.env}"
   description         = "Dispara a Lambda para discover de filmes (diário)"
-  schedule_expression = "cron(00 12 * * ? *)"  # Todos os dias às 12:00 UTC / 09:00 BRT
+  schedule_expression = "cron(00 12 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -28,7 +28,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_discover" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_discover" {
   name                = "lambda-api-tv-discover-${var.env}"
   description         = "Dispara a Lambda para discover de series (diário)"
-  schedule_expression = "cron(05 12 * * ? *)"  # Todos os dias às 12:05 UTC / 09:05 BRT
+  schedule_expression = "cron(05 12 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -93,41 +93,41 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_discover" {
 }
 
 # =============================================================================
-# REGRAS SEMANAIS — Payload Completo (Gêneros + Configurações + Watch Providers + Discover)
+# REGRAS MENSAIS — Payload Completo (Gêneros + Configurações + Watch Providers Ref)
 # =============================================================================
-# Além do discover, atualiza tabelas de referência que mudam com menos frequência:
+# Além do discover, atualiza tabelas de referência que mudam raramente:
 # - genre_movie/tv: lista de gêneros (Ação, Comédia, Drama, etc.)
 # - configuration_languages/countries: idiomas e países suportados pela TMDB
 # - watch_providers_ref: lista de plataformas de streaming disponíveis
 #
-# Rodam todo DOMINGO para ter dados frescos na semana.
+# Rodam todo dia 1 do mês — cadência suficiente para dados que mudam algumas vezes por ano.
 # "skip_discover: true" = pula o discover nesta execução (já rodou na diária)
 # =============================================================================
 
-resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
-  name                = "lambda-api-movie-weekly-${var.env}"
-  description         = "Dispara a Lambda para filmes com payload completo (semanal)"
-  schedule_expression = "cron(00 12 ? * SUN *)"  # Todo domingo às 12:00 UTC
+resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
+  name                = "lambda-api-movie-monthly-${var.env}"
+  description         = "Dispara a Lambda para filmes com payload completo (mensal, dia 1)"
+  schedule_expression = "cron(00 12 1 * ? *)" # Todo dia 1 do mês às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
-resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
-  name                = "lambda-api-tv-weekly-${var.env}"
-  description         = "Dispara a Lambda para series com payload completo (semanal)"
-  schedule_expression = "cron(05 12 ? * SUN *)"  # Todo domingo às 12:05 UTC
+resource "aws_cloudwatch_event_rule" "lambda_api_tv_monthly" {
+  name                = "lambda-api-tv-monthly-${var.env}"
+  description         = "Dispara a Lambda para series com payload completo (mensal, dia 1)"
+  schedule_expression = "cron(05 12 1 * ? *)" # Todo dia 1 do mês às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
-resource "aws_cloudwatch_event_target" "lambda_api_movie_weekly_target" {
-  rule      = aws_cloudwatch_event_rule.lambda_api_movie_weekly.name
-  target_id = "lambda-api-movie-weekly"
+resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_movie_monthly.name
+  target_id = "lambda-api-movie-monthly"
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
     type                            = "movie",
-    skip_discover                   = true,  # Pula o discover (já rodou na execução diária)
+    skip_discover                   = true, # Pula o discover (já rodou na execução diária)
     database                        = var.glue_catalog_database_movie_name,
     database_unified                = var.glue_catalog_database_unified_name,
     table_discover_movie            = var.glue_catalog_table_discover_movie_name,
@@ -137,9 +137,9 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_weekly_target" {
   })
 }
 
-resource "aws_cloudwatch_event_target" "lambda_api_tv_weekly_target" {
-  rule      = aws_cloudwatch_event_rule.lambda_api_tv_weekly.name
-  target_id = "lambda-api-tv-weekly"
+resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_tv_monthly.name
+  target_id = "lambda-api-tv-monthly"
   arn       = aws_lambda_function.simple_lambda.arn
 
   input = jsonencode({
@@ -154,18 +154,18 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_weekly_target" {
   })
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_movie_weekly" {
-  statement_id  = "AllowEventBridgeMovieWeeklyExecution"
+resource "aws_lambda_permission" "allow_eventbridge_movie_monthly" {
+  statement_id  = "AllowEventBridgeMovieMonthlyExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_weekly.arn
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_monthly.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
-  statement_id  = "AllowEventBridgeTvWeeklyExecution"
+resource "aws_lambda_permission" "allow_eventbridge_tv_monthly" {
+  statement_id  = "AllowEventBridgeTvMonthlyExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_weekly.arn
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_monthly.arn
 }

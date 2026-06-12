@@ -9,7 +9,9 @@ import sys
 from src.utils import (
     collect_and_write_details,
     collect_and_write_watch_providers,
+    fetch_existing_ids_from_details,
     fetch_ids_from_sot,
+    fetch_ids_stale_watch_providers,
     get_parameters_glue,
     get_tmdb_api_key,
     trigger_agg,
@@ -55,34 +57,59 @@ def main() -> None:
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_tmdb_api_key(secret_arn)
 
+    # ── DETAILS ───────────────────────────────────────────────────────────────
     # Usa o SOT (não o SOR) porque os IDs já foram deduplicados pelo Glue ETL.
-    ids = fetch_ids_from_sot(
+    all_ids      = fetch_ids_from_sot(
         database=database,
         table_discover=table_discover,
         s3_bucket_temp=s3_bucket_temp,
         year=year,
     )
-
-    logger.info(f"Coletando detalhes de {len(ids)} itens ({media_type}, year={year})...")
-    collect_and_write_details(
-        api_key=api_key,
-        ids=ids,
-        content_type=media_type,
-        s3_bucket_sot=s3_bucket_sot,
-        table_name=table_details,
+    existing_ids = fetch_existing_ids_from_details(
         database=database,
-    )
-
-    logger.info(f"Coletando watch providers BR de {len(ids)} itens ({media_type}, year={year})...")
-    collect_and_write_watch_providers(
-        api_key=api_key,
-        ids=ids,
-        content_type=media_type,
-        s3_bucket_sot=s3_bucket_sot,
-        table_name=table_watch_providers,
-        database=database,
+        table_details=table_details,
+        s3_bucket_temp=s3_bucket_temp,
         year=year,
     )
+    new_ids = list(set(all_ids) - set(existing_ids))
+
+    logger.info(
+        f"Details: {len(new_ids)} IDs novos de {len(all_ids)} no discover "
+        f"({media_type}, year={year})."
+    )
+    if new_ids:
+        collect_and_write_details(
+            api_key=api_key,
+            ids=new_ids,
+            content_type=media_type,
+            s3_bucket_sot=s3_bucket_sot,
+            table_name=table_details,
+            database=database,
+        )
+
+    # ── WATCH PROVIDERS ───────────────────────────────────────────────────────
+    stale_ids = fetch_ids_stale_watch_providers(
+        database=database,
+        table_discover=table_discover,
+        table_watch_providers=table_watch_providers,
+        s3_bucket_temp=s3_bucket_temp,
+        year=year,
+    )
+
+    logger.info(
+        f"Watch providers: {len(stale_ids)} IDs para atualizar "
+        f"({media_type}, year={year})."
+    )
+    if stale_ids:
+        collect_and_write_watch_providers(
+            api_key=api_key,
+            ids=stale_ids,
+            content_type=media_type,
+            s3_bucket_sot=s3_bucket_sot,
+            table_name=table_watch_providers,
+            database=database,
+            year=year,
+        )
 
     trigger_data_quality(
         dq_job_name=dq_job_name,

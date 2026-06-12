@@ -6,6 +6,7 @@ import random
 import sys
 import threading
 import time
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
@@ -180,6 +181,110 @@ def fetch_ids_from_sot(
     return ids
 
 
+def fetch_existing_ids_from_details(
+    database: str,
+    table_details: str,
+    s3_bucket_temp: str,
+    year: str,
+) -> List[int]:
+    """
+    Retorna IDs já presentes na tabela de detalhes para o ano informado.
+
+    Usado para calcular o delta: apenas IDs ausentes precisam ser buscados na API.
+    Retorna lista vazia se a tabela não existir ainda (primeira execução).
+
+    Args:
+        database:       Nome do banco de dados no Glue Catalog.
+        table_details:  Nome da tabela de detalhes (movie ou tv).
+        s3_bucket_temp: Bucket S3 para resultados temporários do Athena.
+        year:           Ano a verificar.
+
+    Returns:
+        Lista de IDs inteiros já processados.
+    """
+    s3_output = f"s3://{s3_bucket_temp}/athena/glue_details/"
+    # Só considera "existente" quem foi processado no mês atual.
+    # IDs de meses anteriores (ou sem data) são stale e voltam para re-fetch no dia 1.
+    query = (
+        f"SELECT DISTINCT id FROM {database}.{table_details} "
+        f"WHERE year = '{year}' "
+        f"AND dt_processamento >= date_trunc('month', current_date)"
+    )
+
+    logger.info(f"Verificando IDs já processados em '{table_details}' para year={year}...")
+    try:
+        df = wr.athena.read_sql_query(
+            sql=query,
+            database=database,
+            s3_output=s3_output,
+            ctas_approach=False,
+        )
+        ids = df["id"].astype(int).tolist()
+        logger.info(f"IDs já em details (mês atual): {len(ids)}.")
+        return ids
+    except Exception as exc:
+        logger.warning(
+            f"Não foi possível consultar '{table_details}' "
+            f"(tabela pode não existir ainda): {exc}"
+        )
+        return []
+
+
+def fetch_ids_stale_watch_providers(
+    database: str,
+    table_discover: str,
+    table_watch_providers: str,
+    s3_bucket_temp: str,
+    year: str,
+) -> List[int]:
+    """
+    Retorna IDs do discover que precisam de atualização de watch providers.
+
+    Inclui: sem registro, com dt_atualizacao nulo (migração) ou desatualizado antes do mês atual.
+
+    Args:
+        database:              Nome do banco de dados no Glue Catalog.
+        table_discover:        Nome da tabela de discover.
+        table_watch_providers: Nome da tabela de watch providers.
+        s3_bucket_temp:        Bucket S3 para resultados temporários do Athena.
+        year:                  Ano a verificar.
+
+    Returns:
+        Lista de IDs inteiros a atualizar.
+    """
+    s3_output = f"s3://{s3_bucket_temp}/athena/glue_details/"
+    query = f"""
+        SELECT DISTINCT d.id
+        FROM {database}.{table_discover} d
+        LEFT JOIN {database}.{table_watch_providers} wp
+            ON d.id = wp.id AND wp.year = '{year}'
+        WHERE d.year = '{year}'
+          AND (
+              wp.id IS NULL
+              OR wp.dt_atualizacao IS NULL
+              OR wp.dt_atualizacao < date_trunc('month', current_date)
+          )
+    """
+
+    logger.info(
+        f"Identificando IDs com watch providers ausentes/desatualizados "
+        f"em '{table_watch_providers}' para year={year}..."
+    )
+    try:
+        df = wr.athena.read_sql_query(
+            sql=query,
+            database=database,
+            s3_output=s3_output,
+            ctas_approach=False,
+        )
+        ids = df["id"].astype(int).tolist()
+        logger.info(f"IDs para atualizar watch providers: {len(ids)}.")
+        return ids
+    except Exception as exc:
+        logger.warning(f"Erro ao consultar watch providers desatualizados: {exc}")
+        return []
+
+
 def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     """
     Busca os detalhes de um filme ou série pelo ID na API do TMDB.
@@ -217,6 +322,7 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "poster_path_en":    detalhe.get("poster_path"),   # "/abc123.jpg" (sem URL base)
             "backdrop_path_en":  detalhe.get("backdrop_path"),
             "original_language": detalhe.get("original_language"),  # usado para filtrar tradução
+            "dt_processamento":  date.today(),
             "year":              year,                               # usado como partição no S3
         }
     else:  # tv
@@ -234,6 +340,7 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "poster_path_en":     detalhe.get("poster_path"),
             "backdrop_path_en":   detalhe.get("backdrop_path"),
             "original_language":  detalhe.get("original_language"),
+            "dt_processamento":   date.today(),
             "year":               year,
         }
 
@@ -331,16 +438,16 @@ def collect_and_write_details(
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(
         f"Gravando {len(df)} registros de detalhes em {s3_path} | "
-        f"particao=[year] | mode=overwrite_partitions"
+        f"particao=[year] | mode=append"
     )
-    # overwrite_partitions: substitui apenas as partições (anos) presentes neste DataFrame.
-    # Isso permite rodar o job para o ano 2024 sem apagar os dados de 2022 e 2023.
+    # append: adiciona apenas os novos registros sem apagar dados existentes.
+    # Seguro porque o anti-join em main.py garante que só chegam IDs genuinamente novos.
     wr.s3.to_parquet(
         df=df,
         path=s3_path,
         dataset=True,
         partition_cols=["year"],
-        mode="overwrite_partitions",
+        mode="append",
         database=database,
         table=table_name,
     )
@@ -388,12 +495,13 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
             if not name:
                 continue  # ignora provedores sem nome (dados incompletos da API)
             records.append({
-                "id":            item_id,
-                "provider_type": provider_type,
-                "provider_id":   p.get("provider_id"),
-                "provider_name": name,
-                "logo_path":     p.get("logo_path"),
-                "year":          year,
+                "id":             item_id,
+                "provider_type":  provider_type,
+                "provider_id":    p.get("provider_id"),
+                "provider_name":  name,
+                "logo_path":      p.get("logo_path"),
+                "dt_atualizacao": date.today(),
+                "year":           year,
             })
     return records
 
@@ -447,6 +555,24 @@ def collect_and_write_watch_providers(
 
     df = pd.DataFrame(registros)
     df = df.dropna(subset=["year"])
+
+    # Merge: lê registros existentes do ano, remove os IDs que serão atualizados,
+    # e concatena com os novos dados para preservar IDs não-stale.
+    df_existing = pd.DataFrame()
+    try:
+        df_read = wr.s3.read_parquet(
+            path=f"s3://{s3_bucket_sot}/tmdb/{table_name}/",
+            dataset=True,
+            partition_filter=lambda x: x["year"] == year,
+        )
+        if not df_read.empty:
+            df_existing = df_read[~df_read["id"].isin(ids)]
+            logger.info(f"Mantendo {len(df_existing)} registros não-stale de '{table_name}'.")
+    except Exception as exc:
+        logger.info(f"Sem dados existentes para year={year} em '{table_name}': {exc}")
+
+    if not df_existing.empty:
+        df = pd.concat([df_existing, df], ignore_index=True)
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(
