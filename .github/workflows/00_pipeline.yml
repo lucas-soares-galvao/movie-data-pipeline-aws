@@ -27,10 +27,8 @@ jobs:
     uses: ./.github/workflows/01_test.yml
 
   terraform:
-    needs: test
     if: |
-      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped')
+      github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/02_terraform.yml
     with:
       environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
@@ -71,11 +69,10 @@ jobs:
       pull-requests: write
 
   auto-pr-environment:
-    needs: [terraform, deploy-lightsail]
+    needs: [terraform]
     if: |
       github.ref_name == 'develop' &&
-      needs.terraform.result == 'success' &&
-      (needs.deploy-lightsail.result == 'success' || needs.deploy-lightsail.result == 'skipped')
+      needs.terraform.result == 'success'
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
