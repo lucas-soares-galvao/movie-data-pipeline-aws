@@ -23,13 +23,14 @@ permissions:
 jobs:
 
   test:
+    if: startsWith(github.ref_name, 'feature/')
     uses: ./.github/workflows/01_test.yml
 
   terraform:
     needs: test
     if: |
       (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
-      needs.test.result == 'success'
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
     uses: ./.github/workflows/02_terraform.yml
     with:
       environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
@@ -44,7 +45,7 @@ jobs:
   deploy-lightsail:
     needs: terraform
     if: |
-      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
+      (github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')) &&
       needs.terraform.result == 'success' &&
       needs.terraform.outputs.was_destroyed != 'true'
     uses: ./.github/workflows/04_deploy_lightsail.yml
@@ -70,10 +71,11 @@ jobs:
       pull-requests: write
 
   auto-pr-environment:
-    needs: [deploy-lightsail]
+    needs: [terraform, deploy-lightsail]
     if: |
       github.ref_name == 'develop' &&
-      needs.deploy-lightsail.result == 'success'
+      needs.terraform.result == 'success' &&
+      (needs.deploy-lightsail.result == 'success' || needs.deploy-lightsail.result == 'skipped')
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
