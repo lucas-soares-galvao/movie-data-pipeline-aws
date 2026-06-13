@@ -274,7 +274,10 @@ def recomendar(preferencia: str) -> list[dict]:
     # ------------------------------------------------------------------
     # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
     # function.arguments: string JSON com os argumentos que o GPT escolheu
-    tool_call = resposta.choices[0].message.tool_calls[0]
+    tool_calls = resposta.choices[0].message.tool_calls or []
+    if not tool_calls:
+        return []  # modelo não chamou a tool — não há filtros para consultar
+    tool_call = tool_calls[0]
     args = json.loads(tool_call.function.arguments)
     # Executa a consulta real no data lake com os filtros escolhidos pelo GPT
     titulos_da_spec = buscar_titulos_spec(**args)
