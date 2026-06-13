@@ -35,8 +35,8 @@ def get_parameters_glue() -> Dict[str, Any]:
     ]
     args = getResolvedOptions(sys.argv, required_args)
 
-    # YEAR é opcional: o Glue ETL passa --YEAR apenas para runs de discover
-    # (tabelas de gênero e configuração não têm partição por ano)
+    # YEAR é opcional: passado apenas para tabelas com partição por ano
+    # (gênero, configuração e watch_providers_ref não têm partição por ano)
     # Se não existir o argumento YEAR, o try/except evita que o job quebre
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
@@ -122,7 +122,7 @@ def evaluate_data_quality(
     Avalia as regras DQDL contra o DynamicFrame e retorna DataFrame com resultados.
 
     Colunas do resultado: rule, outcome, failure_reason, evaluated_metrics,
-    category, partition, datetime_process, source_database, source_table.
+    category, year, datetime_process, source_database, source_table.
 
     Args:
         glue_context:  Contexto do Glue.
@@ -130,14 +130,14 @@ def evaluate_data_quality(
         ruleset:       String de regras no formato DQDL.
         table_name:    Nome da tabela avaliada.
         database:      Nome do banco de dados no Glue Catalog.
-        year:          Ano da partição. Preenchido apenas para tabelas de discover.
+        year:          Ano da partição. Preenchido para tabelas com partição por ano (discover, details, watch_providers).
 
     Returns:
         Spark DataFrame com os resultados da avaliação e colunas de contexto.
     """
     logger.info(f"Avaliando qualidade de dados da tabela '{table_name}'...")
 
-    # Para tabelas de discover (particionadas por ano), aplica filtro duplo:
+    # Para tabelas com partição por ano, aplica filtro duplo:
     # 1. push_down_predicate no read_table_from_catalog (filtro no S3 — evita ler arquivos errados)
     # 2. Este filtro no DataFrame Spark (garante que apenas linhas do ano correto são avaliadas)
     # O filtro duplo é necessário porque o Glue Catalog às vezes inclui metadados de outras
@@ -173,16 +173,16 @@ def evaluate_data_quality(
     df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
 
     # Classifica cada regra pela dimensão de qualidade com base no prefixo DQDL
-    # para permitir filtros no Athena (ex: "Quais regras de completude falharam?").
+    # para permitir filtros no Athena (ex: "Quais regras de Completude falharam?").
     df = df.withColumn(
         "category",
-        when(col("rule").startswith("IsComplete"), "completude")
-        .when(col("rule").startswith("IsUnique"), "unicidade")
-        .when(col("rule").startswith("ColumnValues"), "validade")
-        .when(col("rule").startswith("RowCount"), "integridade"),
+        when(col("rule").startswith("IsComplete"), "Completude")
+        .when(col("rule").startswith("IsUnique"), "Unicidade")
+        .when(col("rule").startswith("ColumnValues"), "Validade")
+        .when(col("rule").startswith("RowCount"), "Integridade"),
     )
 
-    df = df.withColumn("partition", lit(year).cast(StringType()))
+    df = df.withColumn("year", lit(year).cast(StringType()))
     df = df.withColumn(
         "datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo")
     )
@@ -201,23 +201,30 @@ def write_results_to_s3(
     year: Optional[str] = None,
 ) -> None:
     """
-    Grava os resultados DQ em tb_data_quality_tmdb, particionado por source_table.
+    Grava os resultados DQ em tb_data_quality_tmdb.
 
-    A coluna 'partition' (ano) fica como dado no Parquet — não em partition_cols —
-    para evitar que o Wrangler remova o valor e o Athena retorne null.
+    Tabelas com partição por ano usam partition_cols=["source_table", "year"],
+    preservando um registro por (tabela, ano). Tabelas sem partição usam apenas
+    ["source_table"] com overwrite_partitions, mantendo sempre o resultado mais recente.
 
     Args:
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada.
         database:               Nome do banco de dados no Glue Catalog.
-        year:                   Ano da partição (informativo).
+        year:                   Ano da partição. None para tabelas sem partição por ano.
     """
     output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
+    if year is not None:
+        partition_cols = ["source_table", "year"]
+    else:
+        df = df.drop("year")
+        partition_cols = ["source_table"]
+
     logger.info(
-        f"Gravando resultados em {s3_path} | source_table='{table_name}' | partition='{year}'"
+        f"Gravando resultados em {s3_path} | source_table='{table_name}' | year='{year}'"
     )
 
     wr.s3.to_parquet(
@@ -226,7 +233,7 @@ def write_results_to_s3(
         dataset=True,
         database=database,
         table=output_table,
-        partition_cols=["source_table"],
+        partition_cols=partition_cols,
         mode="overwrite_partitions",
     )
 

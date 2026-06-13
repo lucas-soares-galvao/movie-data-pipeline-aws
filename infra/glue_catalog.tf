@@ -698,11 +698,6 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
     }
 
     columns {
-      name = "partition"
-      type = "string"
-    }
-
-    columns {
       name = "datetime_process"
       type = "timestamp"
     }
@@ -715,6 +710,11 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
 
   partition_keys {
     name = "source_table"
+    type = "string"
+  }
+
+  partition_keys {
+    name = "year"
     type = "string"
   }
 }

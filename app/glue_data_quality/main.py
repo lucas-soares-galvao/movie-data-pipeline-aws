@@ -52,7 +52,7 @@ def main() -> None:
 
     ruleset = get_ruleset(table_name)
 
-    # Para tabelas particionadas (discover), push_down_predicate lê só o ano atual.
+    # Para tabelas com partição por ano, push_down_predicate lê só o ano atual.
     dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)
 
     df_results = evaluate_data_quality(

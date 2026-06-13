@@ -303,16 +303,16 @@ class TestEvaluateDataQuality:
             "EvaluatedMetrics", "evaluated_metrics"
         )
 
-    def test_adds_partition_column_with_year(self):
-        """Coluna partition deve ser preenchida com o ano quando fornecido."""
+    def test_adds_year_column_with_year(self):
+        """Coluna year deve ser preenchida com o ano quando fornecido."""
         mocks = self._run(year="2002")
         mocks["df_mock"].withColumn.assert_any_call(
-            "partition", mocks["mock_lit"].return_value.cast.return_value
+            "year", mocks["mock_lit"].return_value.cast.return_value
         )
         mocks["mock_lit"].assert_any_call("2002")
 
-    def test_adds_partition_column_none_when_no_year(self):
-        """Coluna partition deve ser None para tabelas sem partição (gêneros, config)."""
+    def test_adds_year_column_none_when_no_year(self):
+        """Coluna year deve ser None para tabelas sem partição (gêneros, config)."""
         mocks = self._run(year=None)
         mocks["mock_lit"].assert_any_call(None)
 
@@ -474,14 +474,27 @@ class TestWriteResultsToS3:
             write_results_to_s3(df_mock, bucket, table, database, year)
         return df_mock, mock_wr
 
-    def test_converts_spark_df_to_pandas(self):
-        """O Spark DataFrame deve ser convertido para Pandas antes da escrita."""
+    def test_converts_spark_df_to_pandas_without_year(self):
+        """Sem year, toPandas é chamado no df após drop('year')."""
         df_mock, _ = self._run()
+        df_mock.drop.assert_called_once_with("year")
+        df_mock.drop.return_value.toPandas.assert_called_once()
+
+    def test_converts_spark_df_to_pandas_with_year(self):
+        """Com year, toPandas é chamado diretamente no df (sem drop)."""
+        df_mock, _ = self._run(year="2024")
+        df_mock.drop.assert_not_called()
         df_mock.toPandas.assert_called_once()
 
-    def test_passes_pandas_df_to_wrangler(self):
-        """wr.s3.to_parquet deve receber o resultado de df.toPandas()."""
+    def test_passes_pandas_df_to_wrangler_without_year(self):
+        """Sem year, wr.s3.to_parquet recebe o resultado de df.drop('year').toPandas()."""
         df_mock, mock_wr = self._run()
+        call_kwargs = mock_wr.s3.to_parquet.call_args[1]
+        assert call_kwargs["df"] is df_mock.drop.return_value.toPandas.return_value
+
+    def test_passes_pandas_df_to_wrangler_with_year(self):
+        """Com year, wr.s3.to_parquet recebe o resultado de df.toPandas()."""
+        df_mock, mock_wr = self._run(year="2024")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
         assert call_kwargs["df"] is df_mock.toPandas.return_value
 
@@ -516,11 +529,18 @@ class TestWriteResultsToS3:
         assert call_kwargs["database"] == "db_tmdb"
         assert call_kwargs["table"] == "tb_data_quality_tmdb"
 
-    def test_partitions_by_source_table(self):
-        """partition_cols deve ser ['source_table'] para que o Catalog registre a partição."""
-        _, mock_wr = self._run()
+    def test_partitions_by_source_table_only_when_no_year(self):
+        """Tabelas sem partição: partition_cols deve ser ['source_table'] e year é removido."""
+        df_mock, mock_wr = self._run()
+        df_mock.drop.assert_called_once_with("year")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
         assert call_kwargs["partition_cols"] == ["source_table"]
+
+    def test_partitions_by_source_table_and_year_when_year_provided(self):
+        """Tabelas com partição: partition_cols deve ser ['source_table', 'year'] para preservar histórico."""
+        _, mock_wr = self._run(year="2024")
+        call_kwargs = mock_wr.s3.to_parquet.call_args[1]
+        assert call_kwargs["partition_cols"] == ["source_table", "year"]
 
     def test_uses_overwrite_partitions_mode(self):
         """mode='overwrite_partitions' substitui apenas a partição presente,
@@ -538,7 +558,7 @@ class TestWriteResultsToS3:
 class TestNotifyFailedOutcomes:
     _SNS_ARN = "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-failure-notifications"
 
-    def _make_row(self, rule: str, failure_reason: str, category: str = "completude"):
+    def _make_row(self, rule: str, failure_reason: str, category: str = "Completude"):
         row = MagicMock()
         row.__getitem__ = lambda self, key: {
             "rule": rule,

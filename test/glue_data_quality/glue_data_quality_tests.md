@@ -42,7 +42,8 @@ test/glue_data_quality/
 |---|---|
 | `test_get_ruleset_returns_string` | `get_ruleset` retorna string DQDL para tabelas conhecidas |
 | `test_get_ruleset_raises_for_unknown_table` | `get_ruleset` levanta erro para tabela sem ruleset configurado |
-| `test_write_results_partitions_by_table_and_year` | Parquet gravado com `partition_cols=["source_table", "year"]` |
+| `test_partitions_by_source_table_and_year_when_year_provided` | Tabelas com partição por ano: `partition_cols=["source_table", "year"]` preserva histórico |
+| `test_partitions_by_source_table_only_when_no_year` | Tabelas sem partição: `partition_cols=["source_table"]` e coluna `year` é removida |
 | `test_notify_failed_only_filters_fail_rows` | Apenas linhas com `Outcome="Fail"` são incluídas na notificação |
 | `test_notify_formats_message_correctly` | Mensagem SNS contém nome da tabela e regras que falharam |
 
