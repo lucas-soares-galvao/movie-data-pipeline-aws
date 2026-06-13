@@ -518,6 +518,7 @@ def repair_details_duplicates(
         return
 
     before = len(df_yr)
+    # Ordena crescente: keep="last" mantém o registro com dt_processamento mais recente
     df_deduped = (
         df_yr
         .sort_values("dt_processamento", ascending=True)
@@ -583,6 +584,7 @@ def repair_discover_duplicates(
         return
 
     before = len(df_yr)
+    # Ordena crescente: keep="last" mantém o registro com maior popularity (o mais popular)
     df_deduped = (
         df_yr
         .sort_values("popularity", ascending=True)
@@ -649,6 +651,7 @@ def repair_watch_providers_duplicates(
         return
 
     before = len(df_yr)
+    # Ordena crescente: keep="last" mantém o registro com dt_atualizacao mais recente
     df_deduped = (
         df_yr
         .sort_values("dt_atualizacao", ascending=True)

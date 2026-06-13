@@ -1,5 +1,20 @@
 name: "Deploy Lightsail (Reusable)"
 
+# =============================================================================
+# Deploy do app FilmBot na instância AWS Lightsail.
+# Chamado pelo 00_pipeline.yml apenas em prod, após o Terraform aplicar com sucesso.
+#
+# Etapas principais:
+#   1. Lê os outputs do Terraform (IP público, chave SSH, credenciais AWS do agente)
+#   2. Aguarda a instância ficar disponível via SSH (até 30 tentativas, 10s cada)
+#   3. Cria .env e secrets.toml com credenciais na instância (sem passar por /tmp)
+#   4. Clona ou atualiza o repositório e reinicia o serviço systemd do FilmBot
+#
+# Ambientes:
+#   dev  → deploy da branch "develop"
+#   prod → deploy da branch "main"
+# =============================================================================
+
 on:
   workflow_call:
     inputs:
@@ -114,6 +129,7 @@ jobs:
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
+          # dev → clona/atualiza branch "develop" | prod → branch "main"
           DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
           ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
             set -e

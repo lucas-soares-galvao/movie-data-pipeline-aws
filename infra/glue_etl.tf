@@ -4,7 +4,7 @@
 
 resource "aws_glue_job" "etl_job_pythonshell" {
   name         = local.envs.glue_etl_job_name
-  description  = "Glue ETL Job"
+  description  = "Lê JSON do SOR, transforma em Parquet no SOT e aciona os jobs Details e DQ"
   role_arn     = aws_iam_role.glue_etl_role.arn
   max_retries  = 0
   timeout      = 15

@@ -1,6 +1,10 @@
+# =============================================================================
+# glue_data_quality.tf — Job Glue Data Quality Spark (valida SOT)
+# =============================================================================
+
 resource "aws_glue_job" "data_quality_job" {
   name                    = local.envs.glue_data_quality_job_name
-  description             = "Glue Data Quality Job"
+  description             = "Valida a qualidade dos dados do SOT e publica métricas e falhas no SNS"
   role_arn                = aws_iam_role.glue_dq_role.arn
   glue_version            = "5.0"
   job_run_queuing_enabled = true

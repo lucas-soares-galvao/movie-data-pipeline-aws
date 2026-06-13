@@ -3,6 +3,15 @@ import os
 
 
 def lambda_handler(event, context):
+    """
+    Inicia ou para uma instância Lightsail conforme a ação recebida.
+
+    Parâmetros do event (enviados pelo EventBridge Scheduler):
+        action (str): "start" para ligar ou "stop" para desligar a instância.
+
+    Variáveis de ambiente obrigatórias:
+        LIGHTSAIL_INSTANCE_NAME: nome da instância cadastrada no Lightsail.
+    """
     action = event.get("action")
     instance_name = os.environ["LIGHTSAIL_INSTANCE_NAME"]
 

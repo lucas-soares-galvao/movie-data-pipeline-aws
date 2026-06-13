@@ -1,5 +1,20 @@
 name: "Terraform (Reusable)"
 
+# =============================================================================
+# Provisionamento de infraestrutura AWS via Terraform.
+# Chamado pelo 00_pipeline.yml para os ambientes dev (develop) e prod (main).
+#
+# Etapas principais:
+#   1. Autenticação AWS via OIDC (sem credenciais armazenadas no GitHub)
+#   2. Terraform Init → Validate → Lint → Format Check → Security Scan
+#   3. Verifica destroy_config.json — se true, destrói a infra do ambiente
+#   4. Terraform Plan → estimativa de custo (Infracost) → Apply
+#
+# Saída (output):
+#   was_destroyed — informa ao 00_pipeline.yml se a infra foi destruída,
+#   para que o deploy do FilmBot seja pulado neste caso.
+# =============================================================================
+
 on:
   workflow_call:
     inputs:
@@ -61,6 +76,9 @@ jobs:
             --requirements app/lambda_api/requirements.txt \
             --dest infra/.lambda_build
 
+      # destroy_config.json controla se a infra deve ser destruída (teardown).
+      # Formato: { "dev": false, "prod": false }
+      # Mude para true no ambiente desejado para acionar o terraform destroy.
       - name: Read destroy configuration
         id: read-destroy-config
         run: |

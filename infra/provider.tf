@@ -2,6 +2,27 @@
 # provider.tf — Configuração base do Terraform
 # Backend vazio: configurações passadas via -backend-config no pipeline (dev/prod usam buckets diferentes)
 # =============================================================================
+#
+# Fluxo do pipeline de dados:
+#
+#   EventBridge (agendador)
+#       │
+#       ▼
+#   Lambda API  ──► S3 SOR (JSON bruto da API TMDB)
+#       │
+#       ▼
+#   Glue ETL  ──► S3 SOT (Parquet processado)
+#       │               │
+#       │               ▼
+#       │         Glue Details ──► S3 SOT (runtime, temporadas, watch providers)
+#       │               │
+#       │               ▼
+#       │         Glue AGG ──► S3 SPEC (tabela unificada filmes+séries)
+#       │                               │
+#       └──► Glue DQ (valida SOT) ◄────┘
+#
+#   FilmBot (Lightsail) consulta S3 SPEC via Athena
+# =============================================================================
 
 terraform {
   required_version = ">= 1.5.0"

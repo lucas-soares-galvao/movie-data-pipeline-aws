@@ -95,6 +95,9 @@ class TestMain:
             assert mock_query.call_count == 1
 
     def test_aciona_dq_apos_escrita_sem_year(self):
+        # call_order rastreia a sequência real de execução das funções.
+        # side_effect=lambda **_: ... substitui a função real por uma que apenas
+        # registra a chamada na lista — "**_" significa "aceita quaisquer kwargs mas ignora todos".
         call_order = []
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),

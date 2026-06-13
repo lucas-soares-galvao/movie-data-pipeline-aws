@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `main()` em `app/glue_etl/main.py` e as funções utilitárias em `app/glue_etl/src/utils.py`. Os testes verificam o comportamento da orquestração para cada valor de `TABLE_TYPE` e o acionamento condicional do Glue Details. Todas as dependências externas (S3, Glue Catalog, Athena) são mockadas.
+Testa a função `main()` em `app/glue_etl/main.py` e as funções utilitárias em `app/glue_etl/src/utils.py`. Os testes verificam o comportamento da orquestração para cada valor de `TABLE_TYPE` e o acionamento condicional do Glue Details. Todas as dependências externas (S3, Glue Catalog, Athena) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem fazer chamadas reais à AWS, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
