@@ -83,7 +83,7 @@ resource "aws_lightsail_instance" "filmbot" {
   name              = "${var.lightsail_instance_name}-${var.env}"
   availability_zone = "us-east-1a"
   blueprint_id      = "ubuntu_22_04"
-  bundle_id         = "nano_3_0" # 512 MB RAM, 2 vCPU, 20 GB SSD — $3,50/mês
+  bundle_id         = "micro_3_0" # 1 GB RAM, 2 vCPU, 40 GB SSD — $7,00/mês
   key_pair_name     = aws_lightsail_key_pair.filmbot[0].name
   tags              = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
