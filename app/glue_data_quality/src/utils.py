@@ -99,6 +99,7 @@ def read_table_from_catalog(
     kwargs: Dict[str, Any] = {
         "database": database,
         "table_name": table_name,
+        "additional_options": {"useS3ListImplementation": "true"},
     }
     if year is not None:
         # push_down_predicate = "filtro de partição empurrado para baixo"
@@ -204,9 +205,11 @@ def write_results_to_s3(
     """
     Grava os resultados DQ em tb_data_quality_tmdb.
 
-    Tabelas com partição por ano usam partition_cols=["source_table", "year"],
-    preservando um registro por (tabela, ano). Tabelas sem partição usam apenas
-    ["source_table"] com overwrite_partitions, mantendo sempre o resultado mais recente.
+    Sempre particiona por ["source_table", "year"], garantindo estrutura uniforme
+    no Glue Catalog (evita o erro do Athena "partition value count must match
+    partition column count"). Tabelas sem partição por ano usam year="sem_ano"
+    como valor fixo, preservando o comportamento de overwrite_partitions sem
+    misturar partições com 1 e 2 níveis.
 
     Args:
         df:                     Spark DataFrame com os resultados da avaliação.
@@ -218,11 +221,8 @@ def write_results_to_s3(
     output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
-    if year is not None:
-        partition_cols = ["source_table", "year"]
-    else:
-        df = df.drop("year")
-        partition_cols = ["source_table"]
+    if year is None:
+        df = df.fillna({"year": "sem_ano"})
 
     logger.info(
         f"Gravando resultados em {s3_path} | source_table='{table_name}' | year='{year}'"
@@ -234,7 +234,7 @@ def write_results_to_s3(
         dataset=True,
         database=database,
         table=output_table,
-        partition_cols=partition_cols,
+        partition_cols=["source_table", "year"],
         mode="overwrite_partitions",
     )
 
