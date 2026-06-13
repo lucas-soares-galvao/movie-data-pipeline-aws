@@ -122,15 +122,25 @@ genre_names AS (
 
 -- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
 -- title_pt/overview_pt são as traduções EN→PT gravadas pelo Glue Details (only for original_language='en').
+-- ROW_NUMBER() deduplica IDs que aparecem mais de uma vez (cada refresh mensal insere novas linhas
+-- via append); ORDER BY dt_processamento DESC mantém o registro mais recente.
+movie_details_ranked AS (
+    SELECT id, runtime, title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en,
+        ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
+    FROM {db_movie}.tb_details_movie_tmdb
+),
+
 movie_details AS (
     SELECT id, runtime, title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
-    FROM {db_movie}.tb_details_movie_tmdb
+    FROM movie_details_ranked
+    WHERE rn = 1
 ),
 
 -- Quantidade de temporadas, episódios e duração média por episódio das séries.
 -- element_at(episode_run_time, 1) pega o primeiro valor do array retornado pelo TMDB
 -- (a API geralmente retorna um único elemento com a duração padrão do episódio).
-tv_details AS (
+-- Mesmo padrão de deduplicação por dt_processamento DESC que movie_details_ranked acima.
+tv_details_ranked AS (
     SELECT
         id,
         number_of_seasons,
@@ -141,8 +151,16 @@ tv_details AS (
         overview_en,
         overview_pt,
         poster_path_en,
-        backdrop_path_en
+        backdrop_path_en,
+        ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_tv}.tb_details_tv_tmdb
+),
+
+tv_details AS (
+    SELECT id, number_of_seasons, number_of_episodes, episode_runtime_minutes,
+           title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+    FROM tv_details_ranked
+    WHERE rn = 1
 ),
 
 -- Referência unificada de provedores (union de movie + tv), desduplicada por provider_id,
