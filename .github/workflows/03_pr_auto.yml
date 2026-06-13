@@ -43,6 +43,9 @@ jobs:
           terraform init -backend=false
           terraform validate
 
+      - name: Terraform Format Check
+        run: cd infra && terraform fmt -check -recursive
+
       - name: Create or Update PR
         run: |
           BASE=${{ steps.branch.outputs.base }}
