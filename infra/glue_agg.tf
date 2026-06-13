@@ -22,16 +22,17 @@ resource "aws_glue_job" "agg_job_pythonshell" {
     # Pacote (wheel) com os modulos auxiliares importados pelo script principal.
     # Jobs Python Shell so adicionam .whl/.egg ao sys.path via --extra-py-files (.zip
     # nao e suportado aqui — somente em jobs Spark), por isso usamos um wheel.
-    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename}"
-    "--additional-python-modules" = local.glue_agg_additional_python_modules
-    "--custom-logGroup-prefix"    = "/${local.envs.glue_agg_job_name}"
-    "--S3_BUCKET_SPEC"            = local.envs.s3_bucket_spec
-    "--S3_BUCKET_TEMP"            = local.envs.s3_bucket_temp
-    "--DB_MOVIE"                  = var.glue_catalog_database_movie_name
-    "--DB_TV"                     = var.glue_catalog_database_tv_name
-    "--DB_UNIFIED"                = var.glue_catalog_database_unified_name
-    "--TABLE_NAME"                = var.glue_agg_spec_table_name
-    "--ENVIRONMENT"               = var.env
+    "--extra-py-files"             = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename}"
+    "--additional-python-modules"  = local.glue_agg_additional_python_modules
+    "--custom-logGroup-prefix"     = "/${local.envs.glue_agg_job_name}"
+    "--S3_BUCKET_SPEC"             = local.envs.s3_bucket_spec
+    "--S3_BUCKET_TEMP"             = local.envs.s3_bucket_temp
+    "--DB_MOVIE"                   = var.glue_catalog_database_movie_name
+    "--DB_TV"                      = var.glue_catalog_database_tv_name
+    "--DB_UNIFIED"                 = var.glue_catalog_database_unified_name
+    "--TABLE_NAME"                 = var.glue_agg_spec_table_name
+    "--GLUE_DATA_QUALITY_JOB_NAME" = local.envs.glue_data_quality_job_name
+    "--ENVIRONMENT"                = var.env
   }
 
   tags = local.component_tags.glue_agg

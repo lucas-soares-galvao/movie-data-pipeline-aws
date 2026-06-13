@@ -2,7 +2,7 @@
 
 ## O que é
 
-O Glue Data Quality é um job transversal do pipeline: é acionado pelo Glue ETL e pelo Glue Details após cada tabela ser gravada na SOT. Ele avalia regras de qualidade de dados (DQDL) contra as tabelas processadas, salva os resultados na camada DQ e envia notificações por e-mail via SNS caso alguma regra falhe.
+O Glue Data Quality é um job transversal do pipeline: é acionado pelo Glue ETL, pelo Glue Details e pelo Glue AGG após cada tabela ser gravada nas camadas SOT e SPEC. Ele avalia regras de qualidade de dados (DQDL) contra as tabelas processadas, salva os resultados na camada DQ e envia notificações por e-mail via SNS caso alguma regra falhe.
 
 ## Por que existe
 
@@ -10,7 +10,7 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 ## Como funciona
 
-1. Recebe argumentos do job: `TABLE_NAME`, `DATABASE`, `YEAR` (quando aplicável), `ENVIRONMENT`
+1. Recebe argumentos do job: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `YEAR` (quando aplicável)
 2. Busca o ruleset DQDL correspondente à tabela em `rulesets_dq.py` (mapeado por nome de tabela)
 3. Lê a tabela do Glue Catalog via Spark, aplicando filtro de partição por `year` quando disponível
 4. Avalia as regras usando o motor nativo do **AWS Glue Data Quality** (DQDL)
@@ -21,8 +21,8 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `TABLE_NAME`, `DATABASE`, `YEAR`, `ENVIRONMENT`, nomes dos buckets e SNS topic |
-| **Leitura** | Glue Catalog (tabela a ser validada na SOT) |
+| **Entrada** | Argumentos: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `YEAR` (opcional — apenas tabelas com partição por ano) |
+| **Leitura** | Glue Catalog (tabela a ser validada na SOT ou SPEC) |
 | **Escrita** | S3 DQ — resultados em Parquet particionados por `source_table` e `year` |
 | **Notifica** | SNS → e-mail configurado para o job (em caso de falha) |
 
@@ -35,16 +35,17 @@ As regras são definidas em DQDL (Data Quality Definition Language), linguagem n
 Rules = [
   IsComplete "id",               # ID nunca pode ser nulo
   IsUnique "id",                 # Sem duplicatas por ID
-  RowCount > 0,                  # Tabela não pode estar vazia
   ColumnValues "vote_average" >= 0,             # Nota válida (between é exclusivo no DQDL)
-  ColumnValues "vote_average" <= 10
+  ColumnValues "vote_average" <= 10,
+  RowCount > 0                   # Tabela não pode estar vazia
 ]
 
 # Tabela genre
 Rules = [
   IsComplete "id",
   IsComplete "name",
-  IsUnique "id"
+  IsUnique "id",
+  RowCount > 0
 ]
 ```
 
@@ -55,9 +56,9 @@ Rules = [
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
 | `get_ruleset(table_name)` | Retorna o DQDL ruleset correspondente ao nome da tabela |
 | `read_table_from_catalog(glue_context, database, table_name, year)` | Lê tabela do Catalog com pushdown de partição por ano |
-| `evaluate_data_quality(glue_context, dynamic_frame, ruleset)` | Executa avaliação das regras via motor Glue DQ |
-| `write_results_to_s3(results_df, bucket, table_name, year)` | Salva resultados como Parquet na camada DQ |
-| `notify_failed_outcomes(sns_topic_arn, results_df, table_name)` | Envia e-mail via SNS se alguma regra falhou |
+| `evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name, database, year)` | Executa avaliação das regras via motor Glue DQ e retorna DataFrame com resultados e colunas de contexto |
+| `write_results_to_s3(df, s3_bucket_data_quality, table_name, database, year)` | Salva resultados como Parquet na camada DQ |
+| `notify_failed_outcomes(df, table_name, sns_topic_arn, environment, year)` | Envia e-mail via SNS se alguma regra falhou |
 
 ## Tecnologias
 
