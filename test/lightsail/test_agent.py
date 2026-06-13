@@ -272,6 +272,22 @@ class TestRecomendar(unittest.TestCase):
 
     @patch("agent.litellm.completion")
     @patch("agent.buscar_titulos_spec")
+    def test_retorna_lista_vazia_se_llm_nao_chama_tool(self, mock_buscar, mock_completion):
+        msg_sem_tool = MagicMock()
+        msg_sem_tool.content = None
+        msg_sem_tool.tool_calls = None
+
+        passo1_sem_tool = MagicMock()
+        passo1_sem_tool.choices = [MagicMock(message=msg_sem_tool)]
+        mock_completion.return_value = passo1_sem_tool
+
+        resultado = agent.recomendar("filmes de terror")
+
+        self.assertEqual(resultado, [])
+        mock_buscar.assert_not_called()
+
+    @patch("agent.litellm.completion")
+    @patch("agent.buscar_titulos_spec")
     def test_retorna_data_lancamento_formatada(self, mock_buscar, mock_completion):
         mock_buscar.return_value = [TITULO_FAKE]
         mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, RESPOSTA_LLM_FAKE)

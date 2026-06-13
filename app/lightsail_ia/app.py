@@ -305,8 +305,12 @@ preferencia = st.text_input(
 if st.button("Recomendar", type="primary") and preferencia:
     # st.spinner() exibe uma animação de carregamento enquanto o bloco interno processa
     with st.spinner("Consultando o data lake e gerando recomendações..."):
-        # Chama o agente de IA (agent.py): OpenAI extrai filtros → Athena consulta → OpenAI formata
-        titulos = recomendar(preferencia)
+        # Chama o agente de IA (agent.py): LLM extrai filtros → Athena consulta → LLM formata
+        try:
+            titulos = recomendar(preferencia)
+        except Exception as e:
+            st.error(f"Erro ao consultar o data lake: {e}")
+            titulos = []
 
     if not titulos:
         st.warning("Nenhum título encontrado para essa busca. Tente outra descrição.")
