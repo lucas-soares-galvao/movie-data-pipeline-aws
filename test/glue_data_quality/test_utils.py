@@ -128,13 +128,14 @@ class TestGetRuleset:
 
 class TestReadTableFromCatalog:
     def test_calls_from_catalog_with_correct_args(self):
-        """Deve chamar from_catalog passando database e table_name corretos."""
+        """Deve chamar from_catalog passando database, table_name e additional_options corretos."""
         glue_context = MagicMock()
         read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb")
 
         glue_context.create_dynamic_frame.from_catalog.assert_called_once_with(
             database="db_tmdb",
             table_name="tb_genre_movie_tmdb",
+            additional_options={"useS3ListImplementation": "true"},
         )
 
     def test_returns_dynamic_frame_from_catalog(self):
@@ -477,10 +478,10 @@ class TestWriteResultsToS3:
         return df_mock, mock_wr
 
     def test_converts_spark_df_to_pandas_without_year(self):
-        """Sem year, toPandas é chamado no df após drop('year')."""
+        """Sem year, fillna substitui year por 'sem_ano' e toPandas é chamado no df preenchido."""
         df_mock, _ = self._run()
-        df_mock.drop.assert_called_once_with("year")
-        df_mock.drop.return_value.toPandas.assert_called_once()
+        df_mock.fillna.assert_called_once_with({"year": "sem_ano"})
+        df_mock.fillna.return_value.toPandas.assert_called_once()
 
     def test_converts_spark_df_to_pandas_with_year(self):
         """Com year, toPandas é chamado diretamente no df (sem drop)."""
@@ -489,10 +490,10 @@ class TestWriteResultsToS3:
         df_mock.toPandas.assert_called_once()
 
     def test_passes_pandas_df_to_wrangler_without_year(self):
-        """Sem year, wr.s3.to_parquet recebe o resultado de df.drop('year').toPandas()."""
+        """Sem year, wr.s3.to_parquet recebe o resultado de df.fillna(...).toPandas()."""
         df_mock, mock_wr = self._run()
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
-        assert call_kwargs["df"] is df_mock.drop.return_value.toPandas.return_value
+        assert call_kwargs["df"] is df_mock.fillna.return_value.toPandas.return_value
 
     def test_passes_pandas_df_to_wrangler_with_year(self):
         """Com year, wr.s3.to_parquet recebe o resultado de df.toPandas()."""
@@ -531,12 +532,14 @@ class TestWriteResultsToS3:
         assert call_kwargs["database"] == "db_tmdb"
         assert call_kwargs["table"] == "tb_data_quality_tmdb"
 
-    def test_partitions_by_source_table_only_when_no_year(self):
-        """Tabelas sem partição: partition_cols deve ser ['source_table'] e year é removido."""
+    def test_uses_fillna_year_placeholder_when_no_year(self):
+        """Tabelas sem partição: fillna preenche year com 'sem_ano' e partition_cols inclui year
+        para manter estrutura uniforme no Glue Catalog e evitar erro do Athena."""
         df_mock, mock_wr = self._run()
-        df_mock.drop.assert_called_once_with("year")
+        df_mock.fillna.assert_called_once_with({"year": "sem_ano"})
+        df_mock.drop.assert_not_called()
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
-        assert call_kwargs["partition_cols"] == ["source_table"]
+        assert call_kwargs["partition_cols"] == ["source_table", "year"]
 
     def test_partitions_by_source_table_and_year_when_year_provided(self):
         """Tabelas com partição: partition_cols deve ser ['source_table', 'year'] para preservar histórico."""
