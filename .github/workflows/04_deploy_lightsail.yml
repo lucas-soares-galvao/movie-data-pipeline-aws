@@ -84,11 +84,13 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ steps.tf.outputs.private_key }}" > ~/.ssh/filmbot_key
           chmod 600 ~/.ssh/filmbot_key
-          for i in $(seq 1 12); do
-            ssh-keyscan -T 5 -H "${{ steps.tf.outputs.public_ip }}" >> ~/.ssh/known_hosts 2>/dev/null && break
-            echo "Tentativa $i/12 — aguardando SSH..."
+          SSH_READY=0
+          for i in $(seq 1 30); do
+            ssh-keyscan -T 5 -H "${{ steps.tf.outputs.public_ip }}" >> ~/.ssh/known_hosts 2>/dev/null && { SSH_READY=1; break; }
+            echo "Tentativa $i/30 — aguardando SSH..."
             sleep 10
           done
+          [ $SSH_READY -eq 1 ] || { echo "SSH indisponível após 5 minutos — abortando."; exit 1; }
 
       # Credenciais criadas diretamente no destino final (não em /tmp — world-readable)
       - name: Create .env file on instance
