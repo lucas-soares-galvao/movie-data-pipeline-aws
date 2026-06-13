@@ -57,6 +57,7 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 | `test_remove_markdown_code_block_do_json` | Remove ` ```json ... ``` ` antes de parsear a resposta do LLM |
 | `test_retorna_lista_vazia_se_llm_retorna_string_vazia` | Retorna `[]` sem erro quando o LLM retorna string vazia na etapa 3 |
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | Filtros extraídos na etapa 1 são passados corretamente para `buscar_titulos_spec()` |
+| `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo incompatível com `tool_choice="required"`) |
 | `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` está presente na resposta final |
 
 ## Como executar

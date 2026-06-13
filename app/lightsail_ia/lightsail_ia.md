@@ -2,7 +2,7 @@
 
 ## O que é
 
-O FilmBot é uma interface web construída com Streamlit e hospedada em uma instância AWS Lightsail. O usuário digita o que quer assistir em linguagem natural, e um agente de IA (GPT-4o) interpreta o pedido, consulta a tabela unificada na camada SPEC via Athena e retorna recomendações personalizadas com pôster, sinopse, avaliação e onde assistir.
+O FilmBot é uma interface web construída com Streamlit e hospedada em uma instância AWS Lightsail. O usuário digita o que quer assistir em linguagem natural, e um agente de IA interpreta o pedido, consulta a tabela unificada na camada SPEC via Athena e retorna recomendações personalizadas com pôster, sinopse, avaliação e onde assistir.
 
 ## Por que existe
 
@@ -12,8 +12,8 @@ Permite que qualquer pessoa consuma os dados do pipeline sem precisar escrever S
 
 O processo de recomendação é dividido em três etapas encadeadas:
 
-### Etapa 1 — Extração de filtros (GPT-4o + Function Calling)
-O GPT-4o recebe o texto do usuário e usa *Function Calling* para retornar um JSON estruturado com os filtros extraídos:
+### Etapa 1 — Extração de filtros (LLM + Function Calling)
+O LLM recebe o texto do usuário e usa *Function Calling* para retornar um JSON estruturado com os filtros extraídos:
 ```json
 {
   "genero": "Terror",
@@ -27,8 +27,8 @@ O GPT-4o recebe o texto do usuário e usa *Function Calling* para retornar um JS
 ### Etapa 2 — Consulta ao Athena
 Com os filtros extraídos, monta e executa uma query SQL dinâmica na tabela `tb_discover_unified_tmdb` (camada SPEC). Filtra por `vote_count ≥ 50`, `vote_average ≥ nota_minima`, `media_type`, `year` e `genre_names LIKE`.
 
-### Etapa 3 — Formatação das recomendações (GPT-4o)
-O GPT-4o recebe os resultados reais do Athena e formata como JSON com campos amigáveis:
+### Etapa 3 — Formatação das recomendações (LLM)
+O LLM recebe os resultados reais do Athena e formata como JSON com campos amigáveis:
 - `titulo`, `tipo`, `ano`, `generos`
 - `sinopse` (traduzida)
 - `nota`, `poster_url`, `backdrop_url`
@@ -85,6 +85,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 | Variável | Uso |
 |---|---|
 | `LLM_API_KEY` | Chave de API do provedor LLM em uso |
+| `LLM_MODEL` | Modelo LLM a usar (padrão: `gpt-4o`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
 | `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
 | `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
 | `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
@@ -97,6 +98,6 @@ Use `.env.example` como referência para as variáveis necessárias.
 
 - **Streamlit** — framework de interface web em Python
 - **litellm** — abstração de chamadas LLM (suporta OpenAI, DeepSeek, Claude, etc.)
-- **OpenAI GPT-4o** — modelo padrão para extração de filtros e formatação de recomendações
+- **LLM configurável via `LLM_MODEL`** — padrão `gpt-4o`; suporta qualquer modelo compatível com litellm (OpenAI, DeepSeek, Claude, etc.)
 - **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
 - **AWS Lightsail** — instância de servidor para hospedar o app

@@ -15,13 +15,14 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 
 ```mermaid
 flowchart TD
-    PUSH["Push / workflow_dispatch"] --> TEST["01_test.yml\nQuality gates"]
+    PUSH["Push / workflow_dispatch"]
 
-    TEST -->|feature/* branch| PR_FEAT["03_pr_auto.yml\nPR: feature → develop"]
-    TEST -->|develop ou main branch| TF["02_terraform.yml\nTerraform apply/destroy"]
+    PUSH -->|feature/*| TEST["01_test.yml\nQuality gates"]
+    PUSH -->|develop ou main| TF["02_terraform.yml\nTerraform apply/destroy"]
 
-    TF -->|was_destroyed != true| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
-    DEPLOY -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
+    TEST --> PR_FEAT["03_pr_auto.yml\nPR: feature → develop"]
+    TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
+    TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
 ```
 
 ---
@@ -31,9 +32,9 @@ flowchart TD
 | Evento | Branch | Workflows executados |
 |---|---|---|
 | `push` | `feature/*` | test → PR feature→develop |
-| `push` | `develop` | test → terraform (dev) → deploy (dev) → PR develop→main |
-| `push` | `main` | test → terraform (prod) → deploy (prod) |
-| `workflow_dispatch` | qualquer | test → terraform → deploy (ambiente escolhido) |
+| `push` | `develop` | terraform (dev) → PR develop→main |
+| `push` | `main` | terraform (prod) → deploy (prod) |
+| `workflow_dispatch` | — | terraform → deploy apenas se ambiente = prod |
 
 ---
 
@@ -55,7 +56,7 @@ Ponto de entrada do pipeline. Não executa lógica diretamente; apenas chama os 
 
 ### `01_test.yml` — Quality Gates
 
-Valida a qualidade do código antes de qualquer deploy.
+Valida a qualidade do código antes de qualquer deploy. Executa **apenas em branches `feature/*`**.
 
 | Etapa | Ferramenta | Comportamento |
 |---|---|---|
@@ -114,9 +115,9 @@ Antes de criar o PR, executa `terraform validate -backend=false` para garantir q
 
 ### `04_deploy_lightsail.yml` — Deploy da Aplicação
 
-Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH.
+Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Executa **apenas em `main`** (ou `workflow_dispatch` com ambiente `prod`) — o ambiente `dev` não possui instância Lightsail.
 
-**Entrada:** `environment` (`dev` ou `prod`)
+**Entrada:** `environment` (`prod`)
 
 **Etapas principais:**
 
@@ -144,7 +145,7 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH.
 feature/minha-feature
         ↓  (PR automático após testes passarem)
       develop
-        ↓  (PR automático após deploy dev bem-sucedido)
+        ↓  (PR automático após terraform dev bem-sucedido)
         main
 ```
 
