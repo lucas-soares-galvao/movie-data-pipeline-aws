@@ -31,6 +31,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
     "--DB_TV"                     = var.glue_catalog_database_tv_name
     "--DB_UNIFIED"                = var.glue_catalog_database_unified_name
     "--TABLE_NAME"                = var.glue_agg_spec_table_name
+    "--GLUE_DATA_QUALITY_JOB_NAME" = local.envs.glue_data_quality_job_name
     "--ENVIRONMENT"               = var.env
   }
 
