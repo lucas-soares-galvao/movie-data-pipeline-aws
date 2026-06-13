@@ -57,7 +57,7 @@ Testa as funções individuais:
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL filtra pelo ano e por `date_trunc('month', current_date)`; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
-- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados
+- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro
 - `collect_and_write_watch_providers`: apenas provedores do Brasil (`BR`) são extraídos
 - `trigger_agg`: argumentos passados ao `start_job_run` do Glue estão corretos
 

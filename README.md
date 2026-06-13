@@ -79,7 +79,7 @@ Qualquer alteração no código passa por um processo automatizado de validaçã
 | Armazenamento | AWS S3 (arquitetura medalhão), AWS Glue Catalog, AWS Athena |
 | Observabilidade | AWS CloudWatch, AWS SNS |
 | Interface web | Streamlit (hospedado no AWS Lightsail) |
-| Inteligência artificial | OpenAI GPT-4o (recomendações e extração de filtros) |
+| Inteligência artificial | LLM via API compatível (recomendações e extração de filtros) |
 
 ---
 

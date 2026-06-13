@@ -436,18 +436,39 @@ def collect_and_write_details(
     df = df.drop(columns=["original_language"])
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
+
+    # Merge: lê registros existentes de cada partição year, remove os IDs que serão
+    # re-escritos e concatena com os novos dados — evita duplicatas ao usar overwrite_partitions.
+    df_existing = pd.DataFrame()
+    for yr in df["year"].dropna().unique().tolist():
+        try:
+            df_read = wr.s3.read_parquet(
+                path=s3_path,
+                dataset=True,
+                partition_filter=lambda x: x["year"] == str(yr),
+            )
+            if not df_read.empty:
+                df_existing = pd.concat(
+                    [df_existing, df_read[~df_read["id"].isin(df["id"])]],
+                    ignore_index=True,
+                )
+                logger.info(f"Mantendo {len(df_read[~df_read['id'].isin(df['id'])])} registros existentes para year={yr}.")
+        except Exception as exc:
+            logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
+
+    if not df_existing.empty:
+        df = pd.concat([df_existing, df], ignore_index=True)
+
     logger.info(
         f"Gravando {len(df)} registros de detalhes em {s3_path} | "
-        f"particao=[year] | mode=append"
+        f"particao=[year] | mode=overwrite_partitions"
     )
-    # append: adiciona apenas os novos registros sem apagar dados existentes.
-    # Seguro porque o anti-join em main.py garante que só chegam IDs genuinamente novos.
     wr.s3.to_parquet(
         df=df,
         path=s3_path,
         dataset=True,
         partition_cols=["year"],
-        mode="append",
+        mode="overwrite_partitions",
         database=database,
         table=table_name,
     )

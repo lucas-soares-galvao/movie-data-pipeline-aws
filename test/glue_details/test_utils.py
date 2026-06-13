@@ -186,6 +186,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", ids, "movie", "sot", "tb_details_movie_tmdb", "db")
@@ -214,6 +215,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", ids, "tv", "sot", "tb_details_tv_tmdb", "db")
@@ -244,6 +246,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=side_effect),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", [1, 2], "movie", "sot", "tb_details_movie_tmdb", "db")
@@ -261,7 +264,7 @@ class TestCollectAndWriteDetails:
             u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
             mock_write.assert_not_called()
 
-    def test_writes_with_year_partition(self):
+    def test_writes_with_year_partition_and_overwrite_mode(self):
         responses = [self._mock_movie_response(1)]
         mock_translator = MagicMock()
         mock_translator.translate.side_effect = lambda t: t
@@ -269,10 +272,80 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
             assert mock_write.call_args.kwargs["partition_cols"] == ["year"]
+            assert mock_write.call_args.kwargs["mode"] == "overwrite_partitions"
+
+    def test_merges_existing_records_not_in_batch(self):
+        """Registros existentes cujos IDs não estão no batch atual são preservados."""
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: t
+
+        existing_df = pd.DataFrame([{
+            "id": 99, "runtime": 120, "year": "2023",
+            "title_en": "Old Movie", "title_pt": "Old Movie",
+            "overview_en": "", "overview_pt": "",
+            "poster_path_en": "", "backdrop_path_en": "",
+            "dt_processamento": "2023-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+
+            # ID 99 (existente, não no batch) deve ser preservado junto com o novo ID 1
+            assert set(df_written["id"].tolist()) == {1, 99}
+
+    def test_overwrites_id_already_in_batch(self):
+        """Se um ID existente está sendo re-escrito, o registro antigo é substituído."""
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: t
+
+        existing_df = pd.DataFrame([{
+            "id": 1, "runtime": 999, "year": "2023",
+            "title_en": "Stale Movie", "title_pt": "Stale Movie",
+            "overview_en": "", "overview_pt": "",
+            "poster_path_en": "", "backdrop_path_en": "",
+            "dt_processamento": "2023-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+
+            # Deve haver apenas 1 linha para ID 1 (sem duplicata)
+            assert len(df_written[df_written["id"] == 1]) == 1
+            # O runtime novo (100) sobrescreve o stale (999)
+            assert df_written[df_written["id"] == 1].iloc[0]["runtime"] == 100
+
+    def test_read_parquet_failure_falls_back_to_new_data_only(self):
+        """Se read_parquet falhar, a função grava apenas os novos registros sem erro."""
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: t
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", side_effect=Exception("S3 error")),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+            assert len(df_written) == 1
+            assert df_written.iloc[0]["id"] == 1
 
 
 # ---------------------------------------------------------------------------

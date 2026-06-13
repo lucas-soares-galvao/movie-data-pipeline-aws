@@ -182,6 +182,24 @@ Valida `terraform validate` (sem backend) antes de criar o PR.
 
 ---
 
+### `04_deploy_lightsail.yml` — Deploy do FilmBot (reutilizável)
+
+**Inputs:** `environment` (dev | prod)  
+**Secrets:** `aws-assume-role-arn`, `aws-statefile-s3-bucket`, `aws-lock-dynamodb-table`, `llm-api-key`, `filmbot-password`
+
+**Etapas:**
+1. Checkout + Setup Terraform 1.8.3 (wrapper desabilitado para ler outputs raw)
+2. Autenticação AWS via OIDC
+3. `terraform init` e leitura de outputs: `lightsail_public_ip`, `lightsail_private_key`, `lightsail_agent_access_key_id`, `lightsail_agent_secret_access_key` (todos mascarados com `::add-mask::`)
+4. **SSH readiness check:** `ssh-keyscan` com 30 tentativas × 10s (max 5 min). Falha explicitamente se SSH não estiver disponível ao fim das tentativas
+5. Cria `/opt/filmbot/app/lightsail_ia/.env` diretamente no destino via `printf | ssh | tee` (evita escrita em `/tmp` world-readable)
+6. Cria `/opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml` com senha do Streamlit
+7. Deploy da aplicação via SSH: `git clone` (primeiro deploy) ou `git pull` (atualizações), instala dependências e reinicia serviço `systemd filmbot`
+
+**Mapeamento de branch por ambiente:** `dev → develop`, `prod → main`
+
+---
+
 ## Infra — Terraform
 
 ### Ambientes e Isolamento (AWS Organizations)

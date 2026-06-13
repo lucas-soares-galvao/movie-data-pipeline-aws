@@ -36,7 +36,8 @@ Rules = [
   IsComplete "id",               # ID nunca pode ser nulo
   IsUnique "id",                 # Sem duplicatas por ID
   RowCount > 0,                  # Tabela não pode estar vazia
-  ColumnValues "vote_average" between 0 and 10  # Nota válida
+  ColumnValues "vote_average" >= 0,             # Nota válida (between é exclusivo no DQDL)
+  ColumnValues "vote_average" <= 10
 ]
 
 # Tabela genre

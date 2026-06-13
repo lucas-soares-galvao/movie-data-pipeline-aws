@@ -30,14 +30,16 @@ rulesets_dq = {
         'IsComplete "id"',
         'IsUnique "id"',
         'IsComplete "title"',
-        'ColumnValues "vote_average" between 0 and 10',
+        'ColumnValues "vote_average" >= 0',
+        'ColumnValues "vote_average" <= 10',
         "RowCount > 0",
     ],
     "tb_discover_tv_tmdb": [
         'IsComplete "id"',
         'IsUnique "id"',
         'IsComplete "name"',  # séries usam "name", não "title"
-        'ColumnValues "vote_average" between 0 and 10',
+        'ColumnValues "vote_average" >= 0',
+        'ColumnValues "vote_average" <= 10',
         "RowCount > 0",
     ],
     "tb_details_movie_tmdb": [
