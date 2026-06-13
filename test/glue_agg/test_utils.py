@@ -111,7 +111,7 @@ class TestWriteParquetToSpec:
 
             _, kwargs = mock_write.call_args
             assert kwargs["partition_cols"] == ["media_type", "year"]
-            assert kwargs["mode"] == "overwrite"
+            assert kwargs["mode"] == "overwrite_partitions"
             assert kwargs["dataset"] is True
 
     def test_registra_tabela_no_catalog(self):
