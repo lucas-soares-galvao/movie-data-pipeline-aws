@@ -28,6 +28,17 @@ Todos os dias, automaticamente:
 
 ---
 
+## Camadas de dados (arquitetura medalhão)
+
+Os dados passam por quatro camadas progressivas de refinamento, cada uma com um propósito diferente:
+
+- **SOR (System of Record)** — dados brutos, exatamente como vieram da fonte (API TMDB). Formato JSON. Nenhuma transformação é feita aqui.
+- **SOT (Source of Truth)** — dados convertidos para Parquet, estruturados e particionados. É a camada de análise intermediária, consultável via SQL com Athena.
+- **SPEC (Specification / Gold)** — tabela final unificada, com filmes e séries juntos, já traduzidos e sem duplicatas. É a camada que o app de recomendações consulta.
+- **DQ (Data Quality)** — resultados das validações de qualidade. Registra quais regras passaram ou falharam em cada execução do pipeline.
+
+---
+
 ## Serviços do projeto
 
 ### Coletor de dados (Lambda API)
@@ -76,7 +87,7 @@ Qualquer alteração no código passa por um processo automatizado de validaçã
 | Infraestrutura como código | Terraform `>= 1.5.0` |
 | CI/CD | GitHub Actions |
 | Processamento de dados | AWS Glue (PySpark), AWS Lambda |
-| Armazenamento | AWS S3 (arquitetura medalhão), AWS Glue Catalog, AWS Athena |
+| Armazenamento | AWS S3 (arquitetura medalhão — 4 camadas: SOR → SOT → SPEC → DQ), AWS Glue Catalog (catálogo de metadados), AWS Athena (consultas SQL sobre o S3) |
 | Observabilidade | AWS CloudWatch, AWS SNS |
 | Interface web | Streamlit (hospedado no AWS Lightsail) |
 | Inteligência artificial | LLM via API compatível (recomendações e extração de filtros) |

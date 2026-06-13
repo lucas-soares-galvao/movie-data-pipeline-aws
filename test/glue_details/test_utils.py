@@ -181,6 +181,8 @@ class TestCollectAndWriteDetails:
         ids = [1, 2]
         responses = [self._mock_movie_response(i) for i in ids]
         mock_translator = MagicMock()
+        # side_effect como função: cada chamada a translate(t) executa a lambda e retorna "[PT] <texto>".
+        # Permite verificar nas asserções que a tradução foi aplicada (title_pt == "[PT] Filme A").
         mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (

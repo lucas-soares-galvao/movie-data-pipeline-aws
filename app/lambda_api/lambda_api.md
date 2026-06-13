@@ -2,7 +2,7 @@
 
 ## O que é
 
-A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado) acionada automaticamente pelo EventBridge em dois agendamentos: diário (coleta só discover) e semanal (coleta também dados de referência). Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 e aciona o Glue ETL para cada lote.
+A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em dois agendamentos: diário (coleta só discover) e semanal (coleta também dados de referência). Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
 
 ## Por que existe
 
@@ -11,7 +11,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 ## Como funciona
 
 1. O EventBridge dispara a Lambda com um payload JSON indicando o tipo de mídia (`movie` ou `tv`) e os nomes das tabelas do Glue Catalog.
-2. A Lambda busca a chave da API do TMDB no **Secrets Manager** — uma única vez por execução, independente de quantos anos existam.
+2. A Lambda busca a chave da API do TMDB no **Secrets Manager** (cofre de senhas da AWS — armazena credenciais com segurança, evitando que a chave fique exposta no código) — uma única vez por execução, independente de quantos anos existam.
 3. Dependendo dos flags recebidos no evento:
    - **`only_discover=True`** (execução diária): pula gêneros, idiomas, países e plataformas de referência.
    - **`skip_discover=True`** (execução semanal de referências): pula o loop de discover.

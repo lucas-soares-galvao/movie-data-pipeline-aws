@@ -2,7 +2,7 @@
 
 ## O que é
 
-O Glue Data Quality é um job transversal do pipeline: é acionado pelo Glue ETL, pelo Glue Details e pelo Glue AGG após cada tabela ser gravada nas camadas SOT e SPEC. Ele avalia regras de qualidade de dados (DQDL) contra as tabelas processadas, salva os resultados na camada DQ e envia notificações por e-mail via SNS caso alguma regra falhe.
+O Glue Data Quality é um job transversal do pipeline: é acionado pelo Glue ETL, pelo Glue Details e pelo Glue AGG após cada tabela ser gravada nas camadas SOT e SPEC (para entender essas camadas, veja a seção "Camadas de dados" no README). Ele avalia regras de qualidade de dados usando **DQDL** (Data Quality Definition Language — linguagem específica do AWS Glue para definir regras como "a coluna id nunca pode ser nula") contra as tabelas processadas, salva os resultados na camada **DQ** e envia notificações por e-mail via **SNS** (Simple Notification Service — serviço de notificações da AWS) caso alguma regra falhe.
 
 ## Por que existe
 
@@ -27,6 +27,8 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 | **Notifica** | SNS → e-mail configurado para o job (em caso de falha) |
 
 ## Regras DQDL por tabela (`src/rulesets_dq.py`)
+
+> **DQDL (Data Quality Definition Language)** é a linguagem nativa do AWS Glue para escrever regras de qualidade. A sintaxe é declarativa: você descreve *o que* deve ser verdade nos dados (ex: "id não pode ser nulo"), e o motor do Glue avalia e retorna Pass/Fail para cada regra.
 
 As regras são definidas em DQDL (Data Quality Definition Language), linguagem nativa do AWS Glue. Cada tabela tem seu ruleset mapeado por nome. Exemplos:
 

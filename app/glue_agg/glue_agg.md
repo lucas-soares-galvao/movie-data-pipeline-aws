@@ -8,6 +8,13 @@ O Glue AGG é o estágio final de transformação do pipeline. Acionado pelo Glu
 
 Os dados de filmes e séries chegam em tabelas separadas (discover, details, genres, languages, watch_providers). O aplicativo precisa de uma visão única e enriquecida. Este job faz essa consolidação via SQL no Athena, garantindo que o app consulte apenas uma tabela final, já traduzida e sem duplicatas.
 
+## Conceitos-chave
+
+- **SPEC / Gold layer** — a camada final e mais refinada do pipeline. Contém uma única tabela com todos os dados integrados, sem duplicatas, já traduzidos e prontos para consumo direto pelo app. É chamada de "Gold" porque é o produto acabado de todo o processamento anterior.
+- **DENSE_RANK** — função SQL de janela (window function) que atribui uma posição a cada linha dentro de um grupo. Aqui é usada para identificar o registro mais recente de watch providers por filme/série: rank=1 significa "do ano mais recente disponível", e só esses registros são incluídos na saída.
+- **CTE (Common Table Expression)** — blocos SQL nomeados com `WITH nome AS (...)` que simplificam queries complexas, permitindo referenciar o resultado de uma subquery por nome em vez de aninhar selects.
+- **ThreadPoolExecutor** — utilitário Python para rodar várias tarefas em paralelo usando threads. Aqui é usado para chamar a API de tradução para múltiplos títulos ao mesmo tempo, reduzindo o tempo total de espera.
+
 ## Como funciona
 
 1. Lê os argumentos do job (nomes dos databases, buckets, tabela de destino, nome do job de Data Quality)

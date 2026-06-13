@@ -1,4 +1,18 @@
-# Raciocinio: declara metadados do Glue Catalog para consulta consistente dos dados SOT.
+# =============================================================================
+# glue_catalog.tf — Metadados do Glue Catalog (databases e tabelas externas)
+# =============================================================================
+# Declara os schemas das tabelas para que o Athena e os jobs Glue consigam
+# consultar os arquivos Parquet no S3 como se fossem tabelas SQL.
+#
+# Organização dos databases:
+#   db_movie_tmdb   — tabelas exclusivas de filmes (discover, gêneros, detalhes, providers)
+#   db_tv_tmdb      — tabelas exclusivas de séries  (mesma estrutura dos filmes)
+#   db_unified_tmdb — tabela unificada e resultados de Data Quality
+# =============================================================================
+
+# =============================================================================
+# DATABASES
+# =============================================================================
 
 resource "aws_glue_catalog_database" "tmdb_movie_database" {
   name = var.glue_catalog_database_movie_name
@@ -15,6 +29,10 @@ resource "aws_glue_catalog_database" "tmdb_unified_database" {
   tags = local.component_tags.glue_catalog
 }
 
+
+# =============================================================================
+# TABELAS — Discover (títulos mais populares coletados pela Lambda)
+# =============================================================================
 
 resource "aws_glue_catalog_table" "tb_movie_tmdb" {
   name          = var.glue_catalog_table_discover_movie_name
@@ -194,6 +212,10 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   }
 }
 
+# =============================================================================
+# TABELAS — Gêneros (lista de categorias: Ação, Comédia, Drama, etc.)
+# =============================================================================
+
 resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
   name          = var.glue_catalog_table_genre_movie_name
   database_name = aws_glue_catalog_database.tmdb_movie_database.name
@@ -255,6 +277,10 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
     }
   }
 }
+
+# =============================================================================
+# TABELAS — Configurações (idiomas e países suportados pela TMDB)
+# =============================================================================
 
 resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   name          = var.glue_catalog_table_configuration_languages_name
@@ -325,6 +351,10 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
     }
   }
 }
+
+# =============================================================================
+# TABELAS — Detalhes (runtime, temporadas, títulos e sinopses em PT/EN)
+# =============================================================================
 
 resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
   name          = var.glue_catalog_table_details_movie_name
@@ -462,6 +492,10 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
 }
 
 
+# =============================================================================
+# TABELAS — Watch Providers (plataformas de streaming disponíveis no Brasil)
+# =============================================================================
+
 resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
   name          = var.glue_catalog_table_watch_providers_movie_name
   database_name = aws_glue_catalog_database.tmdb_movie_database.name
@@ -566,6 +600,10 @@ resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
 }
 
 
+# =============================================================================
+# TABELAS — Watch Providers Referência (cadastro de todos os provedores TMDB)
+# =============================================================================
+
 resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
   name          = var.glue_catalog_table_watch_providers_ref_movie_name
   database_name = aws_glue_catalog_database.tmdb_movie_database.name
@@ -651,6 +689,10 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
   }
 }
 
+
+# =============================================================================
+# TABELAS — db_unified_tmdb (Resultados de Data Quality)
+# =============================================================================
 
 resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   name          = var.glue_catalog_table_data_quality_name

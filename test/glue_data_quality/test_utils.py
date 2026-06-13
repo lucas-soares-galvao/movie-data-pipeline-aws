@@ -152,6 +152,8 @@ class TestReadTableFromCatalog:
         glue_context = MagicMock()
         read_table_from_catalog(glue_context, "meu_banco", "tb_genre_movie_tmdb")
 
+        # call_args retorna (args_posicionais, kwargs). O _ descarta os args posicionais
+        # (não usados aqui) e kwargs captura os argumentos nomeados que nos interessam.
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
         assert kwargs["database"] == "meu_banco"
 

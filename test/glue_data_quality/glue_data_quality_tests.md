@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `main()` em `app/glue_data_quality/main.py`, as funções utilitárias em `app/glue_data_quality/src/utils.py` e os rulesets DQDL em `app/glue_data_quality/src/rulesets_dq.py`. Verifica que as regras de qualidade corretas são selecionadas por tabela, que resultados são gravados na camada DQ e que notificações SNS são enviadas quando há falhas.
+Testa a função `main()` em `app/glue_data_quality/main.py`, as funções utilitárias em `app/glue_data_quality/src/utils.py` e os rulesets DQDL em `app/glue_data_quality/src/rulesets_dq.py`. Verifica que as regras de qualidade corretas são selecionadas por tabela, que resultados são gravados na camada DQ e que notificações SNS são enviadas quando há falhas. Todas as dependências externas (GlueContext, Spark, SNS, S3) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem acionar recursos reais da AWS, mantendo os testes rápidos e gratuitos.
 
 ## Estrutura
 

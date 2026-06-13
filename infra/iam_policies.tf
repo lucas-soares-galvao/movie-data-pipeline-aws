@@ -1,3 +1,7 @@
+# =============================================================================
+# LAMBDA — Políticas da função Lambda
+# =============================================================================
+
 # Permite que a Lambda dispare e monitore os jobs Glue ETL e AGG.
 # Resource restrito aos ARNs dos jobs especificos para limitar o escopo de acesso.
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
@@ -45,6 +49,10 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   })
 }
 
+# =============================================================================
+# GLUE COMPARTILHADO — Leitura do código no bucket AUX (todos os jobs Glue)
+# =============================================================================
+
 # IMPORTANTE: O nome inclui o ambiente (${var.env}) para evitar conflito
 # quando dev e prod sao provisionados na mesma conta AWS.
 # Nomes de IAM Policy sao unicos por conta, entao sem sufixo haveria erro.
@@ -77,6 +85,10 @@ resource "aws_iam_role_policy_attachment" "glue_dq_read_code" {
   role       = aws_iam_role.glue_dq_role.name
   policy_arn = aws_iam_policy.glue_shared_read_code.arn
 }
+
+# =============================================================================
+# GLUE ETL — Políticas do job de transformação (SOR → SOT)
+# =============================================================================
 
 resource "aws_iam_role_policy" "glue_etl_logs" {
   name = "glue-etl-logs"
@@ -217,6 +229,10 @@ resource "aws_iam_role_policy" "glue_etl_start_details" {
   })
 }
 
+# =============================================================================
+# GLUE DQ — Políticas do job de qualidade de dados
+# =============================================================================
+
 resource "aws_iam_role_policy" "glue_dq_read_sot" {
   name = "glue-dq-read-sot"
   role = aws_iam_role.glue_dq_role.name
@@ -320,6 +336,10 @@ resource "aws_iam_role_policy" "glue_dq_sns_publish" {
     }]
   })
 }
+
+# =============================================================================
+# SNS — Políticas de publicação dos tópicos (quem pode publicar em cada tópico)
+# =============================================================================
 
 data "aws_iam_policy_document" "glue_etl_failure_topic_policy" {
   statement {
@@ -457,6 +477,10 @@ resource "aws_sns_topic_policy" "eventbridge_failure_topic_policy" {
   arn    = aws_sns_topic.eventbridge_failure_notifications.arn
   policy = data.aws_iam_policy_document.eventbridge_failure_topic_policy.json
 }
+
+# =============================================================================
+# GLUE AGG — Políticas do job de agregação (SOT → SPEC)
+# =============================================================================
 
 resource "aws_iam_role_policy" "glue_agg_logs" {
   name = "glue-agg-logs"

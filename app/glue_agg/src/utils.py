@@ -252,7 +252,7 @@ tv_providers AS (
         ) AS streaming_providers
     FROM tv_providers_ranked
     GROUP BY id
-)
+),
 
 -- ============================================================================
 -- SELECT FINAL: combina todas as CTEs e constrói a tabela SPEC
@@ -335,7 +335,12 @@ spec_deduped AS (
     FROM spec_raw
 )
 
-SELECT * EXCEPT (rn_final)
+SELECT
+    id, media_type, title, original_title, overview, air_date, original_language,
+    language_name, genre_ids, genre_names, poster_url, backdrop_url, popularity,
+    vote_average, vote_count, origin_country, origin_country_name, adult, year,
+    runtime_minutes, number_of_seasons, number_of_episodes, episode_runtime_minutes,
+    streaming_providers
 FROM spec_deduped
 WHERE rn_final = 1
 """
@@ -435,7 +440,7 @@ def write_parquet_to_spec(
         path=s3_path,
         dataset=True,
         partition_cols=["media_type", "year"],
-        mode="overwrite",
+        mode="overwrite_partitions",
         database=database,
         table=table_name,
     )

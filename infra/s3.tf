@@ -1,6 +1,14 @@
 # =============================================================================
 # s3.tf — Buckets da arquitetura medallion (AUX, TEMP, SOR, SOT, SPEC, DQ)
 # =============================================================================
+# Legenda das camadas:
+#   AUX  = Auxiliar        — código Python, pacotes Lambda/Glue (.whl, .zip)
+#   TEMP = Temporário      — resultados temporários do Athena (expiram em 1 dia)
+#   SOR  = Source of Record — dados brutos JSON coletados da API TMDB pela Lambda
+#   SOT  = Source of Truth  — dados processados em Parquet pelo Glue ETL/Details
+#   SPEC = Specialized      — tabela unificada para consumo pelo FilmBot via Athena
+#   DQ   = Data Quality     — resultados de validação de qualidade dos dados
+# =============================================================================
 
 resource "aws_s3_bucket" "auxiliary_bucket" {
   bucket        = local.envs.s3_bucket_aux

@@ -238,12 +238,6 @@ variable "glue_catalog_database_unified_name" {
   default     = "db_unified_tmdb"
 }
 
-variable "lightsail_enabled" {
-  description = "Habilita a instância Lightsail. false = instância destruída (reduz custo em dev)."
-  type        = bool
-  default     = true
-}
-
 variable "glue_catalog_table_discover_movie_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de filmes da TMDB"
   type        = string
@@ -325,6 +319,12 @@ variable "glue_catalog_table_watch_providers_ref_tv_name" {
 # =============================================================================
 # LIGHTSAIL — Servidor do App FilmBot
 # =============================================================================
+
+variable "lightsail_enabled" {
+  description = "Habilita a instância Lightsail. false = instância destruída (reduz custo em dev)."
+  type        = bool
+  default     = true
+}
 
 variable "lightsail_instance_name" {
   description = "Nome da instância Lightsail para o agente IA (FilmBot)"

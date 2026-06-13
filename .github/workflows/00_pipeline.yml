@@ -1,5 +1,29 @@
 name: Pipeline CI/CD
 
+# =============================================================================
+# Pipeline principal — orquestra todos os workflows do projeto.
+#
+# Fluxo Git Flow implementado:
+#
+#   feature/* ──push──► [01] Testes (pytest, ruff, mypy, bandit)
+#                            │
+#                            └──► Auto PR: feature/* → develop
+#
+#   develop   ──push──► [02] Terraform (infra dev)
+#                            │
+#                            └──► Auto PR: develop → main
+#
+#   main      ──push──► [02] Terraform (infra prod)
+#                            │
+#                            └──► [04] Deploy Lightsail (app FilmBot)
+#
+# Workflows reutilizáveis (chamados por este arquivo):
+#   01_test.yml          — qualidade de código (testes, lint, cobertura)
+#   02_terraform.yml     — provisionamento de infraestrutura AWS
+#   03_pr_auto.yml       — criação automática de Pull Requests
+#   04_deploy_lightsail.yml — deploy do app FilmBot na instância AWS
+# =============================================================================
+
 on:
   push:
     branches: [feature/*, develop, main]
@@ -31,8 +55,15 @@ jobs:
       github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/02_terraform.yml
     with:
+      # Lógica de seleção de ambiente:
+      # - workflow_dispatch → usa o ambiente selecionado manualmente pelo usuário
+      # - push em develop   → ambiente "dev"
+      # - push em main      → ambiente "prod"
       environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
     secrets:
+      # Secrets possuem sufixo _DEV ou _PROD. A expressão seleciona o correto
+      # com base no mesmo critério do ambiente acima:
+      # dispatch+dev → _DEV | dispatch+prod → _PROD | develop → _DEV | main → _PROD
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
@@ -42,6 +73,8 @@ jobs:
 
   deploy-lightsail:
     needs: terraform
+    # Deploy apenas em prod (main ou dispatch manual com environment=prod)
+    # e somente se o Terraform aplicou com sucesso (não destruiu a infra)
     if: |
       (github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')) &&
       needs.terraform.result == 'success' &&
@@ -50,6 +83,7 @@ jobs:
     with:
       environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
     secrets:
+      # Mesma lógica de seleção de secrets do job terraform acima
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}

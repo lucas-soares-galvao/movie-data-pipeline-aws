@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `main()` em `app/glue_agg/main.py` e as funções utilitárias em `app/glue_agg/src/utils.py`. O ponto central é garantir que as três etapas do pipeline (query Athena → tradução → escrita na SPEC) ocorrem na **ordem correta** e com os argumentos certos. Todas as dependências externas são mockadas.
+Testa a função `main()` em `app/glue_agg/main.py` e as funções utilitárias em `app/glue_agg/src/utils.py`. O ponto central é garantir que as três etapas do pipeline (query Athena → tradução → escrita na SPEC) ocorrem na **ordem correta** e com os argumentos certos. Todas as dependências externas (Athena, Google Translate, S3) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem fazer chamadas reais, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 

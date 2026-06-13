@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `recomendar()` e as funções do agente de IA em `app/lightsail_ia/agent.py`. Verifica as três etapas do pipeline de recomendação: extração de filtros via GPT-4o, consulta ao Athena e formatação das recomendações. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (OpenAI, Athena) são mockadas.
+Testa a função `recomendar()` e as funções do agente de IA em `app/lightsail_ia/agent.py`. Verifica as três etapas do pipeline de recomendação: extração de filtros via GPT-4o, consulta ao Athena e formatação das recomendações. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (OpenAI/LLM e Athena) são substituídas por **mocks** — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
