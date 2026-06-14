@@ -233,22 +233,28 @@ resource "aws_iam_role_policy" "glue_etl_start_details" {
 # GLUE DQ — Políticas do job de qualidade de dados
 # =============================================================================
 
-resource "aws_iam_role_policy" "glue_dq_read_sot" {
-  name = "glue-dq-read-sot"
+resource "aws_iam_role_policy" "glue_dq_read_sot_spec" {
+  name = "glue-dq-read-sot-spec"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}"]
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}",
+          "arn:aws:s3:::${local.envs.s3_bucket_spec}",
+        ]
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_spec}/*",
+        ]
       }
     ]
   })

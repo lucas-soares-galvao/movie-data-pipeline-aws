@@ -169,14 +169,12 @@ class TestTriggerDataQuality:
     def test_inicia_job_sem_year(self):
         mock_client = MagicMock()
         mock_client.start_job_run.return_value = {"JobRunId": "run-abc"}
-        mock_client.get_job_run.return_value = {"JobRun": {"JobRunState": "SUCCEEDED"}}
         with patch("src.utils.boto3.client", return_value=mock_client):
-            with patch("src.utils.time.sleep"):
-                run_id = trigger_data_quality(
-                    dq_job_name="dq-job",
-                    table_name="tb_content",
-                    database="db_unified",
-                )
+            run_id = trigger_data_quality(
+                dq_job_name="dq-job",
+                table_name="tb_content",
+                database="db_unified",
+            )
         assert run_id == "run-abc"
         call_args = mock_client.start_job_run.call_args
         arguments = call_args.kwargs["Arguments"]
@@ -187,41 +185,13 @@ class TestTriggerDataQuality:
     def test_inicia_job_com_year(self):
         mock_client = MagicMock()
         mock_client.start_job_run.return_value = {"JobRunId": "run-xyz"}
-        mock_client.get_job_run.return_value = {"JobRun": {"JobRunState": "SUCCEEDED"}}
         with patch("src.utils.boto3.client", return_value=mock_client):
-            with patch("src.utils.time.sleep"):
-                run_id = trigger_data_quality(
-                    dq_job_name="dq-job",
-                    table_name="tb_content",
-                    database="db_unified",
-                    year="2025",
-                )
+            run_id = trigger_data_quality(
+                dq_job_name="dq-job",
+                table_name="tb_content",
+                database="db_unified",
+                year="2025",
+            )
         assert run_id == "run-xyz"
         arguments = mock_client.start_job_run.call_args.kwargs["Arguments"]
         assert arguments["--YEAR"] == "2025"
-
-    def test_aguarda_conclusao_apos_estado_succeeded(self):
-        mock_client = MagicMock()
-        mock_client.start_job_run.return_value = {"JobRunId": "run-abc"}
-        mock_client.get_job_run.side_effect = [
-            {"JobRun": {"JobRunState": "RUNNING"}},
-            {"JobRun": {"JobRunState": "SUCCEEDED"}},
-        ]
-        with patch("src.utils.boto3.client", return_value=mock_client):
-            with patch("src.utils.time.sleep") as mock_sleep:
-                trigger_data_quality(dq_job_name="dq-job", table_name="tb", database="db")
-        assert mock_client.get_job_run.call_count == 2
-        assert mock_sleep.call_count == 1
-
-    def test_aguarda_multiplas_iteracoes_ate_estado_terminal(self):
-        mock_client = MagicMock()
-        mock_client.start_job_run.return_value = {"JobRunId": "run-xyz"}
-        mock_client.get_job_run.side_effect = [
-            {"JobRun": {"JobRunState": "RUNNING"}},
-            {"JobRun": {"JobRunState": "RUNNING"}},
-            {"JobRun": {"JobRunState": "FAILED"}},
-        ]
-        with patch("src.utils.boto3.client", return_value=mock_client):
-            with patch("src.utils.time.sleep"):
-                trigger_data_quality(dq_job_name="dq-job", table_name="tb", database="db")
-        assert mock_client.get_job_run.call_count == 3
