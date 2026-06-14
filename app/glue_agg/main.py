@@ -23,7 +23,7 @@ logger = logging.getLogger()
 
 
 def main() -> None:
-    """Executa o pipeline de agregação: query Athena → tradução → escrita no SPEC."""
+    """Executa o pipeline de agregação: query Athena → escrita no SPEC → aciona DQ."""
     args = get_parameters_glue()
 
     s3_bucket_spec = args["S3_BUCKET_SPEC"]

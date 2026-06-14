@@ -3,7 +3,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   description  = "Glue AGG Job — unifica discover movie e tv no bucket SPEC"
   role_arn     = aws_iam_role.glue_agg_role.arn
   max_retries  = 0
-  timeout      = 15
+  timeout      = 30
   max_capacity = local.pythonshell_min_capacity
 
   command {

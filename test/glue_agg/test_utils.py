@@ -1,8 +1,7 @@
-from unittest.mock import patch
+import pytest
+from unittest.mock import patch, MagicMock
 
 import pandas as pd
-
-from unittest.mock import MagicMock
 
 from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, trigger_data_quality, write_parquet_to_spec
 
@@ -130,6 +129,12 @@ class TestWriteParquetToSpec:
             assert kwargs["database"] == "db_spec"
             assert kwargs["table"] == "tb_unified"
 
+    def test_levanta_runtime_error_quando_nenhum_arquivo_escrito(self):
+        df = pd.DataFrame({"col": [1]})
+        with patch("awswrangler.s3.to_parquet", return_value={"paths": []}):
+            with pytest.raises(RuntimeError, match="Escrita falhou"):
+                write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+
 
 class TestGetResolvedOption:
     def test_delegates_to_getResolvedOptions(self):
@@ -164,12 +169,14 @@ class TestTriggerDataQuality:
     def test_inicia_job_sem_year(self):
         mock_client = MagicMock()
         mock_client.start_job_run.return_value = {"JobRunId": "run-abc"}
+        mock_client.get_job_run.return_value = {"JobRun": {"JobRunState": "SUCCEEDED"}}
         with patch("src.utils.boto3.client", return_value=mock_client):
-            run_id = trigger_data_quality(
-                dq_job_name="dq-job",
-                table_name="tb_content",
-                database="db_unified",
-            )
+            with patch("src.utils.time.sleep"):
+                run_id = trigger_data_quality(
+                    dq_job_name="dq-job",
+                    table_name="tb_content",
+                    database="db_unified",
+                )
         assert run_id == "run-abc"
         call_args = mock_client.start_job_run.call_args
         arguments = call_args.kwargs["Arguments"]
@@ -180,13 +187,41 @@ class TestTriggerDataQuality:
     def test_inicia_job_com_year(self):
         mock_client = MagicMock()
         mock_client.start_job_run.return_value = {"JobRunId": "run-xyz"}
+        mock_client.get_job_run.return_value = {"JobRun": {"JobRunState": "SUCCEEDED"}}
         with patch("src.utils.boto3.client", return_value=mock_client):
-            run_id = trigger_data_quality(
-                dq_job_name="dq-job",
-                table_name="tb_content",
-                database="db_unified",
-                year="2025",
-            )
+            with patch("src.utils.time.sleep"):
+                run_id = trigger_data_quality(
+                    dq_job_name="dq-job",
+                    table_name="tb_content",
+                    database="db_unified",
+                    year="2025",
+                )
         assert run_id == "run-xyz"
         arguments = mock_client.start_job_run.call_args.kwargs["Arguments"]
         assert arguments["--YEAR"] == "2025"
+
+    def test_aguarda_conclusao_apos_estado_succeeded(self):
+        mock_client = MagicMock()
+        mock_client.start_job_run.return_value = {"JobRunId": "run-abc"}
+        mock_client.get_job_run.side_effect = [
+            {"JobRun": {"JobRunState": "RUNNING"}},
+            {"JobRun": {"JobRunState": "SUCCEEDED"}},
+        ]
+        with patch("src.utils.boto3.client", return_value=mock_client):
+            with patch("src.utils.time.sleep") as mock_sleep:
+                trigger_data_quality(dq_job_name="dq-job", table_name="tb", database="db")
+        assert mock_client.get_job_run.call_count == 2
+        assert mock_sleep.call_count == 1
+
+    def test_aguarda_multiplas_iteracoes_ate_estado_terminal(self):
+        mock_client = MagicMock()
+        mock_client.start_job_run.return_value = {"JobRunId": "run-xyz"}
+        mock_client.get_job_run.side_effect = [
+            {"JobRun": {"JobRunState": "RUNNING"}},
+            {"JobRun": {"JobRunState": "RUNNING"}},
+            {"JobRun": {"JobRunState": "FAILED"}},
+        ]
+        with patch("src.utils.boto3.client", return_value=mock_client):
+            with patch("src.utils.time.sleep"):
+                trigger_data_quality(dq_job_name="dq-job", table_name="tb", database="db")
+        assert mock_client.get_job_run.call_count == 3

@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import time
 from typing import Any, Dict, Optional
 
 import awswrangler as wr
@@ -444,7 +445,7 @@ def write_parquet_to_spec(
         f"Escrevendo {len(df)} registros em {s3_path} | "
         f"particoes=[media_type, year] | mode=overwrite"
     )
-    wr.s3.to_parquet(
+    result = wr.s3.to_parquet(
         df=df,
         path=s3_path,
         dataset=True,
@@ -453,7 +454,13 @@ def write_parquet_to_spec(
         database=database,
         table=table_name,
     )
-    logger.info(f"Tabela '{table_name}' gravada com sucesso no SPEC.")
+    written_files = result.get("paths", [])
+    if not written_files:
+        raise RuntimeError(
+            f"Escrita falhou: nenhum arquivo encontrado em '{s3_path}' após gravação. "
+            "Abortando para não acionar o DQ contra dados ausentes."
+        )
+    logger.info(f"Tabela '{table_name}' gravada com sucesso no SPEC. {len(written_files)} arquivo(s) gravado(s).")
 
 
 def trigger_data_quality(
@@ -463,7 +470,11 @@ def trigger_data_quality(
     year: Optional[str] = None,
 ) -> str:
     """
-    Dispara o job Glue Data Quality sem aguardar.
+    Dispara o job Glue Data Quality e aguarda sua conclusão.
+
+    Aguardar é necessário para garantir que o DQ leia os arquivos S3 escritos
+    por este job antes que um próximo run do EventBridge possa sobrescrevê-los
+    com mode="overwrite" (que apaga todos os arquivos antes de reescrever).
 
     Args:
         dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
@@ -490,4 +501,15 @@ def trigger_data_quality(
     logger.info(
         f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}"
     )
+
+    terminal_states = {"SUCCEEDED", "FAILED", "ERROR", "TIMEOUT", "STOPPED"}
+    while True:
+        state = glue_client.get_job_run(
+            JobName=dq_job_name, RunId=run_id
+        )["JobRun"]["JobRunState"]
+        if state in terminal_states:
+            logger.info(f"Job Data Quality '{dq_job_name}' concluído com status '{state}'.")
+            break
+        time.sleep(30)
+
     return run_id
