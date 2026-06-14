@@ -1,5 +1,5 @@
-# Raciocínio: desliga a instância Lightsail às 23:00 BRT e a reinicia às 08:00 BRT
-# para economizar ~37% do custo mensal sem prejuízo de disponibilidade diurna.
+# Raciocínio: desliga a instância Lightsail à 00:00 BRT e a reinicia às 18:00 BRT
+# (seg–sex) ou 08:00 BRT (sáb–dom) para economizar custo sem prejuízo de disponibilidade.
 # Ativo apenas quando var.lightsail_enabled = true (produção).
 
 data "archive_file" "lightsail_scheduler_bundle" {
@@ -104,8 +104,8 @@ resource "aws_lambda_function" "lightsail_scheduler" {
 resource "aws_cloudwatch_event_rule" "lightsail_stop" {
   count               = var.lightsail_enabled ? 1 : 0
   name                = "lightsail-stop-${var.env}"
-  description         = "Para a instância Lightsail FilmBot às 23:00 BRT"
-  schedule_expression = "cron(00 02 * * ? *)"
+  description         = "Para a instância Lightsail FilmBot à 00:00 BRT"
+  schedule_expression = "cron(00 03 ? * * *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_scheduler
 }
@@ -127,28 +127,54 @@ resource "aws_lambda_permission" "allow_eventbridge_lightsail_stop" {
   source_arn    = aws_cloudwatch_event_rule.lightsail_stop[0].arn
 }
 
-resource "aws_cloudwatch_event_rule" "lightsail_start" {
+resource "aws_cloudwatch_event_rule" "lightsail_start_weekday" {
   count               = var.lightsail_enabled ? 1 : 0
-  name                = "lightsail-start-${var.env}"
-  description         = "Inicia a instância Lightsail FilmBot às 08:00 BRT"
-  schedule_expression = "cron(00 11 * * ? *)"
+  name                = "lightsail-start-weekday-${var.env}"
+  description         = "Inicia a instância Lightsail FilmBot às 18:00 BRT (seg–sex)"
+  schedule_expression = "cron(00 21 ? * MON-FRI *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_scheduler
 }
 
-resource "aws_cloudwatch_event_target" "lightsail_start_target" {
+resource "aws_cloudwatch_event_target" "lightsail_start_weekday_target" {
   count     = var.lightsail_enabled ? 1 : 0
-  rule      = aws_cloudwatch_event_rule.lightsail_start[0].name
-  target_id = "lightsail-start"
+  rule      = aws_cloudwatch_event_rule.lightsail_start_weekday[0].name
+  target_id = "lightsail-start-weekday"
   arn       = aws_lambda_function.lightsail_scheduler[0].arn
   input     = jsonencode({ action = "start" })
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_lightsail_start" {
+resource "aws_lambda_permission" "allow_eventbridge_lightsail_start_weekday" {
   count         = var.lightsail_enabled ? 1 : 0
-  statement_id  = "AllowEventBridgeLightsailStartExecution"
+  statement_id  = "AllowEventBridgeLightsailStartWeekdayExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.lightsail_scheduler[0].function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lightsail_start[0].arn
+  source_arn    = aws_cloudwatch_event_rule.lightsail_start_weekday[0].arn
+}
+
+resource "aws_cloudwatch_event_rule" "lightsail_start_weekend" {
+  count               = var.lightsail_enabled ? 1 : 0
+  name                = "lightsail-start-weekend-${var.env}"
+  description         = "Inicia a instância Lightsail FilmBot às 08:00 BRT (sáb–dom)"
+  schedule_expression = "cron(00 11 ? * SAT-SUN *)"
+  state               = local.eventbridge_schedule_state
+  tags                = local.component_tags.lightsail_scheduler
+}
+
+resource "aws_cloudwatch_event_target" "lightsail_start_weekend_target" {
+  count     = var.lightsail_enabled ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.lightsail_start_weekend[0].name
+  target_id = "lightsail-start-weekend"
+  arn       = aws_lambda_function.lightsail_scheduler[0].arn
+  input     = jsonencode({ action = "start" })
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_lightsail_start_weekend" {
+  count         = var.lightsail_enabled ? 1 : 0
+  statement_id  = "AllowEventBridgeLightsailStartWeekendExecution"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lightsail_scheduler[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.lightsail_start_weekend[0].arn
 }

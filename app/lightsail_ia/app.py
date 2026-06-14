@@ -370,17 +370,18 @@ if st.button("Recomendar", type="primary") and preferencia:
             # Gera os badges de plataformas de streaming e cinema
             # (streaming_providers é uma string "Netflix, Prime Video, Max")
             providers_html = ""
-            cinema_badge = ""
+            cinema_html = ""
             if in_theaters:
                 label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
-                cinema_badge = f'<span class="cinema-badge">🎬 {label}</span>'
-            if streaming_providers or cinema_badge:
+                cinema_html = f'<div class="meta-row"><span class="meta-icon">🎬</span><span class="cinema-badge">{label}</span></div>'
+            providers_html = ""
+            if streaming_providers:
                 stream_badges = "".join(
                     f'<span class="provider">{p.strip()}</span>'
                     for p in streaming_providers.split(",")
                     if p.strip()
-                ) if streaming_providers else ""
-                providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{cinema_badge}{stream_badges}</div>'
+                )
+                providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{stream_badges}</div>'
 
             # Monta o HTML completo de um card
             cards_html.append(f"""
@@ -395,6 +396,7 @@ if st.button("Recomendar", type="primary") and preferencia:
                 {f'<div class="meta-row"><span class="meta-icon">★</span><span class="nota">{nota}</span></div>' if nota else ''}
                 {f'<div class="meta-row"><span class="meta-icon">⏱</span><span class="duracao">{duracao}</span></div>' if duracao else ''}
                 {f'<div class="meta-row"><span class="meta-icon">📅</span><span class="data-lancamento">{data_lancamento}</span></div>' if data_lancamento else ''}
+                {cinema_html}
                 {providers_html}
                 <p class="sinopse">{sinopse}</p>
                 <p class="motivo">💡 {motivo}</p>
