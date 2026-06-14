@@ -72,14 +72,22 @@ test/lambda_api/
 
 Testa individualmente as funções de `src/utils.py`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
 
+### `fetch_tmdb_data` e `fetch_tmdb_reference`
+
+Funções de HTTP de baixo nível: `requests.get` chamado com URL e `api_key` corretos; retorno correto do payload; tratamento de resposta vazia ou erro de rede.
+
+### `collect_watch_providers_ref`
+
+9 testes verificando coleta de plataformas de streaming de referência: path S3 correto por `content_type` (movie/tv); JSON salvo no S3; múltiplas páginas processadas corretamente.
+
 ### `collect_now_playing_data`
 
 | Teste | O que verifica |
 |---|---|
-| `test_dados_salvos_incluem_datas_teatrais` | Cada registro salvo contém `theater_start_date` e `theater_end_date` extraídos do campo `dates` da API |
-| `test_salva_uma_pagina_por_arquivo` | Número de arquivos salvos no S3 corresponde ao número de páginas retornadas |
-| `test_salva_arquivo_mesmo_com_uma_pagina` | Funciona corretamente quando a API retorna apenas uma página |
-| `test_s3_key_usa_prefixo_now_playing` | Chave S3 segue o padrão `tmdb/now_playing/movie/pagina_001.json` |
+| `test_pagina_unica_enriquece_com_datas_teatrais` | Registro salvo contém `theater_start_date` e `theater_end_date` extraídos do campo `dates` da API |
+| `test_multiplas_paginas_salva_cada_uma` | Número de arquivos salvos no S3 corresponde ao número de páginas retornadas |
+| `test_para_quando_page_maior_que_total_pages` | Paginação para quando `page > total_pages` retornado pela API |
+| `test_s3_key_tem_formato_correto` | Chave S3 segue o padrão `tmdb/now_playing/movie/pagina_001.json` |
 
 ## Como executar
 

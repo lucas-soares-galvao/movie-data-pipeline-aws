@@ -178,7 +178,8 @@ def buscar_titulos_spec(
                vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
-               streaming_providers
+               streaming_providers,
+               in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_discover_unified_tmdb')}
         WHERE {" AND ".join(filtros)}
         ORDER BY popularity DESC
@@ -242,7 +243,8 @@ def recomendar(preferencia: str) -> list[dict]:
 
     Returns:
         Lista de dicionários, cada um com: titulo, tipo, ano, generos, sinopse,
-        nota, poster_url, backdrop_url, motivo, duracao, streaming_providers.
+        nota, poster_url, backdrop_url, motivo, duracao, streaming_providers,
+        in_theaters, theater_end_date.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
     """
 
@@ -318,6 +320,9 @@ def recomendar(preferencia: str) -> list[dict]:
                     "Se todos os dados de duração forem null, defina duracao como null. "
                     "Copie streaming_providers exatamente como recebido (ex: 'Netflix, Amazon Prime Video'), "
                     "ou null se o campo estiver ausente ou vazio. "
+                    "in_theaters: booleano (true/false) copiado do campo in_theaters; use false se ausente. "
+                    "theater_end_date: string no formato 'DD/MM/YYYY' convertida a partir do campo theater_end_date "
+                    "(formato 'YYYY-MM-DD'), ou null se o campo estiver ausente, vazio ou in_theaters for false. "
                     "Responda APENAS com o JSON, sem texto extra. "
                     "Responda sempre em português. "
                     "Se a sinopse de algum título estiver em inglês, traduza-a para o português antes de exibir."

@@ -38,7 +38,7 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 ### Computação — Glue Jobs (`glue_etl.tf`, `glue_details.tf`, `glue_agg.tf`, `glue_data_quality.tf`)
 
-4 jobs Glue, cada um com:
+4 jobs Glue. Os jobs ETL, Details e AGG são do tipo **PythonShell** (Glue 3.9). O job Data Quality é do tipo **Spark (`glueetl`)** (Glue 5.0, 2 workers G.1X, execução FLEX) — exigido pela API `EvaluateDataQuality` da AWS. Cada job tem:
 - Worker type e número de workers configurados por ambiente
 - Wheel Python gerado por `infra/scripts/build_glue_wheel.py` e enviado ao bucket AUX
 - Argumentos padrão definidos no Terraform (buckets, nomes de tabelas, databases)
@@ -46,25 +46,43 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 ### Catálogo — Glue Catalog (`glue_catalog.tf`)
 
-3 databases e ~14 tabelas registradas:
+3 databases e 16 tabelas registradas via Terraform:
 
 | Database | Tabelas |
 |---|---|
 | `db_movie_tmdb` | discover, genre, configuration_languages, details, watch_providers, watch_providers_ref, now_playing |
 | `db_tv_tmdb` | discover, genre, configuration_countries, details, watch_providers, watch_providers_ref |
-| `db_unified_tmdb` | tb_discover_unified_tmdb (tabela SPEC), tb_data_quality_tmdb |
+| `db_unified_tmdb` | tb_data_quality_tmdb |
+
+> `tb_discover_unified_tmdb` (tabela SPEC) não é declarada via Terraform — é registrada dinamicamente pelo job Glue AGG em runtime.
 
 > A tabela `now_playing` não possui partição de ano — é um snapshot completo sobrescrito diariamente (`mode=overwrite`), diferente das tabelas `discover` que são particionadas por ano. Inclui os campos `theater_start_date` e `theater_end_date` com a janela de exibição reportada pela API do TMDB.
 
 ### Agendamento — EventBridge (`eventbridge_lambda_api.tf`)
 
-2 regras de schedule:
-- **Diária** (`only_discover=True`): coleta filmes/séries novos do discover e filmes atualmente em cartaz nos cinemas (now_playing)
-- **Mensal (dia 1)** (`skip_daily=True`): atualiza apenas dados de referência (gêneros, idiomas, plataformas) — não inclui now_playing
+4 regras de schedule, separadas por tipo de mídia:
+
+| Regra | Frequência | Horário | Comportamento |
+|---|---|---|---|
+| `lambda_api_movie_daily` | Diária | 19:00 BRT (22:00 UTC) | `only_discover=true` — filmes novos + now_playing |
+| `lambda_api_tv_daily` | Diária | 19:05 BRT (22:05 UTC) | `only_discover=true` — séries novas |
+| `lambda_api_movie_monthly` | Dia 1 do mês | 09:00 BRT (12:00 UTC) | `skip_daily=true` — atualiza gêneros, idiomas, plataformas |
+| `lambda_api_tv_monthly` | Dia 1 do mês | 09:05 BRT (12:05 UTC) | `skip_daily=true` — atualiza gêneros, países, plataformas |
 
 ### Notificações — SNS (`sns_topics.tf`)
 
-Um tópico SNS por componente do pipeline (Lambda, Glue ETL, Glue Details, Glue AGG, Glue DQ, EventBridge). Cada tópico envia alertas para um e-mail específico configurado em `.tfvars`.
+8 tópicos SNS, um por evento relevante do pipeline. Cada tópico envia alertas para um e-mail configurado em `.tfvars`:
+
+| Tópico | Evento |
+|---|---|
+| `lambda-failure-notifications` | Falha na Lambda API |
+| `eventbridge-failure-notifications` | Falha no agendamento EventBridge |
+| `glue-etl-failure-notifications` | Falha no job ETL |
+| `glue-details-failure-notifications` | Falha no job Details |
+| `glue-agg-failure-notifications` | Falha no job AGG |
+| `glue-agg-success-notifications` | Sucesso do job AGG |
+| `glue-data-quality-failure-notifications` | Falha nas regras de DQ |
+| `glue-data-quality-metrics-notifications` | Métricas de DQ (resultados das regras) |
 
 ### Observabilidade — CloudWatch (`cloudwatch_alarms.tf`, `cloudwatch_glue_alarms.tf`, `cloudwatch_logs.tf`)
 
@@ -76,18 +94,23 @@ Um tópico SNS por componente do pipeline (Lambda, Glue ETL, Glue Details, Glue 
 
 ### Servidor — Lightsail (`lightsail_ia.tf`)
 
-- Instância `filmbot-{env}` (`micro_3_0` — 1 vCPU, 1 GB RAM, $5/mês) para hospedar o app Streamlit
-- Portas abertas: 8501 (Streamlit) e 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`)
+- Instância `filmbot-{env}` (`micro_3_0` — 2 vCPU, 1 GB RAM, $7/mês) para hospedar o app Streamlit
+- Portas abertas: 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`), 80 (HTTP), 443 (HTTPS) e 8501 (Streamlit)
 - IP estático fixo (`filmbot-static-ip-{env}`) para URL estável
 - IAM user `filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
 - Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
+
+**Agendamento de custo** (`lightsail_scheduler.tf`): Lambda + EventBridge que liga a instância às **08:00 BRT** (`cron(00 11 * * ? *)`) e desliga às **23:00 BRT** (`cron(00 02 * * ? *)`), economizando ~37% do custo mensal. Habilitado apenas quando `lightsail_enabled = true`.
 
 ### Permissões — IAM (`iam_roles.tf`, `iam_policies.tf`)
 
 | Role | Usada por | Permissões principais |
 |---|---|---|
 | `lambda-role` | Lambda API | S3 (SOR), Glue (start_job_run), Secrets Manager |
-| `glue-job-role-etl` | Todos os jobs Glue | S3 (todos os buckets), Glue Catalog, Athena, SNS, CloudWatch |
+| `glue-job-role-etl-{env}` | Glue ETL | S3 (todos os buckets), Glue Catalog, Athena, SNS, CloudWatch |
+| `glue-job-role-etl-dq` | Glue Data Quality | S3 (SOR, SOT, DQ), Glue Catalog, SNS, CloudWatch |
+| `glue-job-role-etl-agg` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, SNS, CloudWatch |
+| `glue-job-role-etl-details` | Glue Details | S3 (SOR, SOT), Glue Catalog, SNS, CloudWatch |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
@@ -130,4 +153,4 @@ python infra/scripts/build_lambda_package.py   # gera zip da Lambda
 python infra/scripts/build_glue_wheel.py       # gera wheel dos jobs Glue
 ```
 
-No CI/CD, esse processo é automatizado pelo workflow `02_terraform.yml`.
+No CI/CD, o build da Lambda é automatizado pelo workflow `02_terraform.yml`. O wheel do Glue (`build_glue_wheel.py`) deve ser gerado e enviado ao bucket AUX manualmente antes do primeiro `apply` — após isso, só precisa ser regerado quando o código dos jobs Glue mudar.

@@ -300,7 +300,7 @@ def collect_now_playing_data(api_key: str, s3_client, bucket: str) -> None:
     url = "https://api.themoviedb.org/3/movie/now_playing"
 
     for page in range(1, MAX_PAGES + 1):
-        data = _tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "page": page})
+        data = _tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "region": "BR", "page": page})
 
         total_pages = data.get("total_pages", 0)
         if page > total_pages:

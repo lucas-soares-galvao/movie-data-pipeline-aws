@@ -2,7 +2,7 @@
 
 ## O que é
 
-O Glue AGG é o estágio final de transformação do pipeline. Acionado pelo Glue Details após todos os detalhes de filmes e séries estarem prontos, ele une todas as tabelas da camada SOT em uma única tabela consolidada na camada SPEC (Gold). Traduz títulos e sinopses do inglês para o português e grava o resultado pronto para consumo pelo aplicativo de recomendações (FilmBot).
+O Glue AGG é o estágio final de transformação do pipeline. Acionado pelo Glue Details após todos os detalhes de filmes e séries estarem prontos, ele une todas as tabelas da camada SOT em uma única tabela consolidada na camada SPEC (Gold) e grava o resultado pronto para consumo pelo aplicativo de recomendações (FilmBot).
 
 ## Por que existe
 
@@ -13,7 +13,6 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
 - **SPEC / Gold layer** — a camada final e mais refinada do pipeline. Contém uma única tabela com todos os dados integrados, sem duplicatas, já traduzidos e prontos para consumo direto pelo app. É chamada de "Gold" porque é o produto acabado de todo o processamento anterior.
 - **DENSE_RANK** — função SQL de janela (window function) que atribui uma posição a cada linha dentro de um grupo. Aqui é usada para identificar o registro mais recente de watch providers por filme/série: rank=1 significa "do ano mais recente disponível", e só esses registros são incluídos na saída.
 - **CTE (Common Table Expression)** — blocos SQL nomeados com `WITH nome AS (...)` que simplificam queries complexas, permitindo referenciar o resultado de uma subquery por nome em vez de aninhar selects.
-- **ThreadPoolExecutor** — utilitário Python para rodar várias tarefas em paralelo usando threads. Aqui é usado para chamar a API de tradução para múltiplos títulos ao mesmo tempo, reduzindo o tempo total de espera.
 
 ## Como funciona
 
@@ -23,7 +22,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
    - Deduplica watch providers por `DENSE_RANK` sobre o ano mais recente (CTEs `movie_wp_recent` / `tv_wp_recent`), preservando todos os provedores do ano mais recente por ID
    - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas), plataformas de streaming e a tabela `now_playing` (para filmes em cartaz nos cinemas)
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
-3. Traduz as colunas `title` e `overview` do inglês para o português para registros cujo idioma original é inglês — em paralelo via `ThreadPoolExecutor` usando a API do Google Translate
+3. Seleciona `title_pt` e `overview_pt` já traduzidos — a tradução é feita pelo Glue Details e armazenada nas tabelas `tb_details_*`; o AGG as lê via `COALESCE` no SQL
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC
 5. O AWS Wrangler registra automaticamente a tabela no Glue Catalog (`db_unified_tmdb`)
 6. Aciona o Glue Data Quality para validar a tabela unificada completa (sem filtro de ano)
@@ -70,7 +69,6 @@ LEFT JOIN tb_now_playing_movie_tmdb np ON np.id = u.id AND u.media_type = 'movie
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job (inclui `GLUE_DATA_QUALITY_JOB_NAME`) |
 | `run_athena_query(db_movie, db_tv, db_unified, s3_bucket_temp)` | Executa o SQL de unificação (com dedup de watch providers por `DENSE_RANK`, dedup final por `spec_deduped` e LEFT JOIN com `now_playing` para enriquecer filmes com `in_theaters`, `theater_start_date`, `theater_end_date`) e retorna um DataFrame |
-| `traduzir_colunas_en(df)` | Traduz `title` e `overview` inglês→português em paralelo |
 | `write_parquet_to_spec(df, s3_bucket_spec, table_name, database)` | Grava Parquet com `mode="overwrite"` particionado por `(media_type, year)` na SPEC e registra no Glue Catalog |
 | `trigger_data_quality(dq_job_name, table_name, database, year=None)` | Aciona o job de Data Quality; quando `year=None`, avalia a tabela inteira |
 
@@ -78,5 +76,3 @@ LEFT JOIN tb_now_playing_movie_tmdb np ON np.id = u.id AND u.media_type = 'movie
 
 - **awswrangler** — consulta Athena, escrita Parquet, registro no Glue Catalog
 - **pandas** — manipulação do DataFrame resultante
-- **deep-translator** — biblioteca Python open-source para tradução de título e sinopse (usa o Google Translate sem a API paga do Google Cloud)
-- **ThreadPoolExecutor** — paralelização das traduções

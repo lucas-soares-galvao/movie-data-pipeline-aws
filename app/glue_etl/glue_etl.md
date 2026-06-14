@@ -56,7 +56,7 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
 | `read_from_sor(bucket, media_type, table_type, year)` | Lê JSON/Parquet da camada SOR |
 | `write_parquet_to_sot(df, bucket, table_name, database, partition_cols, mode)` | Escreve Parquet e registra no Glue Catalog via AWS Wrangler |
-| `normalize_watch_providers(df)` | Padroniza nomes de plataformas de streaming (ex: "Netflix" ao invés de variantes) |
+| `derive_canonical_name(name)` | Padroniza um nome de plataforma de streaming (ex: "Netflix Standard with Ads" → "Netflix"); usada internamente por `read_from_sor()` |
 | `trigger_data_quality(dq_job_name, table_name, database, year)` | Aciona o job de qualidade de dados |
 | `trigger_details(details_job_name, media_type, year, end_year, database)` | Aciona o job de enriquecimento de detalhes |
 

@@ -53,10 +53,10 @@ Recebe os dados brutos coletados e os organiza em um formato estruturado e efici
 Verifica se os dados estão corretos antes de avançar no pipeline. Checa se há registros duplicados, se os campos obrigatórios estão preenchidos, se as notas estão dentro do intervalo válido, entre outras regras. Se algo estiver errado, envia uma notificação por e-mail.
 
 ### Enriquecedor (Glue Details)
-Busca informações complementares para cada filme e série: duração dos filmes, número de temporadas e episódios das séries, e as plataformas de streaming onde estão disponíveis no Brasil. Ao terminar os filmes e séries, aciona o unificador.
+Busca informações complementares para cada filme e série: duração dos filmes, número de temporadas e episódios das séries, e as plataformas de streaming onde estão disponíveis no Brasil. Também traduz títulos e sinopses do inglês para o português. Ao terminar, aciona o unificador.
 
 ### Unificador (Glue AGG)
-Junta tudo — filmes e séries, com todos os seus detalhes — em uma única tabela final. Também traduz títulos e sinopses do inglês para o português. Enriquece cada filme com a informação de se está atualmente em cartaz nos cinemas (`in_theaters`) e, quando aplicável, as datas de início e fim da janela teatral. Essa tabela é a fonte de dados do aplicativo de recomendações.
+Junta tudo — filmes e séries, com todos os seus detalhes — em uma única tabela final. Enriquece cada filme com a informação de se está atualmente em cartaz nos cinemas (`in_theaters`) e, quando aplicável, as datas de início e fim da janela teatral. Essa tabela é a fonte de dados do aplicativo de recomendações.
 
 ### Aplicativo de recomendações (FilmBot — Lightsail)
 Interface web onde o usuário digita o que quer assistir em linguagem natural. Um agente de IA interpreta o pedido, consulta a base de dados e retorna recomendações personalizadas com pôster, sinopse, avaliação, duração e onde assistir.
@@ -75,9 +75,13 @@ O pipeline é acionado automaticamente por um agendador (EventBridge) e cada eta
 
 Qualquer alteração no código passa por um processo automatizado de validação antes de chegar à produção:
 
-1. Os testes automatizados são executados
-2. A infraestrutura é aplicada no ambiente de destino
-3. Um Pull Request é criado automaticamente para revisão
+| Branch | O que acontece |
+|---|---|
+| `feature/*` | Testes (lint, cobertura ≥ 80%, type check, segurança) → PR automático para `develop` |
+| `develop` | Terraform apply no ambiente `dev` → PR automático para `main` |
+| `main` | Terraform apply no ambiente `prod` → deploy do FilmBot no Lightsail |
+
+O pipeline é orquestrado por 5 workflows em `.github/workflows/`. Consulte [`.github/workflow.md`](.github/workflow.md) para a documentação completa.
 
 ---
 

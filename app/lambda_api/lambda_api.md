@@ -2,7 +2,7 @@
 
 ## O que é
 
-A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em dois agendamentos: diário (coleta só discover) e semanal (coleta também dados de referência). Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
+A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em dois agendamentos: diário (coleta só discover) e mensal (coleta dados de referência). Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
 
 ## Por que existe
 
@@ -17,7 +17,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`skip_daily=True`** (execução mensal de referências): pula o loop de discover.
    - Sem flags: coleta tudo.
 4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL.
-5. Para dados de discover: itera por cada ano (`start_year` = ano atual − 1, até o ano atual), faz requisições paginadas à API, salva um arquivo JSON por ano no S3 SOR e aciona o Glue ETL para aquele ano.
+5. Para dados de discover: itera por cada ano (`start_year` padrão = ano atual − 1; `end_year` padrão = ano atual, se não fornecidos no evento), faz requisições paginadas à API, salva um arquivo JSON por ano no S3 SOR e aciona o Glue ETL para aquele ano.
 6. Para filmes (`content_type="movie"`), após o loop de discover, coleta também os filmes em cartaz nos cinemas via `collect_now_playing_data()`: pagina o endpoint `/movie/now_playing`, extrai as datas da janela teatral (`theater_start_date`, `theater_end_date`) e salva os resultados no S3 SOR, depois aciona o Glue ETL com `table_type="now_playing"`. Esse passo é condicional: só ocorre se `table_now_playing` estiver presente no evento.
 
 ## Entradas e saídas
@@ -38,8 +38,8 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 | `collect_configuration_data(...)` | Coleta lista de idiomas ou países |
 | `collect_watch_providers_ref(...)` | Coleta lista de plataformas de streaming disponíveis |
 | `collect_discover_data(...)` | Coleta filmes/séries populares de um ano (paginado) |
-| `collect_now_playing_data(...)` | Coleta filmes em cartaz nos cinemas (paginado), extrai datas de janela teatral e salva no S3 SOR |
-| `trigger_glue_job(job_name, client, args, ...)` | Aciona o Glue ETL com argumentos dinâmicos |
+| `collect_now_playing_data(...)` | Coleta filmes em cartaz nos cinemas no Brasil (`region=BR`, paginado), extrai datas de janela teatral e salva no S3 SOR |
+| `trigger_glue_job(glue_client, job_name, glue_catalog_args, table_type, table_name, year, end_year)` | Aciona o Glue ETL com argumentos dinâmicos; retorna o `JobRunId` |
 
 ## Tecnologias
 

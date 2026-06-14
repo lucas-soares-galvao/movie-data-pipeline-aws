@@ -34,7 +34,7 @@ flowchart TD
 | `push` | `feature/*` | test → PR feature→develop |
 | `push` | `develop` | terraform (dev) → PR develop→main |
 | `push` | `main` | terraform (prod) → deploy (prod) |
-| `workflow_dispatch` | — | terraform → deploy apenas se ambiente = prod |
+| `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy apenas se ambiente = prod |
 
 ---
 

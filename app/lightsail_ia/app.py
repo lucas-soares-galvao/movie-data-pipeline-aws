@@ -265,6 +265,16 @@ st.markdown("""
     margin: 2px;
     vertical-align: middle;
   }
+  .cinema-badge {
+    background: rgba(250,204,21,0.15);
+    color: #fbbf24;
+    border-radius: 99px;
+    padding: 2px 8px;
+    font-size: 11px;
+    display: inline-block;
+    margin: 2px;
+    vertical-align: middle;
+  }
   .providers-row {
     display: flex;
     align-items: center;
@@ -343,6 +353,8 @@ if st.button("Recomendar", type="primary") and preferencia:
             duracao = " · ".join(part.strip() for part in duracao.split(" · ") if part.strip())
             data_lancamento = t.get("data_lancamento") or ""
             streaming_providers = t.get("streaming_providers") or ""
+            in_theaters = t.get("in_theaters") or False
+            theater_end_date = t.get("theater_end_date") or ""
 
             # HTML da imagem do card (largura 100%, altura fixa 200px, crop centralizado)
             img_html = (
@@ -355,16 +367,20 @@ if st.button("Recomendar", type="primary") and preferencia:
                 f'<span class="genero">{g.strip()}</span>' for g in generos
             )
 
-            # Gera os badges de plataformas de streaming
+            # Gera os badges de plataformas de streaming e cinema
             # (streaming_providers é uma string "Netflix, Prime Video, Max")
             providers_html = ""
-            if streaming_providers:
-                badges = "".join(
+            cinema_badge = ""
+            if in_theaters:
+                label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
+                cinema_badge = f'<span class="cinema-badge">🎬 {label}</span>'
+            if streaming_providers or cinema_badge:
+                stream_badges = "".join(
                     f'<span class="provider">{p.strip()}</span>'
                     for p in streaming_providers.split(",")
                     if p.strip()
-                )
-                providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{badges}</div>'
+                ) if streaming_providers else ""
+                providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{cinema_badge}{stream_badges}</div>'
 
             # Monta o HTML completo de um card
             cards_html.append(f"""
