@@ -417,15 +417,15 @@ class TestLambdaHandler(unittest.TestCase):
             self.assertEqual(chamada[1].get("end_year"), 2026)
 
 
-class TestSkipDiscover(unittest.TestCase):
+class TestSkipDaily(unittest.TestCase):
     """
-    Testa o flag skip_discover que pula o loop de discover.
+    Testa o flag skip_daily que pula o loop de discover.
 
-    QUANDO USAR skip_discover:
-      O EventBridge tem dois schedules: um diário (only_discover) e um semanal (skip_discover).
-      skip_discover=True = "atualizo apenas os dados de referência (gêneros, idiomas, países,
-      plataformas de streaming), sem coletar o discover novamente esta semana".
-      Isso economiza chamadas à API TMDB em dias onde os dados de discover não mudam muito.
+    QUANDO USAR skip_daily:
+      O EventBridge tem dois schedules: um diário (only_discover) e um mensal (skip_daily).
+      skip_daily=True = "atualizo apenas os dados de referência (gêneros, idiomas, países,
+      plataformas de streaming), sem coletar o discover novamente este mês".
+      Isso economiza chamadas à API TMDB em execuções onde os dados de discover não precisam ser atualizados.
     """
 
     def setUp(self):
@@ -439,14 +439,14 @@ class TestSkipDiscover(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     @patch("main.datetime")
-    def test_skip_discover_nao_chama_collect_discover(
+    def test_skip_daily_nao_chama_collect_discover(
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config,
         mock_watch_ref, mock_discover, mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025
 
-        main.lambda_handler({**EVENTO_MOVIE, "skip_discover": True}, self.mock_context)
+        main.lambda_handler({**EVENTO_MOVIE, "skip_daily": True}, self.mock_context)
 
         mock_discover.assert_not_called()
 
@@ -458,14 +458,14 @@ class TestSkipDiscover(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     @patch("main.datetime")
-    def test_skip_discover_ainda_coleta_genre_configuration_watch_providers(
+    def test_skip_daily_ainda_coleta_genre_configuration_watch_providers(
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config,
         mock_watch_ref, mock_discover, mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025
 
-        main.lambda_handler({**EVENTO_MOVIE, "skip_discover": True}, self.mock_context)
+        main.lambda_handler({**EVENTO_MOVIE, "skip_daily": True}, self.mock_context)
 
         mock_genre.assert_called_once()
         mock_config.assert_called_once()
@@ -479,14 +479,14 @@ class TestSkipDiscover(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     @patch("main.datetime")
-    def test_skip_discover_glue_acionado_apenas_para_referencias(
+    def test_skip_daily_glue_acionado_apenas_para_referencias(
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config,
         mock_watch_ref, mock_discover, mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025
 
-        main.lambda_handler({**EVENTO_MOVIE, "skip_discover": True}, self.mock_context)
+        main.lambda_handler({**EVENTO_MOVIE, "skip_daily": True}, self.mock_context)
 
         # Apenas genre(1) + configuration(1) + watch_providers_ref(1) = 3; discover não é acionado
         self.assertEqual(mock_trigger.call_count, 3)
@@ -501,14 +501,14 @@ class TestSkipDiscover(unittest.TestCase):
     @patch("main.get_tmdb_api_key")
     @patch("main.boto3")
     @patch("main.datetime")
-    def test_skip_discover_retorna_status_200(
+    def test_skip_daily_retorna_status_200(
         self, mock_dt, mock_boto3, mock_get_key, mock_genre, mock_config,
         mock_watch_ref, mock_discover, mock_trigger,
     ):
         mock_get_key.return_value = "api-key-teste"
         mock_dt.now.return_value.year = 2025
 
-        resposta = main.lambda_handler({**EVENTO_MOVIE, "skip_discover": True}, self.mock_context)
+        resposta = main.lambda_handler({**EVENTO_MOVIE, "skip_daily": True}, self.mock_context)
 
         self.assertEqual(resposta["statusCode"], 200)
 
@@ -622,6 +622,87 @@ class TestOnlyDiscover(unittest.TestCase):
         resposta = main.lambda_handler({**EVENTO_MOVIE, "only_discover": True}, self.mock_context)
 
         self.assertEqual(resposta["statusCode"], 200)
+
+
+class TestNowPlaying(unittest.TestCase):
+    """Testa o bloco condicional de coleta de filmes em cartaz."""
+
+    def setUp(self):
+        self.mock_context = MagicMock()
+        self._evento_com_now_playing = {
+            **EVENTO_MOVIE,
+            "table_now_playing_movie": "now_playing_movie",
+        }
+
+    def _base_patches(self):
+        return [
+            patch("main.collect_now_playing_data"),
+            patch("main.trigger_glue_job"),
+            patch("main.collect_discover_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_genre_data"),
+            patch("main.get_tmdb_api_key"),
+            patch("main.boto3"),
+            patch("main.datetime"),
+        ]
+
+    def test_collect_now_playing_chamado_quando_tabela_presente(self):
+        with (
+            patch("main.collect_now_playing_data") as mock_now,
+            patch("main.trigger_glue_job"),
+            patch("main.collect_discover_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_genre_data"),
+            patch("main.get_tmdb_api_key", return_value="api-key"),
+            patch("main.boto3"),
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = 2025
+
+            main.lambda_handler(self._evento_com_now_playing, self.mock_context)
+
+            mock_now.assert_called_once()
+
+    def test_collect_now_playing_nao_chamado_sem_tabela(self):
+        with (
+            patch("main.collect_now_playing_data") as mock_now,
+            patch("main.trigger_glue_job"),
+            patch("main.collect_discover_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_genre_data"),
+            patch("main.get_tmdb_api_key", return_value="api-key"),
+            patch("main.boto3"),
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = 2025
+
+            main.lambda_handler(EVENTO_MOVIE, self.mock_context)
+
+            mock_now.assert_not_called()
+
+    def test_glue_acionado_com_table_type_now_playing(self):
+        with (
+            patch("main.collect_now_playing_data"),
+            patch("main.trigger_glue_job") as mock_trigger,
+            patch("main.collect_discover_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_genre_data"),
+            patch("main.get_tmdb_api_key", return_value="api-key"),
+            patch("main.boto3"),
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = 2025
+
+            main.lambda_handler(self._evento_com_now_playing, self.mock_context)
+
+            table_types = [c[1].get("table_type") for c in mock_trigger.call_args_list]
+            self.assertIn("now_playing", table_types)
+            chamada_now = next(c for c in mock_trigger.call_args_list if c[1].get("table_type") == "now_playing")
+            self.assertEqual(chamada_now[1].get("table_name"), "now_playing_movie")
 
 
 if __name__ == "__main__":

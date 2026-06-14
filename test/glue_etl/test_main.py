@@ -351,3 +351,66 @@ class TestTriggerDetails:
         ):
             m.main()
             assert mock_details.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# run() com TABLE_TYPE="now_playing"
+# ---------------------------------------------------------------------------
+
+
+class TestRunNowPlaying:
+    def _args(self, **overrides):
+        return {
+            **_BASE,
+            "TABLE_TYPE": "now_playing",
+            "TABLE_NAME": "tb_now_playing_movie_tmdb",
+            **overrides,
+        }
+
+    def test_calls_read_from_sor_with_now_playing_args(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Filme X"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_details"),
+        ):
+            m.main()
+            mock_read.assert_called_once_with("my-sor", "movie", "now_playing", None)
+
+    def test_writes_to_now_playing_table_without_partition(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Filme X"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot") as mock_write,
+            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_details"),
+        ):
+            m.main()
+            mock_write.assert_called_once_with(
+                df=df_mock,
+                s3_bucket_sot="my-sot",
+                table_name="tb_now_playing_movie_tmdb",
+                database="db_tmdb",
+                partition_cols=None,
+                mode="overwrite",
+            )
+
+    def test_triggers_data_quality_without_year(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Filme X"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_data_quality") as mock_dq,
+            patch.object(m, "trigger_details"),
+        ):
+            m.main()
+            mock_dq.assert_called_once_with(
+                dq_job_name="dq-job",
+                table_name="tb_now_playing_movie_tmdb",
+                database="db_tmdb",
+                year=None,
+            )

@@ -50,6 +50,14 @@ test/glue_etl/
 | `test_tv_uses_configuration_countries_table` | Para `MEDIA_TYPE="tv"`, usa tabela `tb_configuration_countries_tmdb` |
 | `test_triggers_data_quality_without_year` | DQ acionado sem `year` para configuration |
 
+### `TestRunNowPlaying` — `TABLE_TYPE="now_playing"`
+
+| Teste | O que verifica |
+|---|---|
+| `test_calls_read_from_sor_with_now_playing_args` | `read_from_sor` chamado com `(bucket, "movie", "now_playing", None)` — sem `year` |
+| `test_writes_to_now_playing_table_without_partition` | `write_parquet_to_sot` chamado com `partition_cols=None` e `mode="overwrite"` |
+| `test_triggers_data_quality_without_year` | DQ acionado com `year=None` para now_playing |
+
 ### `TestTriggerDetails` — acionamento condicional do Glue Details
 
 | Teste | O que verifica |
@@ -62,6 +70,14 @@ test/glue_etl/
 ## Casos de teste — `test_utils.py`
 
 Testa individualmente as funções utilitárias: leitura do SOR, escrita na SOT com AWS Wrangler, normalização de nomes de plataformas de streaming e acionamento dos jobs de DQ e Details. Verifica argumentos passados para `awswrangler` e `boto3`.
+
+### `read_from_sor` — `table_type="now_playing"`
+
+| Teste | O que verifica |
+|---|---|
+| `test_now_playing_lê_do_path_correto` | `awswrangler.s3.read_json` chamado com `path="s3://bucket/tmdb/now_playing/movie/"` |
+| `test_now_playing_remove_duplicatas_por_id` | Registros com mesmo `id` são deduplicados antes de retornar |
+| `test_now_playing_retorna_dataframe_correto` | DataFrame retornado contém as colunas e valores esperados |
 
 ## Como executar
 

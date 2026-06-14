@@ -29,6 +29,7 @@ _TABLE_TYPE_TO_PARTITION = {
     "genre":               None,
     "configuration":       None,
     "watch_providers_ref": None,
+    "now_playing":         None,
 }
 
 _TABLE_TYPE_TO_MODE = {
@@ -36,6 +37,7 @@ _TABLE_TYPE_TO_MODE = {
     "genre":               "overwrite",
     "configuration":       "overwrite",
     "watch_providers_ref": "overwrite",
+    "now_playing":         "overwrite",
 }
 
 

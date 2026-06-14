@@ -213,6 +213,97 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
 }
 
 # =============================================================================
+# TABELAS — Now Playing (filmes atualmente em cartaz nos cinemas)
+# =============================================================================
+
+resource "aws_glue_catalog_table" "tb_now_playing_movie_tmdb" {
+  name          = var.glue_catalog_table_now_playing_movie_name
+  database_name = aws_glue_catalog_database.tmdb_movie_database.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    classification = "parquet"
+    EXTERNAL       = "TRUE"
+  }
+
+  storage_descriptor {
+    location      = "s3://${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_now_playing_movie_name}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    columns {
+      name = "id"
+      type = "bigint"
+    }
+    columns {
+      name = "title"
+      type = "string"
+    }
+    columns {
+      name = "original_title"
+      type = "string"
+    }
+    columns {
+      name = "overview"
+      type = "string"
+    }
+    columns {
+      name = "backdrop_path"
+      type = "string"
+    }
+    columns {
+      name = "poster_path"
+      type = "string"
+    }
+    columns {
+      name = "release_date"
+      type = "string"
+    }
+    columns {
+      name = "original_language"
+      type = "string"
+    }
+    columns {
+      name = "adult"
+      type = "boolean"
+    }
+    columns {
+      name = "video"
+      type = "boolean"
+    }
+    columns {
+      name = "genre_ids"
+      type = "array<int>"
+    }
+    columns {
+      name = "popularity"
+      type = "double"
+    }
+    columns {
+      name = "vote_average"
+      type = "double"
+    }
+    columns {
+      name = "vote_count"
+      type = "int"
+    }
+    columns {
+      name = "theater_start_date"
+      type = "string"
+    }
+    columns {
+      name = "theater_end_date"
+      type = "string"
+    }
+  }
+}
+
+
+# =============================================================================
 # TABELAS — Gêneros (lista de categorias: Ação, Comédia, Drama, etc.)
 # =============================================================================
 

@@ -51,7 +51,8 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
     table_discover_movie            = var.glue_catalog_table_discover_movie_name,
     table_genre_movie               = var.glue_catalog_table_genre_movie_name,
     table_configuration_languages   = var.glue_catalog_table_configuration_languages_name,
-    table_watch_providers_ref_movie = var.glue_catalog_table_watch_providers_ref_movie_name
+    table_watch_providers_ref_movie = var.glue_catalog_table_watch_providers_ref_movie_name,
+    table_now_playing_movie         = var.glue_catalog_table_now_playing_movie_name
   })
 }
 
@@ -76,7 +77,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_discover_target" {
 # Permissão explícita para o EventBridge invocar a Lambda.
 # Sem esta permissão, o EventBridge dispararia e receberia um erro de autorização.
 # "principal = events.amazonaws.com" = o serviço EventBridge (não um usuário)
-resource "aws_lambda_permission" "allow_eventbridge_movie_discover" {
+resource "aws_lambda_permission" "allow_eventbridge_movie_daily" {
   statement_id  = "AllowEventBridgeMovieDiscoverExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
@@ -84,7 +85,7 @@ resource "aws_lambda_permission" "allow_eventbridge_movie_discover" {
   source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_discover.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_tv_discover" {
+resource "aws_lambda_permission" "allow_eventbridge_tv_daily" {
   statement_id  = "AllowEventBridgeTvDiscoverExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
@@ -101,7 +102,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_discover" {
 # - watch_providers_ref: lista de plataformas de streaming disponíveis
 #
 # Rodam todo dia 1 do mês — cadência suficiente para dados que mudam algumas vezes por ano.
-# "skip_discover: true" = pula o discover nesta execução (já rodou na diária)
+# "skip_daily: true" = pula o discover nesta execução (já rodou na diária)
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
@@ -127,7 +128,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
 
   input = jsonencode({
     type                            = "movie",
-    skip_discover                   = true, # Pula o discover (já rodou na execução diária)
+    skip_daily                      = true, # Pula o discover (já rodou na execução diária)
     database                        = var.glue_catalog_database_movie_name,
     database_unified                = var.glue_catalog_database_unified_name,
     table_discover_movie            = var.glue_catalog_table_discover_movie_name,
@@ -144,7 +145,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
 
   input = jsonencode({
     type                          = "tv",
-    skip_discover                 = true,
+    skip_daily                    = true,
     database                      = var.glue_catalog_database_tv_name,
     database_unified              = var.glue_catalog_database_unified_name,
     table_discover_tv             = var.glue_catalog_table_discover_tv_name,

@@ -13,6 +13,7 @@ from src.utils import (
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
+    collect_now_playing_data,
     collect_watch_providers_ref,
     get_tmdb_api_key,
     trigger_glue_job,
@@ -44,6 +45,7 @@ def lambda_handler(event, context):
         table_configuration = event["table_configuration_languages"]
         table_discover = event["table_discover_movie"]
         table_watch_providers_ref = event["table_watch_providers_ref_movie"]
+        table_now_playing = event.get("table_now_playing_movie")
     else:
         table_genre = event["table_genre_tv"]
         table_configuration = event["table_configuration_countries"]
@@ -51,7 +53,7 @@ def lambda_handler(event, context):
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
     only_discover = event.get("only_discover", False)
-    skip_discover = event.get("skip_discover", False)
+    skip_daily = event.get("skip_daily", False)
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -97,8 +99,8 @@ def lambda_handler(event, context):
     else:
         logger.info("only_discover=True: pulando coleta de genre, configuration e watch_providers_ref.")
 
-    if skip_discover:
-        logger.info("skip_discover=True: pulando coleta de discover.")
+    if skip_daily:
+        logger.info("skip_daily=True: pulando coleta de discover.")
         return {
             "statusCode": 200,
             "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",
@@ -130,6 +132,18 @@ def lambda_handler(event, context):
             table_name=table_discover,
             year=year,
             end_year=end_year,
+        )
+
+    if content_type == "movie" and table_now_playing:
+        logger.info("Coletando filmes em cartaz nos cinemas...")
+        collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
+        logger.info("Acionando Glue ETL para tabela de now_playing...")
+        trigger_glue_job(
+            glue_client,
+            GLUE_ETL_JOB_NAME,
+            glue_base_args,
+            table_type="now_playing",
+            table_name=table_now_playing,
         )
 
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")

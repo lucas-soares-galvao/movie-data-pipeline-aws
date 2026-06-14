@@ -16,6 +16,10 @@ EXPECTED_TABLES = [
     "tb_details_tv_tmdb",
     "tb_watch_providers_movie_tmdb",
     "tb_watch_providers_tv_tmdb",
+    "tb_watch_providers_ref_movie_tmdb",
+    "tb_watch_providers_ref_tv_tmdb",
+    "tb_now_playing_movie_tmdb",
+    "tb_discover_unified_tmdb",
 ]
 
 
@@ -54,8 +58,13 @@ class TestRulesetsDq:
             )
 
     def test_discover_tables_validate_vote_average(self):
-        """Tabelas de discover devem validar o intervalo de vote_average."""
-        for table in ["tb_discover_movie_tmdb", "tb_discover_tv_tmdb"]:
+        """Tabelas de discover e now_playing devem validar o intervalo de vote_average."""
+        for table in [
+            "tb_discover_movie_tmdb",
+            "tb_discover_tv_tmdb",
+            "tb_now_playing_movie_tmdb",
+            "tb_discover_unified_tmdb",
+        ]:
             rules = rulesets_dq[table]
             assert any("vote_average" in r for r in rules), (
                 f"Tabela '{table}' não valida vote_average"
@@ -70,6 +79,7 @@ class TestRulesetsDq:
             "tb_discover_tv_tmdb",
             "tb_details_movie_tmdb",
             "tb_details_tv_tmdb",
+            "tb_now_playing_movie_tmdb",
         ]
         for table in tables_with_id:
             rules = rulesets_dq[table]

@@ -9,6 +9,7 @@ from src.utils import (
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
+    collect_now_playing_data,
     collect_watch_providers_ref,
     fetch_tmdb_data,
     fetch_tmdb_reference,
@@ -539,6 +540,79 @@ class TestCollectDiscoverData(unittest.TestCase):
         self.assertEqual(ids_salvos, [1, 2])
         self.assertNotIn("page", dado_salvo)
         self.assertNotIn("total_pages", dado_salvo)
+
+
+# ---------------------------------------------------------------------------
+# collect_now_playing_data
+# ---------------------------------------------------------------------------
+
+
+class TestCollectNowPlayingData(unittest.TestCase):
+    def _page_response(self, page, total_pages, results=None, dates=None):
+        return {
+            "page": page,
+            "total_pages": total_pages,
+            "results": results if results is not None else [{"id": page * 10, "title": f"Filme {page}"}],
+            "dates": dates if dates is not None else {"minimum": "2025-01-01", "maximum": "2025-01-14"},
+        }
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils._tmdb_get")
+    def test_pagina_unica_enriquece_com_datas_teatrais(self, mock_get, mock_save):
+        mock_get.side_effect = [
+            self._page_response(1, 1, [{"id": 1, "title": "Filme X"}], {"minimum": "2025-01-01", "maximum": "2025-01-14"}),
+            self._page_response(2, 1),  # page > total_pages → break
+        ]
+        mock_s3 = MagicMock()
+
+        collect_now_playing_data("api-key", mock_s3, "meu-bucket")
+
+        dados_salvos = mock_save.call_args[0][2]
+        self.assertEqual(len(dados_salvos), 1)
+        self.assertEqual(dados_salvos[0]["theater_start_date"], "2025-01-01")
+        self.assertEqual(dados_salvos[0]["theater_end_date"], "2025-01-14")
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils._tmdb_get")
+    def test_multiplas_paginas_salva_cada_uma(self, mock_get, mock_save):
+        mock_get.side_effect = [
+            self._page_response(1, 3),
+            self._page_response(2, 3),
+            self._page_response(3, 3),
+            self._page_response(4, 3),  # page > total_pages → break
+        ]
+        mock_s3 = MagicMock()
+
+        collect_now_playing_data("api-key", mock_s3, "meu-bucket")
+
+        self.assertEqual(mock_save.call_count, 3)
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils._tmdb_get")
+    def test_para_quando_page_maior_que_total_pages(self, mock_get, mock_save):
+        mock_get.side_effect = [
+            self._page_response(1, 1),
+            self._page_response(2, 1),  # page > total_pages → break
+        ]
+        mock_s3 = MagicMock()
+
+        collect_now_playing_data("api-key", mock_s3, "meu-bucket")
+
+        self.assertEqual(mock_save.call_count, 1)
+
+    @patch("src.utils.save_to_s3")
+    @patch("src.utils._tmdb_get")
+    def test_s3_key_tem_formato_correto(self, mock_get, mock_save):
+        mock_get.side_effect = [
+            self._page_response(1, 1),
+            self._page_response(2, 1),  # break
+        ]
+        mock_s3 = MagicMock()
+
+        collect_now_playing_data("api-key", mock_s3, "meu-bucket")
+
+        s3_key = mock_save.call_args[0][3]
+        self.assertEqual(s3_key, "tmdb/now_playing/movie/pagina_001.json")
 
 
 # ---------------------------------------------------------------------------

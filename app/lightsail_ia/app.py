@@ -38,6 +38,7 @@ IMPLANTAÇÃO:
 """
 
 import re
+from datetime import date
 import streamlit as st
 from agent import recomendar
 
@@ -159,6 +160,11 @@ if not st.session_state.get("autenticado"):
         elif entrar and senha:
             st.markdown('<div class="login-error">❌ Senha incorreta. Tente novamente.</div>', unsafe_allow_html=True)
 
+    st.markdown(f"""
+<div style="text-align:center; padding: 16px 0 8px; color: #6b7280; font-size: 12px; letter-spacing: 0.05em;">
+  © {date.today().year} FilmBot · Todos os direitos reservados
+</div>
+""", unsafe_allow_html=True)
     st.stop()
 
 # ==============================================================================
@@ -281,8 +287,8 @@ st.markdown("""
 # ==============================================================================
 col_titulo, col_sair = st.columns([9, 1])
 with col_titulo:
-    st.title("🎬 FilmBot — Recomendações do seu data lake")
-    st.caption("Os dados vêm da tabela SPEC do pipeline AWS (TMDB)")
+    st.title("🎬 FilmBot — Seu assistente de filmes e séries")
+    st.caption("Descubra o que assistir com ajuda da inteligência artificial")
 with col_sair:
     st.write("")  # empurra o botão para baixo, alinhando com o título
     if st.button("Sair", use_container_width=True):
@@ -304,18 +310,18 @@ preferencia = st.text_input(
 #   2. O campo de texto não está vazio
 if st.button("Recomendar", type="primary") and preferencia:
     # st.spinner() exibe uma animação de carregamento enquanto o bloco interno processa
-    with st.spinner("Consultando o data lake e gerando recomendações..."):
+    with st.spinner("Buscando as melhores opções para você..."):
         # Chama o agente de IA (agent.py): LLM extrai filtros → Athena consulta → LLM formata
         try:
             titulos = recomendar(preferencia)
         except Exception as e:
-            st.error(f"Erro ao consultar o data lake: {e}")
+            st.error("Algo deu errado ao buscar as recomendações. Tente novamente em instantes.")
             titulos = []
 
     if not titulos:
-        st.warning("Nenhum título encontrado para essa busca. Tente outra descrição.")
+        st.warning("Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.")
     else:
-        st.markdown(f"**{len(titulos)} título(s) encontrado(s)**")
+        st.markdown(f"**Encontramos {len(titulos)} opção(ões) para você!**")
 
         # Streamlit não tem componente de grid de cards nativo, então montamos HTML manualmente.
         # st.markdown(..., unsafe_allow_html=True) renderiza HTML bruto dentro da página.
@@ -387,3 +393,9 @@ if st.button("Recomendar", type="primary") and preferencia:
         # indentação excessiva no HTML injetado via st.markdown.
         grid_html = re.sub(r'\s+', ' ', grid_html)
         st.markdown(grid_html, unsafe_allow_html=True)
+
+st.markdown(f"""
+<div style="text-align:center; padding: 16px 0 8px; color: #6b7280; font-size: 12px; letter-spacing: 0.05em; border-top: 1px solid #1f2937; margin-top: 32px;">
+  © {date.today().year} FilmBot · Todos os direitos reservados
+</div>
+""", unsafe_allow_html=True)

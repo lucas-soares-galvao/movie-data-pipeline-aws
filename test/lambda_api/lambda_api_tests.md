@@ -41,14 +41,14 @@ test/lambda_api/
 | `test_glue_no_loop_recebe_year_e_table_type_corretos` | Glue de discover recebe `year` e `table_type="discover"` para cada ano |
 | `test_glue_discover_recebe_end_year` | Todas as chamadas de discover repassam `end_year` |
 
-### `TestSkipDiscover` — flag `skip_discover=True`
+### `TestSkipDaily` — flag `skip_daily=True`
 
 | Teste | O que verifica |
 |---|---|
-| `test_skip_discover_nao_chama_collect_discover` | `collect_discover_data` não é chamado |
-| `test_skip_discover_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
-| `test_skip_discover_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
-| `test_skip_discover_retorna_status_200` | Handler retorna 200 mesmo com skip_discover |
+| `test_skip_daily_nao_chama_collect_discover` | `collect_discover_data` não é chamado |
+| `test_skip_daily_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
+| `test_skip_daily_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
+| `test_skip_daily_retorna_status_200` | Handler retorna 200 mesmo com skip_daily |
 
 ### `TestOnlyDiscover` — flag `only_discover=True`
 
@@ -60,9 +60,26 @@ test/lambda_api/
 | `test_only_discover_executa_loop_normalmente` | Loop de discover roda normalmente, Glue acionado 1x por ano |
 | `test_only_discover_retorna_status_200` | Handler retorna 200 com only_discover |
 
+### `TestNowPlaying` — coleta de filmes em cartaz
+
+| Teste | O que verifica |
+|---|---|
+| `test_collect_now_playing_chamado_quando_tabela_presente` | `collect_now_playing_data` é chamado quando `table_now_playing_movie` está no evento |
+| `test_collect_now_playing_nao_chamado_sem_tabela` | `collect_now_playing_data` **não** é chamado quando `table_now_playing_movie` está ausente |
+| `test_glue_acionado_com_table_type_now_playing` | Glue ETL é acionado com `table_type="now_playing"` e `table_name` correto após a coleta |
+
 ## Casos de teste — `test_utils.py`
 
 Testa individualmente as funções de `src/utils.py`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
+
+### `collect_now_playing_data`
+
+| Teste | O que verifica |
+|---|---|
+| `test_dados_salvos_incluem_datas_teatrais` | Cada registro salvo contém `theater_start_date` e `theater_end_date` extraídos do campo `dates` da API |
+| `test_salva_uma_pagina_por_arquivo` | Número de arquivos salvos no S3 corresponde ao número de páginas retornadas |
+| `test_salva_arquivo_mesmo_com_uma_pagina` | Funciona corretamente quando a API retorna apenas uma página |
+| `test_s3_key_usa_prefixo_now_playing` | Chave S3 segue o padrão `tmdb/now_playing/movie/pagina_001.json` |
 
 ## Como executar
 

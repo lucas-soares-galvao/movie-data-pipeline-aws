@@ -43,7 +43,7 @@ test/glue_agg/
 
 Testa as funções individuais:
 
-- `run_athena_query`: query SQL montada corretamente com os databases passados; DataFrame retornado com as colunas esperadas; SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK() OVER (...ORDER BY CAST(year AS INTEGER) DESC)` para dedup de watch providers; SQL contém `spec_raw`, `spec_deduped` e `PARTITION BY id, media_type` para dedup final
+- `run_athena_query`: query SQL montada corretamente com os databases passados; DataFrame retornado com as colunas esperadas; SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK() OVER (...ORDER BY CAST(year AS INTEGER) DESC)` para dedup de watch providers; SQL contém `spec_raw`, `spec_deduped` e `PARTITION BY id, media_type` para dedup final; SQL contém CTE `now_playing` com `LEFT JOIN` em `tb_now_playing_movie_tmdb` gerando as colunas `in_theaters`, `theater_start_date` e `theater_end_date`
 - `traduzir_colunas_en`: apenas registros com `original_language="en"` são traduzidos; registros em outros idiomas permanecem inalterados; falhas na tradução não quebram o job
 - `write_parquet_to_spec`: chamada ao `awswrangler.s3.to_parquet` com `mode="overwrite"` e `partition_cols=["media_type", "year"]`
 - `trigger_data_quality` (`TestTriggerDataQuality`): sem `year` → argumento `--YEAR` ausente no `start_job_run`; com `year` → argumento `--YEAR` presente; retorna `JobRunId` correto

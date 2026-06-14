@@ -16,6 +16,7 @@ SOR_KEYS = {
         "configuration":        "tmdb/configuration/languages/idiomas.json",
         "discover":             "tmdb/discover/movie/ano={year}/",
         "watch_providers_ref":  "tmdb/watch_providers_ref/movie/watch_providers_ref.json",
+        "now_playing":          "tmdb/now_playing/movie/",
     },
     "tv": {
         "genre":                "tmdb/genre/tv/generos_series.json",
@@ -135,6 +136,10 @@ def read_from_sor(
     if table_type == "discover":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
         df["year"] = year
+        df = df.drop_duplicates(subset=["id"])
+
+    elif table_type == "now_playing":
+        df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
         df = df.drop_duplicates(subset=["id"])
 
     elif table_type == "watch_providers_ref":

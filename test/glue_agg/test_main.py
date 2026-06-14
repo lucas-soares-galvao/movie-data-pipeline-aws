@@ -94,6 +94,18 @@ class TestMain:
             m.main()
             assert mock_query.call_count == 1
 
+    def test_dataframe_vazio_nao_escreve_mas_aciona_dq(self):
+        df_vazio = pd.DataFrame()
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
+            patch.object(m, "run_athena_query", return_value=df_vazio),
+            patch.object(m, "write_parquet_to_spec") as mock_write,
+            patch.object(m, "trigger_data_quality") as mock_dq,
+        ):
+            m.main()
+            mock_write.assert_called_once()
+            mock_dq.assert_called_once()
+
     def test_aciona_dq_apos_escrita_sem_year(self):
         # call_order rastreia a sequência real de execução das funções.
         # side_effect=lambda **_: ... substitui a função real por uma que apenas

@@ -176,6 +176,40 @@ class TestReadFromSorConfiguration:
 
 
 # ---------------------------------------------------------------------------
+# read_from_sor — table_type="now_playing"
+# ---------------------------------------------------------------------------
+
+
+class TestReadFromSorNowPlaying:
+    def test_reads_correct_s3_path(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Filme X"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock) as mock_read:
+            read_from_sor("my-sor", "movie", "now_playing")
+            mock_read.assert_called_once_with(
+                path="s3://my-sor/tmdb/now_playing/movie/",
+                orient="records",
+            )
+
+    def test_deduplicates_by_id(self):
+        df_with_dups = pd.DataFrame([
+            {"id": 1, "title": "Filme A"},
+            {"id": 1, "title": "Filme A duplicado"},
+            {"id": 2, "title": "Filme B"},
+        ])
+        with patch("awswrangler.s3.read_json", return_value=df_with_dups):
+            result = read_from_sor("my-sor", "movie", "now_playing")
+            assert len(result) == 2
+            assert list(result["id"]) == [1, 2]
+
+    def test_returns_dataframe(self):
+        df_mock = pd.DataFrame([{"id": 10, "title": "Filme Y", "vote_average": 7.5}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "now_playing")
+            assert "id" in result.columns
+            assert result["id"].iloc[0] == 10
+
+
+# ---------------------------------------------------------------------------
 # write_parquet_to_sot
 # ---------------------------------------------------------------------------
 

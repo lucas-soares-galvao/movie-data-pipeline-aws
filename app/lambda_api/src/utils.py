@@ -294,6 +294,30 @@ def collect_watch_providers_ref(
     save_to_s3(s3_client, bucket, providers, s3_key)
 
 
+def collect_now_playing_data(api_key: str, s3_client, bucket: str) -> None:
+    """Coleta filmes atualmente em cartaz nos cinemas e salva no S3 SOR."""
+    logger.info("Coletando filmes em cartaz: /movie/now_playing")
+    url = "https://api.themoviedb.org/3/movie/now_playing"
+
+    for page in range(1, MAX_PAGES + 1):
+        data = _tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "page": page})
+
+        total_pages = data.get("total_pages", 0)
+        if page > total_pages:
+            logger.info(
+                f"now_playing: {total_pages} página(s) disponível(is). Encerrando na página {page - 1}."
+            )
+            break
+
+        # Embute as datas da janela teatral em cada registro para o ETL ler normalmente.
+        dates = data.get("dates", {})
+        for result in data["results"]:
+            result["theater_start_date"] = dates.get("minimum")
+            result["theater_end_date"] = dates.get("maximum")
+
+        save_to_s3(s3_client, bucket, data["results"], f"tmdb/now_playing/movie/pagina_{page:03d}.json")
+
+
 def collect_discover_data(
     api_key: str, s3_client, bucket: str, content_type: str, folder: str, year: int
 ) -> None:

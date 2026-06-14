@@ -244,6 +244,12 @@ variable "glue_catalog_table_discover_movie_name" {
   default     = "tb_discover_movie_tmdb"
 }
 
+variable "glue_catalog_table_now_playing_movie_name" {
+  description = "Nome da tabela no Glue Catalog para filmes atualmente em cartaz nos cinemas"
+  type        = string
+  default     = "tb_now_playing_movie_tmdb"
+}
+
 variable "glue_catalog_table_discover_tv_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de series da TMDB"
   type        = string

@@ -25,6 +25,7 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 | `genre` | Sem partição | `overwrite` (substitui tudo) | Não |
 | `configuration` | Sem partição | `overwrite` | Não |
 | `watch_providers_ref` | Sem partição | `overwrite` | Não |
+| `now_playing` | Sem partição | `overwrite` (snapshot diário completo) | Não |
 
 **Fluxo para `discover`:**
 1. Lê os argumentos do Glue (`get_parameters_glue`)
@@ -35,6 +36,9 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
+
+**Fluxo para `now_playing`:**
+Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `read_from_sor` lê todos os arquivos da pasta `tmdb/now_playing/movie/` de uma vez e deduplica por `id` antes de gravar.
 
 ## Entradas e saídas
 

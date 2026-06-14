@@ -132,6 +132,18 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
+    "tb_now_playing_movie_tmdb": [
+        # Completude
+        'IsComplete "id"',
+        'IsComplete "title"',
+        # Unicidade
+        'IsUnique "id"',
+        # Validade
+        'ColumnValues "vote_average" >= 0',
+        'ColumnValues "vote_average" <= 10',
+        # Integridade
+        "RowCount > 0",
+    ],
     "tb_discover_unified_tmdb": [
         # Completude
         'IsComplete "id"',

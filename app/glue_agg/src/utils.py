@@ -254,6 +254,13 @@ tv_providers AS (
     GROUP BY id
 ),
 
+-- Filmes atualmente em cartaz nos cinemas, atualizados diariamente pela Lambda.
+-- Snapshot sem partição por ano — contém apenas os filmes do dia atual.
+now_playing AS (
+    SELECT id, theater_start_date, theater_end_date
+    FROM {db_movie}.tb_now_playing_movie_tmdb
+),
+
 -- ============================================================================
 -- SELECT FINAL: combina todas as CTEs e constrói a tabela SPEC
 -- ============================================================================
@@ -305,7 +312,12 @@ spec_raw AS (
         -- COALESCE(mp, tp): tenta o provider de filme; se nulo, usa o de série.
         -- Na prática, um mesmo registro é só filme ou só série, então apenas
         -- um dos dois JOINs retornará dados (o outro será NULL).
-        COALESCE(mp.streaming_providers, tp.streaming_providers) AS streaming_providers
+        COALESCE(mp.streaming_providers, tp.streaming_providers) AS streaming_providers,
+        -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot diário).
+        -- Séries e filmes fora de cartaz recebem FALSE (np.id = NULL no LEFT JOIN).
+        CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
+        np.theater_start_date,
+        np.theater_end_date
     FROM unified u
     LEFT JOIN genre_names gn
         ON  gn.id         = u.id
@@ -322,6 +334,8 @@ spec_raw AS (
         ON  mp.id = u.id AND u.media_type = 'movie'
     LEFT JOIN tv_providers tp
         ON  tp.id = u.id AND u.media_type = 'tv'
+    LEFT JOIN now_playing np
+        ON  np.id = u.id AND u.media_type = 'movie'
 ),
 
 -- Deduplicação final: garante um único registro por (id, media_type) na saída SPEC,
@@ -340,7 +354,7 @@ SELECT
     language_name, genre_ids, genre_names, poster_url, backdrop_url, popularity,
     vote_average, vote_count, origin_country, origin_country_name, adult, year,
     runtime_minutes, number_of_seasons, number_of_episodes, episode_runtime_minutes,
-    streaming_providers
+    streaming_providers, in_theaters, theater_start_date, theater_end_date
 FROM spec_deduped
 WHERE rn_final = 1
 """

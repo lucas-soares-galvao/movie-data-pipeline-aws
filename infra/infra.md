@@ -50,15 +50,17 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Database | Tabelas |
 |---|---|
-| `db_movie_tmdb` | discover, genre, configuration_languages, details, watch_providers, watch_providers_ref |
+| `db_movie_tmdb` | discover, genre, configuration_languages, details, watch_providers, watch_providers_ref, now_playing |
 | `db_tv_tmdb` | discover, genre, configuration_countries, details, watch_providers, watch_providers_ref |
 | `db_unified_tmdb` | tb_discover_unified_tmdb (tabela SPEC), tb_data_quality_tmdb |
+
+> A tabela `now_playing` não possui partição de ano — é um snapshot completo sobrescrito diariamente (`mode=overwrite`), diferente das tabelas `discover` que são particionadas por ano. Inclui os campos `theater_start_date` e `theater_end_date` com a janela de exibição reportada pela API do TMDB.
 
 ### Agendamento — EventBridge (`eventbridge_lambda_api.tf`)
 
 2 regras de schedule:
-- **Diária** (`only_discover=True`): coleta apenas filmes/séries novos do discover
-- **Mensal (dia 1)** (`skip_discover=True`): atualiza apenas dados de referência (gêneros, idiomas, plataformas)
+- **Diária** (`only_discover=True`): coleta filmes/séries novos do discover e filmes atualmente em cartaz nos cinemas (now_playing)
+- **Mensal (dia 1)** (`skip_daily=True`): atualiza apenas dados de referência (gêneros, idiomas, plataformas) — não inclui now_playing
 
 ### Notificações — SNS (`sns_topics.tf`)
 

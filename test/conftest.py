@@ -159,3 +159,16 @@ def pytest_runtest_setup(item):
 
     if suite in _SUITE_TO_SRC_MODULE:
         _apply_suite_aliases(suite)
+
+        # Restaura sys.modules["main"] para o módulo correto da suite.
+        # Necessário porque patches com string ("main.xxx") buscam sys.modules["main"]
+        # em tempo de execução. Quando várias suites rodam juntas, o "main" em
+        # sys.modules pode apontar para a suite errada após a coleta de outros módulos.
+        # A referência correta ainda está no atributo "main" do módulo de teste.
+        test_module = getattr(item, "parent", None)
+        if test_module is not None:
+            test_module = getattr(test_module, "module", None)
+        if test_module is not None:
+            suite_main = getattr(test_module, "main", None)
+            if suite_main is not None and sys.modules.get("main") is not suite_main:
+                sys.modules["main"] = suite_main
