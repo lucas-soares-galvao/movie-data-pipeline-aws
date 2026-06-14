@@ -90,7 +90,7 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 1. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`)
 2. Lê `infra/destroy_config.json` para decidir se destrói ou aplica
 3. `terraform init` com backend S3 + DynamoDB
-4. `terraform validate` + TFLint + fmt check + Checkov (todos não-bloqueantes)
+4. `terraform validate` e `terraform fmt -check` (**bloqueantes**) + TFLint e Checkov (não-bloqueantes — apenas avisos)
 5. Injeta o e-mail de notificação no `.tfvars` (não é commitado no repo)
 6. `terraform destroy` **ou** `terraform plan` + Infracost + `terraform apply`
 
@@ -109,7 +109,7 @@ Cria ou atualiza um Pull Request para promover código entre branches.
 | `feature/*` | `develop` |
 | `develop` | `main` |
 
-Antes de criar o PR, executa `terraform validate -backend=false` para garantir que o código Terraform é válido.
+Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fmt -check` para garantir que o código Terraform é válido e está formatado.
 
 ---
 

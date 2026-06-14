@@ -64,8 +64,8 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Regra | Frequência | Horário | Comportamento |
 |---|---|---|---|
-| `lambda_api_movie_daily` | Diária | 19:00 BRT (22:00 UTC) | `only_discover=true` — filmes novos + now_playing |
-| `lambda_api_tv_daily` | Diária | 19:05 BRT (22:05 UTC) | `only_discover=true` — séries novas |
+| `lambda_api_movie_daily` | Diária | 09:00 BRT (12:00 UTC) | `only_discover=true` — filmes novos + now_playing |
+| `lambda_api_tv_daily` | Diária | 09:05 BRT (12:05 UTC) | `only_discover=true` — séries novas |
 | `lambda_api_movie_monthly` | Dia 1 do mês | 09:00 BRT (12:00 UTC) | `skip_daily=true` — atualiza gêneros, idiomas, plataformas |
 | `lambda_api_tv_monthly` | Dia 1 do mês | 09:05 BRT (12:05 UTC) | `skip_daily=true` — atualiza gêneros, países, plataformas |
 
@@ -100,17 +100,17 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 - IAM user `filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
 - Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
 
-**Agendamento de custo** (`lightsail_scheduler.tf`): Lambda + EventBridge que liga a instância às **08:00 BRT** (`cron(00 11 * * ? *)`) e desliga às **23:00 BRT** (`cron(00 02 * * ? *)`), economizando ~37% do custo mensal. Habilitado apenas quando `lightsail_enabled = true`.
+**Agendamento de custo** (`lightsail_scheduler.tf`): Lambda + EventBridge com 3 regras de schedule. Desliga todos os dias às **00:00 BRT** (`cron(00 03 ? * * *)`); inicia às **18:00 BRT de seg–sex** (`cron(00 21 ? * MON-FRI *)`) e às **08:00 BRT aos sáb–dom** (`cron(00 11 ? * SAT-SUN *)`). Habilitado apenas quando `lightsail_enabled = true`.
 
 ### Permissões — IAM (`iam_roles.tf`, `iam_policies.tf`)
 
 | Role | Usada por | Permissões principais |
 |---|---|---|
-| `lambda-role` | Lambda API | S3 (SOR), Glue (start_job_run), Secrets Manager |
-| `glue-job-role-etl-{env}` | Glue ETL | S3 (todos os buckets), Glue Catalog, Athena, SNS, CloudWatch |
-| `glue-job-role-etl-dq` | Glue Data Quality | S3 (SOR, SOT, DQ), Glue Catalog, SNS, CloudWatch |
-| `glue-job-role-etl-agg` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, SNS, CloudWatch |
-| `glue-job-role-etl-details` | Glue Details | S3 (SOR, SOT), Glue Catalog, SNS, CloudWatch |
+| `lambda-role` | Lambda API | S3 (SOR, AUX), Glue (StartJobRun + GetJobRun — ETL e AGG), Secrets Manager |
+| `glue-job-role-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details) |
+| `glue-job-role-etl-dq` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
+| `glue-job-role-etl-agg` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena |
+| `glue-job-role-etl-details` | Glue Details | S3 (SOT, TEMP), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
