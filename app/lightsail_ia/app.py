@@ -314,7 +314,7 @@ if st.button("Recomendar", type="primary") and preferencia:
         # Chama o agente de IA (agent.py): LLM extrai filtros → Athena consulta → LLM formata
         try:
             titulos = recomendar(preferencia)
-        except Exception as e:
+        except Exception:
             st.error("Algo deu errado ao buscar as recomendações. Tente novamente em instantes.")
             titulos = []
 
