@@ -17,8 +17,8 @@
 
 # Agenda diária para discover de FILMES — 09:00 horário de Brasília (12:00 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
-  name        = "lambda-api-movie-daily-${var.env}"
-  description = "Dispara a Lambda para filmes com payload completo (diário)"
+  name                = "lambda-api-movie-daily-${var.env}"
+  description         = "Dispara a Lambda para filmes com payload completo (diário)"
   schedule_expression = "cron(00 12 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
@@ -26,8 +26,8 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
 
 # Agenda diária para discover de SÉRIES — 09:05 horário de Brasília (12:05 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
-  name        = "lambda-api-tv-daily-${var.env}"
-  description = "Dispara a Lambda para séries com payload completo (diário)"
+  name                = "lambda-api-tv-daily-${var.env}"
+  description         = "Dispara a Lambda para séries com payload completo (diário)"
   schedule_expression = "cron(05 12 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
