@@ -111,8 +111,15 @@ class TestWriteParquetToSpec:
 
             _, kwargs = mock_write.call_args
             assert kwargs["partition_cols"] == ["media_type", "year"]
-            assert kwargs["mode"] == "overwrite_partitions"
+            assert kwargs["mode"] == "overwrite"
             assert kwargs["dataset"] is True
+
+    def test_dataframe_vazio_nao_escreve(self):
+        df = pd.DataFrame()
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+
+            mock_write.assert_not_called()
 
     def test_registra_tabela_no_catalog(self):
         df = pd.DataFrame({"col": [1]})

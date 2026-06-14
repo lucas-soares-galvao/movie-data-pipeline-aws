@@ -420,9 +420,11 @@ def write_parquet_to_spec(
     """
     Escreve o DataFrame como Parquet no bucket SPEC, particionado por media_type e year.
 
-    Usa overwrite_partitions para substituir apenas as combinações (media_type, year)
-    presentes no DataFrame, sem afetar outras partições existentes.
-    O AWS Wrangler registra/atualiza a tabela no Glue Catalog automaticamente.
+    Usa overwrite para garantir que o Glue Catalog fique sempre sincronizado com o S3.
+    overwrite_partitions pode deixar o Catalog apontando para arquivos antigos deletados
+    caso a atualização do Catalog falhe parcialmente após a deleção dos arquivos S3.
+    Como a tabela unificada é sempre escrita por completo (todos os anos/media_types),
+    overwrite e overwrite_partitions produzem o mesmo resultado final.
 
     Args:
         df:             DataFrame a ser gravado.
@@ -430,17 +432,24 @@ def write_parquet_to_spec(
         table_name:     Nome da tabela de destino no Catalog e como prefixo no S3.
         database:       Nome do banco de dados no Glue Catalog.
     """
+    if df.empty:
+        logger.warning(
+            f"DataFrame vazio recebido para '{table_name}'. "
+            "Escrita ignorada para preservar dados existentes."
+        )
+        return
+
     s3_path = f"s3://{s3_bucket_spec}/{table_name}/"
     logger.info(
         f"Escrevendo {len(df)} registros em {s3_path} | "
-        f"particoes=[media_type, year] | mode=overwrite_partitions"
+        f"particoes=[media_type, year] | mode=overwrite"
     )
     wr.s3.to_parquet(
         df=df,
         path=s3_path,
         dataset=True,
         partition_cols=["media_type", "year"],
-        mode="overwrite_partitions",
+        mode="overwrite",
         database=database,
         table=table_name,
     )
