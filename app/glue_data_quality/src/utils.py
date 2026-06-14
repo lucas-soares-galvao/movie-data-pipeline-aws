@@ -98,8 +98,7 @@ def read_table_from_catalog(
     logger.info(f"Lendo tabela '{database}.{table_name}' do Glue Catalog...")
     kwargs: Dict[str, Any] = {
         "database": database,
-        "table_name": table_name,
-        "additional_options": {"useS3ListImplementation": "true"},
+        "table_name": table_name
     }
     if year is not None:
         # push_down_predicate = "filtro de partição empurrado para baixo"

@@ -128,14 +128,13 @@ class TestGetRuleset:
 
 class TestReadTableFromCatalog:
     def test_calls_from_catalog_with_correct_args(self):
-        """Deve chamar from_catalog passando database, table_name e additional_options corretos."""
+        """Deve chamar from_catalog passando apenas database e table_name."""
         glue_context = MagicMock()
         read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb")
 
         glue_context.create_dynamic_frame.from_catalog.assert_called_once_with(
             database="db_tmdb",
             table_name="tb_genre_movie_tmdb",
-            additional_options={"useS3ListImplementation": "true"},
         )
 
     def test_returns_dynamic_frame_from_catalog(self):
