@@ -75,7 +75,7 @@ jobs:
           pytest --cov=app \
                  --cov-report=term-missing \
                  --cov-report=xml \
-                 --cov-fail-under=70
+                 --cov-fail-under=80
 
       - name: Quality Gate Summary
         if: always()
@@ -85,7 +85,7 @@ jobs:
           echo "=========================================="
           echo "Etapas executadas:"
           echo "- Testes Unitarios (pytest)"
-          echo "- Cobertura de Codigo (Coverage Gate: 70%)"
+          echo "- Cobertura de Codigo (Coverage Gate: 80%)"
           echo "- Linting (ruff)"
           echo "- Type Checking (mypy - informativo)"
           echo "- Security Analysis (bandit - informativo)"
