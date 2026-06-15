@@ -23,9 +23,9 @@ WITH
 -- 3. unified: filmes + séries empilhados (UNION ALL)
 -- 4. genres_combined: todos os gêneros (movie + tv) sem duplicata
 -- 5. genre_names: nome dos gêneros de cada título (ex: "Ação, Aventura")
--- 6. movie_details / tv_details: duração e temporadas vindas do Glue Details
+-- 6. movie_details / tv_details → details: duração e temporadas (unificados por media_type)
 -- 7. providers_ref_*: referência de plataformas de streaming normalizada
--- 8. movie_providers / tv_providers: plataformas disponíveis no BR por título
+-- 8. movie_providers / tv_providers → providers: plataformas BR (unificadas por media_type)
 -- SELECT final: junta tudo e constrói as colunas finais (URLs completas, etc.)
 -- ============================================================================
 
@@ -164,6 +164,25 @@ tv_details AS (
     WHERE rn = 1
 ),
 
+-- Detalhes unificados: filmes e séries num único conjunto com media_type como chave.
+-- Colunas exclusivas de cada tipo recebem NULL no outro lado
+-- (ex: runtime=NULL para séries, number_of_seasons=NULL para filmes).
+details AS (
+    SELECT id, 'movie' AS media_type,
+           runtime,
+           NULL AS number_of_seasons,
+           NULL AS number_of_episodes,
+           NULL AS episode_runtime_minutes,
+           title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+    FROM movie_details
+    UNION ALL
+    SELECT id, 'tv' AS media_type,
+           NULL AS runtime,
+           number_of_seasons, number_of_episodes, episode_runtime_minutes,
+           title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+    FROM tv_details
+),
+
 -- Referência unificada de provedores (union de movie + tv), desduplicada por provider_id,
 -- com canonical_name normalizado e prioridade de exibição no BR.
 providers_ref_union AS (
@@ -254,6 +273,13 @@ tv_providers AS (
     GROUP BY id
 ),
 
+-- Provedores unificados: filmes e séries num único conjunto com media_type como chave.
+providers AS (
+    SELECT id, 'movie' AS media_type, streaming_providers FROM movie_providers
+    UNION ALL
+    SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
+),
+
 -- Filmes atualmente em cartaz nos cinemas, atualizados diariamente pela Lambda.
 -- Snapshot sem partição por ano — contém apenas os filmes do dia atual.
 now_playing AS (
@@ -272,7 +298,7 @@ spec_raw AS (
         -- original_title como fallback para o caso raro de title estar vazio.
         COALESCE(NULLIF(TRIM(u.title), ''), u.original_title)                                             AS title,
         u.original_title,
-        COALESCE(NULLIF(TRIM(u.overview), ''), md.overview_pt, tv.overview_pt, md.overview_en, tv.overview_en) AS overview,
+        COALESCE(NULLIF(TRIM(u.overview), ''), d.overview_pt, d.overview_en)                AS overview,
         u.air_date,
         u.original_language,
         lang.english_name                                                       AS language_name,
@@ -282,19 +308,15 @@ spec_raw AS (
         -- O TMDB armazena apenas o caminho relativo (ex: "/abc123.jpg").
         -- "w342" é o tamanho da imagem em pixels de largura.
         CASE
-            WHEN COALESCE(NULLIF(TRIM(u.poster_path), ''),
-                          md.poster_path_en, tv.poster_path_en) IS NULL THEN NULL
+            WHEN COALESCE(NULLIF(TRIM(u.poster_path), ''), d.poster_path_en) IS NULL THEN NULL
             ELSE CONCAT('https://image.tmdb.org/t/p/w342',
-                        COALESCE(NULLIF(TRIM(u.poster_path), ''),
-                                 md.poster_path_en, tv.poster_path_en))
+                        COALESCE(NULLIF(TRIM(u.poster_path), ''), d.poster_path_en))
         END                                                                     AS poster_url,
         -- Constrói a URL da imagem de fundo (backdrop). "w780" = largura 780px.
         CASE
-            WHEN COALESCE(NULLIF(TRIM(u.backdrop_path), ''),
-                          md.backdrop_path_en, tv.backdrop_path_en) IS NULL THEN NULL
+            WHEN COALESCE(NULLIF(TRIM(u.backdrop_path), ''), d.backdrop_path_en) IS NULL THEN NULL
             ELSE CONCAT('https://image.tmdb.org/t/p/w780',
-                        COALESCE(NULLIF(TRIM(u.backdrop_path), ''),
-                                 md.backdrop_path_en, tv.backdrop_path_en))
+                        COALESCE(NULLIF(TRIM(u.backdrop_path), ''), d.backdrop_path_en))
         END                                                                     AS backdrop_url,
         u.popularity,
         u.vote_average,
@@ -303,15 +325,11 @@ spec_raw AS (
         ctry.native_name                          AS origin_country_name,
         u.adult,
         u.year,
-        md.runtime                                AS runtime_minutes,
-        tv.number_of_seasons,
-        tv.number_of_episodes,
-        tv.episode_runtime_minutes,
-        -- Provedores de streaming BR disponíveis (apenas flatrate = assinatura).
-        -- COALESCE(mp, tp): tenta o provider de filme; se nulo, usa o de série.
-        -- Na prática, um mesmo registro é só filme ou só série, então apenas
-        -- um dos dois JOINs retornará dados (o outro será NULL).
-        COALESCE(mp.streaming_providers, tp.streaming_providers) AS streaming_providers,
+        d.runtime                                 AS runtime_minutes,
+        d.number_of_seasons,
+        d.number_of_episodes,
+        d.episode_runtime_minutes,
+        p.streaming_providers,
         -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot diário).
         -- Séries e filmes fora de cartaz recebem FALSE (np.id = NULL no LEFT JOIN).
         CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
@@ -325,14 +343,10 @@ spec_raw AS (
         ON lang.iso_639_1 = u.original_language
     LEFT JOIN {db_tv}.tb_configuration_countries_tmdb ctry
         ON ctry.iso_3166_1 = element_at(u.origin_country, 1)
-    LEFT JOIN movie_details md
-        ON  md.id = u.id AND u.media_type = 'movie'
-    LEFT JOIN tv_details tv
-        ON  tv.id = u.id AND u.media_type = 'tv'
-    LEFT JOIN movie_providers mp
-        ON  mp.id = u.id AND u.media_type = 'movie'
-    LEFT JOIN tv_providers tp
-        ON  tp.id = u.id AND u.media_type = 'tv'
+    LEFT JOIN details d
+        ON  d.id = u.id AND d.media_type = u.media_type
+    LEFT JOIN providers p
+        ON  p.id = u.id AND p.media_type = u.media_type
     LEFT JOIN now_playing np
         ON  np.id = u.id AND u.media_type = 'movie'
 ),
@@ -356,6 +370,7 @@ SELECT
     streaming_providers, in_theaters, theater_start_date, theater_end_date
 FROM spec_deduped
 WHERE rn_final = 1
+ORDER BY year DESC, popularity DESC
 """
 
 
