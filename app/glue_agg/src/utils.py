@@ -268,10 +268,9 @@ spec_raw AS (
     SELECT
         u.id,
         u.media_type,
-        -- Prioriza a tradução PT gravada pelo Glue Details (title_pt/overview_pt),
-        -- que existe apenas para original_language='en'. Para outros idiomas title_pt é NULL
-        -- e o COALESCE cai para o título original do discover ou para o fallback em inglês.
-        COALESCE(md.title_pt, tv.title_pt, NULLIF(TRIM(u.title), ''), md.title_en, tv.title_en)          AS title,
+        -- Usa o título do discover (pt-BR) que representa como o conteúdo é conhecido no Brasil.
+        -- original_title como fallback para o caso raro de title estar vazio.
+        COALESCE(NULLIF(TRIM(u.title), ''), u.original_title)                                             AS title,
         u.original_title,
         COALESCE(md.overview_pt, tv.overview_pt, NULLIF(TRIM(u.overview), ''), md.overview_en, tv.overview_en) AS overview,
         u.air_date,

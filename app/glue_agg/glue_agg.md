@@ -22,7 +22,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
    - Deduplica watch providers por `DENSE_RANK` sobre o ano mais recente (CTEs `movie_wp_recent` / `tv_wp_recent`), preservando todos os provedores do ano mais recente por ID
    - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas), plataformas de streaming e a tabela `now_playing` (para filmes em cartaz nos cinemas)
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
-3. Seleciona `title_pt` e `overview_pt` já traduzidos — a tradução é feita pelo Glue Details e armazenada nas tabelas `tb_details_*`; o AGG as lê via `COALESCE` no SQL
+3. Seleciona `title` do discover (pt-BR, como o conteúdo é conhecido no Brasil) e `overview_pt` traduzido pelo Glue Details — ambos via `COALESCE` com fallback para o campo original
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC
 5. O AWS Wrangler registra automaticamente a tabela no Glue Catalog (`db_unified_tmdb`)
 6. Aciona o Glue Data Quality para validar a tabela unificada completa (sem filtro de ano)
