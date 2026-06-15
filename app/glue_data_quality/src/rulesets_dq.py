@@ -57,7 +57,7 @@ rulesets_dq = {
     "tb_discover_tv_tmdb": [
         # Completude
         'IsComplete "id"',
-        'IsComplete "name"',  # séries usam "name", não "title"
+        'IsComplete "name"',
         # Unicidade
         'IsUnique "id"',
         # Validade
@@ -72,7 +72,6 @@ rulesets_dq = {
         # Unicidade
         'IsUnique "id"',
         # Validade
-        # runtime pode ser 0 (duração não informada pela API), mas nunca negativo
         'ColumnValues "runtime" >= 0',
         # Integridade
         "RowCount > 0",
@@ -83,8 +82,8 @@ rulesets_dq = {
         # Unicidade
         'IsUnique "id"',
         # Validade
-        'ColumnValues "number_of_seasons" >= 1',   # série ativa deve ter ao menos 1 temporada
-        'ColumnValues "number_of_episodes" >= 1',  # série deve ter ao menos 1 episódio cadastrado
+        'ColumnValues "number_of_seasons" >= 1',
+        'ColumnValues "number_of_episodes" >= 1',
         # Integridade
         "RowCount > 0",
     ],
