@@ -331,7 +331,8 @@ if st.button("Recomendar", type="primary") and preferencia:
     if not titulos:
         st.warning("Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.")
     else:
-        st.markdown(f"**Encontramos {len(titulos)} opção(ões) para você!**")
+        palavra = "opção" if len(titulos) == 1 else "opções"
+        st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
 
         # Streamlit não tem componente de grid de cards nativo, então montamos HTML manualmente.
         # st.markdown(..., unsafe_allow_html=True) renderiza HTML bruto dentro da página.
@@ -414,6 +415,6 @@ if st.button("Recomendar", type="primary") and preferencia:
 
 st.markdown(f"""
 <div style="text-align:center; padding: 16px 0 8px; color: #6b7280; font-size: 12px; letter-spacing: 0.05em; border-top: 1px solid #1f2937; margin-top: 32px;">
-  © {date.today().year} FilmBot · Todos os direitos reservados
+  © {date.today().year} FilmBot · Dados fornecidos por <a href="https://www.themoviedb.org/?language=pt-BR" target="_blank" style="color:#6b7280; text-decoration:underline;">TMDB</a> · Todos os direitos reservados
 </div>
 """, unsafe_allow_html=True)
