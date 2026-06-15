@@ -272,7 +272,7 @@ spec_raw AS (
         -- original_title como fallback para o caso raro de title estar vazio.
         COALESCE(NULLIF(TRIM(u.title), ''), u.original_title)                                             AS title,
         u.original_title,
-        COALESCE(md.overview_pt, tv.overview_pt, NULLIF(TRIM(u.overview), ''), md.overview_en, tv.overview_en) AS overview,
+        COALESCE(NULLIF(TRIM(u.overview), ''), md.overview_pt, tv.overview_pt, md.overview_en, tv.overview_en) AS overview,
         u.air_date,
         u.original_language,
         lang.english_name                                                       AS language_name,
