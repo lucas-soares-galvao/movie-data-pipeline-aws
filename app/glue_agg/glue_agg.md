@@ -22,7 +22,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
    - Deduplica watch providers por `DENSE_RANK` sobre o ano mais recente (CTEs `movie_wp_recent` / `tv_wp_recent`), preservando todos os provedores do ano mais recente por ID
    - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas), plataformas de streaming e a tabela `now_playing` (para filmes em cartaz nos cinemas)
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
-3. Seleciona `title` do discover (pt-BR, como o conteúdo é conhecido no Brasil) e `overview_pt` traduzido pelo Glue Details — ambos via `COALESCE` com fallback para o campo original
+3. Seleciona `title` e `overview` do discover (pt-BR nativo do TMDB) como primeira prioridade; `overview_pt` traduzido pelo Glue Details entra como fallback quando o discover retornou vazio, seguido por `overview_en` como último recurso
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC
 5. O AWS Wrangler registra automaticamente a tabela no Glue Catalog (`db_unified_tmdb`)
 6. Aciona o Glue Data Quality para validar a tabela unificada completa (sem filtro de ano)
@@ -39,27 +39,31 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
 ## SQL de unificação (resumo)
 
 ```sql
-WITH filmes AS (
-  SELECT d.*, det.runtime
-  FROM tb_discover_movie_tmdb d
-  LEFT JOIN tb_details_movie_tmdb det ON d.id = det.id
-  -- deduplica por id mantendo mais recente/popular
+WITH unified AS (
+  SELECT * FROM movies  -- deduplicados por (id, year DESC, popularity DESC)
+  UNION ALL
+  SELECT * FROM tv_shows
 ),
-series AS (
-  SELECT d.*, det.number_of_seasons, det.number_of_episodes
-  FROM tb_discover_tv_tmdb d
-  LEFT JOIN tb_details_tv_tmdb det ON d.id = det.id
+details AS (
+  -- filmes e séries unidos por media_type; colunas exclusivas recebem NULL no outro lado
+  SELECT id, 'movie' AS media_type, runtime, NULL AS number_of_seasons, ... FROM movie_details
+  UNION ALL
+  SELECT id, 'tv'    AS media_type, NULL AS runtime, number_of_seasons, ... FROM tv_details
 ),
-unificado AS (
-  SELECT * FROM filmes UNION ALL SELECT * FROM series
+providers AS (
+  SELECT id, 'movie' AS media_type, streaming_providers FROM movie_providers
+  UNION ALL
+  SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
 )
-SELECT u.*, g.genre_names, l.language_name, wp.streaming_providers,
-       CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
-       np.theater_start_date, np.theater_end_date
-FROM unificado u
-LEFT JOIN tb_genre_* g ON ...
-LEFT JOIN tb_configuration_languages_tmdb l ON ...
-LEFT JOIN tb_watch_providers_* wp ON ...
+SELECT
+  COALESCE(NULLIF(TRIM(u.overview), ''), d.overview_pt, d.overview_en) AS overview,
+  d.runtime AS runtime_minutes, d.number_of_seasons, d.number_of_episodes,
+  p.streaming_providers,
+  CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
+  ...
+FROM unified u
+LEFT JOIN details   d  ON d.id = u.id AND d.media_type = u.media_type
+LEFT JOIN providers p  ON p.id = u.id AND p.media_type = u.media_type
 LEFT JOIN tb_now_playing_movie_tmdb np ON np.id = u.id AND u.media_type = 'movie'
 ```
 
