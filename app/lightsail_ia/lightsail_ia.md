@@ -30,17 +30,27 @@ Com os filtros extraídos, monta e executa uma query SQL dinâmica na tabela `tb
 ### Etapa 3 — Formatação das recomendações (LLM)
 O LLM recebe os resultados reais do Athena e formata como JSON com campos amigáveis:
 - `titulo`, `tipo`, `ano`, `generos`
-- `sinopse` (traduzida)
+- `sinopse` (traduzida para português quando necessário)
 - `nota`, `poster_url`, `backdrop_url`
 - `motivo` (por que este título foi recomendado)
-- `duracao` (runtime para filmes, temporadas/episódios para séries)
-- `streaming_providers` (onde assistir no Brasil)
+- `duracao` (runtime para filmes; temporadas/episódios/duração de ep. para séries; `null` se ausente)
+- `data_lancamento` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Julho 2025"`; `null` se ausente)
+- `streaming_providers` (onde assistir no Brasil — string com serviços separados por vírgula, ou `null`)
+- `in_theaters` (boolean — `true` se o filme estiver atualmente em cartaz nos cinemas)
+- `theater_end_date` (string `DD/MM/YYYY` com a data de encerramento no cinema, ou `null`)
 
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
-- Grid de 4 colunas com cards por título
-- Badges coloridos para gêneros e plataformas de streaming
-- Linha de metadados com nota, duração e ano
+- Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
+- Botão "Sair" no cabeçalho para encerrar a sessão autenticada
+- Cada card exibe:
+  - Imagem de fundo (backdrop preferido sobre poster)
+  - Título, ano e tipo (filme/série)
+  - Badges laranja por gênero
+  - Linha com nota (★), duração (⏱), data de lançamento (📅)
+  - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
+  - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
+  - Sinopse e motivo da recomendação
 
 ## Entradas e saídas
 

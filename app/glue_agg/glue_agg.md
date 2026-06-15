@@ -33,7 +33,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
 |---|---|
 | **Entrada** | Argumentos: `DB_MOVIE`, `DB_TV`, `DB_UNIFIED`, `S3_BUCKET_SPEC`, `S3_BUCKET_TEMP`, `TABLE_NAME`, `GLUE_DATA_QUALITY_JOB_NAME` |
 | **Leitura** | Athena — tabelas da SOT: `tb_discover_*`, `tb_details_*`, `tb_genre_*`, `tb_configuration_*`, `tb_watch_providers_*`, `tb_now_playing_movie_tmdb` |
-| **Escrita** | S3 SPEC — `tb_discover_unified_tmdb` particionada por `media_type` + Glue Catalog |
+| **Escrita** | S3 SPEC — `tb_discover_unified_tmdb` particionada por `(media_type, year)` + Glue Catalog |
 | **Aciona** | Glue Data Quality (tabela unificada completa, sem partição de ano) |
 
 ## SQL de unificação (resumo)

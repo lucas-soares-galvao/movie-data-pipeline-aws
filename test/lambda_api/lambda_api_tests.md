@@ -72,9 +72,82 @@ test/lambda_api/
 
 Testa individualmente as funções de `src/utils.py`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
 
-### `fetch_tmdb_data` e `fetch_tmdb_reference`
+### `TestTmdbGet`
 
-Funções de HTTP de baixo nível: `requests.get` chamado com URL e `api_key` corretos; retorno correto do payload; tratamento de resposta vazia ou erro de rede.
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_json_em_sucesso` | Retorna JSON correto em resposta 200, sem chamar `time.sleep` |
+| `test_retry_em_status_transiente_e_retorna_em_sucesso` | Faz 2 tentativas e retorna o JSON na segunda, quando a primeira falha com 500 |
+| `test_retry_em_429_usa_retry_after` | Espera pelo menos o tempo indicado no header `Retry-After` ao receber 429 |
+| `test_retry_em_connection_error_e_retorna_em_sucesso` | Tenta novamente após `ConnectionError` e retorna em sucesso |
+| `test_levanta_apos_esgotar_tentativas_http` | Levanta `HTTPError` após esgotar 3 tentativas com erro HTTP |
+| `test_levanta_apos_esgotar_tentativas_connection` | Levanta `ConnectionError` após esgotar 3 tentativas com falha de rede |
+
+### `TestGetTmdbApiKey`
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor de `tmdb_api_key` do JSON do Secrets Manager |
+
+### `TestFetchTmdbData`
+
+| Teste | O que verifica |
+|---|---|
+| `test_busca_filmes_com_url_correta` | URL contém `discover/movie` para `content_type="movie"` |
+| `test_busca_series_com_url_correta` | URL contém `discover/tv` para `content_type="tv"` |
+| `test_filme_usa_parametro_primary_release_year` | Parâmetro `primary_release_year` é incluído para filmes |
+| `test_serie_usa_parametro_first_air_date_year` | Parâmetro `first_air_date_year` é incluído para séries |
+
+### `TestSaveToS3`
+
+| Teste | O que verifica |
+|---|---|
+| `test_salva_json_no_s3_com_parametros_corretos` | `put_object` chamado com `Bucket`, `Key` e `ContentType="application/json"` corretos |
+| `test_conteudo_salvo_e_json_valido` | O corpo salvo pode ser desserializado como JSON e os dados são preservados |
+
+### `TestTriggerGlueJob`
+
+| Teste | O que verifica |
+|---|---|
+| `test_inicia_job_e_retorna_run_id` | Retorna o `JobRunId` da resposta do Glue |
+| `test_argumentos_do_glue_contem_year_e_tabelas` | `--YEAR`, `--DATABASE`, `--TABLE_TYPE` e `--TABLE_NAME` presentes nos argumentos do Glue |
+| `test_sem_year_nao_inclui_argumento_year` | `--YEAR` ausente quando chamado sem `year` (tabelas de referência) |
+| `test_table_type_incluido_nos_argumentos_do_glue` | `--TABLE_TYPE` sempre repassado ao Glue |
+| `test_table_name_incluido_nos_argumentos_do_glue` | `--TABLE_NAME` sempre repassado ao Glue |
+| `test_discover_inclui_end_year` | `--END_YEAR` presente para chamadas de discover |
+| `test_genre_nao_inclui_end_year` | `--END_YEAR` ausente para chamadas de genre/configuration |
+
+### `TestFetchTmdbReference`
+
+| Teste | O que verifica |
+|---|---|
+| `test_busca_endpoint_sem_params_extras` | URL contém o endpoint passado e retorna o payload correto |
+| `test_busca_endpoint_com_params_extras` | Params extras (ex: `language`) são incluídos na requisição |
+
+### `TestCollectGenreData`
+
+| Teste | O que verifica |
+|---|---|
+| `test_movie_coleta_generos_de_filmes` | Usa endpoint `/genre/movie/list` e salva em `tmdb/genre/movie/generos_filmes.json` |
+| `test_tv_coleta_generos_de_series` | Usa endpoint `/genre/tv/list` e salva em `tmdb/genre/tv/generos_series.json` |
+| `test_movie_nao_coleta_dados_de_tv` | `content_type="movie"` não chama o endpoint de séries |
+
+### `TestCollectConfigurationData`
+
+| Teste | O que verifica |
+|---|---|
+| `test_movie_coleta_idiomas` | Usa `/configuration/languages` e salva em `tmdb/configuration/languages/idiomas.json` |
+| `test_tv_coleta_paises` | Usa `/configuration/countries` e salva em `tmdb/configuration/countries/paises.json` |
+
+### `TestCollectDiscoverData`
+
+| Teste | O que verifica |
+|---|---|
+| `test_salva_todas_as_paginas_disponiveis` | Itera por todas as páginas disponíveis e chama `save_to_s3` uma vez por página |
+| `test_para_quando_so_ha_uma_pagina` | Para corretamente quando `total_pages = 1` |
+| `test_s3_key_segue_padrao_esperado` | Chave S3 segue o padrão `tmdb/discover/{type}/ano={ano}/pagina_NNN.json` |
+| `test_salva_apenas_results` | Dados salvos no S3 são apenas o campo `results`, sem metadados de paginação |
+| `test_nao_inclui_metadados_de_paginacao` | Não inclui `page`, `total_pages` ou `total_results` no payload salvo |
 
 ### `collect_watch_providers_ref`
 

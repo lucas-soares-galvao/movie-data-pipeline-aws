@@ -64,10 +64,62 @@ Testa as funções individuais:
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
 - `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro
 - `repair_details_duplicates` (`TestRepairDetailsDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém `dt_processamento` mais recente por ID; usa `overwrite_partitions`
-- `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
+- `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `dt_atualizacao` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
-- `collect_and_write_watch_providers`: apenas provedores do Brasil (`BR`) são extraídos
-- `trigger_agg`: argumentos passados ao `start_job_run` do Glue estão corretos
+- `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado
+- `trigger_agg` (`TestTriggerAgg`): argumentos passados ao `start_job_run` do Glue estão corretos; retorna `JobRunId`
+
+As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
+
+### `TestFetchTmdbDetails`
+
+| Teste | O que verifica |
+|---|---|
+| `test_calls_movie_endpoint` | URL contém `/movie/{id}` para `content_type="movie"` |
+| `test_calls_tv_endpoint` | URL contém `/tv/{id}` para `content_type="tv"` |
+| `test_returns_json_response` | Retorna o JSON da resposta HTTP sem transformação |
+
+### `TestFetchTmdbWatchProviders`
+
+| Teste | O que verifica |
+|---|---|
+| `test_calls_movie_watch_providers_endpoint` | URL contém `/movie/{id}/watch/providers` |
+| `test_calls_tv_watch_providers_endpoint` | URL contém `/tv/{id}/watch/providers` |
+| `test_returns_br_section` | Retorna apenas o dicionário da seção `BR` do payload da API |
+
+### `TestParseWatchProviders`
+
+| Teste | O que verifica |
+|---|---|
+| `test_returns_empty_list_for_empty_br_data` | Retorna `[]` quando não há dados de BR |
+| `test_generates_one_record_per_flatrate_provider` | Gera um registro por provedor `flatrate`, com `provider_type`, `provider_name`, `id` e `year` corretos |
+| `test_generates_records_for_multiple_provider_types` | Processa `flatrate`, `rent` e `buy` gerando registros distintos por tipo |
+| `test_ignores_providers_without_name` | Provedores sem `provider_name` são ignorados |
+
+### `TestTriggerDataQuality`
+
+| Teste | O que verifica |
+|---|---|
+| `test_starts_dq_job_with_table_database_and_year` | `start_job_run` chamado com `--TABLE_NAME`, `--DATABASE` e `--YEAR` corretos |
+| `test_returns_job_run_id` | Retorna o `JobRunId` da resposta do Glue |
+
+### `TestGetResolvedOption`
+
+| Teste | O que verifica |
+|---|---|
+| `test_delegates_to_getResolvedOptions` | Delega ao `getResolvedOptions` do AWS Glue e retorna o resultado |
+
+### `TestGetParametersGlue`
+
+| Teste | O que verifica |
+|---|---|
+| `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `AGG_JOB_NAME`, etc.) |
+
+### `TestGetTmdbApiKey`
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor de `tmdb_api_key` |
 
 ## Como executar
 

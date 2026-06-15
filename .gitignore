@@ -1,3 +1,6 @@
+# --- is-a-dev (apenas referência local, registrado no repo is-a-dev/register) ---
+infra/is-a-dev/
+
 # --- IDEs e Editores ---
 .claude/
 .vscode/

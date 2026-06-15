@@ -82,3 +82,9 @@ A interface Streamlit (`app.py`) não é coberta por testes automatizados nesta 
 cd app/lightsail_ia
 streamlit run app.py
 ```
+
+## Lacuna de cobertura — `in_theaters` e `theater_end_date`
+
+O SELECT real em `agent.py` inclui `in_theaters` e `theater_end_date` nas colunas consultadas ao Athena. No entanto, o fixture `COLUMNS` em `test_agent.py` **não inclui** essas duas colunas, e o dicionário `TITULO_FAKE` e o JSON `RESPOSTA_LLM_FAKE` também não as contêm.
+
+Consequência: os testes exercitam o fluxo completo mas **não verificam** que `in_theaters` e `theater_end_date` são corretamente retornados pela query e processados pelo agente. Para cobrir esse comportamento seria necessário adicionar as colunas ao `COLUMNS`, incluir os campos em `TITULO_FAKE` e adicionar testes específicos (análogos ao `test_retorna_data_lancamento_formatada`).

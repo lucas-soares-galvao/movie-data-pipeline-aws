@@ -40,12 +40,46 @@ test/glue_agg/
 
 ## Casos de teste — `test_utils.py`
 
-Testa as funções individuais:
+### `TestRunAthenaQuery`
 
-- `run_athena_query`: query SQL montada corretamente com os databases passados; DataFrame retornado com as colunas esperadas; SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK() OVER (...ORDER BY CAST(year AS INTEGER) DESC)` para dedup de watch providers; SQL contém `spec_raw`, `spec_deduped` e `PARTITION BY id, media_type` para dedup final; SQL contém CTE `now_playing` com `LEFT JOIN` em `tb_now_playing_movie_tmdb` gerando as colunas `in_theaters`, `theater_start_date` e `theater_end_date`
-- `write_parquet_to_spec`: chamada ao `awswrangler.s3.to_parquet` com `mode="overwrite"` e `partition_cols=["media_type", "year"]`
-- `trigger_data_quality` (`TestTriggerDataQuality`): sem `year` → argumento `--YEAR` ausente no `start_job_run`; com `year` → argumento `--YEAR` presente; retorna `JobRunId` correto
-- `get_parameters_glue`: inclui `GLUE_DATA_QUALITY_JOB_NAME` nos argumentos requeridos
+| Teste | O que verifica |
+|---|---|
+| `test_passes_sql_with_image_columns_to_wrangler` | SQL passado ao wrangler contém `AS poster_url`, `AS backdrop_url` com prefixos de URL do TMDB, `overview`, `air_date`, `origin_country_name`, `language_name` e referências a `tb_discover_movie_tmdb` e `tb_discover_tv_tmdb` |
+| `test_uses_expected_wrangler_execution_args` | `read_sql_query` é chamado com `database="db_unified_tmdb"`, `s3_output="s3://temp/athena/glue_agg/"` e `ctas_approach=True` |
+| `test_query_contains_details_movie_join` | SQL contém `tb_details_movie_tmdb` e coluna `runtime_minutes` |
+| `test_query_contains_details_tv_join` | SQL contém `tb_details_tv_tmdb` e colunas `number_of_seasons`, `number_of_episodes`, `episode_runtime_minutes` |
+| `test_query_contains_watch_providers_join` | SQL contém `tb_watch_providers_movie_tmdb`, `tb_watch_providers_tv_tmdb` e coluna `streaming_providers` |
+| `test_query_deduplica_watch_providers_por_ano_mais_recente` | SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK()` e `CAST(year AS INTEGER) DESC`; garante que **não** usa `ROW_NUMBER()` (que filtraria um único provedor por título em vez de todos do ano mais recente) |
+| `test_query_possui_dedup_final_spec_deduped` | SQL contém CTEs `spec_raw` e `spec_deduped` com `PARTITION BY id, media_type` e alias `rn_final` para garantir unicidade na saída |
+
+### `TestWriteParquetToSpec`
+
+| Teste | O que verifica |
+|---|---|
+| `test_constroi_caminho_s3_correto` | Argumento `path` é `"s3://{s3_bucket_spec}/{table_name}/"` |
+| `test_usa_partition_cols_e_mode_corretos` | `partition_cols=["media_type", "year"]`, `mode="overwrite"` e `dataset=True` |
+| `test_dataframe_vazio_nao_escreve` | `to_parquet` não é chamado quando o DataFrame está vazio |
+| `test_registra_tabela_no_catalog` | `to_parquet` recebe `database` e `table` corretos para registrar no Glue Catalog |
+| `test_levanta_runtime_error_quando_nenhum_arquivo_escrito` | Levanta `RuntimeError("Escrita falhou")` quando `to_parquet` retorna `{"paths": []}` (nenhum arquivo gravado) |
+
+### `TestTriggerDataQuality`
+
+| Teste | O que verifica |
+|---|---|
+| `test_inicia_job_sem_year` | `--YEAR` ausente nos argumentos; `--TABLE_NAME` e `--DATABASE` corretos; retorna `JobRunId` |
+| `test_inicia_job_com_year` | `--YEAR` presente nos argumentos quando `year` é passado |
+
+### `TestGetResolvedOption`
+
+| Teste | O que verifica |
+|---|---|
+| `test_delegates_to_getResolvedOptions` | Delega ao `getResolvedOptions` do AWS Glue e retorna o resultado |
+
+### `TestGetParametersGlue`
+
+| Teste | O que verifica |
+|---|---|
+| `test_returns_all_required_args` | Retorna `S3_BUCKET_SPEC`, `DB_UNIFIED`, `TABLE_NAME` e `GLUE_DATA_QUALITY_JOB_NAME` entre os argumentos obrigatórios |
 
 ## Como executar
 
@@ -59,4 +93,4 @@ pytest test/glue_agg/ --cov=app/glue_agg --cov-report=term-missing
 
 ## Cobertura mínima
 
-**70%** — definido em `pytest.ini` na raiz do projeto.
+**80%** — definido via `--cov-fail-under=80` no workflow de CI (`.github/workflows/01_test.yml`).
