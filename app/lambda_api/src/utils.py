@@ -284,7 +284,6 @@ def collect_watch_providers_ref(
         {
             "provider_id":         p["provider_id"],
             "provider_name":       p["provider_name"],
-            "logo_path":           p.get("logo_path"),
             "display_priority_br": p.get("display_priorities", {}).get("BR"),
         }
         for p in data.get("results", [])

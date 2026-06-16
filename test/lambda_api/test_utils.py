@@ -700,8 +700,8 @@ class TestCollectWatchProvidersRef(unittest.TestCase):
         self.assertEqual(len(dados_salvos), 1)
         self.assertEqual(dados_salvos[0]["provider_id"], 8)
         self.assertEqual(dados_salvos[0]["provider_name"], "Netflix")
-        self.assertEqual(dados_salvos[0]["logo_path"], "/netflix.png")
         self.assertEqual(dados_salvos[0]["display_priority_br"], 1)
+        self.assertNotIn("logo_path", dados_salvos[0])
 
     @patch("src.utils.save_to_s3")
     @patch("src.utils.fetch_tmdb_reference")
