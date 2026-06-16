@@ -317,7 +317,6 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
         return {
             "id":                detalhe.get("id"),
             "runtime":           detalhe.get("runtime"),
-            "title_en":          detalhe.get("title"),
             "overview_en":       detalhe.get("overview"),
             "poster_path_en":    detalhe.get("poster_path"),   # "/abc123.jpg" (sem URL base)
             "backdrop_path_en":  detalhe.get("backdrop_path"),
@@ -335,7 +334,6 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             # episode_run_time é uma lista (pode ter mais de um valor para séries com
             # episódios de duração variável). Tipicamente tem um único elemento.
             "episode_run_time":   detalhe.get("episode_run_time", []),
-            "title_en":           detalhe.get("name"),  # séries usam "name", não "title"
             "overview_en":        detalhe.get("overview"),
             "poster_path_en":     detalhe.get("poster_path"),
             "backdrop_path_en":   detalhe.get("backdrop_path"),
@@ -347,13 +345,11 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
 
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Adiciona colunas title_pt e overview_pt ao DataFrame de detalhes.
+    Adiciona coluna overview_pt ao DataFrame de detalhes.
 
     Traduz apenas registros com original_language='en' (EN→PT via Google Translate).
-    Para outros idiomas, title_pt e overview_pt ficam nulos — o glue_agg usará o título
-    original do discover nesses casos.
+    Para outros idiomas, overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
     """
-    df["title_pt"] = None
     df["overview_pt"] = None
 
     mask = df["original_language"] == "en"
@@ -372,11 +368,10 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     total = mask.sum()
     logger.info(f"Traduzindo {total} registros com original_language='en' ({_TRANSLATE_MAX_WORKERS} workers).")
 
-    for col_en, col_pt in (("title_en", "title_pt"), ("overview_en", "overview_pt")):
-        valores = df.loc[mask, col_en].fillna("").tolist()
-        with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-            traduzidos = list(executor.map(_translate, valores))
-        df.loc[mask, col_pt] = traduzidos
+    valores = df.loc[mask, "overview_en"].fillna("").tolist()
+    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+        traduzidos = list(executor.map(_translate, valores))
+    df.loc[mask, "overview_pt"] = traduzidos
 
     return df
 
@@ -725,7 +720,6 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
                 "provider_type":  provider_type,
                 "provider_id":    p.get("provider_id"),
                 "provider_name":  name,
-                "logo_path":      p.get("logo_path"),
                 "dt_atualizacao": date.today(),
                 "year":           year,
             })
