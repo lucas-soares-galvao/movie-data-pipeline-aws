@@ -3,12 +3,13 @@
 # =============================================================================
 
 resource "aws_glue_job" "etl_job_pythonshell" {
-  name         = local.envs.glue_etl_job_name
-  description  = "Lê JSON do SOR, transforma em Parquet no SOT e aciona os jobs Details e DQ"
-  role_arn     = aws_iam_role.glue_etl_role.arn
-  max_retries  = 0
-  timeout      = 15
-  max_capacity = local.pythonshell_min_capacity
+  name                    = local.envs.glue_etl_job_name
+  description             = "Lê JSON do SOR, transforma em Parquet no SOT e aciona os jobs Details e DQ"
+  role_arn                = aws_iam_role.glue_etl_role.arn
+  job_run_queuing_enabled = true
+  max_retries             = 0
+  timeout                 = 15
+  max_capacity            = local.pythonshell_min_capacity
 
   command {
     # Caminho no S3 para o script principal do job.
@@ -113,9 +114,20 @@ resource "aws_s3_object" "deploy_scripts_bucket_etl" {
 # O pacote "src" (src/utils.py) precisa ser empacotado como .whl para
 # que o main.py possa importar "from src.utils import ..." no Glue PythonShell.
 #
-# O "null_resource" executa o script build_glue_wheel.py localmente.
-# Os triggers detectam mudanças nos arquivos .py da pasta src/ para
-# re-empacotar apenas quando necessário (evita rebuild em todo apply).
+# Padrão igual ao usado em glue_agg.tf e glue_details.tf: o "source_hash" é
+# calculado a partir do hash dos arquivos .py de origem (sempre presentes no
+# checkout), e NÃO via filemd5() sobre o .whl já construído. Isso é essencial
+# porque "terraform validate"/"plan" avaliam essa expressão antes de qualquer
+# apply — um filemd5() sobre o wheel quebraria workflows que só validam o
+# código (ex.: 03_pr_auto.yml), que não constroem o artefato.
+#
+# O "null_resource" abaixo executa o build localmente; seu provisioner
+# "local-exec" só roda durante o "apply" (não em validate/plan), então não
+# exige o wheel pronto de antemão. Como reforço extra, o CI
+# (.github/workflows/02_terraform.yml) também builda o wheel antes do
+# "terraform plan", garantindo que o arquivo exista mesmo se o Terraform
+# state considerar o build "já feito" (triggers inalterados) em um runner
+# novo onde o arquivo local não existe.
 # =============================================================================
 resource "null_resource" "glue_etl_wheel_build" {
   triggers = {
@@ -128,8 +140,6 @@ resource "null_resource" "glue_etl_wheel_build" {
   }
 }
 
-# Envia o arquivo .whl para o S3 após o build.
-# "source_hash" usa o hash dos arquivos fonte para detectar mudanças.
 resource "aws_s3_object" "deploy_app_wheel_etl" {
   bucket      = aws_s3_bucket.auxiliary_bucket.id
   key         = "${local.tmdb_prefix}/${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename}"

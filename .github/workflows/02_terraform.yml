@@ -76,6 +76,17 @@ jobs:
             --requirements app/lambda_api/requirements.txt \
             --dest infra/.lambda_build
 
+      # O plan referencia o .whl do Glue ETL; precisa existir antes do plan.
+      # Build sempre executado aqui (não via null_resource/local-exec do Terraform),
+      # pois o state remoto pode considerar o build "já feito" mesmo em um runner
+      # novo onde o arquivo local não existe.
+      - name: Build Glue ETL Wheel
+        run: |
+          python infra/scripts/build_glue_wheel.py \
+            --src app/glue_etl \
+            --dest infra/.glue_etl_build \
+            --name glue_etl_src
+
       # destroy_config.json controla se a infra deve ser destruída (teardown).
       # Formato: { "dev": false, "prod": false }
       # Mude para true no ambiente desejado para acionar o terraform destroy.
