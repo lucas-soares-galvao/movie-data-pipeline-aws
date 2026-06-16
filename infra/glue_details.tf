@@ -1,13 +1,14 @@
 resource "aws_glue_job" "details_job_pythonshell" {
-  name         = local.envs.glue_details_job_name
-  description  = "Glue Details Job — coleta runtime/temporadas da API TMDB e grava no SOT"
-  role_arn     = aws_iam_role.glue_details_role.arn
-  max_retries  = 0
-  timeout      = 30
-  max_capacity = local.pythonshell_min_capacity
+  name                    = local.envs.glue_details_job_name
+  description             = "Glue Details Job — coleta runtime/temporadas da API TMDB e grava no SOT"
+  role_arn                = aws_iam_role.glue_details_role.arn
+  job_run_queuing_enabled = true
+  max_retries             = 0
+  timeout                 = 30
+  max_capacity            = local.pythonshell_min_capacity
 
   command {
-    script_location = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_details_job_name}/app/main.py"
+    script_location = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_details_job_name}/app/main.py"
     name            = "pythonshell"
     python_version  = "3.9"
   }
@@ -18,17 +19,17 @@ resource "aws_glue_job" "details_job_pythonshell" {
 
   default_arguments = {
     "--job-language"                = "python"
-    "--extra-py-files"              = "s3://${local.envs.s3_bucket_aux}/${local.envs.glue_details_job_name}/${local.glue_details_wheel_filename}"
+    "--extra-py-files"              = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_details_job_name}/${local.glue_details_wheel_filename}"
     "--additional-python-modules"   = local.glue_details_additional_python_modules
     "--custom-logGroup-prefix"      = "/${local.envs.glue_details_job_name}"
     "--S3_BUCKET_SOT"               = local.envs.s3_bucket_sot
     "--S3_BUCKET_TEMP"              = local.envs.s3_bucket_temp
-    "--TABLE_DISCOVER_MOVIE"        = var.glue_catalog_table_discover_movie_name
-    "--TABLE_DISCOVER_TV"           = var.glue_catalog_table_discover_tv_name
-    "--TABLE_DETAILS_MOVIE"         = var.glue_catalog_table_details_movie_name
-    "--TABLE_DETAILS_TV"            = var.glue_catalog_table_details_tv_name
-    "--TABLE_WATCH_PROVIDERS_MOVIE" = var.glue_catalog_table_watch_providers_movie_name
-    "--TABLE_WATCH_PROVIDERS_TV"    = var.glue_catalog_table_watch_providers_tv_name
+    "--TABLE_DISCOVER_MOVIE"        = local.envs.glue_catalog_tb_discover_movie
+    "--TABLE_DISCOVER_TV"           = local.envs.glue_catalog_tb_discover_tv
+    "--TABLE_DETAILS_MOVIE"         = local.envs.glue_catalog_tb_details_movie
+    "--TABLE_DETAILS_TV"            = local.envs.glue_catalog_tb_details_tv
+    "--TABLE_WATCH_PROVIDERS_MOVIE" = local.envs.glue_catalog_tb_watch_providers_movie
+    "--TABLE_WATCH_PROVIDERS_TV"    = local.envs.glue_catalog_tb_watch_providers_tv
     "--TMDB_SECRET_ARN"             = var.tmdb_secret_arn
     "--GLUE_AGG_JOB_NAME"           = local.envs.glue_agg_job_name
     "--GLUE_DATA_QUALITY_JOB_NAME"  = local.envs.glue_data_quality_job_name
@@ -63,7 +64,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
 
 resource "aws_s3_object" "deploy_scripts_bucket_details" {
   bucket     = aws_s3_bucket.auxiliary_bucket.id
-  key        = "${local.envs.glue_details_job_name}/app/main.py"
+  key        = "${local.tmdb_prefix}/${local.envs.glue_details_job_name}/app/main.py"
   source     = "${local.glue_details_src_path}/main.py"
   etag       = filemd5("${local.glue_details_src_path}/main.py")
   tags       = local.component_tags.glue_details
@@ -83,7 +84,7 @@ resource "null_resource" "glue_details_wheel_build" {
 
 resource "aws_s3_object" "deploy_app_wheel_details" {
   bucket      = aws_s3_bucket.auxiliary_bucket.id
-  key         = "${local.envs.glue_details_job_name}/${local.glue_details_wheel_filename}"
+  key         = "${local.tmdb_prefix}/${local.envs.glue_details_job_name}/${local.glue_details_wheel_filename}"
   source      = "${local.glue_details_wheel_build_path}/${local.glue_details_wheel_filename}"
   source_hash = null_resource.glue_details_wheel_build.triggers.source_hash
   tags        = local.component_tags.glue_details

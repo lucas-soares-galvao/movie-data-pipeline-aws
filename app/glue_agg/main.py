@@ -26,8 +26,9 @@ def main() -> None:
     """Executa o pipeline de agregação: query Athena → escrita no SPEC → aciona DQ."""
     args = get_parameters_glue()
 
-    s3_bucket_spec = args["S3_BUCKET_SPEC"]
-    s3_bucket_temp = args["S3_BUCKET_TEMP"]
+    s3_bucket_spec  = args["S3_BUCKET_SPEC"]
+    s3_prefix_spec  = args["S3_PREFIX_SPEC"]
+    s3_bucket_temp  = args["S3_BUCKET_TEMP"]
     db_movie      = args["DB_MOVIE"]
     db_tv         = args["DB_TV"]
     db_unified    = args["DB_UNIFIED"]
@@ -48,6 +49,7 @@ def main() -> None:
     write_parquet_to_spec(
         df=df,
         s3_bucket_spec=s3_bucket_spec,
+        s3_prefix_spec=s3_prefix_spec,
         table_name=table_name,
         database=db_unified,
     )

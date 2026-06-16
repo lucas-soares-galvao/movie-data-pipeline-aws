@@ -163,7 +163,7 @@ def fetch_ids_from_sot(
     Returns:
         Lista de IDs inteiros únicos.
     """
-    s3_output = f"s3://{s3_bucket_temp}/athena/glue_details/"
+    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
     # DISTINCT evita buscar detalhes do mesmo ID mais de uma vez
     # WHERE year filtra apenas a partição do ano atual (não processa anos passados novamente)
     query = f"SELECT DISTINCT id FROM {database}.{table_discover} WHERE year = '{year}'"
@@ -203,7 +203,7 @@ def fetch_existing_ids_from_details(
     Returns:
         Lista de IDs inteiros já processados este mês (qualquer partição year).
     """
-    s3_output = f"s3://{s3_bucket_temp}/athena/glue_details/"
+    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
     # Considera "existente" qualquer ID processado este mês, independente da partição year.
     # IDs de meses anteriores são stale e voltam para re-fetch no dia 1.
     query = (
@@ -252,7 +252,7 @@ def fetch_ids_stale_watch_providers(
     Returns:
         Lista de IDs inteiros a atualizar.
     """
-    s3_output = f"s3://{s3_bucket_temp}/athena/glue_details/"
+    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
     query = f"""
         SELECT DISTINCT d.id
         FROM {database}.{table_discover} d

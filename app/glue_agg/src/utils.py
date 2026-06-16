@@ -388,6 +388,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     """
     required_args = [
         "S3_BUCKET_SPEC",
+        "S3_PREFIX_SPEC",
         "S3_BUCKET_TEMP",
         "DB_MOVIE",
         "DB_TV",
@@ -423,7 +424,7 @@ def run_athena_query(
         db_tv=db_tv,
         db_unified=db_unified,
     )
-    s3_output = f"s3://{s3_bucket_temp}/athena/glue_agg/"
+    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_agg/"
 
     logger.info(
         f"Executando query Athena | db_movie='{db_movie}' | db_tv='{db_tv}' | db_unified='{db_unified}'"
@@ -442,6 +443,7 @@ def run_athena_query(
 def write_parquet_to_spec(
     df: pd.DataFrame,
     s3_bucket_spec: str,
+    s3_prefix_spec: str,
     table_name: str,
     database: str,
 ) -> None:
@@ -467,7 +469,7 @@ def write_parquet_to_spec(
         )
         return
 
-    s3_path = f"s3://{s3_bucket_spec}/{table_name}/"
+    s3_path = f"s3://{s3_bucket_spec}/{s3_prefix_spec}/{table_name}/"
     logger.info(
         f"Escrevendo {len(df)} registros em {s3_path} | "
         f"particoes=[media_type, year] | mode=overwrite"

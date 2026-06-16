@@ -7,6 +7,9 @@ locals {
   # Capacidade mínima de DPU para jobs PythonShell (1/16 de DPU)
   pythonshell_min_capacity = 0.0625
 
+  # Prefixo tmdb que identifica o projeto (escopo de isolamento por projeto)
+  tmdb_prefix = "tmdb"
+
   default_resource_tags = {
     Service     = "proj-eng-dados-filmes-aws"
     Environment = local.environment_tag_value
@@ -48,7 +51,7 @@ locals {
   # ===========================================================================
   # Converte "dev"→"Dev" e "prod"→"Prod" para exibição mais limpa nas tags.
   # A sintaxe `{...}[chave]` é um map literal com acesso por chave — equivale
-  # a um switch/case em outras linguagens.
+  # a um switch/case em outras linguagensContinue.
   environment_tag_value = {
     dev  = "Dev"
     prod = "Prod"
@@ -189,18 +192,43 @@ EOT
   # Em vez de escrever "${var.glue_etl_job_name}-${var.env}" em cada arquivo,
   # usamos "local.envs.glue_etl_job_name".
   envs = {
-    glue_etl_job_name          = "${var.glue_etl_job_name}-${var.env}"
-    glue_data_quality_job_name = "${var.glue_data_quality_job_name}-${var.env}"
-    glue_agg_job_name          = "${var.glue_agg_job_name}-${var.env}"
-    glue_details_job_name      = "${var.glue_details_job_name}-${var.env}"
-    lambda_api_name            = "${var.lambda_api_name}-${var.env}"
-    iam_role_glue              = "${var.iam_role_glue}-${var.env}"
-    iam_role_lambda            = "${var.iam_role_lambda}-${var.env}"
-    s3_bucket_aux              = "${var.s3_bucket_aux}-${var.env}"
-    s3_bucket_temp             = "${var.s3_bucket_temp}-${var.env}"
-    s3_bucket_sor              = "${var.s3_bucket_sor}-${var.env}"
-    s3_bucket_sot              = "${var.s3_bucket_sot}-${var.env}"
-    s3_bucket_spec             = "${var.s3_bucket_spec}-${var.env}"
-    s3_bucket_data_quality     = "${var.s3_bucket_data_quality}-${var.env}"
+    glue_etl_job_name          = "${local.tmdb_prefix}-${var.glue_etl_job_name}-${var.env}"
+    glue_data_quality_job_name = "${local.tmdb_prefix}-${var.glue_data_quality_job_name}-${var.env}"
+    glue_agg_job_name          = "${local.tmdb_prefix}-${var.glue_agg_job_name}-${var.env}"
+    glue_details_job_name      = "${local.tmdb_prefix}-${var.glue_details_job_name}-${var.env}"
+    lambda_api_name            = "${local.tmdb_prefix}-${var.lambda_api_name}-${var.env}"
+    iam_role_glue              = "${local.tmdb_prefix}-${var.iam_role_glue}-${var.env}"
+    iam_role_lambda            = "${local.tmdb_prefix}-${var.iam_role_lambda}-${var.env}"
+    s3_bucket_aux              = "${local.tmdb_prefix}-${var.s3_bucket_aux}-${var.env}"
+    s3_bucket_temp             = "${local.tmdb_prefix}-${var.s3_bucket_temp}-${var.env}"
+    s3_bucket_sor              = "${local.tmdb_prefix}-${var.s3_bucket_sor}-${var.env}"
+    s3_bucket_sot              = "${local.tmdb_prefix}-${var.s3_bucket_sot}-${var.env}"
+    s3_bucket_spec             = "${local.tmdb_prefix}-${var.s3_bucket_spec}-${var.env}"
+    s3_bucket_data_quality     = "${local.tmdb_prefix}-${var.s3_bucket_data_quality}-${var.env}"
+
+    # Glue Catalog — Databases
+    glue_catalog_db_movie   = "db_${local.tmdb_prefix}_movie_${var.env}"
+    glue_catalog_db_tv      = "db_${local.tmdb_prefix}_tv_${var.env}"
+    glue_catalog_db_unified = "db_${local.tmdb_prefix}_unified_${var.env}"
+
+    # Glue Catalog — Tables
+    glue_catalog_tb_discover_movie            = "tb_${local.tmdb_prefix}_discover_movie_${var.env}"
+    glue_catalog_tb_discover_tv               = "tb_${local.tmdb_prefix}_discover_tv_${var.env}"
+    glue_catalog_tb_now_playing_movie         = "tb_${local.tmdb_prefix}_now_playing_movie_${var.env}"
+    glue_catalog_tb_genre_movie               = "tb_${local.tmdb_prefix}_genre_movie_${var.env}"
+    glue_catalog_tb_genre_tv                  = "tb_${local.tmdb_prefix}_genre_tv_${var.env}"
+    glue_catalog_tb_configuration_languages   = "tb_${local.tmdb_prefix}_configuration_languages_${var.env}"
+    glue_catalog_tb_configuration_countries   = "tb_${local.tmdb_prefix}_configuration_countries_${var.env}"
+    glue_catalog_tb_data_quality              = "tb_${local.tmdb_prefix}_data_quality_${var.env}"
+    glue_catalog_tb_details_movie             = "tb_${local.tmdb_prefix}_details_movie_${var.env}"
+    glue_catalog_tb_details_tv                = "tb_${local.tmdb_prefix}_details_tv_${var.env}"
+    glue_catalog_tb_watch_providers_movie     = "tb_${local.tmdb_prefix}_watch_providers_movie_${var.env}"
+    glue_catalog_tb_watch_providers_tv        = "tb_${local.tmdb_prefix}_watch_providers_tv_${var.env}"
+    glue_catalog_tb_watch_providers_ref_movie = "tb_${local.tmdb_prefix}_watch_providers_ref_movie_${var.env}"
+    glue_catalog_tb_watch_providers_ref_tv    = "tb_${local.tmdb_prefix}_watch_providers_ref_tv_${var.env}"
+    glue_catalog_tb_discover_unified          = "tb_${local.tmdb_prefix}_discover_unified_${var.env}"
+
+    # Lightsail
+    lightsail_instance_name = "${local.tmdb_prefix}-${var.lightsail_instance_name}-${var.env}"
   }
 }

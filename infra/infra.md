@@ -6,6 +6,8 @@ Toda a infraestrutura do projeto é gerenciada como código com **Terraform**. I
 
 O estado do Terraform é armazenado remotamente em um bucket S3 com backend configurado em `provider.tf`.
 
+Todos os recursos AWS deste projeto recebem o prefixo `tmdb-` (ou `tmdb_` para databases/tabelas do Glue Catalog), definido em `local.tmdb_prefix` (`locals.tf`). O objetivo é isolar os recursos deste projeto de outros que eventualmente compartilhem a mesma conta/região AWS.
+
 ## Ambientes
 
 | Ambiente | Conta AWS | Arquivo de variáveis |
@@ -23,12 +25,14 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Bucket | Nome (sem sufixo de ambiente) | Papel |
 |---|---|---|
-| SOR | `lsg-sa-east-1-bucket-sor` | Source of Record — dados brutos (JSON da TMDB) |
-| SOT | `lsg-sa-east-1-bucket-sot` | Source of Truth — dados processados (Parquet) |
-| SPEC | `lsg-sa-east-1-bucket-spec` | Specialized — tabela unificada para o app (Gold) |
-| DQ | `lsg-sa-east-1-bucket-data-quality` | Resultados de validação de qualidade |
-| AUX | `lsg-sa-east-1-bucket-aux` | Auxiliar — artefatos de código (zips, wheels) |
-| TEMP | `lsg-sa-east-1-bucket-temp` | Temporário — resultados de queries Athena |
+| SOR | `tmdb-lsg-sa-east-1-bucket-sor` | Source of Record — dados brutos (JSON da TMDB) |
+| SOT | `tmdb-lsg-sa-east-1-bucket-sot` | Source of Truth — dados processados (Parquet) |
+| SPEC | `tmdb-lsg-sa-east-1-bucket-spec` | Specialized — tabela unificada para o app (Gold) |
+| DQ | `tmdb-lsg-sa-east-1-bucket-data-quality` | Resultados de validação de qualidade |
+| AUX | `tmdb-lsg-sa-east-1-bucket-aux` | Auxiliar — artefatos de código (zips, wheels) |
+| TEMP | `tmdb-lsg-sa-east-1-bucket-temp` | Temporário — resultados de queries Athena |
+
+> Dentro dos buckets AUX, TEMP e SPEC, os objetos também são gravados sob um prefixo de chave `tmdb/` (scripts e wheels dos jobs Glue, resultados temporários do Athena, dados gravados pelo Glue AGG).
 
 ### Computação — Lambda (`lambda_api.tf`)
 
@@ -50,11 +54,13 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Database | Tabelas |
 |---|---|
-| `db_movie_tmdb` | discover, genre, configuration_languages, details, watch_providers, watch_providers_ref, now_playing |
-| `db_tv_tmdb` | discover, genre, configuration_countries, details, watch_providers, watch_providers_ref |
-| `db_unified_tmdb` | tb_data_quality_tmdb |
+| `db_tmdb_movie_{env}` | tb_tmdb_discover_movie, tb_tmdb_genre_movie, tb_tmdb_configuration_languages, tb_tmdb_details_movie, tb_tmdb_watch_providers_movie, tb_tmdb_watch_providers_ref_movie, tb_tmdb_now_playing_movie |
+| `db_tmdb_tv_{env}` | tb_tmdb_discover_tv, tb_tmdb_genre_tv, tb_tmdb_configuration_countries, tb_tmdb_details_tv, tb_tmdb_watch_providers_tv, tb_tmdb_watch_providers_ref_tv |
+| `db_tmdb_unified_{env}` | tb_tmdb_data_quality |
 
-> `tb_discover_unified_tmdb` (tabela SPEC) não é declarada via Terraform — é registrada dinamicamente pelo job Glue AGG em runtime.
+> Antes da introdução do prefixo `tmdb`, esses nomes de database/tabela não levavam sufixo de ambiente — uma inconsistência com a seção [Ambientes](#ambientes), já corrigida: agora `db_tmdb_movie_dev` e `db_tmdb_movie_prod` (por exemplo) são databases distintas.
+
+> `tb_tmdb_discover_unified_{env}` (tabela SPEC) não é declarada via Terraform — é registrada dinamicamente pelo job Glue AGG em runtime.
 
 > A tabela `now_playing` não possui partição de ano — é um snapshot completo sobrescrito diariamente (`mode=overwrite`), diferente das tabelas `discover` que são particionadas por ano. Inclui os campos `theater_start_date` e `theater_end_date` com a janela de exibição reportada pela API do TMDB.
 
@@ -75,14 +81,16 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Tópico | Evento |
 |---|---|
-| `lambda-failure-notifications` | Falha na Lambda API |
-| `eventbridge-failure-notifications` | Falha no agendamento EventBridge |
-| `glue-etl-failure-notifications` | Falha no job ETL |
-| `glue-details-failure-notifications` | Falha no job Details |
-| `glue-agg-failure-notifications` | Falha no job AGG |
-| `glue-agg-success-notifications` | Sucesso do job AGG |
-| `glue-data-quality-failure-notifications` | Falha nas regras de DQ |
-| `glue-data-quality-metrics-notifications` | Métricas de DQ (resultados das regras) |
+| `tmdb-lambda-failure-notifications-{env}` | Falha na Lambda API |
+| `tmdb-eventbridge-failure-notifications-{env}` | Falha no agendamento EventBridge |
+| `tmdb-glue-etl-failure-notifications-{env}` | Falha no job ETL |
+| `tmdb-glue-details-failure-notifications-{env}` | Falha no job Details |
+| `tmdb-glue-agg-failure-notifications-{env}` | Falha no job AGG |
+| `tmdb-glue-agg-success-notifications-{env}` | Sucesso do job AGG |
+| `tmdb-glue-data-quality-failure-notifications-{env}` | Falha nas regras de DQ |
+| `tmdb-glue-data-quality-metrics-notifications-{env}` | Métricas de DQ (resultados das regras) |
+
+> Antes desta mudança, os tópicos SNS eram globais (sem sufixo de ambiente) — se dev e prod estivessem na mesma conta AWS, dividiriam o mesmo tópico/inscrição de e-mail. Agora cada ambiente tem seus próprios tópicos.
 
 ### Observabilidade — CloudWatch (`cloudwatch_alarms.tf`, `cloudwatch_glue_alarms.tf`, `cloudwatch_logs.tf`)
 
@@ -94,10 +102,10 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 ### Servidor — Lightsail (`lightsail_ia.tf`)
 
-- Instância `filmbot-{env}` (`micro_3_0` — 2 vCPU, 1 GB RAM, $7/mês) para hospedar o app Streamlit
+- Instância `tmdb-filmbot-{env}` (`micro_3_0` — 2 vCPU, 1 GB RAM, $7/mês) para hospedar o app Streamlit
 - Portas abertas: 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`), 80 (HTTP), 443 (HTTPS) e 8501 (Streamlit)
-- IP estático fixo (`filmbot-static-ip-{env}`) para URL estável
-- IAM user `filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
+- IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável
+- IAM user `tmdb-filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
 - Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
 
 **Agendamento de custo** (`lightsail_scheduler.tf`): Lambda + EventBridge com 3 regras de schedule. Desliga todos os dias às **00:00 BRT** (`cron(00 03 ? * * *)`); inicia às **18:00 BRT de seg–sex** (`cron(00 21 ? * MON-FRI *)`) e às **08:00 BRT aos sáb–dom** (`cron(00 11 ? * SAT-SUN *)`). Habilitado apenas quando `lightsail_enabled = true`.
@@ -106,11 +114,11 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Role | Usada por | Permissões principais |
 |---|---|---|
-| `lambda-role` | Lambda API | S3 (SOR, AUX), Glue (StartJobRun + GetJobRun — ETL e AGG), Secrets Manager |
-| `glue-job-role-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details) |
-| `glue-job-role-etl-dq` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
-| `glue-job-role-etl-agg` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena |
-| `glue-job-role-etl-details` | Glue Details | S3 (SOT, TEMP), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
+| `tmdb-lambda-api-{env}` | Lambda API | S3 (SOR, AUX), Glue (StartJobRun + GetJobRun — ETL e AGG), Secrets Manager |
+| `tmdb-glue-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details) |
+| `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
+| `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena |
+| `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 

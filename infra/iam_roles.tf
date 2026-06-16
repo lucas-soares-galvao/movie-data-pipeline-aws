@@ -3,7 +3,7 @@
 # =============================================================================
 
 resource "aws_iam_role" "lambda_function" {
-  name = "${local.envs.lambda_api_name}-function"
+  name = "${local.tmdb_prefix}-lambda-api-${var.env}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -28,7 +28,7 @@ resource "aws_iam_role" "lambda_function" {
 # Isso garante controle total sobre a configuração de logs.
 # =============================================================================
 resource "aws_iam_role_policy" "lambda_logs" {
-  name = "${local.envs.lambda_api_name}-logs"
+  name = "${local.tmdb_prefix}-lambda-api-logs-${var.env}"
   role = aws_iam_role.lambda_function.id
 
   policy = jsonencode({
@@ -49,7 +49,7 @@ resource "aws_iam_role_policy" "lambda_logs" {
 }
 
 resource "aws_iam_role" "glue_etl_role" {
-  name = "${local.envs.iam_role_glue}-etl"
+  name = "${local.tmdb_prefix}-glue-etl-${var.env}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -68,7 +68,7 @@ resource "aws_iam_role_policy_attachment" "glue_etl_service_role" {
 
 
 resource "aws_iam_role" "glue_dq_role" {
-  name = "${local.envs.iam_role_glue}-dq"
+  name = "${local.tmdb_prefix}-glue-data-quality-${var.env}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -87,7 +87,7 @@ resource "aws_iam_role_policy_attachment" "glue_dq_service_role" {
 
 # =============================================================================
 resource "aws_iam_role" "glue_agg_role" {
-  name = "${local.envs.iam_role_glue}-agg"
+  name = "${local.tmdb_prefix}-glue-agg-${var.env}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -110,7 +110,7 @@ resource "aws_iam_role_policy_attachment" "glue_agg_read_code" {
 }
 
 resource "aws_iam_role" "glue_details_role" {
-  name = "${local.envs.iam_role_glue}-details"
+  name = "${local.tmdb_prefix}-glue-details-${var.env}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

@@ -5,7 +5,7 @@
 # Permite que a Lambda dispare e monitore os jobs Glue ETL e AGG.
 # Resource restrito aos ARNs dos jobs especificos para limitar o escopo de acesso.
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
-  name = "${local.envs.lambda_api_name}-start-glue-jobs"
+  name = "${local.tmdb_prefix}-lambda-api-start-glue-jobs-${var.env}"
   role = aws_iam_role.lambda_function.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -21,7 +21,7 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
 }
 
 resource "aws_iam_role_policy" "lambda_s3_policy" {
-  name = "${local.envs.lambda_api_name}-s3-policy"
+  name = "${local.tmdb_prefix}-lambda-api-s3-policy-${var.env}"
   role = aws_iam_role.lambda_function.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -37,7 +37,7 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
 }
 
 resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
-  name = "${local.envs.lambda_api_name}-secrets-manager"
+  name = "${local.tmdb_prefix}-lambda-api-secrets-manager-${var.env}"
   role = aws_iam_role.lambda_function.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -57,7 +57,7 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
 # quando dev e prod sao provisionados na mesma conta AWS.
 # Nomes de IAM Policy sao unicos por conta, entao sem sufixo haveria erro.
 resource "aws_iam_policy" "glue_shared_read_code" {
-  name = "glue-shared-read-code-${var.env}"
+  name = "${local.tmdb_prefix}-glue-shared-read-code-${var.env}"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -91,7 +91,7 @@ resource "aws_iam_role_policy_attachment" "glue_dq_read_code" {
 # =============================================================================
 
 resource "aws_iam_role_policy" "glue_etl_logs" {
-  name = "glue-etl-logs"
+  name = "${local.tmdb_prefix}-glue-etl-logs-${var.env}"
   role = aws_iam_role.glue_etl_role.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -110,7 +110,7 @@ resource "aws_iam_role_policy" "glue_etl_logs" {
 }
 
 resource "aws_iam_role_policy" "glue_dq_logs" {
-  name = "glue-dq-logs"
+  name = "${local.tmdb_prefix}-glue-dq-logs-${var.env}"
   role = aws_iam_role.glue_dq_role.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -128,7 +128,7 @@ resource "aws_iam_role_policy" "glue_dq_logs" {
   })
 }
 resource "aws_iam_role_policy" "glue_etl_sor_sot" {
-  name = "glue-etl-sor-sot"
+  name = "${local.tmdb_prefix}-glue-etl-sor-sot-${var.env}"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -157,7 +157,7 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
 }
 
 resource "aws_iam_role_policy" "glue_etl_catalog" {
-  name = "glue-etl-catalog"
+  name = "${local.tmdb_prefix}-glue-etl-catalog-${var.env}"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -201,7 +201,7 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
 
 # Permite que o Glue ETL inicie o job de Data Quality ao final do processamento.
 resource "aws_iam_role_policy" "glue_etl_start_dq" {
-  name = "glue-etl-start-dq"
+  name = "${local.tmdb_prefix}-glue-etl-start-dq-${var.env}"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -216,7 +216,7 @@ resource "aws_iam_role_policy" "glue_etl_start_dq" {
 
 # Permite que o Glue ETL inicie o job Details ao final do run tv + discover.
 resource "aws_iam_role_policy" "glue_etl_start_details" {
-  name = "glue-etl-start-details"
+  name = "${local.tmdb_prefix}-glue-etl-start-details-${var.env}"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
@@ -234,7 +234,7 @@ resource "aws_iam_role_policy" "glue_etl_start_details" {
 # =============================================================================
 
 resource "aws_iam_role_policy" "glue_dq_read_sot_spec" {
-  name = "glue-dq-read-sot-spec"
+  name = "${local.tmdb_prefix}-glue-dq-read-sot-spec-${var.env}"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
@@ -261,7 +261,7 @@ resource "aws_iam_role_policy" "glue_dq_read_sot_spec" {
 }
 
 resource "aws_iam_role_policy" "glue_dq_write_results" {
-  name = "glue-dq-write-results"
+  name = "${local.tmdb_prefix}-glue-dq-write-results-${var.env}"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
@@ -283,7 +283,7 @@ resource "aws_iam_role_policy" "glue_dq_write_results" {
 }
 
 resource "aws_iam_role_policy" "glue_dq_catalog" {
-  name = "glue-dq-catalog"
+  name = "${local.tmdb_prefix}-glue-dq-catalog-${var.env}"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
@@ -327,7 +327,7 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
 }
 
 resource "aws_iam_role_policy" "glue_dq_sns_publish" {
-  name = "glue-dq-sns-publish"
+  name = "${local.tmdb_prefix}-glue-dq-sns-publish-${var.env}"
   role = aws_iam_role.glue_dq_role.name
 
   policy = jsonencode({
@@ -489,7 +489,7 @@ resource "aws_sns_topic_policy" "eventbridge_failure_topic_policy" {
 # =============================================================================
 
 resource "aws_iam_role_policy" "glue_agg_logs" {
-  name = "glue-agg-logs"
+  name = "${local.tmdb_prefix}-glue-agg-logs-${var.env}"
   role = aws_iam_role.glue_agg_role.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -508,7 +508,7 @@ resource "aws_iam_role_policy" "glue_agg_logs" {
 }
 
 resource "aws_iam_role_policy" "glue_agg_s3" {
-  name = "glue-agg-s3"
+  name = "${local.tmdb_prefix}-glue-agg-s3-${var.env}"
   role = aws_iam_role.glue_agg_role.name
 
   policy = jsonencode({
@@ -533,7 +533,7 @@ resource "aws_iam_role_policy" "glue_agg_s3" {
         Sid      = "AthenaTemp"
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/athena/glue_agg/*"]
+        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/${local.tmdb_prefix}/athena/glue_agg/*"]
       },
       {
         Sid      = "WriteSpec"
@@ -546,7 +546,7 @@ resource "aws_iam_role_policy" "glue_agg_s3" {
 }
 
 resource "aws_iam_role_policy" "glue_agg_catalog" {
-  name = "glue-agg-catalog"
+  name = "${local.tmdb_prefix}-glue-agg-catalog-${var.env}"
   role = aws_iam_role.glue_agg_role.name
 
   policy = jsonencode({
@@ -590,7 +590,7 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
 }
 
 resource "aws_iam_role_policy" "glue_agg_athena" {
-  name = "glue-agg-athena"
+  name = "${local.tmdb_prefix}-glue-agg-athena-${var.env}"
   role = aws_iam_role.glue_agg_role.name
 
   policy = jsonencode({
@@ -692,7 +692,7 @@ resource "aws_sns_topic_policy" "glue_details_failure_topic_policy" {
 # =============================================================================
 
 resource "aws_iam_role_policy" "glue_details_logs" {
-  name = "glue-details-logs"
+  name = "${local.tmdb_prefix}-glue-details-logs-${var.env}"
   role = aws_iam_role.glue_details_role.name
   policy = jsonencode({
     Version = "2012-10-17"
@@ -710,7 +710,7 @@ resource "aws_iam_role_policy" "glue_details_logs" {
 
 # Leitura do SOT (tabelas de discover via Athena) + escrita das tabelas de detalhe
 resource "aws_iam_role_policy" "glue_details_s3" {
-  name = "glue-details-s3"
+  name = "${local.tmdb_prefix}-glue-details-s3-${var.env}"
   role = aws_iam_role.glue_details_role.name
 
   policy = jsonencode({
@@ -734,17 +734,17 @@ resource "aws_iam_role_policy" "glue_details_s3" {
         Sid      = "AthenaTemp"
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/athena/glue_details/*"]
+        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/${local.tmdb_prefix}/athena/glue_details/*"]
       },
       {
         Sid    = "WriteDetailsSOT"
         Effect = "Allow"
         Action = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
         Resource = [
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_movie_name}/*",
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_details_tv_name}/*",
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_movie_name}/*",
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/tmdb/${var.glue_catalog_table_watch_providers_tv_name}/*"
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_details_movie_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_details_tv_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_movie_name}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_tv_name}/*"
         ]
       }
     ]
@@ -752,7 +752,7 @@ resource "aws_iam_role_policy" "glue_details_s3" {
 }
 
 resource "aws_iam_role_policy" "glue_details_catalog" {
-  name = "glue-details-catalog"
+  name = "${local.tmdb_prefix}-glue-details-catalog-${var.env}"
   role = aws_iam_role.glue_details_role.name
 
   policy = jsonencode({
@@ -796,7 +796,7 @@ resource "aws_iam_role_policy" "glue_details_catalog" {
 }
 
 resource "aws_iam_role_policy" "glue_details_athena" {
-  name = "glue-details-athena"
+  name = "${local.tmdb_prefix}-glue-details-athena-${var.env}"
   role = aws_iam_role.glue_details_role.name
 
   policy = jsonencode({
@@ -816,7 +816,7 @@ resource "aws_iam_role_policy" "glue_details_athena" {
 }
 
 resource "aws_iam_role_policy" "glue_details_secrets" {
-  name = "glue-details-secrets"
+  name = "${local.tmdb_prefix}-glue-details-secrets-${var.env}"
   role = aws_iam_role.glue_details_role.name
 
   policy = jsonencode({
@@ -830,7 +830,7 @@ resource "aws_iam_role_policy" "glue_details_secrets" {
 }
 
 resource "aws_iam_role_policy" "glue_details_start_agg" {
-  name = "glue-details-start-agg"
+  name = "${local.tmdb_prefix}-glue-details-start-agg-${var.env}"
   role = aws_iam_role.glue_details_role.name
 
   policy = jsonencode({
@@ -844,7 +844,7 @@ resource "aws_iam_role_policy" "glue_details_start_agg" {
 }
 
 resource "aws_iam_role_policy" "glue_details_start_dq" {
-  name = "glue-details-start-dq"
+  name = "${local.tmdb_prefix}-glue-details-start-dq-${var.env}"
   role = aws_iam_role.glue_details_role.name
 
   policy = jsonencode({

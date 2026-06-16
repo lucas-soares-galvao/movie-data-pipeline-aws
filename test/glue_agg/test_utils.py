@@ -32,7 +32,7 @@ class TestRunAthenaQuery:
             mock_read.assert_called_once()
             _, kwargs = mock_read.call_args
             assert kwargs["database"] == "db_unified_tmdb"
-            assert kwargs["s3_output"] == "s3://my-temp/athena/glue_agg/"
+            assert kwargs["s3_output"] == "s3://my-temp/tmdb/athena/glue_agg/"
             assert kwargs["ctas_approach"] is True
 
     def test_query_contains_details_movie_join(self):
@@ -98,15 +98,15 @@ class TestWriteParquetToSpec:
     def test_constroi_caminho_s3_correto(self):
         df = pd.DataFrame({"col": [1]})
         with patch("awswrangler.s3.to_parquet") as mock_write:
-            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
             _, kwargs = mock_write.call_args
-            assert kwargs["path"] == "s3://my-spec/tb_unified/"
+            assert kwargs["path"] == "s3://my-spec/my-prefix/tb_unified/"
 
     def test_usa_partition_cols_e_mode_corretos(self):
         df = pd.DataFrame({"col": [1]})
         with patch("awswrangler.s3.to_parquet") as mock_write:
-            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
             _, kwargs = mock_write.call_args
             assert kwargs["partition_cols"] == ["media_type", "year"]
@@ -116,14 +116,14 @@ class TestWriteParquetToSpec:
     def test_dataframe_vazio_nao_escreve(self):
         df = pd.DataFrame()
         with patch("awswrangler.s3.to_parquet") as mock_write:
-            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
             mock_write.assert_not_called()
 
     def test_registra_tabela_no_catalog(self):
         df = pd.DataFrame({"col": [1]})
         with patch("awswrangler.s3.to_parquet") as mock_write:
-            write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+            write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
             _, kwargs = mock_write.call_args
             assert kwargs["database"] == "db_spec"
@@ -133,7 +133,7 @@ class TestWriteParquetToSpec:
         df = pd.DataFrame({"col": [1]})
         with patch("awswrangler.s3.to_parquet", return_value={"paths": []}):
             with pytest.raises(RuntimeError, match="Escrita falhou"):
-                write_parquet_to_spec(df, s3_bucket_spec="my-spec", table_name="tb_unified", database="db_spec")
+                write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
 
 class TestGetResolvedOption:

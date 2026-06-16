@@ -1,5 +1,5 @@
 resource "aws_cloudwatch_event_rule" "glue_etl_failed" {
-  name        = "glue-etl-failed-${var.env}"
+  name        = "${local.tmdb_prefix}-glue-etl-failed-${var.env}"
   description = "Notifica quando o job Glue ETL falha ou e interrompido"
 
   event_pattern = jsonencode({
@@ -34,7 +34,7 @@ resource "aws_cloudwatch_event_target" "glue_etl_failed_target" {
 }
 
 resource "aws_cloudwatch_event_rule" "glue_data_quality_failed" {
-  name        = "glue-data-quality-failed-${var.env}"
+  name        = "${local.tmdb_prefix}-glue-data-quality-failed-${var.env}"
   description = "Notifica quando o job Glue Data Quality falha ou e interrompido"
 
   event_pattern = jsonencode({
@@ -69,7 +69,7 @@ resource "aws_cloudwatch_event_target" "glue_data_quality_failed_target" {
 }
 
 resource "aws_cloudwatch_event_rule" "glue_agg_succeeded" {
-  name        = "glue-agg-succeeded-${var.env}"
+  name        = "${local.tmdb_prefix}-glue-agg-succeeded-${var.env}"
   description = "Notifica quando o job Glue AGG conclui com sucesso e a pipeline e finalizada"
 
   event_pattern = jsonencode({
@@ -103,7 +103,7 @@ resource "aws_cloudwatch_event_target" "glue_agg_succeeded_target" {
 }
 
 resource "aws_cloudwatch_event_rule" "glue_agg_failed" {
-  name        = "glue-agg-failed-${var.env}"
+  name        = "${local.tmdb_prefix}-glue-agg-failed-${var.env}"
   description = "Notifica quando o job Glue AGG falha ou e interrompido"
 
   event_pattern = jsonencode({
@@ -138,7 +138,7 @@ resource "aws_cloudwatch_event_target" "glue_agg_failed_target" {
 }
 
 resource "aws_cloudwatch_event_rule" "glue_details_failed" {
-  name        = "glue-details-failed-${var.env}"
+  name        = "${local.tmdb_prefix}-glue-details-failed-${var.env}"
   description = "Notifica quando o job Glue Details falha ou e interrompido"
 
   event_pattern = jsonencode({

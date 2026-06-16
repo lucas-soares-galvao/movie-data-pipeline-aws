@@ -11,7 +11,7 @@ data "archive_file" "lightsail_scheduler_bundle" {
 
 resource "aws_iam_role" "lightsail_scheduler" {
   count = var.lightsail_enabled ? 1 : 0
-  name  = "lightsail-scheduler-${var.env}"
+  name  = "${local.tmdb_prefix}-lightsail-scheduler-${var.env}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -27,7 +27,7 @@ resource "aws_iam_role" "lightsail_scheduler" {
 
 resource "aws_iam_role_policy" "lightsail_scheduler_control" {
   count = var.lightsail_enabled ? 1 : 0
-  name  = "lightsail-scheduler-control-${var.env}"
+  name  = "${local.tmdb_prefix}-lightsail-scheduler-control-${var.env}"
   role  = aws_iam_role.lightsail_scheduler[0].id
 
   policy = jsonencode({
@@ -47,7 +47,7 @@ resource "aws_iam_role_policy" "lightsail_scheduler_control" {
 
 resource "aws_iam_role_policy" "lightsail_scheduler_logs" {
   count = var.lightsail_enabled ? 1 : 0
-  name  = "lightsail-scheduler-logs-${var.env}"
+  name  = "${local.tmdb_prefix}-lightsail-scheduler-logs-${var.env}"
   role  = aws_iam_role.lightsail_scheduler[0].id
 
   policy = jsonencode({
@@ -60,8 +60,8 @@ resource "aws_iam_role_policy" "lightsail_scheduler_logs" {
         "logs:PutLogEvents",
       ]
       Resource = [
-        "arn:aws:logs:*:*:log-group:/aws/lambda/lightsail-scheduler-${var.env}",
-        "arn:aws:logs:*:*:log-group:/aws/lambda/lightsail-scheduler-${var.env}:log-stream:*",
+        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}",
+        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}:log-stream:*",
       ]
     }]
   })
@@ -69,14 +69,14 @@ resource "aws_iam_role_policy" "lightsail_scheduler_logs" {
 
 resource "aws_cloudwatch_log_group" "lightsail_scheduler" {
   count             = var.lightsail_enabled ? 1 : 0
-  name              = "/aws/lambda/lightsail-scheduler-${var.env}"
+  name              = "/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}"
   retention_in_days = var.log_retention_days
   tags              = local.component_tags.lightsail_scheduler
 }
 
 resource "aws_lambda_function" "lightsail_scheduler" {
   count         = var.lightsail_enabled ? 1 : 0
-  function_name = "lightsail-scheduler-${var.env}"
+  function_name = "${local.tmdb_prefix}-lightsail-scheduler-${var.env}"
   role          = aws_iam_role.lightsail_scheduler[0].arn
   handler       = "main.lambda_handler"
   runtime       = "python3.11"
@@ -88,7 +88,7 @@ resource "aws_lambda_function" "lightsail_scheduler" {
 
   environment {
     variables = {
-      LIGHTSAIL_INSTANCE_NAME = "${var.lightsail_instance_name}-${var.env}"
+      LIGHTSAIL_INSTANCE_NAME = local.envs.lightsail_instance_name
     }
   }
 
@@ -103,7 +103,7 @@ resource "aws_lambda_function" "lightsail_scheduler" {
 
 resource "aws_cloudwatch_event_rule" "lightsail_stop" {
   count               = var.lightsail_enabled ? 1 : 0
-  name                = "lightsail-stop-${var.env}"
+  name                = "${local.tmdb_prefix}-lightsail-stop-${var.env}"
   description         = "Para a instância Lightsail FilmBot à 00:00 BRT"
   schedule_expression = "cron(00 03 ? * * *)"
   state               = local.eventbridge_schedule_state
@@ -129,7 +129,7 @@ resource "aws_lambda_permission" "allow_eventbridge_lightsail_stop" {
 
 resource "aws_cloudwatch_event_rule" "lightsail_start_weekday" {
   count               = var.lightsail_enabled ? 1 : 0
-  name                = "lightsail-start-weekday-${var.env}"
+  name                = "${local.tmdb_prefix}-lightsail-start-weekday-${var.env}"
   description         = "Inicia a instância Lightsail FilmBot às 18:00 BRT (seg–sex)"
   schedule_expression = "cron(00 21 ? * MON-FRI *)"
   state               = local.eventbridge_schedule_state
@@ -155,7 +155,7 @@ resource "aws_lambda_permission" "allow_eventbridge_lightsail_start_weekday" {
 
 resource "aws_cloudwatch_event_rule" "lightsail_start_weekend" {
   count               = var.lightsail_enabled ? 1 : 0
-  name                = "lightsail-start-weekend-${var.env}"
+  name                = "${local.tmdb_prefix}-lightsail-start-weekend-${var.env}"
   description         = "Inicia a instância Lightsail FilmBot às 08:00 BRT (sáb–dom)"
   schedule_expression = "cron(00 11 ? * SAT-SUN *)"
   state               = local.eventbridge_schedule_state

@@ -2,12 +2,12 @@
 # e o IAM User com política mínima para que o app acesse Athena, S3 e Glue.
 
 resource "aws_iam_user" "lightsail_agent" {
-  name = "filmbot-agent-${var.env}"
+  name = "${local.tmdb_prefix}-filmbot-agent-${var.env}"
   tags = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
 resource "aws_iam_policy" "lightsail_agent_policy" {
-  name        = "filmbot-agent-policy-${var.env}"
+  name        = "${local.tmdb_prefix}-filmbot-agent-policy-${var.env}"
   description = "Permissões mínimas para o agente IA consultar Athena, S3 e Glue"
 
   policy = jsonencode({
@@ -73,14 +73,14 @@ resource "aws_iam_access_key" "lightsail_agent" {
 resource "aws_lightsail_key_pair" "filmbot" {
   count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
-  name     = "filmbot-key-${var.env}"
+  name     = "${local.tmdb_prefix}-filmbot-key-${var.env}"
   tags     = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
 resource "aws_lightsail_instance" "filmbot" {
   count             = var.lightsail_enabled ? 1 : 0
   provider          = aws.lightsail
-  name              = "${var.lightsail_instance_name}-${var.env}"
+  name              = local.envs.lightsail_instance_name
   availability_zone = "us-east-1a"
   blueprint_id      = "ubuntu_22_04"
   bundle_id         = "micro_3_0" # 1 GB RAM, 2 vCPU, 40 GB SSD — $7,00/mês
@@ -125,7 +125,7 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
 resource "aws_lightsail_static_ip" "filmbot" {
   count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
-  name     = "filmbot-static-ip-${var.env}"
+  name     = "${local.tmdb_prefix}-filmbot-static-ip-${var.env}"
 }
 
 resource "aws_lightsail_static_ip_attachment" "filmbot" {

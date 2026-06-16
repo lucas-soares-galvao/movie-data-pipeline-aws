@@ -1,7 +1,7 @@
 # Raciocinio: define alarmes operacionais para falhas criticas da Lambda e resposta rapida.
 
 resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
-  alarm_name          = "lambda-error-alarm-${var.env}"
+  alarm_name          = "${local.tmdb_prefix}-lambda-error-alarm-${var.env}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "Errors"
@@ -18,7 +18,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
 
 # Alarme de falha no EventBridge (somando as duas regras agendadas da pipeline)
 resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
-  alarm_name          = "eventbridge-failed-alarm-${var.env}"
+  alarm_name          = "${local.tmdb_prefix}-eventbridge-failed-alarm-${var.env}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   threshold           = 0
@@ -97,7 +97,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
 
 # Notificação customizada de falha da Lambda (quando alarme entra em ALARM)
 resource "aws_cloudwatch_event_rule" "lambda_alarm_failed_state_change" {
-  name        = "lambda-alarm-failed-state-change-${var.env}"
+  name        = "${local.tmdb_prefix}-lambda-alarm-failed-state-change-${var.env}"
   description = "Notifica mudanças de estado de falha da Lambda com motivo detalhado"
 
   event_pattern = jsonencode({
@@ -134,7 +134,7 @@ resource "aws_cloudwatch_event_target" "lambda_alarm_failed_state_change_target"
 
 # Notificação customizada de falha do EventBridge (quando alarme entra em ALARM)
 resource "aws_cloudwatch_event_rule" "eventbridge_alarm_failed_state_change" {
-  name        = "eventbridge-alarm-failed-state-change-${var.env}"
+  name        = "${local.tmdb_prefix}-eventbridge-alarm-failed-state-change-${var.env}"
   description = "Notifica mudanças de estado de falha do EventBridge com motivo detalhado"
 
   event_pattern = jsonencode({

@@ -6,6 +6,7 @@ import main as m
 
 _BASE_ARGS = {
     "S3_BUCKET_SPEC": "my-spec",
+    "S3_PREFIX_SPEC": "my-prefix",
     "S3_BUCKET_TEMP": "my-temp",
     "DB_MOVIE":   "db_movie_tmdb",
     "DB_TV":      "db_tv_tmdb",
@@ -49,6 +50,7 @@ class TestMain:
             mock_write.assert_called_once_with(
                 df=_DF_MOCK,
                 s3_bucket_spec="my-spec",
+                s3_prefix_spec="my-prefix",
                 table_name="tb_discover_unified_tmdb",
                 database="db_unified_tmdb",
             )

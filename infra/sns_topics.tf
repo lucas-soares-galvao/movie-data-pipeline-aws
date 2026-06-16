@@ -11,7 +11,7 @@
 # Notifica quando regras de qualidade de dados são violadas.
 # "display_name" aparece no assunto do email: "[PROD] FALHA - GLUE DATA QUALITY"
 resource "aws_sns_topic" "glue_data_quality_failure_notifications" {
-  name         = "glue-data-quality-failure-notifications"
+  name         = "${local.tmdb_prefix}-glue-data-quality-failure-notifications-${var.env}"
   display_name = "[${upper(var.env)}] FALHA - GLUE DATA QUALITY"
   tags         = local.component_tags.glue_data_quality
 }
@@ -31,7 +31,7 @@ resource "aws_sns_topic_subscription" "glue_data_quality_failure_email" {
 # =============================================================================
 # Notifica com o resumo da avaliação de métricas (Passed/Failed por regra).
 resource "aws_sns_topic" "glue_data_quality_metrics_notifications" {
-  name         = "glue-data-quality-metrics-notifications"
+  name         = "${local.tmdb_prefix}-glue-data-quality-metrics-notifications-${var.env}"
   display_name = "[${upper(var.env)}] QUALIDADE - AVALIAÇÃO DE MÉTRICAS"
   tags         = local.component_tags.glue_data_quality
 }
@@ -47,7 +47,7 @@ resource "aws_sns_topic_subscription" "glue_data_quality_metrics_email" {
 # =============================================================================
 # Notifica quando o job de transformação JSON → Parquet falha.
 resource "aws_sns_topic" "glue_etl_failure_notifications" {
-  name         = "glue-etl-failure-notifications"
+  name         = "${local.tmdb_prefix}-glue-etl-failure-notifications-${var.env}"
   display_name = "[${upper(var.env)}] FALHA - GLUE ETL"
   tags         = local.component_tags.glue_etl
 }
@@ -63,7 +63,7 @@ resource "aws_sns_topic_subscription" "glue_etl_failure_email" {
 # =============================================================================
 # Notifica quando a função Lambda falha (erro no código, timeout, etc.).
 resource "aws_sns_topic" "lambda_failure_notifications" {
-  name         = "lambda-failure-notifications"
+  name         = "${local.tmdb_prefix}-lambda-failure-notifications-${var.env}"
   display_name = "[${upper(var.env)}] FALHA - LAMBDA"
   tags         = local.component_tags.lambda_api
 }
@@ -79,7 +79,7 @@ resource "aws_sns_topic_subscription" "lambda_failure_email" {
 # =============================================================================
 # Notifica quando o agendador EventBridge não consegue disparar a Lambda.
 resource "aws_sns_topic" "eventbridge_failure_notifications" {
-  name         = "eventbridge-failure-notifications"
+  name         = "${local.tmdb_prefix}-eventbridge-failure-notifications-${var.env}"
   display_name = "[${upper(var.env)}] FALHA - EVENTBRIDGE"
   tags         = local.component_tags.eventbridge
 }
@@ -97,7 +97,7 @@ resource "aws_sns_topic_subscription" "eventbridge_failure_email" {
 # O Glue AGG é a última etapa — quando ele termina, os dados estão prontos
 # na camada SPEC para o FilmBot consumir.
 resource "aws_sns_topic" "glue_agg_success_notifications" {
-  name         = "glue-agg-success-notifications"
+  name         = "${local.tmdb_prefix}-glue-agg-success-notifications-${var.env}"
   display_name = "[${upper(var.env)}] PIPELINE - SUCESSO FINAL"
   tags         = local.component_tags.glue_agg
 }
@@ -114,7 +114,7 @@ resource "aws_sns_topic_subscription" "glue_agg_success_email" {
 # Notifica quando a agregação final falha. O mesmo email recebe tanto
 # sucesso quanto falha do AGG — permite monitorar o ciclo completo.
 resource "aws_sns_topic" "glue_agg_failure_notifications" {
-  name         = "glue-agg-failure-notifications"
+  name         = "${local.tmdb_prefix}-glue-agg-failure-notifications-${var.env}"
   display_name = "[${upper(var.env)}] FALHA - GLUE AGG"
   tags         = local.component_tags.glue_agg
 }
@@ -131,7 +131,7 @@ resource "aws_sns_topic_subscription" "glue_agg_failure_email" {
 # Notifica quando o job de enriquecimento de detalhes falha.
 # (runtime de filmes, número de temporadas de séries, plataformas de streaming)
 resource "aws_sns_topic" "glue_details_failure_notifications" {
-  name         = "glue-details-failure-notifications"
+  name         = "${local.tmdb_prefix}-glue-details-failure-notifications-${var.env}"
   display_name = "[${upper(var.env)}] FALHA - GLUE DETAILS"
   tags         = local.component_tags.glue_details
 }
