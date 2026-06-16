@@ -197,15 +197,13 @@ class TestCollectAndWriteDetails:
             assert "id" in df_written.columns
             assert "runtime" in df_written.columns
             assert "year" in df_written.columns
-            assert "title_en" in df_written.columns
-            assert "title_pt" in df_written.columns
+            assert "title_en" not in df_written.columns
+            assert "title_pt" not in df_written.columns
             assert "overview_en" in df_written.columns
             assert "overview_pt" in df_written.columns
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
             assert "original_language" not in df_written.columns
-            assert df_written.iloc[0]["title_en"] == "Filme A"
-            assert df_written.iloc[0]["title_pt"] == "[PT] Filme A"
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
@@ -226,15 +224,13 @@ class TestCollectAndWriteDetails:
             assert "number_of_seasons" in df_written.columns
             assert "number_of_episodes" in df_written.columns
             assert "episode_run_time" in df_written.columns
-            assert "title_en" in df_written.columns
-            assert "title_pt" in df_written.columns
+            assert "title_en" not in df_written.columns
+            assert "title_pt" not in df_written.columns
             assert "overview_en" in df_written.columns
             assert "overview_pt" in df_written.columns
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
             assert "original_language" not in df_written.columns
-            assert df_written.iloc[0]["title_en"] == "Série A"
-            assert df_written.iloc[0]["title_pt"] == "[PT] Série A"
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib
@@ -288,7 +284,6 @@ class TestCollectAndWriteDetails:
 
         existing_df = pd.DataFrame([{
             "id": 99, "runtime": 120, "year": "2023",
-            "title_en": "Old Movie", "title_pt": "Old Movie",
             "overview_en": "", "overview_pt": "",
             "poster_path_en": "", "backdrop_path_en": "",
             "dt_processamento": "2023-01-01",
@@ -313,7 +308,6 @@ class TestCollectAndWriteDetails:
 
         existing_df = pd.DataFrame([{
             "id": 1, "runtime": 999, "year": "2023",
-            "title_en": "Stale Movie", "title_pt": "Stale Movie",
             "overview_en": "", "overview_pt": "",
             "poster_path_en": "", "backdrop_path_en": "",
             "dt_processamento": "2023-01-01",

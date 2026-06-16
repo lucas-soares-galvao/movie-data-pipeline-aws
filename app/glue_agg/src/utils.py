@@ -122,17 +122,17 @@ genre_names AS (
 ),
 
 -- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
--- title_pt/overview_pt são as traduções EN→PT gravadas pelo Glue Details (only for original_language='en').
+-- overview_pt é a tradução EN→PT gravada pelo Glue Details (only for original_language='en').
 -- ROW_NUMBER() deduplica IDs que aparecem mais de uma vez (cada refresh mensal insere novas linhas
 -- via append); ORDER BY dt_processamento DESC mantém o registro mais recente.
 movie_details_ranked AS (
-    SELECT id, runtime, title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en,
+    SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_movie}.tb_details_movie_tmdb
 ),
 
 movie_details AS (
-    SELECT id, runtime, title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+    SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en
     FROM movie_details_ranked
     WHERE rn = 1
 ),
@@ -147,8 +147,6 @@ tv_details_ranked AS (
         number_of_seasons,
         number_of_episodes,
         element_at(episode_run_time, 1) AS episode_runtime_minutes,
-        title_en,
-        title_pt,
         overview_en,
         overview_pt,
         poster_path_en,
@@ -159,7 +157,7 @@ tv_details_ranked AS (
 
 tv_details AS (
     SELECT id, number_of_seasons, number_of_episodes, episode_runtime_minutes,
-           title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+           overview_en, overview_pt, poster_path_en, backdrop_path_en
     FROM tv_details_ranked
     WHERE rn = 1
 ),
@@ -173,13 +171,13 @@ details AS (
            NULL AS number_of_seasons,
            NULL AS number_of_episodes,
            NULL AS episode_runtime_minutes,
-           title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+           overview_en, overview_pt, poster_path_en, backdrop_path_en
     FROM movie_details
     UNION ALL
     SELECT id, 'tv' AS media_type,
            NULL AS runtime,
            number_of_seasons, number_of_episodes, episode_runtime_minutes,
-           title_en, title_pt, overview_en, overview_pt, poster_path_en, backdrop_path_en
+           overview_en, overview_pt, poster_path_en, backdrop_path_en
     FROM tv_details
 ),
 

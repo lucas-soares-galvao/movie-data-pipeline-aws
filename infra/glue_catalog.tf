@@ -95,11 +95,6 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
-      name = "video"
-      type = "boolean"
-    }
-
-    columns {
       name = "genre_ids"
       type = "array<int>"
     }
@@ -240,58 +235,6 @@ resource "aws_glue_catalog_table" "tb_now_playing_movie_tmdb" {
       type = "bigint"
     }
     columns {
-      name = "title"
-      type = "string"
-    }
-    columns {
-      name = "original_title"
-      type = "string"
-    }
-    columns {
-      name = "overview"
-      type = "string"
-    }
-    columns {
-      name = "backdrop_path"
-      type = "string"
-    }
-    columns {
-      name = "poster_path"
-      type = "string"
-    }
-    columns {
-      name = "release_date"
-      type = "string"
-    }
-    columns {
-      name = "original_language"
-      type = "string"
-    }
-    columns {
-      name = "adult"
-      type = "boolean"
-    }
-    columns {
-      name = "video"
-      type = "boolean"
-    }
-    columns {
-      name = "genre_ids"
-      type = "array<int>"
-    }
-    columns {
-      name = "popularity"
-      type = "double"
-    }
-    columns {
-      name = "vote_average"
-      type = "double"
-    }
-    columns {
-      name = "vote_count"
-      type = "int"
-    }
-    columns {
       name = "theater_start_date"
       type = "string"
     }
@@ -401,10 +344,6 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       name = "english_name"
       type = "string"
     }
-    columns {
-      name = "name"
-      type = "string"
-    }
   }
 }
 
@@ -433,10 +372,6 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
       type = "string"
     }
     columns {
-      name = "english_name"
-      type = "string"
-    }
-    columns {
       name = "native_name"
       type = "string"
     }
@@ -444,7 +379,7 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
 }
 
 # =============================================================================
-# TABELAS — Detalhes (runtime, temporadas, títulos e sinopses em PT/EN)
+# TABELAS — Detalhes (runtime, temporadas e sinopses em PT/EN)
 # =============================================================================
 
 resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
@@ -473,14 +408,6 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
     columns {
       name = "runtime"
       type = "int"
-    }
-    columns {
-      name = "title_en"
-      type = "string"
-    }
-    columns {
-      name = "title_pt"
-      type = "string"
     }
     columns {
       name = "overview_en"
@@ -545,14 +472,6 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     columns {
       name = "episode_run_time"
       type = "array<int>"
-    }
-    columns {
-      name = "title_en"
-      type = "string"
-    }
-    columns {
-      name = "title_pt"
-      type = "string"
     }
     columns {
       name = "overview_en"
@@ -623,10 +542,6 @@ resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "logo_path"
-      type = "string"
-    }
-    columns {
       name = "dt_atualizacao"
       type = "date"
     }
@@ -675,10 +590,6 @@ resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "logo_path"
-      type = "string"
-    }
-    columns {
       name = "dt_atualizacao"
       type = "date"
     }
@@ -723,10 +634,6 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "logo_path"
-      type = "string"
-    }
-    columns {
       name = "display_priority_br"
       type = "int"
     }
@@ -763,10 +670,6 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
     }
     columns {
       name = "provider_name"
-      type = "string"
-    }
-    columns {
-      name = "logo_path"
       type = "string"
     }
     columns {
