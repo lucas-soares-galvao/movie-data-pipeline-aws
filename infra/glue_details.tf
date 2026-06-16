@@ -2,6 +2,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
   name         = local.envs.glue_details_job_name
   description  = "Glue Details Job — coleta runtime/temporadas da API TMDB e grava no SOT"
   role_arn     = aws_iam_role.glue_details_role.arn
+  job_run_queuing_enabled = true
   max_retries  = 0
   timeout      = 30
   max_capacity = local.pythonshell_min_capacity

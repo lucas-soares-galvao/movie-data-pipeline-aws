@@ -6,6 +6,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
   name         = local.envs.glue_etl_job_name
   description  = "Lê JSON do SOR, transforma em Parquet no SOT e aciona os jobs Details e DQ"
   role_arn     = aws_iam_role.glue_etl_role.arn
+  job_run_queuing_enabled = true
   max_retries  = 0
   timeout      = 15
   max_capacity = local.pythonshell_min_capacity
@@ -113,18 +114,37 @@ resource "aws_s3_object" "deploy_scripts_bucket_etl" {
 # O pacote "src" (src/utils.py) precisa ser empacotado como .whl para
 # que o main.py possa importar "from src.utils import ..." no Glue PythonShell.
 #
-# O build do .whl (scripts/build_glue_wheel.py) é executado como etapa do
-# pipeline de CI (.github/workflows/02_terraform.yml), antes do "terraform
-# plan". Não usamos null_resource/local-exec aqui: o Terraform state poderia
-# considerar o build "já feito" (triggers inalterados) mesmo em um runner novo
-# onde o arquivo local não existe — causando "no such file or directory" no
-# aws_s3_object abaixo.
+# Padrão igual ao usado em glue_agg.tf e glue_details.tf: o "source_hash" é
+# calculado a partir do hash dos arquivos .py de origem (sempre presentes no
+# checkout), e NÃO via filemd5() sobre o .whl já construído. Isso é essencial
+# porque "terraform validate"/"plan" avaliam essa expressão antes de qualquer
+# apply — um filemd5() sobre o wheel quebraria workflows que só validam o
+# código (ex.: 03_pr_auto.yml), que não constroem o artefato.
+#
+# O "null_resource" abaixo executa o build localmente; seu provisioner
+# "local-exec" só roda durante o "apply" (não em validate/plan), então não
+# exige o wheel pronto de antemão. Como reforço extra, o CI
+# (.github/workflows/02_terraform.yml) também builda o wheel antes do
+# "terraform plan", garantindo que o arquivo exista mesmo se o Terraform
+# state considerar o build "já feito" (triggers inalterados) em um runner
+# novo onde o arquivo local não existe.
 # =============================================================================
+resource "null_resource" "glue_etl_wheel_build" {
+  triggers = {
+    source_hash  = sha256(join("", [for f in fileset(local.glue_etl_src_path, "src/**/*.py") : filesha256("${local.glue_etl_src_path}/${f}")]))
+    builder_hash = filesha256("${path.module}/scripts/build_glue_wheel.py")
+  }
+
+  provisioner "local-exec" {
+    command = "python ${path.module}/scripts/build_glue_wheel.py --src ${local.glue_etl_src_path} --dest ${local.glue_etl_wheel_build_path} --name glue_etl_src"
+  }
+}
+
 resource "aws_s3_object" "deploy_app_wheel_etl" {
-  bucket     = aws_s3_bucket.auxiliary_bucket.id
-  key        = "${local.tmdb_prefix}/${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename}"
-  source     = "${local.glue_etl_wheel_build_path}/${local.glue_etl_wheel_filename}"
-  etag       = filemd5("${local.glue_etl_wheel_build_path}/${local.glue_etl_wheel_filename}")
-  tags       = local.component_tags.glue_etl
-  depends_on = [aws_s3_bucket.auxiliary_bucket]
+  bucket      = aws_s3_bucket.auxiliary_bucket.id
+  key         = "${local.tmdb_prefix}/${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename}"
+  source      = "${local.glue_etl_wheel_build_path}/${local.glue_etl_wheel_filename}"
+  source_hash = null_resource.glue_etl_wheel_build.triggers.source_hash
+  tags        = local.component_tags.glue_etl
+  depends_on  = [null_resource.glue_etl_wheel_build, aws_s3_bucket.auxiliary_bucket]
 }
