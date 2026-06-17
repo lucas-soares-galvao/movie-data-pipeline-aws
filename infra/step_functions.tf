@@ -58,8 +58,8 @@ resource "aws_sfn_state_machine" "backfill" {
       }
 
       ProcessEachYear = {
-        Type          = "Map"
-        ItemsPath     = "$.years"
+        Type           = "Map"
+        ItemsPath      = "$.years"
         MaxConcurrency = 1
         Iterator = {
           StartAt = "InvokeLambdaMovie"
@@ -71,10 +71,10 @@ resource "aws_sfn_state_machine" "backfill" {
               Parameters = {
                 FunctionName = aws_lambda_function.simple_lambda.arn
                 Payload = {
-                  type          = "movie"
-                  only_discover = true
-                  "start_year.$" = "$"
-                  "end_year.$"   = "$"
+                  type                            = "movie"
+                  only_discover                   = true
+                  "start_year.$"                  = "$"
+                  "end_year.$"                    = "$"
                   database                        = local.envs.glue_catalog_db_movie
                   database_unified                = local.envs.glue_catalog_db_unified
                   table_discover_movie            = local.envs.glue_catalog_tb_discover_movie
@@ -99,10 +99,10 @@ resource "aws_sfn_state_machine" "backfill" {
               Parameters = {
                 FunctionName = aws_lambda_function.simple_lambda.arn
                 Payload = {
-                  type          = "tv"
-                  only_discover = true
-                  "start_year.$" = "$"
-                  "end_year.$"   = "$"
+                  type                          = "tv"
+                  only_discover                 = true
+                  "start_year.$"                = "$"
+                  "end_year.$"                  = "$"
                   database                      = local.envs.glue_catalog_db_tv
                   database_unified              = local.envs.glue_catalog_db_unified
                   table_discover_tv             = local.envs.glue_catalog_tb_discover_tv
