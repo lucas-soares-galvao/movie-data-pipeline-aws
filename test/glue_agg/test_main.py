@@ -13,6 +13,7 @@ _BASE_ARGS = {
     "DB_UNIFIED": "db_unified_tmdb",
     "TABLE_NAME": "tb_discover_unified_tmdb",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "ENVIRONMENT": "dev",
 }
 
 _DF_MOCK = pd.DataFrame(
@@ -37,6 +38,7 @@ class TestMain:
                 db_tv="db_tv_tmdb",
                 db_unified="db_unified_tmdb",
                 s3_bucket_temp="my-temp",
+                env="dev",
             )
 
     def test_calls_write_parquet_to_spec_with_correct_args(self):

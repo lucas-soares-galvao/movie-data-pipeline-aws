@@ -1,7 +1,7 @@
 """rulesets_dq.py — Regras DQDL de qualidade de dados por tabela."""
 
 rulesets_dq = {
-    "tb_configuration_countries_tmdb": [
+    "configuration_countries": [
         # Completude
         'IsComplete "iso_3166_1"',
         'IsComplete "english_name"',
@@ -12,7 +12,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_configuration_languages_tmdb": [
+    "configuration_languages": [
         # Completude
         'IsComplete "iso_639_1"',
         'IsComplete "english_name"',
@@ -22,7 +22,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_genre_movie_tmdb": [
+    "genre_movie": [
         # Completude
         'IsComplete "id"',
         'IsComplete "name"',
@@ -32,7 +32,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_genre_tv_tmdb": [
+    "genre_tv": [
         # Completude
         'IsComplete "id"',
         'IsComplete "name"',
@@ -42,7 +42,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_discover_movie_tmdb": [
+    "discover_movie": [
         # Completude
         'IsComplete "id"',
         'IsComplete "title"',
@@ -54,7 +54,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_discover_tv_tmdb": [
+    "discover_tv": [
         # Completude
         'IsComplete "id"',
         'IsComplete "name"',
@@ -66,7 +66,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_details_movie_tmdb": [
+    "details_movie": [
         # Completude
         'IsComplete "id"',
         # Unicidade
@@ -76,7 +76,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_details_tv_tmdb": [
+    "details_tv": [
         # Completude
         'IsComplete "id"',
         # Unicidade
@@ -87,7 +87,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_watch_providers_movie_tmdb": [
+    "watch_providers_movie": [
         # Completude
         'IsComplete "id"',
         'IsComplete "provider_id"',
@@ -99,7 +99,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_watch_providers_tv_tmdb": [
+    "watch_providers_tv": [
         # Completude
         'IsComplete "id"',
         'IsComplete "provider_id"',
@@ -111,7 +111,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_watch_providers_ref_movie_tmdb": [
+    "watch_providers_ref_movie": [
         # Completude
         'IsComplete "provider_id"',
         'IsComplete "provider_name"',
@@ -121,7 +121,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_watch_providers_ref_tv_tmdb": [
+    "watch_providers_ref_tv": [
         # Completude
         'IsComplete "provider_id"',
         'IsComplete "provider_name"',
@@ -131,7 +131,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_now_playing_movie_tmdb": [
+    "now_playing_movie": [
         # Completude
         'IsComplete "id"',
         'IsComplete "title"',
@@ -143,7 +143,7 @@ rulesets_dq = {
         # Integridade
         "RowCount > 0",
     ],
-    "tb_discover_unified_tmdb": [
+    "discover_unified": [
         # Completude
         'IsComplete "id"',
         'IsComplete "media_type"',

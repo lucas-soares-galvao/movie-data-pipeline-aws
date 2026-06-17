@@ -46,12 +46,16 @@ def get_parameters_glue() -> Dict[str, Any]:
     return args
 
 
-def get_ruleset(table_name: str) -> str:
+def get_ruleset(table_name: str, environment: str) -> str:
     """
     Retorna as regras DQDL para a tabela, montadas como string para o Glue Data Quality.
 
+    Converte o nome do Glue Catalog (tb_tmdb_<name>_<env>) para o nome lógico
+    usado como chave em rulesets_dq (<name>).
+
     Args:
-        table_name: Nome da tabela no Glue Catalog.
+        table_name:  Nome da tabela no Glue Catalog (ex: tb_tmdb_genre_movie_prod).
+        environment: Ambiente de execução (dev, prod).
 
     Returns:
         String com as regras no formato DQDL (Rules = [...]).
@@ -59,14 +63,12 @@ def get_ruleset(table_name: str) -> str:
     Raises:
         KeyError: Se não houver regras definidas para a tabela em rulesets_dq.py.
     """
-    rules = rulesets_dq.get(table_name)
+    logical_name = table_name.removeprefix("tb_tmdb_").removesuffix(f"_{environment}")
+    rules = rulesets_dq.get(logical_name)
     if rules is None:
-        # Erro proposital: não faz sentido executar DQ numa tabela sem regras definidas.
-        # Isso avisa o desenvolvedor para adicionar as regras em rulesets_dq.py
-        # antes de colocar a tabela no pipeline.
         raise KeyError(
-            f"Nenhuma regra de DQ definida para a tabela '{table_name}'. "
-            f"Adicione as regras em rulesets_dq.py."
+            f"Nenhuma regra de DQ definida para a tabela '{table_name}' "
+            f"(chave: '{logical_name}'). Adicione as regras em rulesets_dq.py."
         )
 
     ruleset = "Rules = [\n  " + ",\n  ".join(rules) + "\n]"

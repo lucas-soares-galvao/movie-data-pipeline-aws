@@ -84,35 +84,35 @@ class TestGetParametersGlue:
 class TestGetRuleset:
     def test_starts_with_rules_block(self):
         """O formato DQDL exige que a string comece com 'Rules = ['."""
-        result = get_ruleset("tb_genre_movie_tmdb")
+        result = get_ruleset("tb_tmdb_genre_movie_dev", "dev")
         assert result.startswith("Rules = [")
 
     def test_ends_with_closing_bracket(self):
         """O bloco DQDL deve ser fechado com ']'."""
-        result = get_ruleset("tb_genre_movie_tmdb")
+        result = get_ruleset("tb_tmdb_genre_movie_dev", "dev")
         assert result.endswith("]")
 
     def test_contains_all_rules_from_rulesets_dq(self):
         """Cada regra definida em rulesets_dq deve aparecer na string gerada."""
         from src.rulesets_dq import rulesets_dq
 
-        rules = rulesets_dq["tb_genre_movie_tmdb"]
-        result = get_ruleset("tb_genre_movie_tmdb")
+        rules = rulesets_dq["genre_movie"]
+        result = get_ruleset("tb_tmdb_genre_movie_dev", "dev")
 
         for rule in rules:
             assert rule in result
 
     def test_raises_key_error_for_unknown_table(self):
         """Tabela sem regras definidas deve lançar KeyError com nome descritivo."""
-        with pytest.raises(KeyError, match="tb_nao_existe"):
-            get_ruleset("tb_nao_existe")
+        with pytest.raises(KeyError, match="tb_tmdb_nao_existe_dev"):
+            get_ruleset("tb_tmdb_nao_existe_dev", "dev")
 
     def test_rules_separated_by_comma(self):
         """Quando há mais de uma regra, elas devem ser separadas por vírgula."""
         from src.rulesets_dq import rulesets_dq
 
-        rules = rulesets_dq["tb_genre_movie_tmdb"]
-        result = get_ruleset("tb_genre_movie_tmdb")
+        rules = rulesets_dq["genre_movie"]
+        result = get_ruleset("tb_tmdb_genre_movie_dev", "dev")
 
         if len(rules) > 1:
             assert "," in result
@@ -121,9 +121,15 @@ class TestGetRuleset:
         """get_ruleset deve funcionar para todas as tabelas cadastradas."""
         from src.rulesets_dq import rulesets_dq
 
-        for table in rulesets_dq:
-            result = get_ruleset(table)
+        for logical_name in rulesets_dq:
+            catalog_name = f"tb_tmdb_{logical_name}_dev"
+            result = get_ruleset(catalog_name, "dev")
             assert result.startswith("Rules = [")
+
+    def test_strips_environment_suffix_prod(self):
+        """get_ruleset deve funcionar com o ambiente prod."""
+        result = get_ruleset("tb_tmdb_genre_movie_prod", "prod")
+        assert result.startswith("Rules = [")
 
 
 class TestReadTableFromCatalog:

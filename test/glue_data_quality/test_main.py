@@ -73,16 +73,16 @@ class TestContextCreation:
 
 
 class TestGetRulesetCall:
-    def test_calls_get_ruleset_with_table_name(self):
-        """get_ruleset deve ser chamado com o TABLE_NAME recebido nos args."""
-        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
-        mocks["mock_ruleset"].assert_called_once_with("tb_genre_movie_tmdb")
+    def test_calls_get_ruleset_with_table_name_and_environment(self):
+        """get_ruleset deve ser chamado com TABLE_NAME e ENVIRONMENT dos args."""
+        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_genre_movie_dev"})
+        mocks["mock_ruleset"].assert_called_once_with("tb_tmdb_genre_movie_dev", "dev")
 
     def test_calls_get_ruleset_for_discover_table(self):
         """get_ruleset deve funcionar para qualquer nome de tabela nos args."""
-        args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb"}
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_discover_movie_dev"}
         mocks = _run_main(args=args)
-        mocks["mock_ruleset"].assert_called_once_with("tb_discover_movie_tmdb")
+        mocks["mock_ruleset"].assert_called_once_with("tb_tmdb_discover_movie_dev", "dev")
 
 
 class TestReadTableFromCatalogCall:

@@ -50,7 +50,7 @@ def main() -> None:
         f"Iniciando Data Quality | tabela: '{table_name}' | banco: '{database}'"
     )
 
-    ruleset = get_ruleset(table_name)
+    ruleset = get_ruleset(table_name, environment)
 
     # Para tabelas com partição por ano, push_down_predicate lê só o ano atual.
     dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)

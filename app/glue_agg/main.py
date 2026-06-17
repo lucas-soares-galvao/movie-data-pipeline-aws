@@ -34,6 +34,7 @@ def main() -> None:
     db_unified    = args["DB_UNIFIED"]
     table_name    = args["TABLE_NAME"]
     dq_job_name   = args["GLUE_DATA_QUALITY_JOB_NAME"]
+    env           = args["ENVIRONMENT"]
 
     logger.info(
         f"Iniciando Glue AGG | tabela destino: '{table_name}' | db_unified='{db_unified}'"
@@ -44,6 +45,7 @@ def main() -> None:
         db_tv=db_tv,
         db_unified=db_unified,
         s3_bucket_temp=s3_bucket_temp,
+        env=env,
     )
 
     write_parquet_to_spec(

@@ -9,7 +9,7 @@ from src.utils import get_parameters_glue, get_resolved_option, run_athena_query
 class TestRunAthenaQuery:
     def test_passes_sql_with_image_columns_to_wrangler(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
 
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
@@ -18,8 +18,8 @@ class TestRunAthenaQuery:
             assert "AS backdrop_url" in sql
             assert "https://image.tmdb.org/t/p/w342" in sql
             assert "https://image.tmdb.org/t/p/w780" in sql
-            assert "tb_discover_movie_tmdb" in sql
-            assert "tb_discover_tv_tmdb" in sql
+            assert "tb_tmdb_discover_movie_dev" in sql
+            assert "tb_tmdb_discover_tv_dev" in sql
             assert "overview" in sql
             assert "air_date" in sql
             assert "origin_country_name" in sql
@@ -27,7 +27,7 @@ class TestRunAthenaQuery:
 
     def test_uses_expected_wrangler_execution_args(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
 
             mock_read.assert_called_once()
             _, kwargs = mock_read.call_args
@@ -37,32 +37,32 @@ class TestRunAthenaQuery:
 
     def test_query_contains_details_movie_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
-            assert "tb_details_movie_tmdb" in sql
+            assert "tb_tmdb_details_movie_dev" in sql
             assert "runtime_minutes" in sql
 
     def test_query_contains_details_tv_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
-            assert "tb_details_tv_tmdb" in sql
+            assert "tb_tmdb_details_tv_dev" in sql
             assert "number_of_seasons" in sql
             assert "number_of_episodes" in sql
             assert "episode_runtime_minutes" in sql
 
     def test_query_contains_watch_providers_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
-            assert "tb_watch_providers_movie_tmdb" in sql
-            assert "tb_watch_providers_tv_tmdb" in sql
+            assert "tb_tmdb_watch_providers_movie_dev" in sql
+            assert "tb_tmdb_watch_providers_tv_dev" in sql
             assert "streaming_providers" in sql
 
     def test_query_deduplica_watch_providers_por_ano_mais_recente(self):
@@ -70,7 +70,7 @@ class TestRunAthenaQuery:
         DENSE_RANK (não ROW_NUMBER) garante que TODOS os provedores do ano mais recente
         recebam rank=1, evitando filtrar apenas um provedor por título."""
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
@@ -83,7 +83,7 @@ class TestRunAthenaQuery:
     def test_query_possui_dedup_final_spec_deduped(self):
         """spec_raw e spec_deduped garantem unicidade por (id, media_type) na saída."""
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
-            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp")
+            run_athena_query(db_movie="db_movie_tmdb", db_tv="db_tv_tmdb", db_unified="db_unified_tmdb", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
@@ -148,12 +148,14 @@ class TestGetParametersGlue:
     def _required(self):
         return {
             "S3_BUCKET_SPEC": "spec",
+            "S3_PREFIX_SPEC": "tmdb",
             "S3_BUCKET_TEMP": "tmp",
             "DB_MOVIE": "db_movie",
             "DB_TV": "db_tv",
             "DB_UNIFIED": "db_unified",
             "TABLE_NAME": "tb_unified",
             "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+            "ENVIRONMENT": "dev",
         }
 
     def test_returns_all_required_args(self):

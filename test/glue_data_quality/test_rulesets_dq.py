@@ -6,20 +6,20 @@
 from src.rulesets_dq import rulesets_dq
 
 EXPECTED_TABLES = [
-    "tb_configuration_countries_tmdb",
-    "tb_configuration_languages_tmdb",
-    "tb_genre_movie_tmdb",
-    "tb_genre_tv_tmdb",
-    "tb_discover_movie_tmdb",
-    "tb_discover_tv_tmdb",
-    "tb_details_movie_tmdb",
-    "tb_details_tv_tmdb",
-    "tb_watch_providers_movie_tmdb",
-    "tb_watch_providers_tv_tmdb",
-    "tb_watch_providers_ref_movie_tmdb",
-    "tb_watch_providers_ref_tv_tmdb",
-    "tb_now_playing_movie_tmdb",
-    "tb_discover_unified_tmdb",
+    "configuration_countries",
+    "configuration_languages",
+    "genre_movie",
+    "genre_tv",
+    "discover_movie",
+    "discover_tv",
+    "details_movie",
+    "details_tv",
+    "watch_providers_movie",
+    "watch_providers_tv",
+    "watch_providers_ref_movie",
+    "watch_providers_ref_tv",
+    "now_playing_movie",
+    "discover_unified",
 ]
 
 
@@ -60,10 +60,10 @@ class TestRulesetsDq:
     def test_discover_tables_validate_vote_average(self):
         """Tabelas de discover e now_playing devem validar o intervalo de vote_average."""
         for table in [
-            "tb_discover_movie_tmdb",
-            "tb_discover_tv_tmdb",
-            "tb_now_playing_movie_tmdb",
-            "tb_discover_unified_tmdb",
+            "discover_movie",
+            "discover_tv",
+            "now_playing_movie",
+            "discover_unified",
         ]:
             rules = rulesets_dq[table]
             assert any("vote_average" in r for r in rules), (
@@ -73,13 +73,13 @@ class TestRulesetsDq:
     def test_tables_with_id_have_completeness_and_uniqueness(self):
         """Tabelas que têm coluna 'id' devem checar IsComplete e IsUnique para ela."""
         tables_with_id = [
-            "tb_genre_movie_tmdb",
-            "tb_genre_tv_tmdb",
-            "tb_discover_movie_tmdb",
-            "tb_discover_tv_tmdb",
-            "tb_details_movie_tmdb",
-            "tb_details_tv_tmdb",
-            "tb_now_playing_movie_tmdb",
+            "genre_movie",
+            "genre_tv",
+            "discover_movie",
+            "discover_tv",
+            "details_movie",
+            "details_tv",
+            "now_playing_movie",
         ]
         for table in tables_with_id:
             rules = rulesets_dq[table]

@@ -53,7 +53,7 @@ movies_ranked AS (
         -- Por que deduplicar? O mesmo filme pode aparecer em múltiplas partições de ano
         -- (ex: lançado em 2022 mas recoletado em 2023 por ainda ser popular).
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY year DESC, popularity DESC) AS rn
-    FROM {db_movie}.tb_discover_movie_tmdb
+    FROM {db_movie}.{tb_discover_movie}
 ),
 
 movies AS (
@@ -79,7 +79,7 @@ tv_shows_ranked AS (
         year,
         origin_country,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY year DESC, popularity DESC) AS rn
-    FROM {db_tv}.tb_discover_tv_tmdb
+    FROM {db_tv}.{tb_discover_tv}
 ),
 
 tv_shows AS (
@@ -100,9 +100,9 @@ genres_combined AS (
     -- Une os gêneros de filmes e séries numa lista única sem duplicatas (UNION sem ALL).
     -- Por que unir? Gêneros como "Ação" (id=28) existem em ambas as listas e
     -- o JOIN mais abaixo precisa encontrar o nome pelo ID independente do tipo.
-    SELECT id, name FROM {db_movie}.tb_genre_movie_tmdb
+    SELECT id, name FROM {db_movie}.{tb_genre_movie}
     UNION  -- UNION (sem ALL) remove linhas idênticas automaticamente
-    SELECT id, name FROM {db_tv}.tb_genre_tv_tmdb
+    SELECT id, name FROM {db_tv}.{tb_genre_tv}
 ),
 
 genre_names AS (
@@ -128,7 +128,7 @@ genre_names AS (
 movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
-    FROM {db_movie}.tb_details_movie_tmdb
+    FROM {db_movie}.{tb_details_movie}
 ),
 
 movie_details AS (
@@ -152,7 +152,7 @@ tv_details_ranked AS (
         poster_path_en,
         backdrop_path_en,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
-    FROM {db_tv}.tb_details_tv_tmdb
+    FROM {db_tv}.{tb_details_tv}
 ),
 
 tv_details AS (
@@ -184,9 +184,9 @@ details AS (
 -- Referência unificada de provedores (union de movie + tv), desduplicada por provider_id,
 -- com canonical_name normalizado e prioridade de exibição no BR.
 providers_ref_union AS (
-    SELECT * FROM {db_movie}.tb_watch_providers_ref_movie_tmdb
+    SELECT * FROM {db_movie}.{tb_watch_providers_ref_movie}
     UNION
-    SELECT * FROM {db_tv}.tb_watch_providers_ref_tv_tmdb
+    SELECT * FROM {db_tv}.{tb_watch_providers_ref_tv}
 ),
 
 providers_ref_ranked AS (
@@ -218,14 +218,14 @@ provider_ref AS (
 movie_wp_recent AS (
     SELECT id, provider_type, provider_name,
            DENSE_RANK() OVER (PARTITION BY id ORDER BY CAST(year AS INTEGER) DESC) AS rn
-    FROM {db_movie}.tb_watch_providers_movie_tmdb
+    FROM {db_movie}.{tb_watch_providers_movie}
     WHERE provider_type = 'flatrate'
 ),
 
 tv_wp_recent AS (
     SELECT id, provider_type, provider_name,
            DENSE_RANK() OVER (PARTITION BY id ORDER BY CAST(year AS INTEGER) DESC) AS rn
-    FROM {db_tv}.tb_watch_providers_tv_tmdb
+    FROM {db_tv}.{tb_watch_providers_tv}
     WHERE provider_type = 'flatrate'
 ),
 
@@ -282,7 +282,7 @@ providers AS (
 -- Snapshot sem partição por ano — contém apenas os filmes do dia atual.
 now_playing AS (
     SELECT id, theater_start_date, theater_end_date
-    FROM {db_movie}.tb_now_playing_movie_tmdb
+    FROM {db_movie}.{tb_now_playing_movie}
 ),
 
 -- ============================================================================
@@ -337,9 +337,9 @@ spec_raw AS (
     LEFT JOIN genre_names gn
         ON  gn.id         = u.id
         AND gn.media_type = u.media_type
-    LEFT JOIN {db_movie}.tb_configuration_languages_tmdb lang
+    LEFT JOIN {db_movie}.{tb_configuration_languages} lang
         ON lang.iso_639_1 = u.original_language
-    LEFT JOIN {db_tv}.tb_configuration_countries_tmdb ctry
+    LEFT JOIN {db_tv}.{tb_configuration_countries} ctry
         ON ctry.iso_3166_1 = element_at(u.origin_country, 1)
     LEFT JOIN details d
         ON  d.id = u.id AND d.media_type = u.media_type
@@ -393,8 +393,30 @@ def get_parameters_glue() -> Dict[str, Any]:
         "DB_UNIFIED",
         "TABLE_NAME",
         "GLUE_DATA_QUALITY_JOB_NAME",
+        "ENVIRONMENT",
     ]
     return get_resolved_option(required_args)
+
+
+def _table_names(env: str) -> Dict[str, str]:
+    """Constrói os nomes das tabelas do Glue Catalog a partir do ambiente."""
+    prefix = "tmdb"
+    names = [
+        "discover_movie",
+        "discover_tv",
+        "genre_movie",
+        "genre_tv",
+        "details_movie",
+        "details_tv",
+        "watch_providers_movie",
+        "watch_providers_tv",
+        "watch_providers_ref_movie",
+        "watch_providers_ref_tv",
+        "configuration_languages",
+        "configuration_countries",
+        "now_playing_movie",
+    ]
+    return {f"tb_{n}": f"tb_{prefix}_{n}_{env}" for n in names}
 
 
 def run_athena_query(
@@ -402,6 +424,7 @@ def run_athena_query(
     db_tv: str,
     db_unified: str,
     s3_bucket_temp: str,
+    env: str,
 ) -> pd.DataFrame:
     """
     Executa a query de unificação no Athena e retorna o resultado como DataFrame.
@@ -413,6 +436,7 @@ def run_athena_query(
         db_tv:          Banco de dados de séries no Glue Catalog.
         db_unified:     Banco de dados unificado.
         s3_bucket_temp: Bucket S3 para os resultados temporários do Athena.
+        env:            Ambiente (dev/prod) para construir os nomes das tabelas.
 
     Returns:
         DataFrame com o resultado da query.
@@ -421,6 +445,7 @@ def run_athena_query(
         db_movie=db_movie,
         db_tv=db_tv,
         db_unified=db_unified,
+        **_table_names(env),
     )
     s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_agg/"
 
