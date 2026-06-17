@@ -24,7 +24,7 @@ resource "aws_iam_role" "lambda_function" {
 # A policy gerenciada pela AWS concede "logs:CreateLogGroup", que permitiria
 # à Lambda criar grupos de log sem a retenção definida pelo Terraform.
 # Usando uma policy customizada, só permitimos escrever em grupos de log
-# que já existem (criados pelo cloudwatch_logs.tf com retenção de 30 dias).
+# que já existem (criados pelo cloudwatch_logs.tf com retenção de 5 dias em prod).
 # Isso garante controle total sobre a configuração de logs.
 # =============================================================================
 resource "aws_iam_role_policy" "lambda_logs" {

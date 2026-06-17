@@ -54,7 +54,7 @@ locals {
   # ===========================================================================
   # Converte "dev"→"Dev" e "prod"→"Prod" para exibição mais limpa nas tags.
   # A sintaxe `{...}[chave]` é um map literal com acesso por chave — equivale
-  # a um switch/case em outras linguagensContinue.
+  # a um switch/case em outras linguagens.
   environment_tag_value = {
     dev  = "Dev"
     prod = "Prod"

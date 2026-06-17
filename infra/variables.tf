@@ -75,7 +75,7 @@ variable "lambda_notification_email" {
 }
 
 variable "eventbridge_notification_email" {
-  description = "E-mail para receber notificações de sucesso do EventBridge"
+  description = "E-mail para receber notificações de falha do EventBridge"
   type        = string
 }
 
@@ -349,7 +349,7 @@ variable "lightsail_ssh_allowed_cidrs" {
 # =============================================================================
 
 variable "log_retention_days" {
-  description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"
+  description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 5 para prod (permite investigar incidentes)"
   type        = number
   default     = 7
 }
