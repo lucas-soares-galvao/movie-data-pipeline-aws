@@ -19,7 +19,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (diário)"
-  schedule_expression = "cron(30 23 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
+  schedule_expression = "cron(00 01 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -28,7 +28,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
   description         = "Dispara a Lambda para séries com payload completo (diário)"
-  schedule_expression = "cron(35 23 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
+  schedule_expression = "cron(05 01 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -169,4 +169,33 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_monthly" {
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_monthly.arn
+}
+
+# =============================================================================
+# REGRA ANUAL — Backfill Histórico via Step Functions (1º de Janeiro)
+# =============================================================================
+# Roda o backfill completo uma vez por ano para incorporar o novo ano e
+# manter a base histórica atualizada.
+# Mesmo estado das demais regras (DISABLED em dev).
+# =============================================================================
+
+resource "aws_cloudwatch_event_rule" "sfn_backfill_annual" {
+  name                = "${local.tmdb_prefix}-sfn-backfill-annual-${var.env}"
+  description         = "Dispara o backfill histórico TMDB todo dia 1 de janeiro"
+  schedule_expression = "cron(0 6 1 1 ? *)" # 1º de janeiro às 06:00 UTC / 03:00 BRT
+  # schedule_expression = "cron(0 6 1 1 ? *)" # 1º de janeiro às 06:00 UTC / 03:00 BRT
+
+  state               = local.eventbridge_schedule_state
+  tags                = local.component_tags.sfn_backfill
+}
+
+resource "aws_cloudwatch_event_target" "sfn_backfill_annual_target" {
+  rule      = aws_cloudwatch_event_rule.sfn_backfill_annual.name
+  target_id = "sfn-backfill-annual"
+  arn       = aws_sfn_state_machine.backfill.arn
+  role_arn  = aws_iam_role.eventbridge_sfn_role.arn
+
+  input = jsonencode({
+    start_year = 2000
+  })
 }

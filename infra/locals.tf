@@ -44,6 +44,9 @@ locals {
     lightsail_scheduler = {
       Component = "lightsail_scheduler"
     }
+    sfn_backfill = {
+      Component = "sfn_backfill"
+    }
   }
 
   # ===========================================================================

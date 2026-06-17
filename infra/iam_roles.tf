@@ -131,3 +131,29 @@ resource "aws_iam_role_policy_attachment" "glue_details_read_code" {
   role       = aws_iam_role.glue_details_role.name
   policy_arn = aws_iam_policy.glue_shared_read_code.arn
 }
+
+resource "aws_iam_role" "sfn_backfill_role" {
+  name = "${local.tmdb_prefix}-sfn-backfill-role-${var.env}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role" "eventbridge_sfn_role" {
+  name = "${local.tmdb_prefix}-eventbridge-sfn-role-${var.env}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+    }]
+  })
+}

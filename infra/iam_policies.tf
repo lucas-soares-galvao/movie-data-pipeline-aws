@@ -857,3 +857,37 @@ resource "aws_iam_role_policy" "glue_details_start_dq" {
   })
 }
 
+# =============================================================================
+# STEP FUNCTIONS — Políticas do backfill histórico
+# =============================================================================
+
+resource "aws_iam_role_policy" "sfn_invoke_lambda" {
+  name = "${local.tmdb_prefix}-sfn-backfill-invoke-lambda-${var.env}"
+  role = aws_iam_role.sfn_backfill_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "InvokeTmdbLambda"
+      Effect   = "Allow"
+      Action   = "lambda:InvokeFunction"
+      Resource = aws_lambda_function.simple_lambda.arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "eventbridge_start_sfn" {
+  name = "${local.tmdb_prefix}-eventbridge-start-sfn-${var.env}"
+  role = aws_iam_role.eventbridge_sfn_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "StartBackfillExecution"
+      Effect   = "Allow"
+      Action   = "states:StartExecution"
+      Resource = aws_sfn_state_machine.backfill.arn
+    }]
+  })
+}
+

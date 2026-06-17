@@ -5,6 +5,7 @@ Fluxo: EventBridge → busca API key → coleta referências → coleta discover
 
 import logging
 import os
+import time
 from datetime import datetime
 
 import boto3
@@ -25,6 +26,8 @@ logger.setLevel(logging.INFO)
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
+
+WAIT_TIME_SECONDS = 60  # Tempo de espera entre chamadas ao Glue para evitar throttling
 
 
 def lambda_handler(event, context):
@@ -133,6 +136,8 @@ def lambda_handler(event, context):
             year=year,
             end_year=end_year,
         )
+
+        time.sleep(WAIT_TIME_SECONDS)  # Evita sobrecarga do Glue
 
     if content_type == "movie" and table_now_playing:
         logger.info("Coletando filmes em cartaz nos cinemas...")
