@@ -232,8 +232,11 @@ def write_results_to_s3(
         f"Gravando resultados em {s3_path} | source_table='{table_name}' | year='{year}'"
     )
 
+    pandas_df = df.toPandas()
+    pandas_df["failure_reason"] = pandas_df["failure_reason"].astype("string")
+
     wr.s3.to_parquet(
-        df=df.toPandas(),
+        df=pandas_df,
         path=s3_path,
         dataset=True,
         database=database,
