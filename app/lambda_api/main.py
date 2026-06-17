@@ -5,7 +5,6 @@ Fluxo: EventBridge → busca API key → coleta referências → coleta discover
 
 import logging
 import os
-import time
 from datetime import datetime
 
 import boto3
@@ -26,8 +25,6 @@ logger.setLevel(logging.INFO)
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
-
-WAIT_TIME_SECONDS = 60  # Tempo de espera entre chamadas ao Glue para evitar throttling
 
 
 def lambda_handler(event, context):
@@ -62,9 +59,10 @@ def lambda_handler(event, context):
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_tmdb_api_key(TMDB_SECRET_ARN)
 
-    current_year = datetime.now().year
-    start_year   = int(event.get("start_year", current_year - 1))
-    end_year     = int(event.get("end_year",   current_year))
+    current_year   = datetime.now().year
+    start_year     = int(event.get("start_year", current_year - 1))
+    end_year       = int(event.get("end_year",   current_year))
+    loop_end_year  = int(event.get("loop_end_year", end_year))
 
     if not only_discover:
         logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
@@ -110,10 +108,10 @@ def lambda_handler(event, context):
         }
 
     logger.info(
-        f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {end_year}..."
+        f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {loop_end_year}..."
     )
 
-    for year in range(start_year, end_year + 1):
+    for year in range(start_year, loop_end_year + 1):
         logger.info(f"=== Ano: {year} | Tipo: {content_type} ===")
 
         collect_discover_data(
@@ -137,8 +135,6 @@ def lambda_handler(event, context):
             end_year=end_year,
         )
 
-        time.sleep(WAIT_TIME_SECONDS)  # Evita sobrecarga do Glue
-
     if content_type == "movie" and table_now_playing:
         logger.info("Coletando filmes em cartaz nos cinemas...")
         collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
@@ -154,5 +150,5 @@ def lambda_handler(event, context):
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")
     return {
         "statusCode": 200,
-        "body": f"Dados de '{content_type}' coletados de {start_year} a {end_year} com sucesso.",
+        "body": f"Dados de '{content_type}' coletados de {start_year} a {loop_end_year} com sucesso.",
     }

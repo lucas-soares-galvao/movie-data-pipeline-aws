@@ -1,8 +1,8 @@
 # =============================================================================
 # step_functions.tf — State Machine de Backfill Histórico TMDB
 # =============================================================================
-# Orquestra invocações da Lambda uma vez por ano, do start_year até o ano atual.
-# Resolve o timeout de 15 min da Lambda ao coletar muitos anos de uma vez.
+# Orquestra invocações da Lambda em lotes de 2 anos, do start_year até o ano atual.
+# Resolve o timeout de 15 min da Lambda e evita estourar max_concurrent_runs do Glue.
 #
 # Como usar (console AWS ou CLI):
 #   Step Functions → tmdb-sfn-backfill-{env} → Start Execution
@@ -16,14 +16,20 @@
 # =============================================================================
 #
 # Fluxo:
-#   GenerateYears  → extrai end_year do timestamp de execução menos 2 (ex: "2027-01-01..." → 2025)
-#   ComputeYears   → gera array [start_year, ..., end_year] via States.ArrayRange
-#   ProcessEachYear → Map (MaxConcurrency=1): para cada ano, invoca movie depois tv
+#   GenerateYears   → extrai end_year do timestamp de execução menos 2
+#   ComputeYears    → gera array [start_year, ..., end_year]
+#   CreateBatches   → divide array em sub-arrays de 2 anos via States.ArrayPartition
+#   ProcessBatches  → Map (MaxConcurrency=1): para cada batch:
+#                     InvokeLambdaMovie → Wait 5min → InvokeLambdaTV → Wait 5min
 #
-# Por que dois estados Pass (GenerateYears + ComputeYears)?
-# States.ArrayRange exige inteiros. States.StringSplit retorna string, então
-# States.StringToJson converte "2026" → 2026 no primeiro estado; o segundo
-# usa o inteiro resultante em States.ArrayRange.
+# O intervalo de 5 min entre movie/tv e entre batches segue o mesmo padrão do
+# EventBridge diário e garante que os Glue Details (~4min) terminem antes do
+# próximo batch iniciar, evitando estourar max_concurrent_runs.
+#
+# A Lambda recebe:
+#   - start_year / loop_end_year: limites do loop (ex: 2000, 2001)
+#   - end_year: último ano do backfill inteiro (ex: 2025)
+# Isso garante que o Glue AGG só dispare no último ano do último batch.
 # =============================================================================
 
 resource "aws_sfn_state_machine" "backfill" {
@@ -31,7 +37,7 @@ resource "aws_sfn_state_machine" "backfill" {
   role_arn = aws_iam_role.sfn_backfill_role.arn
 
   definition = jsonencode({
-    Comment = "Coleta TMDB discover ano a ano, invocando a Lambda uma vez por ano"
+    Comment = "Coleta TMDB discover em lotes de 2 anos, com 5 min entre movie/tv e entre batches"
     StartAt = "GenerateYears"
     States = {
 
@@ -50,18 +56,39 @@ resource "aws_sfn_state_machine" "backfill" {
         Next = "ComputeYears"
       }
 
+      # Gera o array [start_year, ..., end_year].
+      # States.ArrayRange exige inteiros — por isso o estado anterior converte a string.
       ComputeYears = {
         Type = "Pass"
         Parameters = {
-          "years.$" = "States.ArrayRange($.start_year, $.end_year, 1)"
+          "years.$"    = "States.ArrayRange($.start_year, $.end_year, 1)"
+          "end_year.$" = "$.end_year"
         }
-        Next = "ProcessEachYear"
+        Next = "CreateBatches"
       }
 
-      ProcessEachYear = {
+      # Divide o array de anos em sub-arrays de 2 elementos.
+      # Ex: [2000,2001,2002,2003,2004] → [[2000,2001],[2002,2003],[2004]]
+      # O último batch pode ter 1 ano se o total for ímpar.
+      CreateBatches = {
+        Type = "Pass"
+        Parameters = {
+          "batches.$"  = "States.ArrayPartition($.years, 2)"
+          "end_year.$" = "$.end_year"
+        }
+        Next = "ProcessBatches"
+      }
+
+      # Itera sobre cada batch sequencialmente (MaxConcurrency=1).
+      # ItemSelector injeta o batch e o end_year global em cada iteração.
+      ProcessBatches = {
         Type           = "Map"
-        ItemsPath      = "$.years"
+        ItemsPath      = "$.batches"
         MaxConcurrency = 1
+        ItemSelector = {
+          "batch.$"    = "$$.Map.Item.Value"
+          "end_year.$" = "$.end_year"
+        }
         Iterator = {
           StartAt = "InvokeLambdaMovie"
           States = {
@@ -74,8 +101,9 @@ resource "aws_sfn_state_machine" "backfill" {
                 Payload = {
                   type                            = "movie"
                   only_discover                   = true
-                  "start_year.$"                  = "$"
-                  "end_year.$"                    = "$"
+                  "start_year.$"                  = "States.ArrayGetItem($.batch, 0)"
+                  "loop_end_year.$"               = "States.ArrayGetItem($.batch, States.MathAdd(States.ArrayLength($.batch), -1))"
+                  "end_year.$"                    = "$.end_year"
                   database                        = local.envs.glue_catalog_db_movie
                   database_unified                = local.envs.glue_catalog_db_unified
                   table_discover_movie            = local.envs.glue_catalog_tb_discover_movie
@@ -91,7 +119,13 @@ resource "aws_sfn_state_machine" "backfill" {
                 IntervalSeconds = 30
                 BackoffRate     = 2
               }]
-              Next = "InvokeLambdaTV"
+              Next = "WaitBeforeTV"
+            }
+
+            WaitBeforeTV = {
+              Type    = "Wait"
+              Seconds = 300
+              Next    = "InvokeLambdaTV"
             }
 
             InvokeLambdaTV = {
@@ -102,8 +136,9 @@ resource "aws_sfn_state_machine" "backfill" {
                 Payload = {
                   type                          = "tv"
                   only_discover                 = true
-                  "start_year.$"                = "$"
-                  "end_year.$"                  = "$"
+                  "start_year.$"                = "States.ArrayGetItem($.batch, 0)"
+                  "loop_end_year.$"             = "States.ArrayGetItem($.batch, States.MathAdd(States.ArrayLength($.batch), -1))"
+                  "end_year.$"                  = "$.end_year"
                   database                      = local.envs.glue_catalog_db_tv
                   database_unified              = local.envs.glue_catalog_db_unified
                   table_discover_tv             = local.envs.glue_catalog_tb_discover_tv
@@ -119,7 +154,13 @@ resource "aws_sfn_state_machine" "backfill" {
                 IntervalSeconds = 30
                 BackoffRate     = 2
               }]
-              End = true
+              Next = "WaitBeforeNextBatch"
+            }
+
+            WaitBeforeNextBatch = {
+              Type    = "Wait"
+              Seconds = 300
+              End     = true
             }
           }
         }

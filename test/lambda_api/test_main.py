@@ -41,9 +41,6 @@ EVENTO_TV = {
 class TestLambdaHandler(unittest.TestCase):
     def setUp(self):
         self.mock_context = MagicMock()
-        patcher = patch("main.time.sleep")
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -433,9 +430,6 @@ class TestSkipDaily(unittest.TestCase):
 
     def setUp(self):
         self.mock_context = MagicMock()
-        patcher = patch("main.time.sleep")
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -531,9 +525,6 @@ class TestOnlyDiscover(unittest.TestCase):
 
     def setUp(self):
         self.mock_context = MagicMock()
-        patcher = patch("main.time.sleep")
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -638,9 +629,6 @@ class TestNowPlaying(unittest.TestCase):
 
     def setUp(self):
         self.mock_context = MagicMock()
-        patcher = patch("main.time.sleep")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self._evento_com_now_playing = {
             **EVENTO_MOVIE,
             "table_now_playing_movie": "now_playing_movie",
