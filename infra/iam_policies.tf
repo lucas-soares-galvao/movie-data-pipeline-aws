@@ -172,10 +172,10 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
         ]
       },
       {
@@ -189,10 +189,10 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
         ]
       }
     ]
@@ -299,12 +299,12 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       },
       {
@@ -318,8 +318,8 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       }
     ]
@@ -562,12 +562,12 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       },
       {
@@ -581,8 +581,8 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       }
     ]
@@ -741,10 +741,10 @@ resource "aws_iam_role_policy" "glue_details_s3" {
         Effect = "Allow"
         Action = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
         Resource = [
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_details_movie_name}/*",
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_details_tv_name}/*",
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_movie_name}/*",
-          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_tv_name}/*"
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_details_movie}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_details_tv}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_watch_providers_movie}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_watch_providers_tv}/*"
         ]
       }
     ]
@@ -768,10 +768,10 @@ resource "aws_iam_role_policy" "glue_details_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
         ]
       },
       {
@@ -785,10 +785,10 @@ resource "aws_iam_role_policy" "glue_details_catalog" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_movie_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_tv_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_movie_name}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_tv_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
         ]
       }
     ]

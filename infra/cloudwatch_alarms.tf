@@ -56,7 +56,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
   }
 
   metric_query {
-    id          = "movie_week_failed"
+    id          = "movie_monthly_failed"
     return_data = false
 
     metric {
@@ -71,7 +71,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
   }
 
   metric_query {
-    id          = "tv_week_failed"
+    id          = "tv_monthly_failed"
     return_data = false
 
     metric {
@@ -87,7 +87,7 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
 
   metric_query {
     id          = "total_failed"
-    expression  = "movie_daily_failed+tv_daily_failed+movie_week_failed+tv_week_failed"
+    expression  = "movie_daily_failed+tv_daily_failed+movie_monthly_failed+tv_monthly_failed"
     label       = "EventBridgeFailedInvocations"
     return_data = true
   }

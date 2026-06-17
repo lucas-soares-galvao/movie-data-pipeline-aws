@@ -51,8 +51,8 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
         ]
         Resource = [
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${var.glue_catalog_database_unified_name}",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${var.glue_catalog_database_unified_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       },
     ]

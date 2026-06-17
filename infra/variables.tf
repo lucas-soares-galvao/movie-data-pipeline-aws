@@ -75,7 +75,7 @@ variable "lambda_notification_email" {
 }
 
 variable "eventbridge_notification_email" {
-  description = "E-mail para receber notificações de sucesso do EventBridge"
+  description = "E-mail para receber notificações de falha do EventBridge"
   type        = string
 }
 
@@ -214,109 +214,109 @@ variable "glue_details_job_name" {
 # GLUE CATALOG — Registro de Tabelas
 # =============================================================================
 
-variable "glue_agg_spec_table_name" {
+variable "glue_agg_spec_tb_name" {
   description = "Nome da tabela unificada gravada no bucket SPEC pelo Glue AGG"
   type        = string
   default     = "tb_discover_unified"
 }
 
-variable "glue_catalog_database_movie_name" {
+variable "glue_catalog_db_movie_name" {
   description = "Nome do banco no Glue Catalog para tabelas de filmes TMDB"
   type        = string
   default     = "db_movie"
 }
 
-variable "glue_catalog_database_tv_name" {
+variable "glue_catalog_db_tv_name" {
   description = "Nome do banco no Glue Catalog para tabelas de séries TMDB"
   type        = string
   default     = "db_tv"
 }
 
-variable "glue_catalog_database_unified_name" {
+variable "glue_catalog_db_unified_name" {
   description = "Nome do banco no Glue Catalog para a tabela unificada e referências TMDB"
   type        = string
   default     = "db_unified"
 }
 
-variable "glue_catalog_table_discover_movie_name" {
+variable "glue_catalog_tb_discover_movie_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de filmes da TMDB"
   type        = string
   default     = "tb_discover_movie"
 }
 
-variable "glue_catalog_table_now_playing_movie_name" {
+variable "glue_catalog_tb_now_playing_movie_name" {
   description = "Nome da tabela no Glue Catalog para filmes atualmente em cartaz nos cinemas"
   type        = string
   default     = "tb_now_playing_movie"
 }
 
-variable "glue_catalog_table_discover_tv_name" {
+variable "glue_catalog_tb_discover_tv_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de series da TMDB"
   type        = string
   default     = "tb_discover_tv"
 }
 
-variable "glue_catalog_table_genre_movie_name" {
+variable "glue_catalog_tb_genre_movie_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de generos de filmes da TMDB"
   type        = string
   default     = "tb_genre_movie"
 }
 
-variable "glue_catalog_table_genre_tv_name" {
+variable "glue_catalog_tb_genre_tv_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de generos de series da TMDB"
   type        = string
   default     = "tb_genre_tv"
 }
 
-variable "glue_catalog_table_configuration_languages_name" {
+variable "glue_catalog_tb_configuration_languages_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de linguas da TMDB"
   type        = string
   default     = "tb_configuration_languages"
 }
 
-variable "glue_catalog_table_configuration_countries_name" {
+variable "glue_catalog_tb_configuration_countries_name" {
   description = "Nome da tabela no Glue Catalog para a tabela de paises da TMDB"
   type        = string
   default     = "tb_configuration_countries"
 }
 
-variable "glue_catalog_table_data_quality_name" {
+variable "glue_catalog_tb_data_quality_name" {
   description = "Nome da tabela no Glue Catalog para resultados de Data Quality"
   type        = string
   default     = "tb_data_quality"
 }
 
-variable "glue_catalog_table_details_movie_name" {
+variable "glue_catalog_tb_details_movie_name" {
   description = "Nome da tabela no Glue Catalog para detalhes de filmes (runtime)"
   type        = string
   default     = "tb_details_movie"
 }
 
-variable "glue_catalog_table_details_tv_name" {
+variable "glue_catalog_tb_details_tv_name" {
   description = "Nome da tabela no Glue Catalog para detalhes de series (temporadas, episodios)"
   type        = string
   default     = "tb_details_tv"
 }
 
-variable "glue_catalog_table_watch_providers_movie_name" {
+variable "glue_catalog_tb_watch_providers_movie_name" {
   description = "Nome da tabela no Glue Catalog para watch providers BR de filmes"
   type        = string
   default     = "tb_watch_providers_movie"
 }
 
-variable "glue_catalog_table_watch_providers_tv_name" {
+variable "glue_catalog_tb_watch_providers_tv_name" {
   description = "Nome da tabela no Glue Catalog para watch providers BR de series"
   type        = string
   default     = "tb_watch_providers_tv"
 }
 
-variable "glue_catalog_table_watch_providers_ref_movie_name" {
+variable "glue_catalog_tb_watch_providers_ref_movie_name" {
   description = "Nome da tabela no Glue Catalog para a lista de referência de provedores de filmes"
   type        = string
   default     = "tb_watch_providers_ref_movie"
 }
 
-variable "glue_catalog_table_watch_providers_ref_tv_name" {
+variable "glue_catalog_tb_watch_providers_ref_tv_name" {
   description = "Nome da tabela no Glue Catalog para a lista de referência de provedores de series"
   type        = string
   default     = "tb_watch_providers_ref_tv"
@@ -349,7 +349,7 @@ variable "lightsail_ssh_allowed_cidrs" {
 # =============================================================================
 
 variable "log_retention_days" {
-  description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 30 para prod (permite investigar incidentes)"
+  description = "Dias de retencao dos logs do CloudWatch. Use 1 para dev (economiza custo) e 5 para prod (permite investigar incidentes)"
   type        = number
   default     = 7
 }
