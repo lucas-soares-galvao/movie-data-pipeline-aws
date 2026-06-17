@@ -196,6 +196,6 @@ resource "aws_cloudwatch_event_target" "sfn_backfill_annual_target" {
   role_arn  = aws_iam_role.eventbridge_sfn_role.arn
 
   input = jsonencode({
-    start_year = 2000
+    start_year = 2025
   })
 }
