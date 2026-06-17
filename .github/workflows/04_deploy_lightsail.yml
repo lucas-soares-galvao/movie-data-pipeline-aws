@@ -111,7 +111,7 @@ jobs:
       - name: Create .env file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
-          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nLLM_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/tmdb/athena-results/\nGLUE_DATABASE=db_tmdb_unified\nSPEC_TABLE=tb_tmdb_discover_unified\n' \
+          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nLLM_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/tmdb/athena/lightsail_ia\nGLUE_DATABASE=db_tmdb_unified_prod\nSPEC_TABLE=tb_tmdb_discover_unified_prod\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
             "${{ steps.tf.outputs.secret_access_key }}" \
             "${{ secrets.llm-api-key }}" \

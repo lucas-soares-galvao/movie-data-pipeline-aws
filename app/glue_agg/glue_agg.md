@@ -24,16 +24,16 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
 3. Seleciona `title` e `overview` do discover (pt-BR nativo do TMDB) como primeira prioridade; `overview_pt` traduzido pelo Glue Details entra como fallback quando o discover retornou vazio, seguido por `overview_en` como último recurso
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC
-5. O AWS Wrangler registra automaticamente a tabela no Glue Catalog (`db_unified_tmdb`)
+5. O AWS Wrangler registra automaticamente a tabela no Glue Catalog (`db_tmdb_unified_{env}`)
 6. Aciona o Glue Data Quality para validar a tabela unificada completa (sem filtro de ano)
 
 ## Entradas e saídas
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `DB_MOVIE`, `DB_TV`, `DB_UNIFIED`, `S3_BUCKET_SPEC`, `S3_BUCKET_TEMP`, `TABLE_NAME`, `GLUE_DATA_QUALITY_JOB_NAME` |
-| **Leitura** | Athena — tabelas da SOT: `tb_discover_*`, `tb_details_*`, `tb_genre_*`, `tb_configuration_*`, `tb_watch_providers_*`, `tb_now_playing_movie_tmdb` |
-| **Escrita** | S3 SPEC — `tb_discover_unified_tmdb` particionada por `(media_type, year)` + Glue Catalog |
+| **Entrada** | Argumentos: `S3_BUCKET_SPEC`, `S3_PREFIX_SPEC`, `S3_BUCKET_TEMP`, `DB_MOVIE`, `DB_TV`, `DB_UNIFIED`, `TABLE_NAME`, `GLUE_DATA_QUALITY_JOB_NAME`, `ENVIRONMENT` |
+| **Leitura** | Athena — tabelas da SOT: `tb_tmdb_discover_*`, `tb_tmdb_details_*`, `tb_tmdb_genre_*`, `tb_tmdb_configuration_*`, `tb_tmdb_watch_providers_*`, `tb_tmdb_now_playing_movie_{env}` |
+| **Escrita** | S3 SPEC — `tb_tmdb_discover_unified_{env}` particionada por `(media_type, year)` + Glue Catalog |
 | **Aciona** | Glue Data Quality (tabela unificada completa, sem partição de ano) |
 
 ## SQL de unificação (resumo)
@@ -64,7 +64,7 @@ SELECT
 FROM unified u
 LEFT JOIN details   d  ON d.id = u.id AND d.media_type = u.media_type
 LEFT JOIN providers p  ON p.id = u.id AND p.media_type = u.media_type
-LEFT JOIN tb_now_playing_movie_tmdb np ON np.id = u.id AND u.media_type = 'movie'
+LEFT JOIN tb_tmdb_now_playing_movie_{env} np ON np.id = u.id AND u.media_type = 'movie'
 ```
 
 ## Funções principais (`src/utils.py`)

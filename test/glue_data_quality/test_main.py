@@ -8,9 +8,9 @@ import main as m
 
 # Argumentos base devolvidos pelo mock de get_parameters_glue
 _BASE_ARGS = {
-    "TABLE_NAME": "tb_genre_movie_tmdb",
-    "DATABASE": "db_tmdb",
-    "DATABASE_RESULTS": "db_unified_tmdb",
+    "TABLE_NAME": "tb_tmdb_genre_movie_dev",
+    "DATABASE": "db_tmdb_movie_dev",
+    "DATABASE_RESULTS": "db_tmdb_unified_dev",
     "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
     "ENVIRONMENT": "dev",
     "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
@@ -96,15 +96,15 @@ class TestReadTableFromCatalogCall:
 
     def test_calls_read_table_with_database(self):
         """read_table_from_catalog deve receber o DATABASE dos args."""
-        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
+        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb_movie_dev"})
         _, database, _, _ = mocks["mock_read"].call_args[0]
-        assert database == "db_tmdb"
+        assert database == "db_tmdb_movie_dev"
 
     def test_calls_read_table_with_table_name(self):
         """read_table_from_catalog deve receber o TABLE_NAME dos args."""
-        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
+        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_genre_movie_dev"})
         _, _, table_name, _ = mocks["mock_read"].call_args[0]
-        assert table_name == "tb_genre_movie_tmdb"
+        assert table_name == "tb_tmdb_genre_movie_dev"
 
     def test_calls_read_table_with_none_year_when_not_in_args(self):
         """read_table_from_catalog deve receber year=None quando YEAR não está nos args
@@ -116,7 +116,7 @@ class TestReadTableFromCatalogCall:
     def test_calls_read_table_with_year_when_in_args(self):
         """read_table_from_catalog deve receber o ano para aplicar push_down_predicate
         e avaliar apenas a partição recém-escrita, não a tabela inteira."""
-        args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb", "YEAR": "2002"}
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_discover_movie_dev", "YEAR": "2002"}
         mocks = _run_main(args=args)
         _, _, _, year = mocks["mock_read"].call_args[0]
         assert year == "2002"
@@ -144,15 +144,15 @@ class TestEvaluateDataQualityCall:
 
     def test_calls_evaluate_with_table_name(self):
         """evaluate_data_quality deve receber o TABLE_NAME dos args."""
-        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
+        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_genre_movie_dev"})
         table_name_arg = mocks["mock_eval"].call_args[0][3]
-        assert table_name_arg == "tb_genre_movie_tmdb"
+        assert table_name_arg == "tb_tmdb_genre_movie_dev"
 
     def test_calls_evaluate_with_database(self):
         """evaluate_data_quality deve receber o DATABASE dos args."""
-        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb"})
+        mocks = _run_main(args={**_BASE_ARGS, "DATABASE": "db_tmdb_movie_dev"})
         database_arg = mocks["mock_eval"].call_args[0][4]
-        assert database_arg == "db_tmdb"
+        assert database_arg == "db_tmdb_movie_dev"
 
     def test_calls_evaluate_with_none_year_when_not_in_args(self):
         """evaluate_data_quality deve receber year=None quando YEAR não está nos args."""
@@ -162,7 +162,7 @@ class TestEvaluateDataQualityCall:
 
     def test_calls_evaluate_with_year_when_in_args(self):
         """evaluate_data_quality deve receber o ano quando YEAR está nos args."""
-        args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb", "YEAR": "2002"}
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_discover_movie_dev", "YEAR": "2002"}
         mocks = _run_main(args=args)
         year_arg = mocks["mock_eval"].call_args[0][5]
         assert year_arg == "2002"
@@ -187,10 +187,10 @@ class TestWriteResultsToS3Call:
 
     def test_calls_write_with_table_name(self):
         """write_results_to_s3 deve receber o TABLE_NAME dos args."""
-        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_genre_movie_tmdb"})
+        mocks = _run_main(args={**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_genre_movie_dev"})
 
         table_arg = mocks["mock_write"].call_args[0][2]
-        assert table_arg == "tb_genre_movie_tmdb"
+        assert table_arg == "tb_tmdb_genre_movie_dev"
 
     def test_calls_write_with_database(self):
         """write_results_to_s3 deve receber o DATABASE_RESULTS dos args para registrar
@@ -198,13 +198,13 @@ class TestWriteResultsToS3Call:
         mocks = _run_main(
             args={
                 **_BASE_ARGS,
-                "DATABASE": "db_tmdb",
-                "DATABASE_RESULTS": "db_unified_tmdb",
+                "DATABASE": "db_tmdb_movie_dev",
+                "DATABASE_RESULTS": "db_tmdb_unified_dev",
             }
         )
 
         database_arg = mocks["mock_write"].call_args[0][3]
-        assert database_arg == "db_unified_tmdb"
+        assert database_arg == "db_tmdb_unified_dev"
 
     def test_calls_write_with_output_table(self):
         """write_results_to_s3 deve receber o OUTPUT_TABLE dos args."""
@@ -225,7 +225,7 @@ class TestWriteResultsToS3Call:
     def test_calls_write_with_year_when_in_args(self):
         """write_results_to_s3 deve receber o ano quando YEAR está nos args
         (tabelas de discover particionam também por partition=<ano>)."""
-        args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb", "YEAR": "2002"}
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_discover_movie_dev", "YEAR": "2002"}
         mocks = _run_main(args=args)
 
         year_arg = mocks["mock_write"].call_args[0][5]

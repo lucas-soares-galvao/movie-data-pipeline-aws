@@ -14,9 +14,9 @@ from src.utils import (
 
 class TestGetParametersGlue:
     _REQUIRED = {
-        "TABLE_NAME": "tb_genre_movie_tmdb",
-        "DATABASE": "db_tmdb",
-        "DATABASE_RESULTS": "db_unified_tmdb",
+        "TABLE_NAME": "tb_tmdb_genre_movie_dev",
+        "DATABASE": "db_tmdb_movie_dev",
+        "DATABASE_RESULTS": "db_tmdb_unified_dev",
         "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
         "ENVIRONMENT": "dev",
         "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
@@ -31,9 +31,9 @@ class TestGetParametersGlue:
         ):
             result = get_parameters_glue()
 
-        assert result["TABLE_NAME"] == "tb_genre_movie_tmdb"
-        assert result["DATABASE"] == "db_tmdb"
-        assert result["DATABASE_RESULTS"] == "db_unified_tmdb"
+        assert result["TABLE_NAME"] == "tb_tmdb_genre_movie_dev"
+        assert result["DATABASE"] == "db_tmdb_movie_dev"
+        assert result["DATABASE_RESULTS"] == "db_tmdb_unified_dev"
         assert result["S3_BUCKET_DATA_QUALITY"] == "my-dq-bucket"
         assert result["ENVIRONMENT"] == "dev"
 
@@ -74,7 +74,7 @@ class TestGetParametersGlue:
         ):
             result = get_parameters_glue()
 
-        assert result["DATABASE_RESULTS"] == "db_unified_tmdb"
+        assert result["DATABASE_RESULTS"] == "db_tmdb_unified_dev"
 
 
 # ---------------------------------------------------------------------------
@@ -137,11 +137,11 @@ class TestReadTableFromCatalog:
     def test_calls_from_catalog_with_correct_args(self):
         """Deve chamar from_catalog passando apenas database e table_name."""
         glue_context = MagicMock()
-        read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb")
+        read_table_from_catalog(glue_context, "db_tmdb_movie_dev", "tb_tmdb_genre_movie_dev")
 
         glue_context.create_dynamic_frame.from_catalog.assert_called_once_with(
-            database="db_tmdb",
-            table_name="tb_genre_movie_tmdb",
+            database="db_tmdb_movie_dev",
+            table_name="tb_tmdb_genre_movie_dev",
         )
 
     def test_returns_dynamic_frame_from_catalog(self):
@@ -150,14 +150,14 @@ class TestReadTableFromCatalog:
         expected = MagicMock()
         glue_context.create_dynamic_frame.from_catalog.return_value = expected
 
-        result = read_table_from_catalog(glue_context, "db_tmdb", "tb_genre_movie_tmdb")
+        result = read_table_from_catalog(glue_context, "db_tmdb_movie_dev", "tb_tmdb_genre_movie_dev")
 
         assert result is expected
 
     def test_uses_provided_database_name(self):
         """O nome do banco de dados passado deve ser repassado ao Catalog."""
         glue_context = MagicMock()
-        read_table_from_catalog(glue_context, "meu_banco", "tb_genre_movie_tmdb")
+        read_table_from_catalog(glue_context, "meu_banco", "tb_tmdb_genre_movie_dev")
 
         # call_args retorna (args_posicionais, kwargs). O _ descarta os args posicionais
         # (não usados aqui) e kwargs captura os argumentos nomeados que nos interessam.
@@ -167,16 +167,16 @@ class TestReadTableFromCatalog:
     def test_uses_provided_table_name(self):
         """O nome da tabela passado deve ser repassado ao Catalog."""
         glue_context = MagicMock()
-        read_table_from_catalog(glue_context, "db_tmdb", "tb_discover_movie_tmdb")
+        read_table_from_catalog(glue_context, "db_tmdb_movie_dev", "tb_tmdb_discover_movie_dev")
 
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
-        assert kwargs["table_name"] == "tb_discover_movie_tmdb"
+        assert kwargs["table_name"] == "tb_tmdb_discover_movie_dev"
 
     def test_no_push_down_predicate_when_year_is_none(self):
         """Sem year, push_down_predicate não deve ser passado (tabelas sem partição)."""
         glue_context = MagicMock()
         read_table_from_catalog(
-            glue_context, "db_tmdb", "tb_genre_movie_tmdb", year=None
+            glue_context, "db_tmdb_movie_dev", "tb_tmdb_genre_movie_dev", year=None
         )
 
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
@@ -186,7 +186,7 @@ class TestReadTableFromCatalog:
         """Com year, push_down_predicate deve filtrar apenas a partição informada."""
         glue_context = MagicMock()
         read_table_from_catalog(
-            glue_context, "db_tmdb", "tb_discover_movie_tmdb", year="2019"
+            glue_context, "db_tmdb_movie_dev", "tb_tmdb_discover_movie_dev", year="2019"
         )
 
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
@@ -196,7 +196,7 @@ class TestReadTableFromCatalog:
         """O predicado deve conter exatamente o ano passado como argumento."""
         glue_context = MagicMock()
         read_table_from_catalog(
-            glue_context, "db_tmdb", "tb_discover_tv_tmdb", year="2023"
+            glue_context, "db_tmdb_movie_dev", "tb_tmdb_discover_tv_dev", year="2023"
         )
 
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
@@ -218,9 +218,9 @@ class TestEvaluateDataQuality:
 
     def _run(
         self,
-        table_name="tb_genre_movie_tmdb",
+        table_name="tb_tmdb_genre_movie_dev",
         ruleset="Rules = [\n  RowCount > 0\n]",
-        database="db_tmdb",
+        database="db_tmdb_movie_dev",
         year=None,
     ):
         """Executa evaluate_data_quality com colaboradores simulados e retorna os mocks."""
@@ -273,12 +273,12 @@ class TestEvaluateDataQuality:
 
     def test_passes_correct_publishing_options(self):
         """As opções de publicação devem ativar métricas e resultados no Glue Studio."""
-        mocks = self._run(table_name="tb_genre_movie_tmdb")
+        mocks = self._run(table_name="tb_tmdb_genre_movie_dev")
 
         call_kwargs = mocks["mock_edq"].apply.call_args[1]
         opts = call_kwargs["publishing_options"]
 
-        assert opts["dataQualityEvaluationContext"] == "tb_genre_movie_tmdb"
+        assert opts["dataQualityEvaluationContext"] == "tb_tmdb_genre_movie_dev"
         assert opts["enableDataQualityCloudWatchMetrics"] is True
         assert opts["enableDataQualityResultsPublishing"] is True
 
@@ -338,19 +338,19 @@ class TestEvaluateDataQuality:
 
     def test_adds_source_database_column(self):
         """Coluna source_database deve ser adicionada com o nome do banco de dados."""
-        mocks = self._run(database="db_tmdb")
+        mocks = self._run(database="db_tmdb_movie_dev")
         mocks["df_mock"].withColumn.assert_any_call(
             "source_database", mocks["mock_lit"].return_value
         )
-        mocks["mock_lit"].assert_any_call("db_tmdb")
+        mocks["mock_lit"].assert_any_call("db_tmdb_movie_dev")
 
     def test_adds_source_table_column(self):
         """Coluna source_table deve ser adicionada com o nome da tabela avaliada."""
-        mocks = self._run(table_name="tb_genre_movie_tmdb")
+        mocks = self._run(table_name="tb_tmdb_genre_movie_dev")
         mocks["df_mock"].withColumn.assert_any_call(
             "source_table", mocks["mock_lit"].return_value
         )
-        mocks["mock_lit"].assert_any_call("tb_genre_movie_tmdb")
+        mocks["mock_lit"].assert_any_call("tb_tmdb_genre_movie_dev")
 
     def test_returns_dataframe_after_all_transformations(self):
         """O retorno deve ser o DataFrame após todos os renames e withColumns."""
@@ -386,7 +386,7 @@ class TestEvaluateDataQuality:
                 glue_context,
                 dynamic_frame,
                 "Rules = [\n  RowCount > 0\n]",
-                "tb_discover_movie_tmdb",
+                "tb_tmdb_discover_movie_dev",
                 "db",
                 year="2002",
             )
@@ -427,7 +427,7 @@ class TestEvaluateDataQuality:
                 glue_context,
                 dynamic_frame,
                 "Rules = [\n  RowCount > 0\n]",
-                "tb_discover_tv_tmdb",
+                "tb_tmdb_discover_tv_dev",
                 "db",
                 year="2023",
             )
@@ -461,7 +461,7 @@ class TestEvaluateDataQuality:
                 glue_context,
                 dynamic_frame,
                 "Rules = [\n  RowCount > 0\n]",
-                "tb_genre_movie_tmdb",
+                "tb_tmdb_genre_movie_dev",
                 "db",
                 year=None,
             )
@@ -477,7 +477,7 @@ class TestEvaluateDataQuality:
 
 
 class TestWriteResultsToS3:
-    def _run(self, df_mock=None, bucket="my-dq-bucket", table="tb_genre_movie_tmdb", database="db_tmdb", output_table="tb_tmdb_data_quality_dev", year=None):
+    def _run(self, df_mock=None, bucket="my-dq-bucket", table="tb_tmdb_genre_movie_dev", database="db_tmdb_movie_dev", output_table="tb_tmdb_data_quality_dev", year=None):
         df_mock = df_mock or MagicMock()
         with patch("src.utils.wr") as mock_wr:
             write_results_to_s3(df_mock, bucket, table, database, output_table, year)
@@ -521,7 +521,7 @@ class TestWriteResultsToS3:
 
     def test_s3_path_uses_output_table_name(self):
         """O nome da tabela de saída deve usar o output_table recebido como parâmetro."""
-        _, mock_wr = self._run(table="tb_discover_tv_tmdb", output_table="tb_tmdb_data_quality_prod")
+        _, mock_wr = self._run(table="tb_tmdb_discover_tv_dev", output_table="tb_tmdb_data_quality_prod")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
         assert "tb_tmdb_data_quality_prod" in call_kwargs["path"]
 
@@ -533,9 +533,9 @@ class TestWriteResultsToS3:
 
     def test_registers_table_in_glue_catalog(self):
         """wr.s3.to_parquet deve receber database e table para atualizar o Catalog."""
-        _, mock_wr = self._run(database="db_tmdb", output_table="tb_tmdb_data_quality_dev")
+        _, mock_wr = self._run(database="db_tmdb_movie_dev", output_table="tb_tmdb_data_quality_dev")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
-        assert call_kwargs["database"] == "db_tmdb"
+        assert call_kwargs["database"] == "db_tmdb_movie_dev"
         assert call_kwargs["table"] == "tb_tmdb_data_quality_dev"
 
     def test_uses_fillna_year_placeholder_when_no_year(self):
@@ -600,7 +600,7 @@ class TestNotifyFailedOutcomes:
         """Quando nenhuma regra falha, sns.publish não deve ser chamado."""
         df, _ = self._make_df([])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
             mock_boto3.client.return_value.publish.assert_not_called()
 
     def test_publishes_when_any_rule_fails(self):
@@ -608,7 +608,7 @@ class TestNotifyFailedOutcomes:
         row = self._make_row('IsComplete "id"', "Column id has null values")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
             mock_boto3.client.return_value.publish.assert_called_once()
 
     def test_subject_contains_environment_uppercased(self):
@@ -616,7 +616,7 @@ class TestNotifyFailedOutcomes:
         row = self._make_row("RowCount > 0", "Row count is 0")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_discover_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_discover_movie_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert "DEV" in call_kwargs["Subject"]
 
@@ -625,16 +625,16 @@ class TestNotifyFailedOutcomes:
         row = self._make_row("RowCount > 0", "Row count is 0")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_tv_tmdb", self._SNS_ARN, "prod")
+            notify_failed_outcomes(df, "tb_tmdb_genre_tv_dev", self._SNS_ARN, "prod")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
-            assert "tb_genre_tv_tmdb" in call_kwargs["Message"]
+            assert "tb_tmdb_genre_tv_dev" in call_kwargs["Message"]
 
     def test_message_contains_failed_rule(self):
         """O corpo do e-mail deve listar a regra que falhou."""
         row = self._make_row('IsUnique "id"', "Duplicate values found")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert 'IsUnique "id"' in call_kwargs["Message"]
 
@@ -643,7 +643,7 @@ class TestNotifyFailedOutcomes:
         row = self._make_row('IsComplete "id"', "Column id has null values")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert "Column id has null values" in call_kwargs["Message"]
 
@@ -652,7 +652,7 @@ class TestNotifyFailedOutcomes:
         row = self._make_row("RowCount > 0", "Row count is 0")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert call_kwargs["TopicArn"] == self._SNS_ARN
 
@@ -664,7 +664,7 @@ class TestNotifyFailedOutcomes:
         ]
         df, _ = self._make_df(rows)
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_discover_tv_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_discover_tv_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert 'IsComplete "id"' in call_kwargs["Message"]
             assert "RowCount > 0" in call_kwargs["Message"]
@@ -674,7 +674,7 @@ class TestNotifyFailedOutcomes:
         row = self._make_row("RowCount > 0", "Row count is 0")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_discover_movie_tmdb", self._SNS_ARN, "dev", year="2024")
+            notify_failed_outcomes(df, "tb_tmdb_discover_movie_dev", self._SNS_ARN, "dev", year="2024")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert "year=2024" in call_kwargs["Message"]
 
@@ -683,6 +683,6 @@ class TestNotifyFailedOutcomes:
         row = self._make_row("RowCount > 0", "Row count is 0")
         df, _ = self._make_df([row])
         with patch("src.utils.boto3") as mock_boto3:
-            notify_failed_outcomes(df, "tb_genre_movie_tmdb", self._SNS_ARN, "dev")
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert "Partição" not in call_kwargs["Message"]

@@ -20,9 +20,9 @@ LLM_API_KEY=$LLM_API_KEY
 AWS_REGION=sa-east-1
 AWS_ACCESS_KEY_ID=$ACCESS_KEY
 AWS_SECRET_ACCESS_KEY=$SECRET_KEY
-ATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-dev/tmdb/athena-results/
-GLUE_DATABASE=db_unified_tmdb
-SPEC_TABLE=tb_discover_unified_tmdb
+ATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-prod/tmdb/athena/lightsail_ia
+GLUE_DATABASE=db_tmdb_unified_prod
+SPEC_TABLE=tb_tmdb_discover_unified_prod
 EOF
 
 echo ".env criado em $ENV_FILE"

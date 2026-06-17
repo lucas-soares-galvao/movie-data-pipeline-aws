@@ -221,18 +221,18 @@ class TestWriteParquetToSot:
             write_parquet_to_sot(
                 df=df,
                 s3_bucket_sot="my-sot",
-                table_name="tb_discover_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_discover_movie_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=["year"],
             )
             mock_write.assert_called_once_with(
                 df=df,
-                path="s3://my-sot/tmdb/tb_discover_movie_tmdb/",
+                path="s3://my-sot/tmdb/tb_tmdb_discover_movie_dev/",
                 dataset=True,
                 partition_cols=["year"],
                 mode="overwrite_partitions",
-                database="db_tmdb",
-                table="tb_discover_movie_tmdb",
+                database="db_tmdb_movie_dev",
+                table="tb_tmdb_discover_movie_dev",
             )
 
     def test_without_partition_cols_defaults_to_none(self):
@@ -241,17 +241,17 @@ class TestWriteParquetToSot:
             write_parquet_to_sot(
                 df=df,
                 s3_bucket_sot="my-sot",
-                table_name="tb_genre_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_genre_movie_dev",
+                database="db_tmdb_movie_dev",
             )
             mock_write.assert_called_once_with(
                 df=df,
-                path="s3://my-sot/tmdb/tb_genre_movie_tmdb/",
+                path="s3://my-sot/tmdb/tb_tmdb_genre_movie_dev/",
                 dataset=True,
                 partition_cols=None,
                 mode="overwrite_partitions",
-                database="db_tmdb",
-                table="tb_genre_movie_tmdb",
+                database="db_tmdb_movie_dev",
+                table="tb_tmdb_genre_movie_dev",
             )
 
     def test_custom_mode_is_forwarded(self):
@@ -261,7 +261,7 @@ class TestWriteParquetToSot:
                 df=df,
                 s3_bucket_sot="my-sot",
                 table_name="tb_test",
-                database="db_tmdb",
+                database="db_tmdb_movie_dev",
                 mode="overwrite",
             )
             _, kwargs = mock_write.call_args
@@ -274,7 +274,7 @@ class TestWriteParquetToSot:
                 df=df,
                 s3_bucket_sot="bucket-sot",
                 table_name="tb_custom",
-                database="db_tmdb",
+                database="db_tmdb_movie_dev",
             )
             _, kwargs = mock_write.call_args
             assert kwargs["path"] == "s3://bucket-sot/tmdb/tb_custom/"
@@ -366,12 +366,12 @@ class TestTriggerDataQuality:
     def test_calls_start_job_run_with_correct_args(self):
         glue_mock = self._make_glue_mock()
         with patch("boto3.client", return_value=glue_mock):
-            trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            trigger_data_quality("dq-job", "tb_tmdb_genre_movie_dev", "db_tmdb_movie_dev")
             glue_mock.start_job_run.assert_called_once_with(
                 JobName="dq-job",
                 Arguments={
-                    "--TABLE_NAME": "tb_genre_movie_tmdb",
-                    "--DATABASE": "db_tmdb",
+                    "--TABLE_NAME": "tb_tmdb_genre_movie_dev",
+                    "--DATABASE": "db_tmdb_movie_dev",
                 },
             )
 
@@ -379,7 +379,7 @@ class TestTriggerDataQuality:
         glue_mock = self._make_glue_mock()
         with patch("boto3.client", return_value=glue_mock):
             trigger_data_quality(
-                "dq-job", "tb_discover_movie_tmdb", "db_tmdb", year="2023"
+                "dq-job", "tb_tmdb_discover_movie_dev", "db_tmdb_movie_dev", year="2023"
             )
             _, kwargs = glue_mock.start_job_run.call_args
             assert kwargs["Arguments"]["--YEAR"] == "2023"
@@ -387,7 +387,7 @@ class TestTriggerDataQuality:
     def test_omits_year_when_not_provided(self):
         glue_mock = self._make_glue_mock()
         with patch("boto3.client", return_value=glue_mock):
-            trigger_data_quality("dq-job", "tb_genre_movie_tmdb", "db_tmdb")
+            trigger_data_quality("dq-job", "tb_tmdb_genre_movie_dev", "db_tmdb_movie_dev")
             _, kwargs = glue_mock.start_job_run.call_args
             assert "--YEAR" not in kwargs["Arguments"]
 
@@ -395,7 +395,7 @@ class TestTriggerDataQuality:
         glue_mock = self._make_glue_mock(run_id="run-abc")
         with patch("boto3.client", return_value=glue_mock):
             run_id = trigger_data_quality(
-                "dq-job", "tb_genre_movie_tmdb", "db_tmdb"
+                "dq-job", "tb_tmdb_genre_movie_dev", "db_tmdb_movie_dev"
             )
             assert run_id == "run-abc"
 
@@ -419,7 +419,7 @@ class TestTriggerDetails:
                 media_type="movie",
                 year="2025",
                 end_year="2026",
-                database="db_movie_tmdb",
+                database="db_tmdb_movie_dev",
             )
             glue_mock.start_job_run.assert_called_once_with(
                 JobName="details-job",
@@ -427,7 +427,7 @@ class TestTriggerDetails:
                     "--MEDIA_TYPE": "movie",
                     "--YEAR":       "2025",
                     "--END_YEAR":   "2026",
-                    "--DATABASE":   "db_movie_tmdb",
+                    "--DATABASE":   "db_tmdb_movie_dev",
                 },
             )
 
@@ -439,10 +439,10 @@ class TestTriggerDetails:
                 media_type="movie",
                 year="2025",
                 end_year="2026",
-                database="db_movie_tmdb",
+                database="db_tmdb_movie_dev",
             )
             _, kwargs = glue_mock.start_job_run.call_args
-            assert kwargs["Arguments"]["--DATABASE"] == "db_movie_tmdb"
+            assert kwargs["Arguments"]["--DATABASE"] == "db_tmdb_movie_dev"
 
     def test_database_forwarded_for_tv(self):
         glue_mock = self._make_glue_mock()
@@ -452,10 +452,10 @@ class TestTriggerDetails:
                 media_type="tv",
                 year="2024",
                 end_year="2025",
-                database="db_tv_tmdb",
+                database="db_tmdb_tv_dev",
             )
             _, kwargs = glue_mock.start_job_run.call_args
-            assert kwargs["Arguments"]["--DATABASE"] == "db_tv_tmdb"
+            assert kwargs["Arguments"]["--DATABASE"] == "db_tmdb_tv_dev"
             assert kwargs["Arguments"]["--MEDIA_TYPE"] == "tv"
 
     def test_returns_job_run_id(self):
@@ -466,7 +466,7 @@ class TestTriggerDetails:
                 media_type="tv",
                 year="2025",
                 end_year="2025",
-                database="db_tv_tmdb",
+                database="db_tmdb_tv_dev",
             )
             assert run_id == "run-det-xyz"
 

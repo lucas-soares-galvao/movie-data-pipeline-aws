@@ -25,12 +25,12 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Bucket | Nome (sem sufixo de ambiente) | Papel |
 |---|---|---|
-| SOR | `tmdb-lsg-sa-east-1-bucket-sor` | Source of Record — dados brutos (JSON da TMDB) |
-| SOT | `tmdb-lsg-sa-east-1-bucket-sot` | Source of Truth — dados processados (Parquet) |
-| SPEC | `tmdb-lsg-sa-east-1-bucket-spec` | Specialized — tabela unificada para o app (Gold) |
-| DQ | `tmdb-lsg-sa-east-1-bucket-data-quality` | Resultados de validação de qualidade |
-| AUX | `tmdb-lsg-sa-east-1-bucket-aux` | Auxiliar — artefatos de código (zips, wheels) |
-| TEMP | `tmdb-lsg-sa-east-1-bucket-temp` | Temporário — resultados de queries Athena |
+| SOR | `lsg-sa-east-1-bucket-sor` | Source of Record — dados brutos (JSON da TMDB) |
+| SOT | `lsg-sa-east-1-bucket-sot` | Source of Truth — dados processados (Parquet) |
+| SPEC | `lsg-sa-east-1-bucket-spec` | Specialized — tabela unificada para o app (Gold) |
+| DQ | `lsg-sa-east-1-bucket-data-quality` | Resultados de validação de qualidade |
+| AUX | `lsg-sa-east-1-bucket-aux` | Auxiliar — artefatos de código (zips, wheels) |
+| TEMP | `lsg-sa-east-1-bucket-temp` | Temporário — resultados de queries Athena |
 
 > Dentro dos buckets AUX, TEMP e SPEC, os objetos também são gravados sob um prefixo de chave `tmdb/` (scripts e wheels dos jobs Glue, resultados temporários do Athena, dados gravados pelo Glue AGG).
 
@@ -54,9 +54,9 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Database | Tabelas |
 |---|---|
-| `db_tmdb_movie_{env}` | tb_tmdb_discover_movie, tb_tmdb_genre_movie, tb_tmdb_configuration_languages, tb_tmdb_details_movie, tb_tmdb_watch_providers_movie, tb_tmdb_watch_providers_ref_movie, tb_tmdb_now_playing_movie |
-| `db_tmdb_tv_{env}` | tb_tmdb_discover_tv, tb_tmdb_genre_tv, tb_tmdb_configuration_countries, tb_tmdb_details_tv, tb_tmdb_watch_providers_tv, tb_tmdb_watch_providers_ref_tv |
-| `db_tmdb_unified_{env}` | tb_tmdb_data_quality |
+| `db_tmdb_movie_{env}` | tb_tmdb_discover_movie_{env}, tb_tmdb_genre_movie_{env}, tb_tmdb_configuration_languages_{env}, tb_tmdb_details_movie_{env}, tb_tmdb_watch_providers_movie_{env}, tb_tmdb_watch_providers_ref_movie_{env}, tb_tmdb_now_playing_movie_{env} |
+| `db_tmdb_tv_{env}` | tb_tmdb_discover_tv_{env}, tb_tmdb_genre_tv_{env}, tb_tmdb_configuration_countries_{env}, tb_tmdb_details_tv_{env}, tb_tmdb_watch_providers_tv_{env}, tb_tmdb_watch_providers_ref_tv_{env} |
+| `db_tmdb_unified_{env}` | tb_tmdb_data_quality_{env} |
 
 > Antes da introdução do prefixo `tmdb`, esses nomes de database/tabela não levavam sufixo de ambiente — uma inconsistência com a seção [Ambientes](#ambientes), já corrigida: agora `db_tmdb_movie_dev` e `db_tmdb_movie_prod` (por exemplo) são databases distintas.
 

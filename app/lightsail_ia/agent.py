@@ -47,8 +47,8 @@ VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
                         "deepseek/deepseek-chat" + DEEPSEEK_API_KEY
                         "claude-opus-4-8"        + ANTHROPIC_API_KEY
   AWS_REGION         → região AWS (padrão: "sa-east-1")
-  GLUE_DATABASE      → banco no Glue Catalog (padrão: "db_unified_tmdb")
-  SPEC_TABLE         → tabela SPEC (padrão: "tb_discover_unified_tmdb")
+  GLUE_DATABASE      → banco no Glue Catalog (padrão: "db_tmdb_unified_prod")
+  SPEC_TABLE         → tabela SPEC (padrão: "tb_tmdb_discover_unified_prod")
   ATHENA_S3_OUTPUT   → caminho S3 para resultados temporários do Athena
 """
 
@@ -180,7 +180,7 @@ def buscar_titulos_spec(
                number_of_episodes, episode_runtime_minutes,
                streaming_providers,
                in_theaters, theater_end_date
-        FROM {os.getenv('SPEC_TABLE', 'tb_discover_unified_tmdb')}
+        FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
         WHERE {" AND ".join(filtros)}
         ORDER BY popularity DESC
         LIMIT {int(limite)}
@@ -191,7 +191,7 @@ def buscar_titulos_spec(
     # Dispara a query no Athena
     exec_response = athena.start_query_execution(
         QueryString=sql,
-        QueryExecutionContext={"Database": os.getenv("GLUE_DATABASE", "db_unified_tmdb")},
+        QueryExecutionContext={"Database": os.getenv("GLUE_DATABASE", "db_tmdb_unified_prod")},
         ResultConfiguration={"OutputLocation": os.getenv("ATHENA_S3_OUTPUT")},
     )
     execution_id = exec_response["QueryExecutionId"]

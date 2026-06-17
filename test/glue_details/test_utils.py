@@ -78,11 +78,11 @@ class TestTmdbGet:
 
 
 class TestFetchIdsFromSot:
-    def _run(self, year="2025", ids=None, table="tb_discover_movie_tmdb"):
+    def _run(self, year="2025", ids=None, table="tb_tmdb_discover_movie_dev"):
         df = pd.DataFrame({"id": ids or [1, 2]})
         with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
             result = u.fetch_ids_from_sot(
-                database="db_tmdb",
+                database="db_tmdb_movie_dev",
                 table_discover=table,
                 s3_bucket_temp="my-temp",
                 year=year,
@@ -104,9 +104,9 @@ class TestFetchIdsFromSot:
         assert "WHERE year = '2000'" in sql
 
     def test_queries_correct_table(self):
-        _, mock_athena = self._run(table="tb_discover_tv_tmdb")
+        _, mock_athena = self._run(table="tb_tmdb_discover_tv_dev")
         sql = mock_athena.call_args.kwargs["sql"]
-        assert "tb_discover_tv_tmdb" in sql
+        assert "tb_tmdb_discover_tv_dev" in sql
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", ids, "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", ids, "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
 
             assert "id" in df_written.columns
@@ -218,7 +218,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", ids, "tv", "sot", "tb_details_tv_tmdb", "db")
+            u.collect_and_write_details("key", ids, "tv", "sot", "tb_tmdb_details_tv_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
 
             assert "number_of_seasons" in df_written.columns
@@ -247,7 +247,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1, 2], "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", [1, 2], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
             assert len(df_written) == 1
             assert df_written.iloc[0]["id"] == 2
@@ -259,7 +259,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.fetch_tmdb_details", side_effect=req_lib.RequestException("err")),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             mock_write.assert_not_called()
 
     def test_writes_with_year_partition_and_overwrite_mode(self):
@@ -273,7 +273,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             assert mock_write.call_args.kwargs["partition_cols"] == ["year"]
             assert mock_write.call_args.kwargs["mode"] == "overwrite_partitions"
 
@@ -295,7 +295,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
 
             # ID 99 (existente, não no batch) deve ser preservado junto com o novo ID 1
@@ -319,7 +319,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
 
             # Deve haver apenas 1 linha para ID 1 (sem duplicata)
@@ -338,7 +338,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", side_effect=Exception("S3 error")),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_details_movie_tmdb", "db")
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
             assert len(df_written) == 1
             assert df_written.iloc[0]["id"] == 1
@@ -479,13 +479,13 @@ class TestTriggerDataQuality:
         mock_glue.start_job_run.return_value = {"JobRunId": "jr-dq-1"}
 
         with patch("src.utils.boto3.client", return_value=mock_glue):
-            run_id = u.trigger_data_quality("dq-job", "tb_details_movie_tmdb", "db_tmdb", "2025")
+            run_id = u.trigger_data_quality("dq-job", "tb_tmdb_details_movie_dev", "db_tmdb_movie_dev", "2025")
 
         mock_glue.start_job_run.assert_called_once_with(
             JobName="dq-job",
             Arguments={
-                "--TABLE_NAME": "tb_details_movie_tmdb",
-                "--DATABASE": "db_tmdb",
+                "--TABLE_NAME": "tb_tmdb_details_movie_dev",
+                "--DATABASE": "db_tmdb_movie_dev",
                 "--YEAR": "2025",
             },
         )
@@ -496,7 +496,7 @@ class TestTriggerDataQuality:
         mock_glue.start_job_run.return_value = {"JobRunId": "jr-dq-99"}
 
         with patch("src.utils.boto3.client", return_value=mock_glue):
-            run_id = u.trigger_data_quality("dq-job", "tb_watch_providers_movie_tmdb", "db_tmdb", "2024")
+            run_id = u.trigger_data_quality("dq-job", "tb_tmdb_watch_providers_movie_dev", "db_tmdb_movie_dev", "2024")
 
         assert run_id == "jr-dq-99"
 
@@ -576,18 +576,18 @@ class TestGetTmdbApiKey:
 
 
 class TestFetchExistingIdsFromDetails:
-    def _run(self, ids=None, table="tb_details_movie_tmdb", raise_exc=False):
+    def _run(self, ids=None, table="tb_tmdb_details_movie_dev", raise_exc=False):
         if raise_exc:
             with patch("src.utils.wr.athena.read_sql_query", side_effect=Exception("err")):
                 return u.fetch_existing_ids_from_details(
-                    database="db_tmdb",
+                    database="db_tmdb_movie_dev",
                     table_details=table,
                     s3_bucket_temp="my-temp",
                 ), None
         df = pd.DataFrame({"id": ids if ids is not None else [1, 2]})
         with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
             result = u.fetch_existing_ids_from_details(
-                database="db_tmdb",
+                database="db_tmdb_movie_dev",
                 table_details=table,
                 s3_bucket_temp="my-temp",
             )
@@ -624,7 +624,7 @@ class TestRepairDetailsDuplicates:
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_details_duplicates(
-                    "db_tmdb", "tb_details_movie_tmdb", "sot", "tmp", year="2025"
+                    "db_tmdb_movie_dev", "tb_tmdb_details_movie_dev", "sot", "tmp", year="2025"
                 )
             return None
 
@@ -633,7 +633,7 @@ class TestRepairDetailsDuplicates:
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.repair_details_duplicates(
-                "db_tmdb", "tb_details_movie_tmdb", "sot", "tmp", year="2025"
+                "db_tmdb_movie_dev", "tb_tmdb_details_movie_dev", "sot", "tmp", year="2025"
             )
         return mock_write
 
@@ -685,7 +685,7 @@ class TestRepairDiscoverDuplicates:
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_discover_duplicates(
-                    "db_tmdb", "tb_discover_movie_tmdb", "sot", year="2025"
+                    "db_tmdb_movie_dev", "tb_tmdb_discover_movie_dev", "sot", year="2025"
                 )
             return None
 
@@ -694,7 +694,7 @@ class TestRepairDiscoverDuplicates:
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.repair_discover_duplicates(
-                "db_tmdb", "tb_discover_movie_tmdb", "sot", year="2025"
+                "db_tmdb_movie_dev", "tb_tmdb_discover_movie_dev", "sot", year="2025"
             )
         return mock_write
 
@@ -757,7 +757,7 @@ class TestRepairWatchProvidersDuplicates:
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_watch_providers_duplicates(
-                    "db_tmdb", "tb_watch_providers_movie_tmdb", "sot", year="2025"
+                    "db_tmdb_movie_dev", "tb_tmdb_watch_providers_movie_dev", "sot", year="2025"
                 )
             return None
 
@@ -766,7 +766,7 @@ class TestRepairWatchProvidersDuplicates:
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.repair_watch_providers_duplicates(
-                "db_tmdb", "tb_watch_providers_movie_tmdb", "sot", year="2025"
+                "db_tmdb_movie_dev", "tb_tmdb_watch_providers_movie_dev", "sot", year="2025"
             )
         return mock_write
 
@@ -831,14 +831,14 @@ class TestFetchIdsStaleWatchProviders:
         self,
         year="2025",
         ids=None,
-        table_discover="tb_discover_movie_tmdb",
-        table_wp="tb_watch_providers_movie_tmdb",
+        table_discover="tb_tmdb_discover_movie_dev",
+        table_wp="tb_tmdb_watch_providers_movie_dev",
         raise_exc=False,
     ):
         if raise_exc:
             with patch("src.utils.wr.athena.read_sql_query", side_effect=Exception("err")):
                 return u.fetch_ids_stale_watch_providers(
-                    database="db_tmdb",
+                    database="db_tmdb_movie_dev",
                     table_discover=table_discover,
                     table_watch_providers=table_wp,
                     s3_bucket_temp="my-temp",
@@ -847,7 +847,7 @@ class TestFetchIdsStaleWatchProviders:
         df = pd.DataFrame({"id": ids if ids is not None else [1, 2]})
         with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
             result = u.fetch_ids_stale_watch_providers(
-                database="db_tmdb",
+                database="db_tmdb_movie_dev",
                 table_discover=table_discover,
                 table_watch_providers=table_wp,
                 s3_bucket_temp="my-temp",
@@ -866,9 +866,9 @@ class TestFetchIdsStaleWatchProviders:
         assert "date_trunc('month', current_date)" in sql
 
     def test_sql_inclui_join_com_watch_providers(self):
-        _, mock_athena = self._run(table_wp="tb_watch_providers_movie_tmdb")
+        _, mock_athena = self._run(table_wp="tb_tmdb_watch_providers_movie_dev")
         sql = mock_athena.call_args.kwargs["sql"]
-        assert "tb_watch_providers_movie_tmdb" in sql
+        assert "tb_tmdb_watch_providers_movie_dev" in sql
         assert "LEFT JOIN" in sql.upper()
 
     def test_retorna_lista_de_ids(self):

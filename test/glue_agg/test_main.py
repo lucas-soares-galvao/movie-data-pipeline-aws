@@ -8,10 +8,10 @@ _BASE_ARGS = {
     "S3_BUCKET_SPEC": "my-spec",
     "S3_PREFIX_SPEC": "my-prefix",
     "S3_BUCKET_TEMP": "my-temp",
-    "DB_MOVIE":   "db_movie_tmdb",
-    "DB_TV":      "db_tv_tmdb",
-    "DB_UNIFIED": "db_unified_tmdb",
-    "TABLE_NAME": "tb_discover_unified_tmdb",
+    "DB_MOVIE":   "db_tmdb_movie_dev",
+    "DB_TV":      "db_tmdb_tv_dev",
+    "DB_UNIFIED": "db_tmdb_unified_dev",
+    "TABLE_NAME": "tb_tmdb_discover_unified_dev",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "ENVIRONMENT": "dev",
 }
@@ -34,9 +34,9 @@ class TestMain:
         ):
             m.main()
             mock_query.assert_called_once_with(
-                db_movie="db_movie_tmdb",
-                db_tv="db_tv_tmdb",
-                db_unified="db_unified_tmdb",
+                db_movie="db_tmdb_movie_dev",
+                db_tv="db_tmdb_tv_dev",
+                db_unified="db_tmdb_unified_dev",
                 s3_bucket_temp="my-temp",
                 env="dev",
             )
@@ -53,8 +53,8 @@ class TestMain:
                 df=_DF_MOCK,
                 s3_bucket_spec="my-spec",
                 s3_prefix_spec="my-prefix",
-                table_name="tb_discover_unified_tmdb",
-                database="db_unified_tmdb",
+                table_name="tb_tmdb_discover_unified_dev",
+                database="db_tmdb_unified_dev",
             )
 
     def test_write_receives_dataframe_returned_by_query(self):
@@ -124,8 +124,8 @@ class TestMain:
             m.main()
         mock_dq.assert_called_once_with(
             dq_job_name="dq-job",
-            table_name="tb_discover_unified_tmdb",
-            database="db_unified_tmdb",
+            table_name="tb_tmdb_discover_unified_dev",
+            database="db_tmdb_unified_dev",
         )
         assert call_order == ["write", "dq"]
 

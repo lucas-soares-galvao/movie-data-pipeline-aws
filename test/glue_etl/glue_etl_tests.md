@@ -47,7 +47,7 @@ test/glue_etl/
 |---|---|
 | `test_calls_read_from_sor_with_configuration_args` | `read_from_sor` chamado com `year=None` |
 | `test_writes_to_configuration_table_without_partition` | Escrita sem partição, mode `overwrite` |
-| `test_tv_uses_configuration_countries_table` | Para `MEDIA_TYPE="tv"`, usa tabela `tb_configuration_countries_tmdb` |
+| `test_tv_uses_configuration_countries_table` | Para `MEDIA_TYPE="tv"`, usa tabela `tb_tmdb_configuration_countries_{env}` |
 | `test_triggers_data_quality_without_year` | DQ acionado sem `year` para configuration |
 
 ### `TestRunNowPlaying` — `TABLE_TYPE="now_playing"`

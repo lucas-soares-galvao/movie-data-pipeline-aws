@@ -25,7 +25,7 @@ O LLM recebe o texto do usuário e usa *Function Calling* para retornar um JSON 
 ```
 
 ### Etapa 2 — Consulta ao Athena
-Com os filtros extraídos, monta e executa uma query SQL dinâmica na tabela `tb_discover_unified_tmdb` (camada SPEC). Filtra por `vote_count ≥ 50`, `vote_average ≥ nota_minima`, `media_type`, `year` e `genre_names LIKE`.
+Com os filtros extraídos, monta e executa uma query SQL dinâmica na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). Filtra por `vote_count ≥ 50`, `vote_average ≥ nota_minima`, `media_type`, `year` e `genre_names LIKE`.
 
 ### Etapa 3 — Formatação das recomendações (LLM)
 O LLM recebe os resultados reais do Athena e formata como JSON com campos amigáveis:
@@ -57,7 +57,7 @@ O LLM recebe os resultados reais do Athena e formata como JSON com campos amigá
 | | Descrição |
 |---|---|
 | **Entrada** | Texto livre do usuário (ex: "filmes de ficção científica dos anos 80") |
-| **Leitura** | Athena — tabela `tb_discover_unified_tmdb` (camada SPEC) |
+| **Leitura** | Athena — tabela `tb_tmdb_discover_unified_{env}` (camada SPEC) |
 | **Saída** | Cards de recomendação na interface web |
 
 ## Funções principais
@@ -101,7 +101,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 | `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
 | `ATHENA_S3_OUTPUT` | Bucket temporário para resultados de queries Athena |
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
-| `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_discover_unified_tmdb`) |
+| `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_tmdb_discover_unified_prod`) |
 | `FILMBOT_PASSWORD` | Senha de acesso à interface Streamlit |
 
 ## Tecnologias

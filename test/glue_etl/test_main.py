@@ -10,7 +10,7 @@ _BASE = {
     "S3_BUCKET_SOR": "my-sor",
     "S3_BUCKET_SOT": "my-sot",
     "MEDIA_TYPE": "movie",
-    "DATABASE": "db_tmdb",
+    "DATABASE": "db_tmdb_movie_dev",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "GLUE_AGG_JOB_NAME": "agg-job",
     "GLUE_DETAILS_JOB_NAME": "details-job",
@@ -28,7 +28,7 @@ class TestRunDiscover:
         return {
             **_BASE,
             "TABLE_TYPE": "discover",
-            "TABLE_NAME": "tb_discover_movie_tmdb",
+            "TABLE_NAME": "tb_tmdb_discover_movie_dev",
             "YEAR": "2023",
             **overrides,
         }
@@ -58,8 +58,8 @@ class TestRunDiscover:
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
-                table_name="tb_discover_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_discover_movie_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=["year"],
                 mode="overwrite_partitions",
             )
@@ -67,7 +67,7 @@ class TestRunDiscover:
     def test_tv_media_type_forwarded_to_read_from_sor(self):
         df_mock = pd.DataFrame([{"id": 10, "year": "2022"}])
         args = self._args(
-            MEDIA_TYPE="tv", YEAR="2022", TABLE_NAME="tb_discover_tv_tmdb"
+            MEDIA_TYPE="tv", YEAR="2022", TABLE_NAME="tb_tmdb_discover_tv_dev"
         )
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
@@ -81,8 +81,8 @@ class TestRunDiscover:
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
-                table_name="tb_discover_tv_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_discover_tv_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=["year"],
                 mode="overwrite_partitions",
             )
@@ -111,8 +111,8 @@ class TestRunDiscover:
             m.main()
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
-                table_name="tb_discover_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_discover_movie_dev",
+                database="db_tmdb_movie_dev",
                 year="2023",
             )
 
@@ -127,7 +127,7 @@ class TestRunGenre:
         return {
             **_BASE,
             "TABLE_TYPE": "genre",
-            "TABLE_NAME": "tb_genre_movie_tmdb",
+            "TABLE_NAME": "tb_tmdb_genre_movie_dev",
             **overrides,
         }
 
@@ -156,8 +156,8 @@ class TestRunGenre:
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
-                table_name="tb_genre_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_genre_movie_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=None,
                 mode="overwrite",
             )
@@ -174,8 +174,8 @@ class TestRunGenre:
             m.main()
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
-                table_name="tb_genre_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_genre_movie_dev",
+                database="db_tmdb_movie_dev",
                 year=None,
             )
 
@@ -190,7 +190,7 @@ class TestRunConfiguration:
         return {
             **_BASE,
             "TABLE_TYPE": "configuration",
-            "TABLE_NAME": "tb_configuration_languages_tmdb",
+            "TABLE_NAME": "tb_tmdb_configuration_languages_dev",
             **overrides,
         }
 
@@ -219,8 +219,8 @@ class TestRunConfiguration:
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
-                table_name="tb_configuration_languages_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_configuration_languages_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=None,
                 mode="overwrite",
             )
@@ -229,7 +229,7 @@ class TestRunConfiguration:
         df_mock = pd.DataFrame([{"iso_3166_1": "BR"}])
         args = self._args(
             MEDIA_TYPE="tv",
-            TABLE_NAME="tb_configuration_countries_tmdb",
+            TABLE_NAME="tb_tmdb_configuration_countries_dev",
         )
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
@@ -243,8 +243,8 @@ class TestRunConfiguration:
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
-                table_name="tb_configuration_countries_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_configuration_countries_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=None,
                 mode="overwrite",
             )
@@ -261,8 +261,8 @@ class TestRunConfiguration:
             m.main()
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
-                table_name="tb_configuration_languages_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_configuration_languages_dev",
+                database="db_tmdb_movie_dev",
                 year=None,
             )
 
@@ -277,14 +277,14 @@ class TestTriggerDetails:
         return {
             **_BASE,
             "TABLE_TYPE": "discover",
-            "TABLE_NAME": "tb_discover_movie_tmdb",
+            "TABLE_NAME": "tb_tmdb_discover_movie_dev",
             "YEAR": "2023",
             **overrides,
         }
 
     def test_details_triggered_for_movie_discover(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
-        args = self._discover_args(MEDIA_TYPE="movie", TABLE_NAME="tb_discover_movie_tmdb")
+        args = self._discover_args(MEDIA_TYPE="movie", TABLE_NAME="tb_tmdb_discover_movie_dev")
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
@@ -298,12 +298,12 @@ class TestTriggerDetails:
                 media_type="movie",
                 year="2023",
                 end_year="2026",
-                database="db_tmdb",
+                database="db_tmdb_movie_dev",
             )
 
     def test_details_triggered_for_tv_discover(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
-        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb", DATABASE="db_tv_tmdb")
+        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_tmdb_discover_tv_dev", DATABASE="db_tmdb_tv_dev")
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
@@ -317,7 +317,7 @@ class TestTriggerDetails:
                 media_type="tv",
                 year="2023",
                 end_year="2026",
-                database="db_tv_tmdb",
+                database="db_tmdb_tv_dev",
             )
 
     def test_details_not_triggered_for_genre_tv(self):
@@ -326,7 +326,7 @@ class TestTriggerDetails:
         args = {
             **_BASE,
             "TABLE_TYPE": "genre",
-            "TABLE_NAME": "tb_genre_tv_tmdb",
+            "TABLE_NAME": "tb_tmdb_genre_tv_dev",
             "MEDIA_TYPE": "tv",
         }
         with (
@@ -341,7 +341,7 @@ class TestTriggerDetails:
 
     def test_details_triggered_exactly_once_per_discover_run(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
-        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_discover_tv_tmdb")
+        args = self._discover_args(MEDIA_TYPE="tv", TABLE_NAME="tb_tmdb_discover_tv_dev")
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
@@ -363,7 +363,7 @@ class TestRunNowPlaying:
         return {
             **_BASE,
             "TABLE_TYPE": "now_playing",
-            "TABLE_NAME": "tb_now_playing_movie_tmdb",
+            "TABLE_NAME": "tb_tmdb_now_playing_movie_dev",
             **overrides,
         }
 
@@ -392,8 +392,8 @@ class TestRunNowPlaying:
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
-                table_name="tb_now_playing_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_now_playing_movie_dev",
+                database="db_tmdb_movie_dev",
                 partition_cols=None,
                 mode="overwrite",
             )
@@ -410,7 +410,7 @@ class TestRunNowPlaying:
             m.main()
             mock_dq.assert_called_once_with(
                 dq_job_name="dq-job",
-                table_name="tb_now_playing_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_now_playing_movie_dev",
+                database="db_tmdb_movie_dev",
                 year=None,
             )

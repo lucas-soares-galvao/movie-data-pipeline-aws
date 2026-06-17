@@ -5,13 +5,13 @@ import main as m
 _BASE = {
     "S3_BUCKET_SOT": "my-sot",
     "S3_BUCKET_TEMP": "my-temp",
-    "DATABASE": "db_tmdb",
-    "TABLE_DISCOVER_MOVIE": "tb_discover_movie_tmdb",
-    "TABLE_DISCOVER_TV": "tb_discover_tv_tmdb",
-    "TABLE_DETAILS_MOVIE": "tb_details_movie_tmdb",
-    "TABLE_DETAILS_TV": "tb_details_tv_tmdb",
-    "TABLE_WATCH_PROVIDERS_MOVIE": "tb_watch_providers_movie_tmdb",
-    "TABLE_WATCH_PROVIDERS_TV": "tb_watch_providers_tv_tmdb",
+    "DATABASE": "db_tmdb_movie_dev",
+    "TABLE_DISCOVER_MOVIE": "tb_tmdb_discover_movie_dev",
+    "TABLE_DISCOVER_TV": "tb_tmdb_discover_tv_dev",
+    "TABLE_DETAILS_MOVIE": "tb_tmdb_details_movie_dev",
+    "TABLE_DETAILS_TV": "tb_tmdb_details_tv_dev",
+    "TABLE_WATCH_PROVIDERS_MOVIE": "tb_tmdb_watch_providers_movie_dev",
+    "TABLE_WATCH_PROVIDERS_TV": "tb_tmdb_watch_providers_tv_dev",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_AGG_JOB_NAME": "agg-job",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
@@ -73,8 +73,8 @@ class TestMain:
         ):
             m.main()
             mock_ids.assert_called_once_with(
-                database="db_tmdb",
-                table_discover="tb_discover_movie_tmdb",
+                database="db_tmdb_movie_dev",
+                table_discover="tb_tmdb_discover_movie_dev",
                 s3_bucket_temp="my-temp",
                 year="2025",
             )
@@ -94,8 +94,8 @@ class TestMain:
         ):
             m.main()
             mock_ids.assert_called_once_with(
-                database="db_tmdb",
-                table_discover="tb_discover_tv_tmdb",
+                database="db_tmdb_movie_dev",
+                table_discover="tb_tmdb_discover_tv_dev",
                 s3_bucket_temp="my-temp",
                 year="2024",
             )
@@ -117,7 +117,7 @@ class TestMain:
             call = mock_collect.call_args
             assert call.kwargs["content_type"] == "movie"
             assert set(call.kwargs["ids"]) == set(_IDS)
-            assert call.kwargs["table_name"] == "tb_details_movie_tmdb"
+            assert call.kwargs["table_name"] == "tb_tmdb_details_movie_dev"
 
     def test_collect_watch_providers_called_with_correct_args_for_movie(self):
         with (
@@ -136,7 +136,7 @@ class TestMain:
             call = mock_wp.call_args
             assert call.kwargs["content_type"] == "movie"
             assert call.kwargs["ids"] == _IDS
-            assert call.kwargs["table_name"] == "tb_watch_providers_movie_tmdb"
+            assert call.kwargs["table_name"] == "tb_tmdb_watch_providers_movie_dev"
             assert call.kwargs["year"] == "2025"
 
     def test_collect_watch_providers_called_with_correct_args_for_tv(self):
@@ -156,7 +156,7 @@ class TestMain:
             mock_wp.assert_called_once()
             call = mock_wp.call_args
             assert call.kwargs["content_type"] == "tv"
-            assert call.kwargs["table_name"] == "tb_watch_providers_tv_tmdb"
+            assert call.kwargs["table_name"] == "tb_tmdb_watch_providers_tv_dev"
             assert call.kwargs["year"] == "2024"
 
     def test_triggers_data_quality_twice_for_details_and_watch_providers(self):
@@ -175,14 +175,14 @@ class TestMain:
             assert mock_dq.call_count == 2
             mock_dq.assert_any_call(
                 dq_job_name="dq-job",
-                table_name="tb_details_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_details_movie_dev",
+                database="db_tmdb_movie_dev",
                 year="2025",
             )
             mock_dq.assert_any_call(
                 dq_job_name="dq-job",
-                table_name="tb_watch_providers_movie_tmdb",
-                database="db_tmdb",
+                table_name="tb_tmdb_watch_providers_movie_dev",
+                database="db_tmdb_movie_dev",
                 year="2025",
             )
 
@@ -204,7 +204,7 @@ class TestMain:
             call = mock_collect.call_args
             assert call.kwargs["content_type"] == "tv"
             assert set(call.kwargs["ids"]) == set(_IDS)
-            assert call.kwargs["table_name"] == "tb_details_tv_tmdb"
+            assert call.kwargs["table_name"] == "tb_tmdb_details_tv_dev"
 
     def test_triggers_agg_when_tv_and_last_year(self):
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2025", "END_YEAR": "2025"}
@@ -242,8 +242,8 @@ class TestMain:
         ):
             m.main()
         mock_repair.assert_called_once_with(
-            database="db_tmdb",
-            table_details="tb_details_tv_tmdb",
+            database="db_tmdb_movie_dev",
+            table_details="tb_tmdb_details_tv_dev",
             s3_bucket_sot="my-sot",
             s3_bucket_temp="my-temp",
             year="2025",
@@ -265,8 +265,8 @@ class TestMain:
         ):
             m.main()
             mock_repair.assert_called_once_with(
-                database="db_tmdb",
-                table_details="tb_details_movie_tmdb",
+                database="db_tmdb_movie_dev",
+                table_details="tb_tmdb_details_movie_dev",
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
                 year="2025",
@@ -373,8 +373,8 @@ class TestMain:
         ):
             m.main()
             mock_repair_discover.assert_called_once_with(
-                database="db_tmdb",
-                table_discover="tb_discover_movie_tmdb",
+                database="db_tmdb_movie_dev",
+                table_discover="tb_tmdb_discover_movie_dev",
                 s3_bucket_sot="my-sot",
                 year="2025",
             )
@@ -396,8 +396,8 @@ class TestMain:
         ):
             m.main()
             mock_repair_wp.assert_called_once_with(
-                database="db_tmdb",
-                table_watch_providers="tb_watch_providers_movie_tmdb",
+                database="db_tmdb_movie_dev",
+                table_watch_providers="tb_tmdb_watch_providers_movie_dev",
                 s3_bucket_sot="my-sot",
                 year="2025",
             )
