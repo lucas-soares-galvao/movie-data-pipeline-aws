@@ -8,7 +8,7 @@
 #   Step Functions → tmdb-sfn-backfill-{env} → Start Execution
 #   Input: { "start_year": 2000 }
 #
-# end_year é calculado automaticamente a partir do timestamp de execução.
+# end_year é calculado automaticamente como (ano da execução - 2).
 # =============================================================================
 
 # =============================================================================
@@ -16,7 +16,7 @@
 # =============================================================================
 #
 # Fluxo:
-#   GenerateYears  → extrai end_year do timestamp de execução (ex: "2026-06-16..." → 2026)
+#   GenerateYears  → extrai end_year do timestamp de execução menos 2 (ex: "2027-01-01..." → 2025)
 #   ComputeYears   → gera array [start_year, ..., end_year] via States.ArrayRange
 #   ProcessEachYear → Map (MaxConcurrency=1): para cada ano, invoca movie depois tv
 #
@@ -35,16 +35,17 @@ resource "aws_sfn_state_machine" "backfill" {
     StartAt = "GenerateYears"
     States = {
 
-      # Extrai o ano atual do timestamp de execução e converte para inteiro.
-      # $$.Execution.StartTime = "2026-06-16T23:30:00Z"
-      # StringSplit por '-' → ["2026", "06", "16T23:30:00Z"]
-      # ArrayGetItem(..., 0) → "2026"
-      # StringToJson("2026") → 2026
+      # Extrai o ano da execução, converte para inteiro e subtrai 2.
+      # $$.Execution.StartTime = "2027-01-01T00:00:00Z"
+      # StringSplit por '-' → ["2027", "01", "01T00:00:00Z"]
+      # ArrayGetItem(..., 0) → "2027"
+      # StringToJson("2027") → 2027
+      # MathAdd(2027, -2) → 2025
       GenerateYears = {
         Type = "Pass"
         Parameters = {
           "start_year.$" = "$.start_year"
-          "end_year.$"   = "States.StringToJson(States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, '-'), 0))"
+          "end_year.$"   = "States.MathAdd(States.StringToJson(States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, '-'), 0)), -2)"
         }
         Next = "ComputeYears"
       }
