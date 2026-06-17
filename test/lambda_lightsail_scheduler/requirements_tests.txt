@@ -1,0 +1,3 @@
+# Raciocinio: fixa dependencias necessarias para rodar testes do Lambda Lightsail Scheduler.
+
+boto3

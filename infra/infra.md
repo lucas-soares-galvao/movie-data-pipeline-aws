@@ -64,9 +64,9 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 > A tabela `now_playing` não possui partição de ano — é um snapshot completo sobrescrito diariamente (`mode=overwrite`), diferente das tabelas `discover` que são particionadas por ano. Inclui os campos `theater_start_date` e `theater_end_date` com a janela de exibição reportada pela API do TMDB.
 
-### Agendamento — EventBridge (`eventbridge_lambda_api.tf`)
+### Agendamento — EventBridge (`eventbridge.tf`)
 
-4 regras de schedule, separadas por tipo de mídia:
+5 regras de schedule, separadas por tipo de mídia e frequência:
 
 | Regra | Frequência | Horário | Comportamento |
 |---|---|---|---|
@@ -74,6 +74,22 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 | `lambda_api_tv_daily` | Diária | 09:05 BRT (12:05 UTC) | `only_discover=true` — séries novas |
 | `lambda_api_movie_monthly` | Dia 1 do mês | 09:00 BRT (12:00 UTC) | `skip_daily=true` — atualiza gêneros, idiomas, plataformas |
 | `lambda_api_tv_monthly` | Dia 1 do mês | 09:05 BRT (12:05 UTC) | `skip_daily=true` — atualiza gêneros, países, plataformas |
+| `sfn_backfill_annual` | 1 de jan (anual) | 06:00 UTC / 03:00 BRT | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
+
+### Orquestração — Step Functions (`step_functions.tf`)
+
+State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a ano, contornando o limite de 15 minutos da Lambda.
+
+**Acionamento:** regra EventBridge `sfn_backfill_annual` no dia 1º de janeiro às 06:00 UTC, com input `{"start_year": 2000}`.
+
+**Fluxo da execução:**
+
+1. **GenerateYears** (Pass) — extrai o ano atual do timestamp de execução e o converte para inteiro
+2. **ComputeYears** (Pass) — gera o array `[start_year, ..., end_year]` via `States.ArrayRange`
+3. **ProcessEachYear** (Map, `MaxConcurrency=1`) — itera cada ano sequencialmente:
+   - **InvokeLambdaMovie** — invoca a Lambda com payload de filmes para o ano
+   - **InvokeLambdaTV** — invoca a Lambda com payload de séries para o ano
+   - Retry: 2 tentativas, intervalo de 30s, backoff 2.0
 
 ### Notificações — SNS (`sns_topics.tf`)
 
@@ -119,6 +135,8 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena |
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
+| `tmdb-sfn-backfill-{env}` | Step Functions | `lambda:InvokeFunction` sobre a Lambda API |
+| `tmdb-eventbridge-sfn-{env}` | EventBridge (regra anual) | `states:StartExecution` sobre a state machine de backfill |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 

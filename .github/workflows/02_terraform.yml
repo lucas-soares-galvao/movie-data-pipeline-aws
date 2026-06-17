@@ -87,6 +87,20 @@ jobs:
             --dest infra/.glue_etl_build \
             --name glue_etl_src
 
+      - name: Build Glue Agg Wheel
+        run: |
+          python infra/scripts/build_glue_wheel.py \
+            --src app/glue_agg \
+            --dest infra/.glue_agg_build \
+            --name glue_agg_src
+
+      - name: Build Glue Details Wheel
+        run: |
+          python infra/scripts/build_glue_wheel.py \
+            --src app/glue_details \
+            --dest infra/.glue_details_build \
+            --name glue_details_src
+
       # destroy_config.json controla se a infra deve ser destruída (teardown).
       # Formato: { "dev": false, "prod": false }
       # Mude para true no ambiente desejado para acionar o terraform destroy.

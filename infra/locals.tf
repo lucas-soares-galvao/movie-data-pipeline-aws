@@ -44,6 +44,9 @@ locals {
     lightsail_scheduler = {
       Component = "lightsail_scheduler"
     }
+    sfn_backfill = {
+      Component = "sfn_backfill"
+    }
   }
 
   # ===========================================================================
@@ -199,12 +202,12 @@ EOT
     lambda_api_name            = "${local.tmdb_prefix}-${var.lambda_api_name}-${var.env}"
     iam_role_glue              = "${local.tmdb_prefix}-${var.iam_role_glue}-${var.env}"
     iam_role_lambda            = "${local.tmdb_prefix}-${var.iam_role_lambda}-${var.env}"
-    s3_bucket_aux              = "${local.tmdb_prefix}-${var.s3_bucket_aux}-${var.env}"
-    s3_bucket_temp             = "${local.tmdb_prefix}-${var.s3_bucket_temp}-${var.env}"
-    s3_bucket_sor              = "${local.tmdb_prefix}-${var.s3_bucket_sor}-${var.env}"
-    s3_bucket_sot              = "${local.tmdb_prefix}-${var.s3_bucket_sot}-${var.env}"
-    s3_bucket_spec             = "${local.tmdb_prefix}-${var.s3_bucket_spec}-${var.env}"
-    s3_bucket_data_quality     = "${local.tmdb_prefix}-${var.s3_bucket_data_quality}-${var.env}"
+    s3_bucket_aux              = "${var.s3_bucket_aux}-${var.env}"
+    s3_bucket_temp             = "${var.s3_bucket_temp}-${var.env}"
+    s3_bucket_sor              = "${var.s3_bucket_sor}-${var.env}"
+    s3_bucket_sot              = "${var.s3_bucket_sot}-${var.env}"
+    s3_bucket_spec             = "${var.s3_bucket_spec}-${var.env}"
+    s3_bucket_data_quality     = "${var.s3_bucket_data_quality}-${var.env}"
 
     # Glue Catalog — Databases
     glue_catalog_db_movie   = "db_${local.tmdb_prefix}_movie_${var.env}"
