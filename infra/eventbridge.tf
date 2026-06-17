@@ -19,7 +19,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (diário)"
-  schedule_expression = "cron(00 12 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
+  schedule_expression = "cron(20 03 * * ? *)" # Todos os dias às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -28,7 +28,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
   description         = "Dispara a Lambda para séries com payload completo (diário)"
-  schedule_expression = "cron(05 12 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
+  schedule_expression = "cron(25 03 * * ? *)" # Todos os dias às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -108,7 +108,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_daily" {
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-monthly-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (mensal, dia 1)"
-  schedule_expression = "cron(30 23 1 * ? *)" # Todo dia 1 do mês às 12:00 UTC / 09:00 BRT
+  schedule_expression = "cron(00 12 1 * ? *)" # Todo dia 1 do mês às 12:00 UTC / 09:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -116,7 +116,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_monthly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-monthly-${var.env}"
   description         = "Dispara a Lambda para series com payload completo (mensal, dia 1)"
-  schedule_expression = "cron(35 23 1 * ? *)" # Todo dia 1 do mês às 12:05 UTC / 09:05 BRT
+  schedule_expression = "cron(05 12 1 * ? *)" # Todo dia 1 do mês às 12:05 UTC / 09:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
