@@ -14,6 +14,7 @@ _BASE_ARGS = {
     "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
     "ENVIRONMENT": "dev",
     "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
+    "OUTPUT_TABLE": "tb_tmdb_data_quality_dev",
 }
 
 
@@ -193,7 +194,7 @@ class TestWriteResultsToS3Call:
 
     def test_calls_write_with_database(self):
         """write_results_to_s3 deve receber o DATABASE_RESULTS dos args para registrar
-        tb_data_quality_tmdb sempre no banco unificado do Glue Catalog."""
+        a tabela de Data Quality sempre no banco unificado do Glue Catalog."""
         mocks = _run_main(
             args={
                 **_BASE_ARGS,
@@ -205,12 +206,20 @@ class TestWriteResultsToS3Call:
         database_arg = mocks["mock_write"].call_args[0][3]
         assert database_arg == "db_unified_tmdb"
 
+    def test_calls_write_with_output_table(self):
+        """write_results_to_s3 deve receber o OUTPUT_TABLE dos args."""
+        args = {**_BASE_ARGS, "OUTPUT_TABLE": "tb_tmdb_data_quality_prod"}
+        mocks = _run_main(args=args)
+
+        output_table_arg = mocks["mock_write"].call_args[0][4]
+        assert output_table_arg == "tb_tmdb_data_quality_prod"
+
     def test_calls_write_with_none_year_when_not_in_args(self):
         """write_results_to_s3 deve receber year=None quando YEAR não está nos args
         (tabelas de gênero/config usam apenas source_table como partição)."""
         mocks = _run_main()  # _BASE_ARGS não tem YEAR
 
-        year_arg = mocks["mock_write"].call_args[0][4]
+        year_arg = mocks["mock_write"].call_args[0][5]
         assert year_arg is None
 
     def test_calls_write_with_year_when_in_args(self):
@@ -219,7 +228,7 @@ class TestWriteResultsToS3Call:
         args = {**_BASE_ARGS, "TABLE_NAME": "tb_discover_movie_tmdb", "YEAR": "2002"}
         mocks = _run_main(args=args)
 
-        year_arg = mocks["mock_write"].call_args[0][4]
+        year_arg = mocks["mock_write"].call_args[0][5]
         assert year_arg == "2002"
 
     def test_write_is_called_exactly_once(self):

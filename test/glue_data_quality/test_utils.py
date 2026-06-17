@@ -20,6 +20,7 @@ class TestGetParametersGlue:
         "S3_BUCKET_DATA_QUALITY": "my-dq-bucket",
         "ENVIRONMENT": "dev",
         "SNS_TOPIC_ARN_DQ_METRICS": "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-metrics-notifications",
+        "OUTPUT_TABLE": "tb_tmdb_data_quality_dev",
     }
 
     def test_returns_required_args(self):
@@ -476,10 +477,10 @@ class TestEvaluateDataQuality:
 
 
 class TestWriteResultsToS3:
-    def _run(self, df_mock=None, bucket="my-dq-bucket", table="tb_genre_movie_tmdb", database="db_tmdb", year=None):
+    def _run(self, df_mock=None, bucket="my-dq-bucket", table="tb_genre_movie_tmdb", database="db_tmdb", output_table="tb_tmdb_data_quality_dev", year=None):
         df_mock = df_mock or MagicMock()
         with patch("src.utils.wr") as mock_wr:
-            write_results_to_s3(df_mock, bucket, table, database, year)
+            write_results_to_s3(df_mock, bucket, table, database, output_table, year)
         return df_mock, mock_wr
 
     def test_converts_spark_df_to_pandas_without_year(self):
@@ -507,10 +508,10 @@ class TestWriteResultsToS3:
         assert call_kwargs["df"] is df_mock.toPandas.return_value
 
     def test_writes_to_correct_s3_path(self):
-        """O Parquet deve ser escrito em s3://<bucket>/tmdb/tb_data_quality_tmdb/."""
-        _, mock_wr = self._run(bucket="my-dq-bucket")
+        """O Parquet deve ser escrito em s3://<bucket>/tmdb/<output_table>/."""
+        _, mock_wr = self._run(bucket="my-dq-bucket", output_table="tb_tmdb_data_quality_dev")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
-        assert call_kwargs["path"] == "s3://my-dq-bucket/tmdb/tb_data_quality_tmdb/"
+        assert call_kwargs["path"] == "s3://my-dq-bucket/tmdb/tb_tmdb_data_quality_dev/"
 
     def test_s3_path_uses_bucket_name(self):
         """O nome do bucket de Data Quality deve aparecer no caminho S3."""
@@ -518,11 +519,11 @@ class TestWriteResultsToS3:
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
         assert "meu-bucket-dq" in call_kwargs["path"]
 
-    def test_s3_path_uses_fixed_output_table_name(self):
-        """O nome da tabela de saída deve ser sempre tb_data_quality_tmdb."""
-        _, mock_wr = self._run(table="tb_discover_tv_tmdb")
+    def test_s3_path_uses_output_table_name(self):
+        """O nome da tabela de saída deve usar o output_table recebido como parâmetro."""
+        _, mock_wr = self._run(table="tb_discover_tv_tmdb", output_table="tb_tmdb_data_quality_prod")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
-        assert "tb_data_quality_tmdb" in call_kwargs["path"]
+        assert "tb_tmdb_data_quality_prod" in call_kwargs["path"]
 
     def test_uses_dataset_true(self):
         """dataset=True ativa o registro automático de partições no Glue Catalog."""
@@ -532,10 +533,10 @@ class TestWriteResultsToS3:
 
     def test_registers_table_in_glue_catalog(self):
         """wr.s3.to_parquet deve receber database e table para atualizar o Catalog."""
-        _, mock_wr = self._run(database="db_tmdb")
+        _, mock_wr = self._run(database="db_tmdb", output_table="tb_tmdb_data_quality_dev")
         call_kwargs = mock_wr.s3.to_parquet.call_args[1]
         assert call_kwargs["database"] == "db_tmdb"
-        assert call_kwargs["table"] == "tb_data_quality_tmdb"
+        assert call_kwargs["table"] == "tb_tmdb_data_quality_dev"
 
     def test_uses_fillna_year_placeholder_when_no_year(self):
         """Tabelas sem partição: fillna preenche year com 'sem_ano' e partition_cols inclui year

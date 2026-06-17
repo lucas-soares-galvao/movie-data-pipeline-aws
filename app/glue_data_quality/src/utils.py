@@ -32,6 +32,7 @@ def get_parameters_glue() -> Dict[str, Any]:
         "S3_BUCKET_DATA_QUALITY",
         "ENVIRONMENT",
         "SNS_TOPIC_ARN_DQ_METRICS",
+        "OUTPUT_TABLE",
     ]
     args = getResolvedOptions(sys.argv, required_args)
 
@@ -204,10 +205,11 @@ def write_results_to_s3(
     s3_bucket_data_quality: str,
     table_name: str,
     database: str,
+    output_table: str,
     year: Optional[str] = None,
 ) -> None:
     """
-    Grava os resultados DQ em tb_data_quality_tmdb.
+    Grava os resultados DQ na tabela de Data Quality.
 
     Sempre particiona por ["source_table", "year"], garantindo estrutura uniforme
     no Glue Catalog (evita o erro do Athena "partition value count must match
@@ -220,9 +222,9 @@ def write_results_to_s3(
         s3_bucket_data_quality: Nome do bucket de Data Quality.
         table_name:             Nome da tabela avaliada.
         database:               Nome do banco de dados no Glue Catalog.
+        output_table:           Nome da tabela de saída no Glue Catalog.
         year:                   Ano da partição. None para tabelas sem partição por ano.
     """
-    output_table = "tb_data_quality_tmdb"
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
     if year is None:

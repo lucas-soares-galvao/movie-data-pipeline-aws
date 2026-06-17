@@ -44,6 +44,7 @@ def main() -> None:
     s3_bucket_data_quality   = args["S3_BUCKET_DATA_QUALITY"]
     environment              = args["ENVIRONMENT"]
     sns_topic_arn_dq_metrics = args["SNS_TOPIC_ARN_DQ_METRICS"]
+    output_table             = args["OUTPUT_TABLE"]
     year = args.get("YEAR")  # None para tabelas sem partição (gêneros, configurações)
 
     logger.info(
@@ -64,6 +65,7 @@ def main() -> None:
         s3_bucket_data_quality,
         table_name,
         database_results,
+        output_table,
         year,
     )
 
