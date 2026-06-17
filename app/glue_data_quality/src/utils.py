@@ -173,6 +173,9 @@ def evaluate_data_quality(
 
     # EvaluatedMetrics é map<string, double> — o Wrangler não serializa esse tipo em Parquet.
     df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
+    # failure_reason fica totalmente nulo quando todas as regras passam;
+    # sem cast explícito, toPandas() gera dtype object e o Wrangler não infere o tipo Athena.
+    df = df.withColumn("failure_reason", col("failure_reason").cast(StringType()))
 
     # Classifica cada regra pela dimensão de qualidade com base no prefixo DQDL
     # para permitir filtros no Athena (ex: "Quais regras de Completude falharam?").
