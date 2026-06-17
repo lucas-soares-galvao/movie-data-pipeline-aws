@@ -46,7 +46,7 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_discover_movie_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_discover_movie}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -139,7 +139,7 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_discover_tv_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_discover_tv}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -222,7 +222,7 @@ resource "aws_glue_catalog_table" "tb_now_playing_movie_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_now_playing_movie_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_now_playing_movie}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -262,7 +262,7 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_genre_movie_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_genre_movie}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -293,7 +293,7 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_genre_tv_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_genre_tv}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -328,7 +328,7 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_configuration_languages_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_configuration_languages}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -359,7 +359,7 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_configuration_countries_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_configuration_countries}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -393,7 +393,7 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_details_movie_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_details_movie}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -449,7 +449,7 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_details_tv_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_details_tv}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -517,7 +517,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_movie_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_watch_providers_movie}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -565,7 +565,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_tv_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_watch_providers_tv}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -617,7 +617,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_ref_movie_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_watch_providers_ref_movie}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -656,7 +656,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${var.glue_catalog_table_watch_providers_ref_tv_name}/"
+    location      = "s3://${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_watch_providers_ref_tv}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -700,7 +700,7 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.envs.s3_bucket_data_quality}/${local.tmdb_prefix}/${var.glue_catalog_table_data_quality_name}/"
+    location      = "s3://${local.envs.s3_bucket_data_quality}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_data_quality}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
