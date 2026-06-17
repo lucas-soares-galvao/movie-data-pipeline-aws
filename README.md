@@ -68,6 +68,9 @@ Interface web onde o usuário digita o que quer assistir em linguagem natural. U
 ### Agendador do FilmBot (Lambda Lightsail Scheduler)
 Liga e desliga automaticamente a instância Lightsail onde o FilmBot roda, reduzindo custo ao manter o servidor ativo apenas nos horários de uso. Acionado pelo EventBridge Scheduler com o parâmetro `"start"` ou `"stop"`, sem intervenção humana.
 
+### Orquestrador de backfill (Step Functions)
+Responsável por coordenar a coleta histórica de dados ano a ano, sem ser limitado pelo timeout de 15 minutos da Lambda. Acionado automaticamente no dia 1º de janeiro, executa a Lambda sequencialmente para cada ano a partir de 2000, coletando tanto filmes quanto séries.
+
 ---
 
 ## Infraestrutura
@@ -100,7 +103,7 @@ O pipeline é orquestrado por 5 workflows em `.github/workflows/`. Consulte [`.g
 | Infraestrutura como código | Terraform `>= 1.5.0` |
 | CI/CD | GitHub Actions |
 | Processamento de dados | AWS Glue (PySpark), AWS Lambda |
-| Agendamento | AWS EventBridge (pipeline de dados), AWS EventBridge Scheduler (ciclo de vida do Lightsail) |
+| Agendamento | AWS EventBridge (pipeline de dados), AWS EventBridge Scheduler (ciclo de vida do Lightsail), AWS Step Functions (backfill histórico anual) |
 | Armazenamento | AWS S3 (arquitetura medalhão — 4 camadas: SOR → SOT → SPEC → DQ), AWS Glue Catalog (catálogo de metadados), AWS Athena (consultas SQL sobre o S3) |
 | Observabilidade | AWS CloudWatch, AWS SNS |
 | Interface web | Streamlit (hospedado no AWS Lightsail) |
