@@ -44,11 +44,11 @@ test/glue_agg/
 
 | Teste | O que verifica |
 |---|---|
-| `test_passes_sql_with_image_columns_to_wrangler` | SQL passado ao wrangler contém `AS poster_url`, `AS backdrop_url` com prefixos de URL do TMDB, `overview`, `air_date`, `origin_country_name`, `language_name` e referências a `tb_discover_movie_tmdb` e `tb_discover_tv_tmdb` |
-| `test_uses_expected_wrangler_execution_args` | `read_sql_query` é chamado com `database="db_unified_tmdb"`, `s3_output="s3://temp/athena/glue_agg/"` e `ctas_approach=True` |
-| `test_query_contains_details_movie_join` | SQL contém `tb_details_movie_tmdb` e coluna `runtime_minutes` |
-| `test_query_contains_details_tv_join` | SQL contém `tb_details_tv_tmdb` e colunas `number_of_seasons`, `number_of_episodes`, `episode_runtime_minutes` |
-| `test_query_contains_watch_providers_join` | SQL contém `tb_watch_providers_movie_tmdb`, `tb_watch_providers_tv_tmdb` e coluna `streaming_providers` |
+| `test_passes_sql_with_image_columns_to_wrangler` | SQL passado ao wrangler contém `AS poster_url`, `AS backdrop_url` com prefixos de URL do TMDB, `overview`, `air_date`, `origin_country_name`, `language_name` e referências a `tb_tmdb_discover_movie_{env}` e `tb_tmdb_discover_tv_{env}` |
+| `test_uses_expected_wrangler_execution_args` | `read_sql_query` é chamado com `database="db_tmdb_unified_dev"`, `s3_output="s3://temp/athena/glue_agg/"` e `ctas_approach=True` |
+| `test_query_contains_details_movie_join` | SQL contém `tb_tmdb_details_movie_{env}` e coluna `runtime_minutes` |
+| `test_query_contains_details_tv_join` | SQL contém `tb_tmdb_details_tv_{env}` e colunas `number_of_seasons`, `number_of_episodes`, `episode_runtime_minutes` |
+| `test_query_contains_watch_providers_join` | SQL contém `tb_tmdb_watch_providers_movie_{env}`, `tb_tmdb_watch_providers_tv_{env}` e coluna `streaming_providers` |
 | `test_query_deduplica_watch_providers_por_ano_mais_recente` | SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK()` e `CAST(year AS INTEGER) DESC`; garante que **não** usa `ROW_NUMBER()` (que filtraria um único provedor por título em vez de todos do ano mais recente) |
 | `test_query_possui_dedup_final_spec_deduped` | SQL contém CTEs `spec_raw` e `spec_deduped` com `PARTITION BY id, media_type` e alias `rn_final` para garantir unicidade na saída |
 

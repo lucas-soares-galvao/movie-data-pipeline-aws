@@ -10,7 +10,7 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 ## Como funciona
 
-1. Recebe argumentos do job: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `YEAR` (quando aplicável)
+1. Recebe argumentos do job: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `OUTPUT_TABLE`, `YEAR` (quando aplicável)
 2. Busca o ruleset DQDL correspondente à tabela em `rulesets_dq.py` (mapeado por nome de tabela)
 3. Lê a tabela do Glue Catalog via Spark, aplicando filtro de partição por `year` quando disponível
 4. Avalia as regras usando o motor nativo do **AWS Glue Data Quality** (DQDL)
@@ -21,7 +21,7 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `YEAR` (opcional — apenas tabelas com partição por ano) |
+| **Entrada** | Argumentos: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `OUTPUT_TABLE`, `YEAR` (opcional — apenas tabelas com partição por ano) |
 | **Leitura** | Glue Catalog (tabela a ser validada na SOT ou SPEC) |
 | **Escrita** | S3 DQ — resultados em Parquet particionados por `source_table` e `year` |
 | **Notifica** | SNS → e-mail configurado para o job (em caso de falha) |
@@ -56,10 +56,10 @@ Rules = [
 | Função | Responsabilidade |
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
-| `get_ruleset(table_name)` | Retorna o DQDL ruleset correspondente ao nome da tabela |
+| `get_ruleset(table_name, environment)` | Retorna o DQDL ruleset correspondente ao nome da tabela |
 | `read_table_from_catalog(glue_context, database, table_name, year)` | Lê tabela do Catalog com pushdown de partição por ano |
 | `evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name, database, year)` | Executa avaliação das regras via motor Glue DQ e retorna DataFrame com resultados e colunas de contexto |
-| `write_results_to_s3(df, s3_bucket_data_quality, table_name, database, year)` | Salva resultados como Parquet na camada DQ |
+| `write_results_to_s3(df, s3_bucket_data_quality, table_name, database, output_table, year)` | Salva resultados como Parquet na camada DQ |
 | `notify_failed_outcomes(df, table_name, sns_topic_arn, environment, year)` | Envia e-mail via SNS se alguma regra falhou |
 
 ## Tecnologias

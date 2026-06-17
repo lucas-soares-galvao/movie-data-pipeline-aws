@@ -73,6 +73,7 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 | `test_calls_write_with_s3_bucket_data_quality` | `write_results_to_s3` recebe o `S3_BUCKET_DATA_QUALITY` dos args |
 | `test_calls_write_with_table_name` | `write_results_to_s3` recebe o `TABLE_NAME` dos args |
 | `test_calls_write_with_database` | `write_results_to_s3` recebe `DATABASE_RESULTS` (banco unificado) — **não** o `DATABASE` da tabela avaliada |
+| `test_calls_write_with_output_table` | `write_results_to_s3` recebe o `OUTPUT_TABLE` dos args |
 | `test_calls_write_with_none_year_when_not_in_args` | `year=None` para tabelas sem partição por ano |
 | `test_calls_write_with_year_when_in_args` | `year` correto para tabelas discover |
 | `test_write_is_called_exactly_once` | `write_results_to_s3` é chamado exatamente uma vez por execução |
@@ -83,7 +84,7 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 
 | Teste | O que verifica |
 |---|---|
-| `test_returns_required_args` | Retorna `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `ENVIRONMENT` |
+| `test_returns_required_args` | Retorna `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `ENVIRONMENT`, `SNS_TOPIC_ARN_DQ_METRICS`, `OUTPUT_TABLE` |
 | `test_adds_year_when_available` | `YEAR` é incluído quando o Glue ETL passa o argumento |
 | `test_omits_year_when_not_provided` | `YEAR` não está no retorno quando o argumento não é enviado |
 | `test_does_not_raise_when_year_is_missing` | Ausência de `YEAR` não lança exceção (argumento opcional) |
@@ -141,16 +142,16 @@ Verifica que `write_results_to_s3` grava os resultados DQ no bucket correto com 
 
 Funciona como "contrato de cobertura" do dicionário `rulesets_dq`: garante que toda tabela conhecida tem regras bem-formadas e que nenhuma tabela nova é adicionada ao pipeline sem um ruleset correspondente.
 
-As 14 tabelas verificadas por `EXPECTED_TABLES` são: `tb_configuration_countries_tmdb`, `tb_configuration_languages_tmdb`, `tb_genre_movie_tmdb`, `tb_genre_tv_tmdb`, `tb_discover_movie_tmdb`, `tb_discover_tv_tmdb`, `tb_details_movie_tmdb`, `tb_details_tv_tmdb`, `tb_watch_providers_movie_tmdb`, `tb_watch_providers_tv_tmdb`, `tb_watch_providers_ref_movie_tmdb`, `tb_watch_providers_ref_tv_tmdb`, `tb_now_playing_movie_tmdb`, `tb_discover_unified_tmdb`.
+As 14 tabelas verificadas por `EXPECTED_TABLES` são (nomes lógicos, sem prefixo `tb_tmdb_` nem sufixo `_{env}`): `configuration_countries`, `configuration_languages`, `genre_movie`, `genre_tv`, `discover_movie`, `discover_tv`, `details_movie`, `details_tv`, `watch_providers_movie`, `watch_providers_tv`, `watch_providers_ref_movie`, `watch_providers_ref_tv`, `now_playing_movie`, `discover_unified`.
 
 | Teste | O que verifica |
 |---|---|
-| `test_all_expected_tables_are_present` | Todas as 14 tabelas conhecidas (incluindo `tb_now_playing_movie_tmdb` e `tb_discover_unified_tmdb`) estão no dicionário `rulesets_dq` |
+| `test_all_expected_tables_are_present` | Todas as 14 tabelas conhecidas (incluindo `now_playing_movie` e `discover_unified`) estão no dicionário `rulesets_dq` |
 | `test_each_table_has_at_least_one_rule` | Nenhuma tabela tem lista de regras vazia |
 | `test_all_rules_are_strings` | Toda regra é do tipo `str` (formato DQDL) |
 | `test_no_empty_rules` | Nenhuma regra é string vazia ou somente espaços |
 | `test_all_tables_have_row_count_rule` | Toda tabela tem pelo menos uma regra com `RowCount` |
-| `test_discover_tables_validate_vote_average` | `tb_discover_movie_tmdb`, `tb_discover_tv_tmdb`, `tb_now_playing_movie_tmdb` e `tb_discover_unified_tmdb` têm regra validando `vote_average` |
+| `test_discover_tables_validate_vote_average` | `discover_movie`, `discover_tv`, `now_playing_movie` e `discover_unified` têm regra validando `vote_average` |
 | `test_tables_with_id_have_completeness_and_uniqueness` | Tabelas que têm coluna `id` (discover, details, genre, now_playing) têm `IsComplete "id"` e `IsUnique "id"` |
 
 ## Como executar

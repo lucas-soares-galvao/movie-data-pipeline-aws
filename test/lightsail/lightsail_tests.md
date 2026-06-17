@@ -21,8 +21,8 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 |---|---|
 | `LLM_API_KEY` | `"test-llm-key"` |
 | `AWS_REGION` | `"sa-east-1"` |
-| `GLUE_DATABASE` | `"db_unified_tmdb"` |
-| `SPEC_TABLE` | `"tb_discover_unified_tmdb"` |
+| `GLUE_DATABASE` | `"db_tmdb_unified_prod"` |
+| `SPEC_TABLE` | `"tb_tmdb_discover_unified_prod"` |
 | `ATHENA_S3_OUTPUT` | `"s3://test-bucket-temp/athena-results/"` |
 
 ## Funções auxiliares de mock (`test_agent.py`)
