@@ -133,8 +133,16 @@ jobs:
           DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
           ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
             set -e
-            sudo apt-get update -q && sudo apt-get install -y python3-venv python3-pip git -q
+            sudo apt-get update -q && sudo apt-get install -y python3-venv python3-pip git debian-keyring debian-archive-keyring apt-transport-https curl -q
             sudo useradd -m filmbot || true
+
+            # Instalar Caddy (proxy reverso HTTPS) se ainda não instalado
+            if ! command -v caddy &> /dev/null; then
+              curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+              curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+              sudo apt-get update -q && sudo apt-get install -y caddy -q
+            fi
+
             if [ -d "/opt/filmbot/.git" ]; then
               echo "==> Atualizando código existente (branch: $BRANCH)..."
               sudo git config --global --add safe.directory /opt/filmbot
@@ -149,9 +157,10 @@ jobs:
               sudo .venv/bin/pip install --upgrade pip -q
               sudo .venv/bin/pip install -r requirements.txt -q
               sudo cp deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo cp deploy/caddy.service /etc/systemd/system/caddy.service
               sudo systemctl daemon-reload
-              sudo systemctl enable filmbot
-              sudo systemctl restart filmbot
+              sudo systemctl enable filmbot caddy
+              sudo systemctl restart filmbot caddy
             else
               echo "==> Primeiro deploy (branch: $BRANCH)..."
               sudo git clone -b "$BRANCH" https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git /tmp/filmbot_new
@@ -165,13 +174,15 @@ jobs:
               sudo .venv/bin/pip install --upgrade pip -q
               sudo .venv/bin/pip install -r requirements.txt -q
               sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo cp /opt/filmbot/app/lightsail_ia/deploy/caddy.service /etc/systemd/system/caddy.service
               sudo systemctl daemon-reload
-              sudo systemctl enable filmbot
-              sudo systemctl restart filmbot
+              sudo systemctl enable filmbot caddy
+              sudo systemctl restart filmbot caddy
             fi
             sudo systemctl status filmbot --no-pager
+            sudo systemctl status caddy --no-pager
           ENDSSH
 
       - name: Show app URL
         if: steps.tf.outputs.lightsail_enabled == 'true'
-        run: echo "FilmBot disponível em http://${{ steps.tf.outputs.public_ip }}:8501"
+        run: echo "FilmBot disponível em https://filmbot.is-a.dev"

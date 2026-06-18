@@ -9,7 +9,7 @@ WorkingDirectory=/opt/filmbot/app/lightsail_ia
 EnvironmentFile=/opt/filmbot/app/lightsail_ia/.env
 ExecStart=/opt/filmbot/app/lightsail_ia/.venv/bin/streamlit run app.py \
   --server.port 8501 \
-  --server.address 0.0.0.0 \
+  --server.address 127.0.0.1 \
   --server.headless true \
   --browser.gatherUsageStats false \
   --server.maxUploadSize 5

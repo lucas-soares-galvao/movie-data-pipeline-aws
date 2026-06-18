@@ -5,7 +5,8 @@
 env             = "prod"
 tmdb_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_PROD"
 
-lightsail_enabled = true
+lightsail_enabled           = true
+lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"]
 
 # Retencao de logs mais longa em prod para permitir investigar incidentes
 # que aparecem dias depois da execucao (ex.: anomalias em dados historicos).

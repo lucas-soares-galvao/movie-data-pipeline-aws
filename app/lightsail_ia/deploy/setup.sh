@@ -20,9 +20,16 @@ if [ ! -f /swapfile ]; then
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-apt-get update && apt-get install -y python3-pip python3-venv git
+apt-get update && apt-get install -y python3-pip python3-venv git debian-keyring debian-archive-keyring apt-transport-https curl
 
 useradd -m filmbot || true  # ignora erro se o usuário já existir
+
+# Instalar Caddy via repositório oficial
+if ! command -v caddy &> /dev/null; then
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update && apt-get install -y caddy
+fi
 
 git clone "$REPO_URL" "$APP_DIR"
 chown -R filmbot:filmbot "$APP_DIR"
@@ -33,8 +40,9 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
 cp "$APP_DIR/app/lightsail_ia/deploy/filmbot.service" /etc/systemd/system/filmbot.service
+cp "$APP_DIR/app/lightsail_ia/deploy/caddy.service" /etc/systemd/system/caddy.service
 systemctl daemon-reload
-systemctl enable filmbot
-systemctl start filmbot
+systemctl enable filmbot caddy
+systemctl start filmbot caddy
 
-echo "FilmBot iniciado. Acesse http://$(curl -s ifconfig.me):8501"
+echo "FilmBot iniciado. Acesse https://filmbot.is-a.dev"

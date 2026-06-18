@@ -40,7 +40,7 @@ resource "aws_iam_role_policy" "lightsail_scheduler_control" {
         "lightsail:StartInstance",
         "lightsail:GetInstance",
       ]
-      Resource = "*"
+      Resource = "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:Instance/*"
     }]
   })
 }

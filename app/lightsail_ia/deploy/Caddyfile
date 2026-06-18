@@ -1,0 +1,3 @@
+filmbot.is-a.dev {
+    reverse_proxy localhost:8501
+}
