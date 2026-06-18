@@ -125,10 +125,11 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
 2. Configura SSH com retry (até 30 tentativas, intervalo de 10s)
 3. Cria `.env` na instância com variáveis de ambiente da aplicação
 4. Cria `secrets.toml` do Streamlit com a senha de acesso
-5. Deploy por SSH:
-   - **Primeiro deploy**: clone do repo, venv, systemd service
-   - **Updates**: git pull, pip install, restart do service
-6. Expõe a aplicação em `http://<ip>:8501`
+5. Instala o Caddy como proxy reverso HTTPS (se ainda não instalado)
+6. Deploy por SSH:
+   - **Primeiro deploy**: clone do repo, venv, systemd services (filmbot + caddy)
+   - **Updates**: git pull, pip install, restart de ambos os services
+7. Expõe a aplicação em `https://filmbot.is-a.dev`
 
 **Branch deployada por ambiente:**
 

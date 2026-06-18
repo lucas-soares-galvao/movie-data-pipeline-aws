@@ -63,7 +63,7 @@ Busca informações complementares para cada filme e série: duração dos filme
 Junta tudo — filmes e séries, com todos os seus detalhes — em uma única tabela final. Enriquece cada filme com a informação de se está atualmente em cartaz nos cinemas (`in_theaters`) e, quando aplicável, as datas de início e fim da janela teatral. Essa tabela é a fonte de dados do aplicativo de recomendações.
 
 ### Aplicativo de recomendações (FilmBot — Lightsail)
-Interface web onde o usuário digita o que quer assistir em linguagem natural. Um agente de IA interpreta o pedido, consulta a base de dados e retorna recomendações personalizadas com pôster, sinopse, avaliação, duração e onde assistir. O acesso é protegido por senha configurável, evitando uso não autorizado da API de IA e das consultas ao Athena.
+Interface web onde o usuário digita o que quer assistir em linguagem natural. Um agente de IA interpreta o pedido, consulta a base de dados e retorna recomendações personalizadas com pôster, sinopse, avaliação, duração e onde assistir. Servido via HTTPS com certificado automático (Caddy + Let's Encrypt). O acesso é protegido por senha configurável, evitando uso não autorizado da API de IA e das consultas ao Athena.
 
 ### Agendador do FilmBot (Lambda Lightsail Scheduler)
 Liga e desliga automaticamente a instância Lightsail onde o FilmBot roda, reduzindo custo ao manter o servidor ativo apenas nos horários de uso. Acionado pelo EventBridge Scheduler com o parâmetro `"start"` ou `"stop"`, sem intervenção humana.
@@ -106,7 +106,7 @@ O pipeline é orquestrado por 5 workflows em `.github/workflows/`. Consulte [`.g
 | Agendamento | AWS EventBridge (pipeline de dados), AWS EventBridge Scheduler (ciclo de vida do Lightsail), AWS Step Functions (backfill histórico anual) |
 | Armazenamento | AWS S3 (arquitetura medalhão — 4 camadas: SOR → SOT → SPEC → DQ), AWS Glue Catalog (catálogo de metadados), AWS Athena (consultas SQL sobre o S3) |
 | Observabilidade | AWS CloudWatch, AWS SNS |
-| Interface web | Streamlit (hospedado no AWS Lightsail) |
+| Interface web | Streamlit (hospedado no AWS Lightsail, HTTPS via Caddy) |
 | Inteligência artificial | litellm (abstração LLM — suporta OpenAI, DeepSeek, Claude, etc.) para recomendações e extração de filtros |
 
 ---
