@@ -76,12 +76,10 @@ jobs:
           echo "public_ip=${PUBLIC_IP}" >> $GITHUB_OUTPUT
           echo "lightsail_enabled=$([[ -n "$PUBLIC_IP" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
 
-          PRIVATE_KEY=$(terraform output -raw lightsail_private_key)
-          {
-            echo "private_key<<EOF"
-            echo "${PRIVATE_KEY}"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          KEY_FILE=$(mktemp)
+          terraform output -raw lightsail_private_key > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          echo "key_file=${KEY_FILE}" >> $GITHUB_OUTPUT
 
           ACCESS_KEY_ID=$(terraform output -raw lightsail_agent_access_key_id)
           echo "::add-mask::${ACCESS_KEY_ID}"
@@ -96,7 +94,7 @@ jobs:
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ steps.tf.outputs.private_key }}" > ~/.ssh/filmbot_key
+          cp "${{ steps.tf.outputs.key_file }}" ~/.ssh/filmbot_key
           chmod 600 ~/.ssh/filmbot_key
           SSH_READY=0
           for i in $(seq 1 30); do
