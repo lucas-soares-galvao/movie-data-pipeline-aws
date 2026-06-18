@@ -113,13 +113,6 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
     protocol  = "tcp"
     cidrs     = ["0.0.0.0/0"]
   }
-
-  port_info {
-    from_port = 8501
-    to_port   = 8501
-    protocol  = "tcp"
-    cidrs     = ["0.0.0.0/0"]
-  }
 }
 
 resource "aws_lightsail_static_ip" "filmbot" {

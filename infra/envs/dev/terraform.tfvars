@@ -7,7 +7,8 @@ tmdb_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_DEV"
 
 # Instância Lightsail desabilitada em dev — usar desenvolvimento local.
 # Para reativar: mudar para true e fazer push no develop.
-lightsail_enabled = false
+lightsail_enabled           = false
+lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"]
 
 # Retencao de logs curta no dev para economizar custo.
 # Em dev os logs nao precisam durar; investigamos em tempo real.

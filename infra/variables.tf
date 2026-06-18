@@ -339,9 +339,8 @@ variable "lightsail_instance_name" {
 }
 
 variable "lightsail_ssh_allowed_cidrs" {
-  description = "CIDRs permitidos na porta 22 do Lightsail. Restrinja ao IP do GitHub Actions ou VPN em ambientes produtivos."
+  description = "CIDRs permitidos na porta 22 do Lightsail. Sem default para forçar definição explícita por ambiente."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
 }
 
 # =============================================================================

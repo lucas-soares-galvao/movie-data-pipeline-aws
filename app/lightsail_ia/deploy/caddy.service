@@ -1,0 +1,13 @@
+[Unit]
+Description=Caddy Reverse Proxy
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/caddy run --config /opt/filmbot/app/lightsail_ia/deploy/Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/caddy reload --config /opt/filmbot/app/lightsail_ia/deploy/Caddyfile --adapter caddyfile
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
