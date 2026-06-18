@@ -72,12 +72,12 @@ O LLM recebe os resultados reais do Athena e formata como JSON com campos amigá
 
 ### Produção (Lightsail)
 
-O app roda como serviço `systemd` (`filmbot.service`) na instância Lightsail, escutando apenas em `127.0.0.1:8501` (acesso local). O **Caddy** atua como proxy reverso na porta 443, gerando certificado HTTPS automaticamente via Let's Encrypt para `filmbot.is-a.dev`. O script `deploy/setup.sh` instala dependências, Caddy e configura ambos os serviços. O Terraform provisiona a instância (portas 22, 80 e 443) e o CI/CD faz o deploy via SSH ao fazer push na branch `main`.
+O app roda como serviço `systemd` (`filmbot.service`) na instância Lightsail, escutando apenas em `127.0.0.1:8501` (acesso local). O **Caddy** atua como proxy reverso na porta 80. O script `deploy/setup.sh` instala dependências, Caddy e configura ambos os serviços. O Terraform provisiona a instância (portas 22, 80 e 443) e o CI/CD faz o deploy via SSH ao fazer push na branch `main`.
 
 Arquivos de deploy:
 - `deploy/filmbot.service` — serviço Streamlit (bind em `127.0.0.1`)
 - `deploy/caddy.service` — serviço Caddy (proxy reverso HTTPS)
-- `deploy/Caddyfile` — configuração do Caddy (`filmbot.is-a.dev` → `localhost:8501`)
+- `deploy/Caddyfile` — configuração do Caddy (porta 80 → `localhost:8501`)
 - `deploy/setup.sh` — bootstrap da instância (Python, Caddy, serviços)
 
 ### Desenvolvimento local

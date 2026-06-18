@@ -119,7 +119,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 ### Servidor — Lightsail (`lightsail_ia.tf`)
 
 - Instância `tmdb-filmbot-{env}` (`micro_3_0` — 2 vCPU, 1 GB RAM, $7/mês) para hospedar o app Streamlit
-- **Caddy** como proxy reverso — HTTPS automático via Let's Encrypt para `filmbot.is-a.dev`
+- **Caddy** como proxy reverso na porta 80
 - Streamlit escuta apenas em `127.0.0.1:8501` (não acessível diretamente pela internet)
 - Portas abertas: 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`), 80 (redirect HTTP→HTTPS + ACME challenge), 443 (HTTPS — proxy reverso para Streamlit)
 - IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável

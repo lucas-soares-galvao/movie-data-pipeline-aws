@@ -8,7 +8,7 @@
 
 set -e
 
-REPO_URL="https://github.com/lucas-soares-galvao/proj-eng-dados-filmes-aws.git"
+REPO_URL="https://github.com/lucas-soares-galvao/movie-data-pipeline-aws.git"
 APP_DIR="/opt/filmbot"
 
 # Swap de 1 GB — necessário para rodar na instância nano_3_0 (512 MB RAM)
@@ -45,4 +45,4 @@ systemctl daemon-reload
 systemctl enable filmbot caddy
 systemctl start filmbot caddy
 
-echo "FilmBot iniciado. Acesse https://filmbot.is-a.dev"
+echo "FilmBot iniciado."

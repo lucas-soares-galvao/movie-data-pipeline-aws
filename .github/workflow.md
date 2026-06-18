@@ -129,7 +129,7 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
 6. Deploy por SSH:
    - **Primeiro deploy**: clone do repo, venv, systemd services (filmbot + caddy)
    - **Updates**: git pull, pip install, restart de ambos os services
-7. Expõe a aplicação em `https://filmbot.is-a.dev`
+7. Expõe a aplicação no IP público da instância Lightsail
 
 **Branch deployada por ambiente:**
 

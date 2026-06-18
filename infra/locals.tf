@@ -11,7 +11,7 @@ locals {
   tmdb_prefix = "tmdb"
 
   default_resource_tags = {
-    Service     = "proj-eng-dados-filmes-aws"
+    Service     = "movie-data-pipeline-aws"
     Environment = local.environment_tag_value
     FinOps      = var.finops_tag_value
   }
