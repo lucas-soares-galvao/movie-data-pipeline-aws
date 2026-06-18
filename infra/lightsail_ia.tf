@@ -73,7 +73,7 @@ resource "aws_iam_access_key" "lightsail_agent" {
 resource "aws_lightsail_key_pair" "filmbot" {
   count    = var.lightsail_enabled ? 1 : 0
   provider = aws.lightsail
-  name     = "${local.tmdb_prefix}-filmbot-key-${var.env}"
+  name     = "${local.tmdb_prefix}-filmbot-key-v2-${var.env}"
   tags     = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
