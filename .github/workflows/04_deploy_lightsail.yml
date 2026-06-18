@@ -77,9 +77,6 @@ jobs:
           echo "lightsail_enabled=$([[ -n "$PUBLIC_IP" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
 
           PRIVATE_KEY=$(terraform output -raw lightsail_private_key)
-          while IFS= read -r line; do
-            echo "::add-mask::${line}"
-          done <<< "${PRIVATE_KEY}"
           {
             echo "private_key<<EOF"
             echo "${PRIVATE_KEY}"
