@@ -105,7 +105,7 @@ resource "aws_cloudwatch_event_rule" "lightsail_stop" {
   count               = var.lightsail_enabled ? 1 : 0
   name                = "${local.tmdb_prefix}-lightsail-stop-${var.env}"
   description         = "Para a instância Lightsail FilmBot à 00:00 BRT"
-  schedule_expression = "cron(00 03 ? * * *)"
+  schedule_expression = "cron(00 04 ? * * *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_scheduler
 }

@@ -114,7 +114,7 @@ jobs:
         run: |
           cd infra && terraform init \
             -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
-            -backend-config="key=${{ github.event.repository.name }}" \
+            -backend-config="key=proj-eng-dados-filmes-aws" \
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 

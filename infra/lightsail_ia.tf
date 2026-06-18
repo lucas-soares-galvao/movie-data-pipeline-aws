@@ -129,7 +129,7 @@ resource "aws_lightsail_static_ip_attachment" "filmbot" {
 }
 
 output "lightsail_public_ip" {
-  description = "IP público fixo da instância Lightsail — use este IP no A record do is-a.dev (filmbot.is-a.dev)"
+  description = "IP público fixo da instância Lightsail"
   value       = var.lightsail_enabled ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
 }
 
