@@ -105,7 +105,7 @@ resource "aws_cloudwatch_event_rule" "lightsail_stop" {
   count               = var.lightsail_enabled ? 1 : 0
   name                = "${local.tmdb_prefix}-lightsail-stop-${var.env}"
   description         = "Para a instância Lightsail FilmBot à 00:00 BRT"
-  schedule_expression = "cron(00 04 ? * * *)"
+  schedule_expression = "cron(00 03 ? * * *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_scheduler
 }
@@ -131,7 +131,7 @@ resource "aws_cloudwatch_event_rule" "lightsail_start_weekday" {
   count               = var.lightsail_enabled ? 1 : 0
   name                = "${local.tmdb_prefix}-lightsail-start-weekday-${var.env}"
   description         = "Inicia a instância Lightsail FilmBot às 18:00 BRT (seg–sex)"
-  schedule_expression = "cron(00 21 ? * MON-FRI *)"
+  schedule_expression = "cron(00 10 ? * MON-FRI *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_scheduler
 }
