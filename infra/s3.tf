@@ -14,6 +14,7 @@ resource "aws_s3_bucket" "auxiliary_bucket" {
   bucket        = local.envs.s3_bucket_aux
   force_destroy = true
   tags          = local.component_tags.shared
+  depends_on    = [terraform_data.cicd_policies_ready]
 }
 
 # Bloqueia qualquer forma de acesso público a este bucket.
@@ -99,6 +100,7 @@ resource "aws_s3_bucket" "temporary_bucket" {
   bucket        = local.envs.s3_bucket_temp
   force_destroy = true
   tags          = local.component_tags.glue_agg
+  depends_on    = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_s3_bucket_public_access_block" "temporary_bucket" {
@@ -165,6 +167,7 @@ resource "aws_s3_bucket" "sor_bucket" {
   bucket        = local.envs.s3_bucket_sor
   force_destroy = true
   tags          = local.component_tags.lambda_api
+  depends_on    = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_s3_bucket_public_access_block" "sor_bucket" {
@@ -230,6 +233,7 @@ resource "aws_s3_bucket" "sot_bucket" {
   bucket        = local.envs.s3_bucket_sot
   force_destroy = true
   tags          = local.component_tags.glue_etl
+  depends_on    = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_s3_bucket_public_access_block" "sot_bucket" {
@@ -298,6 +302,7 @@ resource "aws_s3_bucket" "spec_bucket" {
   bucket        = local.envs.s3_bucket_spec
   force_destroy = true
   tags          = local.component_tags.glue_agg
+  depends_on    = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_s3_bucket_public_access_block" "spec_bucket" {
@@ -364,6 +369,7 @@ resource "aws_s3_bucket" "data_quality_bucket" {
   bucket        = local.envs.s3_bucket_data_quality
   force_destroy = true
   tags          = local.component_tags.glue_data_quality
+  depends_on    = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_s3_bucket_public_access_block" "data_quality_bucket" {
