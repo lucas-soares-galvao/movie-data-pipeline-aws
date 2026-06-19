@@ -158,7 +158,7 @@ A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** 
 | `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms), SNS |
 | `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1 |
 
-Além das 6 policies managed, a role possui uma **policy de bootstrap manual** (`cicd-bootstrap`) que cobre o backend do Terraform (S3 state + DynamoDB lock) e a auto-criação das 6 policies. Essa policy sobrevive ao `terraform destroy` e permite reconstruir toda a infra do zero em uma única execução.
+O workflow do GitHub Actions (`02_terraform.yml`) resolve o problema de bootstrap automaticamente: antes do `terraform plan`, um step aplica as 6 policies com `-target`, garantindo que a role tenha permissões antes de gerenciar os demais recursos. O step é idempotente — se as policies já existem, é um no-op.
 
 Um recurso `terraform_data.cicd_policies_ready` sincroniza a criação: os buckets S3 e as IAM roles do projeto só são criados **depois** que as 6 policies estejam attachadas à role do GitHub Actions.
 

@@ -153,6 +153,34 @@ jobs:
           sed -i 's/REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL/${{ secrets.notification-email }}/g' \
             infra/envs/${{ inputs.environment }}/terraform.tfvars
 
+      # Bootstrap: cria e anexa as 6 IAM policies do CI/CD ANTES do plan/apply
+      # principal, resolvendo o problema de bootstrap (a role precisa das policies
+      # para gerenciar os recursos, mas as policies são criadas pelo mesmo Terraform).
+      # Idempotente — se as policies já existem, é um no-op.
+      - name: Bootstrap CICD IAM Policies
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          cd infra
+          terraform apply -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
+            -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
+            -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
+            -target=aws_iam_policy.cicd_backend \
+            -target=aws_iam_role_policy_attachment.cicd_backend \
+            -target=aws_iam_policy.cicd_s3 \
+            -target=aws_iam_role_policy_attachment.cicd_s3 \
+            -target=aws_iam_policy.cicd_iam \
+            -target=aws_iam_role_policy_attachment.cicd_iam \
+            -target=aws_iam_policy.cicd_compute \
+            -target=aws_iam_role_policy_attachment.cicd_compute \
+            -target=aws_iam_policy.cicd_observability \
+            -target=aws_iam_role_policy_attachment.cicd_observability \
+            -target=aws_iam_policy.cicd_lightsail \
+            -target=aws_iam_role_policy_attachment.cicd_lightsail \
+            -auto-approve
+          echo "Aguardando propagação do IAM..."
+          sleep 10
+
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
