@@ -162,7 +162,7 @@ resource "aws_iam_role_policy_attachment" "cicd_s3" {
 # - AttachRolePolicy com Condition restringindo quais policies podem ser anexadas
 # - PassRole restrito aos 4 serviços que recebem roles do projeto
 
-resource "aws_iam_policy" "cicd_iam" {
+resource "aws_iam_policy" "iam_cicd" {
   name        = "cicd-terraform-iam-${var.env}"
   description = "Gerenciamento de roles/policies/users tmdb-* e auto-gerenciamento da role CI/CD"
 
@@ -297,9 +297,9 @@ resource "aws_iam_policy" "cicd_iam" {
   tags = merge(local.default_resource_tags, local.component_tags.shared)
 }
 
-resource "aws_iam_role_policy_attachment" "cicd_iam" {
+resource "aws_iam_role_policy_attachment" "iam_cicd" {
   role       = data.aws_iam_role.github_actions.name
-  policy_arn = aws_iam_policy.cicd_iam.arn
+  policy_arn = aws_iam_policy.iam_cicd.arn
 }
 
 # =============================================================================
@@ -628,7 +628,7 @@ resource "terraform_data" "cicd_policies_ready" {
   depends_on = [
     aws_iam_role_policy_attachment.cicd_backend,
     aws_iam_role_policy_attachment.cicd_s3,
-    aws_iam_role_policy_attachment.cicd_iam,
+    aws_iam_role_policy_attachment.iam_cicd,
     aws_iam_role_policy_attachment.cicd_compute,
     aws_iam_role_policy_attachment.cicd_observability,
     aws_iam_role_policy_attachment.cicd_lightsail,
