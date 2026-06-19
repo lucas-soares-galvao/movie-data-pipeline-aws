@@ -210,6 +210,7 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
         Effect = "Allow"
         Action = [
           "glue:GetTable",
+          "glue:GetPartition",
           "glue:GetPartitions",
         ]
         Resource = [
@@ -337,6 +338,7 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
         Action = [
           "glue:GetDatabase",
           "glue:GetTable",
+          "glue:GetPartition",
           "glue:GetPartitions",
         ]
         Resource = [
@@ -369,9 +371,7 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
         Effect = "Allow"
         Action = ["glue:PublishDataQuality"]
         Resource = [
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/${local.envs.glue_catalog_db_movie}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/${local.envs.glue_catalog_db_tv}/*",
-          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/${local.envs.glue_catalog_db_unified}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/tb_${local.tmdb_prefix}_*_${var.env}",
         ]
       }
     ]
@@ -610,6 +610,7 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
         Action = [
           "glue:GetDatabase",
           "glue:GetTable",
+          "glue:GetPartition",
           "glue:GetPartitions",
         ]
         Resource = [
@@ -816,6 +817,7 @@ resource "aws_iam_role_policy" "glue_details_catalog" {
         Action = [
           "glue:GetDatabase",
           "glue:GetTable",
+          "glue:GetPartition",
           "glue:GetPartitions",
         ]
         Resource = [
