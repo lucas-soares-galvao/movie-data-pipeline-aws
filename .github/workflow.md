@@ -133,6 +133,7 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
    - **Updates**: git pull, pip install, restart de ambos os services
    - Verifica se os serviços `filmbot` e `caddy` estão ativos (`systemctl is-active`) — falha o pipeline se algum estiver inativo
 8. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
+9. Exibe a URL do FilmBot no log e no Job Summary (clicável)
 
 **Branch deployada por ambiente:**
 
