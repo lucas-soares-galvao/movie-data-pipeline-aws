@@ -156,7 +156,7 @@ A Lambda usa uma **policy inline customizada** para logs em vez de `AWSLambdaBas
 
 Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada** (`glue_shared_base`) em vez da managed policy `AWSGlueServiceRole`. Motivo: `AWSGlueServiceRole` concede `glue:*` em `Resource: *`, anulando todas as policies granulares de Catalog, S3 e logs definidas por job. A policy customizada fornece apenas o mínimo para o runtime Glue funcionar: `cloudwatch:PutMetricData` (métricas de job) e acesso S3 aos buckets temporários `aws-glue-*` (necessários para jobs Spark como o Data Quality).
 
-### Permissões do CI/CD — IAM (`cicd_iam.tf`)
+### Permissões do CI/CD — IAM (`iam_cicd.tf`)
 
 A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform:
 
@@ -183,7 +183,7 @@ Um recurso `terraform_data.cicd_policies_ready` sincroniza a criação: os bucke
 | `03_pr_auto.yml` | Reusável: cria PR automático após deploy |
 | `04_deploy_lightsail.yml` | Deploy do app FilmBot na instância Lightsail |
 
-Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`cicd_iam.tf`).
+Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`).
 
 ## Como aplicar
 

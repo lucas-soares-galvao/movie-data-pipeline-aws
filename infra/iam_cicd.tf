@@ -1,5 +1,5 @@
 # =============================================================================
-# cicd_iam.tf — Políticas IAM de privilégio mínimo para a role do GitHub Actions
+# iam_cicd.tf — Políticas IAM de privilégio mínimo para a role do GitHub Actions
 # =============================================================================
 #
 # A role lsg-github-actions-{env} já existe (criada manualmente). Este arquivo

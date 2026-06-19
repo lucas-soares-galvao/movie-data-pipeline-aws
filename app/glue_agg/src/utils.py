@@ -8,6 +8,8 @@ import awswrangler as wr
 import pandas as pd
 from awsglue.utils import getResolvedOptions
 
+from shared_utils.triggers import trigger_glue_job  # noqa: F401
+
 logger = logging.getLogger()
 
 # Os placeholders {db_movie}, {db_tv}, {db_unified} são substituídos em
