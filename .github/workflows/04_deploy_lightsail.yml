@@ -76,6 +76,9 @@ jobs:
           echo "public_ip=${PUBLIC_IP}" >> $GITHUB_OUTPUT
           echo "lightsail_enabled=$([[ -n "$PUBLIC_IP" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
 
+          INSTANCE_NAME=$(terraform output -raw lightsail_instance_name)
+          echo "instance_name=${INSTANCE_NAME}" >> $GITHUB_OUTPUT
+
           if [ -z "$PUBLIC_IP" ]; then
             echo "⚠ Lightsail desabilitado — IP público vazio (instância não provisionada)"
             exit 0
@@ -108,9 +111,27 @@ jobs:
 
           echo "✅ Terraform outputs lidos com sucesso (IP: $PUBLIC_IP)"
 
+      - name: Check instance state
+        if: steps.tf.outputs.lightsail_enabled == 'true'
+        id: instance_check
+        run: |
+          STATE=$(aws lightsail get-instance \
+            --instance-name "${{ steps.tf.outputs.instance_name }}" \
+            --region us-east-1 \
+            --query 'instance.state.name' \
+            --output text)
+          echo "Lightsail instance state: $STATE"
+          if [ "$STATE" == "running" ]; then
+            echo "instance_running=true" >> $GITHUB_OUTPUT
+            echo "✅ Instância está rodando — prosseguindo com deploy"
+          else
+            echo "instance_running=false" >> $GITHUB_OUTPUT
+            echo "::warning::Instância está '$STATE' — deploy será ignorado"
+          fi
+
       # chmod 600 obrigatório — SSH rejeita chaves com permissões mais abertas
       - name: Setup SSH key
-        if: steps.tf.outputs.lightsail_enabled == 'true'
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           mkdir -p ~/.ssh
           cp "${{ steps.tf.outputs.key_file }}" ~/.ssh/filmbot_key
@@ -129,7 +150,7 @@ jobs:
 
       # Credenciais criadas diretamente no destino final (não em /tmp — world-readable)
       - name: Create .env file on instance
-        if: steps.tf.outputs.lightsail_enabled == 'true'
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nLLM_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/tmdb/athena/lightsail_ia\nGLUE_DATABASE=db_tmdb_unified_prod\nSPEC_TABLE=tb_tmdb_discover_unified_prod\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
@@ -143,7 +164,7 @@ jobs:
           echo "✅ Arquivo .env criado com sucesso na instância"
 
       - name: Create Streamlit secrets.toml on instance
-        if: steps.tf.outputs.lightsail_enabled == 'true'
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           printf '[auth]\npassword = "%s"\n' "${{ secrets.filmbot-password }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
@@ -153,7 +174,7 @@ jobs:
           echo "✅ Arquivo secrets.toml criado com sucesso na instância"
 
       - name: Deploy app
-        if: steps.tf.outputs.lightsail_enabled == 'true'
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           # dev → clona/atualiza branch "develop" | prod → branch "main"
           DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
@@ -220,7 +241,7 @@ jobs:
           echo "✅ Deploy concluído com sucesso na instância ${{ steps.tf.outputs.public_ip }}"
 
       - name: Health Check
-        if: steps.tf.outputs.lightsail_enabled == 'true'
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           echo "Aguardando app inicializar (30s)..."
           sleep 30

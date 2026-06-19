@@ -162,3 +162,8 @@ output "lightsail_agent_secret_access_key" {
   value       = aws_iam_access_key.lightsail_agent.secret
   sensitive   = true
 }
+
+output "lightsail_instance_name" {
+  description = "Nome da instância Lightsail para verificação de estado"
+  value       = var.lightsail_enabled ? aws_lightsail_instance.filmbot[0].name : ""
+}
