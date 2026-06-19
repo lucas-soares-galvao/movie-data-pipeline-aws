@@ -49,6 +49,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
     aws_iam_role_policy.glue_agg_s3,
     aws_iam_role_policy.glue_agg_catalog,
     aws_iam_role_policy.glue_agg_athena,
+    aws_iam_role_policy.glue_agg_start_dq,
     aws_cloudwatch_log_group.glue_agg_error,
     aws_cloudwatch_log_group.glue_agg_output,
   ]

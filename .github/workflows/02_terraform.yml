@@ -208,9 +208,6 @@ jobs:
             -target=aws_iam_policy.cicd_lightsail \
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -auto-approve
-          echo "Aguardando propagação do IAM (eventual consistency ~120s)..."
-          sleep 120
-
           ROLE_NAME="lsg-github-actions-${{ inputs.environment }}"
           EXPECTED_POLICIES=(
             "cicd-terraform-backend-${{ inputs.environment }}"
@@ -221,20 +218,37 @@ jobs:
             "cicd-terraform-lightsail-${{ inputs.environment }}"
           )
 
-          ATTACHED=$(aws iam list-attached-role-policies \
-            --role-name "$ROLE_NAME" \
-            --query "AttachedPolicies[].PolicyName" \
-            --output text)
+          MAX_WAIT=60
+          POLL_INTERVAL=5
+          ELAPSED=0
 
-          MISSING=()
-          for POLICY in "${EXPECTED_POLICIES[@]}"; do
-            if ! echo "$ATTACHED" | grep -qw "$POLICY"; then
-              MISSING+=("$POLICY")
+          echo "Verificando propagação das IAM policies (polling a cada ${POLL_INTERVAL}s, timeout ${MAX_WAIT}s)..."
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            ATTACHED=$(aws iam list-attached-role-policies \
+              --role-name "$ROLE_NAME" \
+              --query "AttachedPolicies[].PolicyName" \
+              --output text)
+
+            MISSING=()
+            for POLICY in "${EXPECTED_POLICIES[@]}"; do
+              if ! echo "$ATTACHED" | grep -qw "$POLICY"; then
+                MISSING+=("$POLICY")
+              fi
+            done
+
+            if [ ${#MISSING[@]} -eq 0 ]; then
+              echo "✅ Todas as ${#EXPECTED_POLICIES[@]} policies verificadas após ${ELAPSED}s"
+              break
             fi
+
+            echo "  ⏳ ${ELAPSED}s — aguardando ${#MISSING[@]} policy(ies): ${MISSING[*]}"
+            sleep $POLL_INTERVAL
+            ELAPSED=$((ELAPSED + POLL_INTERVAL))
           done
 
           if [ ${#MISSING[@]} -gt 0 ]; then
-            echo "❌ Bootstrap falhou — policies não propagadas após 120s:"
+            echo "❌ Bootstrap falhou — policies não propagadas após ${MAX_WAIT}s:"
             printf '   - %s\n' "${MISSING[@]}"
             exit 1
           fi
