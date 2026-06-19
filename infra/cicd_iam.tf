@@ -250,6 +250,7 @@ resource "aws_iam_policy" "cicd_iam" {
             "iam:PolicyArn" = [
               "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.tmdb_prefix}-*",
               "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/cicd-terraform-*",
+              "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole",
             ]
           }
         }
