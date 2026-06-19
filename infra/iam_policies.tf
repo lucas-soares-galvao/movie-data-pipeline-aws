@@ -568,7 +568,7 @@ resource "aws_iam_role_policy" "glue_agg_s3" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["s3:ListBucket"]
+        Action = ["s3:ListBucket", "s3:GetBucketLocation"]
         Resource = [
           "arn:aws:s3:::${local.envs.s3_bucket_sot}",
           "arn:aws:s3:::${local.envs.s3_bucket_temp}",
@@ -640,6 +640,20 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
         ]
       }
     ]
+  })
+}
+
+resource "aws_iam_role_policy" "glue_agg_start_dq" {
+  name = "${local.tmdb_prefix}-glue-agg-start-dq-${var.env}"
+  role = aws_iam_role.glue_agg_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["glue:StartJobRun"]
+      Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_data_quality_job_name}"]
+    }]
   })
 }
 
