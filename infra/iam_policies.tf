@@ -631,6 +631,7 @@ resource "aws_iam_role_policy" "glue_agg_catalog" {
           "glue:UpdateTable",
           "glue:DeleteTable",
           "glue:BatchCreatePartition",
+          "glue:BatchDeletePartition",
           "glue:CreatePartition",
         ]
         Resource = [

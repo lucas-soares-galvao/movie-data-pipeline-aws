@@ -145,6 +145,11 @@ output "lightsail_public_ip" {
   value       = var.lightsail_enabled ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
 }
 
+output "lightsail_url" {
+  description = "URL do FilmBot — clicável no terminal"
+  value       = var.lightsail_enabled ? "http://${aws_lightsail_static_ip.filmbot[0].ip_address}" : ""
+}
+
 output "lightsail_private_key" {
   description = "Chave privada SSH para acessar a instância via ssh -i <key> ubuntu@<ip>"
   value       = var.lightsail_enabled ? aws_lightsail_key_pair.filmbot[0].private_key : ""
