@@ -534,11 +534,9 @@ resource "aws_iam_policy" "cicd_lightsail" {
         Effect = "Allow"
         Action = [
           "lightsail:DeleteInstance",
-          "lightsail:GetInstance",
           "lightsail:StartInstance",
           "lightsail:StopInstance",
           "lightsail:PutInstancePublicPorts",
-          "lightsail:GetInstancePortStates",
         ]
         Resource = "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:Instance/*"
       },
@@ -575,7 +573,9 @@ resource "aws_iam_policy" "cicd_lightsail" {
         Sid    = "LightsailDiscovery"
         Effect = "Allow"
         Action = [
+          "lightsail:GetInstance",
           "lightsail:GetInstances",
+          "lightsail:GetInstancePortStates",
           "lightsail:GetKeyPair",
           "lightsail:GetKeyPairs",
           "lightsail:GetStaticIp",
