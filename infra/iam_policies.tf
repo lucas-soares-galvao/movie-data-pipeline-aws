@@ -363,6 +363,16 @@ resource "aws_iam_role_policy" "glue_dq_catalog" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
+      },
+      {
+        Sid    = "PublishDataQuality"
+        Effect = "Allow"
+        Action = ["glue:PublishDataQuality"]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/${local.envs.glue_catalog_db_tv}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:dataQualityRuleset/${local.envs.glue_catalog_db_unified}/*",
+        ]
       }
     ]
   })
@@ -760,7 +770,7 @@ resource "aws_iam_role_policy" "glue_details_s3" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["s3:ListBucket"]
+        Action = ["s3:ListBucket", "s3:GetBucketLocation"]
         Resource = [
           "arn:aws:s3:::${local.envs.s3_bucket_sot}",
           "arn:aws:s3:::${local.envs.s3_bucket_temp}"
