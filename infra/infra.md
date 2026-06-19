@@ -97,7 +97,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 
 ### Notificações — SNS (`sns_topics.tf`)
 
-8 tópicos SNS, um por evento relevante do pipeline. Cada tópico envia alertas para um e-mail configurado em `.tfvars`:
+9 tópicos SNS, um por evento relevante do pipeline. Cada tópico envia alertas para um e-mail configurado em `.tfvars`:
 
 | Tópico | Evento |
 |---|---|
@@ -109,6 +109,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 | `tmdb-glue-agg-success-notifications-{env}` | Sucesso do job AGG |
 | `tmdb-glue-data-quality-failure-notifications-{env}` | Falha nas regras de DQ |
 | `tmdb-glue-data-quality-metrics-notifications-{env}` | Métricas de DQ (resultados das regras) |
+| `tmdb-sfn-backfill-failure-notifications-{env}` | Falha no Step Functions Backfill (FAILED, TIMED_OUT, ABORTED) |
 
 > Antes desta mudança, os tópicos SNS eram globais (sem sufixo de ambiente) — se dev e prod estivessem na mesma conta AWS, dividiriam o mesmo tópico/inscrição de e-mail. Agora cada ambiente tem seus próprios tópicos.
 

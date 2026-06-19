@@ -79,6 +79,11 @@ variable "eventbridge_notification_email" {
   type        = string
 }
 
+variable "sfn_backfill_notification_email" {
+  description = "E-mail para receber notificacoes de falha do Step Functions Backfill"
+  type        = string
+}
+
 # =============================================================================
 # BUCKETS S3 — ARQUITETURA MEDALHÃO
 # =============================================================================

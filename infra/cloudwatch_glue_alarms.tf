@@ -171,3 +171,42 @@ resource "aws_cloudwatch_event_target" "glue_details_failed_target" {
     input_template = local.glue_details_failed_input_template
   }
 }
+
+# =============================================================================
+# STEP FUNCTIONS BACKFILL — Falha / Abort / Timeout
+# =============================================================================
+
+resource "aws_cloudwatch_event_rule" "sfn_backfill_failed" {
+  name        = "${local.tmdb_prefix}-sfn-backfill-failed-${var.env}"
+  description = "Notifica quando o backfill historico falha, e abortado ou expira"
+
+  event_pattern = jsonencode({
+    source        = ["aws.states"]
+    "detail-type" = ["Step Functions Execution Status Change"]
+    detail = {
+      stateMachineArn = [aws_sfn_state_machine.backfill.arn]
+      status          = ["FAILED", "TIMED_OUT", "ABORTED"]
+    }
+  })
+
+  tags = local.component_tags.sfn_backfill
+}
+
+resource "aws_cloudwatch_event_target" "sfn_backfill_failed_target" {
+  rule      = aws_cloudwatch_event_rule.sfn_backfill_failed.name
+  target_id = "sfn-backfill-failed-sns"
+  arn       = aws_sns_topic.sfn_backfill_failure_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      state_machine = "$.detail.stateMachineArn"
+      status        = "$.detail.status"
+      execution_arn = "$.detail.executionArn"
+      cause         = "$.detail.cause"
+      event_time    = "$.time"
+      region        = "$.region"
+    }
+
+    input_template = local.sfn_backfill_failed_input_template
+  }
+}

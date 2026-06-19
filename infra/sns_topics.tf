@@ -2,7 +2,8 @@
 # sns_topics.tf — Tópicos SNS para notificações por email (um por componente)
 #
 # Tópicos: glue_data_quality_failure/metrics, glue_etl_failure, lambda_failure,
-#          eventbridge_failure, glue_agg_success/failure, glue_details_failure
+#          eventbridge_failure, glue_agg_success/failure, glue_details_failure,
+#          sfn_backfill_failure
 # =============================================================================
 
 # =============================================================================
@@ -140,4 +141,20 @@ resource "aws_sns_topic_subscription" "glue_details_failure_email" {
   topic_arn = aws_sns_topic.glue_details_failure_notifications.arn
   protocol  = "email"
   endpoint  = var.glue_details_notification_email
+}
+
+# =============================================================================
+# TÓPICO 9: Falha no Step Functions Backfill
+# =============================================================================
+# Notifica quando a execução do backfill histórico falha, é abortada ou expira.
+resource "aws_sns_topic" "sfn_backfill_failure_notifications" {
+  name         = "${local.tmdb_prefix}-sfn-backfill-failure-notifications-${var.env}"
+  display_name = "[${upper(var.env)}] FALHA - STEP FUNCTIONS BACKFILL"
+  tags         = local.component_tags.sfn_backfill
+}
+
+resource "aws_sns_topic_subscription" "sfn_backfill_failure_email" {
+  topic_arn = aws_sns_topic.sfn_backfill_failure_notifications.arn
+  protocol  = "email"
+  endpoint  = var.sfn_backfill_notification_email
 }

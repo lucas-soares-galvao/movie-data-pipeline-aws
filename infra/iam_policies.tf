@@ -756,6 +756,32 @@ resource "aws_sns_topic_policy" "glue_details_failure_topic_policy" {
   policy = data.aws_iam_policy_document.glue_details_failure_topic_policy.json
 }
 
+data "aws_iam_policy_document" "sfn_backfill_failure_topic_policy" {
+  statement {
+    sid    = "AllowEventBridgePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.sfn_backfill_failure_notifications.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.sfn_backfill_failed.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "sfn_backfill_failure_topic_policy" {
+  arn    = aws_sns_topic.sfn_backfill_failure_notifications.arn
+  policy = data.aws_iam_policy_document.sfn_backfill_failure_topic_policy.json
+}
+
 # =============================================================================
 # POLÍTICAS IAM — GLUE DETAILS
 # =============================================================================
