@@ -17,20 +17,18 @@
 
 # Agenda diária para discover de FILMES — 07:00 horário de Brasília (10:00 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
-  name        = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
-  description = "Dispara a Lambda para filmes com payload completo (diário)"
-  # schedule_expression = "cron(00 10 * * ? *)" # Todos os dias às 10:00 UTC / 07:00 BRT
-  schedule_expression = "cron(30 17 * * ? *)" # Todos os dias às 10:00 UTC / 07:00 BRT
+  name                = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
+  description         = "Dispara a Lambda para filmes com payload completo (diário)"
+  schedule_expression = "cron(00 10 * * ? *)" # Todos os dias às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
 # Agenda diária para discover de SÉRIES — 07:05 horário de Brasília (10:05 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
-  name        = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
-  description = "Dispara a Lambda para séries com payload completo (diário)"
-  # schedule_expression = "cron(05 10 * * ? *)" # Todos os dias às 10:05 UTC / 07:05 BRT
-  schedule_expression = "cron(35 17 * * ? *)" # Todos os dias às 10:05 UTC / 07:05 BRT
+  name                = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
+  description         = "Dispara a Lambda para séries com payload completo (diário)"
+  schedule_expression = "cron(05 10 * * ? *)" # Todos os dias às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -108,19 +106,17 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_daily" {
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
-  name        = "${local.tmdb_prefix}-lambda-api-movie-monthly-${var.env}"
-  description = "Dispara a Lambda para filmes com payload completo (mensal, dia 1)"
-  # schedule_expression = "cron(00 10 1 * ? *)" # Todo dia 1 do mês às 10:00 UTC / 07:00 BRT
-  schedule_expression = "cron(30 17 * * ? *)" # Todo dia 1 do mês às 10:00 UTC / 07:00 BRT
+  name                = "${local.tmdb_prefix}-lambda-api-movie-monthly-${var.env}"
+  description         = "Dispara a Lambda para filmes com payload completo (mensal, dia 1)"
+  schedule_expression = "cron(00 10 1 * ? *)" # Todo dia 1 do mês às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_monthly" {
-  name        = "${local.tmdb_prefix}-lambda-api-tv-monthly-${var.env}"
-  description = "Dispara a Lambda para series com payload completo (mensal, dia 1)"
-  # schedule_expression = "cron(05 10 1 * ? *)" # Todo dia 1 do mês às 10:05 UTC / 07:05 BRT
-  schedule_expression = "cron(35 17 * * ? *)" # Todo dia 1 do mês às 10:05 UTC / 07:05 BRT
+  name                = "${local.tmdb_prefix}-lambda-api-tv-monthly-${var.env}"
+  description         = "Dispara a Lambda para series com payload completo (mensal, dia 1)"
+  schedule_expression = "cron(05 10 1 * ? *)" # Todo dia 1 do mês às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -184,9 +180,10 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_monthly" {
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "sfn_backfill_annual" {
-  name                = "${local.tmdb_prefix}-sfn-backfill-annual-${var.env}"
-  description         = "Dispara o backfill histórico TMDB todo dia 1 de janeiro"
-  schedule_expression = "cron(30 10 1 1 ? *)" # 1º de janeiro às 10:30 UTC / 07:30 BRT
+  name        = "${local.tmdb_prefix}-sfn-backfill-annual-${var.env}"
+  description = "Dispara o backfill histórico TMDB todo dia 1 de janeiro"
+  # schedule_expression = "cron(30 10 1 1 ? *)" # 1º de janeiro às 10:30 UTC / 07:30 BRT
+  schedule_expression = "cron(30 18 * * ? *)" # 1º de janeiro às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.sfn_backfill
 }
@@ -198,6 +195,6 @@ resource "aws_cloudwatch_event_target" "sfn_backfill_annual_target" {
   role_arn  = aws_iam_role.eventbridge_sfn_role.arn
 
   input = jsonencode({
-    start_year = 2000
+    start_year = 2022
   })
 }
