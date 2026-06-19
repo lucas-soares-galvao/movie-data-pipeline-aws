@@ -31,8 +31,8 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 1. Lê os argumentos do Glue (`get_parameters_glue`)
 2. Lê o JSON do S3 SOR para o ano especificado (`read_from_sor`)
 3. Escreve Parquet na SOT particionado por `year`, modo `overwrite_partitions` (`write_parquet_to_sot`)
-4. Aciona Glue Data Quality para a tabela processada (`trigger_data_quality`)
-5. Aciona Glue Details para enriquecimento (`trigger_details`)
+4. Aciona Glue Data Quality para a tabela processada (`trigger_glue_job`)
+5. Aciona Glue Details para enriquecimento (`trigger_glue_job`)
 
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
@@ -57,8 +57,14 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 | `read_from_sor(bucket, media_type, table_type, year)` | Lê JSON/Parquet da camada SOR |
 | `write_parquet_to_sot(df, bucket, table_name, database, partition_cols, mode)` | Escreve Parquet e registra no Glue Catalog via AWS Wrangler |
 | `derive_canonical_name(name)` | Padroniza um nome de plataforma de streaming (ex: "Netflix Standard with Ads" → "Netflix"); usada internamente por `read_from_sor()` |
-| `trigger_data_quality(dq_job_name, table_name, database, year)` | Aciona o job de qualidade de dados |
-| `trigger_details(details_job_name, media_type, year, end_year, database)` | Aciona o job de enriquecimento de detalhes |
+
+## Funções compartilhadas (`shared/`)
+
+Importadas do pacote `shared`, reutilizadas por múltiplos componentes do pipeline:
+
+| Função | Origem | Responsabilidade |
+|---|---|---|
+| `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, Details, AGG) com argumentos dinâmicos |
 
 ## Tecnologias
 

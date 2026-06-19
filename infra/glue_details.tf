@@ -19,7 +19,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
 
   default_arguments = {
     "--job-language"                = "python"
-    "--extra-py-files"              = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_details_job_name}/${local.glue_details_wheel_filename}"
+    "--extra-py-files"              = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_details_job_name}/${local.glue_details_wheel_filename},s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/shared/${local.shared_wheel_filename}"
     "--additional-python-modules"   = local.glue_details_additional_python_modules
     "--custom-logGroup-prefix"      = "/${local.envs.glue_details_job_name}"
     "--S3_BUCKET_SOT"               = local.envs.s3_bucket_sot
@@ -41,6 +41,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_details,
     aws_s3_object.deploy_app_wheel_details,
+    aws_s3_object.deploy_shared_wheel,
     aws_iam_role_policy_attachment.glue_details_base,
     aws_iam_role_policy_attachment.glue_details_read_code,
     aws_iam_role_policy.glue_details_logs,

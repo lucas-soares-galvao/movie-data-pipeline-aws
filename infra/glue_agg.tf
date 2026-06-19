@@ -23,7 +23,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
     # Pacote (wheel) com os modulos auxiliares importados pelo script principal.
     # Jobs Python Shell so adicionam .whl/.egg ao sys.path via --extra-py-files (.zip
     # nao e suportado aqui — somente em jobs Spark), por isso usamos um wheel.
-    "--extra-py-files"             = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename}"
+    "--extra-py-files"             = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_agg_job_name}/${local.glue_agg_wheel_filename},s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/shared/${local.shared_wheel_filename}"
     "--additional-python-modules"  = local.glue_agg_additional_python_modules
     "--custom-logGroup-prefix"     = "/${local.envs.glue_agg_job_name}"
     "--S3_BUCKET_SPEC"             = local.envs.s3_bucket_spec
@@ -43,6 +43,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_agg,
     aws_s3_object.deploy_app_wheel_agg,
+    aws_s3_object.deploy_shared_wheel,
     aws_iam_role_policy_attachment.glue_agg_base,
     aws_iam_role_policy_attachment.glue_agg_read_code,
     aws_iam_role_policy.glue_agg_logs,

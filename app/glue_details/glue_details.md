@@ -27,7 +27,7 @@ Chamadas à API usam **retry com backoff exponencial e jitter** para lidar com r
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`, `END_YEAR`, `DATABASE`, `DATABASE_UNIFIED`, nomes dos buckets e jobs |
+| **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`, `END_YEAR`, `DATABASE`, nomes dos buckets e jobs |
 | **Leitura** | Athena (IDs da tabela discover na SOT), Secrets Manager (chave API), API TMDB |
 | **Escrita** | S3 SOT — tabelas `tb_details_*` e `tb_watch_providers_*` como Parquet + Glue Catalog |
 | **Aciona** | Glue Data Quality (por tabela gravada) + Glue AGG (apenas na última execução de séries) |
@@ -41,18 +41,24 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | Função | Responsabilidade |
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
-| `get_tmdb_api_key(secret_arn)` | Busca a chave da API no Secrets Manager |
 | `fetch_ids_from_sot(...)` | Consulta Athena para listar todos os IDs únicos do discover |
 | `fetch_existing_ids_from_details(...)` | Retorna IDs já processados no mês atual em **qualquer partição `year`** (sem filtro de ano) — usados para calcular o delta e evitar reprocessamento por jobs concorrentes |
 | `fetch_ids_stale_watch_providers(...)` | Retorna IDs sem watch providers ou atualizados antes do mês atual |
-| `_tmdb_get(url, api_key)` | GET com retry/backoff para lidar com rate limits |
 | `collect_and_write_details(ids, ...)` | Faz chamadas paralelas e grava tabela de detalhes |
 | `collect_and_write_watch_providers(ids, ...)` | Faz chamadas paralelas e grava tabela de watch providers |
 | `repair_discover_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro de maior `popularity` e regrava apenas se houver mudanças |
 | `repair_watch_providers_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id, provider_type, provider_id)` mantendo o `dt_atualizacao` mais recente e regrava apenas se houver mudanças |
 | `repair_details_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro com `dt_processamento` mais recente e regrava apenas se houver mudanças |
-| `trigger_data_quality(...)` | Aciona o job de qualidade de dados |
-| `trigger_agg(...)` | Aciona o Glue AGG na última execução |
+
+## Funções compartilhadas (`shared/`)
+
+Importadas do pacote `shared`, reutilizadas por múltiplos componentes do pipeline:
+
+| Função | Origem | Responsabilidade |
+|---|---|---|
+| `tmdb_get(url, params, max_retries)` | `shared_utils.tmdb_api` | GET com retry/backoff para lidar com rate limits da API TMDB |
+| `get_tmdb_api_key(secret_arn)` | `shared_utils.tmdb_api` | Busca a chave da API no Secrets Manager |
+| `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, AGG) com argumentos dinâmicos |
 
 ## Tecnologias
 

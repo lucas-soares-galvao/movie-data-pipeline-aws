@@ -34,7 +34,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     # Arquivos .zip são suportados apenas em jobs Spark.
     # O arquivo .whl contém o pacote "src" (src/utils.py, etc.) da aplicação,
     # permitindo que o main.py faça "from src.utils import ..." sem erro.
-    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename}"
+    "--extra-py-files" = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_etl_job_name}/${local.glue_etl_wheel_filename},s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/shared/${local.shared_wheel_filename}"
 
     # ==========================================================================
     # --additional-python-modules: Instala bibliotecas PyPI no runtime do Glue
@@ -70,6 +70,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_etl,
     aws_s3_object.deploy_app_wheel_etl,
+    aws_s3_object.deploy_shared_wheel,
     aws_iam_role_policy_attachment.glue_etl_base,
     aws_iam_role_policy_attachment.glue_etl_read_code,
     aws_iam_role_policy.glue_etl_logs,

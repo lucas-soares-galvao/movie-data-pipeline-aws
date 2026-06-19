@@ -10,6 +10,7 @@ from awsglue.context import GlueContext
 from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import GlueArgumentError, getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
+from pyspark.sql import DataFrame as SparkDataFrame
 from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit, when
 from pyspark.sql.types import StringType
 
@@ -82,7 +83,7 @@ def read_table_from_catalog(
     database: str,
     table_name: str,
     year: Optional[str] = None,
-):
+) -> DynamicFrame:
     """
     Lê uma tabela do Glue Catalog como DynamicFrame.
 
@@ -115,12 +116,12 @@ def read_table_from_catalog(
 
 def evaluate_data_quality(
     glue_context: GlueContext,
-    dynamic_frame,
+    dynamic_frame: DynamicFrame,
     ruleset: str,
     table_name: str,
     database: str,
     year: Optional[str] = None,
-):
+) -> SparkDataFrame:
     """
     Avalia as regras DQDL contra o DynamicFrame e retorna DataFrame com resultados.
 

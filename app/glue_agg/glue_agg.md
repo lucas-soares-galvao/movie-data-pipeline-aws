@@ -72,9 +72,14 @@ LEFT JOIN tb_tmdb_now_playing_movie_{env} np ON np.id = u.id AND u.media_type = 
 | Função | Responsabilidade |
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job (inclui `GLUE_DATA_QUALITY_JOB_NAME`) |
-| `run_athena_query(db_movie, db_tv, db_unified, s3_bucket_temp)` | Executa o SQL de unificação (com dedup de watch providers por `DENSE_RANK`, dedup final por `spec_deduped` e LEFT JOIN com `now_playing` para enriquecer filmes com `in_theaters`, `theater_start_date`, `theater_end_date`) e retorna um DataFrame |
-| `write_parquet_to_spec(df, s3_bucket_spec, table_name, database)` | Grava Parquet com `mode="overwrite"` particionado por `(media_type, year)` na SPEC e registra no Glue Catalog |
-| `trigger_data_quality(dq_job_name, table_name, database, year=None)` | Aciona o job de Data Quality; quando `year=None`, avalia a tabela inteira |
+| `run_athena_query(db_movie, db_tv, db_unified, s3_bucket_temp, env)` | Executa o SQL de unificação (com dedup de watch providers por `DENSE_RANK`, dedup final por `spec_deduped` e LEFT JOIN com `now_playing` para enriquecer filmes com `in_theaters`, `theater_start_date`, `theater_end_date`) e retorna um DataFrame |
+| `write_parquet_to_spec(df, s3_bucket_spec, s3_prefix_spec, table_name, database)` | Grava Parquet com `mode="overwrite"` particionado por `(media_type, year)` na SPEC e registra no Glue Catalog |
+
+## Funções compartilhadas (`shared/`)
+
+| Função | Origem | Responsabilidade |
+|---|---|---|
+| `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue com argumentos dinâmicos; aqui usado para acionar o DQ sem `year` (avalia a tabela inteira) |
 
 ## Tecnologias
 

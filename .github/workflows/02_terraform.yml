@@ -74,12 +74,26 @@ jobs:
           python infra/scripts/build_lambda_package.py \
             --src app/lambda_api \
             --requirements app/lambda_api/requirements.txt \
-            --dest infra/.lambda_build
+            --dest infra/.lambda_build \
+            --shared app/shared_src/shared_utils
           if [ -z "$(ls -A infra/.lambda_build/ 2>/dev/null)" ]; then
             echo "❌ Build da Lambda falhou — diretório infra/.lambda_build está vazio."
             exit 1
           fi
           echo "✅ Lambda package criado com sucesso"
+
+      - name: Build Shared Wheel
+        run: |
+          python infra/scripts/build_glue_wheel.py \
+            --src app/shared_src \
+            --dest infra/.shared_build \
+            --name tmdb_shared \
+            --package shared_utils
+          if [ -z "$(ls -A infra/.shared_build/ 2>/dev/null)" ]; then
+            echo "❌ Build do Shared falhou — diretório infra/.shared_build está vazio."
+            exit 1
+          fi
+          echo "✅ Shared wheel criado com sucesso"
 
       # O plan referencia o .whl do Glue ETL; precisa existir antes do plan.
       # Build sempre executado aqui (não via null_resource/local-exec do Terraform),
@@ -199,8 +213,8 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_backend \
             -target=aws_iam_policy.cicd_s3 \
             -target=aws_iam_role_policy_attachment.cicd_s3 \
-            -target=aws_iam_policy.cicd_iam \
-            -target=aws_iam_role_policy_attachment.cicd_iam \
+            -target=aws_iam_policy.iam_cicd \
+            -target=aws_iam_role_policy_attachment.iam_cicd \
             -target=aws_iam_policy.cicd_compute \
             -target=aws_iam_role_policy_attachment.cicd_compute \
             -target=aws_iam_policy.cicd_observability \

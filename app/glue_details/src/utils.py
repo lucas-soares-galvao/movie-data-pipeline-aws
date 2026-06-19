@@ -1,96 +1,24 @@
 """utils.py — Funções auxiliares do job Glue Details."""
 
-import json
 import logging
-import random
 import sys
 import threading
-import time
 from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 import awswrangler as wr
-import boto3
 import pandas as pd
 import requests
 from awsglue.utils import getResolvedOptions
 from deep_translator import GoogleTranslator
-from requests.exceptions import ConnectionError, Timeout
+
+from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get  # noqa: F401 (get_tmdb_api_key)
+from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 logger = logging.getLogger()
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
-
-# Códigos HTTP que indicam problema temporário no servidor — vale tentar de novo.
-# 429 = Too Many Requests (enviamos rápido demais — a TMDB pede para esperar)
-# 500 = Internal Server Error (problema no servidor da TMDB — pode ser passageiro)
-# 502 = Bad Gateway (servidor intermediário com problema temporário)
-# 503 = Service Unavailable (TMDB temporariamente fora do ar)
-# 504 = Gateway Timeout (servidor demorou demais para responder)
-# Para esses erros vale tentar novamente. Para outros (401 Unauthorized, 404 Not Found)
-# não adianta tentar de novo — é um erro permanente.
-_TMDB_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
-
-
-def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
-    """
-    GET na API do TMDB com retry e backoff exponencial em erros transientes.
-
-    Args:
-        url:         URL completa do endpoint da API do TMDB.
-        params:      Parâmetros de query string.
-        max_retries: Número máximo de tentativas antes de desistir.
-
-    Returns:
-        Dicionário Python com a resposta JSON da API.
-
-    Raises:
-        HTTPError: Se o servidor responder com erro não-transiente ou tentativas esgotadas.
-        ConnectionError / Timeout: Se não conseguir conectar após max_retries tentativas.
-    """
-    for attempt in range(max_retries):
-        is_last_attempt = attempt == max_retries - 1
-        try:
-            response = requests.get(url, params=params, timeout=30)
-            if response.status_code in _TMDB_TRANSIENT_STATUS:
-                if is_last_attempt:
-                    logger.error(
-                        f"HTTP {response.status_code} após {max_retries} tentativas. "
-                        f"Todas as tentativas esgotadas para {url}."
-                    )
-                    response.raise_for_status()
-                # Para 429, o TMDB informa no header "Retry-After" quanto tempo esperar.
-                # Para os demais erros transientes, usa backoff exponencial (1s → 2s → 4s).
-                # random.uniform(0, 1) adiciona um "jitter" (variação aleatória) de até 1s
-                # para evitar que múltiplos workers acordem exatamente ao mesmo tempo.
-                if response.status_code == 429 and "Retry-After" in response.headers:
-                    wait = int(response.headers["Retry-After"]) + random.uniform(0, 1)
-                else:
-                    wait = (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(
-                    f"HTTP {response.status_code} (tentativa {attempt + 1}/{max_retries}). "
-                    f"Aguardando {wait:.1f}s..."
-                )
-                time.sleep(wait)
-                continue
-            # Se chegou aqui, o status não é transiente — raise_for_status() lança exceção
-            # para qualquer outro erro 4xx/5xx (ex: 401, 404). Para 200 OK retorna normalmente.
-            response.raise_for_status()
-            return response.json()
-        except (ConnectionError, Timeout) as e:
-            if is_last_attempt:
-                logger.error(
-                    f"Erro de conexão após {max_retries} tentativas: {e}. "
-                    f"Todas as tentativas esgotadas para {url}."
-                )
-                raise
-            wait = (2 ** attempt) + random.uniform(0, 1)  # backoff exponencial com jitter
-            logger.warning(
-                f"Erro de conexão (tentativa {attempt + 1}/{max_retries}): {e}. "
-                f"Aguardando {wait:.1f}s..."
-            )
-            time.sleep(wait)
 
 
 def get_resolved_option(args: list) -> Dict[str, Any]:
@@ -123,24 +51,6 @@ def get_parameters_glue() -> Dict[str, Any]:
         "END_YEAR",
     ]
     return get_resolved_option(required_args)
-
-
-def get_tmdb_api_key(secret_arn: str) -> str:
-    """
-    Busca a chave de API do TMDB no Secrets Manager.
-
-    Formato do segredo: {"tmdb_api_key": "sua-chave-aqui"}
-
-    Args:
-        secret_arn: ARN do segredo cadastrado no Secrets Manager.
-
-    Returns:
-        A chave de API do TMDB como string.
-    """
-    client = boto3.client("secretsmanager")
-    response = client.get_secret_value(SecretId=secret_arn)
-    secret = json.loads(response["SecretString"])
-    return secret["tmdb_api_key"]
 
 
 def fetch_ids_from_sot(
@@ -301,7 +211,7 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}"
     params = {"api_key": api_key, "language": "en-US"}
 
-    return _tmdb_get(url, params)
+    return tmdb_get(url, params)
 
 
 _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
@@ -691,7 +601,7 @@ def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) ->
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}/watch/providers"
     params = {"api_key": api_key}
 
-    results = _tmdb_get(url, params).get("results", {})
+    results = tmdb_get(url, params).get("results", {})
     return results.get("BR", {})
 
 
@@ -809,57 +719,3 @@ def collect_and_write_watch_providers(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
-
-
-def trigger_data_quality(
-    dq_job_name: str,
-    table_name: str,
-    database: str,
-    year: Optional[str] = None,
-) -> str:
-    """
-    Dispara o job Glue Data Quality sem aguardar.
-
-    Args:
-        dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
-        table_name:  Nome da tabela a validar.
-        database:    Nome do banco de dados no Glue Catalog.
-        year:        Ano da partição.
-
-    Returns:
-        JobRunId da execução.
-    """
-    arguments = {
-        "--TABLE_NAME": table_name,
-        "--DATABASE": database,
-    }
-    if year is not None:
-        arguments["--YEAR"] = year
-
-    glue_client = boto3.client("glue")
-    response = glue_client.start_job_run(
-        JobName=dq_job_name,
-        Arguments=arguments,
-    )
-    run_id = response["JobRunId"]
-    logger.info(
-        f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}"
-    )
-    return run_id
-
-
-def trigger_agg(agg_job_name: str) -> str:
-    """
-    Dispara o job Glue AGG.
-
-    Args:
-        agg_job_name: Nome do job Glue AGG cadastrado na AWS.
-
-    Returns:
-        JobRunId da execução.
-    """
-    glue_client = boto3.client("glue")
-    response = glue_client.start_job_run(JobName=agg_job_name)
-    run_id = response["JobRunId"]
-    logger.info(f"Job AGG '{agg_job_name}' iniciado. RunId: {run_id}")
-    return run_id

@@ -13,6 +13,7 @@ from pathlib import Path
 
 _TEST_ROOT = Path(__file__).parent
 _APP_ROOT = _TEST_ROOT.parent / "app"
+_SHARED_DIR = str(_APP_ROOT / "shared_src")
 
 # Ex: quando o pytest processa test/glue_agg/..., o app correspondente é app/glue_agg/
 _SUITE_TO_APP: dict[str, Path] = {
@@ -53,10 +54,10 @@ def _set_suite_path(app_dir: Path) -> None:
     """
     app_dir_str = str(app_dir)
     src_dir_str = str(app_dir / "src")
-    # Reconstrói sys.path: src/ e app_dir da suite atual no início,
+    # Reconstrói sys.path: src/, app_dir e shared/ da suite atual no início,
     # seguidos pelos outros caminhos que NÃO são de nenhuma suite conhecida.
-    sys.path[:] = [src_dir_str, app_dir_str] + [
-        p for p in sys.path if p not in _ALL_APP_DIRS and p not in _ALL_SRC_DIRS
+    sys.path[:] = [src_dir_str, app_dir_str, _SHARED_DIR] + [
+        p for p in sys.path if p not in _ALL_APP_DIRS and p not in _ALL_SRC_DIRS and p != _SHARED_DIR
     ]
 
 
@@ -83,11 +84,11 @@ def pytest_collect_file(parent, file_path):  # noqa: ARG001
     if app_dir is None:
         return  # suite desconhecida (ex: lightsail, que tem estrutura diferente)
 
-    # Remove do cache Python os módulos "src", "main", "utils" e "src.*"
+    # Remove do cache Python os módulos "src", "main", "utils", "shared_utils" e "src.*"/"shared_utils.*"
     # para que a próxima importação use os módulos da suite correta.
     # Sem isso, Python reutilizaria o módulo em cache da suite anterior.
     for key in list(sys.modules.keys()):
-        if key in ("src", "main", "utils") or key.startswith("src."):
+        if key in ("src", "main", "utils", "shared_utils") or key.startswith("src.") or key.startswith("shared_utils."):
             del sys.modules[key]
 
     # Reconfigura sys.path para a suite atual (remove diretórios de outras suites)

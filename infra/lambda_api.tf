@@ -6,12 +6,13 @@
 resource "null_resource" "lambda_build" {
   triggers = {
     source_hash       = sha256(join("", [for f in fileset(local.lambda_api_src_path, "**/*.py") : filesha256("${local.lambda_api_src_path}/${f}")]))
+    shared_hash       = sha256(join("", [for f in fileset(local.shared_src_path, "shared_utils/**/*.py") : filesha256("${local.shared_src_path}/${f}")]))
     requirements_hash = filesha256(local.lambda_api_requirements_path)
     builder_hash      = filesha256("${path.module}/scripts/build_lambda_package.py")
   }
 
   provisioner "local-exec" {
-    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_api_src_path} --requirements ${local.lambda_api_requirements_path} --dest ${local.lambda_api_build_path}"
+    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_api_src_path} --requirements ${local.lambda_api_requirements_path} --dest ${local.lambda_api_build_path} --shared ${local.shared_src_path}/shared_utils"
   }
 }
 

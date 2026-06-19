@@ -40,7 +40,7 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 
 | Teste | O que verifica |
 |---|---|
-| `test_calls_get_ruleset_with_table_name` | `get_ruleset` é chamado com o `TABLE_NAME` dos args |
+| `test_calls_get_ruleset_with_table_name_and_environment` | `get_ruleset` é chamado com o `TABLE_NAME` e `ENVIRONMENT` dos args |
 | `test_calls_get_ruleset_for_discover_table` | `get_ruleset` funciona para qualquer nome de tabela |
 
 ### `TestReadTableFromCatalogCall`
@@ -100,6 +100,7 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 | `test_raises_key_error_for_unknown_table` | Levanta `KeyError` com o nome da tabela para tabelas sem ruleset |
 | `test_rules_separated_by_comma` | Quando há mais de uma regra, estão separadas por vírgula |
 | `test_works_for_all_tables_in_rulesets_dq` | `get_ruleset` funciona para todas as tabelas cadastradas |
+| `test_strips_environment_suffix_prod` | Remove o sufixo `_prod` do nome da tabela ao buscar a chave lógica no dicionário de rulesets |
 
 ### `TestReadTableFromCatalog`
 

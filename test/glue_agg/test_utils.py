@@ -1,9 +1,9 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pandas as pd
 
-from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, trigger_data_quality, write_parquet_to_spec
+from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, write_parquet_to_spec
 
 
 class TestRunAthenaQuery:
@@ -165,35 +165,3 @@ class TestGetParametersGlue:
         assert result["DB_UNIFIED"] == "db_unified"
         assert result["TABLE_NAME"] == "tb_unified"
         assert result["GLUE_DATA_QUALITY_JOB_NAME"] == "dq-job"
-
-
-class TestTriggerDataQuality:
-    def test_inicia_job_sem_year(self):
-        mock_client = MagicMock()
-        mock_client.start_job_run.return_value = {"JobRunId": "run-abc"}
-        with patch("src.utils.boto3.client", return_value=mock_client):
-            run_id = trigger_data_quality(
-                dq_job_name="dq-job",
-                table_name="tb_content",
-                database="db_unified",
-            )
-        assert run_id == "run-abc"
-        call_args = mock_client.start_job_run.call_args
-        arguments = call_args.kwargs["Arguments"]
-        assert arguments["--TABLE_NAME"] == "tb_content"
-        assert arguments["--DATABASE"] == "db_unified"
-        assert "--YEAR" not in arguments
-
-    def test_inicia_job_com_year(self):
-        mock_client = MagicMock()
-        mock_client.start_job_run.return_value = {"JobRunId": "run-xyz"}
-        with patch("src.utils.boto3.client", return_value=mock_client):
-            run_id = trigger_data_quality(
-                dq_job_name="dq-job",
-                table_name="tb_content",
-                database="db_unified",
-                year="2025",
-            )
-        assert run_id == "run-xyz"
-        arguments = mock_client.start_job_run.call_args.kwargs["Arguments"]
-        assert arguments["--YEAR"] == "2025"

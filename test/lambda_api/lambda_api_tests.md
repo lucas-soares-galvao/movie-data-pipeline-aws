@@ -70,9 +70,9 @@ test/lambda_api/
 
 ## Casos de teste — `test_utils.py`
 
-Testa individualmente as funções de `src/utils.py`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
+Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `shared/`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
 
-### `TestTmdbGet`
+### `TestTmdbGet` (de `shared_utils.tmdb_api`)
 
 | Teste | O que verifica |
 |---|---|
@@ -83,7 +83,7 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB, salvam
 | `test_levanta_apos_esgotar_tentativas_http` | Levanta `HTTPError` após esgotar 3 tentativas com erro HTTP |
 | `test_levanta_apos_esgotar_tentativas_connection` | Levanta `ConnectionError` após esgotar 3 tentativas com falha de rede |
 
-### `TestGetTmdbApiKey`
+### `TestGetTmdbApiKey` (de `shared_utils.tmdb_api`)
 
 | Teste | O que verifica |
 |---|---|
@@ -145,13 +145,12 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB, salvam
 |---|---|
 | `test_salva_todas_as_paginas_disponiveis` | Itera por todas as páginas disponíveis e chama `save_to_s3` uma vez por página |
 | `test_para_quando_so_ha_uma_pagina` | Para corretamente quando `total_pages = 1` |
-| `test_s3_key_segue_padrao_esperado` | Chave S3 segue o padrão `tmdb/discover/{type}/ano={ano}/pagina_NNN.json` |
-| `test_salva_apenas_results` | Dados salvos no S3 são apenas o campo `results`, sem metadados de paginação |
-| `test_nao_inclui_metadados_de_paginacao` | Não inclui `page`, `total_pages` ou `total_results` no payload salvo |
+| `test_s3_key_tem_formato_correto` | Chave S3 segue o padrão `tmdb/discover/{type}/ano={ano}/pagina_NNN.json` |
+| `test_salva_apenas_results_sem_metadados_de_paginacao` | Dados salvos no S3 são apenas o campo `results`, sem metadados de paginação (`page`, `total_pages`, `total_results`) |
 
 ### `collect_watch_providers_ref`
 
-9 testes verificando coleta de plataformas de streaming de referência: path S3 correto por `content_type` (movie/tv); JSON salvo no S3; múltiplas páginas processadas corretamente.
+7 testes verificando coleta de plataformas de streaming de referência: endpoint correto por `content_type` (movie/tv); `watch_region=BR` enviado; path S3 correto por tipo; extração de campos (`provider_id`, `provider_name`, `display_priority_br`); tratamento de `display_priority_br` ausente.
 
 ### `collect_now_playing_data`
 

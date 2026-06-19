@@ -101,6 +101,10 @@ locals {
   glue_details_wheel_build_path  = "${path.module}/.glue_details_build"
   glue_details_wheel_filename    = "glue_details_src-0.0.0-py3-none-any.whl"
 
+  shared_src_path         = "${path.root}/../app/shared_src"
+  shared_wheel_build_path = "${path.module}/.shared_build"
+  shared_wheel_filename   = "tmdb_shared-0.0.0-py3-none-any.whl"
+
   # ===========================================================================
   # MÓDULOS PYTHON ADICIONAIS PARA OS JOBS GLUE
   # ===========================================================================

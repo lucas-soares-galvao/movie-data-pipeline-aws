@@ -69,7 +69,7 @@ Interface web onde o usuário digita o que quer assistir em linguagem natural. U
 Liga e desliga automaticamente a instância Lightsail onde o FilmBot roda, reduzindo custo ao manter o servidor ativo apenas nos horários de uso. Acionado pelo EventBridge Scheduler com o parâmetro `"start"` ou `"stop"`, sem intervenção humana.
 
 ### Orquestrador de backfill (Step Functions)
-Responsável por coordenar a coleta histórica de dados ano a ano, sem ser limitado pelo timeout de 15 minutos da Lambda. Acionado automaticamente no dia 1º de janeiro, executa a Lambda sequencialmente para cada ano a partir de 2000, coletando tanto filmes quanto séries.
+Responsável por coordenar a coleta histórica de dados em lotes de 2 anos, sem ser limitado pelo timeout de 15 minutos da Lambda. Acionado automaticamente no dia 1º de janeiro, divide os anos (a partir de 2000) em batches e executa a Lambda sequencialmente para cada batch, com intervalos de 5 minutos entre filmes/séries e entre batches para evitar concorrência nos jobs Glue.
 
 ---
 

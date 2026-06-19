@@ -6,6 +6,7 @@ Fluxo: EventBridge → busca API key → coleta referências → coleta discover
 import logging
 import os
 from datetime import datetime
+from typing import Any
 
 import boto3
 
@@ -27,7 +28,7 @@ GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Coleta dados do TMDB e dispara o Glue ETL. Payload definido em eventbridge_lambda_api.tf."""
     s3_client = boto3.client("s3")
     glue_client = boto3.client("glue")
