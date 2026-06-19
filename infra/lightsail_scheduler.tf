@@ -22,7 +22,8 @@ resource "aws_iam_role" "lightsail_scheduler" {
     }]
   })
 
-  tags = local.component_tags.lightsail_scheduler
+  tags       = local.component_tags.lightsail_scheduler
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_role_policy" "lightsail_scheduler_control" {

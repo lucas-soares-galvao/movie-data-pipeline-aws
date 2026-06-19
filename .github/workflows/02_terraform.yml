@@ -160,6 +160,8 @@ jobs:
           cd infra
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
+            -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -auto-approve
 
       - name: Terraform Plan
@@ -169,6 +171,8 @@ jobs:
           cd infra
           terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
             -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
+            -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -out="${{ inputs.environment }}.plan"
 
       - name: Setup Infracost

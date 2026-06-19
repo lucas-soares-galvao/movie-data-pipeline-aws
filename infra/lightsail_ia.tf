@@ -2,8 +2,9 @@
 # e o IAM User com política mínima para que o app acesse Athena, S3 e Glue.
 
 resource "aws_iam_user" "lightsail_agent" {
-  name = "${local.tmdb_prefix}-filmbot-agent-${var.env}"
-  tags = merge(local.default_resource_tags, { Component = "lightsail_ia" })
+  name       = "${local.tmdb_prefix}-filmbot-agent-${var.env}"
+  tags       = merge(local.default_resource_tags, { Component = "lightsail_ia" })
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_policy" "lightsail_agent_policy" {

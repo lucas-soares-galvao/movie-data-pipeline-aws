@@ -94,7 +94,7 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 5. Injeta o e-mail de notificação no `.tfvars` (não é commitado no repo)
 6. `terraform destroy` **ou** `terraform plan` + Infracost + `terraform apply`
 
-**Autenticação AWS:** OIDC (sem chaves estáticas)
+**Autenticação AWS:** OIDC — assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`cicd_iam.tf`). As variáveis `cicd_statefile_s3_bucket` e `cicd_lock_dynamodb_table` são passadas via `-var` a partir dos secrets `aws-statefile-s3-bucket` e `aws-lock-dynamodb-table`.
 
 ---
 
