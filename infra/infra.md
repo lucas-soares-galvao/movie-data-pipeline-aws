@@ -76,11 +76,15 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 | `lambda_api_tv_monthly` | Dia 1 do mês | 07:05 BRT (10:05 UTC) | `skip_daily=true` — atualiza gêneros, países, plataformas |
 | `sfn_backfill_annual` | 1 de jan (anual) | 07:30 BR (10:30 UTC) | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
 
+**Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.
+
 ### Orquestração — Step Functions (`step_functions.tf`)
 
 State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a ano, contornando o limite de 15 minutos da Lambda.
 
 **Acionamento:** regra EventBridge `sfn_backfill_annual` no dia 1º de janeiro às 10:30 UTC, com input `{"start_year": 2000}`.
+
+**Logging:** habilitado com nível `ALL` e `include_execution_data = true`, enviando logs para o CloudWatch Log Group `/aws/vendedlogs/states/tmdb-sfn-backfill-{env}`.
 
 **Fluxo da execução:**
 
@@ -112,7 +116,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 
 - **Alarmes** para cada job Glue e para a Lambda (falhas, timeouts)
 - **Alarmes de métricas DQ** para o Glue Data Quality (regras com falha)
-- **Log groups** para Lambda e Glue com retenção configurável:
+- **Log groups** para Lambda, Glue e Step Functions com retenção configurável:
   - `dev`: 7 dias (reduz custo)
   - `prod`: 30 dias (permite investigar incidentes)
 
@@ -138,7 +142,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, StartJobRun (DQ) |
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
-| `tmdb-sfn-backfill-{env}` | Step Functions | `lambda:InvokeFunction` sobre a Lambda API |
+| `tmdb-sfn-backfill-{env}` | Step Functions | `lambda:InvokeFunction` sobre a Lambda API, CloudWatch Logs (logging de execução) |
 | `tmdb-eventbridge-sfn-{env}` | EventBridge (regra anual) | `states:StartExecution` sobre a state machine de backfill |
 | `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |
 
@@ -158,7 +162,7 @@ A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** 
 | `cicd-terraform-s3-{env}` | 6 buckets do projeto + bucket de state |
 | `cicd-terraform-iam-{env}` | Roles/policies/users `tmdb-*` + auto-gerenciamento `cicd-terraform-*` |
 | `cicd-terraform-compute-{env}` | Lambda, Glue (jobs + catalog), Step Functions |
-| `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms), SNS |
+| `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms), SNS, SQS (DLQ) |
 | `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1 |
 
 O workflow do GitHub Actions (`02_terraform.yml`) resolve o problema de bootstrap automaticamente: antes do `terraform plan`, um step aplica as 6 policies com `-target`, garantindo que a role tenha permissões antes de gerenciar os demais recursos. O step é idempotente — se as policies já existem, é um no-op.

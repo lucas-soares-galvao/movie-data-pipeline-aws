@@ -931,6 +931,40 @@ resource "aws_iam_role_policy" "glue_details_start_dq" {
 # STEP FUNCTIONS — Políticas do backfill histórico
 # =============================================================================
 
+resource "aws_iam_role_policy" "sfn_backfill_logs" {
+  name = "${local.tmdb_prefix}-sfn-backfill-logs-${var.env}"
+  role = aws_iam_role.sfn_backfill_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "LogDeliveryManagement"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+        ]
+        # Log Delivery v1 APIs não suportam resource-level permissions
+        Resource = "*"
+      },
+      {
+        Sid    = "DescribeTargetLogGroup"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups",
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "sfn_invoke_lambda" {
   name = "${local.tmdb_prefix}-sfn-backfill-invoke-lambda-${var.env}"
   role = aws_iam_role.sfn_backfill_role.id

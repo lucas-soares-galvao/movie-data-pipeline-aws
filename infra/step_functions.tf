@@ -169,10 +169,18 @@ resource "aws_sfn_state_machine" "backfill" {
     }
   })
 
+  logging_configuration {
+    log_destination        = "${aws_cloudwatch_log_group.sfn_backfill.arn}:*"
+    include_execution_data = true
+    level                  = "ALL"
+  }
+
   tags = local.component_tags.sfn_backfill
 
   depends_on = [
     aws_iam_role_policy.sfn_invoke_lambda,
-    aws_lambda_function.simple_lambda
+    aws_iam_role_policy.sfn_backfill_logs,
+    aws_lambda_function.simple_lambda,
+    aws_cloudwatch_log_group.sfn_backfill
   ]
 }

@@ -117,6 +117,10 @@ resource "aws_cloudwatch_event_target" "lightsail_stop_target" {
   target_id = "lightsail-stop"
   arn       = aws_lambda_function.lightsail_scheduler[0].arn
   input     = jsonencode({ action = "stop" })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_lightsail_stop" {
@@ -143,6 +147,10 @@ resource "aws_cloudwatch_event_target" "lightsail_start_weekday_target" {
   target_id = "lightsail-start-weekday"
   arn       = aws_lambda_function.lightsail_scheduler[0].arn
   input     = jsonencode({ action = "start" })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_lightsail_start_weekday" {
@@ -169,6 +177,10 @@ resource "aws_cloudwatch_event_target" "lightsail_start_weekend_target" {
   target_id = "lightsail-start-weekend"
   arn       = aws_lambda_function.lightsail_scheduler[0].arn
   input     = jsonencode({ action = "start" })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_lightsail_start_weekend" {

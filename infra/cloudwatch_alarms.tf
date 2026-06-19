@@ -95,6 +95,25 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
   tags = local.component_tags.eventbridge
 }
 
+# Alarme da DLQ do EventBridge — dispara quando há mensagens na fila (eventos não entregues)
+resource "aws_cloudwatch_metric_alarm" "eventbridge_dlq_alarm" {
+  alarm_name          = "${local.tmdb_prefix}-eventbridge-dlq-alarm-${var.env}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Alerta quando o EventBridge falha ao entregar eventos ao target."
+  treat_missing_data  = "notBreaching"
+  dimensions = {
+    QueueName = aws_sqs_queue.eventbridge_dlq.name
+  }
+  alarm_actions = [aws_sns_topic.eventbridge_failure_notifications.arn]
+  tags          = local.component_tags.eventbridge
+}
+
 # Notificação customizada de falha da Lambda (quando alarme entra em ALARM)
 resource "aws_cloudwatch_event_rule" "lambda_alarm_failed_state_change" {
   name        = "${local.tmdb_prefix}-lambda-alarm-failed-state-change-${var.env}"

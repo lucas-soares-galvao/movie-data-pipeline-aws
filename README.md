@@ -105,7 +105,7 @@ O pipeline é orquestrado por 5 workflows em `.github/workflows/`. Consulte [`.g
 | Processamento de dados | AWS Glue (PySpark), AWS Lambda |
 | Agendamento | AWS EventBridge (pipeline de dados), AWS EventBridge Scheduler (ciclo de vida do Lightsail), AWS Step Functions (backfill histórico anual) |
 | Armazenamento | AWS S3 (arquitetura medalhão — 4 camadas: SOR → SOT → SPEC → DQ), AWS Glue Catalog (catálogo de metadados), AWS Athena (consultas SQL sobre o S3) |
-| Observabilidade | AWS CloudWatch, AWS SNS |
+| Observabilidade | AWS CloudWatch, AWS SNS, AWS SQS (dead-letter queue) |
 | Interface web | Streamlit (hospedado no AWS Lightsail, HTTPS via Caddy) |
 | Inteligência artificial | litellm (abstração LLM — suporta OpenAI, DeepSeek, Claude, etc.) para recomendações e extração de filtros |
 

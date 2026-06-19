@@ -460,6 +460,7 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
         Resource = [
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.tmdb_prefix}-*",
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/vendedlogs/states/${local.tmdb_prefix}-*",
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.tmdb_prefix}-*",
         ]
       },
@@ -475,6 +476,21 @@ resource "aws_iam_policy" "cicd_observability" {
           "cloudwatch:UntagResource",
         ]
         Resource = "arn:aws:cloudwatch:sa-east-1:${data.aws_caller_identity.current.account_id}:alarm:${local.tmdb_prefix}-*"
+      },
+      {
+        Sid    = "SQSQueues"
+        Effect = "Allow"
+        Action = [
+          "sqs:CreateQueue",
+          "sqs:DeleteQueue",
+          "sqs:GetQueueAttributes",
+          "sqs:SetQueueAttributes",
+          "sqs:GetQueueUrl",
+          "sqs:ListQueueTags",
+          "sqs:TagQueue",
+          "sqs:UntagQueue",
+        ]
+        Resource = "arn:aws:sqs:sa-east-1:${data.aws_caller_identity.current.account_id}:${local.tmdb_prefix}-*"
       },
       {
         Sid    = "SNSTopics"

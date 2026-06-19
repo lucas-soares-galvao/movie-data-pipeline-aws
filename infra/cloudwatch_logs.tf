@@ -51,3 +51,9 @@ resource "aws_cloudwatch_log_group" "glue_details_output" {
   retention_in_days = var.log_retention_days
   tags              = local.component_tags.glue_details
 }
+
+resource "aws_cloudwatch_log_group" "sfn_backfill" {
+  name              = "/aws/vendedlogs/states/${local.tmdb_prefix}-sfn-backfill-${var.env}"
+  retention_in_days = var.log_retention_days
+  tags              = local.component_tags.sfn_backfill
+}

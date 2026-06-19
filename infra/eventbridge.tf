@@ -54,6 +54,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
     table_watch_providers_ref_movie = local.envs.glue_catalog_tb_watch_providers_ref_movie,
     table_now_playing_movie         = local.envs.glue_catalog_tb_now_playing_movie
   })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 # Vincula a regra de séries à Lambda com payload para TV
@@ -72,6 +76,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_discover_target" {
     table_configuration_countries = local.envs.glue_catalog_tb_configuration_countries,
     table_watch_providers_ref_tv  = local.envs.glue_catalog_tb_watch_providers_ref_tv
   })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 # Permissão explícita para o EventBridge invocar a Lambda.
@@ -136,6 +144,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
     table_configuration_languages   = local.envs.glue_catalog_tb_configuration_languages,
     table_watch_providers_ref_movie = local.envs.glue_catalog_tb_watch_providers_ref_movie
   })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
@@ -153,6 +165,10 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
     table_configuration_countries = local.envs.glue_catalog_tb_configuration_countries,
     table_watch_providers_ref_tv  = local.envs.glue_catalog_tb_watch_providers_ref_tv
   })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_movie_monthly" {
@@ -183,7 +199,7 @@ resource "aws_cloudwatch_event_rule" "sfn_backfill_annual" {
   name        = "${local.tmdb_prefix}-sfn-backfill-annual-${var.env}"
   description = "Dispara o backfill histórico TMDB todo dia 1 de janeiro"
   # schedule_expression = "cron(30 10 1 1 ? *)" # 1º de janeiro às 10:30 UTC / 07:30 BRT
-  schedule_expression = "cron(30 18 * * ? *)" # 1º de janeiro às 10:00 UTC / 07:00 BRT
+  schedule_expression = "cron(00 20 * * ? *)" # 1º de janeiro às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.sfn_backfill
 }
@@ -197,4 +213,8 @@ resource "aws_cloudwatch_event_target" "sfn_backfill_annual_target" {
   input = jsonencode({
     start_year = 2022
   })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
 }
