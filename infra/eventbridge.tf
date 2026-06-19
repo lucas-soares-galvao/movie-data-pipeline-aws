@@ -19,7 +19,7 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (diário)"
-  schedule_expression = "cron(10 13 * * ? *)" # Todos os dias às 10:00 UTC / 07:00 BRT
+  schedule_expression = "cron(40 14 * * ? *)" # Todos os dias às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -28,7 +28,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
   description         = "Dispara a Lambda para séries com payload completo (diário)"
-  schedule_expression = "cron(15 13 * * ? *)" # Todos os dias às 10:05 UTC / 07:05 BRT
+  schedule_expression = "cron(45 14 * * ? *)" # Todos os dias às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
