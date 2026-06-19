@@ -41,7 +41,7 @@ resource "aws_iam_role_policy" "lightsail_scheduler_control" {
         "lightsail:StartInstance",
         "lightsail:GetInstance",
       ]
-      Resource = "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:Instance/*"
+      Resource = aws_lightsail_instance.filmbot[0].arn
     }]
   })
 }
@@ -61,8 +61,8 @@ resource "aws_iam_role_policy" "lightsail_scheduler_logs" {
         "logs:PutLogEvents",
       ]
       Resource = [
-        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}",
-        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}:log-stream:*",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.tmdb_prefix}-lightsail-scheduler-${var.env}:log-stream:*",
       ]
     }]
   })

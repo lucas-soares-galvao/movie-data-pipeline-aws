@@ -53,6 +53,48 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
 # GLUE COMPARTILHADO — Leitura do código no bucket AUX (todos os jobs Glue)
 # =============================================================================
 
+# Substitui a managed policy AWSGlueServiceRole por permissões mínimas.
+# AWSGlueServiceRole concede glue:* em Resource *, anulando todas as policies
+# customizadas granulares. Esta policy fornece apenas o necessário para o
+# runtime Glue funcionar (métricas CloudWatch e S3 temporário do Spark).
+resource "aws_iam_policy" "glue_shared_base" {
+  name = "${local.tmdb_prefix}-glue-shared-base-${var.env}"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "CloudWatchMetrics"
+        Effect   = "Allow"
+        Action   = "cloudwatch:PutMetricData"
+        Resource = "*"
+      },
+      {
+        Sid    = "GlueSparkTempStorage"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:PutBucketPublicAccessBlock",
+        ]
+        Resource = "arn:aws:s3:::aws-glue-*"
+      },
+      {
+        Sid    = "GlueSparkTempObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = [
+          "arn:aws:s3:::aws-glue-*/*",
+          "arn:aws:s3:::*/*aws-glue-*/*",
+        ]
+      },
+    ]
+  })
+}
+
 # IMPORTANTE: O nome inclui o ambiente (${var.env}) para evitar conflito
 # quando dev e prod sao provisionados na mesma conta AWS.
 # Nomes de IAM Policy sao unicos por conta, entao sem sufixo haveria erro.
@@ -101,8 +143,8 @@ resource "aws_iam_role_policy" "glue_etl_logs" {
         Effect = "Allow"
         Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
         Resource = [
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_etl_job_name}/*",
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_etl_job_name}/*:log-stream:*"
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_etl_job_name}/*",
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_etl_job_name}/*:log-stream:*"
         ]
       }
     ]
@@ -120,8 +162,8 @@ resource "aws_iam_role_policy" "glue_dq_logs" {
         Effect = "Allow"
         Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
         Resource = [
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_data_quality_job_name}/*",
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_data_quality_job_name}/*:log-stream:*"
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_data_quality_job_name}/*",
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_data_quality_job_name}/*:log-stream:*"
         ]
       }
     ]
@@ -499,8 +541,8 @@ resource "aws_iam_role_policy" "glue_agg_logs" {
         Effect = "Allow"
         Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
         Resource = [
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_agg_job_name}/*",
-          "arn:aws:logs:*:*:log-group:/${local.envs.glue_agg_job_name}/*:log-stream:*"
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_agg_job_name}/*",
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_agg_job_name}/*:log-stream:*"
         ]
       }
     ]
@@ -701,8 +743,8 @@ resource "aws_iam_role_policy" "glue_details_logs" {
       Effect = "Allow"
       Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
       Resource = [
-        "arn:aws:logs:*:*:log-group:/${local.envs.glue_details_job_name}/*",
-        "arn:aws:logs:*:*:log-group:/${local.envs.glue_details_job_name}/*:log-stream:*"
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_details_job_name}/*",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.envs.glue_details_job_name}/*:log-stream:*"
       ]
     }]
   })

@@ -43,8 +43,8 @@ resource "aws_iam_role_policy" "lambda_logs" {
         "logs:PutLogEvents",
       ]
       Resource = [
-        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.envs.lambda_api_name}",
-        "arn:aws:logs:*:*:log-group:/aws/lambda/${local.envs.lambda_api_name}:log-stream:*",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.envs.lambda_api_name}",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.envs.lambda_api_name}:log-stream:*",
       ]
     }]
   })
@@ -65,9 +65,9 @@ resource "aws_iam_role" "glue_etl_role" {
   depends_on = [terraform_data.cicd_policies_ready]
 }
 
-resource "aws_iam_role_policy_attachment" "glue_etl_service_role" {
+resource "aws_iam_role_policy_attachment" "glue_etl_base" {
   role       = aws_iam_role.glue_etl_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+  policy_arn = aws_iam_policy.glue_shared_base.arn
 }
 
 
@@ -86,9 +86,9 @@ resource "aws_iam_role" "glue_dq_role" {
   depends_on = [terraform_data.cicd_policies_ready]
 }
 
-resource "aws_iam_role_policy_attachment" "glue_dq_service_role" {
+resource "aws_iam_role_policy_attachment" "glue_dq_base" {
   role       = aws_iam_role.glue_dq_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+  policy_arn = aws_iam_policy.glue_shared_base.arn
 }
 
 # =============================================================================
@@ -107,9 +107,9 @@ resource "aws_iam_role" "glue_agg_role" {
   depends_on = [terraform_data.cicd_policies_ready]
 }
 
-resource "aws_iam_role_policy_attachment" "glue_agg_service_role" {
+resource "aws_iam_role_policy_attachment" "glue_agg_base" {
   role       = aws_iam_role.glue_agg_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+  policy_arn = aws_iam_policy.glue_shared_base.arn
 }
 
 resource "aws_iam_role_policy_attachment" "glue_agg_read_code" {
@@ -132,9 +132,9 @@ resource "aws_iam_role" "glue_details_role" {
   depends_on = [terraform_data.cicd_policies_ready]
 }
 
-resource "aws_iam_role_policy_attachment" "glue_details_service_role" {
+resource "aws_iam_role_policy_attachment" "glue_details_base" {
   role       = aws_iam_role.glue_details_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+  policy_arn = aws_iam_policy.glue_shared_base.arn
 }
 
 resource "aws_iam_role_policy_attachment" "glue_details_read_code" {

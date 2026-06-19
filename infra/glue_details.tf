@@ -41,7 +41,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_details,
     aws_s3_object.deploy_app_wheel_details,
-    aws_iam_role_policy_attachment.glue_details_service_role,
+    aws_iam_role_policy_attachment.glue_details_base,
     aws_iam_role_policy_attachment.glue_details_read_code,
     aws_iam_role_policy.glue_details_logs,
     aws_iam_role_policy.glue_details_s3,

@@ -75,10 +75,28 @@ resource "aws_iam_policy" "cicd_s3" {
         Action = [
           "s3:CreateBucket",
           "s3:DeleteBucket",
+          "s3:ListBucket",
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy",
           "s3:DeleteBucketPolicy",
-          "s3:Get*",
-          "s3:Put*",
-          "s3:List*",
+          "s3:GetBucketVersioning",
+          "s3:PutBucketVersioning",
+          "s3:GetBucketTagging",
+          "s3:PutBucketTagging",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:GetEncryptionConfiguration",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration",
+          "s3:PutLifecycleConfiguration",
+          "s3:GetAccelerateConfiguration",
+          "s3:GetBucketAcl",
+          "s3:GetBucketCORS",
+          "s3:GetBucketLogging",
+          "s3:GetBucketObjectLockConfiguration",
+          "s3:GetBucketRequestPayment",
+          "s3:GetBucketWebsite",
+          "s3:GetReplicationConfiguration",
         ]
         Resource = [
           "arn:aws:s3:::${var.s3_bucket_aux}-*",
@@ -181,17 +199,20 @@ resource "aws_iam_policy" "cicd_iam" {
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.cicd_role_name}-*"
       },
       {
-        Sid    = "IAMInlineRolePolicy"
+        Sid    = "IAMInlineRolePolicyCRUD"
         Effect = "Allow"
         Action = [
           "iam:PutRolePolicy",
           "iam:GetRolePolicy",
           "iam:DeleteRolePolicy",
         ]
-        Resource = [
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.tmdb_prefix}-*",
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.cicd_role_name}-*",
-        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.tmdb_prefix}-*"
+      },
+      {
+        Sid      = "IAMCICDInlineRolePolicyReadOnly"
+        Effect   = "Allow"
+        Action   = "iam:GetRolePolicy"
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.cicd_role_name}-*"
       },
       {
         Sid    = "IAMManagedPolicyCRUD"

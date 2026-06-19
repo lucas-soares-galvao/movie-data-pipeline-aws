@@ -26,7 +26,20 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
         Resource = "arn:aws:athena:sa-east-1:${data.aws_caller_identity.current.account_id}:workgroup/primary"
       },
       {
-        Sid    = "S3Access"
+        Sid    = "S3ReadSpec"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+        ]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_spec}",
+          "arn:aws:s3:::${local.envs.s3_bucket_spec}/*",
+        ]
+      },
+      {
+        Sid    = "S3AthenaTemp"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
@@ -35,8 +48,6 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "s3:GetBucketLocation",
         ]
         Resource = [
-          "arn:aws:s3:::${local.envs.s3_bucket_spec}",
-          "arn:aws:s3:::${local.envs.s3_bucket_spec}/*",
           "arn:aws:s3:::${local.envs.s3_bucket_temp}",
           "arn:aws:s3:::${local.envs.s3_bucket_temp}/*",
         ]

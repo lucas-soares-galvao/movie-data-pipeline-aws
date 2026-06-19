@@ -43,7 +43,7 @@ resource "aws_glue_job" "agg_job_pythonshell" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_agg,
     aws_s3_object.deploy_app_wheel_agg,
-    aws_iam_role_policy_attachment.glue_agg_service_role,
+    aws_iam_role_policy_attachment.glue_agg_base,
     aws_iam_role_policy_attachment.glue_agg_read_code,
     aws_iam_role_policy.glue_agg_logs,
     aws_iam_role_policy.glue_agg_s3,
