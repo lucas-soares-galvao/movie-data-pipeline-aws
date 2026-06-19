@@ -959,7 +959,7 @@ resource "aws_iam_role_policy" "sfn_backfill_logs" {
         Action = [
           "logs:DescribeLogGroups",
         ]
-        Resource = aws_cloudwatch_log_group.sfn_backfill.arn
+        Resource = "*"
       }
     ]
   })
