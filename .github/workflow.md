@@ -21,8 +21,8 @@ flowchart TD
     PUSH -->|develop ou main| TF["02_terraform.yml\nTerraform apply/destroy"]
 
     TEST --> PR_FEAT["03_pr_auto.yml\nPR: feature → develop"]
-    TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
     TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
+    TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
 ```
 
 ---
