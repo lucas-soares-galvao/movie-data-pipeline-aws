@@ -94,7 +94,9 @@ resource "aws_iam_policy" "cicd_s3" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
+          "s3:GetObjectTagging",
           "s3:PutObject",
+          "s3:PutObjectTagging",
           "s3:DeleteObject",
         ]
         Resource = [
@@ -414,12 +416,17 @@ resource "aws_iam_policy" "cicd_observability" {
         Resource = "arn:aws:events:sa-east-1:${data.aws_caller_identity.current.account_id}:rule/${local.tmdb_prefix}-*"
       },
       {
+        Sid      = "CloudWatchLogGroupsList"
+        Effect   = "Allow"
+        Action   = "logs:DescribeLogGroups"
+        Resource = "*"
+      },
+      {
         Sid    = "CloudWatchLogGroups"
         Effect = "Allow"
         Action = [
           "logs:CreateLogGroup",
           "logs:DeleteLogGroup",
-          "logs:DescribeLogGroups",
           "logs:PutRetentionPolicy",
           "logs:DeleteRetentionPolicy",
           "logs:ListTagsForResource",

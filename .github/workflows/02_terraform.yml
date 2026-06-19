@@ -178,8 +178,8 @@ jobs:
             -target=aws_iam_policy.cicd_lightsail \
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -auto-approve
-          echo "Aguardando propagação do IAM..."
-          sleep 10
+          echo "Aguardando propagação do IAM (eventual consistency ~60s)..."
+          sleep 60
 
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
