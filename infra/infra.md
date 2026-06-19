@@ -125,6 +125,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 - IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável
 - IAM user `tmdb-filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
 - Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
+- Quando habilitada, o workflow de deploy verifica o estado da instância via `aws lightsail get-instance` antes de tentar o SSH. Se a instância estiver parada (ex: fora do horário do scheduler), o deploy é **ignorado com warning** em vez de falhar por timeout.
 
 **Agendamento de custo** (`lightsail_scheduler.tf`): Lambda + EventBridge com 3 regras de schedule. Desliga todos os dias às **00:00 BRT** (`cron(00 03 ? * * *)`); inicia às **18:00 BRT de seg–sex** (`cron(00 21 ? * MON-FRI *)`) e às **08:00 BRT aos sáb–dom** (`cron(00 11 ? * SAT-SUN *)`). Habilitado apenas quando `lightsail_enabled = true`.
 
