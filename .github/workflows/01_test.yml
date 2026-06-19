@@ -36,6 +36,7 @@ jobs:
               pip install -r "$file"
             fi
           done
+          echo "✅ Todas as dependências instaladas com sucesso"
 
       - name: Configure PYTHONPATH
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
@@ -43,32 +44,38 @@ jobs:
       - name: Lint with Ruff
         run: |
           ruff check app/ test/
-          echo "Ruff linting concluido"
+          echo "✅ Ruff linting concluído com sucesso"
 
       # Não falha o pipeline — apenas avisa sobre problemas de tipo
       - name: Type Check with mypy
         run: |
           if ! mypy app/ --ignore-missing-imports; then
+            echo "⚠ Avisos de tipo detectados (recomendado corrigir antes de deploy)"
             echo "::warning::Avisos de tipo detectados (recomendado corrigir antes de deploy)"
+          else
+            echo "✅ Mypy type checking concluído sem avisos"
           fi
-          echo "Mypy type checking concluido"
 
       # Não falha o pipeline — apenas avisa sobre problemas de segurança
       - name: Security Scan with Bandit
         run: |
           if ! bandit -r app/ -ll -f json -o bandit-report.json; then
-            echo "::warning::Possiveis vulnerabilidades detectadas pelo Bandit"
+            echo "⚠ Possíveis vulnerabilidades detectadas pelo Bandit"
+            echo "::warning::Possíveis vulnerabilidades detectadas pelo Bandit"
+            bandit -r app/ -ll || true
+          else
+            echo "✅ Bandit security scan concluído sem vulnerabilidades"
           fi
-          echo "Bandit security scan concluido"
-          bandit -r app/ -ll || echo "Resumo do Bandit com alertas"
 
       # Não falha o pipeline — apenas avisa sobre CVEs em dependências
       - name: Check Dependencies with Safety
         run: |
           if ! safety check --json --output safety-report.json; then
-            echo "::warning::Vulnerabilidades conhecidas em dependencias (recomendado revisar)"
+            echo "⚠ Vulnerabilidades conhecidas em dependências (recomendado revisar)"
+            echo "::warning::Vulnerabilidades conhecidas em dependências (recomendado revisar)"
+          else
+            echo "✅ Safety check concluído — nenhuma vulnerabilidade conhecida"
           fi
-          echo "Safety dependency check concluido"
 
       - name: Run tests with Coverage Gate
         run: |
@@ -76,6 +83,7 @@ jobs:
                  --cov-report=term-missing \
                  --cov-report=xml \
                  --cov-fail-under=80
+          echo "✅ Testes e coverage gate (≥80%) concluídos com sucesso"
 
       - name: Quality Gate Summary
         if: always()
@@ -84,12 +92,16 @@ jobs:
           echo "        QUALITY GATES SUMMARY"
           echo "=========================================="
           echo "Etapas executadas:"
-          echo "- Testes Unitarios (pytest)"
-          echo "- Cobertura de Codigo (Coverage Gate: 80%)"
-          echo "- Linting (ruff)"
-          echo "- Type Checking (mypy - informativo)"
-          echo "- Security Analysis (bandit - informativo)"
-          echo "- Dependency Vulnerabilities (safety - informativo)"
+          echo "- Testes Unitários (pytest)             — bloqueante"
+          echo "- Cobertura de Código (gate: ≥80%)      — bloqueante"
+          echo "- Linting (ruff)                        — bloqueante"
+          echo "- Type Checking (mypy)                  — informativo"
+          echo "- Security Analysis (bandit)            — informativo"
+          echo "- Dependency Vulnerabilities (safety)   — informativo"
           echo "=========================================="
-          echo "Resumo concluido. Consulte os logs para detalhes de alertas ou falhas."
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Todos os quality gates obrigatórios passaram!"
+          else
+            echo "❌ Um ou mais quality gates obrigatórios falharam."
+          fi
           echo "=========================================="

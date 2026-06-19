@@ -75,6 +75,11 @@ jobs:
             --src app/lambda_api \
             --requirements app/lambda_api/requirements.txt \
             --dest infra/.lambda_build
+          if [ -z "$(ls -A infra/.lambda_build/ 2>/dev/null)" ]; then
+            echo "❌ Build da Lambda falhou — diretório infra/.lambda_build está vazio."
+            exit 1
+          fi
+          echo "✅ Lambda package criado com sucesso"
 
       # O plan referencia o .whl do Glue ETL; precisa existir antes do plan.
       # Build sempre executado aqui (não via null_resource/local-exec do Terraform),
@@ -86,6 +91,11 @@ jobs:
             --src app/glue_etl \
             --dest infra/.glue_etl_build \
             --name glue_etl_src
+          if [ -z "$(ls -A infra/.glue_etl_build/ 2>/dev/null)" ]; then
+            echo "❌ Build do Glue ETL falhou — diretório infra/.glue_etl_build está vazio."
+            exit 1
+          fi
+          echo "✅ Glue ETL wheel criado com sucesso"
 
       - name: Build Glue Agg Wheel
         run: |
@@ -93,6 +103,11 @@ jobs:
             --src app/glue_agg \
             --dest infra/.glue_agg_build \
             --name glue_agg_src
+          if [ -z "$(ls -A infra/.glue_agg_build/ 2>/dev/null)" ]; then
+            echo "❌ Build do Glue Agg falhou — diretório infra/.glue_agg_build está vazio."
+            exit 1
+          fi
+          echo "✅ Glue Agg wheel criado com sucesso"
 
       - name: Build Glue Details Wheel
         run: |
@@ -100,6 +115,11 @@ jobs:
             --src app/glue_details \
             --dest infra/.glue_details_build \
             --name glue_details_src
+          if [ -z "$(ls -A infra/.glue_details_build/ 2>/dev/null)" ]; then
+            echo "❌ Build do Glue Details falhou — diretório infra/.glue_details_build está vazio."
+            exit 1
+          fi
+          echo "✅ Glue Details wheel criado com sucesso"
 
       # destroy_config.json controla se a infra deve ser destruída (teardown).
       # Formato: { "dev": false, "prod": false }
@@ -108,7 +128,12 @@ jobs:
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
+          if [[ "$DESTROY" != "true" && "$DESTROY" != "false" ]]; then
+            echo "❌ Valor inválido em destroy_config.json para '${{ inputs.environment }}': '$DESTROY' (esperado: true ou false)"
+            exit 1
+          fi
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+          echo "✅ Configuração de destroy lida: ${{ inputs.environment }}=$DESTROY"
 
       - name: Terraform Init
         run: |
@@ -117,9 +142,12 @@ jobs:
             -backend-config="key=proj-eng-dados-filmes-aws" \
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
+          echo "✅ Terraform init concluído com sucesso"
 
       - name: Terraform Validate
-        run: cd infra && terraform validate
+        run: |
+          cd infra && terraform validate
+          echo "✅ Terraform validate concluído com sucesso"
 
       # Não falha o pipeline — apenas avisa sobre boas práticas
       - name: Setup and Run TFLint
@@ -130,7 +158,9 @@ jobs:
           tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"
 
       - name: Terraform Format Check
-        run: cd infra && terraform fmt -check -recursive
+        run: |
+          cd infra && terraform fmt -check -recursive
+          echo "✅ Terraform format check concluído com sucesso"
 
       # Não falha o pipeline — avisa sobre segurança e compliance
       - name: Checkov Security Scan
@@ -181,6 +211,36 @@ jobs:
           echo "Aguardando propagação do IAM (eventual consistency ~120s)..."
           sleep 120
 
+          ROLE_NAME="lsg-github-actions-${{ inputs.environment }}"
+          EXPECTED_POLICIES=(
+            "cicd-terraform-backend-${{ inputs.environment }}"
+            "cicd-terraform-s3-${{ inputs.environment }}"
+            "cicd-terraform-iam-${{ inputs.environment }}"
+            "cicd-terraform-compute-${{ inputs.environment }}"
+            "cicd-terraform-observability-${{ inputs.environment }}"
+            "cicd-terraform-lightsail-${{ inputs.environment }}"
+          )
+
+          ATTACHED=$(aws iam list-attached-role-policies \
+            --role-name "$ROLE_NAME" \
+            --query "AttachedPolicies[].PolicyName" \
+            --output text)
+
+          MISSING=()
+          for POLICY in "${EXPECTED_POLICIES[@]}"; do
+            if ! echo "$ATTACHED" | grep -qw "$POLICY"; then
+              MISSING+=("$POLICY")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "❌ Bootstrap falhou — policies não propagadas após 120s:"
+            printf '   - %s\n' "${MISSING[@]}"
+            exit 1
+          fi
+
+          echo "✅ Bootstrap das IAM policies concluído com sucesso! (${#EXPECTED_POLICIES[@]}/${#EXPECTED_POLICIES[@]} policies verificadas)"
+
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
@@ -191,6 +251,7 @@ jobs:
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -auto-approve
+          echo "✅ Terraform destroy concluído com sucesso (${{ inputs.environment }})"
 
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
@@ -202,6 +263,7 @@ jobs:
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -out="${{ inputs.environment }}.plan"
+          echo "✅ Terraform plan concluído com sucesso (${{ inputs.environment }})"
 
       - name: Setup Infracost
         if: steps.read-destroy-config.outputs.destroy != 'true'
@@ -240,3 +302,4 @@ jobs:
         run: |
           cd infra
           terraform apply "${{ inputs.environment }}.plan"
+          echo "✅ Terraform apply concluído com sucesso (${{ inputs.environment }})"

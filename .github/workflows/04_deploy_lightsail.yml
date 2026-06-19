@@ -76,18 +76,37 @@ jobs:
           echo "public_ip=${PUBLIC_IP}" >> $GITHUB_OUTPUT
           echo "lightsail_enabled=$([[ -n "$PUBLIC_IP" ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
 
+          if [ -z "$PUBLIC_IP" ]; then
+            echo "⚠ Lightsail desabilitado — IP público vazio (instância não provisionada)"
+            exit 0
+          fi
+
           KEY_FILE=$(mktemp)
           terraform output -raw lightsail_private_key > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           echo "key_file=${KEY_FILE}" >> $GITHUB_OUTPUT
+          if [ ! -s "$KEY_FILE" ]; then
+            echo "❌ Chave SSH privada está vazia — verificar output lightsail_private_key"
+            exit 1
+          fi
 
           ACCESS_KEY_ID=$(terraform output -raw lightsail_agent_access_key_id)
           echo "::add-mask::${ACCESS_KEY_ID}"
           echo "access_key_id=${ACCESS_KEY_ID}" >> $GITHUB_OUTPUT
+          if [ -z "$ACCESS_KEY_ID" ]; then
+            echo "❌ Access Key ID está vazio — verificar output lightsail_agent_access_key_id"
+            exit 1
+          fi
 
           SECRET_ACCESS_KEY=$(terraform output -raw lightsail_agent_secret_access_key)
           echo "::add-mask::${SECRET_ACCESS_KEY}"
           echo "secret_access_key=${SECRET_ACCESS_KEY}" >> $GITHUB_OUTPUT
+          if [ -z "$SECRET_ACCESS_KEY" ]; then
+            echo "❌ Secret Access Key está vazio — verificar output lightsail_agent_secret_access_key"
+            exit 1
+          fi
+
+          echo "✅ Terraform outputs lidos com sucesso (IP: $PUBLIC_IP)"
 
       # chmod 600 obrigatório — SSH rejeita chaves com permissões mais abertas
       - name: Setup SSH key
@@ -102,7 +121,11 @@ jobs:
             echo "Tentativa $i/30 — aguardando SSH..."
             sleep 10
           done
-          [ $SSH_READY -eq 1 ] || { echo "SSH indisponível após 5 minutos — abortando."; exit 1; }
+          if [ $SSH_READY -eq 0 ]; then
+            echo "❌ SSH indisponível após 5 minutos — abortando."
+            exit 1
+          fi
+          echo "✅ SSH disponível após $((i * 10))s (tentativa $i/30)"
 
       # Credenciais criadas diretamente no destino final (não em /tmp — world-readable)
       - name: Create .env file on instance
@@ -115,6 +138,9 @@ jobs:
             "${{ inputs.environment }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.env"
+          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+            "test -s /opt/filmbot/app/lightsail_ia/.env" || { echo "❌ Arquivo .env não foi criado na instância"; exit 1; }
+          echo "✅ Arquivo .env criado com sucesso na instância"
 
       - name: Create Streamlit secrets.toml on instance
         if: steps.tf.outputs.lightsail_enabled == 'true'
@@ -122,6 +148,9 @@ jobs:
           printf '[auth]\npassword = "%s"\n' "${{ secrets.filmbot-password }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/filmbot/app/lightsail_ia/.streamlit && sudo tee /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml"
+          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+            "test -s /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml" || { echo "❌ Arquivo secrets.toml não foi criado na instância"; exit 1; }
+          echo "✅ Arquivo secrets.toml criado com sucesso na instância"
 
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true'
@@ -178,8 +207,26 @@ jobs:
             fi
             sudo systemctl status filmbot --no-pager
             sudo systemctl status caddy --no-pager
-          ENDSSH
 
-      - name: Show app URL
+            if sudo systemctl is-active --quiet filmbot && sudo systemctl is-active --quiet caddy; then
+              echo "✅ Serviços filmbot e caddy ativos"
+            else
+              echo "❌ Um ou mais serviços não estão ativos:"
+              sudo systemctl is-active filmbot || echo "   - filmbot: inativo"
+              sudo systemctl is-active caddy || echo "   - caddy: inativo"
+              exit 1
+            fi
+          ENDSSH
+          echo "✅ Deploy concluído com sucesso na instância ${{ steps.tf.outputs.public_ip }}"
+
+      - name: Health Check
         if: steps.tf.outputs.lightsail_enabled == 'true'
-        run: echo "FilmBot disponível em http://${{ steps.tf.outputs.public_ip }}"
+        run: |
+          echo "Aguardando app inicializar (30s)..."
+          sleep 30
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${{ steps.tf.outputs.public_ip }}" || true)
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+            echo "✅ Health check OK — HTTP $HTTP_CODE (http://${{ steps.tf.outputs.public_ip }})"
+          else
+            echo "⚠ Health check retornou HTTP $HTTP_CODE — app pode ainda estar iniciando"
+          fi

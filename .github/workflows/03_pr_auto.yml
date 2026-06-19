@@ -37,10 +37,12 @@ jobs:
 
           if [[ "$SOURCE_BRANCH" == feature/* ]]; then
             echo "base=develop" >> $GITHUB_OUTPUT
+            echo "✅ Branch base definida: develop (source: $SOURCE_BRANCH)"
           elif [[ "$SOURCE_BRANCH" == "develop" ]]; then
             echo "base=main" >> $GITHUB_OUTPUT
+            echo "✅ Branch base definida: main (source: $SOURCE_BRANCH)"
           else
-            echo "Branch não suportada"
+            echo "❌ Branch não suportada para auto PR: $SOURCE_BRANCH"
             exit 1
           fi
 
@@ -53,9 +55,12 @@ jobs:
           cd infra
           terraform init -backend=false
           terraform validate
+          echo "✅ Terraform validate concluído com sucesso"
 
       - name: Terraform Format Check
-        run: cd infra && terraform fmt -check -recursive
+        run: |
+          cd infra && terraform fmt -check -recursive
+          echo "✅ Terraform format check concluído com sucesso"
 
       - name: Create or Update PR
         run: |
@@ -70,11 +75,12 @@ jobs:
               --head "$HEAD" \
               --title "Auto PR: $HEAD → $BASE" \
               --body "PR criado automaticamente via Pipeline CI/CD."
+            echo "✅ PR criado com sucesso: $HEAD → $BASE"
           else
             gh pr edit "$PR_NUMBER" \
               --title "Auto PR: $HEAD → $BASE" \
               --body "PR atualizado automaticamente via Pipeline CI/CD."
-            echo "PR já existente: #$PR_NUMBER"
+            echo "✅ PR #$PR_NUMBER atualizado com sucesso: $HEAD → $BASE"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
