@@ -13,6 +13,8 @@ resource "aws_iam_role" "lambda_function" {
       Principal = { Service = "lambda.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 # =============================================================================
@@ -59,6 +61,8 @@ resource "aws_iam_role" "glue_etl_role" {
       Principal = { Service = "glue.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_role_policy_attachment" "glue_etl_service_role" {
@@ -78,6 +82,8 @@ resource "aws_iam_role" "glue_dq_role" {
       Principal = { Service = "glue.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_role_policy_attachment" "glue_dq_service_role" {
@@ -97,6 +103,8 @@ resource "aws_iam_role" "glue_agg_role" {
       Principal = { Service = "glue.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_role_policy_attachment" "glue_agg_service_role" {
@@ -120,6 +128,8 @@ resource "aws_iam_role" "glue_details_role" {
       Principal = { Service = "glue.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_role_policy_attachment" "glue_details_service_role" {
@@ -143,6 +153,8 @@ resource "aws_iam_role" "sfn_backfill_role" {
       Principal = { Service = "states.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_role" "eventbridge_sfn_role" {
@@ -156,4 +168,6 @@ resource "aws_iam_role" "eventbridge_sfn_role" {
       Principal = { Service = "events.amazonaws.com" }
     }]
   })
+
+  depends_on = [terraform_data.cicd_policies_ready]
 }

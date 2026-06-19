@@ -344,6 +344,26 @@ variable "lightsail_ssh_allowed_cidrs" {
 }
 
 # =============================================================================
+# CI/CD — Role do GitHub Actions e backend do Terraform
+# =============================================================================
+
+variable "cicd_role_name" {
+  description = "Prefixo da role IAM do GitHub Actions (sufixo -{env} adicionado automaticamente)"
+  type        = string
+  default     = "lsg-github-actions"
+}
+
+variable "cicd_statefile_s3_bucket" {
+  description = "Nome do bucket S3 usado como backend do Terraform (state file)"
+  type        = string
+}
+
+variable "cicd_lock_dynamodb_table" {
+  description = "Nome da tabela DynamoDB usada para lock do Terraform state"
+  type        = string
+}
+
+# =============================================================================
 # CLOUDWATCH LOGS — Retenção de Logs
 # =============================================================================
 
