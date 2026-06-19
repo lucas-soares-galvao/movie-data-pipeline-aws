@@ -129,13 +129,6 @@ jobs:
             echo "::warning::Instância está '$STATE' — deploy será ignorado"
           fi
 
-      - name: Show app URL
-        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
-        run: |
-          echo "🔗 FilmBot: http://${{ steps.tf.outputs.public_ip }}"
-          echo "## 🔗 FilmBot" >> $GITHUB_STEP_SUMMARY
-          echo "http://${{ steps.tf.outputs.public_ip }}" >> $GITHUB_STEP_SUMMARY
-
       # chmod 600 obrigatório — SSH rejeita chaves com permissões mais abertas
       - name: Setup SSH key
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
@@ -258,3 +251,10 @@ jobs:
           else
             echo "⚠ Health check retornou HTTP $HTTP_CODE — app pode ainda estar iniciando"
           fi
+
+      - name: Show app URL
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
+        run: |
+          echo "🔗 FilmBot: http://${{ steps.tf.outputs.public_ip }}"
+          echo "## 🔗 FilmBot" >> $GITHUB_STEP_SUMMARY
+          echo "http://${{ steps.tf.outputs.public_ip }}" >> $GITHUB_STEP_SUMMARY
