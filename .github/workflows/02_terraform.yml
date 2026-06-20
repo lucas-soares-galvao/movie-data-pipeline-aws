@@ -213,6 +213,8 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_backend \
             -target=aws_iam_policy.cicd_s3 \
             -target=aws_iam_role_policy_attachment.cicd_s3 \
+            -target=aws_iam_policy.cicd_iam \
+            -target=aws_iam_role_policy_attachment.cicd_iam \
             -target=aws_iam_policy.iam_cicd \
             -target=aws_iam_role_policy_attachment.iam_cicd \
             -target=aws_iam_policy.cicd_compute \
