@@ -2,12 +2,12 @@
 
 import json
 import logging
-import random
-import time
+from typing import Any, Optional
 
-import boto3
-import requests
-from requests.exceptions import ConnectionError, Timeout
+from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get  # noqa: F401 (get_tmdb_api_key)
+
+S3Client = Any
+GlueClient = Any
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -16,93 +16,6 @@ logger.setLevel(logging.INFO)
 # O TMDB suporta até 500 páginas, mas 100 (= 2.000 títulos) é suficiente
 # para cobrir os lançamentos mais relevantes por ano sem exceder o timeout da Lambda.
 MAX_PAGES = 100
-
-# Códigos HTTP que indicam problema TEMPORÁRIO no servidor — vale tentar novamente.
-# 429 = "Too Many Requests" (ultrapassou o rate limit da API)
-# 5xx = erros internos do servidor TMDB (normalmente transitórios)
-# Diferente de 401 (chave inválida) ou 404 (recurso não existe) — esses são erros
-# permanentes que não melhoram com retry.
-_TMDB_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
-
-
-def _tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
-    """
-    GET na API do TMDB com retry e backoff exponencial em erros transientes.
-
-    Args:
-        url:         URL completa do endpoint TMDB
-        params:      Dicionário de parâmetros da query string
-        max_retries: Número máximo de tentativas antes de lançar exceção
-
-    Returns:
-        Dicionário Python com o corpo da resposta JSON do TMDB
-    """
-    for attempt in range(max_retries):
-        is_last_attempt = attempt == max_retries - 1
-        try:
-            # timeout=30 evita que a Lambda fique presa esperando por uma resposta
-            # que nunca chega (servidor travado, rede lenta, etc.)
-            response = requests.get(url, params=params, timeout=30)
-
-            if response.status_code in _TMDB_TRANSIENT_STATUS:
-                if is_last_attempt:
-                    logger.error(
-                        f"HTTP {response.status_code} após {max_retries} tentativas. "
-                        f"Todas as tentativas esgotadas para {url}."
-                    )
-                    response.raise_for_status()
-
-                # Para 429, o TMDB informa no header Retry-After quantos segundos esperar.
-                # Para outros erros transitórios, usa backoff exponencial calculado.
-                if response.status_code == 429 and "Retry-After" in response.headers:
-                    wait = int(response.headers["Retry-After"]) + random.uniform(0, 1)
-                else:
-                    wait = (2 ** attempt) + random.uniform(0, 1)
-
-                logger.warning(
-                    f"HTTP {response.status_code} (tentativa {attempt + 1}/{max_retries}). "
-                    f"Aguardando {wait:.1f}s..."
-                )
-                time.sleep(wait)
-                continue
-
-            # Se o código HTTP não é transiente, lança exceção para qualquer erro 4xx/5xx.
-            # Ex: 401 (API key inválida), 404 (endpoint não existe) → falha imediata.
-            response.raise_for_status()
-            return response.json()
-
-        except (ConnectionError, Timeout) as e:
-            # Erros de rede (sem conexão, timeout) também merecem retry.
-            if is_last_attempt:
-                logger.error(
-                    f"Erro de conexão após {max_retries} tentativas: {e}. "
-                    f"Todas as tentativas esgotadas para {url}."
-                )
-                raise
-            wait = (2 ** attempt) + random.uniform(0, 1)
-            logger.warning(
-                f"Erro de conexão (tentativa {attempt + 1}/{max_retries}): {e}. "
-                f"Aguardando {wait:.1f}s..."
-            )
-            time.sleep(wait)
-
-
-def get_tmdb_api_key(secret_arn: str) -> str:
-    """
-    Busca a chave de API do TMDB no Secrets Manager.
-
-    Formato do segredo: {"tmdb_api_key": "abc123xyz..."}
-
-    Args:
-        secret_arn: ARN completo do segredo no Secrets Manager
-
-    Returns:
-        A chave de API do TMDB como string
-    """
-    client = boto3.client("secretsmanager")
-    response = client.get_secret_value(SecretId=secret_arn)
-    secret = json.loads(response["SecretString"])
-    return secret["tmdb_api_key"]
 
 
 def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> dict:
@@ -135,10 +48,10 @@ def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> di
     else:
         params["first_air_date_year"] = year
 
-    return _tmdb_get(url, params)
+    return tmdb_get(url, params)
 
 
-def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
+def save_to_s3(s3_client: S3Client, bucket: str, data: dict, s3_key: str) -> None:
     """
     Serializa um dicionário Python para JSON e salva no S3.
 
@@ -162,13 +75,13 @@ def save_to_s3(s3_client, bucket: str, data: dict, s3_key: str) -> None:
 
 
 def trigger_glue_job(
-    glue_client,
+    glue_client: GlueClient,
     job_name: str,
     glue_catalog_args: dict,
     table_type: str,
     table_name: str,
-    year: int = None,
-    end_year: int = None,
+    year: Optional[int] = None,
+    end_year: Optional[int] = None,
 ) -> str:
     """
     Dispara o Glue ETL sem aguardar — cada chamada roda em paralelo.
@@ -215,7 +128,7 @@ def trigger_glue_job(
     return run_id
 
 
-def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict = None) -> dict:
+def fetch_tmdb_reference(api_key: str, endpoint: str, params: Optional[dict] = None) -> dict:
     """
     Busca um endpoint de referência do TMDB (retorna lista completa, sem paginação).
 
@@ -234,10 +147,10 @@ def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict = None) -> di
     if params:
         query.update(params)
 
-    return _tmdb_get(url, query)
+    return tmdb_get(url, query)
 
 
-def collect_genre_data(api_key: str, s3_client, bucket: str, content_type: str) -> None:
+def collect_genre_data(api_key: str, s3_client: S3Client, bucket: str, content_type: str) -> None:
     """Coleta gêneros do TMDB e salva no S3 SOR."""
     if content_type == "movie":
         logger.info("Coletando referência: /genre/movie/list")
@@ -254,7 +167,7 @@ def collect_genre_data(api_key: str, s3_client, bucket: str, content_type: str) 
 
 
 def collect_configuration_data(
-    api_key: str, s3_client, bucket: str, content_type: str
+    api_key: str, s3_client: S3Client, bucket: str, content_type: str
 ) -> None:
     """Coleta idiomas (movie) ou países (tv) do TMDB e salva no S3 SOR."""
     if content_type == "movie":
@@ -270,7 +183,7 @@ def collect_configuration_data(
 
 
 def collect_watch_providers_ref(
-    api_key: str, s3_client, bucket: str, content_type: str
+    api_key: str, s3_client: S3Client, bucket: str, content_type: str
 ) -> None:
     """Coleta plataformas de streaming disponíveis no Brasil e salva no S3 SOR."""
     logger.info(f"Coletando referência: /watch/providers/{content_type}")
@@ -293,13 +206,13 @@ def collect_watch_providers_ref(
     save_to_s3(s3_client, bucket, providers, s3_key)
 
 
-def collect_now_playing_data(api_key: str, s3_client, bucket: str) -> None:
+def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> None:
     """Coleta filmes atualmente em cartaz nos cinemas e salva no S3 SOR."""
     logger.info("Coletando filmes em cartaz: /movie/now_playing")
     url = "https://api.themoviedb.org/3/movie/now_playing"
 
     for page in range(1, MAX_PAGES + 1):
-        data = _tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "region": "BR", "page": page})
+        data = tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "region": "BR", "page": page})
 
         total_pages = data.get("total_pages", 0)
         if page > total_pages:
@@ -318,7 +231,7 @@ def collect_now_playing_data(api_key: str, s3_client, bucket: str) -> None:
 
 
 def collect_discover_data(
-    api_key: str, s3_client, bucket: str, content_type: str, folder: str, year: int
+    api_key: str, s3_client: S3Client, bucket: str, content_type: str, folder: str, year: int
 ) -> None:
     """
     Coleta todas as páginas do discover para um ano, salvando um JSON por página no S3.

@@ -45,12 +45,13 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 4 jobs Glue. Os jobs ETL, Details e AGG são do tipo **PythonShell** (Glue 3.9). O job Data Quality é do tipo **Spark (`glueetl`)** (Glue 5.0, 2 workers G.1X, execução FLEX) — exigido pela API `EvaluateDataQuality` da AWS. Cada job tem:
 - Worker type e número de workers configurados por ambiente
 - Wheel Python gerado por `infra/scripts/build_glue_wheel.py` e enviado ao bucket AUX
+- Wheel compartilhado (`tmdb_shared`) com funções reutilizadas entre jobs (retry HTTP, triggers), gerado por `shared_src.tf` e referenciado via `--extra-py-files` junto ao wheel do job
 - Argumentos padrão definidos no Terraform (buckets, nomes de tabelas, databases)
 - Argumentos dinâmicos injetados no momento do `start_job_run` pela Lambda/job anterior
 
 ### Catálogo — Glue Catalog (`glue_catalog.tf`)
 
-3 databases e 16 tabelas registradas via Terraform:
+3 databases e 14 tabelas registradas via Terraform:
 
 | Database | Tabelas |
 |---|---|
@@ -88,12 +89,14 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 
 **Fluxo da execução:**
 
-1. **GenerateYears** (Pass) — extrai o ano atual do timestamp de execução e o converte para inteiro
+1. **GenerateYears** (Pass) — extrai o ano do timestamp de execução, converte para inteiro e subtrai 2 (`end_year`)
 2. **ComputeYears** (Pass) — gera o array `[start_year, ..., end_year]` via `States.ArrayRange`
-3. **ProcessEachYear** (Map, `MaxConcurrency=1`) — itera cada ano sequencialmente:
-   - **InvokeLambdaMovie** — invoca a Lambda com payload de filmes para o ano
-   - **InvokeLambdaTV** — invoca a Lambda com payload de séries para o ano
-   - Retry: 2 tentativas, intervalo de 30s, backoff 2.0
+3. **CreateBatches** (Pass) — divide o array de anos em sub-arrays de 2 elementos via `States.ArrayPartition` (ex: `[2000,2001,2002,2003,2004]` → `[[2000,2001],[2002,2003],[2004]]`)
+4. **ProcessBatches** (Map, `MaxConcurrency=1`) — itera cada batch sequencialmente:
+   - **InvokeLambdaMovie** — invoca a Lambda com payload de filmes para o batch (Retry: 2 tentativas, intervalo de 30s, backoff 2.0)
+   - **WaitBeforeTV** — aguarda 5 min para o Glue Details terminar antes de iniciar séries
+   - **InvokeLambdaTV** — invoca a Lambda com payload de séries para o batch (Retry: 2 tentativas, intervalo de 30s, backoff 2.0)
+   - **WaitBeforeNextBatch** — aguarda 5 min antes do próximo batch
 
 ### Notificações — SNS (`sns_topics.tf`)
 
@@ -153,7 +156,7 @@ A Lambda usa uma **policy inline customizada** para logs em vez de `AWSLambdaBas
 
 Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada** (`glue_shared_base`) em vez da managed policy `AWSGlueServiceRole`. Motivo: `AWSGlueServiceRole` concede `glue:*` em `Resource: *`, anulando todas as policies granulares de Catalog, S3 e logs definidas por job. A policy customizada fornece apenas o mínimo para o runtime Glue funcionar: `cloudwatch:PutMetricData` (métricas de job) e acesso S3 aos buckets temporários `aws-glue-*` (necessários para jobs Spark como o Data Quality).
 
-### Permissões do CI/CD — IAM (`cicd_iam.tf`)
+### Permissões do CI/CD — IAM (`iam_cicd.tf`)
 
 A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform:
 
@@ -180,7 +183,7 @@ Um recurso `terraform_data.cicd_policies_ready` sincroniza a criação: os bucke
 | `03_pr_auto.yml` | Reusável: cria PR automático após deploy |
 | `04_deploy_lightsail.yml` | Deploy do app FilmBot na instância Lightsail |
 
-Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`cicd_iam.tf`).
+Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`).
 
 ## Como aplicar
 

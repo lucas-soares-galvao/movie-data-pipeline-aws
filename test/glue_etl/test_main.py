@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pandas as pd
 
@@ -39,8 +39,7 @@ class TestRunDiscover:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023")
@@ -51,8 +50,7 @@ class TestRunDiscover:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -73,8 +71,7 @@ class TestRunDiscover:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022")
@@ -93,8 +90,7 @@ class TestRunDiscover:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             assert mock_write.call_count == 1
@@ -105,16 +101,16 @@ class TestRunDiscover:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_dq.assert_called_once_with(
-                dq_job_name="dq-job",
-                table_name="tb_tmdb_discover_movie_dev",
-                database="db_tmdb_movie_dev",
-                year="2023",
+            dq_call = call(
+                "dq-job",
+                TABLE_NAME="tb_tmdb_discover_movie_dev",
+                DATABASE="db_tmdb_movie_dev",
+                YEAR="2023",
             )
+            assert dq_call in mock_trigger.call_args_list
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +133,7 @@ class TestRunGenre:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "genre", None)
@@ -149,8 +144,7 @@ class TestRunGenre:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -168,15 +162,14 @@ class TestRunGenre:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_dq.assert_called_once_with(
-                dq_job_name="dq-job",
-                table_name="tb_tmdb_genre_movie_dev",
-                database="db_tmdb_movie_dev",
-                year=None,
+            mock_trigger.assert_called_once_with(
+                "dq-job",
+                TABLE_NAME="tb_tmdb_genre_movie_dev",
+                DATABASE="db_tmdb_movie_dev",
+                YEAR=None,
             )
 
 
@@ -200,8 +193,7 @@ class TestRunConfiguration:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "configuration", None)
@@ -212,8 +204,7 @@ class TestRunConfiguration:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -235,8 +226,7 @@ class TestRunConfiguration:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "tv", "configuration", None)
@@ -255,15 +245,14 @@ class TestRunConfiguration:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_dq.assert_called_once_with(
-                dq_job_name="dq-job",
-                table_name="tb_tmdb_configuration_languages_dev",
-                database="db_tmdb_movie_dev",
-                year=None,
+            mock_trigger.assert_called_once_with(
+                "dq-job",
+                TABLE_NAME="tb_tmdb_configuration_languages_dev",
+                DATABASE="db_tmdb_movie_dev",
+                YEAR=None,
             )
 
 
@@ -289,17 +278,17 @@ class TestTriggerDetails:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details") as mock_details,
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_details.assert_called_once_with(
-                details_job_name="details-job",
-                media_type="movie",
-                year="2023",
-                end_year="2026",
-                database="db_tmdb_movie_dev",
+            details_call = call(
+                "details-job",
+                MEDIA_TYPE="movie",
+                YEAR="2023",
+                END_YEAR="2026",
+                DATABASE="db_tmdb_movie_dev",
             )
+            assert details_call in mock_trigger.call_args_list
 
     def test_details_triggered_for_tv_discover(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
@@ -308,17 +297,17 @@ class TestTriggerDetails:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details") as mock_details,
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_details.assert_called_once_with(
-                details_job_name="details-job",
-                media_type="tv",
-                year="2023",
-                end_year="2026",
-                database="db_tmdb_tv_dev",
+            details_call = call(
+                "details-job",
+                MEDIA_TYPE="tv",
+                YEAR="2023",
+                END_YEAR="2026",
+                DATABASE="db_tmdb_tv_dev",
             )
+            assert details_call in mock_trigger.call_args_list
 
     def test_details_not_triggered_for_genre_tv(self):
         # TABLE_TYPE=genre nunca aciona Details, independente do media_type.
@@ -333,11 +322,14 @@ class TestTriggerDetails:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details") as mock_details,
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_details.assert_not_called()
+            details_calls = [
+                c for c in mock_trigger.call_args_list
+                if c.args[0] == "details-job"
+            ]
+            assert details_calls == []
 
     def test_details_triggered_exactly_once_per_discover_run(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
@@ -346,11 +338,14 @@ class TestTriggerDetails:
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details") as mock_details,
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            assert mock_details.call_count == 1
+            details_calls = [
+                c for c in mock_trigger.call_args_list
+                if c.args[0] == "details-job"
+            ]
+            assert len(details_calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -373,8 +368,7 @@ class TestRunNowPlaying:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_read.assert_called_once_with("my-sor", "movie", "now_playing", None)
@@ -385,8 +379,7 @@ class TestRunNowPlaying:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot") as mock_write,
-            patch.object(m, "trigger_data_quality"),
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -404,13 +397,12 @@ class TestRunNowPlaying:
             patch.object(m, "get_parameters_glue", return_value=self._args()),
             patch.object(m, "read_from_sor", return_value=df_mock),
             patch.object(m, "write_parquet_to_sot"),
-            patch.object(m, "trigger_data_quality") as mock_dq,
-            patch.object(m, "trigger_details"),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
             m.main()
-            mock_dq.assert_called_once_with(
-                dq_job_name="dq-job",
-                table_name="tb_tmdb_now_playing_movie_dev",
-                database="db_tmdb_movie_dev",
-                year=None,
+            mock_trigger.assert_called_once_with(
+                "dq-job",
+                TABLE_NAME="tb_tmdb_now_playing_movie_dev",
+                DATABASE="db_tmdb_movie_dev",
+                YEAR=None,
             )

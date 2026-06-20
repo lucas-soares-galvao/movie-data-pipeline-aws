@@ -17,8 +17,7 @@ from src.utils import (
     repair_details_duplicates,
     repair_discover_duplicates,
     repair_watch_providers_duplicates,
-    trigger_agg,
-    trigger_data_quality,
+    trigger_glue_job,
 )
 
 logging.basicConfig(
@@ -113,19 +112,9 @@ def main() -> None:
             year=year,
         )
 
-    trigger_data_quality(
-        dq_job_name=dq_job_name,
-        table_name=table_details,
-        database=database,
-        year=year,
-    )
+    trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=year)
 
-    trigger_data_quality(
-        dq_job_name=dq_job_name,
-        table_name=table_watch_providers,
-        database=database,
-        year=year,
-    )
+    trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=year)
 
     # Ao final do ciclo de cada media_type, remove duplicatas intra-partição nas três tabelas
     # (movies e tvs reparados separadamente em seus respectivos runs de end_year).
@@ -158,7 +147,7 @@ def main() -> None:
     # tv + end_year é o último run do ciclo; só neste ponto todos os JOINs do AGG são possíveis.
     if media_type == "tv" and year == end_year:
         logger.info("Acionando Glue AGG...")
-        trigger_agg(agg_job_name=agg_job_name)
+        trigger_glue_job(agg_job_name)
 
     logger.info("Job Glue Details finalizado com sucesso!")
 

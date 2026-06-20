@@ -7,7 +7,7 @@ Testa a função `recomendar()` e as funções do agente de IA em `app/lightsail
 ## Estrutura
 
 ```
-test/lightsail/
+test/lightsail_ia/
 ├── conftest.py               # Fixtures locais da suite
 ├── requirements_tests.txt    # Dependências de teste
 └── test_agent.py             # Testes do agente de recomendação
@@ -64,10 +64,10 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 
 ```bash
 # Apenas os testes do lightsail
-pytest test/lightsail/ -v
+pytest test/lightsail_ia/ -v
 
 # Com cobertura
-pytest test/lightsail/ --cov=app/lightsail_ia --cov-report=term-missing
+pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 ```
 
 ## Cobertura mínima

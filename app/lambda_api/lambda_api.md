@@ -33,13 +33,19 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 
 | Função | Responsabilidade |
 |---|---|
-| `get_tmdb_api_key(secret_arn)` | Lê a chave da API no Secrets Manager |
 | `collect_genre_data(...)` | Coleta mapeamento de IDs → nomes de gêneros |
 | `collect_configuration_data(...)` | Coleta lista de idiomas ou países |
 | `collect_watch_providers_ref(...)` | Coleta lista de plataformas de streaming disponíveis |
 | `collect_discover_data(...)` | Coleta filmes/séries populares de um ano (paginado) |
 | `collect_now_playing_data(...)` | Coleta filmes em cartaz nos cinemas no Brasil (`region=BR`, paginado), extrai datas de janela teatral e salva no S3 SOR |
 | `trigger_glue_job(glue_client, job_name, glue_catalog_args, table_type, table_name, year, end_year)` | Aciona o Glue ETL com argumentos dinâmicos; retorna o `JobRunId` |
+
+## Funções compartilhadas (`shared/`)
+
+| Função | Origem | Responsabilidade |
+|---|---|---|
+| `get_tmdb_api_key(secret_arn)` | `shared_utils.tmdb_api` | Lê a chave da API no Secrets Manager |
+| `tmdb_get(url, params, max_retries)` | `shared_utils.tmdb_api` | GET com retry/backoff para lidar com rate limits da API TMDB |
 
 ## Tecnologias
 

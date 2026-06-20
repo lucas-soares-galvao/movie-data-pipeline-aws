@@ -30,7 +30,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK) as mock_query,
             patch.object(m, "write_parquet_to_spec"),
-            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_query.assert_called_once_with(
@@ -46,7 +46,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
             patch.object(m, "write_parquet_to_spec") as mock_write,
-            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             mock_write.assert_called_once_with(
@@ -63,7 +63,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=df_custom),
             patch.object(m, "write_parquet_to_spec") as mock_write,
-            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             actual_df = mock_write.call_args.kwargs["df"]
@@ -74,7 +74,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
             patch.object(m, "write_parquet_to_spec"),
-            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
 
@@ -83,7 +83,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
             patch.object(m, "write_parquet_to_spec") as mock_write,
-            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             assert mock_write.call_count == 1
@@ -93,7 +93,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK) as mock_query,
             patch.object(m, "write_parquet_to_spec"),
-            patch.object(m, "trigger_data_quality"),
+            patch.object(m, "trigger_glue_job"),
         ):
             m.main()
             assert mock_query.call_count == 1
@@ -104,7 +104,7 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=df_vazio),
             patch.object(m, "write_parquet_to_spec") as mock_write,
-            patch.object(m, "trigger_data_quality") as mock_dq,
+            patch.object(m, "trigger_glue_job") as mock_dq,
         ):
             m.main()
             mock_write.assert_called_once()
@@ -119,13 +119,12 @@ class TestMain:
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK),
             patch.object(m, "write_parquet_to_spec", side_effect=lambda **_: call_order.append("write")),
-            patch.object(m, "trigger_data_quality", side_effect=lambda **_: call_order.append("dq")) as mock_dq,
+            patch.object(m, "trigger_glue_job", side_effect=lambda *a, **kw: call_order.append("dq")) as mock_dq,
         ):
             m.main()
         mock_dq.assert_called_once_with(
-            dq_job_name="dq-job",
-            table_name="tb_tmdb_discover_unified_dev",
-            database="db_tmdb_unified_dev",
+            "dq-job",
+            TABLE_NAME="tb_tmdb_discover_unified_dev",
+            DATABASE="db_tmdb_unified_dev",
         )
         assert call_order == ["write", "dq"]
-

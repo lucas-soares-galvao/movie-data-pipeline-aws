@@ -2,12 +2,13 @@
 
 import logging
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import awswrangler as wr
-import boto3
 import pandas as pd
 from awsglue.utils import getResolvedOptions
+
+from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 logger = logging.getLogger()
 
@@ -513,45 +514,3 @@ def write_parquet_to_spec(
             "Abortando para não acionar o DQ contra dados ausentes."
         )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SPEC. {len(written_files)} arquivo(s) gravado(s).")
-
-
-def trigger_data_quality(
-    dq_job_name: str,
-    table_name: str,
-    database: str,
-    year: Optional[str] = None,
-) -> str:
-    """
-    Dispara o job Glue Data Quality e aguarda sua conclusão.
-
-    Dispara o job de forma assíncrona (fire-and-forget): a escrita SPEC é concluída
-    antes desta chamada, e o próximo trigger do EventBridge ocorre em 24h —
-    sem risco de race condition com o mode="overwrite".
-
-    Args:
-        dq_job_name: Nome do job Glue Data Quality cadastrado na AWS.
-        table_name:  Nome da tabela a validar.
-        database:    Nome do banco de dados no Glue Catalog.
-        year:        Ano da partição. None avalia a tabela toda.
-
-    Returns:
-        JobRunId da execução.
-    """
-    arguments = {
-        "--TABLE_NAME": table_name,
-        "--DATABASE": database,
-    }
-    if year is not None:
-        arguments["--YEAR"] = year
-
-    glue_client = boto3.client("glue")
-    response = glue_client.start_job_run(
-        JobName=dq_job_name,
-        Arguments=arguments,
-    )
-    run_id = response["JobRunId"]
-    logger.info(
-        f"Job Data Quality '{dq_job_name}' iniciado para tabela '{table_name}'. RunId: {run_id}"
-    )
-
-    return run_id

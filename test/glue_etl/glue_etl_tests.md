@@ -19,7 +19,7 @@ test/glue_etl/
 | Fixture | Tipo | Descrição |
 |---|---|---|
 | `_BASE` (constante) | `dict` | Argumentos comuns a todos os runs (buckets, nomes de jobs, databases) |
-| Mocks via `patch.object` | `MagicMock` | `read_from_sor`, `write_parquet_to_sot`, `trigger_data_quality`, `trigger_details` substituídos por mock em cada teste |
+| Mocks via `patch.object` | `MagicMock` | `read_from_sor`, `write_parquet_to_sot`, `trigger_glue_job` (de `shared_utils.triggers`) substituídos por mock em cada teste |
 
 ## Casos de teste — `test_main.py`
 
@@ -69,7 +69,7 @@ test/glue_etl/
 
 ## Casos de teste — `test_utils.py`
 
-Testa individualmente as funções utilitárias: leitura do SOR por `table_type`, escrita na SOT, normalização de nomes de plataformas e acionamento dos jobs de DQ, Details e AGG. Verifica argumentos passados para `awswrangler` e `boto3`.
+Testa individualmente as funções utilitárias: leitura do SOR por `table_type`, escrita na SOT e normalização de nomes de plataformas. Verifica argumentos passados para `awswrangler` e `boto3`. Os triggers de jobs Glue são testados em `test/shared_src/test_triggers.py`.
 
 - **`TestReadFromSorDiscover`** (4 testes): path S3 correto (`tmdb/discover/{media_type}/ano={year}/`) para movie e tv; coluna `year` adicionada ao DataFrame com valor correto
 - **`TestReadFromSorGenre`** (3 testes): chave S3 correta para movie (`generos_filmes.json`) e tv (`generos_series.json`); retorna DataFrame da lista JSON
@@ -78,9 +78,6 @@ Testa individualmente as funções utilitárias: leitura do SOR por `table_type`
 - **`TestReadFromSorNowPlaying`** (3 testes): path S3 `tmdb/now_playing/movie/`; deduplica por `id`; retorna DataFrame
 - **`TestWriteParquetToSot`** (4 testes): `awswrangler.s3.to_parquet` chamado com `partition_cols`, `mode` e `path` (`s3://{bucket}/tmdb/{table_name}/`) corretos; `mode` customizado repassado
 - **`TestDeriveCanonicalName`** (12 testes): remoção de sufixos ("Standard with Ads", "Premium", "Plus Premium", "Amazon Channel"); overrides manuais ("Paramount Plus" → "Paramount+", "Claro video" → "Claro Video"); composição ("Paramount Plus Premium" → "Paramount+", "MGM Plus Amazon Channel" → "MGM+")
-- **`TestTriggerAgg`** (2 testes): `start_job_run` com `JobName` correto; retorna `JobRunId`
-- **`TestTriggerDataQuality`** (4 testes): argumentos `TABLE_NAME` e `DATABASE` corretos; `--YEAR` presente quando fornecido e ausente quando não; retorna `JobRunId`
-- **`TestTriggerDetails`** (4 testes): todos os argumentos obrigatórios (`MEDIA_TYPE`, `YEAR`, `END_YEAR`, `DATABASE`) passados ao `start_job_run`; retorna `JobRunId`
 - **`TestGetResolvedOption`** (1 teste): delega corretamente ao `getResolvedOptions` do Glue runtime
 - **`TestGetParametersGlue`** (3 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar)
 

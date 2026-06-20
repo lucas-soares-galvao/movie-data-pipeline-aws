@@ -11,8 +11,7 @@ import sys
 from src.utils import (
     get_parameters_glue,
     read_from_sor,
-    trigger_data_quality,
-    trigger_details,
+    trigger_glue_job,
     write_parquet_to_sot,
 )
 
@@ -78,20 +77,15 @@ def main() -> None:
         mode=mode,
     )
 
-    trigger_data_quality(
-        dq_job_name=dq_job_name,
-        table_name=table_name,
-        database=database,
-        year=year,
-    )
+    trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=year)
 
     if table_type == "discover":
-        trigger_details(
-            details_job_name=details_job_name,
-            media_type=media_type,
-            year=year,
-            end_year=end_year,
-            database=database,
+        trigger_glue_job(
+            details_job_name,
+            MEDIA_TYPE=media_type,
+            YEAR=year,
+            END_YEAR=end_year,
+            DATABASE=database,
         )
 
     logger.info("Job Glue ETL finalizado com sucesso!")

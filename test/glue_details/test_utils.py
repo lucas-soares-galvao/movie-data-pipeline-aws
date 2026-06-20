@@ -22,35 +22,35 @@ def _make_response(status_code=200, json_data=None, headers=None):
 
 class TestTmdbGet:
     def test_retorna_json_em_sucesso(self):
-        with patch("src.utils.requests.get", return_value=_make_response(200, {"ok": True})), \
-             patch("src.utils.time.sleep") as mock_sleep:
-            result = u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        with patch("shared_utils.tmdb_api.requests.get", return_value=_make_response(200, {"ok": True})), \
+             patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
+            result = u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         assert result == {"ok": True}
         mock_sleep.assert_not_called()
 
     def test_retry_em_status_transiente_e_retorna_em_sucesso(self):
-        with patch("src.utils.requests.get", side_effect=[_make_response(500), _make_response(200, {"ok": True})]) as mock_get, \
-             patch("src.utils.time.sleep") as mock_sleep:
-            result = u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        with patch("shared_utils.tmdb_api.requests.get", side_effect=[_make_response(500), _make_response(200, {"ok": True})]) as mock_get, \
+             patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
+            result = u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         assert result == {"ok": True}
         assert mock_get.call_count == 2
         mock_sleep.assert_called_once()
 
     def test_retry_em_429_usa_retry_after(self):
-        with patch("src.utils.requests.get", side_effect=[
+        with patch("shared_utils.tmdb_api.requests.get", side_effect=[
             _make_response(429, headers={"Retry-After": "5"}),
             _make_response(200, {}),
-        ]), patch("src.utils.time.sleep") as mock_sleep:
-            u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        ]), patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
+            u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         wait = mock_sleep.call_args[0][0]
         assert wait >= 5
 
     def test_retry_em_connection_error_e_retorna_em_sucesso(self):
-        with patch("src.utils.requests.get", side_effect=[
+        with patch("shared_utils.tmdb_api.requests.get", side_effect=[
             requests.exceptions.ConnectionError("timeout"),
             _make_response(200, {"ok": True}),
-        ]) as mock_get, patch("src.utils.time.sleep") as mock_sleep:
-            result = u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        ]) as mock_get, patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
+            result = u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         assert result == {"ok": True}
         assert mock_get.call_count == 2
         mock_sleep.assert_called_once()
@@ -58,17 +58,17 @@ class TestTmdbGet:
     def test_levanta_apos_esgotar_tentativas_http(self):
         r500 = _make_response(500)
         r500.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
-        with patch("src.utils.requests.get", return_value=r500) as mock_get, \
-             patch("src.utils.time.sleep"):
+        with patch("shared_utils.tmdb_api.requests.get", return_value=r500) as mock_get, \
+             patch("shared_utils.tmdb_api.time.sleep"):
             with pytest.raises(requests.exceptions.HTTPError):
-                u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+                u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         assert mock_get.call_count == 3
 
     def test_levanta_apos_esgotar_tentativas_connection(self):
-        with patch("src.utils.requests.get", side_effect=requests.exceptions.ConnectionError("fail")) as mock_get, \
-             patch("src.utils.time.sleep"):
+        with patch("shared_utils.tmdb_api.requests.get", side_effect=requests.exceptions.ConnectionError("fail")) as mock_get, \
+             patch("shared_utils.tmdb_api.time.sleep"):
             with pytest.raises(requests.exceptions.ConnectionError):
-                u._tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+                u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         assert mock_get.call_count == 3
 
 
@@ -118,7 +118,7 @@ class TestFetchTmdbDetails:
     def test_calls_movie_endpoint(self):
         mock_response = MagicMock()
         mock_response.json.return_value = {"id": 1, "runtime": 120}
-        with patch("src.utils.requests.get", return_value=mock_response) as mock_get:
+        with patch("shared_utils.tmdb_api.requests.get", return_value=mock_response) as mock_get:
             u.fetch_tmdb_details("key-123", "movie", 1)
             url = mock_get.call_args[0][0]
             assert "/movie/1" in url
@@ -131,7 +131,7 @@ class TestFetchTmdbDetails:
             "number_of_episodes": 36,
             "episode_run_time": [45],
         }
-        with patch("src.utils.requests.get", return_value=mock_response) as mock_get:
+        with patch("shared_utils.tmdb_api.requests.get", return_value=mock_response) as mock_get:
             u.fetch_tmdb_details("key-123", "tv", 10)
             url = mock_get.call_args[0][0]
             assert "/tv/10" in url
@@ -140,7 +140,7 @@ class TestFetchTmdbDetails:
         expected = {"id": 1, "runtime": 90}
         mock_response = MagicMock()
         mock_response.json.return_value = expected
-        with patch("src.utils.requests.get", return_value=mock_response):
+        with patch("shared_utils.tmdb_api.requests.get", return_value=mock_response):
             result = u.fetch_tmdb_details("key-123", "movie", 1)
             assert result == expected
 
@@ -170,7 +170,7 @@ class TestCollectAndWriteDetails:
             "number_of_episodes": 20,
             "episode_run_time": [45],
             "first_air_date": "2022-03-01",
-            "name": "Série A",
+            "name": "Serie A",
             "overview": "Sinopse A",
             "poster_path": "/p.jpg",
             "backdrop_path": "/b.jpg",
@@ -181,8 +181,8 @@ class TestCollectAndWriteDetails:
         ids = [1, 2]
         responses = [self._mock_movie_response(i) for i in ids]
         mock_translator = MagicMock()
-        # side_effect como função: cada chamada a translate(t) executa a lambda e retorna "[PT] <texto>".
-        # Permite verificar nas asserções que a tradução foi aplicada (title_pt == "[PT] Filme A").
+        # side_effect como funcao: cada chamada a translate(t) executa a lambda e retorna "[PT] <texto>".
+        # Permite verificar nas assercoes que a traducao foi aplicada (title_pt == "[PT] Filme A").
         mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (
@@ -235,8 +235,8 @@ class TestCollectAndWriteDetails:
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib
 
-        # side_effect como função garante que ID 1 sempre falha e ID 2 sempre
-        # tem sucesso, independente da ordem de execução das threads
+        # side_effect como funcao garante que ID 1 sempre falha e ID 2 sempre
+        # tem sucesso, independente da ordem de execucao das threads
         def side_effect(_key, _type, item_id):
             if item_id == 1:
                 raise req_lib.RequestException("timeout")
@@ -278,7 +278,7 @@ class TestCollectAndWriteDetails:
             assert mock_write.call_args.kwargs["mode"] == "overwrite_partitions"
 
     def test_merges_existing_records_not_in_batch(self):
-        """Registros existentes cujos IDs não estão no batch atual são preservados."""
+        """Registros existentes cujos IDs nao estao no batch atual sao preservados."""
         mock_translator = MagicMock()
         mock_translator.translate.side_effect = lambda t: t
 
@@ -298,11 +298,11 @@ class TestCollectAndWriteDetails:
             u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
 
-            # ID 99 (existente, não no batch) deve ser preservado junto com o novo ID 1
+            # ID 99 (existente, nao no batch) deve ser preservado junto com o novo ID 1
             assert set(df_written["id"].tolist()) == {1, 99}
 
     def test_overwrites_id_already_in_batch(self):
-        """Se um ID existente está sendo re-escrito, o registro antigo é substituído."""
+        """Se um ID existente esta sendo re-escrito, o registro antigo e substituido."""
         mock_translator = MagicMock()
         mock_translator.translate.side_effect = lambda t: t
 
@@ -328,7 +328,7 @@ class TestCollectAndWriteDetails:
             assert df_written[df_written["id"] == 1].iloc[0]["runtime"] == 100
 
     def test_read_parquet_failure_falls_back_to_new_data_only(self):
-        """Se read_parquet falhar, a função grava apenas os novos registros sem erro."""
+        """Se read_parquet falhar, a funcao grava apenas os novos registros sem erro."""
         mock_translator = MagicMock()
         mock_translator.translate.side_effect = lambda t: t
 
@@ -356,20 +356,20 @@ class TestFetchTmdbWatchProviders:
         return mock_resp
 
     def test_calls_movie_watch_providers_endpoint(self):
-        with patch("src.utils.requests.get", return_value=self._make_response({})) as mock_get:
+        with patch("shared_utils.tmdb_api.requests.get", return_value=self._make_response({})) as mock_get:
             u.fetch_tmdb_watch_providers("key", "movie", 1)
             url = mock_get.call_args[0][0]
             assert "/movie/1/watch/providers" in url
 
     def test_calls_tv_watch_providers_endpoint(self):
-        with patch("src.utils.requests.get", return_value=self._make_response({})) as mock_get:
+        with patch("shared_utils.tmdb_api.requests.get", return_value=self._make_response({})) as mock_get:
             u.fetch_tmdb_watch_providers("key", "tv", 10)
             url = mock_get.call_args[0][0]
             assert "/tv/10/watch/providers" in url
 
     def test_returns_br_section(self):
         br = {"flatrate": [{"provider_name": "Netflix", "provider_id": 8, "logo_path": "/n.jpg"}]}
-        with patch("src.utils.requests.get", return_value=self._make_response(br)):
+        with patch("shared_utils.tmdb_api.requests.get", return_value=self._make_response(br)):
             result = u.fetch_tmdb_watch_providers("key", "movie", 1)
             assert result == br
 
@@ -469,56 +469,6 @@ class TestCollectAndWriteWatchProviders:
 
 
 # ---------------------------------------------------------------------------
-# trigger_data_quality
-# ---------------------------------------------------------------------------
-
-
-class TestTriggerDataQuality:
-    def test_starts_dq_job_with_table_database_and_year(self):
-        mock_glue = MagicMock()
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr-dq-1"}
-
-        with patch("src.utils.boto3.client", return_value=mock_glue):
-            run_id = u.trigger_data_quality("dq-job", "tb_tmdb_details_movie_dev", "db_tmdb_movie_dev", "2025")
-
-        mock_glue.start_job_run.assert_called_once_with(
-            JobName="dq-job",
-            Arguments={
-                "--TABLE_NAME": "tb_tmdb_details_movie_dev",
-                "--DATABASE": "db_tmdb_movie_dev",
-                "--YEAR": "2025",
-            },
-        )
-        assert run_id == "jr-dq-1"
-
-    def test_returns_job_run_id(self):
-        mock_glue = MagicMock()
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr-dq-99"}
-
-        with patch("src.utils.boto3.client", return_value=mock_glue):
-            run_id = u.trigger_data_quality("dq-job", "tb_tmdb_watch_providers_movie_dev", "db_tmdb_movie_dev", "2024")
-
-        assert run_id == "jr-dq-99"
-
-
-# ---------------------------------------------------------------------------
-# trigger_agg
-# ---------------------------------------------------------------------------
-
-
-class TestTriggerAgg:
-    def test_starts_agg_job(self):
-        mock_glue = MagicMock()
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr-123"}
-
-        with patch("src.utils.boto3.client", return_value=mock_glue):
-            run_id = u.trigger_agg("agg-job")
-
-        mock_glue.start_job_run.assert_called_once_with(JobName="agg-job")
-        assert run_id == "jr-123"
-
-
-# ---------------------------------------------------------------------------
 # get_resolved_option / get_parameters_glue / get_tmdb_api_key
 # ---------------------------------------------------------------------------
 
@@ -565,7 +515,7 @@ class TestGetTmdbApiKey:
         secret_value = json.dumps({"tmdb_api_key": "my-secret-key"})
         mock_client = MagicMock()
         mock_client.get_secret_value.return_value = {"SecretString": secret_value}
-        with patch("src.utils.boto3.client", return_value=mock_client):
+        with patch("shared_utils.tmdb_api.boto3.client", return_value=mock_client):
             key = u.get_tmdb_api_key("arn:aws:secretsmanager:us-east-1:1:secret:tmdb")
         assert key == "my-secret-key"
 
@@ -594,7 +544,7 @@ class TestFetchExistingIdsFromDetails:
         return result, mock_athena
 
     def test_sql_nao_filtra_por_ano(self):
-        """O filtro de year foi removido: IDs existentes em QUALQUER partição são considerados."""
+        """O filtro de year foi removido: IDs existentes em QUALQUER particao sao considerados."""
         _, mock_athena = self._run()
         sql = mock_athena.call_args.kwargs["sql"]
         assert "WHERE year" not in sql
@@ -620,7 +570,7 @@ class TestFetchExistingIdsFromDetails:
 
 class TestRepairDetailsDuplicates:
     def _run_repair(self, parquet_df=None, s3_exc=None):
-        """Helper: executa repair_details_duplicates com mocks configuráveis."""
+        """Helper: executa repair_details_duplicates com mocks configuraveis."""
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_details_duplicates(
@@ -681,7 +631,7 @@ class TestRepairDetailsDuplicates:
 
 class TestRepairDiscoverDuplicates:
     def _run_repair(self, parquet_df=None, s3_exc=None):
-        """Helper: executa repair_discover_duplicates com mocks configuráveis."""
+        """Helper: executa repair_discover_duplicates com mocks configuraveis."""
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_discover_duplicates(
@@ -753,7 +703,7 @@ class TestRepairDiscoverDuplicates:
 
 class TestRepairWatchProvidersDuplicates:
     def _run_repair(self, parquet_df=None, s3_exc=None):
-        """Helper: executa repair_watch_providers_duplicates com mocks configuráveis."""
+        """Helper: executa repair_watch_providers_duplicates com mocks configuraveis."""
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_watch_providers_duplicates(
@@ -800,7 +750,7 @@ class TestRepairWatchProvidersDuplicates:
         assert netflix_row["dt_atualizacao"] == "2025-06-02"
 
     def test_dedup_usa_provider_id_nao_provider_name(self):
-        """Mesmo provider_id com nomes diferentes (rebranding) é tratado como duplicata."""
+        """Mesmo provider_id com nomes diferentes (rebranding) e tratado como duplicata."""
         parquet_df = pd.DataFrame([
             {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Amazon Prime Video", "year": "2025", "dt_atualizacao": "2025-01-01"},
             {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Prime Video",        "year": "2025", "dt_atualizacao": "2025-06-01"},
@@ -878,4 +828,3 @@ class TestFetchIdsStaleWatchProviders:
     def test_retorna_lista_vazia_em_erro(self):
         result, _ = self._run(raise_exc=True)
         assert result == []
-

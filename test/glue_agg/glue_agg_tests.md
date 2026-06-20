@@ -27,14 +27,14 @@ test/glue_agg/
 
 | Teste | O que verifica |
 |---|---|
-| `test_calls_run_athena_query_with_correct_args` | `run_athena_query` chamado com os 4 argumentos corretos (db_movie, db_tv, db_unified, s3_bucket_temp) |
-| `test_calls_write_parquet_to_spec_with_correct_args` | `write_parquet_to_spec` chamado com df, bucket, table_name e database corretos |
+| `test_calls_run_athena_query_with_correct_args` | `run_athena_query` chamado com os 5 argumentos corretos (db_movie, db_tv, db_unified, s3_bucket_temp, env) |
+| `test_calls_write_parquet_to_spec_with_correct_args` | `write_parquet_to_spec` chamado com df, s3_bucket_spec, s3_prefix_spec, table_name e database corretos |
 | `test_write_receives_dataframe_returned_by_query` | O DataFrame passado para `write_parquet_to_spec` é exatamente o que `run_athena_query` retornou |
 | `test_pipeline_runs_without_exceptions` | Execução completa não levanta nenhuma exceção |
 | `test_write_called_exactly_once` | `write_parquet_to_spec` é chamado exatamente uma vez |
 | `test_query_called_exactly_once` | `run_athena_query` é chamado exatamente uma vez |
-| `test_dataframe_vazio_nao_escreve_mas_aciona_dq` | Quando `run_athena_query` retorna DataFrame vazio, `write_parquet_to_spec` ainda é chamado uma vez e `trigger_data_quality` também |
-| `test_aciona_dq_apos_escrita_sem_year` | **Ordem garantida:** `write_parquet_to_spec` → `trigger_data_quality` (usando `call_order[]`); DQ chamado sem `year`, com `table_name` e `database` corretos |
+| `test_dataframe_vazio_nao_escreve_mas_aciona_dq` | Quando `run_athena_query` retorna DataFrame vazio, `write_parquet_to_spec` ainda é chamado uma vez e `trigger_glue_job` também |
+| `test_aciona_dq_apos_escrita_sem_year` | **Ordem garantida:** `write_parquet_to_spec` → `trigger_glue_job` (usando `call_order[]`); DQ chamado sem `year`, com `table_name` e `database` corretos |
 
 > **Destaque:** `test_aciona_dq_apos_escrita_sem_year` usa uma lista compartilhada `call_order` nos side_effects dos mocks de `write` e `dq` para verificar a ordem de execução — garante que a escrita na SPEC ocorra *antes* de acionar a validação de qualidade.
 
@@ -56,7 +56,7 @@ test/glue_agg/
 
 | Teste | O que verifica |
 |---|---|
-| `test_constroi_caminho_s3_correto` | Argumento `path` é `"s3://{s3_bucket_spec}/{table_name}/"` |
+| `test_constroi_caminho_s3_correto` | Argumento `path` é `"s3://{s3_bucket_spec}/{s3_prefix_spec}/{table_name}/"` |
 | `test_usa_partition_cols_e_mode_corretos` | `partition_cols=["media_type", "year"]`, `mode="overwrite"` e `dataset=True` |
 | `test_dataframe_vazio_nao_escreve` | `to_parquet` não é chamado quando o DataFrame está vazio |
 | `test_registra_tabela_no_catalog` | `to_parquet` recebe `database` e `table` corretos para registrar no Glue Catalog |
@@ -79,7 +79,7 @@ test/glue_agg/
 
 | Teste | O que verifica |
 |---|---|
-| `test_returns_all_required_args` | Retorna `S3_BUCKET_SPEC`, `DB_UNIFIED`, `TABLE_NAME` e `GLUE_DATA_QUALITY_JOB_NAME` entre os argumentos obrigatórios |
+| `test_returns_all_required_args` | Retorna `S3_BUCKET_SPEC`, `S3_PREFIX_SPEC`, `DB_UNIFIED`, `TABLE_NAME`, `GLUE_DATA_QUALITY_JOB_NAME` e `ENVIRONMENT` entre os argumentos obrigatórios |
 
 ## Como executar
 

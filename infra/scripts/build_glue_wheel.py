@@ -33,26 +33,26 @@ def _handle_remove_readonly(func, path, exc_info):
     func(path)
 
 
-def build_wheel(src: Path, dest: Path, name: str) -> None:
+def build_wheel(src: Path, dest: Path, name: str, package: str = "src") -> None:
     if dest.exists():
         shutil.rmtree(dest, onerror=_handle_remove_readonly)
     dest.mkdir(parents=True, exist_ok=True)
 
-    src_package = src / "src"
+    src_package = src / package
     if not src_package.is_dir():
-        raise FileNotFoundError(f"Pacote 'src' nao encontrado em: {src_package}")
+        raise FileNotFoundError(f"Pacote '{package}' nao encontrado em: {src_package}")
 
     with tempfile.TemporaryDirectory() as staging_str:
         staging = Path(staging_str)
 
-        # Copia o pacote `src` para o staging (sem __pycache__).
+        # Copia o pacote para o staging (sem __pycache__).
         shutil.copytree(
             src_package,
-            staging / "src",
+            staging / package,
             ignore=shutil.ignore_patterns("__pycache__"),
         )
 
-        # pyproject.toml minimo declarando o pacote `src`.
+        # pyproject.toml minimo declarando o pacote.
         (staging / "pyproject.toml").write_text(
             "[build-system]\n"
             'requires = ["setuptools>=61.0"]\n'
@@ -63,7 +63,7 @@ def build_wheel(src: Path, dest: Path, name: str) -> None:
             f'version = "{VERSION}"\n'
             "\n"
             "[tool.setuptools]\n"
-            'packages = ["src"]\n',
+            f'packages = ["{package}"]\n',
             encoding="utf-8",
         )
 
@@ -96,12 +96,13 @@ def build_wheel(src: Path, dest: Path, name: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--src", required=True, help="Diretorio do app (contem a pasta src/)")
+    parser.add_argument("--src", required=True, help="Diretorio do app (contem a pasta do pacote)")
     parser.add_argument("--dest", required=True, help="Diretorio de saida do wheel")
     parser.add_argument("--name", required=True, help="Nome da distribuicao do wheel")
+    parser.add_argument("--package", default="src", help="Nome do pacote Python dentro de --src (default: src)")
     args = parser.parse_args()
 
-    build_wheel(src=Path(args.src), dest=Path(args.dest), name=args.name)
+    build_wheel(src=Path(args.src), dest=Path(args.dest), name=args.name, package=args.package)
 
 
 if __name__ == "__main__":

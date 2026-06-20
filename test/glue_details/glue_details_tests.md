@@ -58,7 +58,7 @@ test/glue_details/
 
 Testa as funções individuais:
 
-- `_tmdb_get`: retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
+- `tmdb_get` (de `shared_utils.tmdb_api`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
@@ -67,7 +67,6 @@ Testa as funções individuais:
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `dt_atualizacao` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
 - `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado
-- `trigger_agg` (`TestTriggerAgg`): argumentos passados ao `start_job_run` do Glue estão corretos; retorna `JobRunId`
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
 

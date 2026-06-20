@@ -9,7 +9,7 @@ import sys
 from src.utils import (
     get_parameters_glue,
     run_athena_query,
-    trigger_data_quality,
+    trigger_glue_job,
     write_parquet_to_spec,
 )
 
@@ -57,11 +57,7 @@ def main() -> None:
     )
 
     # Avalia a tabela unificada toda (sem filtro de ano) após a escrita.
-    trigger_data_quality(
-        dq_job_name=dq_job_name,
-        table_name=table_name,
-        database=db_unified,
-    )
+    trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=db_unified)
 
     logger.info("Job Glue AGG finalizado com sucesso!")
 

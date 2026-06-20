@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
+from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get
 from src.utils import (
-    _tmdb_get,
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
@@ -13,7 +13,6 @@ from src.utils import (
     collect_watch_providers_ref,
     fetch_tmdb_data,
     fetch_tmdb_reference,
-    get_tmdb_api_key,
     save_to_s3,
     trigger_glue_job,
 )
@@ -33,62 +32,62 @@ class TestTmdbGet(unittest.TestCase):
         r.raise_for_status.return_value = None
         return r
 
-    @patch("src.utils.time.sleep")
-    @patch("src.utils.requests.get")
+    @patch("shared_utils.tmdb_api.time.sleep")
+    @patch("shared_utils.tmdb_api.requests.get")
     def test_retorna_json_em_sucesso(self, mock_get, mock_sleep):
         mock_get.return_value = self._make_response(200, {"ok": True})
-        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        resultado = tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         self.assertEqual(resultado, {"ok": True})
         mock_sleep.assert_not_called()
 
-    @patch("src.utils.time.sleep")
-    @patch("src.utils.requests.get")
+    @patch("shared_utils.tmdb_api.time.sleep")
+    @patch("shared_utils.tmdb_api.requests.get")
     def test_retry_em_status_transiente_e_retorna_em_sucesso(self, mock_get, mock_sleep):
         mock_get.side_effect = [self._make_response(500), self._make_response(200, {"ok": True})]
-        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        resultado = tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         self.assertEqual(resultado, {"ok": True})
         self.assertEqual(mock_get.call_count, 2)
         mock_sleep.assert_called_once()
 
-    @patch("src.utils.time.sleep")
-    @patch("src.utils.requests.get")
+    @patch("shared_utils.tmdb_api.time.sleep")
+    @patch("shared_utils.tmdb_api.requests.get")
     def test_retry_em_429_usa_retry_after(self, mock_get, mock_sleep):
         mock_get.side_effect = [
             self._make_response(429, headers={"Retry-After": "5"}),
             self._make_response(200, {}),
         ]
-        _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         wait = mock_sleep.call_args[0][0]
         self.assertGreaterEqual(wait, 5)
 
-    @patch("src.utils.time.sleep")
-    @patch("src.utils.requests.get")
+    @patch("shared_utils.tmdb_api.time.sleep")
+    @patch("shared_utils.tmdb_api.requests.get")
     def test_retry_em_connection_error_e_retorna_em_sucesso(self, mock_get, mock_sleep):
         mock_get.side_effect = [
             requests.exceptions.ConnectionError("timeout"),
             self._make_response(200, {"ok": True}),
         ]
-        resultado = _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+        resultado = tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         self.assertEqual(resultado, {"ok": True})
         self.assertEqual(mock_get.call_count, 2)
         mock_sleep.assert_called_once()
 
-    @patch("src.utils.time.sleep")
-    @patch("src.utils.requests.get")
+    @patch("shared_utils.tmdb_api.time.sleep")
+    @patch("shared_utils.tmdb_api.requests.get")
     def test_levanta_apos_esgotar_tentativas_http(self, mock_get, mock_sleep):
         r500 = self._make_response(500)
         r500.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
         mock_get.return_value = r500
         with self.assertRaises(requests.exceptions.HTTPError):
-            _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+            tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         self.assertEqual(mock_get.call_count, 3)
 
-    @patch("src.utils.time.sleep")
-    @patch("src.utils.requests.get")
+    @patch("shared_utils.tmdb_api.time.sleep")
+    @patch("shared_utils.tmdb_api.requests.get")
     def test_levanta_apos_esgotar_tentativas_connection(self, mock_get, mock_sleep):
         mock_get.side_effect = requests.exceptions.ConnectionError("fail")
         with self.assertRaises(requests.exceptions.ConnectionError):
-            _tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
+            tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
         self.assertEqual(mock_get.call_count, 3)
 
 
@@ -98,7 +97,7 @@ class TestTmdbGet(unittest.TestCase):
 
 
 class TestGetTmdbApiKey(unittest.TestCase):
-    @patch("src.utils.boto3")
+    @patch("shared_utils.tmdb_api.boto3")
     def test_retorna_chave_do_secrets_manager(self, mock_boto3):
         # Prepara o cliente simulado do Secrets Manager
         mock_client = MagicMock()
@@ -122,55 +121,45 @@ class TestGetTmdbApiKey(unittest.TestCase):
 
 
 class TestFetchTmdbData(unittest.TestCase):
-    def _mock_resposta(self, dados):
-        """Cria um objeto de resposta HTTP simulado."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = dados
-        return mock_resp
-
-    @patch("src.utils.requests")
-    def test_busca_filmes_com_url_correta(self, mock_requests):
+    @patch("src.utils.tmdb_get")
+    def test_busca_filmes_com_url_correta(self, mock_tmdb_get):
         dados = {"page": 1, "results": [], "total_pages": 3, "total_results": 60}
-        mock_requests.get.return_value = self._mock_resposta(dados)
+        mock_tmdb_get.return_value = dados
 
         resultado = fetch_tmdb_data("minha-api-key", "movie", 2023, 1)
 
-        url_chamada = mock_requests.get.call_args[0][0]
+        url_chamada = mock_tmdb_get.call_args[0][0]
         self.assertIn("discover/movie", url_chamada)
         self.assertEqual(resultado, dados)
 
-    @patch("src.utils.requests")
-    def test_busca_series_com_url_correta(self, mock_requests):
+    @patch("src.utils.tmdb_get")
+    def test_busca_series_com_url_correta(self, mock_tmdb_get):
         dados = {"page": 1, "results": [], "total_pages": 2, "total_results": 40}
-        mock_requests.get.return_value = self._mock_resposta(dados)
+        mock_tmdb_get.return_value = dados
 
         resultado = fetch_tmdb_data("minha-api-key", "tv", 2022, 1)
 
-        url_chamada = mock_requests.get.call_args[0][0]
+        url_chamada = mock_tmdb_get.call_args[0][0]
         self.assertIn("discover/tv", url_chamada)
         self.assertEqual(resultado, dados)
 
-    @patch("src.utils.requests")
-    def test_filme_usa_parametro_primary_release_year(self, mock_requests):
-        mock_requests.get.return_value = self._mock_resposta(
-            {"total_pages": 1, "results": []}
-        )
+    @patch("src.utils.tmdb_get")
+    def test_filme_usa_parametro_primary_release_year(self, mock_tmdb_get):
+        mock_tmdb_get.return_value = {"total_pages": 1, "results": []}
 
         fetch_tmdb_data("key", "movie", 2020, 1)
 
-        params = mock_requests.get.call_args[1]["params"]
+        params = mock_tmdb_get.call_args[0][1]
         self.assertIn("primary_release_year", params)
         self.assertEqual(params["primary_release_year"], 2020)
 
-    @patch("src.utils.requests")
-    def test_serie_usa_parametro_first_air_date_year(self, mock_requests):
-        mock_requests.get.return_value = self._mock_resposta(
-            {"total_pages": 1, "results": []}
-        )
+    @patch("src.utils.tmdb_get")
+    def test_serie_usa_parametro_first_air_date_year(self, mock_tmdb_get):
+        mock_tmdb_get.return_value = {"total_pages": 1, "results": []}
 
         fetch_tmdb_data("key", "tv", 2020, 1)
 
-        params = mock_requests.get.call_args[1]["params"]
+        params = mock_tmdb_get.call_args[0][1]
         self.assertIn("first_air_date_year", params)
         self.assertEqual(params["first_air_date_year"], 2020)
 
@@ -344,31 +333,27 @@ class TestTriggerGlueJob(unittest.TestCase):
 
 
 class TestFetchTmdbReference(unittest.TestCase):
-    @patch("src.utils.requests")
-    def test_busca_endpoint_sem_params_extras(self, mock_requests):
+    @patch("src.utils.tmdb_get")
+    def test_busca_endpoint_sem_params_extras(self, mock_tmdb_get):
         dados = [{"iso_639_1": "pt", "english_name": "Portuguese"}]
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = dados
-        mock_requests.get.return_value = mock_resp
+        mock_tmdb_get.return_value = dados
 
         resultado = fetch_tmdb_reference("minha-key", "/configuration/languages")
 
-        url_chamada = mock_requests.get.call_args[0][0]
+        url_chamada = mock_tmdb_get.call_args[0][0]
         self.assertIn("/configuration/languages", url_chamada)
         self.assertEqual(resultado, dados)
 
-    @patch("src.utils.requests")
-    def test_busca_endpoint_com_params_extras(self, mock_requests):
+    @patch("src.utils.tmdb_get")
+    def test_busca_endpoint_com_params_extras(self, mock_tmdb_get):
         dados = {"genres": [{"id": 28, "name": "Ação"}]}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = dados
-        mock_requests.get.return_value = mock_resp
+        mock_tmdb_get.return_value = dados
 
         resultado = fetch_tmdb_reference(
             "minha-key", "/genre/movie/list", {"language": "pt-BR"}
         )
 
-        params = mock_requests.get.call_args[1]["params"]
+        params = mock_tmdb_get.call_args[0][1]
         self.assertEqual(params["language"], "pt-BR")
         self.assertEqual(resultado, dados)
 
@@ -557,7 +542,7 @@ class TestCollectNowPlayingData(unittest.TestCase):
         }
 
     @patch("src.utils.save_to_s3")
-    @patch("src.utils._tmdb_get")
+    @patch("src.utils.tmdb_get")
     def test_pagina_unica_enriquece_com_datas_teatrais(self, mock_get, mock_save):
         mock_get.side_effect = [
             self._page_response(1, 1, [{"id": 1, "title": "Filme X"}], {"minimum": "2025-01-01", "maximum": "2025-01-14"}),
@@ -573,7 +558,7 @@ class TestCollectNowPlayingData(unittest.TestCase):
         self.assertEqual(dados_salvos[0]["theater_end_date"], "2025-01-14")
 
     @patch("src.utils.save_to_s3")
-    @patch("src.utils._tmdb_get")
+    @patch("src.utils.tmdb_get")
     def test_multiplas_paginas_salva_cada_uma(self, mock_get, mock_save):
         mock_get.side_effect = [
             self._page_response(1, 3),
@@ -588,7 +573,7 @@ class TestCollectNowPlayingData(unittest.TestCase):
         self.assertEqual(mock_save.call_count, 3)
 
     @patch("src.utils.save_to_s3")
-    @patch("src.utils._tmdb_get")
+    @patch("src.utils.tmdb_get")
     def test_para_quando_page_maior_que_total_pages(self, mock_get, mock_save):
         mock_get.side_effect = [
             self._page_response(1, 1),
@@ -601,7 +586,7 @@ class TestCollectNowPlayingData(unittest.TestCase):
         self.assertEqual(mock_save.call_count, 1)
 
     @patch("src.utils.save_to_s3")
-    @patch("src.utils._tmdb_get")
+    @patch("src.utils.tmdb_get")
     def test_s3_key_tem_formato_correto(self, mock_get, mock_save):
         mock_get.side_effect = [
             self._page_response(1, 1),

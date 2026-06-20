@@ -1,8 +1,10 @@
-import boto3
 import os
+from typing import Any
+
+import boto3
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Inicia ou para uma instância Lightsail conforme a ação recebida.
 

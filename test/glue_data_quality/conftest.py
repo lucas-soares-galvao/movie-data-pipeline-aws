@@ -82,7 +82,7 @@ sys.modules.setdefault(
     "pyspark.context",
     _make_module("pyspark.context", SparkContext=None),
 )
-sys.modules.setdefault("pyspark.sql", _make_module("pyspark.sql"))
+sys.modules.setdefault("pyspark.sql", _make_module("pyspark.sql", DataFrame=MagicMock))
 sys.modules.setdefault(
     "pyspark.sql.functions",
     _make_module(
