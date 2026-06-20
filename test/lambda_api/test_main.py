@@ -289,25 +289,16 @@ class TestLambdaHandler(unittest.TestCase):
         chamada_watch_ref = mock_trigger.call_args_list[2]
         chamada_disc = mock_trigger.call_args_list[3]
 
-        # genre, discover e configuration usam o database do media type
-        for chamada in (chamada_genre, chamada_disc):
-            args_base = chamada[0][2]
-            self.assertEqual(args_base["MEDIA_TYPE"], "movie")
-            self.assertEqual(args_base["DATABASE"], "tmdb_db")
+        # Todos recebem MEDIA_TYPE e DATABASE como kwargs
+        for chamada in (chamada_genre, chamada_config, chamada_watch_ref, chamada_disc):
+            self.assertEqual(chamada[1].get("MEDIA_TYPE"), "movie")
+            self.assertEqual(chamada[1].get("DATABASE"), "tmdb_db")
 
-        args_config = chamada_config[0][2]
-        self.assertEqual(args_config["MEDIA_TYPE"], "movie")
-        self.assertEqual(args_config["DATABASE"], "tmdb_db")
-
-        args_watch_ref = chamada_watch_ref[0][2]
-        self.assertEqual(args_watch_ref["MEDIA_TYPE"], "movie")
-        self.assertEqual(args_watch_ref["DATABASE"], "tmdb_db")
-
-        # table_name varia conforme o contexto (keyword arg)
-        self.assertEqual(chamada_genre[1].get("table_name"), "genre_movie")
-        self.assertEqual(chamada_config[1].get("table_name"), "configuration_languages")
-        self.assertEqual(chamada_watch_ref[1].get("table_name"), "watch_providers_ref_movie")
-        self.assertEqual(chamada_disc[1].get("table_name"), "discover_movie")
+        # TABLE_NAME varia conforme o contexto
+        self.assertEqual(chamada_genre[1].get("TABLE_NAME"), "genre_movie")
+        self.assertEqual(chamada_config[1].get("TABLE_NAME"), "configuration_languages")
+        self.assertEqual(chamada_watch_ref[1].get("TABLE_NAME"), "watch_providers_ref_movie")
+        self.assertEqual(chamada_disc[1].get("TABLE_NAME"), "discover_movie")
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -338,20 +329,20 @@ class TestLambdaHandler(unittest.TestCase):
         # start_year = 2025 - 1 = 2024 -> range(2024, 2026) = [2024, 2025]
         self.assertEqual(mock_trigger.call_count, 5)
 
-        # 1ª chamada: genre — sem year, table_type="genre"
+        # 1ª chamada: genre — sem YEAR, TABLE_TYPE="genre"
         chamada_genre = mock_trigger.call_args_list[0]
-        self.assertIsNone(chamada_genre[1].get("year"))
-        self.assertEqual(chamada_genre[1].get("table_type"), "genre")
+        self.assertNotIn("YEAR", chamada_genre[1])
+        self.assertEqual(chamada_genre[1].get("TABLE_TYPE"), "genre")
 
-        # 2ª chamada: configuration — sem year, table_type="configuration"
+        # 2ª chamada: configuration — sem YEAR, TABLE_TYPE="configuration"
         chamada_config = mock_trigger.call_args_list[1]
-        self.assertIsNone(chamada_config[1].get("year"))
-        self.assertEqual(chamada_config[1].get("table_type"), "configuration")
+        self.assertNotIn("YEAR", chamada_config[1])
+        self.assertEqual(chamada_config[1].get("TABLE_TYPE"), "configuration")
 
-        # 3a chamada: watch_providers_ref — sem year, table_type="watch_providers_ref"
+        # 3a chamada: watch_providers_ref — sem YEAR, TABLE_TYPE="watch_providers_ref"
         chamada_watch_ref = mock_trigger.call_args_list[2]
-        self.assertIsNone(chamada_watch_ref[1].get("year"))
-        self.assertEqual(chamada_watch_ref[1].get("table_type"), "watch_providers_ref")
+        self.assertNotIn("YEAR", chamada_watch_ref[1])
+        self.assertEqual(chamada_watch_ref[1].get("TABLE_TYPE"), "watch_providers_ref")
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -382,10 +373,10 @@ class TestLambdaHandler(unittest.TestCase):
         chamada_ano_2025 = mock_trigger.call_args_list[3]
         chamada_ano_2026 = mock_trigger.call_args_list[4]
 
-        self.assertEqual(chamada_ano_2025[1].get("year"), 2025)
-        self.assertEqual(chamada_ano_2025[1].get("table_type"), "discover")
-        self.assertEqual(chamada_ano_2026[1].get("year"), 2026)
-        self.assertEqual(chamada_ano_2026[1].get("table_type"), "discover")
+        self.assertEqual(chamada_ano_2025[1].get("YEAR"), 2025)
+        self.assertEqual(chamada_ano_2025[1].get("TABLE_TYPE"), "discover")
+        self.assertEqual(chamada_ano_2026[1].get("YEAR"), 2026)
+        self.assertEqual(chamada_ano_2026[1].get("TABLE_TYPE"), "discover")
 
     @patch("main.trigger_glue_job")
     @patch("main.collect_discover_data")
@@ -414,7 +405,7 @@ class TestLambdaHandler(unittest.TestCase):
 
         # genre(0) + configuration(1) + watch_providers_ref(2) + discover_2025(3) + discover_2026(4)
         for chamada in mock_trigger.call_args_list[3:]:
-            self.assertEqual(chamada[1].get("end_year"), 2026)
+            self.assertEqual(chamada[1].get("END_YEAR"), 2026)
 
 
 class TestSkipDaily(unittest.TestCase):
@@ -699,10 +690,10 @@ class TestNowPlaying(unittest.TestCase):
 
             main.lambda_handler(self._evento_com_now_playing, self.mock_context)
 
-            table_types = [c[1].get("table_type") for c in mock_trigger.call_args_list]
+            table_types = [c[1].get("TABLE_TYPE") for c in mock_trigger.call_args_list]
             self.assertIn("now_playing", table_types)
-            chamada_now = next(c for c in mock_trigger.call_args_list if c[1].get("table_type") == "now_playing")
-            self.assertEqual(chamada_now[1].get("table_name"), "now_playing_movie")
+            chamada_now = next(c for c in mock_trigger.call_args_list if c[1].get("TABLE_TYPE") == "now_playing")
+            self.assertEqual(chamada_now[1].get("TABLE_NAME"), "now_playing_movie")
 
 
 if __name__ == "__main__":

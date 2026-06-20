@@ -31,7 +31,6 @@ S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Coleta dados do TMDB e dispara o Glue ETL. Payload definido em eventbridge_lambda_api.tf."""
     s3_client = boto3.client("s3")
-    glue_client = boto3.client("glue")
 
     content_type = event["type"]
 
@@ -70,33 +69,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de gêneros...")
         trigger_glue_job(
-            glue_client,
             GLUE_ETL_JOB_NAME,
-            glue_base_args,
-            table_type="genre",
-            table_name=table_genre,
+            TABLE_TYPE="genre",
+            TABLE_NAME=table_genre,
+            **glue_base_args,
         )
 
         logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
         collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de configuração...")
         trigger_glue_job(
-            glue_client,
             GLUE_ETL_JOB_NAME,
-            glue_base_args,
-            table_type="configuration",
-            table_name=table_configuration,
+            TABLE_TYPE="configuration",
+            TABLE_NAME=table_configuration,
+            **glue_base_args,
         )
 
         logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
         collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
         trigger_glue_job(
-            glue_client,
             GLUE_ETL_JOB_NAME,
-            glue_base_args,
-            table_type="watch_providers_ref",
-            table_name=table_watch_providers_ref,
+            TABLE_TYPE="watch_providers_ref",
+            TABLE_NAME=table_watch_providers_ref,
+            **glue_base_args,
         )
     else:
         logger.info("only_discover=True: pulando coleta de genre, configuration e watch_providers_ref.")
@@ -127,13 +123,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # end_year é repassado para o Glue Details saber quando é o último run do ciclo
         # (tv + end_year → dispara o Glue AGG).
         trigger_glue_job(
-            glue_client,
             GLUE_ETL_JOB_NAME,
-            glue_base_args,
-            table_type="discover",
-            table_name=table_discover,
-            year=year,
-            end_year=end_year,
+            TABLE_TYPE="discover",
+            TABLE_NAME=table_discover,
+            YEAR=year,
+            END_YEAR=end_year,
+            **glue_base_args,
         )
 
     if content_type == "movie" and table_now_playing:
@@ -141,11 +136,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
         logger.info("Acionando Glue ETL para tabela de now_playing...")
         trigger_glue_job(
-            glue_client,
             GLUE_ETL_JOB_NAME,
-            glue_base_args,
-            table_type="now_playing",
-            table_name=table_now_playing,
+            TABLE_TYPE="now_playing",
+            TABLE_NAME=table_now_playing,
+            **glue_base_args,
         )
 
     logger.info(f"Coleta de '{content_type}' finalizada com sucesso!")
