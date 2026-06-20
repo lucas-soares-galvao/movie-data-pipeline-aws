@@ -374,3 +374,9 @@ def recomendar(preferencia: str) -> list[dict]:
     dados = json.loads(conteudo)
     # Retorna apenas a lista de títulos (dentro da chave "titulos")
     return dados.get("titulos", [])
+
+
+def limpar_duracao(raw: str) -> str:
+    """Remove fragmentos '~null' e partes vazias da string de duração gerada pelo LLM."""
+    limpo = raw.replace("~null", "").strip(" ·")
+    return " · ".join(part.strip() for part in limpo.split(" · ") if part.strip())

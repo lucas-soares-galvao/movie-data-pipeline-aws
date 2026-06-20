@@ -44,8 +44,8 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 
 | Função | Origem | Responsabilidade |
 |---|---|---|
-| `get_tmdb_api_key(secret_arn)` | `shared_utils.tmdb_api` | Lê a chave da API no Secrets Manager |
-| `tmdb_get(url, params, max_retries)` | `shared_utils.tmdb_api` | GET com retry/backoff para lidar com rate limits da API TMDB |
+| `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
+| `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
 
 ## Tecnologias
 

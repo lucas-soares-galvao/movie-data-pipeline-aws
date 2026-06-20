@@ -39,8 +39,9 @@ IMPLANTAÇÃO:
 
 import re
 from datetime import date
+
 import streamlit as st
-from agent import recomendar
+from agent import limpar_duracao, recomendar
 
 # Configuração global da página — deve ser a primeira chamada Streamlit do arquivo.
 # page_title: aparece na aba do navegador
@@ -346,12 +347,7 @@ if st.button("Recomendar", type="primary") and preferencia:
             generos = t.get("generos") or []
             motivo = t.get("motivo") or ""  # motivo de recomendação gerado pelo GPT
 
-            # Limpa a string de duração: remove fragmentos "~null" que o GPT às vezes inclui
-            # quando um campo de duração está ausente (ex: "3 temporadas · ~null")
-            duracao = (t.get("duracao") or "").replace("~null", "").strip(" ·")
-            # Reconstrói a string de duração removendo partes vazias
-            # Ex: " · 36 eps · " → "36 eps"
-            duracao = " · ".join(part.strip() for part in duracao.split(" · ") if part.strip())
+            duracao = limpar_duracao(t.get("duracao") or "")
             data_lancamento = t.get("data_lancamento") or ""
             streaming_providers = t.get("streaming_providers") or ""
             in_theaters = t.get("in_theaters") or False

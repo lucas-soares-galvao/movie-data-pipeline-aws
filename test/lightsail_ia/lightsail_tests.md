@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `recomendar()` e as funções do agente de IA em `app/lightsail_ia/agent.py`. Verifica as três etapas do pipeline de recomendação: extração de filtros via GPT-4o, consulta ao Athena e formatação das recomendações. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (OpenAI/LLM e Athena) são substituídas por **mocks** — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções de `app/lightsail_ia/agent.py`: `recomendar()`, `buscar_titulos_spec()` e `limpar_duracao()`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). Verifica as três etapas do pipeline de recomendação: extração de filtros via GPT-4o, consulta ao Athena e formatação das recomendações. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -59,6 +59,21 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | Filtros extraídos na etapa 1 são passados corretamente para `buscar_titulos_spec()` |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo incompatível com `tool_choice="required"`) |
 | `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` está presente na resposta final |
+
+### `TestLimparDuracao` — Limpeza de strings de duração
+
+Testa a função `limpar_duracao()` que remove fragmentos `~null` gerados pelo LLM quando campos de duração são nulos. Não usa mocks — são testes puramente unitários sobre manipulação de strings.
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_vazio_para_string_vazia` | String vazia retorna vazia |
+| `test_remove_null_isolado` | `"~null"` retorna `""` |
+| `test_remove_null_no_fim` | `"3 temporadas · ~null"` → `"3 temporadas"` |
+| `test_remove_null_no_inicio` | `"~null · 36 eps"` → `"36 eps"` |
+| `test_remove_multiplos_nulls` | `"~null · 36 eps · ~null"` → `"36 eps"` |
+| `test_preserva_duracao_normal` | `"2h 26min"` preservado intacto |
+| `test_preserva_duracao_composta` | `"3 temporadas · 36 eps · 45min"` preservado intacto |
+| `test_remove_separadores_vazios` | `" · 36 eps · "` → `"36 eps"` |
 
 ## Como executar
 

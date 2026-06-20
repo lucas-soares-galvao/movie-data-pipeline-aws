@@ -13,7 +13,7 @@ from src.utils import (
     fetch_ids_from_sot,
     fetch_ids_stale_watch_providers,
     get_parameters_glue,
-    get_tmdb_api_key,
+    get_api_secret,
     repair_details_duplicates,
     repair_discover_duplicates,
     repair_watch_providers_duplicates,
@@ -57,7 +57,7 @@ def main() -> None:
 
     # Busca a chave uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
-    api_key = get_tmdb_api_key(secret_arn)
+    api_key = get_api_secret(secret_arn, "tmdb_api_key")
 
     # ── DETAILS ───────────────────────────────────────────────────────────────
     # Usa o SOT (não o SOR) porque os IDs já foram deduplicados pelo Glue ETL.

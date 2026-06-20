@@ -13,7 +13,7 @@ import requests
 from awsglue.utils import getResolvedOptions
 from deep_translator import GoogleTranslator
 
-from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get  # noqa: F401 (get_tmdb_api_key)
+from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 logger = logging.getLogger()

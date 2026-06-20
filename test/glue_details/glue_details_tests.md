@@ -58,7 +58,7 @@ test/glue_details/
 
 Testa as funções individuais:
 
-- `tmdb_get` (de `shared_utils.tmdb_api`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
+- `api_get` (de `shared_utils.api_client`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
@@ -114,11 +114,11 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 |---|---|
 | `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `AGG_JOB_NAME`, etc.) |
 
-### `TestGetTmdbApiKey`
+### `TestGetApiSecret`
 
 | Teste | O que verifica |
 |---|---|
-| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor de `tmdb_api_key` |
+| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor da chave especificada |
 
 ## Como executar
 

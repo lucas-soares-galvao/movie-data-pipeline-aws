@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `lambda_handler()` em `app/lambda_lightsail_scheduler/main.py`. O objetivo é garantir que as ações `start` e `stop` chamam os métodos corretos do boto3 Lightsail com o nome de instância esperado, e que cenários de erro (ação desconhecida, variável de ambiente ausente) levantam as exceções corretas. Todas as chamadas ao boto3 são substituídas por **mocks**.
+Testa a função `lambda_handler()` em `app/lambda_lightsail_scheduler/main.py`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager, `pytest.raises()` para exceções). O objetivo é garantir que as ações `start` e `stop` chamam os métodos corretos do boto3 Lightsail com o nome de instância esperado, e que cenários de erro (ação desconhecida, variável de ambiente ausente) levantam as exceções corretas. Todas as chamadas ao boto3 são substituídas por **mocks** via `unittest.mock`.
 
 ## Estrutura
 

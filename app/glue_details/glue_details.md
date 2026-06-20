@@ -56,8 +56,8 @@ Importadas do pacote `shared`, reutilizadas por múltiplos componentes do pipeli
 
 | Função | Origem | Responsabilidade |
 |---|---|---|
-| `tmdb_get(url, params, max_retries)` | `shared_utils.tmdb_api` | GET com retry/backoff para lidar com rate limits da API TMDB |
-| `get_tmdb_api_key(secret_arn)` | `shared_utils.tmdb_api` | Busca a chave da API no Secrets Manager |
+| `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
+| `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, AGG) com argumentos dinâmicos |
 
 ## Tecnologias

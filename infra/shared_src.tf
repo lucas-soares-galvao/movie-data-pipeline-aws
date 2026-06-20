@@ -2,7 +2,7 @@
 # BUILD E DEPLOY DO WHEEL COMPARTILHADO (shared_src)
 # =============================================================================
 # Contém funções reutilizadas por múltiplos jobs Glue e pela Lambda API:
-#   - shared_utils.tmdb_api: tmdb_get, get_tmdb_api_key
+#   - shared_utils.api_client: api_get, get_api_secret
 #   - shared_utils.triggers: trigger_glue_job
 
 resource "null_resource" "shared_wheel_build" {

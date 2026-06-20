@@ -1,4 +1,4 @@
-"""tmdb_api.py — Funções compartilhadas para acesso à API do TMDB."""
+"""api_client.py — Funções compartilhadas para acesso a APIs externas."""
 
 import json
 import logging
@@ -13,18 +13,18 @@ logger = logging.getLogger()
 
 # Códigos HTTP que indicam problema TEMPORÁRIO no servidor — vale tentar novamente.
 # 429 = "Too Many Requests" (ultrapassou o rate limit da API)
-# 5xx = erros internos do servidor TMDB (normalmente transitórios)
+# 5xx = erros internos do servidor (normalmente transitórios)
 # Diferente de 401 (chave inválida) ou 404 (recurso não existe) — esses são erros
 # permanentes que não melhoram com retry.
-_TMDB_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+_TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
 
 
-def tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
+def api_get(url: str, params: dict, max_retries: int = 3) -> dict:
     """
-    GET na API do TMDB com retry e backoff exponencial em erros transientes.
+    GET com retry e backoff exponencial em erros transientes.
 
     Args:
-        url:         URL completa do endpoint da API do TMDB.
+        url:         URL completa do endpoint da API.
         params:      Parâmetros de query string.
         max_retries: Número máximo de tentativas antes de desistir.
 
@@ -42,7 +42,7 @@ def tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
             # que nunca chega (servidor travado, rede lenta, etc.)
             response = requests.get(url, params=params, timeout=30)
 
-            if response.status_code in _TMDB_TRANSIENT_STATUS:
+            if response.status_code in _TRANSIENT_HTTP_CODES:
                 if is_last_attempt:
                     logger.error(
                         f"HTTP {response.status_code} após {max_retries} tentativas. "
@@ -50,7 +50,7 @@ def tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
                     )
                     response.raise_for_status()
 
-                # Para 429, o TMDB informa no header "Retry-After" quanto tempo esperar.
+                # Para 429, o servidor pode informar no header "Retry-After" quanto tempo esperar.
                 # Para os demais erros transientes, usa backoff exponencial (1s → 2s → 4s).
                 # random.uniform(0, 1) adiciona um "jitter" (variação aleatória) de até 1s
                 # para evitar que múltiplos workers acordem exatamente ao mesmo tempo.
@@ -87,19 +87,20 @@ def tmdb_get(url: str, params: dict, max_retries: int = 3) -> dict:
             time.sleep(wait)
 
 
-def get_tmdb_api_key(secret_arn: str) -> str:
+def get_api_secret(secret_arn: str, key_name: str) -> str:
     """
-    Busca a chave de API do TMDB no Secrets Manager.
+    Busca um segredo no Secrets Manager.
 
-    Formato do segredo: {"tmdb_api_key": "sua-chave-aqui"}
+    Formato esperado do segredo: {key_name: "valor"}
 
     Args:
         secret_arn: ARN completo do segredo no Secrets Manager.
+        key_name:   Nome da chave dentro do JSON do segredo.
 
     Returns:
-        A chave de API do TMDB como string.
+        O valor do segredo como string.
     """
     client = boto3.client("secretsmanager")
     response = client.get_secret_value(SecretId=secret_arn)
     secret = json.loads(response["SecretString"])
-    return secret["tmdb_api_key"]
+    return secret[key_name]

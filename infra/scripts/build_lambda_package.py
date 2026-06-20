@@ -46,7 +46,7 @@ def build_package(src: Path, requirements: Path, dest: Path, shared: Path = None
         else:
             shutil.copy2(item, target)
 
-    # Copy shared package so `from shared_utils.tmdb_api import ...` works at runtime.
+    # Copy shared package so `from shared_utils.api_client import ...` works at runtime.
     if shared and shared.is_dir():
         shutil.copytree(
             shared,

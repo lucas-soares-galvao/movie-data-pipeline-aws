@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `lambda_handler` em `app/lambda_api/main.py` e as funções utilitárias em `app/lambda_api/src/utils.py`. Os testes são unitários: todas as dependências externas (AWS, TMDB, S3) são substituídas por mocks, garantindo execução offline, rápida e determinística.
+Testa a função `lambda_handler` em `app/lambda_api/main.py` e as funções utilitárias em `app/lambda_api/src/utils.py`. Os testes são unitários com estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). Todas as dependências externas (AWS, TMDB, S3) são substituídas por mocks via `unittest.mock`, garantindo execução offline, rápida e determinística.
 
 ## Estrutura
 
@@ -14,13 +14,21 @@ test/lambda_api/
 └── test_utils.py             # Testes das funções utilitárias
 ```
 
-## Fixtures (`conftest.py`)
+## Setup
 
-| Fixture | Tipo | Descrição |
-|---|---|---|
-| `mock_boto3` | Mock | Substitui o cliente boto3 (S3, Glue, Secrets Manager) |
-| `mock_requests` | Mock | Substitui chamadas HTTP à API TMDB |
-| Variáveis de ambiente | `os.environ` | `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME`, `S3_BUCKET_SOR` definidos antes do import |
+As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME` e `S3_BUCKET_SOR` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
+
+### Helper `_run()` (`test_main.py`)
+
+Função auxiliar no nível do módulo que encapsula os 9 `patch()` comuns a praticamente todos os testes do handler. Recebe o evento e um `year` opcional, executa `main.lambda_handler()` e retorna um dict com o resultado e todos os mocks para inspeção:
+
+```python
+mocks = _run(EVENTO_MOVIE, year=2027)
+assert mocks["result"]["statusCode"] == 200
+assert mocks["mock_discover"].call_count == 2
+```
+
+Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_dt`.
 
 ## Casos de teste — `test_main.py`
 
@@ -70,9 +78,9 @@ test/lambda_api/
 
 ## Casos de teste — `test_utils.py`
 
-Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `shared/`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
+Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `shared/`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Cada método usa `with patch(...)` como context manager para substituir dependências externas. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
 
-### `TestTmdbGet` (de `shared_utils.tmdb_api`)
+### `TestApiGet` (de `shared_utils.api_client`)
 
 | Teste | O que verifica |
 |---|---|
@@ -83,11 +91,11 @@ Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `
 | `test_levanta_apos_esgotar_tentativas_http` | Levanta `HTTPError` após esgotar 3 tentativas com erro HTTP |
 | `test_levanta_apos_esgotar_tentativas_connection` | Levanta `ConnectionError` após esgotar 3 tentativas com falha de rede |
 
-### `TestGetTmdbApiKey` (de `shared_utils.tmdb_api`)
+### `TestGetApiSecret` (de `shared_utils.api_client`)
 
 | Teste | O que verifica |
 |---|---|
-| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor de `tmdb_api_key` do JSON do Secrets Manager |
+| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor da chave especificada do JSON do Secrets Manager |
 
 ### `TestFetchTmdbData`
 

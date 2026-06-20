@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get  # noqa: F401
+from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 S3Client = Any

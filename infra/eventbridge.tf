@@ -199,7 +199,7 @@ resource "aws_cloudwatch_event_rule" "sfn_backfill_annual" {
   name        = "${local.tmdb_prefix}-sfn-backfill-annual-${var.env}"
   description = "Dispara o backfill histórico TMDB todo dia 1 de janeiro"
   # schedule_expression = "cron(30 10 1 1 ? *)" # 1º de janeiro às 10:30 UTC / 07:30 BRT
-  schedule_expression = "cron(20 01 * * ? *)"
+  schedule_expression = "cron(30 02 * * ? *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.sfn_backfill
 }

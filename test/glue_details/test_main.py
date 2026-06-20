@@ -27,7 +27,7 @@ def _base_patches(args=None, existing_ids=None, stale_ids=None):
     """Retorna context managers base para todos os testes de main()."""
     return (
         patch.object(m, "get_parameters_glue", return_value=args or _BASE),
-        patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+        patch.object(m, "get_api_secret", return_value="key-123"),
         patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
         patch.object(m, "fetch_existing_ids_from_details", return_value=existing_ids if existing_ids is not None else []),
         patch.object(m, "fetch_ids_stale_watch_providers", return_value=stale_ids if stale_ids is not None else _IDS),
@@ -44,7 +44,7 @@ class TestMain:
     def test_fetches_api_key_from_secrets_manager(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123") as mock_key,
+            patch.object(m, "get_api_secret", return_value="key-123") as mock_key,
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -54,13 +54,13 @@ class TestMain:
         ):
             m.main()
             mock_key.assert_called_once_with(
-                "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb"
+                "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb", "tmdb_api_key"
             )
 
     def test_fetches_ids_for_movie_using_discover_movie_table(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -80,7 +80,7 @@ class TestMain:
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -99,7 +99,7 @@ class TestMain:
     def test_collect_called_once_for_movie(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -117,7 +117,7 @@ class TestMain:
     def test_collect_watch_providers_called_with_correct_args_for_movie(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -137,7 +137,7 @@ class TestMain:
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -155,7 +155,7 @@ class TestMain:
     def test_triggers_data_quality_twice_for_details_and_watch_providers(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -173,7 +173,7 @@ class TestMain:
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -192,7 +192,7 @@ class TestMain:
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2025", "END_YEAR": "2025"}
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -211,7 +211,7 @@ class TestMain:
         call_order = []
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -235,7 +235,7 @@ class TestMain:
     def test_repair_called_for_movie_at_last_year(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -257,7 +257,7 @@ class TestMain:
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -276,7 +276,7 @@ class TestMain:
     def test_does_not_trigger_agg_for_movie(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -293,7 +293,7 @@ class TestMain:
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -309,7 +309,7 @@ class TestMain:
     def test_skip_collect_details_when_no_new_ids(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=_IDS),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -323,7 +323,7 @@ class TestMain:
     def test_skip_collect_watch_providers_when_no_stale_ids(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=[]),
@@ -337,7 +337,7 @@ class TestMain:
     def test_repair_discover_duplicates_called_at_last_year(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -359,7 +359,7 @@ class TestMain:
     def test_repair_watch_providers_duplicates_called_at_last_year(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_tmdb_api_key", return_value="key-123"),
+            patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),

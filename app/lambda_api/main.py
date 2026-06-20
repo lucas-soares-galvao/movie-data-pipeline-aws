@@ -16,7 +16,7 @@ from src.utils import (
     collect_genre_data,
     collect_now_playing_data,
     collect_watch_providers_ref,
-    get_tmdb_api_key,
+    get_api_secret,
     trigger_glue_job,
 )
 
@@ -57,7 +57,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
-    api_key = get_tmdb_api_key(TMDB_SECRET_ARN)
+    api_key = get_api_secret(TMDB_SECRET_ARN, "tmdb_api_key")
 
     current_year   = datetime.now().year
     start_year     = int(event.get("start_year", current_year - 1))

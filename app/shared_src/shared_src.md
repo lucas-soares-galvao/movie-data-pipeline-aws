@@ -11,18 +11,18 @@ app/shared_src/
 ├── shared_src.md          ← este arquivo
 └── shared_utils/          ← pacote Python (importado como shared_utils)
     ├── __init__.py
-    ├── tmdb_api.py        ← acesso à API TMDB (retry, Secrets Manager)
+    ├── api_client.py      ← acesso a APIs externas (retry, Secrets Manager)
     └── triggers.py        ← disparo genérico de jobs Glue
 ```
 
 ## Funções
 
-### `shared_utils/tmdb_api.py`
+### `shared_utils/api_client.py`
 
 | Função | Responsabilidade |
 |---|---|
-| `tmdb_get(url, params, max_retries)` | GET com retry/backoff exponencial para lidar com rate limits da API TMDB (429, 5xx) |
-| `get_tmdb_api_key(secret_arn)` | Busca a chave de API do TMDB no AWS Secrets Manager |
+| `api_get(url, params, max_retries)` | GET com retry/backoff exponencial para lidar com rate limits de APIs (429, 5xx) |
+| `get_api_secret(secret_arn, key_name)` | Busca um segredo no AWS Secrets Manager |
 
 ### `shared_utils/triggers.py`
 
@@ -34,8 +34,8 @@ app/shared_src/
 
 | Componente | Funções importadas |
 |---|---|
-| `lambda_api` | `tmdb_get`, `get_tmdb_api_key` |
-| `glue_details` | `tmdb_get`, `get_tmdb_api_key`, `trigger_glue_job` |
+| `lambda_api` | `api_get`, `get_api_secret` |
+| `glue_details` | `api_get`, `get_api_secret`, `trigger_glue_job` |
 | `glue_etl` | `trigger_glue_job` |
 | `glue_agg` | `trigger_glue_job` |
 

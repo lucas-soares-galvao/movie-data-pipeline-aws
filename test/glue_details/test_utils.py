@@ -1,75 +1,7 @@
 import pandas as pd
-import pytest
-import requests
 from unittest.mock import MagicMock, patch
 
 import src.utils as u
-
-
-# ---------------------------------------------------------------------------
-# _tmdb_get
-# ---------------------------------------------------------------------------
-
-
-def _make_response(status_code=200, json_data=None, headers=None):
-    r = MagicMock()
-    r.status_code = status_code
-    r.json.return_value = json_data if json_data is not None else {}
-    r.headers = headers or {}
-    r.raise_for_status.return_value = None
-    return r
-
-
-class TestTmdbGet:
-    def test_retorna_json_em_sucesso(self):
-        with patch("shared_utils.tmdb_api.requests.get", return_value=_make_response(200, {"ok": True})), \
-             patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
-            result = u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
-        assert result == {"ok": True}
-        mock_sleep.assert_not_called()
-
-    def test_retry_em_status_transiente_e_retorna_em_sucesso(self):
-        with patch("shared_utils.tmdb_api.requests.get", side_effect=[_make_response(500), _make_response(200, {"ok": True})]) as mock_get, \
-             patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
-            result = u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
-        assert result == {"ok": True}
-        assert mock_get.call_count == 2
-        mock_sleep.assert_called_once()
-
-    def test_retry_em_429_usa_retry_after(self):
-        with patch("shared_utils.tmdb_api.requests.get", side_effect=[
-            _make_response(429, headers={"Retry-After": "5"}),
-            _make_response(200, {}),
-        ]), patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
-            u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
-        wait = mock_sleep.call_args[0][0]
-        assert wait >= 5
-
-    def test_retry_em_connection_error_e_retorna_em_sucesso(self):
-        with patch("shared_utils.tmdb_api.requests.get", side_effect=[
-            requests.exceptions.ConnectionError("timeout"),
-            _make_response(200, {"ok": True}),
-        ]) as mock_get, patch("shared_utils.tmdb_api.time.sleep") as mock_sleep:
-            result = u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
-        assert result == {"ok": True}
-        assert mock_get.call_count == 2
-        mock_sleep.assert_called_once()
-
-    def test_levanta_apos_esgotar_tentativas_http(self):
-        r500 = _make_response(500)
-        r500.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
-        with patch("shared_utils.tmdb_api.requests.get", return_value=r500) as mock_get, \
-             patch("shared_utils.tmdb_api.time.sleep"):
-            with pytest.raises(requests.exceptions.HTTPError):
-                u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
-        assert mock_get.call_count == 3
-
-    def test_levanta_apos_esgotar_tentativas_connection(self):
-        with patch("shared_utils.tmdb_api.requests.get", side_effect=requests.exceptions.ConnectionError("fail")) as mock_get, \
-             patch("shared_utils.tmdb_api.time.sleep"):
-            with pytest.raises(requests.exceptions.ConnectionError):
-                u.tmdb_get("https://api.themoviedb.org/3/test", {"api_key": "k"})
-        assert mock_get.call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +50,7 @@ class TestFetchTmdbDetails:
     def test_calls_movie_endpoint(self):
         mock_response = MagicMock()
         mock_response.json.return_value = {"id": 1, "runtime": 120}
-        with patch("shared_utils.tmdb_api.requests.get", return_value=mock_response) as mock_get:
+        with patch("shared_utils.api_client.requests.get", return_value=mock_response) as mock_get:
             u.fetch_tmdb_details("key-123", "movie", 1)
             url = mock_get.call_args[0][0]
             assert "/movie/1" in url
@@ -131,7 +63,7 @@ class TestFetchTmdbDetails:
             "number_of_episodes": 36,
             "episode_run_time": [45],
         }
-        with patch("shared_utils.tmdb_api.requests.get", return_value=mock_response) as mock_get:
+        with patch("shared_utils.api_client.requests.get", return_value=mock_response) as mock_get:
             u.fetch_tmdb_details("key-123", "tv", 10)
             url = mock_get.call_args[0][0]
             assert "/tv/10" in url
@@ -140,7 +72,7 @@ class TestFetchTmdbDetails:
         expected = {"id": 1, "runtime": 90}
         mock_response = MagicMock()
         mock_response.json.return_value = expected
-        with patch("shared_utils.tmdb_api.requests.get", return_value=mock_response):
+        with patch("shared_utils.api_client.requests.get", return_value=mock_response):
             result = u.fetch_tmdb_details("key-123", "movie", 1)
             assert result == expected
 
@@ -356,20 +288,20 @@ class TestFetchTmdbWatchProviders:
         return mock_resp
 
     def test_calls_movie_watch_providers_endpoint(self):
-        with patch("shared_utils.tmdb_api.requests.get", return_value=self._make_response({})) as mock_get:
+        with patch("shared_utils.api_client.requests.get", return_value=self._make_response({})) as mock_get:
             u.fetch_tmdb_watch_providers("key", "movie", 1)
             url = mock_get.call_args[0][0]
             assert "/movie/1/watch/providers" in url
 
     def test_calls_tv_watch_providers_endpoint(self):
-        with patch("shared_utils.tmdb_api.requests.get", return_value=self._make_response({})) as mock_get:
+        with patch("shared_utils.api_client.requests.get", return_value=self._make_response({})) as mock_get:
             u.fetch_tmdb_watch_providers("key", "tv", 10)
             url = mock_get.call_args[0][0]
             assert "/tv/10/watch/providers" in url
 
     def test_returns_br_section(self):
         br = {"flatrate": [{"provider_name": "Netflix", "provider_id": 8, "logo_path": "/n.jpg"}]}
-        with patch("shared_utils.tmdb_api.requests.get", return_value=self._make_response(br)):
+        with patch("shared_utils.api_client.requests.get", return_value=self._make_response(br)):
             result = u.fetch_tmdb_watch_providers("key", "movie", 1)
             assert result == br
 
@@ -469,7 +401,7 @@ class TestCollectAndWriteWatchProviders:
 
 
 # ---------------------------------------------------------------------------
-# get_resolved_option / get_parameters_glue / get_tmdb_api_key
+# get_resolved_option / get_parameters_glue
 # ---------------------------------------------------------------------------
 
 
@@ -507,17 +439,6 @@ class TestGetParametersGlue:
         assert result["MEDIA_TYPE"] == "movie"
         assert result["YEAR"] == "2024"
         assert result["TMDB_SECRET_ARN"] == "arn:aws:secretsmanager:us-east-1:1:secret:tmdb"
-
-
-class TestGetTmdbApiKey:
-    def test_returns_api_key_from_secret(self):
-        import json
-        secret_value = json.dumps({"tmdb_api_key": "my-secret-key"})
-        mock_client = MagicMock()
-        mock_client.get_secret_value.return_value = {"SecretString": secret_value}
-        with patch("shared_utils.tmdb_api.boto3.client", return_value=mock_client):
-            key = u.get_tmdb_api_key("arn:aws:secretsmanager:us-east-1:1:secret:tmdb")
-        assert key == "my-secret-key"
 
 
 # ---------------------------------------------------------------------------
