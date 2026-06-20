@@ -6,16 +6,6 @@
 # apenas cria as políticas managed e as anexa à role existente.
 # =============================================================================
 
-moved {
-  from = aws_iam_policy.cicd_iam
-  to   = aws_iam_policy.iam_cicd
-}
-
-moved {
-  from = aws_iam_role_policy_attachment.cicd_iam
-  to   = aws_iam_role_policy_attachment.iam_cicd
-}
-
 data "aws_iam_role" "github_actions" {
   name = "${var.cicd_role_name}-${var.env}"
 }

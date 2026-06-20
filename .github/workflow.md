@@ -110,7 +110,7 @@ Cria ou atualiza um Pull Request para promover código entre branches.
 | `feature/*` | `develop` |
 | `develop` | `main` |
 
-Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fmt -check` para garantir que o código Terraform é válido e está formatado.
+Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fmt -check` — apenas em branches `feature/*`. Em `develop`, esses checks são pulados porque o `02_terraform.yml` já os executou antes do auto-pr ser chamado.
 
 ---
 

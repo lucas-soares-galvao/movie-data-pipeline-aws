@@ -4,10 +4,10 @@ import json
 import logging
 from typing import Any, Optional
 
-from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get  # noqa: F401 (get_tmdb_api_key)
+from shared_utils.tmdb_api import get_tmdb_api_key, tmdb_get  # noqa: F401
+from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 S3Client = Any
-GlueClient = Any
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -72,60 +72,6 @@ def save_to_s3(s3_client: S3Client, bucket: str, data: dict, s3_key: str) -> Non
         ContentType="application/json",
     )
     logger.info(f"Arquivo salvo: s3://{bucket}/{s3_key}")
-
-
-def trigger_glue_job(
-    glue_client: GlueClient,
-    job_name: str,
-    glue_catalog_args: dict,
-    table_type: str,
-    table_name: str,
-    year: Optional[int] = None,
-    end_year: Optional[int] = None,
-) -> str:
-    """
-    Dispara o Glue ETL sem aguardar — cada chamada roda em paralelo.
-
-    Args:
-        glue_client:       Cliente boto3 do Glue
-        job_name:          Nome do job registrado na AWS
-        glue_catalog_args: Dict com MEDIA_TYPE, DATABASE, DATABASE_UNIFIED
-        table_type:        "genre", "configuration", "watch_providers_ref" ou "discover"
-        table_name:        Nome da tabela no Glue Catalog
-        year:              Ano dos dados (apenas para discover)
-        end_year:          Último ano do ciclo (para o Details saber quando disparar o AGG)
-
-    Returns:
-        JobRunId desta execução
-    """
-    arguments = {
-        "--TABLE_TYPE": table_type,
-        "--TABLE_NAME": table_name,
-    }
-
-    if year is not None:
-        arguments["--YEAR"] = str(year)
-    if end_year is not None:
-        arguments["--END_YEAR"] = str(end_year)
-
-    for key, value in glue_catalog_args.items():
-        arguments[f"--{key.upper()}"] = str(value)
-
-    response = glue_client.start_job_run(
-        JobName=job_name,
-        Arguments=arguments,
-    )
-    run_id = response["JobRunId"]
-
-    if year is not None:
-        logger.info(
-            f"Job Glue '{job_name}' iniciado para '{table_type}' do ano {year}. RunId: {run_id}"
-        )
-    else:
-        logger.info(
-            f"Job Glue '{job_name}' iniciado para '{table_type}'. RunId: {run_id}"
-        )
-    return run_id
 
 
 def fetch_tmdb_reference(api_key: str, endpoint: str, params: Optional[dict] = None) -> dict:
