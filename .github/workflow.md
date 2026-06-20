@@ -75,7 +75,7 @@ Provisiona ou destrói a infraestrutura AWS.
 **Entrada:** `environment` (`dev` ou `prod`)  
 **Saída:** `was_destroyed` — indica se a infra foi destruída (impede o deploy)
 
-**`infra/destroy_config.json`**
+**`infra/config/destroy_config.json`**
 
 Controla se o workflow deve destruir (`terraform destroy`) ou provisionar (`terraform apply`) cada ambiente:
 
@@ -88,7 +88,7 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 **Etapas principais:**
 
 1. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`) e wheels Glue (ETL, Agg, Details) — verifica se os artefatos foram gerados
-2. Lê `infra/destroy_config.json` para decidir se destrói ou aplica — valida que o valor é `true` ou `false`
+2. Lê `infra/config/destroy_config.json` para decidir se destrói ou aplica — valida que o valor é `true` ou `false`
 3. `terraform init` com backend S3 + DynamoDB
 4. `terraform validate` e `terraform fmt -check` (**bloqueantes**) + TFLint e Checkov (não-bloqueantes — apenas avisos)
 5. Injeta o e-mail de notificação no `.tfvars` (não é commitado no repo)
@@ -184,4 +184,4 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | **Checkov** | Scanner de segurança para IaC (Terraform, CloudFormation) — detecta configurações inseguras como buckets S3 públicos ou IAM permissivo demais. |
 | **Infracost** | Estima o custo mensal da infraestrutura AWS antes de aplicar — exibe o delta de custo no comentário do PR. |
 | **PR automático** | Pull Request criado pelo próprio pipeline (`03_pr_auto.yml`) para promover código entre branches. O merge ainda requer aprovação manual, mas a criação do PR é automatizada para não depender de nenhum desenvolvedor. |
-| **`terraform destroy`** | Destrói todos os recursos AWS gerenciados pelo Terraform naquele ambiente — o inverso do `apply`. Usado para desligar o ambiente e parar de pagar. Controlado pelo `infra/destroy_config.json`. |
+| **`terraform destroy`** | Destrói todos os recursos AWS gerenciados pelo Terraform naquele ambiente — o inverso do `apply`. Usado para desligar o ambiente e parar de pagar. Controlado pelo `infra/config/destroy_config.json`. |

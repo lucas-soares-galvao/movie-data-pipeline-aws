@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Gera app/lightsail_ia/.env com as credenciais do ambiente dev lidas do Terraform.
-# Uso: LLM_API_KEY=sk-... bash infra/scripts/export_env_local.sh
+# Uso: LLM_API_KEY=sk-... bash infra/config/export_env_local.sh
 set -euo pipefail
 
 : "${LLM_API_KEY:?Defina LLM_API_KEY antes de rodar este script}"

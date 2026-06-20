@@ -87,7 +87,7 @@ Em dev, a instância Lightsail está desabilitada (`lightsail_enabled = false`).
 
 ```bash
 # 1. Gerar o .env com as credenciais da conta dev (requer Terraform inicializado)
-LLM_API_KEY=sk-... bash infra/scripts/export_env_local.sh
+LLM_API_KEY=sk-... bash infra/config/export_env_local.sh
 
 # 2. Rodar
 cd app/lightsail_ia

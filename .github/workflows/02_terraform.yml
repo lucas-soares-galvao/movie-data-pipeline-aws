@@ -141,9 +141,9 @@ jobs:
       - name: Read destroy configuration
         id: read-destroy-config
         run: |
-          DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/destroy_config.json)"
+          DESTROY="$(jq -r '.${{ inputs.environment }}' ./infra/config/destroy_config.json)"
           if [[ "$DESTROY" != "true" && "$DESTROY" != "false" ]]; then
-            echo "❌ Valor inválido em destroy_config.json para '${{ inputs.environment }}': '$DESTROY' (esperado: true ou false)"
+            echo "❌ Valor inválido em config/destroy_config.json para '${{ inputs.environment }}': '$DESTROY' (esperado: true ou false)"
             exit 1
           fi
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
