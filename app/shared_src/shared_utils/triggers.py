@@ -22,7 +22,7 @@ def trigger_glue_job(job_name: str, **arguments: Optional[str]) -> str:
     Returns:
         JobRunId da execução iniciada.
     """
-    glue_args = {f"--{k}": v for k, v in arguments.items() if v is not None}
+    glue_args = {f"--{k}": str(v) for k, v in arguments.items() if v is not None}
 
     glue_client = boto3.client("glue")
     response = glue_client.start_job_run(JobName=job_name, Arguments=glue_args)
