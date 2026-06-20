@@ -253,7 +253,7 @@ jobs:
           fi
 
       - name: Show app URL
-        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
+        if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
           echo "🔗 FilmBot: http://${{ steps.tf.outputs.public_ip }}"
           echo "## 🔗 FilmBot" >> $GITHUB_STEP_SUMMARY
