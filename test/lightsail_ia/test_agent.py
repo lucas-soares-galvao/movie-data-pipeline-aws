@@ -194,7 +194,7 @@ class TestRecomendar:
 
     def test_retorna_lista_vazia_se_athena_sem_resultados(self):
         with (
-            patch("agent.buscar_titulos_spec", return_value=[]) as mock_buscar,
+            patch("agent.buscar_titulos_spec", return_value=[]),
             patch("agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm({"tipo": "movie"}, "")

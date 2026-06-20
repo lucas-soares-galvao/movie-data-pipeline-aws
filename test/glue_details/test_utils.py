@@ -1,5 +1,4 @@
 import pandas as pd
-import requests
 from unittest.mock import MagicMock, patch
 
 import src.utils as u
