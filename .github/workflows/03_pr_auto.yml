@@ -47,10 +47,13 @@ jobs:
           fi
 
       - name: Setup Terraform
+        if: startsWith(inputs.branch_name, 'feature/')
         uses: hashicorp/setup-terraform@v3
 
       # Valida sintaxe Terraform antes de abrir PR (sem conectar ao backend remoto)
+      # Executado apenas em feature/* — develop já passou pelo 02_terraform.yml completo
       - name: Terraform Validate
+        if: startsWith(inputs.branch_name, 'feature/')
         run: |
           cd infra
           terraform init -backend=false
@@ -58,6 +61,7 @@ jobs:
           echo "✅ Terraform validate concluído com sucesso"
 
       - name: Terraform Format Check
+        if: startsWith(inputs.branch_name, 'feature/')
         run: |
           cd infra && terraform fmt -check -recursive
           echo "✅ Terraform format check concluído com sucesso"
