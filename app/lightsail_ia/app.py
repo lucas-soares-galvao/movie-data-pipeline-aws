@@ -132,6 +132,10 @@ if not st.session_state.get("autenticado"):
       [data-testid="stButton"] > button:hover {
         opacity: 0.88 !important;
       }
+      [data-testid="stColumns"],
+      [data-testid="stHorizontalBlock"] {
+        gap: 0.4rem !important;
+      }
 
       /* Erro customizado */
       .login-error {
