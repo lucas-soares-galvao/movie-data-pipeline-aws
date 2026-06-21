@@ -94,7 +94,9 @@ TOOL = {
                         "\"media_type = 'movie' AND lower(genre_names) LIKE '%terror%'\", "
                         "\"original_language = 'ko' AND year BETWEEN '2010' AND '2019'\", "
                         "\"in_theaters = true AND media_type = 'movie'\", "
-                        "\"lower(streaming_providers) LIKE '%netflix%' AND vote_average >= 8.0\""
+                        "\"lower(streaming_providers) LIKE '%netflix%' AND vote_average >= 8.0\", "
+                        "\"lower(genre_names) LIKE '%comédia%' AND vote_average >= 7.0\" "
+                        "(sem media_type = retorna filmes E séries)"
                     ),
                 },
                 "limite": {
@@ -272,6 +274,8 @@ def recomendar(preferencia: str) -> list[dict]:
                     "- Para textos, use lower() + LIKE: lower(genre_names) LIKE '%terror%'\n"
                     "- Para idioma, use original_language com código ISO: original_language = 'ko' (coreano), 'ja' (japonês), 'en' (inglês), 'pt' (português)\n"
                     "- Sempre inclua vote_average >= 6.0 salvo se o usuário pedir nota diferente.\n"
+                    "- Se o usuário pedir APENAS filmes, use media_type = 'movie'. Se pedir APENAS séries, use media_type = 'tv'. "
+                    "Se pedir ambos ('filmes e séries', 'filmes ou séries') ou não especificar o tipo, NÃO inclua filtro de media_type.\n"
                     "- Nunca use SELECT, INSERT, UPDATE, DELETE ou outros comandos — apenas expressões de filtro."
                 ),
             },

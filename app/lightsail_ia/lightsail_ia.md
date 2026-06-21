@@ -41,6 +41,7 @@ O LLM recebe os resultados reais do Athena e formata como JSON com campos amigá
 - Tema escuro com CSS customizado
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
+- Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
 - Cada card exibe:
   - Imagem de fundo (backdrop preferido sobre poster)
   - Título, ano e tipo (filme/série)

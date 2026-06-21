@@ -38,10 +38,14 @@ IMPLANTAÇÃO:
 """
 
 import re
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
 
 import streamlit as st
 from agent import limpar_duracao, recomendar
+
+_executor = ThreadPoolExecutor(max_workers=2)
 
 # Configuração global da página — deve ser a primeira chamada Streamlit do arquivo.
 # page_title: aparece na aba do navegador
@@ -316,98 +320,109 @@ preferencia = st.text_input(
 # ==============================================================================
 # LÓGICA DO BOTÃO E EXIBIÇÃO DOS RESULTADOS
 # ==============================================================================
-# O bloco "if st.button(...) and preferencia" executa apenas quando:
-#   1. O usuário clicou no botão "Recomendar" E
-#   2. O campo de texto não está vazio
+# A recomendação roda em uma thread separada para manter a UI responsiva.
+# Enquanto processa, o usuário pode clicar em "Cancelar" para desistir da busca.
 if st.button("Recomendar", type="primary") and preferencia:
-    # st.spinner() exibe uma animação de carregamento enquanto o bloco interno processa
-    with st.spinner("Buscando as melhores opções para você..."):
-        # Chama o agente de IA (agent.py): LLM extrai filtros → Athena consulta → LLM formata
+    st.session_state["future"] = _executor.submit(recomendar, preferencia)
+    st.session_state["buscando"] = True
+    st.session_state["busca_concluida"] = False
+    st.session_state["titulos"] = []
+    st.rerun()
+
+if st.session_state.get("buscando"):
+    future: Future = st.session_state.get("future")
+
+    if future and future.done():
+        st.session_state["buscando"] = False
+        st.session_state["busca_concluida"] = True
         try:
-            titulos = recomendar(preferencia)
+            st.session_state["titulos"] = future.result()
         except Exception:
             st.error("Algo deu errado ao buscar as recomendações. Tente novamente em instantes.")
-            titulos = []
-
-    if not titulos:
-        st.warning("Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.")
+            st.session_state["titulos"] = []
+        st.rerun()
     else:
-        palavra = "opção" if len(titulos) == 1 else "opções"
-        st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
+        col_spinner, col_cancelar = st.columns([4, 1])
+        with col_spinner:
+            st.info("⏳ Buscando as melhores opções para você...")
+        with col_cancelar:
+            if st.button("Cancelar", type="secondary"):
+                st.session_state["buscando"] = False
+                st.session_state["busca_concluida"] = False
+                st.session_state["titulos"] = []
+                st.session_state["future"] = None
+                st.rerun()
+        time.sleep(0.5)
+        st.rerun()
 
-        # Streamlit não tem componente de grid de cards nativo, então montamos HTML manualmente.
-        # st.markdown(..., unsafe_allow_html=True) renderiza HTML bruto dentro da página.
-        cards_html = []
-        for t in titulos:
-            # Preferimos backdrop (imagem wide de fundo) sobre poster (imagem vertical).
-            # Se nenhum estiver disponível, não exibe imagem.
-            poster = t.get("backdrop_url") or t.get("poster_url") or ""
-            nota = t.get("nota")
-            sinopse = t.get("sinopse") or ""
-            generos = t.get("generos") or []
-            motivo = t.get("motivo") or ""  # motivo de recomendação gerado pelo GPT
+titulos = st.session_state.get("titulos", [])
 
-            duracao = limpar_duracao(t.get("duracao") or "")
-            data_lancamento = t.get("data_lancamento") or ""
-            streaming_providers = t.get("streaming_providers") or ""
-            in_theaters = t.get("in_theaters") or False
-            theater_end_date = t.get("theater_end_date") or ""
+if st.session_state.get("busca_concluida") and not titulos:
+    st.warning("Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.")
+elif titulos:
+    palavra = "opção" if len(titulos) == 1 else "opções"
+    st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
 
-            # HTML da imagem do card (largura 100%, altura fixa 200px, crop centralizado)
-            img_html = (
-                f'<img src="{poster}" style="width:100%;height:200px;object-fit:cover;display:block;" />'
-                if poster else ""
+    cards_html = []
+    for t in titulos:
+        poster = t.get("backdrop_url") or t.get("poster_url") or ""
+        nota = t.get("nota")
+        sinopse = t.get("sinopse") or ""
+        generos = t.get("generos") or []
+        motivo = t.get("motivo") or ""
+
+        duracao = limpar_duracao(t.get("duracao") or "")
+        data_lancamento = t.get("data_lancamento") or ""
+        streaming_providers = t.get("streaming_providers") or ""
+        in_theaters = t.get("in_theaters") or False
+        theater_end_date = t.get("theater_end_date") or ""
+
+        img_html = (
+            f'<img src="{poster}" style="width:100%;height:200px;object-fit:cover;display:block;" />'
+            if poster else ""
+        )
+
+        generos_html = "".join(
+            f'<span class="genero">{g.strip()}</span>' for g in generos
+        )
+
+        providers_html = ""
+        cinema_html = ""
+        if in_theaters:
+            label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
+            cinema_html = f'<div class="meta-row"><span class="meta-icon">🎬</span><span class="cinema-badge">{label}</span></div>'
+        providers_html = ""
+        if streaming_providers:
+            stream_badges = "".join(
+                f'<span class="provider">{p.strip()}</span>'
+                for p in streaming_providers.split(",")
+                if p.strip()
             )
+            providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{stream_badges}</div>'
 
-            # Gera os badges de gênero (ex: "Ação", "Aventura", "Terror")
-            generos_html = "".join(
-                f'<span class="genero">{g.strip()}</span>' for g in generos
-            )
+        cards_html.append(f"""
+        <div class="card">
+          {img_html}
+          <div class="card-body">
+            <strong>{t.get('titulo', '')}</strong>
+            <span style="color:#737373; font-size:12px">
+              &nbsp;({t.get('ano', '')}) — {t.get('tipo', '')}
+            </span>
+            <div style="margin: 6px 0">{generos_html}</div>
+            {f'<div class="meta-row"><span class="meta-icon">★</span><span class="nota">{nota}</span></div>' if nota else ''}
+            {f'<div class="meta-row"><span class="meta-icon">⏱</span><span class="duracao">{duracao}</span></div>' if duracao else ''}
+            {f'<div class="meta-row"><span class="meta-icon">📅</span><span class="data-lancamento">{data_lancamento}</span></div>' if data_lancamento else ''}
+            {cinema_html}
+            {providers_html}
+            <p class="sinopse">{sinopse}</p>
+            <p class="motivo">💡 {motivo}</p>
+          </div>
+        </div>
+        """)
 
-            # Gera os badges de plataformas de streaming e cinema
-            # (streaming_providers é uma string "Netflix, Prime Video, Max")
-            providers_html = ""
-            cinema_html = ""
-            if in_theaters:
-                label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
-                cinema_html = f'<div class="meta-row"><span class="meta-icon">🎬</span><span class="cinema-badge">{label}</span></div>'
-            providers_html = ""
-            if streaming_providers:
-                stream_badges = "".join(
-                    f'<span class="provider">{p.strip()}</span>'
-                    for p in streaming_providers.split(",")
-                    if p.strip()
-                )
-                providers_html = f'<div class="meta-row providers-row"><span class="meta-icon">📺</span>{stream_badges}</div>'
-
-            # Monta o HTML completo de um card
-            cards_html.append(f"""
-            <div class="card">
-              {img_html}
-              <div class="card-body">
-                <strong>{t.get('titulo', '')}</strong>
-                <span style="color:#737373; font-size:12px">
-                  &nbsp;({t.get('ano', '')}) — {t.get('tipo', '')}
-                </span>
-                <div style="margin: 6px 0">{generos_html}</div>
-                {f'<div class="meta-row"><span class="meta-icon">★</span><span class="nota">{nota}</span></div>' if nota else ''}
-                {f'<div class="meta-row"><span class="meta-icon">⏱</span><span class="duracao">{duracao}</span></div>' if duracao else ''}
-                {f'<div class="meta-row"><span class="meta-icon">📅</span><span class="data-lancamento">{data_lancamento}</span></div>' if data_lancamento else ''}
-                {cinema_html}
-                {providers_html}
-                <p class="sinopse">{sinopse}</p>
-                <p class="motivo">💡 {motivo}</p>
-              </div>
-            </div>
-            """)
-
-        # Envolve todos os cards no container de grade
-        grid_html = '<div class="grid-filmes">' + "".join(cards_html) + "</div>"
-        # re.sub(r'\s+', ' ', ...) colapsa múltiplos espaços e quebras de linha em um único espaço.
-        # Isso é necessário porque o parser HTML do Streamlit às vezes falha com
-        # indentação excessiva no HTML injetado via st.markdown.
-        grid_html = re.sub(r'\s+', ' ', grid_html)
-        st.markdown(grid_html, unsafe_allow_html=True)
+    grid_html = '<div class="grid-filmes">' + "".join(cards_html) + "</div>"
+    grid_html = re.sub(r'\s+', ' ', grid_html)
+    st.markdown(grid_html, unsafe_allow_html=True)
 
 st.markdown(f"""
 <div style="text-align:center; padding: 16px 0 8px; color: #6b7280; font-size: 12px; letter-spacing: 0.05em; border-top: 1px solid #1f2937; margin-top: 32px;">
