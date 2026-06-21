@@ -329,7 +329,7 @@ preferencia = st.text_input(
 buscando = st.session_state.get("buscando", False)
 
 if buscando:
-    col_recomendar, col_cancelar, _ = st.columns([0.5, 0.5, 11], gap="small")
+    col_recomendar, col_cancelar, _ = st.columns([1, 1, 14], gap="small")
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
