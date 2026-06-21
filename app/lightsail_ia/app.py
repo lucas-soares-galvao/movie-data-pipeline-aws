@@ -339,6 +339,16 @@ if buscando:
       #btn-cancelar-container button:hover {
         background: rgba(239,68,68,0.25) !important;
       }
+      @media (max-width: 640px) {
+        div[data-testid="stColumns"] {
+          flex-wrap: nowrap !important;
+        }
+        div[data-testid="stColumn"] {
+          flex: 0 0 auto !important;
+          width: auto !important;
+          min-width: 0 !important;
+        }
+      }
     </style>
     """, unsafe_allow_html=True)
     col_recomendar, col_cancelar, _ = st.columns([1.2, 1, 14], gap="small")
