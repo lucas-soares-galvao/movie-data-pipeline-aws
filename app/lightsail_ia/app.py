@@ -331,12 +331,14 @@ buscando = st.session_state.get("buscando", False)
 if buscando:
     st.markdown("""
     <style>
-      div[data-testid="stColumns"] > div:nth-child(2) button {
+      button[data-testid="stBaseButton-secondary"][kind="secondary"]:not(:disabled),
+      div[data-testid="stColumn"]:nth-child(2) button {
         background: rgba(239,68,68,0.15) !important;
         color: #f87171 !important;
         border: 1px solid rgba(239,68,68,0.4) !important;
       }
-      div[data-testid="stColumns"] > div:nth-child(2) button:hover {
+      button[data-testid="stBaseButton-secondary"][kind="secondary"]:not(:disabled):hover,
+      div[data-testid="stColumn"]:nth-child(2) button:hover {
         background: rgba(239,68,68,0.25) !important;
       }
     </style>
@@ -345,7 +347,7 @@ if buscando:
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
-        if st.button("Cancelar"):
+        if st.button("Cancelar", type="secondary"):
             st.session_state["buscando"] = False
             st.session_state["busca_concluida"] = False
             st.session_state["titulos"] = []
