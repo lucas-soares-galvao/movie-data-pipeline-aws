@@ -331,15 +331,23 @@ buscando = st.session_state.get("buscando", False)
 if buscando:
     st.markdown("""
     <style>
-      button[data-testid="stBaseButton-secondary"][kind="secondary"]:not(:disabled),
-      div[data-testid="stColumn"]:nth-child(2) button {
+      #btn-cancelar-container button {
         background: rgba(239,68,68,0.15) !important;
         color: #f87171 !important;
         border: 1px solid rgba(239,68,68,0.4) !important;
       }
-      button[data-testid="stBaseButton-secondary"][kind="secondary"]:not(:disabled):hover,
-      div[data-testid="stColumn"]:nth-child(2) button:hover {
+      #btn-cancelar-container button:hover {
         background: rgba(239,68,68,0.25) !important;
+      }
+      @media (max-width: 640px) {
+        div[data-testid="stColumns"] {
+          flex-wrap: nowrap !important;
+        }
+        div[data-testid="stColumn"] {
+          flex: 0 0 auto !important;
+          width: auto !important;
+          min-width: 0 !important;
+        }
       }
     </style>
     """, unsafe_allow_html=True)
@@ -347,12 +355,14 @@ if buscando:
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
+        st.markdown('<div id="btn-cancelar-container">', unsafe_allow_html=True)
         if st.button("Cancelar", type="secondary"):
             st.session_state["buscando"] = False
             st.session_state["busca_concluida"] = False
             st.session_state["titulos"] = []
             st.session_state["future"] = None
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     future: Future = st.session_state.get("future")
     if future and future.done():
