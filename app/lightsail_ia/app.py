@@ -322,14 +322,25 @@ preferencia = st.text_input(
 # ==============================================================================
 # A recomendação roda em uma thread separada para manter a UI responsiva.
 # Enquanto processa, o usuário pode clicar em "Cancelar" para desistir da busca.
-if st.button("Recomendar", type="primary") and preferencia:
-    st.session_state["future"] = _executor.submit(recomendar, preferencia)
-    st.session_state["buscando"] = True
-    st.session_state["busca_concluida"] = False
-    st.session_state["titulos"] = []
-    st.rerun()
+buscando = st.session_state.get("buscando", False)
 
-if st.session_state.get("buscando"):
+col_recomendar, col_cancelar = st.columns([1, 1])
+with col_recomendar:
+    if st.button("Recomendar", type="primary") and preferencia:
+        st.session_state["future"] = _executor.submit(recomendar, preferencia)
+        st.session_state["buscando"] = True
+        st.session_state["busca_concluida"] = False
+        st.session_state["titulos"] = []
+        st.rerun()
+with col_cancelar:
+    if buscando and st.button("Cancelar", type="secondary"):
+        st.session_state["buscando"] = False
+        st.session_state["busca_concluida"] = False
+        st.session_state["titulos"] = []
+        st.session_state["future"] = None
+        st.rerun()
+
+if buscando:
     future: Future = st.session_state.get("future")
 
     if future and future.done():
@@ -342,16 +353,7 @@ if st.session_state.get("buscando"):
             st.session_state["titulos"] = []
         st.rerun()
     else:
-        col_spinner, col_cancelar = st.columns([4, 1])
-        with col_spinner:
-            st.info("⏳ Buscando as melhores opções para você...")
-        with col_cancelar:
-            if st.button("Cancelar", type="secondary"):
-                st.session_state["buscando"] = False
-                st.session_state["busca_concluida"] = False
-                st.session_state["titulos"] = []
-                st.session_state["future"] = None
-                st.rerun()
+        st.spinner("Buscando as melhores opções para você...")
         time.sleep(0.5)
         st.rerun()
 
