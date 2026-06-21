@@ -329,11 +329,23 @@ preferencia = st.text_input(
 buscando = st.session_state.get("buscando", False)
 
 if buscando:
-    col_recomendar, col_cancelar, _ = st.columns([1, 1, 14], gap="small")
+    st.markdown("""
+    <style>
+      div[data-testid="stColumns"] > div:nth-child(2) button {
+        background: rgba(239,68,68,0.15) !important;
+        color: #f87171 !important;
+        border: 1px solid rgba(239,68,68,0.4) !important;
+      }
+      div[data-testid="stColumns"] > div:nth-child(2) button:hover {
+        background: rgba(239,68,68,0.25) !important;
+      }
+    </style>
+    """, unsafe_allow_html=True)
+    col_recomendar, col_cancelar, _ = st.columns([1.2, 1, 14], gap="small")
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
-        if st.button("Cancelar", type="secondary"):
+        if st.button("Cancelar"):
             st.session_state["buscando"] = False
             st.session_state["busca_concluida"] = False
             st.session_state["titulos"] = []
