@@ -325,7 +325,7 @@ preferencia = st.text_input(
 buscando = st.session_state.get("buscando", False)
 
 if buscando:
-    col_recomendar, col_cancelar, _ = st.columns([1, 1, 8])
+    col_recomendar, col_cancelar, _ = st.columns([1, 1, 10], gap="small")
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
@@ -347,8 +347,16 @@ if buscando:
             st.session_state["titulos"] = []
         st.rerun()
     else:
-        with st.spinner("Buscando as melhores opções para você..."):
-            time.sleep(0.5)
+        st.markdown("""
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0;">
+          <div style="width:20px; height:20px; border:3px solid rgba(249,115,22,0.2);
+                      border-top-color:#f97316; border-radius:50%;
+                      animation:spin 0.8s linear infinite;"></div>
+          <span style="color:#d4d4d4; font-size:14px;">Buscando as melhores opções para você...</span>
+        </div>
+        <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        """, unsafe_allow_html=True)
+        time.sleep(0.5)
         st.rerun()
 else:
     if st.button("Recomendar", type="primary") and preferencia:

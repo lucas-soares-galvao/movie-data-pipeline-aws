@@ -318,7 +318,7 @@ spec_raw AS (
                         COALESCE(NULLIF(TRIM(u.backdrop_path), ''), d.backdrop_path_en))
         END                                                                     AS backdrop_url,
         u.popularity,
-        u.vote_average,
+        ROUND(u.vote_average, 2)                                                    AS vote_average,
         u.vote_count,
         u.origin_country,
         ctry.native_name                          AS origin_country_name,
