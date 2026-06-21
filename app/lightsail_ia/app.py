@@ -342,9 +342,9 @@ if st.session_state.get("buscando"):
             st.session_state["titulos"] = []
         st.rerun()
     else:
-        col_spinner, col_cancelar = st.columns([4, 1])
+        col_spinner, col_cancelar = st.columns([2, 1])
         with col_spinner:
-            st.info("⏳ Buscando as melhores opções para você...")
+            st.spinner("Buscando as melhores opções para você...")
         with col_cancelar:
             if st.button("Cancelar", type="secondary"):
                 st.session_state["buscando"] = False
