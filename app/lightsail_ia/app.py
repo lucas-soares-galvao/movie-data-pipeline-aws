@@ -324,25 +324,19 @@ preferencia = st.text_input(
 # Enquanto processa, o usuário pode clicar em "Cancelar" para desistir da busca.
 buscando = st.session_state.get("buscando", False)
 
-col_recomendar, col_cancelar = st.columns([1, 1])
-with col_recomendar:
-    if st.button("Recomendar", type="primary") and preferencia:
-        st.session_state["future"] = _executor.submit(recomendar, preferencia)
-        st.session_state["buscando"] = True
-        st.session_state["busca_concluida"] = False
-        st.session_state["titulos"] = []
-        st.rerun()
-with col_cancelar:
-    if buscando and st.button("Cancelar", type="secondary"):
-        st.session_state["buscando"] = False
-        st.session_state["busca_concluida"] = False
-        st.session_state["titulos"] = []
-        st.session_state["future"] = None
-        st.rerun()
-
 if buscando:
-    future: Future = st.session_state.get("future")
+    col_recomendar, col_cancelar, _ = st.columns([1, 1, 8])
+    with col_recomendar:
+        st.button("Recomendar", type="primary", disabled=True)
+    with col_cancelar:
+        if st.button("Cancelar", type="secondary"):
+            st.session_state["buscando"] = False
+            st.session_state["busca_concluida"] = False
+            st.session_state["titulos"] = []
+            st.session_state["future"] = None
+            st.rerun()
 
+    future: Future = st.session_state.get("future")
     if future and future.done():
         st.session_state["buscando"] = False
         st.session_state["busca_concluida"] = True
@@ -353,8 +347,15 @@ if buscando:
             st.session_state["titulos"] = []
         st.rerun()
     else:
-        st.spinner("Buscando as melhores opções para você...")
-        time.sleep(0.5)
+        with st.spinner("Buscando as melhores opções para você..."):
+            time.sleep(0.5)
+        st.rerun()
+else:
+    if st.button("Recomendar", type="primary") and preferencia:
+        st.session_state["future"] = _executor.submit(recomendar, preferencia)
+        st.session_state["buscando"] = True
+        st.session_state["busca_concluida"] = False
+        st.session_state["titulos"] = []
         st.rerun()
 
 titulos = st.session_state.get("titulos", [])
