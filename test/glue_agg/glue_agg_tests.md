@@ -62,13 +62,6 @@ test/glue_agg/
 | `test_registra_tabela_no_catalog` | `to_parquet` recebe `database` e `table` corretos para registrar no Glue Catalog |
 | `test_levanta_runtime_error_quando_nenhum_arquivo_escrito` | Levanta `RuntimeError("Escrita falhou")` quando `to_parquet` retorna `{"paths": []}` (nenhum arquivo gravado) |
 
-### `TestTriggerDataQuality`
-
-| Teste | O que verifica |
-|---|---|
-| `test_inicia_job_sem_year` | `--YEAR` ausente nos argumentos; `--TABLE_NAME` e `--DATABASE` corretos; retorna `JobRunId` |
-| `test_inicia_job_com_year` | `--YEAR` presente nos argumentos quando `year` é passado |
-
 ### `TestGetResolvedOption`
 
 | Teste | O que verifica |
