@@ -196,6 +196,17 @@ if not st.session_state.get("autenticado"):
 #   .providers-row   → linha de badges de streaming com flex-wrap
 st.markdown("""
 <style>
+  /* Padroniza largura e altura de todos os botões da área principal */
+  [data-testid="stBaseButton-primary"] button,
+  [data-testid="stBaseButton-secondary"] button,
+  button[data-testid="stBaseButton-primary"],
+  button[data-testid="stBaseButton-secondary"] {
+    min-width: 120px !important;
+    min-height: 42px !important;
+    padding: 8px 20px !important;
+    font-size: 15px !important;
+    box-sizing: border-box !important;
+  }
   .grid-filmes {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -208,6 +219,18 @@ st.markdown("""
     }
     .login-title { font-size: 24px; }
     .login-card { padding: 24px 20px 20px; }
+    /* Header: mantém título + Sair lado a lado no mobile */
+    div[data-testid="stColumns"]:has([data-testid="stTitle"]) {
+      flex-wrap: nowrap !important;
+    }
+    div[data-testid="stColumns"]:has([data-testid="stTitle"]) > div[data-testid="stColumn"] {
+      flex: 0 0 auto !important;
+      width: auto !important;
+    }
+    div[data-testid="stColumns"]:has([data-testid="stTitle"]) > div[data-testid="stColumn"]:first-child {
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
+    }
   }
   @media (max-width: 480px) {
     .grid-filmes {
@@ -331,32 +354,22 @@ buscando = st.session_state.get("buscando", False)
 if buscando:
     st.markdown("""
     <style>
-      /* Botão Cancelar vermelho — seletor pelo widget key do Streamlit */
-      [data-testid="stBaseButton-primary"]:not(:disabled) + script ~ *,
-      button.btn-cancelar,
-      div[data-testid="stColumn"]:nth-of-type(2) [data-testid="stBaseButton-primary"] button,
-      div[data-testid="stColumn"]:nth-of-type(2) button[data-testid="stBaseButton-primary"],
-      div[data-testid="stColumn"]:nth-of-type(2) button {
+      /* Cancelar vermelho — único botão primary habilitado durante a busca */
+      button[data-testid="stBaseButton-primary"]:not(:disabled) {
         background: rgba(239,68,68,0.15) !important;
         color: #f87171 !important;
         border: 1px solid rgba(239,68,68,0.4) !important;
       }
-      div[data-testid="stColumn"]:nth-of-type(2) button:hover {
+      button[data-testid="stBaseButton-primary"]:not(:disabled):hover {
         background: rgba(239,68,68,0.25) !important;
       }
-      /* Impede que o Recomendar (coluna 1) herde o vermelho */
-      div[data-testid="stColumn"]:nth-of-type(1) button {
-        background: rgba(249,115,22,0.4) !important;
-        color: rgba(255,255,255,0.5) !important;
-        border: 1px solid rgba(249,115,22,0.2) !important;
-      }
-      /* Botões lado a lado no mobile */
+      /* Botões lado a lado no mobile — só na linha que tem botão desabilitado */
       @media (max-width: 640px) {
-        div[data-testid="stColumns"] {
+        div[data-testid="stColumns"]:has(button:disabled) {
           flex-wrap: nowrap !important;
           gap: 0.5rem !important;
         }
-        div[data-testid="stColumn"] {
+        div[data-testid="stColumns"]:has(button:disabled) > div[data-testid="stColumn"] {
           flex: 0 0 auto !important;
           width: auto !important;
           min-width: 0 !important;
@@ -364,7 +377,7 @@ if buscando:
       }
     </style>
     """, unsafe_allow_html=True)
-    col_recomendar, col_cancelar, _ = st.columns([1.2, 1, 14], gap="small")
+    col_recomendar, col_cancelar, _ = st.columns([1.5, 1.2, 12], gap="small")
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
