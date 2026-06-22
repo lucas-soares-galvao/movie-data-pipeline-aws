@@ -207,12 +207,6 @@ st.markdown("""
     font-size: 15px !important;
     box-sizing: border-box !important;
   }
-  /* Botões primary em linha (Recomendar + Cancelar lado a lado) */
-  div[data-testid="stElementContainer"]:has(button[data-testid="stBaseButton-primary"]) {
-    display: inline-block !important;
-    width: auto !important;
-    margin-right: 8px !important;
-  }
   .grid-filmes {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -225,6 +219,16 @@ st.markdown("""
     }
     .login-title { font-size: 24px; }
     .login-card { padding: 24px 20px 20px; }
+    div[data-testid="stColumns"],
+    div[data-testid="stHorizontalBlock"] {
+      flex-wrap: nowrap !important;
+    }
+    div[data-testid="stColumn"],
+    div[data-testid="stVerticalBlock"] {
+      flex: 0 0 auto !important;
+      width: auto !important;
+      min-width: 0 !important;
+    }
   }
   @media (max-width: 480px) {
     .grid-filmes {
@@ -359,13 +363,16 @@ if buscando:
       }
     </style>
     """, unsafe_allow_html=True)
-    st.button("Recomendar", type="primary", disabled=True)
-    if st.button("Cancelar", type="primary", key="btn_cancelar"):
-        st.session_state["buscando"] = False
-        st.session_state["busca_concluida"] = False
-        st.session_state["titulos"] = []
-        st.session_state["future"] = None
-        st.rerun()
+    col_rec, col_canc, _ = st.columns([1.5, 1.2, 12], gap="small")
+    with col_rec:
+        st.button("Recomendar", type="primary", disabled=True)
+    with col_canc:
+        if st.button("Cancelar", type="primary", key="btn_cancelar"):
+            st.session_state["buscando"] = False
+            st.session_state["busca_concluida"] = False
+            st.session_state["titulos"] = []
+            st.session_state["future"] = None
+            st.rerun()
 
     future: Future = st.session_state.get("future")
     if future and future.done():
@@ -390,12 +397,14 @@ if buscando:
         time.sleep(0.5)
         st.rerun()
 else:
-    if st.button("Recomendar", type="primary") and preferencia:
-        st.session_state["future"] = _executor.submit(recomendar, preferencia)
-        st.session_state["buscando"] = True
-        st.session_state["busca_concluida"] = False
-        st.session_state["titulos"] = []
-        st.rerun()
+    col_rec, _, __ = st.columns([1.5, 1.2, 12], gap="small")
+    with col_rec:
+        if st.button("Recomendar", type="primary") and preferencia:
+            st.session_state["future"] = _executor.submit(recomendar, preferencia)
+            st.session_state["buscando"] = True
+            st.session_state["busca_concluida"] = False
+            st.session_state["titulos"] = []
+            st.rerun()
 
 titulos = st.session_state.get("titulos", [])
 
