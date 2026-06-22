@@ -212,6 +212,13 @@ st.markdown("""
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 16px;
   }
+  /* Impede scroll horizontal em qualquer viewport */
+  [data-testid="stAppViewContainer"],
+  [data-testid="stMain"],
+  .main .block-container {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+  }
   @media (max-width: 768px) {
     .grid-filmes {
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -222,6 +229,20 @@ st.markdown("""
     div[data-testid="stColumns"],
     div[data-testid="stHorizontalBlock"] {
       flex-wrap: nowrap !important;
+      overflow: hidden !important;
+    }
+    /* Coluna do botão Sair: colapsa para não forçar largura mínima */
+    div[data-testid="stColumns"] > div:last-child {
+      min-width: 0 !important;
+      flex-shrink: 1 !important;
+    }
+    /* Botões não expandem além do espaço disponível */
+    button[data-testid="stBaseButton-primary"],
+    button[data-testid="stBaseButton-secondary"] {
+      min-width: 0 !important;
+      white-space: nowrap !important;
+      padding: 8px 12px !important;
+      font-size: 13px !important;
     }
   }
   @media (max-width: 480px) {
@@ -364,6 +385,7 @@ if buscando:
         if st.button("Cancelar", type="primary", key="btn_cancelar"):
             st.session_state["buscando"] = False
             st.session_state["busca_concluida"] = False
+            st.session_state["erro_busca"] = False
             st.session_state["titulos"] = []
             st.session_state["future"] = None
             st.rerun()
@@ -375,7 +397,7 @@ if buscando:
         try:
             st.session_state["titulos"] = future.result()
         except Exception:
-            st.error("Algo deu errado ao buscar as recomendações. Tente novamente em instantes.")
+            st.session_state["erro_busca"] = True
             st.session_state["titulos"] = []
         st.rerun()
     else:
@@ -396,13 +418,20 @@ else:
         if st.button("Recomendar", type="primary") and preferencia:
             # TODO: remover — agente desabilitado temporariamente para testar transição de botões
             # st.session_state["future"] = _executor.submit(recomendar, preferencia)
-            st.session_state["future"] = _executor.submit(time.sleep, 999999)
+            def _simular_erro():
+                time.sleep(10)
+                raise RuntimeError("Simulação de erro")
+            st.session_state["future"] = _executor.submit(_simular_erro)
             st.session_state["buscando"] = True
             st.session_state["busca_concluida"] = False
+            st.session_state["erro_busca"] = False
             st.session_state["titulos"] = []
             st.rerun()
 
 titulos = st.session_state.get("titulos", [])
+
+if st.session_state.get("erro_busca"):
+    st.error("Algo deu errado ao buscar as recomendações. Tente novamente em instantes.")
 
 if st.session_state.get("busca_concluida") and not titulos:
     st.markdown("""

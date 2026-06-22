@@ -6,29 +6,29 @@
 # =============================================================================
 
 # =============================================================================
-# REGRAS DIÁRIAS — Apenas Discover (Descoberta de Novos Títulos)
+# REGRAS SEMANAIS — Apenas Discover (Descoberta de Novos Títulos)
 # =============================================================================
 # Discover = busca na API TMDB os filmes/séries mais populares.
-# Roda diariamente para capturar novos lançamentos e atualizações de popularidade.
+# Roda semanalmente (domingos) para capturar novos lançamentos e atualizações de popularidade.
 #
 # Horários separados (10:00 e 10:05 UTC) para não disparar duas Lambdas
 # simultaneamente — evita concorrência desnecessária nas chamadas à API TMDB.
 # =============================================================================
 
-# Agenda diária para discover de FILMES — 07:00 horário de Brasília (10:00 UTC)
+# Agenda semanal para discover de FILMES — domingos às 07:00 BRT (10:00 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
-  description         = "Dispara a Lambda para filmes com payload completo (diário)"
-  # schedule_expression = "cron(00 10 * * ? *)" # Todos os dias às 10:00 UTC / 07:00 BRT
+  description         = "Dispara a Lambda para filmes com payload completo (semanal, domingos)"
+  schedule_expression = "cron(00 10 ? * SUN *)" # Domingos às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
-# Agenda diária para discover de SÉRIES — 07:05 horário de Brasília (10:05 UTC)
+# Agenda semanal para discover de SÉRIES — domingos às 07:05 BRT (10:05 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
-  description         = "Dispara a Lambda para séries com payload completo (diário)"
-  # schedule_expression = "cron(05 10 * * ? *)" # Todos os dias às 10:05 UTC / 07:05 BRT
+  description         = "Dispara a Lambda para séries com payload completo (semanal, domingos)"
+  schedule_expression = "cron(05 10 ? * SUN *)" # Domingos às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
