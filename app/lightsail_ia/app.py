@@ -219,17 +219,8 @@ st.markdown("""
     }
     .login-title { font-size: 24px; }
     .login-card { padding: 24px 20px 20px; }
-    /* Header: mantém título + Sair lado a lado no mobile */
-    div[data-testid="stColumns"]:has([data-testid="stTitle"]) {
+    div[data-testid="stColumns"] {
       flex-wrap: nowrap !important;
-    }
-    div[data-testid="stColumns"]:has([data-testid="stTitle"]) > div[data-testid="stColumn"] {
-      flex: 0 0 auto !important;
-      width: auto !important;
-    }
-    div[data-testid="stColumns"]:has([data-testid="stTitle"]) > div[data-testid="stColumn"]:first-child {
-      flex: 1 1 0 !important;
-      min-width: 0 !important;
     }
   }
   @media (max-width: 480px) {
@@ -333,7 +324,7 @@ with col_titulo:
     st.caption("Descubra o que assistir com ajuda da inteligência artificial")
 with col_sair:
     st.write("")  # empurra o botão para baixo, alinhando com o título
-    if st.button("Sair", use_container_width=True):
+    if st.button("Sair"):
         st.session_state["autenticado"] = False
         st.rerun()
 
@@ -362,18 +353,6 @@ if buscando:
       }
       button[data-testid="stBaseButton-primary"]:not(:disabled):hover {
         background: rgba(239,68,68,0.25) !important;
-      }
-      /* Botões lado a lado no mobile — só na linha que tem botão desabilitado */
-      @media (max-width: 640px) {
-        div[data-testid="stColumns"]:has(button:disabled) {
-          flex-wrap: nowrap !important;
-          gap: 0.5rem !important;
-        }
-        div[data-testid="stColumns"]:has(button:disabled) > div[data-testid="stColumn"] {
-          flex: 0 0 auto !important;
-          width: auto !important;
-          min-width: 0 !important;
-        }
       }
     </style>
     """, unsafe_allow_html=True)
@@ -411,12 +390,14 @@ if buscando:
         time.sleep(0.5)
         st.rerun()
 else:
-    if st.button("Recomendar", type="primary") and preferencia:
-        st.session_state["future"] = _executor.submit(recomendar, preferencia)
-        st.session_state["buscando"] = True
-        st.session_state["busca_concluida"] = False
-        st.session_state["titulos"] = []
-        st.rerun()
+    col_recomendar, _ = st.columns([1.5, 13.2], gap="small")
+    with col_recomendar:
+        if st.button("Recomendar", type="primary") and preferencia:
+            st.session_state["future"] = _executor.submit(recomendar, preferencia)
+            st.session_state["buscando"] = True
+            st.session_state["busca_concluida"] = False
+            st.session_state["titulos"] = []
+            st.rerun()
 
 titulos = st.session_state.get("titulos", [])
 

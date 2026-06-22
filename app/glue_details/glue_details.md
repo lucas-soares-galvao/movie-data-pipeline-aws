@@ -2,7 +2,7 @@
 
 ## O que é
 
-O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios e plataformas de streaming disponíveis no Brasil. Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
+O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios e plataformas de streaming disponíveis no Brasil. Também traduz sinopses do inglês para o português (via Google Translate) para títulos com `original_language='en'`. Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
 
 ## Por que existe
 
@@ -15,7 +15,8 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 3. Consulta o Athena para obter a lista de todos os IDs únicos da tabela `discover` para o ano especificado
 4. **Delta de detalhes (refresh mensal):** em vez de buscar detalhes de todos os IDs toda vez (o que custaria muitas chamadas à API), o job calcula o *delta* — ou seja, apenas os IDs que ainda não foram processados no mês atual. Para isso, consulta a tabela `tb_details_*` em **todas as partições `year`** e exclui IDs já processados no mês atual. Isso evita que um ID cujo `release_date` pertence a um `year` diferente do `year` do discover seja tratado como novo por um job concorrente. Somente os IDs ausentes ou de meses anteriores são buscados na API
 5. Para cada ID novo, chama `/movie/{id}` ou `/tv/{id}` (via `ThreadPoolExecutor`) e grava em `tb_tmdb_details_{movie|tv}_{env}`
-6. **Watch providers (refresh mensal):** mesma lógica de delta — consulta a tabela `tb_watch_providers_*` e seleciona apenas IDs *stale* (desatualizados): sem registro, com data nula ou atualizados antes do mês atual
+6. **Tradução de sinopses:** para títulos com `original_language='en'`, traduz a sinopse (overview) do inglês para português via `deep_translator.GoogleTranslator`, gravando o resultado na coluna `overview_pt`. A tradução é feita em paralelo com `ThreadPoolExecutor` (10 workers). Para outros idiomas, `overview_pt` fica nulo
+7. **Watch providers (refresh mensal):** mesma lógica de delta — consulta a tabela `tb_watch_providers_*` e seleciona apenas IDs *stale* (desatualizados): sem registro, com data nula ou atualizados antes do mês atual
 7. Para cada ID stale, chama `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` e grava em `tb_tmdb_watch_providers_{movie|tv}_{env}`
 8. Aciona o Glue Data Quality para cada tabela gravada
 9. **Ao final do ciclo de cada `media_type`** (quando `year == end_year`): executa `repair_discover_duplicates`, `repair_watch_providers_duplicates` e `repair_details_duplicates` para eliminar IDs duplicados na partição do ano corrente. Cada repair lê o Parquet diretamente via S3, aplica `drop_duplicates` e grava de volta apenas se houver mudanças. Movie e TV reparando suas próprias tabelas em runs separados
@@ -63,5 +64,6 @@ Importadas do pacote `shared`, reutilizadas por múltiplos componentes do pipeli
 ## Tecnologias
 
 - **requests** + **ThreadPoolExecutor** — chamadas paralelas à API com controle de concorrência
+- **deep_translator** (GoogleTranslator) — tradução de sinopses EN→PT via Google Translate
 - **awswrangler** — consultas Athena e escrita Parquet
 - **boto3** — Secrets Manager e acionamento de jobs Glue
