@@ -331,17 +331,30 @@ buscando = st.session_state.get("buscando", False)
 if buscando:
     st.markdown("""
     <style>
-      #btn-cancelar-container button {
+      /* Botão Cancelar vermelho — seletor pelo widget key do Streamlit */
+      [data-testid="stBaseButton-primary"]:not(:disabled) + script ~ *,
+      button.btn-cancelar,
+      div[data-testid="stColumn"]:nth-of-type(2) [data-testid="stBaseButton-primary"] button,
+      div[data-testid="stColumn"]:nth-of-type(2) button[data-testid="stBaseButton-primary"],
+      div[data-testid="stColumn"]:nth-of-type(2) button {
         background: rgba(239,68,68,0.15) !important;
         color: #f87171 !important;
         border: 1px solid rgba(239,68,68,0.4) !important;
       }
-      #btn-cancelar-container button:hover {
+      div[data-testid="stColumn"]:nth-of-type(2) button:hover {
         background: rgba(239,68,68,0.25) !important;
       }
+      /* Impede que o Recomendar (coluna 1) herde o vermelho */
+      div[data-testid="stColumn"]:nth-of-type(1) button {
+        background: rgba(249,115,22,0.4) !important;
+        color: rgba(255,255,255,0.5) !important;
+        border: 1px solid rgba(249,115,22,0.2) !important;
+      }
+      /* Botões lado a lado no mobile */
       @media (max-width: 640px) {
         div[data-testid="stColumns"] {
           flex-wrap: nowrap !important;
+          gap: 0.5rem !important;
         }
         div[data-testid="stColumn"] {
           flex: 0 0 auto !important;
@@ -355,14 +368,12 @@ if buscando:
     with col_recomendar:
         st.button("Recomendar", type="primary", disabled=True)
     with col_cancelar:
-        st.markdown('<div id="btn-cancelar-container">', unsafe_allow_html=True)
-        if st.button("Cancelar", type="secondary"):
+        if st.button("Cancelar", type="primary", key="btn_cancelar"):
             st.session_state["buscando"] = False
             st.session_state["busca_concluida"] = False
             st.session_state["titulos"] = []
             st.session_state["future"] = None
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
     future: Future = st.session_state.get("future")
     if future and future.done():

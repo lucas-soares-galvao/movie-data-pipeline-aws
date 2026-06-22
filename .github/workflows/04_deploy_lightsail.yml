@@ -243,13 +243,19 @@ jobs:
       - name: Health Check
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          echo "Aguardando app inicializar (30s)..."
-          sleep 30
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${{ steps.tf.outputs.public_ip }}" || true)
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
-            echo "✅ Health check OK — HTTP $HTTP_CODE (http://${{ steps.tf.outputs.public_ip }})"
-          else
-            echo "⚠ Health check retornou HTTP $HTTP_CODE — app pode ainda estar iniciando"
+          APP_OK=0
+          for i in $(seq 1 6); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${{ steps.tf.outputs.public_ip }}" || true)
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "✅ Health check OK — HTTP $HTTP_CODE após $((i * 5))s (tentativa $i/6)"
+              APP_OK=1
+              break
+            fi
+            echo "Tentativa $i/6 — HTTP $HTTP_CODE, aguardando 5s..."
+            sleep 5
+          done
+          if [ $APP_OK -eq 0 ]; then
+            echo "⚠ Health check retornou HTTP $HTTP_CODE após 30s — app pode ainda estar iniciando"
           fi
 
       - name: Show app URL
