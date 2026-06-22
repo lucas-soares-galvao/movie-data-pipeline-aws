@@ -43,7 +43,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
 
 import streamlit as st
-from agent import limpar_duracao, recomendar
+from agent import limpar_duracao, recomendar  # noqa: F401
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
@@ -223,12 +223,6 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"] {
       flex-wrap: nowrap !important;
     }
-    div[data-testid="stColumn"],
-    div[data-testid="stVerticalBlock"] {
-      flex: 0 0 auto !important;
-      width: auto !important;
-      min-width: 0 !important;
-    }
   }
   @media (max-width: 480px) {
     .grid-filmes {
@@ -400,7 +394,9 @@ else:
     col_rec, _, __ = st.columns([1.5, 1.2, 12], gap="small")
     with col_rec:
         if st.button("Recomendar", type="primary") and preferencia:
-            st.session_state["future"] = _executor.submit(recomendar, preferencia)
+            # TODO: remover — agente desabilitado temporariamente para testar transição de botões
+            # st.session_state["future"] = _executor.submit(recomendar, preferencia)
+            st.session_state["future"] = _executor.submit(time.sleep, 999999)
             st.session_state["buscando"] = True
             st.session_state["busca_concluida"] = False
             st.session_state["titulos"] = []
@@ -409,7 +405,12 @@ else:
 titulos = st.session_state.get("titulos", [])
 
 if st.session_state.get("busca_concluida") and not titulos:
-    st.warning("Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.")
+    st.markdown("""
+    <div style="background:rgba(250,204,21,0.1); border:1px solid rgba(250,204,21,0.3);
+                border-radius:10px; padding:12px 16px; max-width:600px; color:#fbbf24; font-size:14px;">
+      ⚠️ Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.
+    </div>
+    """, unsafe_allow_html=True)
 elif titulos:
     palavra = "opção" if len(titulos) == 1 else "opções"
     st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
