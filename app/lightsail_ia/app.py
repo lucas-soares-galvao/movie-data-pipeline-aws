@@ -196,16 +196,25 @@ if not st.session_state.get("autenticado"):
 #   .providers-row   → linha de badges de streaming com flex-wrap
 st.markdown("""
 <style>
-  /* Padroniza largura e altura de todos os botões da área principal */
+  /* Padroniza todos os botões — mesmo estilo em qualquer viewport */
   [data-testid="stBaseButton-primary"] button,
   [data-testid="stBaseButton-secondary"] button,
   button[data-testid="stBaseButton-primary"],
   button[data-testid="stBaseButton-secondary"] {
-    min-width: 120px !important;
-    min-height: 42px !important;
-    padding: 8px 20px !important;
-    font-size: 15px !important;
+    width: 140px !important;
+    height: 42px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
     box-sizing: border-box !important;
+    white-space: nowrap !important;
+    min-width: 0 !important;
+  }
+  /* Colunas dos botões se ajustam ao conteúdo; espaçadoras colapsam */
+  /* Exclui o cabeçalho (row com h1) que mantém proporções normais */
+  div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
   }
   .grid-filmes {
     display: grid;
@@ -219,31 +228,24 @@ st.markdown("""
     overflow-x: hidden !important;
     max-width: 100vw !important;
   }
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .grid-filmes {
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 12px;
     }
     .login-title { font-size: 24px; }
     .login-card { padding: 24px 20px 20px; }
-    div[data-testid="stColumns"],
-    div[data-testid="stHorizontalBlock"] {
-      flex-wrap: nowrap !important;
-      overflow: hidden !important;
+    /* Cabeçalho: colunas ocupam 100% e empilham (título + Sair abaixo) */
+    div[data-testid="stHorizontalBlock"]:has(h1) > div {
+      flex: 1 1 100% !important;
+      width: 100% !important;
     }
-    /* Coluna do botão Sair: colapsa para não forçar largura mínima */
-    div[data-testid="stColumns"] > div:last-child {
-      min-width: 0 !important;
-      flex-shrink: 1 !important;
+    /* Cabeçalho: Sair abaixo do título no mobile */
+    div[data-testid="stHorizontalBlock"]:has(h1) {
+      flex-wrap: wrap !important;
     }
-    /* Botões não expandem além do espaço disponível */
-    button[data-testid="stBaseButton-primary"],
-    button[data-testid="stBaseButton-secondary"] {
-      min-width: 0 !important;
-      white-space: nowrap !important;
-      padding: 8px 12px !important;
-      font-size: 13px !important;
-    }
+    /* Mensagens de erro/aviso ocupam 100% no mobile */
+    .msg-feedback { max-width: 100% !important; }
   }
   @media (max-width: 480px) {
     .grid-filmes {
@@ -334,6 +336,15 @@ st.markdown("""
     letter-spacing: 0.05em;
     margin: 6px 0 2px 0;
   }
+  /* Cancelar vermelho — só aplica quando há um botão primary desabilitado (estado de busca) */
+  :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled) {
+    background: rgba(239,68,68,0.15) !important;
+    color: #f87171 !important;
+    border: 1px solid rgba(239,68,68,0.4) !important;
+  }
+  :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled):hover {
+    background: rgba(239,68,68,0.25) !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -365,20 +376,7 @@ preferencia = st.text_input(
 buscando = st.session_state.get("buscando", False)
 
 if buscando:
-    st.markdown("""
-    <style>
-      /* Cancelar vermelho — único botão primary habilitado durante a busca */
-      button[data-testid="stBaseButton-primary"]:not(:disabled) {
-        background: rgba(239,68,68,0.15) !important;
-        color: #f87171 !important;
-        border: 1px solid rgba(239,68,68,0.4) !important;
-      }
-      button[data-testid="stBaseButton-primary"]:not(:disabled):hover {
-        background: rgba(239,68,68,0.25) !important;
-      }
-    </style>
-    """, unsafe_allow_html=True)
-    col_rec, col_canc, _ = st.columns([1.5, 1.2, 12], gap="small")
+    col_rec, col_canc, _ = st.columns([1, 1, 6], gap="small")
     with col_rec:
         st.button("Recomendar", type="primary", disabled=True)
     with col_canc:
@@ -413,7 +411,7 @@ if buscando:
         time.sleep(0.5)
         st.rerun()
 else:
-    col_rec, _, __ = st.columns([1.5, 1.2, 12], gap="small")
+    col_rec, _, __ = st.columns([1, 1, 6], gap="small")
     with col_rec:
         if st.button("Recomendar", type="primary") and preferencia:
             # TODO: remover — agente desabilitado temporariamente para testar transição de botões
@@ -431,12 +429,18 @@ else:
 titulos = st.session_state.get("titulos", [])
 
 if st.session_state.get("erro_busca"):
-    st.error("Algo deu errado ao buscar as recomendações. Tente novamente em instantes.")
+    st.markdown("""
+    <div class="msg-feedback" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3);
+                border-radius:10px; padding:12px 16px; max-width:25%; color:#fca5a5; font-size:14px;
+                margin-bottom:12px;">
+      ❌ Algo deu errado ao buscar as recomendações. Tente novamente em instantes.
+    </div>
+    """, unsafe_allow_html=True)
 
 if st.session_state.get("busca_concluida") and not titulos:
     st.markdown("""
-    <div style="background:rgba(250,204,21,0.1); border:1px solid rgba(250,204,21,0.3);
-                border-radius:10px; padding:12px 16px; max-width:600px; color:#fbbf24; font-size:14px;">
+    <div class="msg-feedback" style="background:rgba(250,204,21,0.1); border:1px solid rgba(250,204,21,0.3);
+                border-radius:10px; padding:12px 16px; max-width:25%; color:#fbbf24; font-size:14px;">
       ⚠️ Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.
     </div>
     """, unsafe_allow_html=True)
