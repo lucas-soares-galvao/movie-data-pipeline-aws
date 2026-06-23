@@ -53,7 +53,7 @@
 - Streamlit escuta apenas em `127.0.0.1:8501` (não acessível diretamente pela internet)
 - Portas abertas: 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`), 80 (redirect HTTP→HTTPS + ACME challenge), 443 (HTTPS — proxy reverso para Streamlit)
 - IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável
-- IAM user `tmdb-filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP e Glue Catalog
+- IAM user `tmdb-filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP, Glue Catalog e CloudWatch Logs
 - Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
 - Quando habilitada, o workflow de deploy verifica o estado da instância via `aws lightsail get-instance` antes de tentar o SSH. Se a instância estiver parada (ex: fora do horário do scheduler), o deploy é **ignorado com warning** em vez de falhar por timeout.
 

@@ -113,7 +113,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
 | `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_tmdb_discover_unified_prod`) |
 | `FILMBOT_PASSWORD` | Senha de acesso à interface Streamlit |
-| `CLOUDWATCH_LOG_GROUP` | Log group do CloudWatch para envio de logs (ex: `/lightsail/tmdb-filmbot-prod`). Opcional — se ausente, logs vão apenas para stdout/journald |
+| `CLOUDWATCH_LOG_GROUP` | Log group do CloudWatch para envio de logs (ex: `/lightsail/tmdb-filmbot-prod`). Injetado automaticamente pelo CI/CD via Terraform output. Se ausente, logs vão apenas para stdout/journald |
 
 ## Tecnologias
 
