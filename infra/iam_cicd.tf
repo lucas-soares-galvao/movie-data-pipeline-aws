@@ -462,6 +462,7 @@ resource "aws_iam_policy" "cicd_observability" {
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.tmdb_prefix}-*",
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/vendedlogs/states/${local.tmdb_prefix}-*",
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/${local.tmdb_prefix}-*",
+          "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/lightsail/${local.tmdb_prefix}-*",
         ]
       },
       {
