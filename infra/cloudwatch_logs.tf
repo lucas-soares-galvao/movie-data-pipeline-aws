@@ -57,3 +57,9 @@ resource "aws_cloudwatch_log_group" "sfn_backfill" {
   retention_in_days = var.log_retention_days
   tags              = local.component_tags.sfn_backfill
 }
+
+resource "aws_cloudwatch_log_group" "lightsail_filmbot" {
+  name              = "/lightsail/${local.envs.lightsail_instance_name}"
+  retention_in_days = var.log_retention_days
+  tags              = local.component_tags.lightsail_ia
+}

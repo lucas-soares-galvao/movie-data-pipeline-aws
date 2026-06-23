@@ -2,3 +2,4 @@ streamlit
 litellm
 boto3
 python-dotenv
+watchtower

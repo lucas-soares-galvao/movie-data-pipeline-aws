@@ -42,6 +42,7 @@ O LLM recebe os resultados reais do Athena e formata como JSON com campos amigá
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
 - Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
+- Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Cada card exibe:
   - Imagem de fundo (backdrop preferido sobre poster)
   - Título, ano e tipo (filme/série)
@@ -112,6 +113,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
 | `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_tmdb_discover_unified_prod`) |
 | `FILMBOT_PASSWORD` | Senha de acesso à interface Streamlit |
+| `CLOUDWATCH_LOG_GROUP` | Log group do CloudWatch para envio de logs (ex: `/lightsail/tmdb-filmbot-prod`). Opcional — se ausente, logs vão apenas para stdout/journald |
 
 ## Tecnologias
 
@@ -119,4 +121,5 @@ Use `.env.example` como referência para as variáveis necessárias.
 - **litellm** — abstração de chamadas LLM (suporta OpenAI, DeepSeek, Claude, etc.)
 - **LLM configurável via `LLM_MODEL`** — padrão `deepseek/deepseek-v4-flash`; suporta qualquer modelo compatível com litellm (DeepSeek, OpenAI, Claude, etc.)
 - **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
+- **watchtower** — handler de logging que envia logs Python diretamente ao CloudWatch Logs via boto3
 - **AWS Lightsail** — instância de servidor para hospedar o app

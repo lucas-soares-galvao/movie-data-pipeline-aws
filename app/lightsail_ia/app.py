@@ -1,9 +1,13 @@
 """app.py — Interface web do FilmBot (aplicativo Streamlit)."""
 
+import logging
+import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 
+import boto3
 import streamlit as st
+import watchtower
 from agent import limpar_duracao, recomendar
 from componentes import (
     carregar_css_login,
@@ -12,6 +16,15 @@ from componentes import (
     renderizar_rodape,
     renderizar_rodape_login,
 )
+
+_log_group = os.getenv("CLOUDWATCH_LOG_GROUP", "")
+if _log_group:
+    _cw_handler = watchtower.CloudWatchLogHandler(
+        log_group_name=_log_group,
+        boto3_client=boto3.client("logs", region_name=os.getenv("AWS_REGION", "sa-east-1")),
+    )
+    logging.root.addHandler(_cw_handler)
+    logging.root.setLevel(logging.INFO)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
@@ -97,6 +110,7 @@ if buscando:
         try:
             st.session_state["titulos"] = future.result()
         except Exception:
+            logging.exception("Erro ao buscar recomendações")
             st.session_state["erro_busca"] = True
             st.session_state["titulos"] = []
         st.rerun()
@@ -132,7 +146,7 @@ if st.session_state.get("erro_busca"):
     </div>
     """, unsafe_allow_html=True)
 
-if st.session_state.get("busca_concluida") and not titulos:
+if st.session_state.get("busca_concluida") and not titulos and not st.session_state.get("erro_busca"):
     st.markdown("""
     <div class="msg-aviso">
       ⚠️ Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.
