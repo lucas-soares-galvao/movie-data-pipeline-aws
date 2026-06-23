@@ -67,7 +67,9 @@ O LLM recebe os resultados reais do Athena e formata como JSON com campos amigá
 | `agent.py` | `buscar_titulos_spec(filtro_where, limite)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena |
 | `agent.py` | `_validar_where(filtro_where)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries) |
 | `agent.py` | `limpar_duracao(raw)` | Formata string de duração para exibição nos cards (ex: "120 min", "3 temporadas") |
-| `app.py` | Interface Streamlit | Renderiza cards, gerencia estado e exibe resultados |
+| `app.py` | Interface Streamlit | Orquestra a UI: autenticação, busca assíncrona e exibição de resultados |
+| `componentes.py` | `carregar_css()`, `renderizar_card()`, `renderizar_grid()`, `renderizar_rodape()` | Helpers de renderização HTML com escape contra XSS |
+| `static/estilos.css` | CSS consolidado | Estilos do login e página principal (grid, cards, responsivo) |
 
 ## Deploy
 
@@ -102,7 +104,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 | Variável | Uso |
 |---|---|
 | `LLM_API_KEY` | Chave de API do provedor LLM em uso |
-| `LLM_MODEL` | Modelo LLM a usar (padrão: `gpt-4o`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
+| `LLM_MODEL` | Modelo LLM a usar (padrão: `deepseek/deepseek-v4-flash`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
 | `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
 | `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
 | `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
@@ -115,6 +117,6 @@ Use `.env.example` como referência para as variáveis necessárias.
 
 - **Streamlit** — framework de interface web em Python
 - **litellm** — abstração de chamadas LLM (suporta OpenAI, DeepSeek, Claude, etc.)
-- **LLM configurável via `LLM_MODEL`** — padrão `gpt-4o`; suporta qualquer modelo compatível com litellm (OpenAI, DeepSeek, Claude, etc.)
+- **LLM configurável via `LLM_MODEL`** — padrão `deepseek/deepseek-v4-flash`; suporta qualquer modelo compatível com litellm (DeepSeek, OpenAI, Claude, etc.)
 - **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
 - **AWS Lightsail** — instância de servidor para hospedar o app

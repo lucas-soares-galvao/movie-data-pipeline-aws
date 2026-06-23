@@ -1,0 +1,97 @@
+/* Oculta header/toolbar do Streamlit na tela de login */
+[data-testid="stHeader"] { display: none; }
+[data-testid="stToolbar"] { display: none; }
+[data-testid="stDecoration"] { display: none; }
+
+/* Fundo cinematografico */
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+  min-height: 100vh;
+}
+
+/* Card de login centralizado */
+.login-card {
+  background: rgba(17, 17, 17, 0.92);
+  border: 1px solid rgba(249,115,22,0.18);
+  border-radius: 20px;
+  padding: 40px 36px 32px;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(249,115,22,0.06);
+  margin-bottom: 8px;
+}
+.login-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.5px;
+}
+.login-subtitle {
+  font-size: 14px;
+  color: #737373;
+  margin: 0 0 24px 0;
+}
+.login-divider {
+  border: none;
+  border-top: 2px solid #f97316;
+  opacity: 0.5;
+  margin: 0 0 24px 0;
+}
+
+/* Sobrescreve o input de senha */
+[data-testid="stTextInput"] input {
+  background: #1a1a1a !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  border-radius: 10px !important;
+  color: #f5f5f5 !important;
+  font-size: 15px !important;
+  padding: 10px 14px !important;
+}
+[data-testid="stTextInput"] input:focus {
+  border-color: rgba(249,115,22,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
+}
+
+/* Sobrescreve o botao de login */
+[data-testid="stButton"] > button {
+  background: linear-gradient(135deg, #f97316, #ea580c) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  padding: 10px 0 !important;
+  width: 100% !important;
+  margin-top: 8px !important;
+  transition: opacity 0.15s ease !important;
+}
+[data-testid="stButton"] > button:hover {
+  opacity: 0.88 !important;
+}
+[data-testid="stColumns"],
+[data-testid="stHorizontalBlock"] {
+  gap: 0.4rem !important;
+}
+
+/* Erro customizado */
+.login-error {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.25);
+  color: #fca5a5;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.rodape-login {
+  text-align: center;
+  padding: 16px 0 8px;
+  color: #6b7280;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 1024px) {
+  .login-title { font-size: 24px; }
+  .login-card { padding: 24px 20px 20px; }
+}
