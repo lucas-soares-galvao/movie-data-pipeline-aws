@@ -4,11 +4,11 @@ agent.py — Agente de IA para recomendação de filmes e séries.
 ==============================================================================
 O QUE ESTE ARQUIVO FAZ?
 ==============================================================================
-Implementa o "cérebro" do FilmBot em 3 passos usando OpenAI + AWS Athena:
+Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
 
-  PASSO 1 — Interpretação (OpenAI GPT-4o):
+  PASSO 1 — Interpretação (LLM via litellm):
     O usuário digita em linguagem natural: "filmes coreanos de terror dos anos 2010".
-    O GPT-4o conhece o schema da tabela SPEC e gera a cláusula WHERE do SQL:
+    O LLM conhece o schema da tabela SPEC e gera a cláusula WHERE do SQL:
       "media_type = 'movie' AND original_language = 'ko'
        AND lower(genre_names) LIKE '%terror%'
        AND year BETWEEN '2010' AND '2019'"
@@ -19,13 +19,13 @@ Implementa o "cérebro" do FilmBot em 3 passos usando OpenAI + AWS Athena:
     O filtro fixo vote_count >= 50 é sempre aplicado automaticamente.
     O Athena retorna títulos reais que passaram pelo pipeline completo de ETL.
 
-  PASSO 3 — Formatação das recomendações (OpenAI GPT-4o):
-    O GPT-4o recebe os títulos reais e os formata como recomendações personalizadas,
+  PASSO 3 — Formatação das recomendações (LLM via litellm):
+    O LLM recebe os títulos reais e os formata como recomendações personalizadas,
     escolhendo os mais relevantes e explicando o motivo de cada recomendação.
     Responde em JSON estruturado para o app.py renderizar os cards.
 
 POR QUE USAR "FUNCTION CALLING" (TOOL USE)?
-  O Function Calling (ou Tool Use) é uma técnica que permite ao GPT-4o
+  O Function Calling (ou Tool Use) é uma técnica que permite ao LLM
   "chamar funções" de forma estruturada. Em vez de responder em texto livre,
   o modelo devolve um JSON com argumentos específicos que você definiu.
 
@@ -40,9 +40,10 @@ TECNOLOGIAS UTILIZADAS:
 
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
   LLM_API_KEY        → chave de acesso à API do provedor LLM em uso
-  LLM_MODEL          → modelo LLM a usar (padrão: "gpt-4o"). Exemplos:
-                        "deepseek/deepseek-chat" + DEEPSEEK_API_KEY
-                        "claude-opus-4-8"        + ANTHROPIC_API_KEY
+  LLM_MODEL          → modelo LLM a usar (padrão: "deepseek/deepseek-v4-flash"). Exemplos:
+                        "deepseek/deepseek-v4-flash" + chave DeepSeek
+                        "gpt-4o"                     + chave OpenAI
+                        "claude-opus-4-8"            + ANTHROPIC_API_KEY
   AWS_REGION         → região AWS (padrão: "sa-east-1")
   GLUE_DATABASE      → banco no Glue Catalog (padrão: "db_tmdb_unified_prod")
   SPEC_TABLE         → tabela SPEC (padrão: "tb_tmdb_discover_unified_prod")
@@ -63,13 +64,13 @@ from dotenv import load_dotenv
 # com as variáveis do Terraform output. Em desenvolvimento, o .env é criado manualmente.
 load_dotenv()
 
-_LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
+_LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
 _LLM_API_KEY = os.getenv("LLM_API_KEY")
 
 # ==============================================================================
 # DEFINIÇÃO DA TOOL (Function Calling)
 # ==============================================================================
-# TOOL é um objeto que descreve para o OpenAI a "função" que ele pode "chamar".
+# TOOL é um objeto que descreve para o LLM a "função" que ele pode "chamar".
 # O modelo não executa a função — ele apenas decide quais argumentos usar.
 # Nós executamos a função de verdade com os argumentos que o modelo escolheu.
 #
@@ -203,7 +204,7 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 30) -> list[dict]:
             values = [item.get("VarCharValue") for item in row["Data"]]
             records.append(dict(zip(columns, values)))
 
-    # Libera memória dos objetos de resposta do boto3 antes de passar ao OpenAI
+    # Libera memória dos objetos de resposta do boto3 antes de passar ao LLM
     gc.collect()
     return records
 
@@ -217,7 +218,7 @@ def recomendar(preferencia: str) -> list[dict]:
     Orquestra os 3 passos do agente e retorna uma lista de recomendações.
 
     Esta é a única função chamada pelo app.py. Ela coordena todo o fluxo:
-    GPT extrai filtros → Athena consulta → GPT formata recomendações.
+    LLM extrai filtros → Athena consulta → LLM formata recomendações.
 
     Args:
         preferencia: Texto em linguagem natural do usuário.
@@ -286,16 +287,16 @@ def recomendar(preferencia: str) -> list[dict]:
     )
 
     # ------------------------------------------------------------------
-    # PASSO 2: Extrai os argumentos escolhidos pelo GPT e consulta o Athena
+    # PASSO 2: Extrai os argumentos escolhidos pelo LLM e consulta o Athena
     # ------------------------------------------------------------------
     # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
-    # function.arguments: string JSON com os argumentos que o GPT escolheu
+    # function.arguments: string JSON com os argumentos que o LLM escolheu
     tool_calls = resposta.choices[0].message.tool_calls or []
     if not tool_calls:
         return []  # modelo não chamou a tool — não há filtros para consultar
     tool_call = tool_calls[0]
     args = json.loads(tool_call.function.arguments)
-    # Executa a consulta real no data lake com os filtros escolhidos pelo GPT
+    # Executa a consulta real no data lake com os filtros escolhidos pelo LLM
     titulos_da_spec = buscar_titulos_spec(**args)
 
     if not titulos_da_spec:
