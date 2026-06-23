@@ -22,6 +22,7 @@ if _log_group:
     _cw_handler = watchtower.CloudWatchLogHandler(
         log_group_name=_log_group,
         boto3_client=boto3.client("logs", region_name=os.getenv("AWS_REGION", "sa-east-1")),
+        create_log_group=False,
     )
     logging.root.addHandler(_cw_handler)
     logging.root.setLevel(logging.INFO)
