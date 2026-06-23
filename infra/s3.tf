@@ -187,7 +187,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "sor_bucket" {
   }
 }
 
-# Dados brutos são sobrescritos diariamente pela Lambda, então o histórico
+# Dados brutos são sobrescritos semanalmente pela Lambda, então o histórico
 # de mais de 30 dias vai para STANDARD_IA (mais barato, raramente acessado).
 resource "aws_s3_bucket_lifecycle_configuration" "sor_bucket_lifecycle" {
   bucket = aws_s3_bucket.sor_bucket.id

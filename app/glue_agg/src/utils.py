@@ -279,8 +279,8 @@ providers AS (
     SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
 ),
 
--- Filmes atualmente em cartaz nos cinemas, atualizados diariamente pela Lambda.
--- Snapshot sem partição por ano — contém apenas os filmes do dia atual.
+-- Filmes atualmente em cartaz nos cinemas, atualizados semanalmente pela Lambda.
+-- Snapshot sem partição por ano — contém apenas os filmes da semana atual.
 now_playing AS (
     SELECT id, theater_start_date, theater_end_date
     FROM {db_movie}.{tb_now_playing_movie}
@@ -329,7 +329,7 @@ spec_raw AS (
         d.number_of_episodes,
         d.episode_runtime_minutes,
         p.streaming_providers,
-        -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot diário).
+        -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot semanal).
         -- Séries e filmes fora de cartaz recebem FALSE (np.id = NULL no LEFT JOIN).
         CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
         np.theater_start_date,

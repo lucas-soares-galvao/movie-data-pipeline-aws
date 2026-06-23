@@ -63,7 +63,7 @@ locals {
   # ===========================================================================
   # ESTADO DO EVENTBRIDGE — Habilitado apenas em produção
   # ===========================================================================
-  # O EventBridge agenda a execução automática da Lambda (coleta diária de dados).
+  # O EventBridge agenda a execução automática da Lambda (coleta semanal de dados).
   # Em dev, desabilitamos para evitar consumo desnecessário de API e custo.
   # Em prod, ativamos para coleta automática.
   # O operador "? :" é o ternário: condição ? valor_se_true : valor_se_false

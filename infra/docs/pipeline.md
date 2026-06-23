@@ -6,10 +6,10 @@
 
 | Regra | Frequência | Horário | Comportamento |
 |---|---|---|---|
-| `lambda_api_movie_daily` | Diária | 07:00 BRT (10:00 UTC) | `only_discover=true` — filmes novos + now_playing |
-| `lambda_api_tv_daily` | Diária | 07:05 BRT (10:05 UTC) | `only_discover=true` — séries novas |
-| `lambda_api_movie_monthly` | Dia 1 do mês | 07:00 BRT (10:00 UTC) | `skip_daily=true` — atualiza gêneros, idiomas, plataformas |
-| `lambda_api_tv_monthly` | Dia 1 do mês | 07:05 BRT (10:05 UTC) | `skip_daily=true` — atualiza gêneros, países, plataformas |
+| `lambda_api_movie_weekly` | Semanal (dom) | 07:00 BRT (10:00 UTC) | `only_discover=true` — filmes novos + now_playing |
+| `lambda_api_tv_weekly` | Semanal (dom) | 07:05 BRT (10:05 UTC) | `only_discover=true` — séries novas |
+| `lambda_api_movie_monthly` | Dia 1 do mês | 07:00 BRT (10:00 UTC) | `skip_weekly=true` — atualiza gêneros, idiomas, plataformas |
+| `lambda_api_tv_monthly` | Dia 1 do mês | 07:05 BRT (10:05 UTC) | `skip_weekly=true` — atualiza gêneros, países, plataformas |
 | `sfn_backfill_annual` | 1 de jan (anual) | 07:30 BR (10:30 UTC) | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
 
 **Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.

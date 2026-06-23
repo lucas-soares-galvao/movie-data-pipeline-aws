@@ -53,16 +53,22 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
     only_discover = event.get("only_discover", False)
-    skip_daily = event.get("skip_daily", False)
+    skip_weekly = event.get("skip_weekly", False)
+    apenas_ano_anterior = event.get("apenas_ano_anterior", False)
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_api_secret(TMDB_SECRET_ARN, "tmdb_api_key")
 
     current_year   = datetime.now().year
-    start_year     = int(event.get("start_year", current_year - 1))
+    start_year     = int(event.get("start_year", current_year))
     end_year       = int(event.get("end_year",   current_year))
     loop_end_year  = int(event.get("loop_end_year", end_year))
+
+    if apenas_ano_anterior:
+        start_year = current_year - 1
+        end_year = current_year - 1
+        loop_end_year = current_year - 1
 
     if not only_discover:
         logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
@@ -97,8 +103,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     else:
         logger.info("only_discover=True: pulando coleta de genre, configuration e watch_providers_ref.")
 
-    if skip_daily:
-        logger.info("skip_daily=True: pulando coleta de discover.")
+    if skip_weekly:
+        logger.info("skip_weekly=True: pulando coleta de discover.")
         return {
             "statusCode": 200,
             "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",
@@ -131,7 +137,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             **glue_base_args,
         )
 
-    if content_type == "movie" and table_now_playing:
+    if content_type == "movie" and table_now_playing and not apenas_ano_anterior:
         logger.info("Coletando filmes em cartaz nos cinemas...")
         collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
         logger.info("Acionando Glue ETL para tabela de now_playing...")

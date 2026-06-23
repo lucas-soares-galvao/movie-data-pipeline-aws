@@ -25,7 +25,7 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 | `genre` | Sem partição | `overwrite` (substitui tudo) | Não |
 | `configuration` | Sem partição | `overwrite` | Não |
 | `watch_providers_ref` | Sem partição | `overwrite` | Não |
-| `now_playing` | Sem partição | `overwrite` (snapshot diário completo) | Não |
+| `now_playing` | Sem partição | `overwrite` (snapshot semanal completo) | Não |
 
 **Fluxo para `discover`:**
 1. Lê os argumentos do Glue (`get_parameters_glue`)
