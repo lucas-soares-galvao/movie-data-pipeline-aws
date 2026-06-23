@@ -116,6 +116,8 @@ cd app/lightsail_ia
 streamlit run app.py
 ```
 
+A variável `CLOUDWATCH_LOG_GROUP` não é definida no conftest — isso é intencional: sem ela, o handler watchtower não é ativado e os testes rodam sem dependência do CloudWatch.
+
 ## Lacuna de cobertura — `in_theaters` e `theater_end_date`
 
 O SELECT real em `agent.py` inclui `in_theaters` e `theater_end_date` nas colunas consultadas ao Athena. No entanto, o fixture `COLUMNS` em `test_agent.py` **não inclui** essas duas colunas, e o dicionário `TITULO_FAKE` e o JSON `RESPOSTA_LLM_FAKE` também não as contêm.

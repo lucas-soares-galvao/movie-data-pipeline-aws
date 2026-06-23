@@ -67,6 +67,16 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       },
+      {
+        Sid    = "CloudWatchLogsAccess"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams",
+        ]
+        Resource = "${aws_cloudwatch_log_group.lightsail_filmbot.arn}:*"
+      },
     ]
   })
 
@@ -171,4 +181,9 @@ output "lightsail_agent_secret_access_key" {
 output "lightsail_instance_name" {
   description = "Nome da instância Lightsail para verificação de estado"
   value       = var.lightsail_enabled ? aws_lightsail_instance.filmbot[0].name : ""
+}
+
+output "lightsail_cloudwatch_log_group" {
+  description = "CLOUDWATCH_LOG_GROUP para o arquivo .env na instância"
+  value       = aws_cloudwatch_log_group.lightsail_filmbot.name
 }

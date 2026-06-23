@@ -47,6 +47,9 @@ locals {
     sfn_backfill = {
       Component = "sfn_backfill"
     }
+    lightsail_ia = {
+      Component = "lightsail_ia"
+    }
   }
 
   # ===========================================================================
