@@ -23,7 +23,7 @@
 #                     InvokeLambdaMovie → Wait 5min → InvokeLambdaTV → Wait 5min
 #
 # O intervalo de 5 min entre movie/tv e entre batches segue o mesmo padrão do
-# EventBridge diário e garante que os Glue Details (~4min) terminem antes do
+# EventBridge semanal e garante que os Glue Details (~4min) terminem antes do
 # próximo batch iniciar, evitando estourar max_concurrent_runs.
 #
 # A Lambda recebe:

@@ -1,7 +1,7 @@
 # =============================================================================
 # eventbridge_lambda_api.tf — Agendamento automático da Lambda
 #
-# Estratégia: diária (só discover) + mensal (referências: gêneros, países, etc.)
+# Estratégia: semanal (só discover) + mensal (referências + discover do ano anterior)
 # DESABILITADO em dev (local.eventbridge_schedule_state = "DISABLED") — invoque a Lambda manualmente.
 # =============================================================================
 
@@ -16,8 +16,8 @@
 # =============================================================================
 
 # Agenda semanal para discover de FILMES — domingos às 07:00 BRT (10:00 UTC)
-resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
-  name                = "${local.tmdb_prefix}-lambda-api-movie-daily-${var.env}"
+resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
+  name                = "${local.tmdb_prefix}-lambda-api-movie-weekly-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (semanal, domingos)"
   schedule_expression = "cron(00 10 ? * SUN *)" # Domingos às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
@@ -25,8 +25,8 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_daily" {
 }
 
 # Agenda semanal para discover de SÉRIES — domingos às 07:05 BRT (10:05 UTC)
-resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
-  name                = "${local.tmdb_prefix}-lambda-api-tv-daily-${var.env}"
+resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
+  name                = "${local.tmdb_prefix}-lambda-api-tv-weekly-${var.env}"
   description         = "Dispara a Lambda para séries com payload completo (semanal, domingos)"
   schedule_expression = "cron(05 10 ? * SUN *)" # Domingos às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
@@ -39,7 +39,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_tv_daily" {
 # - only_discover: true (processa APENAS o discover, pula gêneros/configurações)
 # - database/tables: nomes das tabelas no Glue Catalog para registrar os dados
 resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
-  rule      = aws_cloudwatch_event_rule.lambda_api_movie_daily.name
+  rule      = aws_cloudwatch_event_rule.lambda_api_movie_weekly.name
   target_id = "lambda-api-movie-discover"
   arn       = aws_lambda_function.simple_lambda.arn
 
@@ -62,7 +62,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
 
 # Vincula a regra de séries à Lambda com payload para TV
 resource "aws_cloudwatch_event_target" "lambda_api_tv_discover_target" {
-  rule      = aws_cloudwatch_event_rule.lambda_api_tv_daily.name
+  rule      = aws_cloudwatch_event_rule.lambda_api_tv_weekly.name
   target_id = "lambda-api-tv-discover"
   arn       = aws_lambda_function.simple_lambda.arn
 
@@ -85,32 +85,35 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_discover_target" {
 # Permissão explícita para o EventBridge invocar a Lambda.
 # Sem esta permissão, o EventBridge dispararia e receberia um erro de autorização.
 # "principal = events.amazonaws.com" = o serviço EventBridge (não um usuário)
-resource "aws_lambda_permission" "allow_eventbridge_movie_daily" {
+resource "aws_lambda_permission" "allow_eventbridge_movie_weekly" {
   statement_id  = "AllowEventBridgeMovieDiscoverExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_daily.arn
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_weekly.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_tv_daily" {
+resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
   statement_id  = "AllowEventBridgeTvDiscoverExecution"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.simple_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_daily.arn
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_weekly.arn
 }
 
 # =============================================================================
-# REGRAS MENSAIS — Payload Completo (Gêneros + Configurações + Watch Providers Ref)
+# REGRAS MENSAIS — Referência + Discover do Ano Anterior
 # =============================================================================
-# Além do discover, atualiza tabelas de referência que mudam raramente:
+# Atualiza tabelas de referência que mudam raramente:
 # - genre_movie/tv: lista de gêneros (Ação, Comédia, Drama, etc.)
 # - configuration_languages/countries: idiomas e países suportados pela TMDB
 # - watch_providers_ref: lista de plataformas de streaming disponíveis
 #
-# Rodam todo dia 1 do mês — cadência suficiente para dados que mudam algumas vezes por ano.
-# "skip_daily: true" = pula o discover nesta execução (já rodou na diária)
+# Além disso, roda o discover do ano anterior (current_year - 1) para manter
+# popularidade e streaming providers atualizados sem custo diário/semanal.
+#
+# Rodam todo dia 1 do mês — cadência suficiente para dados estáveis.
+# "apenas_ano_anterior: true" = referência + discover do ano passado, sem now_playing.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
@@ -136,7 +139,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
 
   input = jsonencode({
     type                            = "movie",
-    skip_daily                      = true, # Pula o discover (já rodou na execução diária)
+    apenas_ano_anterior             = true,
     database                        = local.envs.glue_catalog_db_movie,
     database_unified                = local.envs.glue_catalog_db_unified,
     table_discover_movie            = local.envs.glue_catalog_tb_discover_movie,
@@ -157,7 +160,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
 
   input = jsonencode({
     type                          = "tv",
-    skip_daily                    = true,
+    apenas_ano_anterior           = true,
     database                      = local.envs.glue_catalog_db_tv,
     database_unified              = local.envs.glue_catalog_db_unified,
     table_discover_tv             = local.envs.glue_catalog_tb_discover_tv,

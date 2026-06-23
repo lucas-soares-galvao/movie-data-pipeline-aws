@@ -49,14 +49,14 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_glue_no_loop_recebe_year_e_table_type_corretos` | Glue de discover recebe `year` e `table_type="discover"` para cada ano |
 | `test_glue_discover_recebe_end_year` | Todas as chamadas de discover repassam `end_year` |
 
-### `TestSkipDaily` — flag `skip_daily=True`
+### `TestSkipWeekly` — flag `skip_weekly=True`
 
 | Teste | O que verifica |
 |---|---|
-| `test_skip_daily_nao_chama_collect_discover` | `collect_discover_data` não é chamado |
-| `test_skip_daily_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
-| `test_skip_daily_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
-| `test_skip_daily_retorna_status_200` | Handler retorna 200 mesmo com skip_daily |
+| `test_skip_weekly_nao_chama_collect_discover` | `collect_discover_data` não é chamado |
+| `test_skip_weekly_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
+| `test_skip_weekly_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
+| `test_skip_weekly_retorna_status_200` | Handler retorna 200 mesmo com skip_weekly |
 
 ### `TestOnlyDiscover` — flag `only_discover=True`
 

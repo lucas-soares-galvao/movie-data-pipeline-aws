@@ -6,9 +6,9 @@ Este projeto é um pipeline automatizado que coleta, processa e organiza informa
 
 ## O que o sistema faz
 
-Todos os dias, o sistema acorda sozinho, vai até uma fonte pública de dados de filmes e séries, coleta as informações mais recentes, as organiza em camadas de dados cada vez mais refinadas, valida a qualidade dos dados e, ao final, deixa tudo pronto para o aplicativo de recomendações consultar.
+Toda semana, o sistema acorda sozinho, vai até uma fonte pública de dados de filmes e séries, coleta as informações mais recentes, as organiza em camadas de dados cada vez mais refinadas, valida a qualidade dos dados e, ao final, deixa tudo pronto para o aplicativo de recomendações consultar.
 
-Além dos dados de descoberta de novos títulos, o sistema também coleta diariamente quais filmes estão atualmente em cartaz nos cinemas, enriquecendo o catálogo com as datas de janela teatral.
+Além dos dados de descoberta de novos títulos, o sistema também coleta semanalmente quais filmes estão atualmente em cartaz nos cinemas, enriquecendo o catálogo com as datas de janela teatral.
 
 O usuário final interage apenas com o aplicativo: digita o que gosta ("filmes de terror dos anos 90", "séries de comédia na Netflix") e recebe recomendações personalizadas com pôster, sinopse, avaliação e onde assistir.
 
@@ -48,7 +48,7 @@ Os dados passam por quatro camadas progressivas de refinamento, cada uma com um 
 ## Serviços do projeto
 
 ### Coletor de dados (Lambda API)
-Responsável por buscar dados de filmes e séries diretamente na API do TMDB. Coleta informações como título, nota, gênero, idioma, plataformas de streaming disponíveis no Brasil e muito mais. Além dos dados de descoberta, coleta diariamente filmes em cartaz nos cinemas (endpoint `now_playing`), registrando as datas de início e fim da janela teatral de cada filme. Ao terminar, aciona o próximo passo automaticamente.
+Responsável por buscar dados de filmes e séries diretamente na API do TMDB. Coleta informações como título, nota, gênero, idioma, plataformas de streaming disponíveis no Brasil e muito mais. Além dos dados de descoberta, coleta semanalmente filmes em cartaz nos cinemas (endpoint `now_playing`), registrando as datas de início e fim da janela teatral de cada filme. Ao terminar, aciona o próximo passo automaticamente.
 
 ### Transformador (Glue ETL)
 Recebe os dados brutos coletados e os organiza em um formato estruturado e eficiente para análise. É como passar de uma pilha de papéis avulsos para uma planilha bem organizada. Ao terminar, aciona os próximos passos.
