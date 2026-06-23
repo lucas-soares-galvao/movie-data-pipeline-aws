@@ -29,7 +29,7 @@ A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** 
 | `cicd-terraform-s3-{env}` | 6 buckets do projeto + bucket de state |
 | `cicd-terraform-iam-{env}` | Roles/policies/users `tmdb-*` + auto-gerenciamento `cicd-terraform-*` |
 | `cicd-terraform-compute-{env}` | Lambda, Glue (jobs + catalog), Step Functions |
-| `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms), SNS, SQS (DLQ) |
+| `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms — inclui log groups `/lightsail/tmdb-*`), SNS, SQS (DLQ) |
 | `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1 |
 
 O workflow do GitHub Actions (`02_terraform.yml`) resolve o problema de bootstrap automaticamente: antes do `terraform plan`, um step aplica as 6 policies com `-target`, garantindo que a role tenha permissões antes de gerenciar os demais recursos. O step é idempotente — se as policies já existem, é um no-op.

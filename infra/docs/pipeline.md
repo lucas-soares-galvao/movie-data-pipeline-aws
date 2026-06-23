@@ -55,6 +55,6 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 
 - **Alarmes** para cada job Glue e para a Lambda (falhas, timeouts)
 - **Alarmes de métricas DQ** para o Glue Data Quality (regras com falha)
-- **Log groups** para Lambda, Glue e Step Functions com retenção configurável:
+- **Log groups** para Lambda, Glue, Step Functions e Lightsail (FilmBot) com retenção configurável:
   - `dev`: 1 dia (reduz custo)
   - `prod`: 5 dias (permite investigar incidentes)
