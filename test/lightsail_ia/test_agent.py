@@ -352,6 +352,36 @@ class TestRecomendar:
         assert resultado[0]["titulo"] == "O Iluminado"
         assert resultado[0]["motivo"] == ""
 
+    def test_motivo_funciona_com_id_string(self):
+        resposta_id_string = json.dumps(
+            {"titulos": [{"id": "0", "motivo": "Otimo filme de terror."}]}
+        )
+        with (
+            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"filtro_where": "media_type = 'movie'"}, resposta_id_string
+            )
+            resultado = agent.recomendar("filmes de terror")
+
+        assert resultado[0]["motivo"] == "Otimo filme de terror."
+
+    def test_motivo_funciona_com_lista_direta(self):
+        resposta_lista = json.dumps(
+            [{"id": 0, "motivo": "Classico absoluto."}]
+        )
+        with (
+            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"filtro_where": "media_type = 'movie'"}, resposta_lista
+            )
+            resultado = agent.recomendar("filmes de terror")
+
+        assert resultado[0]["motivo"] == "Classico absoluto."
+
     def test_passa_filtros_extraidos_pelo_llm_para_athena(self):
         filtros = {
             "filtro_where": "media_type = 'movie' AND lower(genre_names) LIKE '%terror%' AND vote_average >= 7.0",

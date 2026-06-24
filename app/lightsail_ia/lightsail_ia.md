@@ -39,7 +39,7 @@ Após o Athena retornar os resultados brutos, funções Python (`_formatar_regis
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 
 ### Etapa 3 — Geração do motivo (LLM)
-O LLM recebe apenas os campos essenciais de cada título (`id`, `title`, `overview`, `genre_names`, `year`, `vote_average`) e gera um `motivo` curto (1-2 frases) explicando por que cada título é relevante para o pedido do usuário. Retorna JSON com apenas `id` e `motivo` por título, que é mesclado ao registro já formatado pelo Python.
+O LLM recebe apenas os campos essenciais de cada título (`id`, `title`, `overview`, `genre_names`, `year`, `vote_average`) e gera um `motivo` curto (1-2 frases) explicando por que cada título é relevante para o pedido do usuário. Retorna JSON com apenas `id` e `motivo` por título, que é mesclado ao registro já formatado pelo Python. O merge é tolerante a variações de resposta do LLM: aceita `id` como int ou string (converte via `int()`), e aceita tanto `{"titulos": [...]}` quanto lista direta `[...]`.
 
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
