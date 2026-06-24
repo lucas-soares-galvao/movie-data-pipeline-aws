@@ -25,7 +25,7 @@ if _log_group:
         create_log_group=False,
     )
     logging.root.addHandler(_cw_handler)
-    logging.root.setLevel(logging.INFO)
+    logging.root.setLevel(logging.ERROR)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 

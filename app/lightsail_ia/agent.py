@@ -234,9 +234,6 @@ def recomendar(preferencia: str) -> list[dict]:
     # ------------------------------------------------------------------
     # PASSO 1: LLM analisa o texto e decide os filtros SQL
     # ------------------------------------------------------------------
-    # tool_choice="required" força o modelo a sempre usar a tool definida.
-    # Sem isso, o modelo poderia responder em texto livre se não entendesse
-    # como usar a tool — o que quebraria o processamento no Passo 2.
     resposta = litellm.completion(
         model=_LLM_MODEL,
         api_key=_LLM_API_KEY,
@@ -283,7 +280,6 @@ def recomendar(preferencia: str) -> list[dict]:
             {"role": "user", "content": preferencia},
         ],
         tools=[TOOL],
-        tool_choice="required",  # força o uso da tool (não aceita resposta em texto livre)
     )
 
     # ------------------------------------------------------------------
