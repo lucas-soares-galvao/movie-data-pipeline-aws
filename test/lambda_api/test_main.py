@@ -193,7 +193,7 @@ class TestSkipWeekly:
     Testa o flag skip_weekly que pula o loop de discover.
 
     QUANDO USAR skip_weekly:
-      O EventBridge tem dois schedules: um semanal (only_discover) e um mensal (skip_weekly).
+      O EventBridge tem dois schedules: um semanal (only_weekly_table) e um mensal (skip_weekly).
       skip_weekly=True = "atualizo apenas os dados de referencia (generos, idiomas, paises,
       plataformas de streaming), sem coletar o discover novamente este mes".
       Isso economiza chamadas a API TMDB em execucoes onde os dados de discover nao precisam ser atualizados.
@@ -222,64 +222,64 @@ class TestSkipWeekly:
 
 class TestOnlyDiscover:
     """
-    Testa o flag only_discover que pula as coletas de referencia.
+    Testa o flag only_weekly_table que pula as coletas de referencia.
 
-    QUANDO USAR only_discover:
-      O EventBridge semanal usa only_discover=True. Coleta apenas os filmes/series
+    QUANDO USAR only_weekly_table:
+      O EventBridge semanal usa only_weekly_table=True. Coleta apenas os filmes/series
       novos do discover sem recoletar generos, idiomas e paises (que raramente
       mudam) — tornando a execucao mais rapida e barata.
     """
 
-    def test_only_discover_pula_genre(self):
-        mocks = _run({**EVENTO_MOVIE, "only_discover": True}, year=2025)
+    def test_only_weekly_table_pula_genre(self):
+        mocks = _run({**EVENTO_MOVIE, "only_weekly_table": True}, year=2025)
         mocks["mock_genre"].assert_not_called()
 
-    def test_only_discover_pula_configuration(self):
-        mocks = _run({**EVENTO_MOVIE, "only_discover": True}, year=2025)
+    def test_only_weekly_table_pula_configuration(self):
+        mocks = _run({**EVENTO_MOVIE, "only_weekly_table": True}, year=2025)
         mocks["mock_config"].assert_not_called()
 
-    def test_only_discover_pula_watch_providers_ref(self):
-        mocks = _run({**EVENTO_MOVIE, "only_discover": True}, year=2025)
+    def test_only_weekly_table_pula_watch_providers_ref(self):
+        mocks = _run({**EVENTO_MOVIE, "only_weekly_table": True}, year=2025)
         mocks["mock_watch_ref"].assert_not_called()
 
-    def test_only_discover_executa_loop_normalmente(self):
-        mocks = _run({**EVENTO_MOVIE, "only_discover": True}, year=2026)
+    def test_only_weekly_table_executa_loop_normalmente(self):
+        mocks = _run({**EVENTO_MOVIE, "only_weekly_table": True}, year=2026)
         assert mocks["mock_discover"].call_count == 1
         assert mocks["mock_trigger"].call_count == 1
 
-    def test_only_discover_retorna_status_200(self):
-        mocks = _run({**EVENTO_MOVIE, "only_discover": True}, year=2025)
+    def test_only_weekly_table_retorna_status_200(self):
+        mocks = _run({**EVENTO_MOVIE, "only_weekly_table": True}, year=2025)
         assert mocks["result"]["statusCode"] == 200
 
 
 class TestApenasAnoAnterior:
     """
-    Testa o flag only_last_year que coleta referencia + discover do ano passado.
+    Testa o flag only_monthly_table que coleta referencia + discover do ano passado.
 
-    QUANDO USAR only_last_year:
-      O EventBridge mensal usa only_last_year=True. Coleta as tabelas de referencia
+    QUANDO USAR only_monthly_table:
+      O EventBridge mensal usa only_monthly_table=True. Coleta as tabelas de referencia
       (generos, configuracoes, watch_providers_ref) e roda o discover para current_year - 1.
       Nao coleta now_playing (dados de cinema sao do ano corrente).
     """
 
-    def test_only_last_year_coleta_referencia(self):
-        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
+    def test_only_monthly_table_coleta_referencia(self):
+        mocks = _run({**EVENTO_MOVIE, "only_monthly_table": True}, year=2026)
         mocks["mock_genre"].assert_called_once()
         mocks["mock_config"].assert_called_once()
         mocks["mock_watch_ref"].assert_called_once()
 
-    def test_only_last_year_discover_roda_para_ano_passado(self):
-        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
+    def test_only_monthly_table_discover_roda_para_ano_passado(self):
+        mocks = _run({**EVENTO_MOVIE, "only_monthly_table": True}, year=2026)
         mocks["mock_discover"].assert_called_once()
         kwargs = mocks["mock_discover"].call_args[1]
         assert kwargs["year"] == 2025
 
-    def test_only_last_year_nao_coleta_now_playing(self):
-        mocks = _run({**EVENTO_NOW_PLAYING, "only_last_year": True}, year=2026)
+    def test_only_monthly_table_nao_coleta_now_playing(self):
+        mocks = _run({**EVENTO_NOW_PLAYING, "only_monthly_table": True}, year=2026)
         mocks["mock_now_playing"].assert_not_called()
 
-    def test_only_last_year_glue_recebe_end_year_correto(self):
-        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
+    def test_only_monthly_table_glue_recebe_end_year_correto(self):
+        mocks = _run({**EVENTO_MOVIE, "only_monthly_table": True}, year=2026)
         chamadas_discover = [
             c for c in mocks["mock_trigger"].call_args_list
             if c[1].get("TABLE_TYPE") == "discover"
@@ -288,8 +288,8 @@ class TestApenasAnoAnterior:
         assert chamadas_discover[0][1].get("YEAR") == 2025
         assert chamadas_discover[0][1].get("END_YEAR") == 2025
 
-    def test_only_last_year_retorna_status_200(self):
-        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
+    def test_only_monthly_table_retorna_status_200(self):
+        mocks = _run({**EVENTO_MOVIE, "only_monthly_table": True}, year=2026)
         assert mocks["result"]["statusCode"] == 200
 
 
