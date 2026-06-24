@@ -414,6 +414,8 @@ def recomendar(preferencia: str) -> list[dict]:
         for i, r in enumerate(titulos_da_spec)
     ]
 
+    dados_titulos = json.dumps(titulos_para_llm, ensure_ascii=False, default=str)
+
     resposta_final = litellm.completion(
         model=_LLM_MODEL,
         api_key=_LLM_API_KEY,
@@ -422,8 +424,7 @@ def recomendar(preferencia: str) -> list[dict]:
                 "role": "system",
                 "content": (
                     "Você é um curador de filmes e séries. "
-                    "Recebeu uma lista de títulos reais do data lake. "
-                    "Para cada título, escreva um motivo curto (1-2 frases) explicando "
+                    "Para cada título na lista, escreva um motivo curto (1-2 frases) explicando "
                     "por que ele é uma boa recomendação para o pedido do usuário. "
                     "Retorne um JSON com a chave 'titulos'. "
                     "Cada item deve ter APENAS: id (inteiro, índice do título na lista), "
@@ -431,25 +432,9 @@ def recomendar(preferencia: str) -> list[dict]:
                     "Responda APENAS com o JSON, sem texto extra."
                 ),
             },
-            {"role": "user", "content": preferencia},
             {
-                "role": "assistant",
-                "content": resposta.choices[0].message.content,
-                "tool_calls": [
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments,
-                        },
-                    }
-                ],
-            },
-            {
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": json.dumps(titulos_para_llm, ensure_ascii=False, default=str),
+                "role": "user",
+                "content": f"Pedido: {preferencia}\n\nTítulos encontrados:\n{dados_titulos}",
             },
         ],
     )
