@@ -384,6 +384,7 @@ resource "aws_iam_policy" "cicd_compute" {
           "states:DeleteStateMachine",
           "states:DescribeStateMachine",
           "states:UpdateStateMachine",
+          "states:ValidateStateMachineDefinition",
           "states:ListStateMachineVersions",
           "states:TagResource",
           "states:UntagResource",
