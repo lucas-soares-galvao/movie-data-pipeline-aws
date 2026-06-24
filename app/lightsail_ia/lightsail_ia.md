@@ -12,7 +12,7 @@ Permite que qualquer pessoa consuma os dados do pipeline sem precisar escrever S
 
 O processo de recomendação é dividido em três etapas encadeadas:
 
-### Etapa 1 — Geração da cláusula WHERE (LLM + Function Calling)
+### Etapa 1 — Geração da cláusula WHERE (LLM + Function Calling, com cache)
 O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Function Calling*, gera a cláusula WHERE do SQL livremente, combinando qualquer coluna disponível:
 ```json
 {
@@ -21,6 +21,8 @@ O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Fun
 }
 ```
 Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz). O limite máximo de resultados é 10.
+
+**Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit.
 
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validar_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
@@ -66,9 +68,12 @@ O LLM recebe apenas os campos essenciais de cada título (`id`, `title`, `overvi
 
 | Arquivo | Função | Responsabilidade |
 |---|---|---|
-| `agent.py` | `recomendar(user_input)` | Orquestra as etapas: gerar WHERE → consultar → formatar (Python) → gerar motivo (LLM) |
+| `agent.py` | `recomendar(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) → gerar motivo (LLM) |
 | `agent.py` | `buscar_titulos_spec(filtro_where, limite)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 10) |
 | `agent.py` | `_validar_where(filtro_where)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries) |
+| `agent.py` | `_buscar_cache_where(preferencia)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
+| `agent.py` | `_salvar_cache_where(preferencia, args)` | Salva cláusula WHERE no cache em memória com timestamp |
+| `agent.py` | `_logar_uso_tokens(etapa, resposta)` | Registra `prompt_tokens`, `completion_tokens` e `total_tokens` da resposta do LLM via `logging.info` |
 | `agent.py` | `_formatar_registro(registro)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
 | `agent.py` | `limpar_duracao(raw)` | Remove fragmentos `~null` de strings de duração (legado — novas durações são formatadas por `_formatar_duracao_titulo`) |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, busca assíncrona e exibição de resultados |
@@ -126,3 +131,7 @@ Use `.env.example` como referência para as variáveis necessárias.
 - **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
 - **watchtower** — handler de logging que envia logs Python diretamente ao CloudWatch Logs via boto3
 - **AWS Lightsail** — instância de servidor para hospedar o app
+
+## Observabilidade de tokens
+
+Cada chamada a `litellm.completion()` (etapas 1 e 3) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa`. Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.

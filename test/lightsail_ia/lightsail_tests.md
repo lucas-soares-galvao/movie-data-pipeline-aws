@@ -15,7 +15,7 @@ test/lightsail_ia/
 
 ## Setup (`conftest.py`)
 
-O `conftest.py` não define fixtures pytest — apenas configura variáveis de ambiente obrigatórias antes do import de `agent.py`:
+O `conftest.py` configura variáveis de ambiente obrigatórias antes do import de `agent.py` e define uma fixture `autouse` que limpa o cache de WHERE clauses entre testes:
 
 | Variável | Valor de teste |
 |---|---|
@@ -25,12 +25,16 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 | `SPEC_TABLE` | `"tb_tmdb_discover_unified_prod"` |
 | `ATHENA_S3_OUTPUT` | `"s3://test-bucket-temp/athena-results/"` |
 
+| Fixture | Escopo | Descrição |
+|---|---|---|
+| `_limpar_cache_where` | `autouse` | Limpa `agent._CACHE_WHERE` antes de cada teste para garantir isolamento entre testes |
+
 ## Funções auxiliares de mock (`test_agent.py`)
 
 | Função | Descrição |
 |---|---|
 | `_setup_athena_mock(mock_boto3, rows_data)` | Configura o mock do `boto3` para simular as 3 etapas da API nativa do Athena: `start_query_execution` → `get_query_execution` (polling) → `get_paginator().paginate()`. `rows_data` define as linhas de resultado; `None` retorna apenas o header (resultado vazio). |
-| `_mock_litellm(tool_args, resposta_final)` | Retorna lista de 2 respostas para `side_effect` de `litellm.completion`: a 1ª simula a resposta da Etapa 1 (Function Calling com `tool_args`), a 2ª simula a Etapa 3 (JSON com `id` e `motivo` por título). |
+| `_mock_litellm(tool_args, resposta_final)` | Retorna lista de 2 respostas para `side_effect` de `litellm.completion`: a 1ª simula a resposta da Etapa 1 (Function Calling com `tool_args`), a 2ª simula a Etapa 3 (JSON com `id` e `motivo` por título). Ambas incluem mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_logar_uso_tokens()`. |
 
 ## Casos de teste — `test_agent.py`
 
@@ -78,6 +82,23 @@ O `conftest.py` não define fixtures pytest — apenas configura variáveis de a
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
 | `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` formatado pelo Python (ex: `"Maio de 1980"`) |
 | `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`tipo`, `ano`, `generos`, `sinopse`, `nota`, `duracao`, `streaming_providers`, `in_theaters`, `motivo`) |
+
+### `TestCacheWhere` — Cache de cláusulas WHERE
+
+| Teste | O que verifica |
+|---|---|
+| `test_chave_cache_normaliza_entrada` | Chave do cache é idêntica para entradas com diferença de caixa/espaços |
+| `test_salvar_e_buscar_cache` | Salvar e buscar retorna os mesmos argumentos |
+| `test_cache_miss_retorna_none` | Retorna `None` para preferência não cacheada |
+| `test_cache_expirado_retorna_none` | Retorna `None` e remove entrada quando TTL expira |
+| `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` é chamado apenas 1 vez (etapa 3) em vez de 2 |
+
+### `TestLogarUsoTokens` — Logging de uso de tokens
+
+| Teste | O que verifica |
+|---|---|
+| `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `etapa` no `extra` |
+| `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
 
 ### `TestLimparDuracao` — Limpeza de strings de duração (legado)
 

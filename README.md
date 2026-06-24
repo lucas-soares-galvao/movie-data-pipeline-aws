@@ -95,6 +95,62 @@ O pipeline é orquestrado por 5 workflows em `.github/workflows/`. Consulte [`.g
 
 ---
 
+## Primeiros passos
+
+### Pré-requisitos
+
+- **Python 3.12+** — linguagem do pipeline e dos testes
+- **Terraform >= 1.5** — infraestrutura como código (só necessário se for alterar recursos AWS)
+- **AWS CLI v2** — para autenticação local com a AWS (só necessário se for executar o pipeline)
+- **Git** — controle de versão
+
+### Instalação local (apenas testes)
+
+```bash
+# Clone o repositório
+git clone <url-do-repositório>
+cd movie-data-pipeline-aws
+
+# Crie um ambiente virtual e instale as dependências de teste
+python -m venv .venv
+source .venv/bin/activate        # Linux/Mac
+.venv\Scripts\activate           # Windows
+
+pip install -r requirements-dev.txt
+```
+
+### Rodando os testes
+
+```bash
+# Todos os testes com cobertura (gate de 80%)
+pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+
+# Testes de um módulo específico
+pytest test/lambda_api/ -v
+
+# Lint
+ruff check app/ test/
+```
+
+> **Nota:** O pipeline em si roda na AWS e é acionado automaticamente pelo EventBridge. Para executá-lo, é necessário ter credenciais AWS configuradas e a infraestrutura provisionada via Terraform.
+
+---
+
+## Ordem de leitura sugerida
+
+Se você quer entender o projeto do zero, siga esta ordem — ela acompanha o fluxo dos dados pelo pipeline:
+
+1. **Este README** — visão geral do sistema
+2. [`app/lambda_api/lambda_api.md`](app/lambda_api/lambda_api.md) — como os dados são coletados da API TMDB
+3. [`app/glue_etl/glue_etl.md`](app/glue_etl/glue_etl.md) — como os dados brutos são transformados em Parquet
+4. [`app/glue_data_quality/glue_data_quality.md`](app/glue_data_quality/glue_data_quality.md) — como a qualidade dos dados é validada
+5. [`app/glue_details/glue_details.md`](app/glue_details/glue_details.md) — como os dados são enriquecidos com detalhes e traduções
+6. [`app/glue_agg/glue_agg.md`](app/glue_agg/glue_agg.md) — como tudo é unificado na tabela final
+7. [`app/lightsail_ia/lightsail_ia.md`](app/lightsail_ia/lightsail_ia.md) — como o app de recomendações funciona
+8. [`.github/workflow.md`](.github/workflow.md) — como o CI/CD automatiza tudo
+
+---
+
 ## Tecnologias
 
 | Camada | Tecnologia |

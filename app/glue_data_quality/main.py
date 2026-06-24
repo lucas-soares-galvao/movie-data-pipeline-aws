@@ -34,6 +34,9 @@ def main() -> None:
     Fluxo: argumentos → contextos Spark → lê dados → avalia regras → salva resultados → notifica.
     """
 
+    # SparkContext: motor de processamento distribuído — necessário porque o Glue DQ
+    # roda sobre Spark, não sobre Python puro. GlueContext: wrapper da AWS sobre o
+    # SparkContext que adiciona métodos para ler/escrever no Glue Catalog.
     sc = SparkContext.getOrCreate()
     glue_context = GlueContext(sc)
 

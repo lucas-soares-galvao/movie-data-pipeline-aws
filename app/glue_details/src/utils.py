@@ -13,6 +13,8 @@ import requests
 from awsglue.utils import getResolvedOptions
 from deep_translator import GoogleTranslator
 
+# noqa: F401 = diz ao linter para ignorar "import não usado" — esses imports são
+# re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
@@ -342,8 +344,11 @@ def collect_and_write_details(
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
 
-    # Merge: lê registros existentes de cada partição year, remove os IDs que serão
-    # re-escritos e concatena com os novos dados — evita duplicatas ao usar overwrite_partitions.
+    # Merge de dados existentes com novos (evita perder registros ao usar overwrite_partitions):
+    # 1. Para cada partição year afetada, lê os registros que já existem no S3
+    # 2. Remove do existente qualquer ID que será re-escrito (evita duplicatas)
+    # 3. Concatena existentes + novos em um único DataFrame
+    # 4. Grava de volta com overwrite_partitions (substitui só as partições afetadas)
     df_existing = pd.DataFrame()
     for yr in df["year"].dropna().unique().tolist():
         try:

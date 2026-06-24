@@ -55,6 +55,8 @@ import os
 import re
 import json
 import time
+import logging
+import hashlib
 import boto3
 import litellm
 from dotenv import load_dotenv
@@ -66,6 +68,54 @@ load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
 _LLM_API_KEY = os.getenv("LLM_API_KEY")
+
+logger = logging.getLogger(__name__)
+
+_CACHE_WHERE: dict[str, tuple[float, dict]] = {}
+_CACHE_TTL_SEGUNDOS = 3600
+
+
+def _chave_cache(preferencia: str) -> str:
+    """Gera hash MD5 da preferência normalizada para uso como chave de cache."""
+    normalizada = preferencia.strip().lower()
+    return hashlib.md5(normalizada.encode()).hexdigest()
+
+
+def _buscar_cache_where(preferencia: str) -> dict | None:
+    """Verifica se já existe uma cláusula WHERE cacheada para esta preferência.
+    Evita chamadas desnecessárias ao LLM quando o mesmo pedido é feito novamente dentro de 1 hora."""
+    chave = _chave_cache(preferencia)
+    if chave not in _CACHE_WHERE:
+        return None
+    timestamp, args = _CACHE_WHERE[chave]
+    if time.time() - timestamp > _CACHE_TTL_SEGUNDOS:
+        del _CACHE_WHERE[chave]
+        return None
+    logger.info("Cache hit para WHERE clause", extra={"preferencia": preferencia})
+    return args
+
+
+def _salvar_cache_where(preferencia: str, args: dict) -> None:
+    """Salva a cláusula WHERE no cache com timestamp atual."""
+    chave = _chave_cache(preferencia)
+    _CACHE_WHERE[chave] = (time.time(), args)
+
+
+def _logar_uso_tokens(etapa: str, resposta: object) -> None:
+    """Registra no log o consumo de tokens (prompt, completion, total) de uma chamada LLM."""
+    usage = getattr(resposta, "usage", None)
+    if not usage:
+        return
+    logger.info(
+        "LLM token usage",
+        extra={
+            "etapa": etapa,
+            "modelo": _LLM_MODEL,
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+        },
+    )
 
 # ==============================================================================
 # DEFINIÇÃO DA TOOL (Function Calling)
@@ -146,16 +196,19 @@ _MESES = {
 
 
 def _formatar_tipo(media_type: str) -> str:
+    """Converte media_type da API ('movie'/'tv') para português ('filme'/'série')."""
     return "filme" if media_type == "movie" else "série" if media_type == "tv" else media_type
 
 
 def _formatar_generos(genre_names: str | None) -> list[str]:
+    """Converte string de gêneros separados por vírgula em lista."""
     if not genre_names:
         return []
     return [g.strip() for g in genre_names.split(",") if g.strip()]
 
 
 def _formatar_duracao_titulo(registro: dict) -> str | None:
+    """Formata duração: '2h 15min' para filmes, '3 temporadas · 24 eps' para séries."""
     if registro.get("media_type") == "movie":
         raw = registro.get("runtime_minutes")
         if not raw:
@@ -179,6 +232,7 @@ def _formatar_duracao_titulo(registro: dict) -> str | None:
 
 
 def _formatar_data_lancamento(air_date: str | None) -> str | None:
+    """Converte data ISO 'YYYY-MM-DD' para 'Mês de Ano' em português."""
     if not air_date or len(air_date) < 7:
         return None
     try:
@@ -191,6 +245,7 @@ def _formatar_data_lancamento(air_date: str | None) -> str | None:
 
 
 def _formatar_theater_end_date(theater_end_date: str | None, in_theaters: bool) -> str | None:
+    """Converte data ISO para 'DD/MM/AAAA' se o título estiver em cartaz."""
     if not in_theaters or not theater_end_date:
         return None
     try:
@@ -200,7 +255,8 @@ def _formatar_theater_end_date(theater_end_date: str | None, in_theaters: bool) 
         return None
 
 
-def _formatar_nota(vote_average) -> float | None:
+def _formatar_nota(vote_average: object) -> float | None:
+    """Converte nota (str, int ou float) para float, retornando None se inválida."""
     if vote_average is None or vote_average == "":
         return None
     try:
@@ -210,6 +266,7 @@ def _formatar_nota(vote_average) -> float | None:
 
 
 def _formatar_registro(registro: dict) -> dict:
+    """Transforma um registro cru do Athena em dict formatado para o card do app."""
     in_theaters = str(registro.get("in_theaters", "")).lower() == "true"
     return {
         "titulo": registro.get("title", ""),
@@ -328,67 +385,74 @@ def recomendar(preferencia: str) -> list[dict]:
     """
 
     # ------------------------------------------------------------------
-    # PASSO 1: LLM analisa o texto e decide os filtros SQL
+    # PASSO 1: LLM analisa o texto e decide os filtros SQL (com cache)
     # ------------------------------------------------------------------
-    resposta = litellm.completion(
-        model=_LLM_MODEL,
-        api_key=_LLM_API_KEY,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Você é um assistente de recomendação de filmes e séries. "
-                    "Analise o pedido do usuário e gere a cláusula WHERE do SQL para filtrar a tabela SPEC.\n\n"
-                    "SCHEMA DA TABELA SPEC (colunas disponíveis para filtro):\n"
-                    "- media_type (string): 'movie' ou 'tv'\n"
-                    "- title (string): título em português\n"
-                    "- original_title (string): título original (ex: 'The Shining', 'Parasita')\n"
-                    "- overview (string): sinopse do título. Use lower() + LIKE para buscar por palavra-chave.\n"
-                    "- original_language (string): código ISO 639-1 do idioma original (ex: 'en', 'ko', 'ja', 'pt', 'es', 'fr')\n"
-                    "- language_name (string): nome do idioma em inglês (ex: 'English', 'Korean', 'Japanese')\n"
-                    "- genre_names (string): gêneros separados por vírgula (ex: 'Terror, Drama'). Use lower() + LIKE para buscar.\n"
-                    "- year (string): ano de lançamento. Use BETWEEN para faixas, = para ano exato.\n"
-                    "- air_date (string): data de lançamento no formato 'YYYY-MM-DD'\n"
-                    "- vote_average (double): nota média de 0 a 10\n"
-                    "- vote_count (int): número de votos (filtro fixo >= 50 já aplicado; use para exigir mais votos)\n"
-                    "- popularity (double): score de popularidade do TMDB\n"
-                    "- origin_country (array<string>): códigos ISO 3166-1 do país de origem (ex: 'US', 'BR', 'KR'). Use contains() para filtrar.\n"
-                    "- origin_country_name (string): nome do país de origem (ex: 'Brasil', 'United States', '대한민국')\n"
-                    "- runtime_minutes (int): duração em minutos (apenas filmes, NULL para séries)\n"
-                    "- number_of_seasons (int): número de temporadas (apenas séries)\n"
-                    "- number_of_episodes (int): número de episódios (apenas séries)\n"
-                    "- episode_runtime_minutes (int): duração média por episódio em minutos (apenas séries)\n"
-                    "- streaming_providers (string): plataformas de streaming no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
-                    "- in_theaters (boolean): true se está em cartaz nos cinemas\n"
-                    "- theater_start_date (string): data de estreia nos cinemas ('YYYY-MM-DD')\n"
-                    "- theater_end_date (string): data de saída dos cinemas ('YYYY-MM-DD')\n"
-                    "- adult (boolean): true se é conteúdo adulto\n\n"
-                    "REGRAS:\n"
-                    "- Gere APENAS a cláusula WHERE (sem a palavra WHERE), usando AND para combinar filtros.\n"
-                    "- Para textos, use lower() + LIKE: lower(genre_names) LIKE '%terror%'\n"
-                    "- Para idioma, use original_language com código ISO: original_language = 'ko' (coreano), 'ja' (japonês), 'en' (inglês), 'pt' (português)\n"
-                    "- Sempre inclua vote_average >= 6.0 salvo se o usuário pedir nota diferente.\n"
-                    "- Se o usuário pedir APENAS filmes, use media_type = 'movie'. Se pedir APENAS séries, use media_type = 'tv'. "
-                    "Se pedir ambos ('filmes e séries', 'filmes ou séries') ou não especificar o tipo, NÃO inclua filtro de media_type.\n"
-                    "- Nunca use SELECT, INSERT, UPDATE, DELETE ou outros comandos — apenas expressões de filtro."
-                ),
-            },
-            {"role": "user", "content": preferencia},
-        ],
-        tools=[TOOL],
-    )
+    args_cache = _buscar_cache_where(preferencia)
+
+    if args_cache is not None:
+        args = args_cache
+    else:
+        resposta = litellm.completion(
+            model=_LLM_MODEL,
+            api_key=_LLM_API_KEY,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Você é um assistente de recomendação de filmes e séries. "
+                        "Analise o pedido do usuário e gere a cláusula WHERE do SQL para filtrar a tabela SPEC.\n\n"
+                        "SCHEMA DA TABELA SPEC (colunas disponíveis para filtro):\n"
+                        "- media_type (string): 'movie' ou 'tv'\n"
+                        "- title (string): título em português\n"
+                        "- original_title (string): título original (ex: 'The Shining', 'Parasita')\n"
+                        "- overview (string): sinopse do título. Use lower() + LIKE para buscar por palavra-chave.\n"
+                        "- original_language (string): código ISO 639-1 do idioma original (ex: 'en', 'ko', 'ja', 'pt', 'es', 'fr')\n"
+                        "- language_name (string): nome do idioma em inglês (ex: 'English', 'Korean', 'Japanese')\n"
+                        "- genre_names (string): gêneros separados por vírgula (ex: 'Terror, Drama'). Use lower() + LIKE para buscar.\n"
+                        "- year (string): ano de lançamento. Use BETWEEN para faixas, = para ano exato.\n"
+                        "- air_date (string): data de lançamento no formato 'YYYY-MM-DD'\n"
+                        "- vote_average (double): nota média de 0 a 10\n"
+                        "- vote_count (int): número de votos (filtro fixo >= 50 já aplicado; use para exigir mais votos)\n"
+                        "- popularity (double): score de popularidade do TMDB\n"
+                        "- origin_country (array<string>): códigos ISO 3166-1 do país de origem (ex: 'US', 'BR', 'KR'). Use contains() para filtrar.\n"
+                        "- origin_country_name (string): nome do país de origem (ex: 'Brasil', 'United States', '대한민국')\n"
+                        "- runtime_minutes (int): duração em minutos (apenas filmes, NULL para séries)\n"
+                        "- number_of_seasons (int): número de temporadas (apenas séries)\n"
+                        "- number_of_episodes (int): número de episódios (apenas séries)\n"
+                        "- episode_runtime_minutes (int): duração média por episódio em minutos (apenas séries)\n"
+                        "- streaming_providers (string): plataformas de streaming no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
+                        "- in_theaters (boolean): true se está em cartaz nos cinemas\n"
+                        "- theater_start_date (string): data de estreia nos cinemas ('YYYY-MM-DD')\n"
+                        "- theater_end_date (string): data de saída dos cinemas ('YYYY-MM-DD')\n"
+                        "- adult (boolean): true se é conteúdo adulto\n\n"
+                        "REGRAS:\n"
+                        "- Gere APENAS a cláusula WHERE (sem a palavra WHERE), usando AND para combinar filtros.\n"
+                        "- Para textos, use lower() + LIKE: lower(genre_names) LIKE '%terror%'\n"
+                        "- Para idioma, use original_language com código ISO: original_language = 'ko' (coreano), 'ja' (japonês), 'en' (inglês), 'pt' (português)\n"
+                        "- Sempre inclua vote_average >= 6.0 salvo se o usuário pedir nota diferente.\n"
+                        "- Se o usuário pedir APENAS filmes, use media_type = 'movie'. Se pedir APENAS séries, use media_type = 'tv'. "
+                        "Se pedir ambos ('filmes e séries', 'filmes ou séries') ou não especificar o tipo, NÃO inclua filtro de media_type.\n"
+                        "- Nunca use SELECT, INSERT, UPDATE, DELETE ou outros comandos — apenas expressões de filtro."
+                    ),
+                },
+                {"role": "user", "content": preferencia},
+            ],
+            tools=[TOOL],
+        )
+        _logar_uso_tokens("passo_1_where", resposta)
+
+        # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
+        # function.arguments: string JSON com os argumentos que o LLM escolheu
+        tool_calls = resposta.choices[0].message.tool_calls or []
+        if not tool_calls:
+            return []
+        tool_call = tool_calls[0]
+        args = json.loads(tool_call.function.arguments)
+        _salvar_cache_where(preferencia, args)
 
     # ------------------------------------------------------------------
-    # PASSO 2: Extrai os argumentos escolhidos pelo LLM e consulta o Athena
+    # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
     # ------------------------------------------------------------------
-    # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
-    # function.arguments: string JSON com os argumentos que o LLM escolheu
-    tool_calls = resposta.choices[0].message.tool_calls or []
-    if not tool_calls:
-        return []  # modelo não chamou a tool — não há filtros para consultar
-    tool_call = tool_calls[0]
-    args = json.loads(tool_call.function.arguments)
-    # Executa a consulta real no data lake com os filtros escolhidos pelo LLM
     titulos_da_spec = buscar_titulos_spec(**args)
 
     if not titulos_da_spec:
@@ -438,10 +502,12 @@ def recomendar(preferencia: str) -> list[dict]:
             },
         ],
     )
+    _logar_uso_tokens("passo_3_motivos", resposta_final)
 
     conteudo = resposta_final.choices[0].message.content or ""
     conteudo = conteudo.strip()
 
+    # Remove blocos de código Markdown (```json ... ```) que o LLM às vezes adiciona ao redor do JSON.
     if conteudo.startswith("```"):
         conteudo = conteudo.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 

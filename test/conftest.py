@@ -1,11 +1,22 @@
 """
 conftest.py — Configuração global de testes (raiz do diretório test/).
 
-Resolve conflito de imports entre suites: todos os jobs têm módulos com o mesmo
-nome interno (src.utils, src.main) mas implementações diferentes. Sem este conftest,
-Python reutilizaria o módulo em cache da suite anterior, causando falhas difíceis
-de depurar. Solução: antes de cada arquivo, limpa sys.modules dos módulos src.* e
-reconfigura sys.path para a suite correta.
+PROBLEMA:
+  Todos os jobs Glue usam "from src.utils import ..." internamente, mas cada um
+  tem o SEU PRÓPRIO src/utils.py com funções diferentes. Sem este conftest,
+  rodar test_glue_etl seguido de test_glue_agg faria o segundo importar o
+  utils.py do glue_etl (que ficou no cache do Python), causando falhas.
+
+SOLUÇÃO:
+  Antes de cada arquivo de teste, este conftest:
+  1. Limpa o cache de imports (sys.modules) dos módulos "src.*"
+  2. Reconfigura sys.path para apontar para a pasta app/ correta
+  3. Registra o módulo correto como "src.utils" no cache
+
+QUANDO ADICIONAR UM NOVO MÓDULO:
+  Se criar um novo job Glue com testes, adicione o módulo em _SUITE_TO_APP e
+  _SUITE_TO_SRC_MODULE abaixo. Sem isso, os testes do novo módulo podem
+  importar o utils.py de outro job.
 """
 
 import sys

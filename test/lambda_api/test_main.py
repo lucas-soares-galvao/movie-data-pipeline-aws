@@ -36,8 +36,20 @@ EVENTO_NOW_PLAYING = {
 }
 
 
-def _run(event, *, year=2025):
-    """Executa main.lambda_handler com todos os colaboradores mockados."""
+def _run(event: dict, *, year: int = 2025) -> dict:
+    """
+    Executa main.lambda_handler com todos os colaboradores mockados.
+
+    Retorna dict com:
+        result        — retorno do lambda_handler (statusCode, body)
+        mock_trigger  — mock de trigger_glue_job (verificar chamadas ao Glue)
+        mock_discover — mock de collect_discover_data
+        mock_genre    — mock de collect_genre_data
+        mock_config   — mock de collect_configuration_data
+        mock_watch_ref — mock de collect_watch_providers_ref
+        mock_now_playing — mock de collect_now_playing_data
+        mock_dt       — mock de datetime (controla o ano atual)
+    """
     mock_context = MagicMock()
     with (
         patch("main.trigger_glue_job") as mock_trigger,

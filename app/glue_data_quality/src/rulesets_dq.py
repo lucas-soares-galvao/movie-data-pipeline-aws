@@ -1,4 +1,19 @@
-"""rulesets_dq.py — Regras DQDL de qualidade de dados por tabela."""
+"""
+rulesets_dq.py — Regras DQDL de qualidade de dados por tabela.
+
+DQDL (Data Quality Definition Language) é a linguagem de regras do AWS Glue Data Quality.
+Cada regra verifica uma dimensão de qualidade dos dados:
+
+- IsComplete "coluna"          → a coluna não pode ter valores nulos
+- IsUnique "coluna"            → a coluna não pode ter valores duplicados
+- Uniqueness "c1" "c2" = 1     → a combinação de colunas deve ser única
+- ColumnValues "coluna" >= N   → valores devem estar dentro de um range
+- ColumnValues "coluna" in [X] → valores devem pertencer a uma lista
+- RowCount > 0                 → a tabela deve ter pelo menos 1 registro
+
+As regras são agrupadas por dimensão (Completude, Unicidade, Validade, Integridade)
+para facilitar a classificação automática feita em utils.py.
+"""
 
 rulesets_dq = {
     "configuration_countries": [

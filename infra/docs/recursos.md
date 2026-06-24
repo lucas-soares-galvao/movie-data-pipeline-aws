@@ -1,5 +1,8 @@
 # Recursos AWS provisionados
 
+> **Ordem de leitura sugerida dos arquivos `.tf`:**
+> `provider.tf` → `variables.tf` → `locals.tf` → `s3.tf` → `iam_roles.tf` → `lambda_api.tf` → `glue_etl.tf` → `eventbridge.tf`
+
 ## Armazenamento — S3 (`s3.tf`)
 
 6 buckets com papéis distintos na arquitetura medalhão:

@@ -1,5 +1,7 @@
 # =============================================================================
 # locals.tf — Valores derivados e nomes de recursos centralizados
+#
+# Guia de leitura: Tags (início) → Nomes de recursos → Paths de build → Templates de alarme (final)
 # =============================================================================
 
 locals {

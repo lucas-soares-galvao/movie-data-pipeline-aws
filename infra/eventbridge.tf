@@ -36,7 +36,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
 # Vincula a regra de filmes à Lambda e define o payload (JSON enviado ao handler).
 # "input" é o evento que a Lambda receberá — contém:
 # - type: "movie" (informa qual tipo de mídia processar)
-# - only_weekly_tables: true (processa APENAS o discover, pula gêneros/configurações)
+# - flags de controle (only_weekly_tables, only_monthly_tables, etc.) — ver app/lambda_api/main.py
 # - database/tables: nomes das tabelas no Glue Catalog para registrar os dados
 resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
   rule      = aws_cloudwatch_event_rule.lambda_api_movie_weekly.name

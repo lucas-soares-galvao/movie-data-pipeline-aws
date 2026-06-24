@@ -41,7 +41,7 @@ resource "aws_lambda_function" "simple_lambda" {
   runtime       = "python3.11"
   architectures = ["arm64"]
   timeout       = 900
-  memory_size   = 1024
+  memory_size   = 512
 
   environment {
     variables = {

@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any, Optional
 
+# noqa: F401 = diz ao linter para ignorar "import não usado" — esses imports são
+# re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 

@@ -430,7 +430,8 @@ def run_athena_query(
     """
     Executa a query de unificação no Athena e retorna o resultado como DataFrame.
 
-    Usa ctas_approach=True para suportar colunas ARRAY (genre_ids, origin_country).
+    Usa ctas_approach=True (Create Table As Select) para suportar colunas ARRAY.
+    Sem CTAS, o Athena não consegue retornar colunas do tipo ARRAY via API direta.
 
     Args:
         db_movie:       Banco de dados de filmes no Glue Catalog.

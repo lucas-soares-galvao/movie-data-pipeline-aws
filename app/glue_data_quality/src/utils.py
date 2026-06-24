@@ -151,6 +151,9 @@ def evaluate_data_quality(
         dynamic_frame = DynamicFrame.fromDF(df_source, glue_context, "filtered_frame")
         logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
 
+    # DynamicFrame é a estrutura de dados nativa do Glue (similar ao DataFrame do Pandas,
+    # mas distribuída e com schema flexível). O motor de DQ do Glue exige DynamicFrame como
+    # entrada; após a avaliação, convertemos de volta para DataFrame Spark para manipular.
     dq_results = EvaluateDataQuality.apply(
         frame=dynamic_frame,
         ruleset=ruleset,
@@ -202,7 +205,7 @@ def evaluate_data_quality(
 
 
 def write_results_to_s3(
-    df,
+    df: SparkDataFrame,
     s3_bucket_data_quality: str,
     table_name: str,
     database: str,
@@ -252,7 +255,7 @@ def write_results_to_s3(
 
 
 def notify_failed_outcomes(
-    df,
+    df: SparkDataFrame,
     table_name: str,
     sns_topic_arn: str,
     environment: str,

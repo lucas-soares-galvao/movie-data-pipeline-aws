@@ -23,6 +23,7 @@ from src.utils import (
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Variáveis de ambiente injetadas pelo Terraform (lambda_api.tf, bloco environment da aws_lambda_function).
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
@@ -52,6 +53,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_discover = event["table_discover_tv"]
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
+    # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf):
+    #   Semanal:  only_weekly_tables=True  → pula referências, roda discover + now_playing
+    #   Mensal:   only_monthly_tables=True → roda referências + discover do ano anterior
+    #   Anual:    only_annual_tables=True  → pula referências, roda discover (backfill histórico)
+    #   Legado:   skip_weekly=True         → só referências (genre, config, watch_providers_ref)
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
     skip_weekly = event.get("skip_weekly", False)

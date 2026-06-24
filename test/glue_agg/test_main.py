@@ -26,6 +26,9 @@ _DF_MOCK = pd.DataFrame(
 
 class TestMain:
     def test_calls_run_athena_query_with_correct_args(self):
+        # patch.object substitui temporariamente uma função do módulo por um mock (objeto falso).
+        # Isso permite testar main() sem chamar Athena, S3 ou Glue de verdade.
+        # "as mock_query" captura o mock para inspecionar depois (ex: assert_called_once_with).
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_ARGS),
             patch.object(m, "run_athena_query", return_value=_DF_MOCK) as mock_query,

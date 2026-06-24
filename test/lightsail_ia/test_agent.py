@@ -3,9 +3,11 @@
 # O mock precisa dessas 3 chamadas encadeadas porque agent.py as chama em sequência.
 #
 # _mock_litellm() usa side_effect=[passo1, passo3] porque recomendar() chama
-# o LLM duas vezes: 1ª para extrair filtros como JSON, 2ª para formatar respostas.
+# o LLM até duas vezes: 1ª para extrair filtros como JSON (salva em cache),
+# 2ª para formatar respostas. Se houver cache hit, a 1ª chamada é pulada.
 
 import json
+import time
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -108,11 +110,18 @@ def _mock_litellm(tool_args: dict, resposta_final: str):
     msg_passo3 = MagicMock()
     msg_passo3.content = resposta_final
 
+    usage_mock = MagicMock()
+    usage_mock.prompt_tokens = 100
+    usage_mock.completion_tokens = 50
+    usage_mock.total_tokens = 150
+
     passo1 = MagicMock()
     passo1.choices = [MagicMock(message=msg_passo1)]
+    passo1.usage = usage_mock
 
     passo3 = MagicMock()
     passo3.choices = [MagicMock(message=msg_passo3)]
+    passo3.usage = usage_mock
 
     return [passo1, passo3]
 
@@ -407,6 +416,77 @@ class TestRecomendar:
         assert r["streaming_providers"] == "Netflix"
         assert r["in_theaters"] is False
         assert r["motivo"] == "Classico do terror psicologico."
+
+
+class TestCacheWhere:
+
+    def test_chave_cache_normaliza_entrada(self):
+        assert agent._chave_cache("  Filmes de Terror  ") == agent._chave_cache("filmes de terror")
+
+    def test_salvar_e_buscar_cache(self):
+        args = {"filtro_where": "media_type = 'movie'"}
+        agent._salvar_cache_where("filmes de terror", args)
+
+        resultado = agent._buscar_cache_where("filmes de terror")
+        assert resultado == args
+
+    def test_cache_miss_retorna_none(self):
+        assert agent._buscar_cache_where("consulta inexistente xyz") is None
+
+    def test_cache_expirado_retorna_none(self):
+        args = {"filtro_where": "media_type = 'movie'"}
+        agent._salvar_cache_where("filmes antigos", args)
+
+        chave = agent._chave_cache("filmes antigos")
+        agent._CACHE_WHERE[chave] = (time.time() - agent._CACHE_TTL_SEGUNDOS - 1, args)
+
+        assert agent._buscar_cache_where("filmes antigos") is None
+        assert chave not in agent._CACHE_WHERE
+
+    def test_cache_evita_chamada_llm_passo_1(self):
+        args_cached = {"filtro_where": "media_type = 'movie'"}
+        agent._salvar_cache_where("filmes de terror", args_cached)
+
+        with (
+            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]) as mock_buscar,
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_passo3 = MagicMock()
+            mock_passo3.choices = [MagicMock(message=MagicMock(content=RESPOSTA_LLM_FAKE))]
+            mock_passo3.usage = MagicMock(prompt_tokens=50, completion_tokens=30, total_tokens=80)
+            mock_completion.return_value = mock_passo3
+
+            resultado = agent.recomendar("filmes de terror")
+
+        assert mock_completion.call_count == 1
+        mock_buscar.assert_called_once_with(**args_cached)
+        assert len(resultado) == 1
+
+
+class TestLogarUsoTokens:
+
+    def test_loga_tokens_com_usage(self):
+        resposta = MagicMock()
+        resposta.usage.prompt_tokens = 100
+        resposta.usage.completion_tokens = 50
+        resposta.usage.total_tokens = 150
+
+        with patch("agent.logger") as mock_logger:
+            agent._logar_uso_tokens("passo_1_where", resposta)
+
+        mock_logger.info.assert_called_once()
+        extra = mock_logger.info.call_args.kwargs["extra"]
+        assert extra["prompt_tokens"] == 100
+        assert extra["completion_tokens"] == 50
+        assert extra["etapa"] == "passo_1_where"
+
+    def test_nao_loga_sem_usage(self):
+        resposta = MagicMock(spec=[])
+
+        with patch("agent.logger") as mock_logger:
+            agent._logar_uso_tokens("passo_1_where", resposta)
+
+        mock_logger.info.assert_not_called()
 
 
 class TestLimparDuracao:

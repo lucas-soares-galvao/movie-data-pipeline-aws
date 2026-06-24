@@ -1,14 +1,13 @@
 """triggers.py — Função genérica para disparar jobs Glue downstream."""
 
 import logging
-from typing import Optional
 
 import boto3
 
 logger = logging.getLogger()
 
 
-def trigger_glue_job(job_name: str, **arguments: Optional[str]) -> str:
+def trigger_glue_job(job_name: str, **arguments: str | None) -> str:
     """
     Dispara um job Glue sem aguardar (fire-and-forget).
 
