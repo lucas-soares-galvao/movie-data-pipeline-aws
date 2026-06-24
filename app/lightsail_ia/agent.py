@@ -523,10 +523,16 @@ def recomendar(preferencia: str) -> list[dict]:
             reg["motivo"] = ""
         return registros_formatados
 
-    motivos_llm = dados.get("titulos", [])
+    motivos_llm = dados if isinstance(dados, list) else dados.get("titulos", [])
 
     # Merge: adiciona o motivo do LLM ao registro já formatado pelo Python
-    motivos_por_id = {item["id"]: item.get("motivo", "") for item in motivos_llm if "id" in item}
+    motivos_por_id = {}
+    for item in motivos_llm:
+        if "id" in item:
+            try:
+                motivos_por_id[int(item["id"])] = item.get("motivo", "")
+            except (ValueError, TypeError):
+                continue
     for i, reg in enumerate(registros_formatados):
         reg["motivo"] = motivos_por_id.get(i, "")
 

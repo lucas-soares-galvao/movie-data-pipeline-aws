@@ -78,6 +78,9 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
 | `test_remove_markdown_code_block_do_json` | Remove ` ```json ... ``` ` antes de parsear a resposta do LLM |
 | `test_retorna_registros_sem_motivo_se_llm_retorna_string_vazia` | Retorna registros formatados com `motivo=""` quando o LLM retorna string vazia na etapa 3 |
+| `test_retorna_registros_sem_motivo_se_llm_retorna_json_invalido` | Retorna registros com `motivo=""` quando o LLM retorna texto que não é JSON |
+| `test_motivo_funciona_com_id_string` | Motivo é mesclado corretamente quando o LLM retorna `id` como string (`"0"` em vez de `0`) |
+| `test_motivo_funciona_com_lista_direta` | Motivo é mesclado corretamente quando o LLM retorna lista `[...]` em vez de `{"titulos": [...]}` |
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | `filtro_where` e `limite` extraídos na etapa 1 são passados corretamente para `buscar_titulos_spec()` |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
 | `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` formatado pelo Python (ex: `"Maio de 1980"`) |
