@@ -100,7 +100,7 @@ resource "aws_sfn_state_machine" "backfill" {
                 FunctionName = aws_lambda_function.simple_lambda.arn
                 Payload = {
                   type                            = "movie"
-                  only_discover                   = true
+                  only_annual_tables              = true
                   "start_year.$"                  = "States.ArrayGetItem($.batch, 0)"
                   "loop_end_year.$"               = "States.ArrayGetItem($.batch, States.MathAdd(States.ArrayLength($.batch), -1))"
                   "end_year.$"                    = "$.end_year"
@@ -135,7 +135,7 @@ resource "aws_sfn_state_machine" "backfill" {
                 FunctionName = aws_lambda_function.simple_lambda.arn
                 Payload = {
                   type                          = "tv"
-                  only_discover                 = true
+                  only_annual_tables            = true
                   "start_year.$"                = "States.ArrayGetItem($.batch, 0)"
                   "loop_end_year.$"             = "States.ArrayGetItem($.batch, States.MathAdd(States.ArrayLength($.batch), -1))"
                   "end_year.$"                  = "$.end_year"

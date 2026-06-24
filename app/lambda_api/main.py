@@ -52,9 +52,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_discover = event["table_discover_tv"]
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
-    only_discover = event.get("only_discover", False)
+    only_weekly_tables = event.get("only_weekly_tables", False)
+    only_annual_tables = event.get("only_annual_tables", False)
     skip_weekly = event.get("skip_weekly", False)
-    apenas_ano_anterior = event.get("apenas_ano_anterior", False)
+    only_monthly_tables = event.get("only_monthly_tables", False)
+    skip_reference = only_weekly_tables or only_annual_tables
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -65,12 +67,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     end_year       = int(event.get("end_year",   current_year))
     loop_end_year  = int(event.get("loop_end_year", end_year))
 
-    if apenas_ano_anterior:
+    if only_monthly_tables:
         start_year = current_year - 1
         end_year = current_year - 1
         loop_end_year = current_year - 1
 
-    if not only_discover:
+    if not skip_reference:
         logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
         collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de gêneros...")
@@ -101,7 +103,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             **glue_base_args,
         )
     else:
-        logger.info("only_discover=True: pulando coleta de genre, configuration e watch_providers_ref.")
+        logger.info("skip_reference=True: pulando coleta de genre, configuration e watch_providers_ref.")
 
     if skip_weekly:
         logger.info("skip_weekly=True: pulando coleta de discover.")
@@ -137,7 +139,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             **glue_base_args,
         )
 
-    if content_type == "movie" and table_now_playing and not apenas_ano_anterior:
+    if content_type == "movie" and table_now_playing and not only_monthly_tables:
         logger.info("Coletando filmes em cartaz nos cinemas...")
         collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
         logger.info("Acionando Glue ETL para tabela de now_playing...")

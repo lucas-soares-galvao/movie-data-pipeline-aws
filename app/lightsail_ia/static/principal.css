@@ -17,6 +17,12 @@ button[data-testid="stBaseButton-secondary"] {
   max-width: 75%;
 }
 
+/* Esconde o hint "Press Ctrl+Enter to apply" do text_area */
+[data-testid="stTextArea"] .stTextAreaHelpText,
+[data-testid="stTextArea"] [data-testid="InputInstructions"] {
+  display: none;
+}
+
 @media (max-width: 1024px) {
   [data-testid="stTextArea"] { max-width: 100%; }
 }

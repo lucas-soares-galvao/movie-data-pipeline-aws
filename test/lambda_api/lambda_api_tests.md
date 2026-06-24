@@ -58,15 +58,25 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_skip_weekly_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
 | `test_skip_weekly_retorna_status_200` | Handler retorna 200 mesmo com skip_weekly |
 
-### `TestOnlyDiscover` — flag `only_discover=True`
+### `TestOnlyDiscover` — flag `only_weekly_tables=True`
 
 | Teste | O que verifica |
 |---|---|
-| `test_only_discover_pula_genre` | `collect_genre_data` não é chamado |
-| `test_only_discover_pula_configuration` | `collect_configuration_data` não é chamado |
-| `test_only_discover_pula_watch_providers_ref` | `collect_watch_providers_ref` não é chamado |
-| `test_only_discover_executa_loop_normalmente` | Loop de discover roda normalmente, Glue acionado 1x por ano |
-| `test_only_discover_retorna_status_200` | Handler retorna 200 com only_discover |
+| `test_only_weekly_table_pula_genre` | `collect_genre_data` não é chamado |
+| `test_only_weekly_table_pula_configuration` | `collect_configuration_data` não é chamado |
+| `test_only_weekly_table_pula_watch_providers_ref` | `collect_watch_providers_ref` não é chamado |
+| `test_only_weekly_table_executa_loop_normalmente` | Loop de discover roda normalmente, Glue acionado 1x por ano |
+| `test_only_weekly_table_retorna_status_200` | Handler retorna 200 com only_weekly_tables |
+
+### `TestOnlyAnnualTables` — flag `only_annual_tables=True`
+
+| Teste | O que verifica |
+|---|---|
+| `test_only_annual_tables_pula_genre` | `collect_genre_data` não é chamado |
+| `test_only_annual_tables_pula_configuration` | `collect_configuration_data` não é chamado |
+| `test_only_annual_tables_pula_watch_providers_ref` | `collect_watch_providers_ref` não é chamado |
+| `test_only_annual_tables_executa_loop_normalmente` | Loop de discover roda normalmente, Glue acionado 1x por ano |
+| `test_only_annual_tables_retorna_status_200` | Handler retorna 200 com only_annual_tables |
 
 ### `TestNowPlaying` — coleta de filmes em cartaz
 

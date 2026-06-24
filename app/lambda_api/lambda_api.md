@@ -13,8 +13,9 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 1. O EventBridge dispara a Lambda com um payload JSON indicando o tipo de mídia (`movie` ou `tv`) e os nomes das tabelas do Glue Catalog.
 2. A Lambda busca a chave da API do TMDB no **Secrets Manager** (cofre de senhas da AWS — armazena credenciais com segurança, evitando que a chave fique exposta no código) — uma única vez por execução, independente de quantos anos existam.
 3. Dependendo dos flags recebidos no evento:
-   - **`only_discover=True`** (execução semanal): pula gêneros, idiomas, países e plataformas de referência.
-   - **`apenas_ano_anterior=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
+   - **`only_weekly_tables=True`** (execução semanal): pula gêneros, idiomas, países e plataformas de referência.
+   - **`only_annual_tables=True`** (backfill anual via Step Functions): mesmo efeito do `only_weekly_tables` — pula referências e roda apenas o discover.
+   - **`only_monthly_tables=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
    - **`skip_weekly=True`** (modo legado — referências apenas): pula o loop de discover.
    - Sem flags: coleta tudo.
 4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL.
@@ -25,7 +26,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 
 | | Descrição |
 |---|---|
-| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_discover`, `apenas_ano_anterior`, `skip_weekly`) |
+| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `skip_weekly`) |
 | **Leitura** | API TMDB (HTTP), Secrets Manager (chave de API) |
 | **Escrita** | S3 SOR — `tmdb/discover/{movie|tv}/year={ano}/`, `tmdb/{genre|configuration|watch_providers_ref}/{movie|tv}/` e `tmdb/now_playing/movie/pagina_NNN.json` |
 | **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes) |

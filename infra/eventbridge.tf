@@ -36,7 +36,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
 # Vincula a regra de filmes à Lambda e define o payload (JSON enviado ao handler).
 # "input" é o evento que a Lambda receberá — contém:
 # - type: "movie" (informa qual tipo de mídia processar)
-# - only_discover: true (processa APENAS o discover, pula gêneros/configurações)
+# - only_weekly_tables: true (processa APENAS o discover, pula gêneros/configurações)
 # - database/tables: nomes das tabelas no Glue Catalog para registrar os dados
 resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
   rule      = aws_cloudwatch_event_rule.lambda_api_movie_weekly.name
@@ -45,7 +45,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_discover_target" {
 
   input = jsonencode({
     type                            = "movie",
-    only_discover                   = true,
+    only_weekly_tables              = true,
     database                        = local.envs.glue_catalog_db_movie,
     database_unified                = local.envs.glue_catalog_db_unified,
     table_discover_movie            = local.envs.glue_catalog_tb_discover_movie,
@@ -68,7 +68,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_discover_target" {
 
   input = jsonencode({
     type                          = "tv",
-    only_discover                 = true,
+    only_weekly_tables            = true,
     database                      = local.envs.glue_catalog_db_tv,
     database_unified              = local.envs.glue_catalog_db_unified,
     table_discover_tv             = local.envs.glue_catalog_tb_discover_tv,
@@ -113,7 +113,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
 # popularidade e streaming providers atualizados sem custo diário/semanal.
 #
 # Rodam todo dia 1 do mês — cadência suficiente para dados estáveis.
-# "apenas_ano_anterior: true" = referência + discover do ano passado, sem now_playing.
+# "only_monthly_tables: true" = referência + discover do ano passado, sem now_playing.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
@@ -139,7 +139,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
 
   input = jsonencode({
     type                            = "movie",
-    apenas_ano_anterior             = true,
+    only_monthly_tables             = true,
     database                        = local.envs.glue_catalog_db_movie,
     database_unified                = local.envs.glue_catalog_db_unified,
     table_discover_movie            = local.envs.glue_catalog_tb_discover_movie,
@@ -160,7 +160,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
 
   input = jsonencode({
     type                          = "tv",
-    apenas_ano_anterior           = true,
+    only_monthly_tables           = true,
     database                      = local.envs.glue_catalog_db_tv,
     database_unified              = local.envs.glue_catalog_db_unified,
     table_discover_tv             = local.envs.glue_catalog_tb_discover_tv,

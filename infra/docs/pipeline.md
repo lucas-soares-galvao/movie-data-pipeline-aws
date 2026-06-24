@@ -6,8 +6,8 @@
 
 | Regra | Frequência | Horário | Comportamento |
 |---|---|---|---|
-| `lambda_api_movie_weekly` | Semanal (dom) | 07:00 BRT (10:00 UTC) | `only_discover=true` — filmes novos + now_playing |
-| `lambda_api_tv_weekly` | Semanal (dom) | 07:05 BRT (10:05 UTC) | `only_discover=true` — séries novas |
+| `lambda_api_movie_weekly` | Semanal (dom) | 07:00 BRT (10:00 UTC) | `only_weekly_tables=true` — filmes novos + now_playing |
+| `lambda_api_tv_weekly` | Semanal (dom) | 07:05 BRT (10:05 UTC) | `only_weekly_tables=true` — séries novas |
 | `lambda_api_movie_monthly` | Dia 1 do mês | 07:00 BRT (10:00 UTC) | `skip_weekly=true` — atualiza gêneros, idiomas, plataformas |
 | `lambda_api_tv_monthly` | Dia 1 do mês | 07:05 BRT (10:05 UTC) | `skip_weekly=true` — atualiza gêneros, países, plataformas |
 | `sfn_backfill_annual` | 1 de jan (anual) | 07:30 BR (10:30 UTC) | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
