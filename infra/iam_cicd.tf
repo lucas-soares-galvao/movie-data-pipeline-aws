@@ -384,7 +384,6 @@ resource "aws_iam_policy" "cicd_compute" {
           "states:DeleteStateMachine",
           "states:DescribeStateMachine",
           "states:UpdateStateMachine",
-          "states:ValidateStateMachineDefinition",
           "states:ListStateMachineVersions",
           "states:TagResource",
           "states:UntagResource",
@@ -393,9 +392,12 @@ resource "aws_iam_policy" "cicd_compute" {
         Resource = "arn:aws:states:sa-east-1:${data.aws_caller_identity.current.account_id}:stateMachine:${local.tmdb_prefix}-*"
       },
       {
-        Sid      = "StepFunctionsList"
-        Effect   = "Allow"
-        Action   = "states:ListStateMachines"
+        Sid    = "StepFunctionsList"
+        Effect = "Allow"
+        Action = [
+          "states:ListStateMachines",
+          "states:ValidateStateMachineDefinition",
+        ]
         Resource = "*"
       },
     ]
