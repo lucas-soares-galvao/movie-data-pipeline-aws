@@ -254,32 +254,32 @@ class TestOnlyDiscover:
 
 class TestApenasAnoAnterior:
     """
-    Testa o flag apenas_ano_anterior que coleta referencia + discover do ano passado.
+    Testa o flag only_last_year que coleta referencia + discover do ano passado.
 
-    QUANDO USAR apenas_ano_anterior:
-      O EventBridge mensal usa apenas_ano_anterior=True. Coleta as tabelas de referencia
+    QUANDO USAR only_last_year:
+      O EventBridge mensal usa only_last_year=True. Coleta as tabelas de referencia
       (generos, configuracoes, watch_providers_ref) e roda o discover para current_year - 1.
       Nao coleta now_playing (dados de cinema sao do ano corrente).
     """
 
-    def test_apenas_ano_anterior_coleta_referencia(self):
-        mocks = _run({**EVENTO_MOVIE, "apenas_ano_anterior": True}, year=2026)
+    def test_only_last_year_coleta_referencia(self):
+        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
         mocks["mock_genre"].assert_called_once()
         mocks["mock_config"].assert_called_once()
         mocks["mock_watch_ref"].assert_called_once()
 
-    def test_apenas_ano_anterior_discover_roda_para_ano_passado(self):
-        mocks = _run({**EVENTO_MOVIE, "apenas_ano_anterior": True}, year=2026)
+    def test_only_last_year_discover_roda_para_ano_passado(self):
+        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
         mocks["mock_discover"].assert_called_once()
         kwargs = mocks["mock_discover"].call_args[1]
         assert kwargs["year"] == 2025
 
-    def test_apenas_ano_anterior_nao_coleta_now_playing(self):
-        mocks = _run({**EVENTO_NOW_PLAYING, "apenas_ano_anterior": True}, year=2026)
+    def test_only_last_year_nao_coleta_now_playing(self):
+        mocks = _run({**EVENTO_NOW_PLAYING, "only_last_year": True}, year=2026)
         mocks["mock_now_playing"].assert_not_called()
 
-    def test_apenas_ano_anterior_glue_recebe_end_year_correto(self):
-        mocks = _run({**EVENTO_MOVIE, "apenas_ano_anterior": True}, year=2026)
+    def test_only_last_year_glue_recebe_end_year_correto(self):
+        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
         chamadas_discover = [
             c for c in mocks["mock_trigger"].call_args_list
             if c[1].get("TABLE_TYPE") == "discover"
@@ -288,8 +288,8 @@ class TestApenasAnoAnterior:
         assert chamadas_discover[0][1].get("YEAR") == 2025
         assert chamadas_discover[0][1].get("END_YEAR") == 2025
 
-    def test_apenas_ano_anterior_retorna_status_200(self):
-        mocks = _run({**EVENTO_MOVIE, "apenas_ano_anterior": True}, year=2026)
+    def test_only_last_year_retorna_status_200(self):
+        mocks = _run({**EVENTO_MOVIE, "only_last_year": True}, year=2026)
         assert mocks["result"]["statusCode"] == 200
 
 

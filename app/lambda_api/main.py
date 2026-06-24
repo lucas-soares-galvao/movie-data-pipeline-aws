@@ -54,7 +54,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     only_discover = event.get("only_discover", False)
     skip_weekly = event.get("skip_weekly", False)
-    apenas_ano_anterior = event.get("apenas_ano_anterior", False)
+    only_last_year = event.get("only_last_year", False)
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -65,7 +65,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     end_year       = int(event.get("end_year",   current_year))
     loop_end_year  = int(event.get("loop_end_year", end_year))
 
-    if apenas_ano_anterior:
+    if only_last_year:
         start_year = current_year - 1
         end_year = current_year - 1
         loop_end_year = current_year - 1
@@ -137,7 +137,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             **glue_base_args,
         )
 
-    if content_type == "movie" and table_now_playing and not apenas_ano_anterior:
+    if content_type == "movie" and table_now_playing and not only_last_year:
         logger.info("Coletando filmes em cartaz nos cinemas...")
         collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
         logger.info("Acionando Glue ETL para tabela de now_playing...")

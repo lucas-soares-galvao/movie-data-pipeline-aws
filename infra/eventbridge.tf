@@ -113,7 +113,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
 # popularidade e streaming providers atualizados sem custo diário/semanal.
 #
 # Rodam todo dia 1 do mês — cadência suficiente para dados estáveis.
-# "apenas_ano_anterior: true" = referência + discover do ano passado, sem now_playing.
+# "only_last_year: true" = referência + discover do ano passado, sem now_playing.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
@@ -139,7 +139,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_movie_monthly_target" {
 
   input = jsonencode({
     type                            = "movie",
-    apenas_ano_anterior             = true,
+    only_last_year             = true,
     database                        = local.envs.glue_catalog_db_movie,
     database_unified                = local.envs.glue_catalog_db_unified,
     table_discover_movie            = local.envs.glue_catalog_tb_discover_movie,
@@ -160,7 +160,7 @@ resource "aws_cloudwatch_event_target" "lambda_api_tv_monthly_target" {
 
   input = jsonencode({
     type                          = "tv",
-    apenas_ano_anterior           = true,
+    only_last_year           = true,
     database                      = local.envs.glue_catalog_db_tv,
     database_unified              = local.envs.glue_catalog_db_unified,
     table_discover_tv             = local.envs.glue_catalog_tb_discover_tv,
