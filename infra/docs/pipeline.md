@@ -2,15 +2,15 @@
 
 ## Agendamento — EventBridge (`eventbridge.tf`)
 
-5 regras de schedule, separadas por tipo de mídia e frequência:
+5 regras de schedule, separadas por tipo de mídia e frequência. Os horários são espaçados com gap de 30 min entre semanal e mensal para evitar `ConcurrentModificationException` no Glue Catalog quando dois jobs Details tocam a mesma partição:
 
 | Regra | Frequência | Horário | Comportamento |
 |---|---|---|---|
-| `lambda_api_movie_weekly` | Semanal (dom) | 07:00 BRT (10:00 UTC) | `only_weekly_tables=true` — filmes novos + now_playing |
-| `lambda_api_tv_weekly` | Semanal (dom) | 07:05 BRT (10:05 UTC) | `only_weekly_tables=true` — séries novas |
-| `lambda_api_movie_monthly` | Dia 1 do mês | 07:00 BRT (10:00 UTC) | `skip_weekly=true` — atualiza gêneros, idiomas, plataformas |
-| `lambda_api_tv_monthly` | Dia 1 do mês | 07:05 BRT (10:05 UTC) | `skip_weekly=true` — atualiza gêneros, países, plataformas |
-| `sfn_backfill_annual` | 1 de jan (anual) | 07:30 BR (10:30 UTC) | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
+| `lambda_api_movie_weekly` | Semanal (dom) | 06:00 BRT (09:00 UTC) | `only_weekly_tables=true` — filmes novos + now_playing |
+| `lambda_api_tv_weekly` | Semanal (dom) | 06:05 BRT (09:05 UTC) | `only_weekly_tables=true` — séries novas |
+| `lambda_api_movie_monthly` | Dia 1 do mês | 06:30 BRT (09:30 UTC) | `only_monthly_tables=true` — referências + discover do ano anterior |
+| `lambda_api_tv_monthly` | Dia 1 do mês | 06:35 BRT (09:35 UTC) | `only_monthly_tables=true` — referências + discover do ano anterior |
+| `sfn_backfill_annual` | 1 de jan (anual) | 07:00 BRT (10:00 UTC) | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
 
 **Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.
 
@@ -18,7 +18,7 @@
 
 State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a ano, contornando o limite de 15 minutos da Lambda.
 
-**Acionamento:** regra EventBridge `sfn_backfill_annual` no dia 1º de janeiro às 10:30 UTC, com input `{"start_year": 2000}`.
+**Acionamento:** regra EventBridge `sfn_backfill_annual` no dia 1º de janeiro às 10:00 UTC, com input `{"start_year": 2000}`.
 
 **Logging:** habilitado com nível `ALL` e `include_execution_data = true`, enviando logs para o CloudWatch Log Group `/aws/vendedlogs/states/tmdb-sfn-backfill-{env}`.
 

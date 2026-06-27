@@ -27,8 +27,8 @@ Essa abordagem "livre" permite que qualquer combinação de filtros seja usada s
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validar_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
 
-### Etapa 2.5 — Formatação determinística (Python)
-Após o Athena retornar os resultados brutos, funções Python (`_formatar_registro()`) convertem cada registro em campos prontos para o card da interface, sem usar LLM:
+### Etapa 2.5 — Formatação determinística (formatacao.py)
+Após o Athena retornar os resultados brutos, funções puras em `formatacao.py` (`formatar_registro()`) convertem cada registro em campos prontos para o card da interface, sem usar LLM:
 - `titulo` (cópia de `title`), `tipo` (`"movie"` → `"filme"`, `"tv"` → `"série"`)
 - `ano` (inteiro), `generos` (lista de strings a partir de `genre_names`)
 - `sinopse` (cópia de `overview` — já vem em pt-BR do pipeline via `COALESCE(overview, overview_pt, overview_en)`)
@@ -42,6 +42,7 @@ Após o Athena retornar os resultados brutos, funções Python (`_formatar_regis
 - Tema escuro com CSS customizado
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
+- **Rate limiting por sessão:** máximo de 20 consultas por hora (janela deslizante). O contador é exibido abaixo do campo de texto; ao atingir o limite, o botão "Recomendar" é desabilitado e uma mensagem de aviso é exibida. O histórico de timestamps é mantido em `st.session_state` e limpo automaticamente (entradas com mais de 1 hora são descartadas a cada rerun)
 - Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Cada card exibe:
@@ -71,9 +72,10 @@ Após o Athena retornar os resultados brutos, funções Python (`_formatar_regis
 | `agent.py` | `_buscar_cache_where(preferencia)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
 | `agent.py` | `_salvar_cache_where(preferencia, args)` | Salva cláusula WHERE no cache em memória com timestamp |
 | `agent.py` | `_logar_uso_tokens(etapa, resposta)` | Registra `prompt_tokens`, `completion_tokens` e `total_tokens` da resposta do LLM via `logging.info` |
-| `agent.py` | `_formatar_registro(registro)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
-| `agent.py` | `limpar_duracao(raw)` | Remove fragmentos `~null` de strings de duração (legado — novas durações são formatadas por `_formatar_duracao_titulo`) |
-| `app.py` | Interface Streamlit | Orquestra a UI: autenticação, busca assíncrona e exibição de resultados |
+| `formatacao.py` | `formatar_registro(registro)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
+| `formatacao.py` | `_formatar_tipo()`, `_formatar_generos()`, `_formatar_duracao_titulo()`, `_formatar_data_lancamento()`, `_formatar_theater_end_date()`, `_formatar_nota()` | Funções puras de formatação de campos individuais |
+| `app.py` | `_consultas_na_ultima_hora()` | Conta consultas na última hora (janela deslizante) e limpa registros expirados do `st.session_state` |
+| `app.py` | Interface Streamlit | Orquestra a UI: autenticação, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `carregar_css_login()`, `carregar_css_principal()`, `renderizar_card()`, `renderizar_grid()`, `renderizar_rodape()`, `renderizar_rodape_login()` | Helpers de renderização HTML com escape contra XSS |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
