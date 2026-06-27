@@ -2,9 +2,9 @@
 #   start_query_execution → get_query_execution (polling) → get_paginator().paginate()
 # O mock precisa dessas 3 chamadas encadeadas porque agent.py as chama em sequência.
 #
-# _mock_litellm() usa side_effect=[passo1, passo3] porque recomendar() chama
-# o LLM até duas vezes: 1ª para extrair filtros como JSON (salva em cache),
-# 2ª para formatar respostas. Se houver cache hit, a 1ª chamada é pulada.
+# _mock_litellm() retorna side_effect=[passo1] porque recomendar() chama
+# o LLM uma vez para extrair filtros como JSON (salva em cache).
+# Se houver cache hit, a chamada é pulada.
 
 import json
 import time
@@ -33,17 +33,6 @@ TITULO_FAKE = {
     "in_theaters": "false",
     "theater_end_date": None,
 }
-
-RESPOSTA_LLM_FAKE = json.dumps(
-    {
-        "titulos": [
-            {
-                "id": 0,
-                "motivo": "Classico do terror psicologico.",
-            }
-        ]
-    }
-)
 
 COLUMNS = [
     "title", "media_type", "year", "air_date", "genre_names", "overview",
@@ -96,8 +85,8 @@ def _setup_athena_mock(mock_boto3, rows_data=None):
     return mock_athena
 
 
-def _mock_litellm(tool_args: dict, resposta_final: str):
-    """Retorna lista de 2 respostas para o side_effect de litellm.completion."""
+def _mock_litellm(tool_args: dict):
+    """Retorna lista com 1 resposta para o side_effect de litellm.completion."""
     tool_call = MagicMock()
     tool_call.id = "call_test_123"
     tool_call.function.name = "buscar_titulos_spec"
@@ -106,9 +95,6 @@ def _mock_litellm(tool_args: dict, resposta_final: str):
     msg_passo1 = MagicMock()
     msg_passo1.content = None
     msg_passo1.tool_calls = [tool_call]
-
-    msg_passo3 = MagicMock()
-    msg_passo3.content = resposta_final
 
     usage_mock = MagicMock()
     usage_mock.prompt_tokens = 100
@@ -119,11 +105,7 @@ def _mock_litellm(tool_args: dict, resposta_final: str):
     passo1.choices = [MagicMock(message=msg_passo1)]
     passo1.usage = usage_mock
 
-    passo3 = MagicMock()
-    passo3.choices = [MagicMock(message=msg_passo3)]
-    passo3.usage = usage_mock
-
-    return [passo1, passo3]
+    return [passo1]
 
 
 class TestValidarWhere:
@@ -279,23 +261,23 @@ class TestRecomendar:
             patch("agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, ""
+                {"filtro_where": "media_type = 'movie'"}
             )
             resultado = agent.recomendar("filmes de terror")
 
         assert resultado == []
 
-    def test_chama_llm_duas_vezes(self):
+    def test_chama_llm_uma_vez(self):
         with (
             patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
             patch("agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, RESPOSTA_LLM_FAKE
+                {"filtro_where": "media_type = 'movie'"}
             )
             agent.recomendar("filmes de terror")
 
-        assert mock_completion.call_count == 2
+        assert mock_completion.call_count == 1
 
     def test_retorna_lista_de_titulos(self):
         with (
@@ -303,84 +285,13 @@ class TestRecomendar:
             patch("agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, RESPOSTA_LLM_FAKE
+                {"filtro_where": "media_type = 'movie'"}
             )
             resultado = agent.recomendar("filmes de terror")
 
         assert isinstance(resultado, list)
         assert len(resultado) == 1
         assert resultado[0]["titulo"] == "O Iluminado"
-
-    def test_remove_markdown_code_block_do_json(self):
-        resposta_com_markdown = f"```json\n{RESPOSTA_LLM_FAKE}\n```"
-        with (
-            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
-            patch("agent.litellm.completion") as mock_completion,
-        ):
-            mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, resposta_com_markdown
-            )
-            resultado = agent.recomendar("filmes de terror")
-
-        assert len(resultado) == 1
-
-    def test_retorna_registros_sem_motivo_se_llm_retorna_string_vazia(self):
-        with (
-            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
-            patch("agent.litellm.completion") as mock_completion,
-        ):
-            mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, ""
-            )
-            resultado = agent.recomendar("filmes de terror")
-
-        assert len(resultado) == 1
-        assert resultado[0]["titulo"] == "O Iluminado"
-        assert resultado[0]["motivo"] == ""
-
-    def test_retorna_registros_sem_motivo_se_llm_retorna_json_invalido(self):
-        with (
-            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
-            patch("agent.litellm.completion") as mock_completion,
-        ):
-            mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, "isso nao e json"
-            )
-            resultado = agent.recomendar("filmes de terror")
-
-        assert len(resultado) == 1
-        assert resultado[0]["titulo"] == "O Iluminado"
-        assert resultado[0]["motivo"] == ""
-
-    def test_motivo_funciona_com_id_string(self):
-        resposta_id_string = json.dumps(
-            {"titulos": [{"id": "0", "motivo": "Otimo filme de terror."}]}
-        )
-        with (
-            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
-            patch("agent.litellm.completion") as mock_completion,
-        ):
-            mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, resposta_id_string
-            )
-            resultado = agent.recomendar("filmes de terror")
-
-        assert resultado[0]["motivo"] == "Otimo filme de terror."
-
-    def test_motivo_funciona_com_lista_direta(self):
-        resposta_lista = json.dumps(
-            [{"id": 0, "motivo": "Classico absoluto."}]
-        )
-        with (
-            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
-            patch("agent.litellm.completion") as mock_completion,
-        ):
-            mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, resposta_lista
-            )
-            resultado = agent.recomendar("filmes de terror")
-
-        assert resultado[0]["motivo"] == "Classico absoluto."
 
     def test_passa_filtros_extraidos_pelo_llm_para_athena(self):
         filtros = {
@@ -391,7 +302,7 @@ class TestRecomendar:
             patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]) as mock_buscar,
             patch("agent.litellm.completion") as mock_completion,
         ):
-            mock_completion.side_effect = _mock_litellm(filtros, RESPOSTA_LLM_FAKE)
+            mock_completion.side_effect = _mock_litellm(filtros)
             agent.recomendar("filmes de terror dos anos 80")
 
         mock_buscar.assert_called_once_with(**filtros)
@@ -419,7 +330,7 @@ class TestRecomendar:
             patch("agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, RESPOSTA_LLM_FAKE
+                {"filtro_where": "media_type = 'movie'"}
             )
             resultado = agent.recomendar("filmes de terror")
 
@@ -432,7 +343,7 @@ class TestRecomendar:
             patch("agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
-                {"filtro_where": "media_type = 'movie'"}, RESPOSTA_LLM_FAKE
+                {"filtro_where": "media_type = 'movie'"}
             )
             resultado = agent.recomendar("filmes de terror")
 
@@ -445,7 +356,6 @@ class TestRecomendar:
         assert r["duracao"] == "2h 26min"
         assert r["streaming_providers"] == "Netflix"
         assert r["in_theaters"] is False
-        assert r["motivo"] == "Classico do terror psicologico."
 
 
 class TestCacheWhere:
@@ -481,14 +391,9 @@ class TestCacheWhere:
             patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]) as mock_buscar,
             patch("agent.litellm.completion") as mock_completion,
         ):
-            mock_passo3 = MagicMock()
-            mock_passo3.choices = [MagicMock(message=MagicMock(content=RESPOSTA_LLM_FAKE))]
-            mock_passo3.usage = MagicMock(prompt_tokens=50, completion_tokens=30, total_tokens=80)
-            mock_completion.return_value = mock_passo3
-
             resultado = agent.recomendar("filmes de terror")
 
-        assert mock_completion.call_count == 1
+        assert mock_completion.call_count == 0
         mock_buscar.assert_called_once_with(**args_cached)
         assert len(resultado) == 1
 
