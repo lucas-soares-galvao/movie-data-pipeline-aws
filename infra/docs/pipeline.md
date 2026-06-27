@@ -26,7 +26,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 
 1. **GenerateYears** (Pass) — extrai o ano do timestamp de execução, converte para inteiro e subtrai 2 (`end_year`)
 2. **ComputeYears** (Pass) — gera o array `[start_year, ..., end_year]` via `States.ArrayRange`
-3. **CreateBatches** (Pass) — divide o array de anos em sub-arrays de 2 elementos via `States.ArrayPartition` (ex: `[2000,2001,2002,2003,2004]` → `[[2000,2001],[2002,2003],[2004]]`)
+3. **CreateBatches** (Pass) — divide o array de anos em sub-arrays de 1 elemento via `States.ArrayPartition` (ex: `[2000,2001,2002]` → `[[2000],[2001],[2002]]`)
 4. **ProcessBatches** (Map, `MaxConcurrency=1`) — itera cada batch sequencialmente:
    - **InvokeLambdaMovie** — invoca a Lambda com payload de filmes para o batch (Retry: 2 tentativas, intervalo de 30s, backoff 2.0)
    - **WaitBeforeTV** — aguarda 5 min para o Glue Details terminar antes de iniciar séries
