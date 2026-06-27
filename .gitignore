@@ -67,7 +67,5 @@ build/
 # --- Sistema ---
 .DS_Store
 Thumbs.db
-scripts/backfill_historico.py
-scripts/backfill_traducao.py
-scripts/backfill_data_quality.py
+scripts/
 CLAUDE.md
