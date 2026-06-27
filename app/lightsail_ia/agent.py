@@ -74,7 +74,7 @@ def _carregar_llm_api_key() -> str | None:
     """Busca a LLM_API_KEY do Secrets Manager (produção) ou do .env (desenvolvimento)."""
     secret_arn = os.getenv("FILMBOT_SECRET_ARN")
     if secret_arn:
-        client = boto3.client("secretsmanager")
+        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
         response = client.get_secret_value(SecretId=secret_arn)
         secret = json.loads(response["SecretString"])
         return secret["llm_api_key"]
