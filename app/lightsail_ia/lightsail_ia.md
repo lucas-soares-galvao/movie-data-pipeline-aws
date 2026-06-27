@@ -10,7 +10,7 @@ Permite que qualquer pessoa consuma os dados do pipeline sem precisar escrever S
 
 ## Como funciona
 
-O processo de recomendação é dividido em três etapas encadeadas:
+O processo de recomendação é dividido em duas etapas encadeadas:
 
 ### Etapa 1 — Geração da cláusula WHERE (LLM + Function Calling, com cache)
 O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Function Calling*, gera a cláusula WHERE do SQL livremente, combinando qualquer coluna disponível:
@@ -38,9 +38,6 @@ Após o Athena retornar os resultados brutos, funções Python (`_formatar_regis
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 
-### Etapa 3 — Geração do motivo (LLM)
-O LLM recebe apenas os campos essenciais de cada título (`id`, `title`, `overview`, `genre_names`, `year`, `vote_average`) e gera um `motivo` curto (1-2 frases) explicando por que cada título é relevante para o pedido do usuário. Retorna JSON com apenas `id` e `motivo` por título, que é mesclado ao registro já formatado pelo Python. O merge é tolerante a variações de resposta do LLM: aceita `id` como int ou string (converte via `int()`), e aceita tanto `{"titulos": [...]}` quanto lista direta `[...]`.
-
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
@@ -54,7 +51,7 @@ O LLM recebe apenas os campos essenciais de cada título (`id`, `title`, `overvi
   - Linha com nota (★), duração (⏱), data de lançamento (📅)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
-  - Sinopse e motivo da recomendação
+  - Sinopse
 
 ## Entradas e saídas
 
@@ -68,7 +65,7 @@ O LLM recebe apenas os campos essenciais de cada título (`id`, `title`, `overvi
 
 | Arquivo | Função | Responsabilidade |
 |---|---|---|
-| `agent.py` | `recomendar(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) → gerar motivo (LLM) |
+| `agent.py` | `recomendar(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) |
 | `agent.py` | `buscar_titulos_spec(filtro_where, limite)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 10) |
 | `agent.py` | `_validar_where(filtro_where)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries) |
 | `agent.py` | `_buscar_cache_where(preferencia)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
@@ -134,4 +131,4 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 ## Observabilidade de tokens
 
-Cada chamada a `litellm.completion()` (etapas 1 e 3) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa`. Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
+Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa`. Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.

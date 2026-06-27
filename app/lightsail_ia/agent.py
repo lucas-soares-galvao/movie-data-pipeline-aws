@@ -4,7 +4,7 @@ agent.py — Agente de IA para recomendação de filmes e séries.
 ==============================================================================
 O QUE ESTE ARQUIVO FAZ?
 ==============================================================================
-Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
+Implementa o "cérebro" do FilmBot em 2 passos usando LLM + AWS Athena:
 
   PASSO 1 — Interpretação (LLM via litellm):
     O usuário digita em linguagem natural: "filmes coreanos de terror dos anos 2010".
@@ -19,10 +19,9 @@ Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
     O filtro fixo vote_count >= 50 é sempre aplicado automaticamente.
     O Athena retorna títulos reais que passaram pelo pipeline completo de ETL.
 
-  PASSO 3 — Formatação das recomendações (LLM via litellm):
-    O LLM recebe os títulos reais e os formata como recomendações personalizadas,
-    escolhendo os mais relevantes e explicando o motivo de cada recomendação.
-    Responde em JSON estruturado para o app.py renderizar os cards.
+  FORMATAÇÃO — Registros formatados pelo Python:
+    Após o Athena retornar os títulos, funções Python convertem cada registro
+    em campos prontos para o card da interface (tipo, gêneros, duração, etc.).
 
 POR QUE USAR "FUNCTION CALLING" (TOOL USE)?
   O Function Calling (ou Tool Use) é uma técnica que permite ao LLM
@@ -393,7 +392,7 @@ def recomendar(preferencia: str) -> list[dict]:
 
     Returns:
         Lista de dicionários, cada um com: titulo, tipo, ano, generos, sinopse,
-        nota, poster_url, backdrop_url, motivo, duracao, streaming_providers,
+        nota, poster_url, backdrop_url, duracao, streaming_providers,
         in_theaters, theater_end_date.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
     """
@@ -473,84 +472,7 @@ def recomendar(preferencia: str) -> list[dict]:
         return []  # nenhum título encontrado com esses filtros
 
     # Formata todos os campos determinísticos via Python (instantâneo)
-    registros_formatados = [_formatar_registro(r) for r in titulos_da_spec]
-
-    # ------------------------------------------------------------------
-    # PASSO 3: LLM gera apenas o "motivo" de cada recomendação
-    # ------------------------------------------------------------------
-    # Envia ao LLM apenas os campos essenciais para justificar a recomendação.
-    # Toda a formatação de duração, datas, tipos, etc. já foi feita pelo Python acima.
-    titulos_para_llm = [
-        {
-            "id": i,
-            "title": r.get("title", ""),
-            "overview": r.get("overview", ""),
-            "genre_names": r.get("genre_names", ""),
-            "year": r.get("year", ""),
-            "vote_average": r.get("vote_average", ""),
-        }
-        for i, r in enumerate(titulos_da_spec)
-    ]
-
-    dados_titulos = json.dumps(titulos_para_llm, ensure_ascii=False, default=str)
-
-    resposta_final = litellm.completion(
-        model=_LLM_MODEL,
-        api_key=_LLM_API_KEY,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Você é um curador de filmes e séries. "
-                    "Para cada título na lista, escreva um motivo curto (1-2 frases) explicando "
-                    "por que ele é uma boa recomendação para o pedido do usuário. "
-                    "Retorne um JSON com a chave 'titulos'. "
-                    "Cada item deve ter APENAS: id (inteiro, índice do título na lista), "
-                    "motivo (string em português). "
-                    "Responda APENAS com o JSON, sem texto extra."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Pedido: {preferencia}\n\nTítulos encontrados:\n{dados_titulos}",
-            },
-        ],
-    )
-    _logar_uso_tokens("passo_3_motivos", resposta_final)
-
-    conteudo = resposta_final.choices[0].message.content or ""
-    conteudo = conteudo.strip()
-
-    # Remove blocos de código Markdown (```json ... ```) que o LLM às vezes adiciona ao redor do JSON.
-    if conteudo.startswith("```"):
-        conteudo = conteudo.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
-    if not conteudo:
-        for reg in registros_formatados:
-            reg["motivo"] = ""
-        return registros_formatados
-
-    try:
-        dados = json.loads(conteudo)
-    except json.JSONDecodeError:
-        for reg in registros_formatados:
-            reg["motivo"] = ""
-        return registros_formatados
-
-    motivos_llm = dados if isinstance(dados, list) else dados.get("titulos", [])
-
-    # Merge: adiciona o motivo do LLM ao registro já formatado pelo Python
-    motivos_por_id = {}
-    for item in motivos_llm:
-        if "id" in item:
-            try:
-                motivos_por_id[int(item["id"])] = item.get("motivo", "")
-            except (ValueError, TypeError):
-                continue
-    for i, reg in enumerate(registros_formatados):
-        reg["motivo"] = motivos_por_id.get(i, "")
-
-    return registros_formatados
+    return [_formatar_registro(r) for r in titulos_da_spec]
 
 
 def limpar_duracao(raw: str) -> str:

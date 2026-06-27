@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções de `app/lightsail_ia/agent.py`: `recomendar()`, `buscar_titulos_spec()`, funções de formatação (`_formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`) e `limpar_duracao()`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). Verifica as etapas do pipeline de recomendação: extração de filtros via LLM, consulta ao Athena, formatação determinística via Python e geração de motivo pelo LLM. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções de `app/lightsail_ia/agent.py`: `recomendar()`, `buscar_titulos_spec()`, funções de formatação (`_formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`) e `limpar_duracao()`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). Verifica as etapas do pipeline de recomendação: extração de filtros via LLM, consulta ao Athena e formatação determinística via Python. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -34,7 +34,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | Função | Descrição |
 |---|---|
 | `_setup_athena_mock(mock_boto3, rows_data)` | Configura o mock do `boto3` para simular as 3 etapas da API nativa do Athena: `start_query_execution` → `get_query_execution` (polling) → `get_paginator().paginate()`. `rows_data` define as linhas de resultado; `None` retorna apenas o header (resultado vazio). |
-| `_mock_litellm(tool_args, resposta_final)` | Retorna lista de 2 respostas para `side_effect` de `litellm.completion`: a 1ª simula a resposta da Etapa 1 (Function Calling com `tool_args`), a 2ª simula a Etapa 3 (JSON com `id` e `motivo` por título). Ambas incluem mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_logar_uso_tokens()`. |
+| `_mock_litellm(tool_args)` | Retorna lista com 1 resposta para `side_effect` de `litellm.completion`: simula a resposta da Etapa 1 (Function Calling com `tool_args`). Inclui mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_logar_uso_tokens()`. |
 
 ## Casos de teste — `test_agent.py`
 
@@ -74,17 +74,12 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | Teste | O que verifica |
 |---|---|
 | `test_retorna_lista_vazia_se_athena_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
-| `test_chama_llm_duas_vezes` | `litellm.completion` é chamado exatamente 2 vezes (etapas 1 e 3) |
+| `test_chama_llm_uma_vez` | `litellm.completion` é chamado exatamente 1 vez (etapa 1) |
 | `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
-| `test_remove_markdown_code_block_do_json` | Remove ` ```json ... ``` ` antes de parsear a resposta do LLM |
-| `test_retorna_registros_sem_motivo_se_llm_retorna_string_vazia` | Retorna registros formatados com `motivo=""` quando o LLM retorna string vazia na etapa 3 |
-| `test_retorna_registros_sem_motivo_se_llm_retorna_json_invalido` | Retorna registros com `motivo=""` quando o LLM retorna texto que não é JSON |
-| `test_motivo_funciona_com_id_string` | Motivo é mesclado corretamente quando o LLM retorna `id` como string (`"0"` em vez de `0`) |
-| `test_motivo_funciona_com_lista_direta` | Motivo é mesclado corretamente quando o LLM retorna lista `[...]` em vez de `{"titulos": [...]}` |
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | `filtro_where` e `limite` extraídos na etapa 1 são passados corretamente para `buscar_titulos_spec()` |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
 | `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` formatado pelo Python (ex: `"Maio de 1980"`) |
-| `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`tipo`, `ano`, `generos`, `sinopse`, `nota`, `duracao`, `streaming_providers`, `in_theaters`, `motivo`) |
+| `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`tipo`, `ano`, `generos`, `sinopse`, `nota`, `duracao`, `streaming_providers`, `in_theaters`) |
 
 ### `TestCacheWhere` — Cache de cláusulas WHERE
 
@@ -94,7 +89,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_salvar_e_buscar_cache` | Salvar e buscar retorna os mesmos argumentos |
 | `test_cache_miss_retorna_none` | Retorna `None` para preferência não cacheada |
 | `test_cache_expirado_retorna_none` | Retorna `None` e remove entrada quando TTL expira |
-| `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` é chamado apenas 1 vez (etapa 3) em vez de 2 |
+| `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` não é chamado (0 vezes) |
 
 ### `TestLogarUsoTokens` — Logging de uso de tokens
 

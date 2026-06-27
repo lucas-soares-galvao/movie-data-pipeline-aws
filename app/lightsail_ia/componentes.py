@@ -35,7 +35,6 @@ def renderizar_card(t: dict, limpar_duracao_fn: Callable[[str], str]) -> str:
     nota = t.get("nota")
     sinopse = html.escape(t.get("sinopse") or "")
     generos = t.get("generos") or []
-    motivo = html.escape(t.get("motivo") or "")
     duracao = limpar_duracao_fn(t.get("duracao") or "")
     data_lancamento = html.escape(t.get("data_lancamento") or "")
     streaming_providers = t.get("streaming_providers") or ""
@@ -103,7 +102,6 @@ def renderizar_card(t: dict, limpar_duracao_fn: Callable[[str], str]) -> str:
         {cinema_html}
         {providers_html}
         <p class="sinopse">{sinopse}</p>
-        <p class="motivo">💡 {motivo}</p>
       </div>
     </article>
     """
