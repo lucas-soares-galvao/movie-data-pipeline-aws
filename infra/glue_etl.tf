@@ -83,11 +83,11 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     aws_cloudwatch_log_group.glue_etl_output
   ]
 
-  # Permite até 11 execuções simultâneas do mesmo job.
+  # Permite até 7 execuções simultâneas do mesmo job.
   # Necessário pois a Lambda dispara múltiplas tabelas em paralelo:
-  # (discover_movie_2022, discover_movie_2023, discover_tv_2022...)
+  # (genre, configuration, watch_providers_ref, discover, now_playing) + 2 buffer
   execution_property {
-    max_concurrent_runs = 11
+    max_concurrent_runs = 7
   }
 }
 

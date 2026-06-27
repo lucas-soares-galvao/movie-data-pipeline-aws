@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções de `app/lightsail_ia/agent.py`: `recomendar()`, `buscar_titulos_spec()`, funções de formatação (`_formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`) e `limpar_duracao()`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). Verifica as etapas do pipeline de recomendação: extração de filtros via LLM, consulta ao Athena e formatação determinística via Python. A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`) e as funções de formatação (`app/lightsail_ia/formatacao.py`). O `test_agent.py` cobre `recomendar()`, `buscar_titulos_spec()`, validação SQL, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`). Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -10,7 +10,8 @@ Testa as funções de `app/lightsail_ia/agent.py`: `recomendar()`, `buscar_titul
 test/lightsail_ia/
 ├── conftest.py               # Fixtures locais da suite
 ├── requirements_tests.txt    # Dependências de teste
-└── test_agent.py             # Testes do agente de recomendação
+├── test_agent.py             # Testes do agente (LLM, Athena, cache, validação)
+└── test_formatacao.py        # Testes das funções puras de formatação
 ```
 
 ## Setup (`conftest.py`)
@@ -98,20 +99,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `etapa` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
 
-### `TestLimparDuracao` — Limpeza de strings de duração (legado)
-
-Testa a função `limpar_duracao()` que remove fragmentos `~null` gerados pelo LLM quando campos de duração são nulos. Função mantida por compatibilidade com `app.py`, mas novas durações são formatadas por `_formatar_duracao_titulo()`. Não usa mocks — são testes puramente unitários sobre manipulação de strings.
-
-| Teste | O que verifica |
-|---|---|
-| `test_retorna_vazio_para_string_vazia` | String vazia retorna vazia |
-| `test_remove_null_isolado` | `"~null"` retorna `""` |
-| `test_remove_null_no_fim` | `"3 temporadas · ~null"` → `"3 temporadas"` |
-| `test_remove_null_no_inicio` | `"~null · 36 eps"` → `"36 eps"` |
-| `test_remove_multiplos_nulls` | `"~null · 36 eps · ~null"` → `"36 eps"` |
-| `test_preserva_duracao_normal` | `"2h 26min"` preservado intacto |
-| `test_preserva_duracao_composta` | `"3 temporadas · 36 eps · 45min"` preservado intacto |
-| `test_remove_separadores_vazios` | `" · 36 eps · "` → `"36 eps"` |
+## Casos de teste — `test_formatacao.py`
 
 ### `TestFormatarTipo` — Conversão de `media_type`
 

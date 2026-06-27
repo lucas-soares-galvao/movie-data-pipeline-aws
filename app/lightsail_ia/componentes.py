@@ -4,7 +4,6 @@ import html
 import re
 from datetime import date
 from pathlib import Path
-from typing import Callable
 
 import streamlit as st
 
@@ -26,7 +25,7 @@ def carregar_css_principal() -> None:
     _injetar_css("principal.css")
 
 
-def renderizar_card(t: dict, limpar_duracao_fn: Callable[[str], str]) -> str:
+def renderizar_card(t: dict) -> str:
     """Monta o HTML de um card de título com escape contra XSS."""
     poster = t.get("backdrop_url") or t.get("poster_url") or ""
     titulo = html.escape(t.get("titulo", ""))
@@ -35,7 +34,7 @@ def renderizar_card(t: dict, limpar_duracao_fn: Callable[[str], str]) -> str:
     nota = t.get("nota")
     sinopse = html.escape(t.get("sinopse") or "")
     generos = t.get("generos") or []
-    duracao = limpar_duracao_fn(t.get("duracao") or "")
+    duracao = t.get("duracao") or ""
     data_lancamento = html.escape(t.get("data_lancamento") or "")
     streaming_providers = t.get("streaming_providers") or ""
     in_theaters = t.get("in_theaters") or False
@@ -107,9 +106,9 @@ def renderizar_card(t: dict, limpar_duracao_fn: Callable[[str], str]) -> str:
     """
 
 
-def renderizar_grid(titulos: list[dict], limpar_duracao_fn: Callable[[str], str]) -> str:
+def renderizar_grid(titulos: list[dict]) -> str:
     """Monta o HTML completo do grid de cards."""
-    cards = [renderizar_card(t, limpar_duracao_fn) for t in titulos]
+    cards = [renderizar_card(t) for t in titulos]
     grid_html = '<div class="grid-filmes">' + "".join(cards) + "</div>"
     return re.sub(r"\s+", " ", grid_html)
 
