@@ -56,9 +56,9 @@ resource "aws_glue_job" "details_job_pythonshell" {
     aws_cloudwatch_log_group.glue_details_output,
   ]
 
-  # 4 discover ETLs (2 movie + 2 TV) + 2 de buffer para retries/invocações manuais
+  # 2 discover ETLs (1 movie + 1 TV) + 2 de buffer para retries/invocações manuais
   execution_property {
-    max_concurrent_runs = 6
+    max_concurrent_runs = 4
   }
 }
 

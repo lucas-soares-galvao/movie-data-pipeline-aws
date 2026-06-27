@@ -10,7 +10,7 @@ from pathlib import Path
 import boto3
 import streamlit as st
 import watchtower
-from agent import limpar_duracao, recomendar
+from agent import recomendar
 from componentes import (
     carregar_css_login,
     carregar_css_principal,
@@ -53,6 +53,15 @@ if _log_group:
     logging.root.setLevel(logging.ERROR)
 
 _executor = ThreadPoolExecutor(max_workers=2)
+_MAX_CONSULTAS_POR_HORA = 20
+
+
+def _consultas_na_ultima_hora() -> int:
+    agora = time.time()
+    historico = [t for t in st.session_state.get("historico_consultas", []) if t > agora - 3600]
+    st.session_state["historico_consultas"] = historico
+    return len(historico)
+
 
 st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
 
@@ -111,6 +120,18 @@ preferencia = st.text_area(
     height=68,
 )
 
+_consultas_feitas = _consultas_na_ultima_hora()
+_restantes = _MAX_CONSULTAS_POR_HORA - _consultas_feitas
+
+if _restantes <= 0:
+    st.markdown("""
+    <div class="msg-aviso">
+      ⚠️ Limite de consultas atingido. Aguarde alguns minutos e tente novamente.
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.caption(f"Consultas restantes: {_restantes}/{_MAX_CONSULTAS_POR_HORA} por hora")
+
 # ==============================================================================
 # LÓGICA DO BOTÃO E BUSCA ASSÍNCRONA
 # ==============================================================================
@@ -152,7 +173,8 @@ if buscando:
 else:
     col_rec, _, __ = st.columns([1, 1, 6], gap="small")
     with col_rec:
-        if st.button("Recomendar", type="primary") and preferencia:
+        if st.button("Recomendar", type="primary", disabled=_restantes <= 0) and preferencia:
+            st.session_state["historico_consultas"] = st.session_state.get("historico_consultas", []) + [time.time()]
             st.session_state["future"] = _executor.submit(recomendar, preferencia)
             st.session_state["buscando"] = True
             st.session_state["busca_concluida"] = False
@@ -181,6 +203,6 @@ if st.session_state.get("busca_concluida") and not titulos and not st.session_st
 elif titulos:
     palavra = "opção" if len(titulos) == 1 else "opções"
     st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
-    st.markdown(renderizar_grid(titulos, limpar_duracao), unsafe_allow_html=True)
+    st.markdown(renderizar_grid(titulos), unsafe_allow_html=True)
 
 renderizar_rodape()

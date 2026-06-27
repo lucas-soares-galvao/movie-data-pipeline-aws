@@ -53,8 +53,9 @@ resource "aws_glue_job" "data_quality_job" {
     aws_cloudwatch_log_group.glue_data_quality_output
   ]
 
+  # Pior caso: semanal (13 DQ) ou mensal + anual no dia 1/jan (~14 DQ) + 1 buffer
   execution_property {
-    max_concurrent_runs = 20
+    max_concurrent_runs = 15
   }
 }
 

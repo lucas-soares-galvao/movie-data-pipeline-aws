@@ -1,7 +1,7 @@
 # =============================================================================
 # step_functions.tf — State Machine de Backfill Histórico TMDB
 # =============================================================================
-# Orquestra invocações da Lambda em lotes de 2 anos, do start_year até o ano atual.
+# Orquestra invocações da Lambda de 1 em 1 ano, do start_year até o ano atual.
 # Resolve o timeout de 15 min da Lambda e evita estourar max_concurrent_runs do Glue.
 #
 # Como usar (console AWS ou CLI):
@@ -18,7 +18,7 @@
 # Fluxo:
 #   GenerateYears   → extrai end_year do timestamp de execução menos 2
 #   ComputeYears    → gera array [start_year, ..., end_year]
-#   CreateBatches   → divide array em sub-arrays de 2 anos via States.ArrayPartition
+#   CreateBatches   → divide array em sub-arrays de 1 ano via States.ArrayPartition
 #   ProcessBatches  → Map (MaxConcurrency=1): para cada batch:
 #                     InvokeLambdaMovie → Wait 5min → InvokeLambdaTV → Wait 5min
 #
@@ -37,7 +37,7 @@ resource "aws_sfn_state_machine" "backfill" {
   role_arn = aws_iam_role.sfn_backfill_role.arn
 
   definition = jsonencode({
-    Comment = "Coleta TMDB discover em lotes de 2 anos, com 5 min entre movie/tv e entre batches"
+    Comment = "Coleta TMDB discover de 1 em 1 ano, com 5 min entre movie/tv e entre batches"
     StartAt = "GenerateYears"
     States = {
 
@@ -67,13 +67,14 @@ resource "aws_sfn_state_machine" "backfill" {
         Next = "CreateBatches"
       }
 
-      # Divide o array de anos em sub-arrays de 2 elementos.
-      # Ex: [2000,2001,2002,2003,2004] → [[2000,2001],[2002,2003],[2004]]
-      # O último batch pode ter 1 ano se o total for ímpar.
+      # Divide o array de anos em sub-arrays de 1 elemento.
+      # Ex: [2000,2001,2002] → [[2000],[2001],[2002]]
+      # Garante que cada batch dispare apenas 1 Glue ETL por tipo,
+      # evitando ConcurrentModificationException no Glue Catalog.
       CreateBatches = {
         Type = "Pass"
         Parameters = {
-          "batches.$"  = "States.ArrayPartition($.years, 2)"
+          "batches.$"  = "States.ArrayPartition($.years, 1)"
           "end_year.$" = "$.end_year"
         }
         Next = "ProcessBatches"
