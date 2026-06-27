@@ -29,7 +29,7 @@ def _carregar_filmbot_password() -> None:
     secrets_file = secrets_dir / "secrets.toml"
     if secrets_file.exists():
         return
-    client = boto3.client("secretsmanager")
+    client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
     response = client.get_secret_value(SecretId=secret_arn)
     secret = json.loads(response["SecretString"])
     secrets_dir.mkdir(exist_ok=True)
