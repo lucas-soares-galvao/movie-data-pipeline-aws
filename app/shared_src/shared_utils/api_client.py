@@ -19,7 +19,7 @@ logger = logging.getLogger()
 _TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
 
 
-def api_get(url: str, params: dict, max_retries: int = 3) -> dict:
+def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
     """
     GET com retry e backoff exponencial em erros transientes.
 

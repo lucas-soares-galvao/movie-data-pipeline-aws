@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import boto3
+from requests.exceptions import HTTPError
 
 from src.utils import (
     collect_configuration_data,
@@ -100,14 +101,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
-        collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
-        logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
-        trigger_glue_job(
-            GLUE_ETL_JOB_NAME,
-            TABLE_TYPE="watch_providers_ref",
-            TABLE_NAME=table_watch_providers_ref,
-            **glue_base_args,
-        )
+        try:
+            collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
+            logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
+            trigger_glue_job(
+                GLUE_ETL_JOB_NAME,
+                TABLE_TYPE="watch_providers_ref",
+                TABLE_NAME=table_watch_providers_ref,
+                **glue_base_args,
+            )
+        except HTTPError:
+            logger.error(
+                f"Falha ao coletar watch_providers_ref para '{content_type}'. "
+                "Pulando — dados anteriores no S3 permanecem válidos."
+            )
     else:
         logger.info("skip_reference=True: pulando coleta de genre, configuration e watch_providers_ref.")
 

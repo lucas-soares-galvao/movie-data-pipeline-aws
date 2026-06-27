@@ -70,7 +70,7 @@ class TestApiGet:
         mock_get.return_value = r500
         with pytest.raises(requests.exceptions.HTTPError):
             api_get("https://api.example.com/test", {"api_key": "k"})
-        assert mock_get.call_count == 3
+        assert mock_get.call_count == 5
 
     @patch("shared_utils.api_client.time.sleep")
     @patch("shared_utils.api_client.requests.get")
@@ -78,7 +78,7 @@ class TestApiGet:
         mock_get.side_effect = requests.exceptions.ConnectionError("fail")
         with pytest.raises(requests.exceptions.ConnectionError):
             api_get("https://api.example.com/test", {"api_key": "k"})
-        assert mock_get.call_count == 3
+        assert mock_get.call_count == 5
 
 
 # ---------------------------------------------------------------------------

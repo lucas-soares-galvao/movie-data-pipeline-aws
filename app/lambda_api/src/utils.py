@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from requests.exceptions import HTTPError
+
 # noqa: F401 = diz ao linter para ignorar "import não usado" — esses imports são
 # re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
@@ -159,8 +161,16 @@ def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> 
     logger.info("Coletando filmes em cartaz: /movie/now_playing")
     url = "https://api.themoviedb.org/3/movie/now_playing"
 
+    paginas_salvas = 0
+    paginas_com_erro = 0
+
     for page in range(1, MAX_PAGES + 1):
-        data = tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "region": "BR", "page": page})
+        try:
+            data = tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "region": "BR", "page": page})
+        except HTTPError as e:
+            paginas_com_erro += 1
+            logger.warning(f"Página {page} de now_playing falhou: {e}. Continuando...")
+            continue
 
         total_pages = data.get("total_pages", 0)
         if page > total_pages:
@@ -169,13 +179,25 @@ def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> 
             )
             break
 
-        # Embute as datas da janela teatral em cada registro para o ETL ler normalmente.
         dates = data.get("dates", {})
         for result in data["results"]:
             result["theater_start_date"] = dates.get("minimum")
             result["theater_end_date"] = dates.get("maximum")
 
         save_to_s3(s3_client, bucket, data["results"], f"tmdb/now_playing/movie/pagina_{page:03d}.json")
+        paginas_salvas += 1
+
+    if paginas_com_erro > 0:
+        logger.warning(
+            f"now_playing: {paginas_salvas} página(s) salva(s), "
+            f"{paginas_com_erro} página(s) com erro."
+        )
+
+    if paginas_salvas == 0:
+        raise RuntimeError(
+            f"Nenhuma página coletada para now_playing. "
+            f"Todas as {paginas_com_erro} tentativas falharam."
+        )
 
 
 def collect_discover_data(
@@ -196,8 +218,16 @@ def collect_discover_data(
     """
     logger.info(f"Coletando {folder} do ano {year}...")
 
+    paginas_salvas = 0
+    paginas_com_erro = 0
+
     for page in range(1, MAX_PAGES + 1):
-        data = fetch_tmdb_data(api_key, content_type, year, page)
+        try:
+            data = fetch_tmdb_data(api_key, content_type, year, page)
+        except HTTPError as e:
+            paginas_com_erro += 1
+            logger.warning(f"Página {page} de {folder}/ano={year} falhou: {e}. Continuando...")
+            continue
 
         total_pages = data.get("total_pages", 0)
         if page > total_pages:
@@ -208,3 +238,16 @@ def collect_discover_data(
 
         s3_key = f"{folder}/ano={year}/pagina_{page:03d}.json"
         save_to_s3(s3_client, bucket, data["results"], s3_key)
+        paginas_salvas += 1
+
+    if paginas_com_erro > 0:
+        logger.warning(
+            f"{folder}/ano={year}: {paginas_salvas} página(s) salva(s), "
+            f"{paginas_com_erro} página(s) com erro."
+        )
+
+    if paginas_salvas == 0:
+        raise RuntimeError(
+            f"Nenhuma página coletada para {folder}/ano={year}. "
+            f"Todas as {paginas_com_erro} tentativas falharam."
+        )
