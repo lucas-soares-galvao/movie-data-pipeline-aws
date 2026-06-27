@@ -187,3 +187,8 @@ output "lightsail_cloudwatch_log_group" {
   description = "CLOUDWATCH_LOG_GROUP para o arquivo .env na instância"
   value       = aws_cloudwatch_log_group.lightsail_filmbot.name
 }
+
+output "lightsail_filmbot_secret_arn" {
+  description = "ARN do segredo no Secrets Manager com llm_api_key e filmbot_password"
+  value       = var.filmbot_secret_arn
+}

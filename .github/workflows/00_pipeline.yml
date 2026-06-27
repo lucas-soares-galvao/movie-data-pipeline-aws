@@ -67,7 +67,7 @@ jobs:
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
-      aws-tmdb-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_TMDB_SECRET_ARN_DEV || secrets.AWS_TMDB_SECRET_ARN_PROD }}
+      aws-filmbot-secret-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_FILMBOT_SECRET_ARN_DEV || secrets.AWS_FILMBOT_SECRET_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_FILMBOT_SECRET_ARN_DEV || secrets.AWS_FILMBOT_SECRET_ARN_PROD }}
       notification-email: ${{ secrets.NOTIFICATION_EMAIL }}
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
@@ -87,8 +87,6 @@ jobs:
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
-      llm-api-key: ${{ secrets.LLM_API_KEY }}
-      filmbot-password: ${{ secrets.FILMBOT_PASSWORD }}
 
   auto-pr-feature:
     needs: test

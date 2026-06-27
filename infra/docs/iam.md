@@ -12,6 +12,7 @@
 | `tmdb-sfn-backfill-{env}` | Step Functions | `lambda:InvokeFunction` sobre a Lambda API, CloudWatch Logs (logging de execução) |
 | `tmdb-eventbridge-sfn-{env}` | EventBridge (regra anual) | `states:StartExecution` sobre a state machine de backfill |
 | `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |
+| `tmdb-filmbot-agent-{env}` (user) | Lightsail FilmBot | Athena, S3 (SPEC, TEMP), Glue Catalog, CloudWatch Logs, Secrets Manager |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 

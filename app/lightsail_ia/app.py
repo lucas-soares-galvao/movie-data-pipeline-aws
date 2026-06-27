@@ -1,9 +1,11 @@
 """app.py — Interface web do FilmBot (aplicativo Streamlit)."""
 
+import json
 import logging
 import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 
 import boto3
 import streamlit as st
@@ -16,6 +18,29 @@ from componentes import (
     renderizar_rodape,
     renderizar_rodape_login,
 )
+
+
+def _carregar_filmbot_password() -> None:
+    """Busca filmbot_password do Secrets Manager e escreve em secrets.toml."""
+    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
+    if not secret_arn:
+        return
+    secrets_dir = Path(__file__).parent / ".streamlit"
+    secrets_file = secrets_dir / "secrets.toml"
+    if secrets_file.exists():
+        return
+    client = boto3.client("secretsmanager")
+    response = client.get_secret_value(SecretId=secret_arn)
+    secret = json.loads(response["SecretString"])
+    secrets_dir.mkdir(exist_ok=True)
+    secrets_file.write_text(
+        f'[auth]\npassword = "{secret["filmbot_password"]}"\n',
+        encoding="utf-8",
+    )
+    secrets_file.chmod(0o600)
+
+
+_carregar_filmbot_password()
 
 _log_group = os.getenv("CLOUDWATCH_LOG_GROUP", "")
 if _log_group:

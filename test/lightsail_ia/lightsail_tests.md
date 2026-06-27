@@ -19,7 +19,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 
 | Variável | Valor de teste |
 |---|---|
-| `LLM_API_KEY` | `"test-llm-key"` |
+| `LLM_API_KEY` | `"test-llm-key"` (fallback — `FILMBOT_SECRET_ARN` não é definida em testes) |
 | `AWS_REGION` | `"sa-east-1"` |
 | `GLUE_DATABASE` | `"db_tmdb_unified_prod"` |
 | `SPEC_TABLE` | `"tb_tmdb_discover_unified_prod"` |

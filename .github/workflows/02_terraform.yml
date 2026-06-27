@@ -34,7 +34,7 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
-      aws-tmdb-secret-arn:
+      aws-filmbot-secret-arn:
         required: true
       notification-email:
         required: true
@@ -206,7 +206,7 @@ jobs:
         run: |
           cd infra
           terraform apply -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
-            -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
+            -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -target=aws_iam_policy.cicd_backend \
@@ -275,7 +275,7 @@ jobs:
         run: |
           cd infra
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
-            -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
+            -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -auto-approve
@@ -287,7 +287,7 @@ jobs:
         run: |
           cd infra
           terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
-            -var="tmdb_secret_arn=${{ secrets.aws-tmdb-secret-arn }}" \
+            -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -out="${{ inputs.environment }}.plan"

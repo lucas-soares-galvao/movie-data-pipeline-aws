@@ -1,9 +1,8 @@
 # Raciocinio: parametriza o ambiente dev com valores isolados de conta e recursos.
-# Os valores sensíveis (tmdb_secret_arn) são injetados pelo CI/CD
-# via GitHub Secret AWS_TMDB_SECRET_ARN_DEV e não devem ser commitados.
+# Os valores sensíveis (filmbot_secret_arn) são injetados pelo CI/CD
+# via GitHub Secret AWS_FILMBOT_SECRET_ARN_DEV e não devem ser commitados.
 
-env             = "dev"
-tmdb_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_TMDB_SECRET_ARN_DEV"
+env = "dev"
 
 # Instância Lightsail desabilitada em dev — usar desenvolvimento local.
 # Para reativar: mudar para true e fazer push no develop.
@@ -23,3 +22,7 @@ glue_etl_notification_email                  = "REPLACE_VIA_GITHUB_SECRET_NOTIFI
 lambda_notification_email                    = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
 eventbridge_notification_email               = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
 sfn_backfill_notification_email              = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+
+# ARN do segredo unificado no Secrets Manager (tmdb_api_key, llm_api_key, filmbot_password).
+# Valor real injetado pelo CI/CD via GitHub Secret AWS_FILMBOT_SECRET_ARN_DEV.
+filmbot_secret_arn = "REPLACE_VIA_GITHUB_SECRET_AWS_FILMBOT_SECRET_ARN"

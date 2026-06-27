@@ -28,10 +28,6 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
-      llm-api-key:
-        required: true
-      filmbot-password:
-        required: true
 
 jobs:
   deploy:
@@ -112,6 +108,10 @@ jobs:
           CW_LOG_GROUP=$(terraform output -raw lightsail_cloudwatch_log_group)
           echo "cw_log_group=${CW_LOG_GROUP}" >> $GITHUB_OUTPUT
 
+          FILMBOT_SECRET_ARN=$(terraform output -raw lightsail_filmbot_secret_arn)
+          echo "::add-mask::${FILMBOT_SECRET_ARN}"
+          echo "filmbot_secret_arn=${FILMBOT_SECRET_ARN}" >> $GITHUB_OUTPUT
+
           echo "✅ Terraform outputs lidos com sucesso (IP: $PUBLIC_IP)"
 
       - name: Check instance state
@@ -155,10 +155,10 @@ jobs:
       - name: Create .env file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nLLM_API_KEY=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/tmdb/athena/lightsail_ia\nGLUE_DATABASE=db_tmdb_unified_prod\nSPEC_TABLE=tb_tmdb_discover_unified_prod\nCLOUDWATCH_LOG_GROUP=%s\n' \
+          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nFILMBOT_SECRET_ARN=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/tmdb/athena/lightsail_ia\nGLUE_DATABASE=db_tmdb_unified_prod\nSPEC_TABLE=tb_tmdb_discover_unified_prod\nCLOUDWATCH_LOG_GROUP=%s\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
             "${{ steps.tf.outputs.secret_access_key }}" \
-            "${{ secrets.llm-api-key }}" \
+            "${{ steps.tf.outputs.filmbot_secret_arn }}" \
             "${{ inputs.environment }}" \
             "${{ steps.tf.outputs.cw_log_group }}" \
             | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
@@ -166,16 +166,6 @@ jobs:
           ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
             "test -s /opt/filmbot/app/lightsail_ia/.env" || { echo "❌ Arquivo .env não foi criado na instância"; exit 1; }
           echo "✅ Arquivo .env criado com sucesso na instância"
-
-      - name: Create Streamlit secrets.toml on instance
-        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
-        run: |
-          printf '[auth]\npassword = "%s"\n' "${{ secrets.filmbot-password }}" \
-            | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-                "sudo mkdir -p /opt/filmbot/app/lightsail_ia/.streamlit && sudo tee /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml"
-          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-            "test -s /opt/filmbot/app/lightsail_ia/.streamlit/secrets.toml" || { echo "❌ Arquivo secrets.toml não foi criado na instância"; exit 1; }
-          echo "✅ Arquivo secrets.toml criado com sucesso na instância"
 
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'

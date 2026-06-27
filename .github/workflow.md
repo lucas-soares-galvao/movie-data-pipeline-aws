@@ -125,15 +125,14 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
 1. Lê outputs do Terraform (IP, chave SSH, credenciais AWS do FilmBot, nome da instância, log group do CloudWatch) — valida que nenhum output crítico está vazio
 2. Verifica o estado da instância via `aws lightsail get-instance` — se não estiver `running` (ex: parada pelo scheduler noturno), **pula os steps de deploy** com warning (mas ainda exibe a URL do app no final)
 3. Configura SSH com retry (até 30 tentativas, intervalo de 10s) — falha o pipeline se SSH não ficar disponível em 5 minutos
-4. Cria `.env` na instância com variáveis de ambiente da aplicação (credenciais AWS, LLM, Athena, CloudWatch) — verifica via SSH se o arquivo foi criado
-5. Cria `secrets.toml` do Streamlit com a senha de acesso — verifica via SSH se o arquivo foi criado
-6. Instala o Caddy como proxy reverso HTTPS (se ainda não instalado)
-7. Deploy por SSH:
+4. Cria `.env` na instância com variáveis de ambiente da aplicação (credenciais AWS, ARN do Secrets Manager, Athena, CloudWatch) — verifica via SSH se o arquivo foi criado
+5. Instala o Caddy como proxy reverso HTTPS (se ainda não instalado)
+6. Deploy por SSH:
    - **Primeiro deploy**: clone do repo, venv, systemd services (filmbot + caddy)
    - **Updates**: git pull, pip install, restart de ambos os services
    - Verifica se os serviços `filmbot` e `caddy` estão ativos (`systemctl is-active`) — falha o pipeline se algum estiver inativo
-8. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
-9. Exibe a URL do FilmBot no log e no Job Summary (clicável)
+7. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
+8. Exibe a URL do FilmBot no log e no Job Summary (clicável)
 
 **Branch deployada por ambiente:**
 
@@ -165,11 +164,9 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | `AWS_ASSUME_ROLE_ARN_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS |
 | `AWS_STATEFILE_S3_BUCKET_DEV` / `_PROD` | dev / prod | Backend Terraform (estado) |
 | `AWS_LOCK_DYNAMODB_TABLE_DEV` / `_PROD` | dev / prod | Lock do estado Terraform |
-| `AWS_TMDB_SECRET_ARN_DEV` / `_PROD` | dev / prod | ARN do segredo da API TMDB |
+| `AWS_FILMBOT_SECRET_ARN_DEV` / `_PROD` | dev / prod | ARN do segredo unificado no Secrets Manager (tmdb_api_key, llm_api_key, filmbot_password) |
 | `NOTIFICATION_EMAIL` | ambos | E-mails de alerta da infra |
 | `INFRACOST_API_KEY` | ambos | Estimativa de custo no PR |
-| `LLM_API_KEY` | ambos | LLM no FilmBot (Lightsail) |
-| `FILMBOT_PASSWORD` | ambos | Autenticação no Streamlit |
 
 ---
 
