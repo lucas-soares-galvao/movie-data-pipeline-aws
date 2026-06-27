@@ -39,7 +39,8 @@ TECNOLOGIAS UTILIZADAS:
   - python-dotenv: carrega variáveis de ambiente do arquivo .env
 
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
-  LLM_API_KEY        → chave de acesso à API do provedor LLM em uso
+  FILMBOT_SECRET_ARN → ARN do segredo unificado no Secrets Manager (produção)
+  LLM_API_KEY        → fallback para dev local (usado quando FILMBOT_SECRET_ARN não está definida)
   LLM_MODEL          → modelo LLM a usar (padrão: "deepseek/deepseek-v4-flash"). Exemplos:
                         "deepseek/deepseek-v4-flash" + chave DeepSeek
                         "gpt-4o"                     + chave OpenAI
@@ -67,7 +68,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
-_LLM_API_KEY = os.getenv("LLM_API_KEY")
+
+
+def _carregar_llm_api_key() -> str | None:
+    """Busca a LLM_API_KEY do Secrets Manager (produção) ou do .env (desenvolvimento)."""
+    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
+    if secret_arn:
+        client = boto3.client("secretsmanager")
+        response = client.get_secret_value(SecretId=secret_arn)
+        secret = json.loads(response["SecretString"])
+        return secret["llm_api_key"]
+    return os.getenv("LLM_API_KEY")
+
+
+_LLM_API_KEY = _carregar_llm_api_key()
 
 logger = logging.getLogger(__name__)
 

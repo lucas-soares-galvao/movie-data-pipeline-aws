@@ -98,7 +98,7 @@ Em dev, a instância Lightsail está desabilitada (`lightsail_enabled = false`).
 
 ```bash
 # 1. Gerar o .env com as credenciais da conta dev (requer Terraform inicializado)
-LLM_API_KEY=sk-... bash infra/config/export_env_local.sh
+bash infra/config/export_env_local.sh
 
 # 2. Rodar
 cd app/lightsail_ia
@@ -106,13 +106,14 @@ pip install -r requirements.txt
 streamlit run app.py   # http://localhost:8501
 ```
 
-Use `.env.example` como referência para as variáveis necessárias.
+Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quando `FILMBOT_SECRET_ARN` não está definida). Use `.env.example` como referência.
 
 ## Variáveis de ambiente necessárias
 
 | Variável | Uso |
 |---|---|
-| `LLM_API_KEY` | Chave de API do provedor LLM em uso |
+| `FILMBOT_SECRET_ARN` | ARN do segredo unificado no Secrets Manager (contém `llm_api_key`, `tmdb_api_key`, `filmbot_password`). Em produção, o app busca LLM_API_KEY e FILMBOT_PASSWORD desse secret em runtime |
+| `LLM_API_KEY` | Fallback para desenvolvimento local (usado quando `FILMBOT_SECRET_ARN` não está definida) |
 | `LLM_MODEL` | Modelo LLM a usar (padrão: `deepseek/deepseek-v4-flash`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
 | `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
 | `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
@@ -120,7 +121,6 @@ Use `.env.example` como referência para as variáveis necessárias.
 | `ATHENA_S3_OUTPUT` | Bucket temporário para resultados de queries Athena |
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
 | `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_tmdb_discover_unified_prod`) |
-| `FILMBOT_PASSWORD` | Senha de acesso à interface Streamlit |
 | `CLOUDWATCH_LOG_GROUP` | Log group do CloudWatch para envio de logs (ex: `/lightsail/tmdb-filmbot-prod`). Injetado automaticamente pelo CI/CD via Terraform output. Se ausente, logs vão apenas para stdout/journald |
 
 ## Tecnologias

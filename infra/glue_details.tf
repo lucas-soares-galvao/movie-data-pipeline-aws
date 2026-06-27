@@ -30,7 +30,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
     "--TABLE_DETAILS_TV"            = local.envs.glue_catalog_tb_details_tv
     "--TABLE_WATCH_PROVIDERS_MOVIE" = local.envs.glue_catalog_tb_watch_providers_movie
     "--TABLE_WATCH_PROVIDERS_TV"    = local.envs.glue_catalog_tb_watch_providers_tv
-    "--TMDB_SECRET_ARN"             = var.tmdb_secret_arn
+    "--TMDB_SECRET_ARN"             = var.filmbot_secret_arn
     "--GLUE_AGG_JOB_NAME"           = local.envs.glue_agg_job_name
     "--GLUE_DATA_QUALITY_JOB_NAME"  = local.envs.glue_data_quality_job_name
     "--ENVIRONMENT"                 = var.env

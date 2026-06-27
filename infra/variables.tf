@@ -129,10 +129,9 @@ variable "s3_bucket_data_quality" {
 # SECRETS MANAGER
 # =============================================================================
 
-variable "tmdb_secret_arn" {
-  description = "ARN do segredo no Secrets Manager com a chave da TMDB"
+variable "filmbot_secret_arn" {
+  description = "ARN do segredo unificado no Secrets Manager (tmdb_api_key, llm_api_key, filmbot_password)"
   type        = string
-  # Sem "default" pois é um valor sensível que deve ser passado via .tfvars ou CI/CD
 }
 
 # =============================================================================

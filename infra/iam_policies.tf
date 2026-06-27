@@ -44,7 +44,7 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = var.tmdb_secret_arn
+      Resource = var.filmbot_secret_arn
     }]
   })
 }
@@ -920,7 +920,7 @@ resource "aws_iam_role_policy" "glue_details_secrets" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = var.tmdb_secret_arn
+      Resource = var.filmbot_secret_arn
     }]
   })
 }
@@ -1002,6 +1002,24 @@ resource "aws_iam_role_policy" "sfn_invoke_lambda" {
       Effect   = "Allow"
       Action   = "lambda:InvokeFunction"
       Resource = aws_lambda_function.simple_lambda.arn
+    }]
+  })
+}
+
+# =============================================================================
+# LIGHTSAIL — Acesso ao Secrets Manager para o agente IA (FilmBot)
+# =============================================================================
+
+resource "aws_iam_user_policy" "filmbot_secrets_manager" {
+  name = "${local.tmdb_prefix}-filmbot-secrets-manager-${var.env}"
+  user = aws_iam_user.lightsail_agent.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = var.filmbot_secret_arn
     }]
   })
 }

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Gera app/lightsail_ia/.env com as credenciais do ambiente dev lidas do Terraform.
 # Uso: LLM_API_KEY=sk-... bash infra/config/export_env_local.sh
+#
+# Em dev local, LLM_API_KEY é usada diretamente (fallback quando FILMBOT_SECRET_ARN
+# não está definida). Em produção, o app busca do Secrets Manager via FILMBOT_SECRET_ARN.
 set -euo pipefail
 
 : "${LLM_API_KEY:?Defina LLM_API_KEY antes de rodar este script}"
