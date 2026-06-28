@@ -18,6 +18,7 @@ _BASE = {
     "MEDIA_TYPE": "movie",
     "YEAR": "2025",
     "END_YEAR": "2025",
+    "FORCE_REFETCH": False,
 }
 
 _IDS = [1, 2]
@@ -355,6 +356,23 @@ class TestMain:
                 s3_bucket_sot="my-sot",
                 year="2025",
             )
+
+    def test_force_refetch_skips_existing_ids_check(self):
+        args = {**_BASE, "FORCE_REFETCH": True}
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
+            patch.object(m, "fetch_existing_ids_from_details") as mock_existing,
+            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
+            patch.object(m, "collect_and_write_details") as mock_collect,
+            patch.object(m, "collect_and_write_watch_providers"),
+            patch.object(m, "trigger_glue_job"),
+            patch.object(m, "repair_details_duplicates"),
+        ):
+            m.main()
+            mock_existing.assert_not_called()
+            assert set(mock_collect.call_args.kwargs["ids"]) == set(_IDS)
 
     def test_repair_watch_providers_duplicates_called_at_last_year(self):
         with (
