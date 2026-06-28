@@ -511,7 +511,6 @@ def collect_and_write_details(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
-        schema_evolution=True,
         database=database,
         table=table_name,
     )
@@ -580,7 +579,6 @@ def repair_details_duplicates(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
-        schema_evolution=True,
         database=database,
         table=table_details,
     )
@@ -647,7 +645,6 @@ def repair_discover_duplicates(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
-        schema_evolution=True,
         database=database,
         table=table_discover,
     )
@@ -715,7 +712,6 @@ def repair_watch_providers_duplicates(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
-        schema_evolution=True,
         database=database,
         table=table_watch_providers,
     )
@@ -754,7 +750,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
         year:    Ano de partição.
 
     Returns:
-        Lista de registros com: id, provider_type, provider_id, provider_name, logo_path, year.
+        Lista de registros com: id, provider_type, provider_id, provider_name, dt_atualizacao, year.
     """
     records = []
     for provider_type in ("flatrate", "rent", "buy"):
@@ -852,7 +848,6 @@ def collect_and_write_watch_providers(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
-        schema_evolution=True,
         database=database,
         table=table_name,
     )
