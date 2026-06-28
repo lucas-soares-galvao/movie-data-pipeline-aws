@@ -55,7 +55,14 @@ if _log_group:
 
 _executor = ThreadPoolExecutor(max_workers=2)
 _MAX_CONSULTAS_POR_HORA = 20
-_historico_por_ip: dict[str, list[float]] = {}
+
+
+@st.cache_resource
+def _criar_historico_por_ip() -> dict[str, list[float]]:
+    return {}
+
+
+_historico_por_ip = _criar_historico_por_ip()
 
 
 def _obter_ip_cliente() -> str:
