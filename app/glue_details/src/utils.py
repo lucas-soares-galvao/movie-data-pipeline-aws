@@ -511,6 +511,7 @@ def collect_and_write_details(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
+        schema_evolution=True,
         database=database,
         table=table_name,
     )
@@ -579,6 +580,7 @@ def repair_details_duplicates(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
+        schema_evolution=True,
         database=database,
         table=table_details,
     )
@@ -645,6 +647,7 @@ def repair_discover_duplicates(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
+        schema_evolution=True,
         database=database,
         table=table_discover,
     )
@@ -712,6 +715,7 @@ def repair_watch_providers_duplicates(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
+        schema_evolution=True,
         database=database,
         table=table_watch_providers,
     )
@@ -848,6 +852,7 @@ def collect_and_write_watch_providers(
         dataset=True,
         partition_cols=["year"],
         mode="overwrite_partitions",
+        schema_evolution=True,
         database=database,
         table=table_name,
     )
