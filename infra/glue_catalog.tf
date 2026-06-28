@@ -426,6 +426,58 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
+      name = "tagline"
+      type = "string"
+    }
+    columns {
+      name = "status"
+      type = "string"
+    }
+    columns {
+      name = "collection_name"
+      type = "string"
+    }
+    columns {
+      name = "budget"
+      type = "bigint"
+    }
+    columns {
+      name = "revenue"
+      type = "bigint"
+    }
+    columns {
+      name = "production_companies"
+      type = "string"
+    }
+    columns {
+      name = "spoken_languages"
+      type = "string"
+    }
+    columns {
+      name = "actor_names"
+      type = "string"
+    }
+    columns {
+      name = "director"
+      type = "string"
+    }
+    columns {
+      name = "keywords"
+      type = "string"
+    }
+    columns {
+      name = "certification"
+      type = "string"
+    }
+    columns {
+      name = "trailer_url"
+      type = "string"
+    }
+    columns {
+      name = "imdb_id"
+      type = "string"
+    }
+    columns {
       name = "dt_processamento"
       type = "date"
     }
@@ -487,6 +539,62 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     }
     columns {
       name = "backdrop_path_en"
+      type = "string"
+    }
+    columns {
+      name = "tagline"
+      type = "string"
+    }
+    columns {
+      name = "status"
+      type = "string"
+    }
+    columns {
+      name = "production_companies"
+      type = "string"
+    }
+    columns {
+      name = "spoken_languages"
+      type = "string"
+    }
+    columns {
+      name = "created_by"
+      type = "string"
+    }
+    columns {
+      name = "networks"
+      type = "string"
+    }
+    columns {
+      name = "in_production"
+      type = "boolean"
+    }
+    columns {
+      name = "last_air_date"
+      type = "string"
+    }
+    columns {
+      name = "tv_type"
+      type = "string"
+    }
+    columns {
+      name = "actor_names"
+      type = "string"
+    }
+    columns {
+      name = "keywords"
+      type = "string"
+    }
+    columns {
+      name = "certification"
+      type = "string"
+    }
+    columns {
+      name = "trailer_url"
+      type = "string"
+    }
+    columns {
+      name = "imdb_id"
       type = "string"
     }
     columns {

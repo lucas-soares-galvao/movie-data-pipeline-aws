@@ -225,6 +225,9 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
                vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
+               tagline, actor_names, director, keywords,
+               certification, trailer_url, collection_name,
+               production_companies, networks, created_by,
                streaming_providers,
                in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
@@ -331,6 +334,24 @@ def recomendar(preferencia: str) -> list[dict]:
                         "- number_of_seasons (int): número de temporadas (apenas séries)\n"
                         "- number_of_episodes (int): número de episódios (apenas séries)\n"
                         "- episode_runtime_minutes (int): duração média por episódio em minutos (apenas séries)\n"
+                        "- tagline (string): frase curta de efeito do título\n"
+                        "- title_status (string): estado do título. Filmes: 'Released', 'Post Production'. Séries: 'Returning Series', 'Ended', 'Canceled'\n"
+                        "- collection_name (string): saga/franquia de filmes (ex: 'Harry Potter Collection', 'Avengers Collection'). Apenas filmes. Use lower() + LIKE.\n"
+                        "- budget (bigint): orçamento em USD. Apenas filmes. Use > para filtrar alto orçamento.\n"
+                        "- revenue (bigint): receita de bilheteria em USD. Apenas filmes.\n"
+                        "- production_companies (string): estúdios produtores (ex: 'A24, Pixar'). Use lower() + LIKE.\n"
+                        "- spoken_languages (string): idiomas falados no título (ex: 'English, French'). Use lower() + LIKE.\n"
+                        "- actor_names (string): top 5 atores/atrizes (ex: 'Tom Hanks, Robin Wright'). Use lower() + LIKE.\n"
+                        "- director (string): diretor(es) do filme (ex: 'Christopher Nolan'). Apenas filmes. Use lower() + LIKE.\n"
+                        "- keywords (string): tags temáticas em inglês (ex: 'time travel, dystopia, based on novel'). Use lower() + LIKE.\n"
+                        "- certification (string): classificação indicativa BR (ex: 'L', '10', '12', '14', '16', '18'). Use = para valor exato.\n"
+                        "- trailer_url (string): link do trailer no YouTube. Não filtrar por este campo.\n"
+                        "- imdb_id (string): ID do IMDB (ex: 'tt0111161'). Não filtrar por este campo.\n"
+                        "- created_by (string): criadores de séries (ex: 'Vince Gilligan'). Apenas séries. Use lower() + LIKE.\n"
+                        "- networks (string): redes de TV originais (ex: 'HBO, Netflix'). Apenas séries. Use lower() + LIKE.\n"
+                        "- in_production (boolean): se a série ainda está em produção. Apenas séries.\n"
+                        "- last_air_date (string): data do último episódio exibido (séries). Formato 'YYYY-MM-DD'.\n"
+                        "- tv_type (string): tipo de série ('Scripted', 'Reality', 'Documentary', 'Miniseries'). Apenas séries.\n"
                         "- streaming_providers (string): plataformas de streaming no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
                         "- in_theaters (boolean): true se está em cartaz nos cinemas\n"
                         "- theater_start_date (string): data de estreia nos cinemas ('YYYY-MM-DD')\n"

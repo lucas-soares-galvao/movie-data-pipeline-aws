@@ -1,7 +1,186 @@
 import pandas as pd
+import pytest
 from unittest.mock import MagicMock, patch
 
 import src.utils as u
+
+
+# ---------------------------------------------------------------------------
+# Funções auxiliares de extração (enriquecimento TMDB)
+# ---------------------------------------------------------------------------
+
+
+class TestExtrairElenco:
+    def test_top_5_por_ordem(self):
+        creditos = {"cast": [
+            {"name": "Ator C", "order": 2},
+            {"name": "Ator A", "order": 0},
+            {"name": "Ator B", "order": 1},
+            {"name": "Ator D", "order": 3},
+            {"name": "Ator E", "order": 4},
+            {"name": "Ator F", "order": 5},
+        ]}
+        assert u._extrair_elenco(creditos) == "Ator A, Ator B, Ator C, Ator D, Ator E"
+
+    def test_menos_que_limite(self):
+        creditos = {"cast": [{"name": "Ator A", "order": 0}]}
+        assert u._extrair_elenco(creditos) == "Ator A"
+
+    def test_cast_vazio(self):
+        assert u._extrair_elenco({"cast": []}) is None
+
+    def test_sem_cast(self):
+        assert u._extrair_elenco({}) is None
+
+    def test_limite_customizado(self):
+        creditos = {"cast": [
+            {"name": f"Ator {i}", "order": i} for i in range(10)
+        ]}
+        assert u._extrair_elenco(creditos, limite=3) == "Ator 0, Ator 1, Ator 2"
+
+
+class TestExtrairDiretor:
+    def test_diretor_unico(self):
+        creditos = {"crew": [
+            {"name": "Christopher Nolan", "job": "Director"},
+            {"name": "Emma Thomas", "job": "Producer"},
+        ]}
+        assert u._extrair_diretor(creditos) == "Christopher Nolan"
+
+    def test_multiplos_diretores(self):
+        creditos = {"crew": [
+            {"name": "Diretor A", "job": "Director"},
+            {"name": "Diretor B", "job": "Director"},
+        ]}
+        assert u._extrair_diretor(creditos) == "Diretor A, Diretor B"
+
+    def test_sem_diretor(self):
+        creditos = {"crew": [{"name": "Produtor", "job": "Producer"}]}
+        assert u._extrair_diretor(creditos) is None
+
+    def test_crew_vazio(self):
+        assert u._extrair_diretor({"crew": []}) is None
+
+
+class TestExtrairKeywords:
+    def test_formato_movie(self):
+        dados = {"keywords": [{"id": 1, "name": "time travel"}, {"id": 2, "name": "dystopia"}]}
+        assert u._extrair_keywords(dados) == "time travel, dystopia"
+
+    def test_formato_tv(self):
+        dados = {"results": [{"id": 1, "name": "based on novel"}]}
+        assert u._extrair_keywords(dados) == "based on novel"
+
+    def test_vazio(self):
+        assert u._extrair_keywords({}) is None
+
+    def test_lista_vazia(self):
+        assert u._extrair_keywords({"keywords": []}) is None
+
+
+class TestExtrairCertificacaoBrMovie:
+    def test_encontra_br(self):
+        dados = {"results": [
+            {"iso_3166_1": "US", "release_dates": [{"certification": "PG-13"}]},
+            {"iso_3166_1": "BR", "release_dates": [{"certification": "14"}]},
+        ]}
+        assert u._extrair_certificacao_br_movie(dados) == "14"
+
+    def test_sem_br(self):
+        dados = {"results": [{"iso_3166_1": "US", "release_dates": [{"certification": "R"}]}]}
+        assert u._extrair_certificacao_br_movie(dados) is None
+
+    def test_br_sem_certification(self):
+        dados = {"results": [{"iso_3166_1": "BR", "release_dates": [{"certification": ""}]}]}
+        assert u._extrair_certificacao_br_movie(dados) is None
+
+    def test_vazio(self):
+        assert u._extrair_certificacao_br_movie({}) is None
+
+
+class TestExtrairCertificacaoBrTv:
+    def test_encontra_br(self):
+        dados = {"results": [
+            {"iso_3166_1": "US", "rating": "TV-MA"},
+            {"iso_3166_1": "BR", "rating": "16"},
+        ]}
+        assert u._extrair_certificacao_br_tv(dados) == "16"
+
+    def test_sem_br(self):
+        dados = {"results": [{"iso_3166_1": "US", "rating": "TV-14"}]}
+        assert u._extrair_certificacao_br_tv(dados) is None
+
+    def test_rating_vazio(self):
+        dados = {"results": [{"iso_3166_1": "BR", "rating": ""}]}
+        assert u._extrair_certificacao_br_tv(dados) is None
+
+
+class TestExtrairTrailerUrl:
+    def test_trailer_oficial(self):
+        videos = {"results": [
+            {"type": "Trailer", "site": "YouTube", "official": True, "key": "abc123"},
+            {"type": "Trailer", "site": "YouTube", "official": False, "key": "xyz789"},
+        ]}
+        assert u._extrair_trailer_url(videos) == "https://youtube.com/watch?v=abc123"
+
+    def test_fallback_nao_oficial(self):
+        videos = {"results": [
+            {"type": "Trailer", "site": "YouTube", "official": False, "key": "xyz789"},
+        ]}
+        assert u._extrair_trailer_url(videos) == "https://youtube.com/watch?v=xyz789"
+
+    def test_sem_youtube(self):
+        videos = {"results": [{"type": "Trailer", "site": "Vimeo", "official": True, "key": "v1"}]}
+        assert u._extrair_trailer_url(videos) is None
+
+    def test_sem_trailer(self):
+        videos = {"results": [{"type": "Teaser", "site": "YouTube", "official": True, "key": "t1"}]}
+        assert u._extrair_trailer_url(videos) is None
+
+    def test_vazio(self):
+        assert u._extrair_trailer_url({}) is None
+
+
+class TestExtrairProdutoras:
+    def test_produtoras(self):
+        companies = [{"name": "A24"}, {"name": "Pixar"}]
+        assert u._extrair_produtoras(companies) == "A24, Pixar"
+
+    def test_lista_vazia(self):
+        assert u._extrair_produtoras([]) is None
+
+    def test_none(self):
+        assert u._extrair_produtoras(None) is None
+
+
+class TestExtrairCriadores:
+    def test_criadores(self):
+        created_by = [{"name": "Vince Gilligan"}, {"name": "Peter Gould"}]
+        assert u._extrair_criadores(created_by) == "Vince Gilligan, Peter Gould"
+
+    def test_vazio(self):
+        assert u._extrair_criadores([]) is None
+
+
+class TestExtrairNetworks:
+    def test_networks(self):
+        networks = [{"name": "HBO"}, {"name": "Netflix"}]
+        assert u._extrair_networks(networks) == "HBO, Netflix"
+
+    def test_vazio(self):
+        assert u._extrair_networks([]) is None
+
+
+class TestExtrairSpokenLanguages:
+    def test_idiomas(self):
+        langs = [{"english_name": "English"}, {"english_name": "French"}]
+        assert u._extrair_spoken_languages(langs) == "English, French"
+
+    def test_vazio(self):
+        assert u._extrair_spoken_languages([]) is None
+
+    def test_none(self):
+        assert u._extrair_spoken_languages(None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +272,25 @@ class TestCollectAndWriteDetails:
             "poster_path": "/p.jpg",
             "backdrop_path": "/b.jpg",
             "original_language": "en",
+            "tagline": "Uma frase de efeito",
+            "status": "Released",
+            "belongs_to_collection": {"id": 1, "name": "Colecao A"},
+            "budget": 50000000,
+            "revenue": 200000000,
+            "production_companies": [{"name": "Studio A"}],
+            "spoken_languages": [{"english_name": "English"}],
+            "credits": {
+                "cast": [{"name": "Ator A", "order": 0}, {"name": "Ator B", "order": 1}],
+                "crew": [{"name": "Diretor A", "job": "Director"}],
+            },
+            "keywords": {"keywords": [{"id": 1, "name": "keyword1"}]},
+            "release_dates": {"results": [
+                {"iso_3166_1": "BR", "release_dates": [{"certification": "12"}]},
+            ]},
+            "videos": {"results": [
+                {"type": "Trailer", "site": "YouTube", "official": True, "key": "abc123"},
+            ]},
+            "external_ids": {"imdb_id": "tt1234567"},
         }
 
     def _mock_tv_response(self, item_id: int) -> dict:
@@ -107,6 +305,25 @@ class TestCollectAndWriteDetails:
             "poster_path": "/p.jpg",
             "backdrop_path": "/b.jpg",
             "original_language": "en",
+            "tagline": "Tagline serie",
+            "status": "Returning Series",
+            "production_companies": [{"name": "Studio B"}],
+            "spoken_languages": [{"english_name": "English"}, {"english_name": "Spanish"}],
+            "created_by": [{"name": "Criador A"}],
+            "networks": [{"name": "HBO"}],
+            "in_production": True,
+            "last_air_date": "2024-06-15",
+            "type": "Scripted",
+            "credits": {
+                "cast": [{"name": "Ator X", "order": 0}],
+                "crew": [],
+            },
+            "keywords": {"results": [{"id": 1, "name": "drama"}]},
+            "content_ratings": {"results": [
+                {"iso_3166_1": "BR", "rating": "14"},
+            ]},
+            "videos": {"results": []},
+            "external_ids": {"imdb_id": "tt9876543"},
         }
 
     def test_movie_writes_runtime_and_year(self):
@@ -136,6 +353,14 @@ class TestCollectAndWriteDetails:
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
             assert "original_language" not in df_written.columns
+            assert "actor_names" in df_written.columns
+            assert "director" in df_written.columns
+            assert "keywords" in df_written.columns
+            assert "certification" in df_written.columns
+            assert "tagline" in df_written.columns
+            assert "collection_name" in df_written.columns
+            assert "trailer_url" in df_written.columns
+            assert "imdb_id" in df_written.columns
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
@@ -163,6 +388,14 @@ class TestCollectAndWriteDetails:
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
             assert "original_language" not in df_written.columns
+            assert "actor_names" in df_written.columns
+            assert "keywords" in df_written.columns
+            assert "certification" in df_written.columns
+            assert "tagline" in df_written.columns
+            assert "created_by" in df_written.columns
+            assert "networks" in df_written.columns
+            assert "trailer_url" in df_written.columns
+            assert "imdb_id" in df_written.columns
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib

@@ -128,12 +128,18 @@ genre_names AS (
 -- via append); ORDER BY dt_processamento DESC mantém o registro mais recente.
 movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
+        tagline, status, collection_name, budget, revenue, production_companies,
+        spoken_languages, actor_names, director, keywords, certification,
+        trailer_url, imdb_id,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_movie}.{tb_details_movie}
 ),
 
 movie_details AS (
-    SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en
+    SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
+        tagline, status, collection_name, budget, revenue, production_companies,
+        spoken_languages, actor_names, director, keywords, certification,
+        trailer_url, imdb_id
     FROM movie_details_ranked
     WHERE rn = 1
 ),
@@ -148,17 +154,20 @@ tv_details_ranked AS (
         number_of_seasons,
         number_of_episodes,
         element_at(episode_run_time, 1) AS episode_runtime_minutes,
-        overview_en,
-        overview_pt,
-        poster_path_en,
-        backdrop_path_en,
+        overview_en, overview_pt, poster_path_en, backdrop_path_en,
+        tagline, status, production_companies, spoken_languages,
+        created_by, networks, in_production, last_air_date, tv_type,
+        actor_names, keywords, certification, trailer_url, imdb_id,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_tv}.{tb_details_tv}
 ),
 
 tv_details AS (
     SELECT id, number_of_seasons, number_of_episodes, episode_runtime_minutes,
-           overview_en, overview_pt, poster_path_en, backdrop_path_en
+           overview_en, overview_pt, poster_path_en, backdrop_path_en,
+           tagline, status, production_companies, spoken_languages,
+           created_by, networks, in_production, last_air_date, tv_type,
+           actor_names, keywords, certification, trailer_url, imdb_id
     FROM tv_details_ranked
     WHERE rn = 1
 ),
@@ -172,13 +181,29 @@ details AS (
            NULL AS number_of_seasons,
            NULL AS number_of_episodes,
            NULL AS episode_runtime_minutes,
-           overview_en, overview_pt, poster_path_en, backdrop_path_en
+           overview_en, overview_pt, poster_path_en, backdrop_path_en,
+           tagline, status, collection_name, budget, revenue,
+           production_companies, spoken_languages,
+           actor_names, director, keywords, certification,
+           trailer_url, imdb_id,
+           NULL AS created_by,
+           NULL AS networks,
+           CAST(NULL AS BOOLEAN) AS in_production,
+           NULL AS last_air_date,
+           NULL AS tv_type
     FROM movie_details
     UNION ALL
     SELECT id, 'tv' AS media_type,
            NULL AS runtime,
            number_of_seasons, number_of_episodes, episode_runtime_minutes,
-           overview_en, overview_pt, poster_path_en, backdrop_path_en
+           overview_en, overview_pt, poster_path_en, backdrop_path_en,
+           tagline, status,
+           NULL AS collection_name, CAST(NULL AS BIGINT) AS budget, CAST(NULL AS BIGINT) AS revenue,
+           production_companies, spoken_languages,
+           actor_names,
+           NULL AS director,
+           keywords, certification, trailer_url, imdb_id,
+           created_by, networks, in_production, last_air_date, tv_type
     FROM tv_details
 ),
 
@@ -328,6 +353,24 @@ spec_raw AS (
         d.number_of_seasons,
         d.number_of_episodes,
         d.episode_runtime_minutes,
+        d.tagline,
+        d.status                                  AS title_status,
+        d.collection_name,
+        d.budget,
+        d.revenue,
+        d.production_companies,
+        d.spoken_languages,
+        d.actor_names,
+        d.director,
+        d.keywords,
+        d.certification,
+        d.trailer_url,
+        d.imdb_id,
+        d.created_by,
+        d.networks,
+        d.in_production,
+        d.last_air_date,
+        d.tv_type,
         p.streaming_providers,
         -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot semanal).
         -- Séries e filmes fora de cartaz recebem FALSE (np.id = NULL no LEFT JOIN).
@@ -366,6 +409,10 @@ SELECT
     language_name, genre_ids, genre_names, poster_url, backdrop_url, popularity,
     vote_average, vote_count, origin_country, origin_country_name, adult, year,
     runtime_minutes, number_of_seasons, number_of_episodes, episode_runtime_minutes,
+    tagline, title_status, collection_name, budget, revenue,
+    production_companies, spoken_languages,
+    actor_names, director, keywords, certification,
+    trailer_url, imdb_id, created_by, networks, in_production, last_air_date, tv_type,
     streaming_providers, in_theaters, theater_start_date, theater_end_date
 FROM spec_deduped
 WHERE rn_final = 1

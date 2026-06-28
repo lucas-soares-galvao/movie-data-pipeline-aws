@@ -55,6 +55,28 @@ class TestRunAthenaQuery:
             assert "number_of_episodes" in sql
             assert "episode_runtime_minutes" in sql
 
+    def test_query_contains_enrichment_columns(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+            assert "actor_names" in sql
+            assert "director" in sql
+            assert "keywords" in sql
+            assert "certification" in sql
+            assert "tagline" in sql
+            assert "collection_name" in sql
+            assert "trailer_url" in sql
+            assert "imdb_id" in sql
+            assert "created_by" in sql
+            assert "networks" in sql
+            assert "in_production" in sql
+            assert "tv_type" in sql
+            assert "title_status" in sql
+            assert "production_companies" in sql
+            assert "spoken_languages" in sql
+
     def test_query_contains_watch_providers_join(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
             run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")

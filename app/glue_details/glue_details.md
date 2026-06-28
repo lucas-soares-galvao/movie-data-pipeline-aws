@@ -2,11 +2,11 @@
 
 ## O que é
 
-O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios e plataformas de streaming disponíveis no Brasil. Também traduz sinopses do inglês para o português (via Google Translate) para títulos com `original_language='en'`. Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
+O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios, plataformas de streaming disponíveis no Brasil, elenco (top 5 atores), diretor, keywords temáticas, classificação indicativa BR, trailer, coleção/franquia, produtoras, status, tagline e IMDB ID. Também traduz sinopses do inglês para o português (via Google Translate) para títulos com `original_language='en'`. Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
 
 ## Por que existe
 
-A API de discover do TMDB retorna metadados básicos (título, nota, gênero). Informações como duração de filmes, número de temporadas de séries e onde assistir no Brasil requerem endpoints específicos por ID. Este job faz esse enriquecimento de forma eficiente em paralelo.
+A API de discover do TMDB retorna metadados básicos (título, nota, gênero). Informações como duração de filmes, número de temporadas de séries, elenco, diretor, keywords temáticas, classificação indicativa e onde assistir no Brasil requerem endpoints específicos por ID. Este job faz esse enriquecimento de forma eficiente em paralelo, usando o parâmetro `append_to_response` para obter credits, keywords, release_dates/content_ratings, videos e external_ids na mesma chamada de API (sem custo adicional de rate limit).
 
 ## Como funciona
 
@@ -45,6 +45,16 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `fetch_ids_from_sot(...)` | Consulta Athena para listar todos os IDs únicos do discover |
 | `fetch_existing_ids_from_details(...)` | Retorna IDs já processados no mês atual em **qualquer partição `year`** (sem filtro de ano) — usados para calcular o delta e evitar reprocessamento por jobs concorrentes |
 | `fetch_ids_stale_watch_providers(...)` | Retorna IDs sem watch providers ou atualizados antes do mês atual |
+| `_extrair_elenco(creditos, limite)` | Top N atores por billing order, comma-separated |
+| `_extrair_diretor(creditos)` | Diretor(es) do filme (job='Director' no crew) |
+| `_extrair_keywords(dados)` | Keywords temáticas comma-separated |
+| `_extrair_certificacao_br_movie(release_dates)` | Classificação indicativa BR para filmes |
+| `_extrair_certificacao_br_tv(content_ratings)` | Classificação indicativa BR para séries |
+| `_extrair_trailer_url(videos)` | Primeiro trailer oficial do YouTube |
+| `_extrair_produtoras(companies)` | Nomes das produtoras comma-separated |
+| `_extrair_criadores(created_by)` | Criadores de série comma-separated |
+| `_extrair_networks(networks)` | Redes de TV comma-separated |
+| `_extrair_spoken_languages(spoken_languages)` | Idiomas falados comma-separated |
 | `collect_and_write_details(ids, ...)` | Faz chamadas paralelas e grava tabela de detalhes |
 | `collect_and_write_watch_providers(ids, ...)` | Faz chamadas paralelas e grava tabela de watch providers |
 | `repair_discover_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro de maior `popularity` e regrava apenas se houver mudanças |

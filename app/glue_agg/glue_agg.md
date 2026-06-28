@@ -20,7 +20,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
 2. Executa uma query SQL complexa no **Athena** que:
    - Une filmes e séries via `UNION ALL`
    - Deduplica watch providers por `DENSE_RANK` sobre o ano mais recente (CTEs `movie_wp_recent` / `tv_wp_recent`), preservando todos os provedores do ano mais recente por ID
-   - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas), plataformas de streaming e a tabela `now_playing` (para filmes em cartaz nos cinemas)
+   - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas, elenco, diretor, keywords, classificação indicativa, trailer, coleção, produtoras, status, tagline, IMDB ID, campos TV), plataformas de streaming e a tabela `now_playing` (para filmes em cartaz nos cinemas)
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
 3. Seleciona `title` e `overview` do discover (pt-BR nativo do TMDB) como primeira prioridade; `overview_pt` traduzido pelo Glue Details entra como fallback quando o discover retornou vazio, seguido por `overview_en` como último recurso
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC

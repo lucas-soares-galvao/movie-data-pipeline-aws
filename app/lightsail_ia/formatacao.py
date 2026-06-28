@@ -96,4 +96,14 @@ def formatar_registro(registro: dict) -> dict:
         "theater_end_date": _formatar_theater_end_date(
             registro.get("theater_end_date"), in_theaters
         ),
+        "tagline": registro.get("tagline") or None,
+        "elenco": registro.get("actor_names") or None,
+        "diretor": registro.get("director") or None,
+        "keywords": registro.get("keywords") or None,
+        "certificacao": registro.get("certification") or None,
+        "trailer_url": registro.get("trailer_url") or None,
+        "colecao": registro.get("collection_name") or None,
+        "produtoras": registro.get("production_companies") or None,
+        "redes_tv": registro.get("networks") or None,
+        "criadores": registro.get("created_by") or None,
     }

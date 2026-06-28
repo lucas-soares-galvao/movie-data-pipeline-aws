@@ -149,6 +149,38 @@ class TestFormatarRegistro:
         assert resultado["in_theaters"] is False
         assert resultado["theater_end_date"] is None
 
+    def test_novos_campos_filme(self):
+        registro = {
+            **TITULO_FAKE,
+            "tagline": "Uma frase marcante",
+            "actor_names": "Jack Nicholson, Shelley Duvall",
+            "director": "Stanley Kubrick",
+            "keywords": "hotel, terror psicológico",
+            "certification": "16",
+            "trailer_url": "https://youtube.com/watch?v=abc",
+            "collection_name": None,
+            "production_companies": "Warner Bros.",
+            "networks": None,
+            "created_by": None,
+        }
+        resultado = formatacao.formatar_registro(registro)
+        assert resultado["tagline"] == "Uma frase marcante"
+        assert resultado["elenco"] == "Jack Nicholson, Shelley Duvall"
+        assert resultado["diretor"] == "Stanley Kubrick"
+        assert resultado["keywords"] == "hotel, terror psicológico"
+        assert resultado["certificacao"] == "16"
+        assert resultado["trailer_url"] == "https://youtube.com/watch?v=abc"
+        assert resultado["colecao"] is None
+        assert resultado["produtoras"] == "Warner Bros."
+        assert resultado["redes_tv"] is None
+        assert resultado["criadores"] is None
+
+    def test_novos_campos_nulos(self):
+        resultado = formatacao.formatar_registro(TITULO_FAKE)
+        assert resultado["tagline"] is None
+        assert resultado["elenco"] is None
+        assert resultado["diretor"] is None
+
     def test_registro_serie(self):
         serie = {
             "title": "Stranger Things",
