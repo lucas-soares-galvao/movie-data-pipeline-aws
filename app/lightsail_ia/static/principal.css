@@ -224,6 +224,16 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   font-size: 14px;
 }
 
+.msg-aviso .tempo-countdown {
+  font-weight: 600;
+  animation: pulse-aviso 2s ease-in-out infinite;
+}
+
+@keyframes pulse-aviso {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 @media (max-width: 1024px) {
   .msg-erro, .msg-aviso { max-width: 100%; }
 }

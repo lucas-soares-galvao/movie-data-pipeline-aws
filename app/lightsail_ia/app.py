@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import os
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -54,13 +55,27 @@ if _log_group:
 
 _executor = ThreadPoolExecutor(max_workers=2)
 _MAX_CONSULTAS_POR_HORA = 20
+_historico_por_ip: dict[str, list[float]] = {}
 
 
-def _consultas_na_ultima_hora() -> int:
+def _obter_ip_cliente() -> str:
+    forwarded = st.context.headers.get("X-Forwarded-For", "")
+    return forwarded.split(",")[0].strip() if forwarded else "local"
+
+
+def _consultas_na_ultima_hora(ip: str) -> int:
     agora = time.time()
-    historico = [t for t in st.session_state.get("historico_consultas", []) if t > agora - 3600]
-    st.session_state["historico_consultas"] = historico
+    historico = [t for t in _historico_por_ip.get(ip, []) if t > agora - 3600]
+    _historico_por_ip[ip] = historico
     return len(historico)
+
+
+def _minutos_para_liberar(ip: str) -> int:
+    historico = _historico_por_ip.get(ip, [])
+    if not historico:
+        return 0
+    segundos = historico[0] + 3600 - time.time()
+    return max(1, math.ceil(segundos / 60))
 
 
 st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
@@ -120,13 +135,17 @@ preferencia = st.text_area(
     height=68,
 )
 
-_consultas_feitas = _consultas_na_ultima_hora()
+_ip_cliente = _obter_ip_cliente()
+_consultas_feitas = _consultas_na_ultima_hora(_ip_cliente)
 _restantes = _MAX_CONSULTAS_POR_HORA - _consultas_feitas
 
 if _restantes <= 0:
-    st.markdown("""
+    _minutos = _minutos_para_liberar(_ip_cliente)
+    _unidade = "minuto" if _minutos == 1 else "minutos"
+    st.markdown(f"""
     <div class="msg-aviso">
-      ⚠️ Limite de consultas atingido. Aguarde alguns minutos e tente novamente.
+      ⚠️ Limite de consultas atingido. Disponível novamente em
+      <span class="tempo-countdown">{_minutos} {_unidade}</span>.
     </div>
     """, unsafe_allow_html=True)
 else:
@@ -174,7 +193,7 @@ else:
     col_rec, _, __ = st.columns([1, 1, 6], gap="small")
     with col_rec:
         if st.button("Recomendar", type="primary", disabled=_restantes <= 0) and preferencia:
-            st.session_state["historico_consultas"] = st.session_state.get("historico_consultas", []) + [time.time()]
+            _historico_por_ip.setdefault(_ip_cliente, []).append(time.time())
             st.session_state["future"] = _executor.submit(recomendar, preferencia)
             st.session_state["buscando"] = True
             st.session_state["busca_concluida"] = False
