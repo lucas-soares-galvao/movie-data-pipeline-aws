@@ -52,7 +52,17 @@ def get_parameters_glue() -> Dict[str, Any]:
         "YEAR",
         "END_YEAR",
     ]
-    return get_resolved_option(required_args)
+    params = get_resolved_option(required_args)
+
+    # Opcional: quando True, ignora o delta mensal e re-busca todos os IDs na API.
+    # Não faz parte dos required_args para manter compatibilidade com runs normais.
+    params["FORCE_REFETCH"] = False
+    for i, arg in enumerate(sys.argv):
+        if arg == "--FORCE_REFETCH" and i + 1 < len(sys.argv):
+            params["FORCE_REFETCH"] = sys.argv[i + 1].lower() == "true"
+            break
+
+    return params
 
 
 def fetch_ids_from_sot(

@@ -47,9 +47,10 @@ def main() -> None:
     table_watch_providers_movie = args["TABLE_WATCH_PROVIDERS_MOVIE"]
     table_watch_providers_tv    = args["TABLE_WATCH_PROVIDERS_TV"]
 
-    media_type = args["MEDIA_TYPE"]
-    year       = args["YEAR"]
-    end_year   = args["END_YEAR"]
+    media_type     = args["MEDIA_TYPE"]
+    year           = args["YEAR"]
+    end_year       = args["END_YEAR"]
+    force_refetch  = args["FORCE_REFETCH"]
 
     table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
     table_details         = table_details_movie         if media_type == "movie" else table_details_tv
@@ -67,15 +68,20 @@ def main() -> None:
         s3_bucket_temp=s3_bucket_temp,
         year=year,
     )
-    existing_ids = fetch_existing_ids_from_details(
-        database=database,
-        table_details=table_details,
-        s3_bucket_temp=s3_bucket_temp,
-    )
-    new_ids = list(set(all_ids) - set(existing_ids))
+
+    if force_refetch:
+        logger.info("FORCE_REFETCH=true — ignorando delta, re-buscando todos os IDs.")
+        new_ids = all_ids
+    else:
+        existing_ids = fetch_existing_ids_from_details(
+            database=database,
+            table_details=table_details,
+            s3_bucket_temp=s3_bucket_temp,
+        )
+        new_ids = list(set(all_ids) - set(existing_ids))
 
     logger.info(
-        f"Details: {len(new_ids)} IDs novos de {len(all_ids)} no discover "
+        f"Details: {len(new_ids)} IDs a buscar de {len(all_ids)} no discover "
         f"({media_type}, year={year})."
     )
     if new_ids:
