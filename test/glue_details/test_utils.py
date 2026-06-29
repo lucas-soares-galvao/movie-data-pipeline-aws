@@ -239,6 +239,22 @@ class TestExtrairSpokenLanguages:
         assert u._extrair_spoken_languages(None) is None
 
 
+class TestExtrairSpokenLanguagesIso:
+    def test_extrai_codigos_iso(self):
+        langs = [{"iso_639_1": "en", "name": "English"}, {"iso_639_1": "fr", "name": "Français"}]
+        assert u._extrair_spoken_languages_iso(langs) == ["en", "fr"]
+
+    def test_ignora_sem_iso(self):
+        langs = [{"name": "English"}, {"iso_639_1": "fr", "name": "Français"}]
+        assert u._extrair_spoken_languages_iso(langs) == ["fr"]
+
+    def test_vazio(self):
+        assert u._extrair_spoken_languages_iso([]) is None
+
+    def test_none(self):
+        assert u._extrair_spoken_languages_iso(None) is None
+
+
 class TestExtrairTraducaoPtBr:
     def test_extrai_overview_e_tagline_pt_br(self):
         translations = {"translations": [

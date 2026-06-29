@@ -139,6 +139,35 @@ def _adicionar_name_pt_countries(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _adicionar_name_pt_languages(df: pd.DataFrame) -> pd.DataFrame:
+    """Traduz english_name dos idiomas para português e grava como name_pt."""
+    if "english_name" not in df.columns:
+        return df
+
+    mask = df["english_name"].notna() & (df["english_name"] != "")
+    if not mask.any():
+        df["name_pt"] = None
+        return df
+
+    logger.info(f"Traduzindo {mask.sum()} nomes de idiomas para pt-BR...")
+
+    def _translate(texto: str) -> str:
+        if not texto:
+            return ""
+        try:
+            return GoogleTranslator(source="en", target="pt").translate(texto)
+        except Exception as exc:
+            logger.warning(f"Falha ao traduzir idioma '{texto}': {exc}. Mantendo original.")
+            return texto
+
+    df["name_pt"] = None
+    valores = df.loc[mask, "english_name"].tolist()
+    traduzidos = [_translate(v) for v in valores]
+    df.loc[mask, "name_pt"] = traduzidos
+
+    return df
+
+
 def read_from_sor(
     s3_bucket_sor: str,
     media_type: str,
@@ -188,6 +217,9 @@ def read_from_sor(
 
         if table_type == "configuration" and media_type == "tv":
             df = _adicionar_name_pt_countries(df)
+
+        if table_type == "configuration" and media_type == "movie":
+            df = _adicionar_name_pt_languages(df)
 
     logger.info(f"Lidos {len(df)} registros.")
     return df

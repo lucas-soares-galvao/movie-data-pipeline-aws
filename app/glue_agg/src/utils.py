@@ -130,7 +130,8 @@ movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, tagline_pt, status, collection_id, collection_name, collection_name_pt,
         budget, revenue, production_companies,
-        production_countries, production_countries_iso, spoken_languages,
+        production_countries, production_countries_iso,
+        spoken_languages, spoken_languages_iso,
         actor_names, director, screenplay,
         music_composer, producer, cinematographer, editor,
         keywords, keywords_pt, certification,
@@ -144,7 +145,8 @@ movie_details AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, tagline_pt, status, collection_id, collection_name, collection_name_pt,
         budget, revenue, production_companies,
-        production_countries, production_countries_iso, spoken_languages,
+        production_countries, production_countries_iso,
+        spoken_languages, spoken_languages_iso,
         actor_names, director, screenplay,
         music_composer, producer, cinematographer, editor,
         keywords, keywords_pt, certification,
@@ -166,7 +168,8 @@ tv_details_ranked AS (
         element_at(episode_run_time, 1) AS episode_runtime_minutes,
         overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, tagline_pt, status, production_companies,
-        production_countries, production_countries_iso, spoken_languages,
+        production_countries, production_countries_iso,
+        spoken_languages, spoken_languages_iso,
         created_by, networks, in_production, last_air_date, tv_type,
         actor_names, director, screenplay, music_composer,
         producer, cinematographer, editor,
@@ -180,7 +183,8 @@ tv_details AS (
     SELECT id, number_of_seasons, number_of_episodes, episode_runtime_minutes,
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
            tagline, tagline_pt, status, production_companies,
-           production_countries, production_countries_iso, spoken_languages,
+           production_countries, production_countries_iso,
+           spoken_languages, spoken_languages_iso,
            created_by, networks, in_production, last_air_date, tv_type,
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
@@ -204,7 +208,7 @@ details AS (
            COALESCE(collection_name_pt, collection_name) AS collection_name,
            budget, revenue,
            production_companies, production_countries, production_countries_iso,
-           spoken_languages,
+           spoken_languages, spoken_languages_iso,
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
            keywords, keywords_pt, certification,
@@ -224,7 +228,7 @@ details AS (
            tagline, tagline_pt, status,
            NULL AS collection_name, CAST(NULL AS BIGINT) AS budget, CAST(NULL AS BIGINT) AS revenue,
            production_companies, production_countries, production_countries_iso,
-           spoken_languages,
+           spoken_languages, spoken_languages_iso,
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
            keywords, keywords_pt, certification, trailer_url, imdb_id,
@@ -413,6 +417,28 @@ production_countries_resolved AS (
     GROUP BY d.id, d.media_type
 ),
 
+-- Resolução de idiomas falados: cruza códigos ISO com a tabela de referência
+-- para obter nomes em português. Fallback para nome em inglês se não houver tradução.
+spoken_languages_resolved AS (
+    SELECT
+        d.id,
+        d.media_type,
+        array_join(
+            array_agg(
+                COALESCE(lang_sl.name_pt, lang_sl.english_name, t_iso.iso_code)
+                ORDER BY t_iso.ord
+            ),
+            ', '
+        ) AS spoken_languages_pt
+    FROM details d
+    CROSS JOIN UNNEST(d.spoken_languages_iso)
+        WITH ORDINALITY AS t_iso(iso_code, ord)
+    LEFT JOIN {db_movie}.{tb_configuration_languages} lang_sl
+        ON lang_sl.iso_639_1 = t_iso.iso_code
+    WHERE d.spoken_languages_iso IS NOT NULL
+    GROUP BY d.id, d.media_type
+),
+
 -- Filmes atualmente em cartaz nos cinemas, atualizados semanalmente pela Lambda.
 -- Snapshot sem partição por ano — contém apenas os filmes da semana atual.
 now_playing AS (
@@ -489,7 +515,7 @@ spec_raw AS (
         COALESCE(NULLIF(TRIM(u.overview), ''), d.overview_pt, d.overview_en)                AS overview,
         u.air_date,
         u.original_language,
-        lang.name                                                               AS language_name,
+        COALESCE(lang.name_pt, lang.english_name, lang.name)                      AS language_name,
         u.genre_ids,
         gn.genre_names,
         -- Constrói a URL completa do pôster adicionando o prefixo da CDN do TMDB.
@@ -535,7 +561,7 @@ spec_raw AS (
         d.revenue,
         d.production_companies,
         COALESCE(pcr.production_countries_pt, d.production_countries) AS production_countries,
-        d.spoken_languages,
+        COALESCE(slr.spoken_languages_pt, d.spoken_languages) AS spoken_languages,
         d.actor_names,
         d.director,
         d.screenplay,
@@ -587,6 +613,8 @@ spec_raw AS (
         ON  rb.id = u.id AND rb.media_type = u.media_type
     LEFT JOIN production_countries_resolved pcr
         ON  pcr.id = u.id AND pcr.media_type = u.media_type
+    LEFT JOIN spoken_languages_resolved slr
+        ON  slr.id = u.id AND slr.media_type = u.media_type
     LEFT JOIN recommended_resolved rr
         ON  rr.id = u.id AND rr.media_type = u.media_type
     LEFT JOIN similar_resolved sr
