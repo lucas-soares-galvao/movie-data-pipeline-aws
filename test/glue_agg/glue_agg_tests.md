@@ -53,10 +53,12 @@ test/glue_agg/
 | `test_query_deduplica_watch_providers_por_ano_mais_recente` | SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK()` e `CAST(year AS INTEGER) DESC`; garante que **não** usa `ROW_NUMBER()` (que filtraria um único provedor por título em vez de todos do ano mais recente) |
 | `test_query_possui_dedup_final_spec_deduped` | SQL contém CTEs `spec_raw` e `spec_deduped` com `PARTITION BY id, media_type` e alias `rn_final` para garantir unicidade na saída |
 | `test_query_traduz_status_via_case_when` | SQL contém CASE WHEN para traduzir `status` de en-US para pt-BR (ex: `Released` → `Lançado`, `Cancelado`) |
-| `test_query_usa_lang_name_nao_english_name` | SQL usa `lang.name` em vez de `lang.english_name` para `language_name` |
+| `test_query_usa_lang_name_pt_com_fallback` | SQL usa `COALESCE(lang.name_pt, lang.english_name, lang.name)` para `language_name`, priorizando tradução pt-BR |
 | `test_query_usa_ctry_name_pt` | SQL usa `ctry.name_pt` em vez de `ctry.native_name` para `origin_country_name` |
 | `test_query_usa_coalesce_tagline_pt` | SQL contém `COALESCE(d.tagline_pt, d.tagline)` para priorizar tagline traduzida |
 | `test_query_usa_coalesce_production_countries_pt` | SQL contém `COALESCE(pcr.production_countries_pt, d.production_countries)` para priorizar países traduzidos via lookup ISO na `tb_configuration_countries` |
+| `test_query_usa_coalesce_spoken_languages_pt` | SQL contém `COALESCE(slr.spoken_languages_pt, d.spoken_languages)` para priorizar idiomas traduzidos via lookup ISO na `tb_configuration_languages` |
+| `test_query_possui_cte_spoken_languages_resolved` | SQL contém CTE `spoken_languages_resolved` com `spoken_languages_iso` para lookup de idiomas em pt-BR |
 
 ### `TestWriteParquetToSpec`
 

@@ -179,7 +179,8 @@ def read_from_sor(
 
     discover: lê pasta inteira com wr.s3.read_json, adiciona coluna year, remove duplicatas por id.
     watch_providers_ref: lê arquivo único, deriva canonical_name.
-    genre / configuration: lê arquivo único diretamente.
+    genre: lê arquivo único diretamente.
+    configuration: lê arquivo único; tv adiciona name_pt (países), movie adiciona name_pt (idiomas).
 
     Args:
         s3_bucket_sor: Nome do bucket SOR

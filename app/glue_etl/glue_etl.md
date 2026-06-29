@@ -37,6 +37,7 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
 Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via Google Translate e grava como coluna `name_pt` na SOT (~250 países, tradução única).
+Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_name` dos idiomas para português via Google Translate e grava como coluna `name_pt` na SOT (~190 idiomas, tradução única).
 
 **Fluxo para `now_playing`:**
 Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `read_from_sor` lê todos os arquivos da pasta `tmdb/now_playing/movie/` de uma vez e deduplica por `id` antes de gravar.
@@ -55,7 +56,7 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 | Função | Responsabilidade |
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
-| `read_from_sor(bucket, media_type, table_type, year)` | Lê JSON/Parquet da camada SOR |
+| `read_from_sor(bucket, media_type, table_type, year)` | Lê JSON/Parquet da camada SOR; para `configuration` adiciona tradução `name_pt` (countries em tv, languages em movie) |
 | `write_parquet_to_sot(df, bucket, table_name, database, partition_cols, mode)` | Escreve Parquet e registra no Glue Catalog via AWS Wrangler |
 | `derive_canonical_name(name)` | Padroniza um nome de plataforma de streaming (ex: "Netflix Standard with Ads" → "Netflix"); usada internamente por `read_from_sor()` |
 
