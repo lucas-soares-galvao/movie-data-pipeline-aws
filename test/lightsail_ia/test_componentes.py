@@ -91,20 +91,20 @@ class TestRenderizarCard:
         html = componentes.renderizar_card(t)
         assert "Em cartaz até 15/07/2025" in html
 
-    def test_card_com_produtor(self):
+    def test_card_nao_exibe_produtor(self):
         t = {**TITULO_BASE, "produtor": "Kevin Feige"}
         html = componentes.renderizar_card(t)
-        assert "Produtor: Kevin Feige" in html
+        assert "Produtor:" not in html
 
-    def test_card_com_cinematografo(self):
+    def test_card_nao_exibe_cinematografo(self):
         t = {**TITULO_BASE, "cinematografo": "Roger Deakins"}
         html = componentes.renderizar_card(t)
-        assert "Cinematógrafo: Roger Deakins" in html
+        assert "Cinematógrafo:" not in html
 
-    def test_card_com_montador(self):
+    def test_card_nao_exibe_montador(self):
         t = {**TITULO_BASE, "montador": "Thelma Schoonmaker"}
         html = componentes.renderizar_card(t)
-        assert "Montador: Thelma Schoonmaker" in html
+        assert "Montador:" not in html
 
     def test_card_com_rent_buy_providers(self):
         t = {**TITULO_BASE, "aluguel_compra": "Apple TV, Google Play"}

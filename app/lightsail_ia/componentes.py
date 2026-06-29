@@ -42,9 +42,6 @@ def renderizar_card(t: dict) -> str:
     theater_end_date = html.escape(t.get("theater_end_date") or "")
     elenco = html.escape(t.get("elenco") or "")
     diretor = html.escape(t.get("diretor") or "")
-    produtor = html.escape(t.get("produtor") or "")
-    cinematografo = html.escape(t.get("cinematografo") or "")
-    montador = html.escape(t.get("montador") or "")
     certificacao = html.escape(t.get("certificacao") or "")
     trailer_url = t.get("trailer_url") or ""
 
@@ -81,22 +78,6 @@ def renderizar_card(t: dict) -> str:
         f'<span class="diretor">Diretor: {diretor}</span></div>'
         if diretor else ""
     )
-    produtor_html = (
-        f'<div class="meta-row"><span class="meta-icon">🎬</span>'
-        f'<span class="produtor">Produtor: {produtor}</span></div>'
-        if produtor else ""
-    )
-    cinematografo_html = (
-        f'<div class="meta-row"><span class="meta-icon">📷</span>'
-        f'<span class="cinematografo">Cinematógrafo: {cinematografo}</span></div>'
-        if cinematografo else ""
-    )
-    montador_html = (
-        f'<div class="meta-row"><span class="meta-icon">✂</span>'
-        f'<span class="montador">Montador: {montador}</span></div>'
-        if montador else ""
-    )
-
     trailer_html = ""
     if trailer_url:
         safe_url = html.escape(trailer_url)
@@ -167,9 +148,6 @@ def renderizar_card(t: dict) -> str:
         {duracao_html}
         {data_html}
         {diretor_html}
-        {produtor_html}
-        {cinematografo_html}
-        {montador_html}
         {elenco_html}
         {cinema_html}
         {providers_html}
