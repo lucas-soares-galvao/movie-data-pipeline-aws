@@ -61,6 +61,59 @@ class TestExtrairDiretor:
         assert u._extrair_diretor({"crew": []}) is None
 
 
+class TestExtrairRoteiristas:
+    def test_roteirista_unico(self):
+        creditos = {"crew": [
+            {"name": "Aaron Sorkin", "job": "Screenplay"},
+            {"name": "Produtor X", "job": "Producer"},
+        ]}
+        assert u._extrair_roteiristas(creditos) == "Aaron Sorkin"
+
+    def test_multiplos_roteiristas(self):
+        creditos = {"crew": [
+            {"name": "Roteirista A", "job": "Screenplay"},
+            {"name": "Roteirista B", "job": "Writer"},
+        ]}
+        assert u._extrair_roteiristas(creditos) == "Roteirista A, Roteirista B"
+
+    def test_deduplica_mesmo_nome(self):
+        creditos = {"crew": [
+            {"name": "Aaron Sorkin", "job": "Screenplay"},
+            {"name": "Aaron Sorkin", "job": "Writer"},
+        ]}
+        assert u._extrair_roteiristas(creditos) == "Aaron Sorkin"
+
+    def test_sem_roteirista(self):
+        creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
+        assert u._extrair_roteiristas(creditos) is None
+
+    def test_crew_vazio(self):
+        assert u._extrair_roteiristas({"crew": []}) is None
+
+
+class TestExtrairCompositor:
+    def test_compositor_unico(self):
+        creditos = {"crew": [
+            {"name": "Hans Zimmer", "job": "Original Music Composer"},
+            {"name": "Diretor X", "job": "Director"},
+        ]}
+        assert u._extrair_compositor(creditos) == "Hans Zimmer"
+
+    def test_multiplos_compositores(self):
+        creditos = {"crew": [
+            {"name": "Hans Zimmer", "job": "Original Music Composer"},
+            {"name": "John Williams", "job": "Original Music Composer"},
+        ]}
+        assert u._extrair_compositor(creditos) == "Hans Zimmer, John Williams"
+
+    def test_sem_compositor(self):
+        creditos = {"crew": [{"name": "Produtor", "job": "Producer"}]}
+        assert u._extrair_compositor(creditos) is None
+
+    def test_crew_vazio(self):
+        assert u._extrair_compositor({"crew": []}) is None
+
+
 class TestExtrairKeywords:
     def test_formato_movie(self):
         dados = {"keywords": [{"id": 1, "name": "time travel"}, {"id": 2, "name": "dystopia"}]}
@@ -278,9 +331,14 @@ class TestCollectAndWriteDetails:
             "revenue": 200000000,
             "production_companies": [{"name": "Studio A"}],
             "spoken_languages": [{"english_name": "English"}],
+            "origin_country": ["US"],
             "credits": {
                 "cast": [{"name": "Ator A", "order": 0}, {"name": "Ator B", "order": 1}],
-                "crew": [{"name": "Diretor A", "job": "Director"}],
+                "crew": [
+                    {"name": "Diretor A", "job": "Director"},
+                    {"name": "Roteirista A", "job": "Screenplay"},
+                    {"name": "Compositor A", "job": "Original Music Composer"},
+                ],
             },
             "keywords": {"keywords": [{"id": 1, "name": "keyword1"}]},
             "release_dates": {"results": [
@@ -315,7 +373,11 @@ class TestCollectAndWriteDetails:
             "type": "Scripted",
             "credits": {
                 "cast": [{"name": "Ator X", "order": 0}],
-                "crew": [],
+                "crew": [
+                    {"name": "Diretor TV", "job": "Director"},
+                    {"name": "Roteirista TV", "job": "Writer"},
+                    {"name": "Compositor TV", "job": "Original Music Composer"},
+                ],
             },
             "keywords": {"results": [{"id": 1, "name": "drama"}]},
             "content_ratings": {"results": [
@@ -354,12 +416,16 @@ class TestCollectAndWriteDetails:
             assert "original_language" not in df_written.columns
             assert "actor_names" in df_written.columns
             assert "director" in df_written.columns
+            assert "screenplay" in df_written.columns
+            assert "music_composer" in df_written.columns
             assert "keywords" in df_written.columns
+            assert "keywords_pt" in df_written.columns
             assert "certification" in df_written.columns
             assert "tagline" in df_written.columns
             assert "collection_name" in df_written.columns
             assert "trailer_url" in df_written.columns
             assert "imdb_id" in df_written.columns
+            assert "origin_country" in df_written.columns
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
@@ -388,7 +454,11 @@ class TestCollectAndWriteDetails:
             assert "backdrop_path_en" in df_written.columns
             assert "original_language" not in df_written.columns
             assert "actor_names" in df_written.columns
+            assert "director" in df_written.columns
+            assert "screenplay" in df_written.columns
+            assert "music_composer" in df_written.columns
             assert "keywords" in df_written.columns
+            assert "keywords_pt" in df_written.columns
             assert "certification" in df_written.columns
             assert "tagline" in df_written.columns
             assert "created_by" in df_written.columns

@@ -225,8 +225,8 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
                vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
-               tagline, actor_names, director, keywords,
-               certification, trailer_url, collection_name,
+               tagline, actor_names, director, screenplay, music_composer,
+               keywords_pt, certification, trailer_url, collection_name,
                production_companies, networks, created_by,
                streaming_providers,
                in_theaters, theater_end_date
@@ -342,8 +342,10 @@ def recomendar(preferencia: str) -> list[dict]:
                         "- production_companies (string): estúdios produtores (ex: 'A24, Pixar'). Use lower() + LIKE.\n"
                         "- spoken_languages (string): idiomas falados no título (ex: 'English, French'). Use lower() + LIKE.\n"
                         "- actor_names (string): top 5 atores/atrizes (ex: 'Tom Hanks, Robin Wright'). Use lower() + LIKE.\n"
-                        "- director (string): diretor(es) do filme (ex: 'Christopher Nolan'). Apenas filmes. Use lower() + LIKE.\n"
-                        "- keywords (string): tags temáticas em inglês (ex: 'time travel, dystopia, based on novel'). Use lower() + LIKE.\n"
+                        "- director (string): diretor(es) (ex: 'Christopher Nolan'). Filmes e séries. Use lower() + LIKE.\n"
+                        "- screenplay (string): roteiristas/escritores (ex: 'Aaron Sorkin, Charlie Kaufman'). Filmes e séries. Use lower() + LIKE.\n"
+                        "- music_composer (string): compositor da trilha sonora (ex: 'Hans Zimmer, John Williams'). Filmes e séries. Use lower() + LIKE.\n"
+                        "- keywords_pt (string): tags temáticas em português (ex: 'viagem no tempo, distopia, baseado em romance'). Use lower() + LIKE.\n"
                         "- certification (string): classificação indicativa BR (ex: 'L', '10', '12', '14', '16', '18'). Use = para valor exato.\n"
                         "- trailer_url (string): link do trailer no YouTube. Não filtrar por este campo.\n"
                         "- imdb_id (string): ID do IMDB (ex: 'tt0111161'). Não filtrar por este campo.\n"
