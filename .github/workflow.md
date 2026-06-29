@@ -1,4 +1,4 @@
-# Pipeline CI/CD — Documentação do Fluxo
+# 0. Pipeline CI/CD — Documentação do Fluxo
 
 ## Visão Geral
 
