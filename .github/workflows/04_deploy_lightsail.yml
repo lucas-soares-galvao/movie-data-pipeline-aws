@@ -1,4 +1,4 @@
-name: "Deploy Lightsail (Reusable)"
+name: "4. Deploy Lightsail (Reusable)"
 
 # =============================================================================
 # Deploy do app FilmBot na instância AWS Lightsail.

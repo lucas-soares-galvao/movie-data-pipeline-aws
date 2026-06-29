@@ -21,7 +21,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 
 ### Via GitHub Actions (recomendado)
 
-1. Ir em **Actions > Backfill > Run workflow**
+1. Ir em **Actions > 5. Backfill > Run workflow**
 2. Selecionar o script, ano inicial e ano final
 3. Acompanhar logs na aba do workflow
 

@@ -1,4 +1,4 @@
-name: Auto PR Pipeline (Reusable)
+name: 3. Auto PR Pipeline (Reusable)
 
 # =============================================================================
 # Cria ou atualiza Pull Requests automaticamente ao fazer push em uma branch.

@@ -1,4 +1,4 @@
-name: Pipeline CI/CD
+name: 0. Pipeline CI/CD
 
 # =============================================================================
 # Pipeline principal — orquestra todos os workflows do projeto.
