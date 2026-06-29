@@ -13,7 +13,6 @@ TITULO_BASE = {
     "duracao": "2h 26min",
     "data_lancamento": "Maio de 1980",
     "streaming_providers": "Netflix",
-    "aluguel_compra": None,
     "in_theaters": False,
     "theater_end_date": None,
     "tagline": None,
@@ -105,12 +104,6 @@ class TestRenderizarCard:
         t = {**TITULO_BASE, "montador": "Thelma Schoonmaker"}
         html = componentes.renderizar_card(t)
         assert "Montador:" not in html
-
-    def test_card_com_rent_buy_providers(self):
-        t = {**TITULO_BASE, "aluguel_compra": "Apple TV, Google Play"}
-        html = componentes.renderizar_card(t)
-        assert "Apple TV" in html
-        assert "Google Play" in html
 
     def test_card_com_streaming_providers(self):
         html = componentes.renderizar_card(TITULO_BASE)

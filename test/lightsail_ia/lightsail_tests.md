@@ -120,7 +120,6 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_card_nao_exibe_produtor` | Card não renderiza produtor mesmo quando fornecido |
 | `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
 | `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
-| `test_card_com_rent_buy_providers` | Card exibe plataformas de aluguel/compra (🛒) |
 | `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 

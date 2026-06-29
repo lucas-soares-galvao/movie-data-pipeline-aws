@@ -39,14 +39,28 @@ Rules = [
   IsUnique "id",                 # Sem duplicatas por ID
   ColumnValues "vote_average" >= 0,             # Nota válida (between é exclusivo no DQDL)
   ColumnValues "vote_average" <= 10,
+  ColumnValues "popularity" >= 0,               # Popularidade não pode ser negativa
   RowCount > 0                   # Tabela não pode estar vazia
 ]
 
-# Tabela genre
+# Tabela configuration (países/idiomas)
+Rules = [
+  IsComplete "iso_3166_1",       # Código ISO obrigatório
+  IsComplete "native_name",
+  IsComplete "english_name",
+  IsComplete "name_pt",          # Tradução pt-BR obrigatória
+  IsUnique "iso_3166_1",
+  RowCount > 0
+]
+
+# Tabela watch_providers (provedores de streaming)
 Rules = [
   IsComplete "id",
-  IsComplete "name",
-  IsUnique "id",
+  IsComplete "provider_id",
+  IsComplete "provider_name",
+  IsComplete "provider_type",
+  Uniqueness "id" "provider_id" "provider_type" = 1,
+  ColumnValues "provider_type" in ["flatrate", "rent", "buy"],  # Enum de tipos válidos
   RowCount > 0
 ]
 ```
