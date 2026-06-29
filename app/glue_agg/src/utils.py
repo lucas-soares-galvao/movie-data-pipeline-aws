@@ -682,7 +682,14 @@ def get_parameters_glue() -> Dict[str, Any]:
 
 
 def _table_names(env: str) -> Dict[str, str]:
-    """Constrói os nomes das tabelas do Glue Catalog a partir do ambiente."""
+    """
+    Constrói os nomes das tabelas do Glue Catalog a partir do ambiente.
+
+    Returns:
+        Dict com 13 chaves no formato {"tb_<sufixo>": "tb_tmdb_<sufixo>_<env>"}.
+        Ex (env="dev"): {"tb_discover_movie": "tb_tmdb_discover_movie_dev",
+                         "tb_genre_movie":    "tb_tmdb_genre_movie_dev", ...}
+    """
     prefix = "tmdb"
     names = [
         "discover_movie",
@@ -744,7 +751,6 @@ def run_athena_query(
     )
     logger.info(f"Query executada com sucesso. {len(df)} registros retornados.")
     return df
-
 
 
 def write_parquet_to_spec(

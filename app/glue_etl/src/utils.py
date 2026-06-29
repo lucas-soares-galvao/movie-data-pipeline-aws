@@ -13,6 +13,8 @@ from deep_translator import GoogleTranslator
 
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
+# Caminhos no S3 SOR organizados por media_type e table_type.
+# O placeholder {year} é substituído em tempo de execução em read_from_sor().
 SOR_KEYS = {
     "movie": {
         "genre":                "tmdb/genre/movie/generos_filmes.json",
@@ -101,11 +103,14 @@ def get_parameters_glue() -> Dict[str, Any]:
     ]
     args = get_resolved_option(required_args)
 
-    # Tenta ler YEAR e END_YEAR — só presentes nos runs de discover
+    # Tenta ler YEAR e END_YEAR — só presentes nos runs de discover (não em genre/config).
+    # getResolvedOptions usa argparse internamente; argparse chama sys.exit() (não raise KeyError)
+    # quando um argumento obrigatório está ausente. Capturar SystemExit aqui é o padrão oficial
+    # do Glue para argumentos opcionais que não fazem parte de todos os runs.
     try:
         args.update(get_resolved_option(["YEAR", "END_YEAR"]))
     except SystemExit:
-        pass  # Argumentos opcionais ausentes — comportamento esperado para genre/config
+        pass
 
     return args
 

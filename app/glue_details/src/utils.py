@@ -55,7 +55,9 @@ def get_parameters_glue() -> Dict[str, Any]:
     params = get_resolved_option(required_args)
 
     # Opcional: quando True, ignora o delta mensal e re-busca todos os IDs na API.
-    # Não faz parte dos required_args para manter compatibilidade com runs normais.
+    # FORCE_REFETCH não pode estar em required_args porque getResolvedOptions falha para qualquer
+    # argumento não passado na chamada (sem suporte a valor padrão). Lemos manualmente aqui
+    # para mantê-lo opcional sem precisar altererar os runs normais.
     params["FORCE_REFETCH"] = False
     for i, arg in enumerate(sys.argv):
         if arg == "--FORCE_REFETCH" and i + 1 < len(sys.argv):
@@ -239,6 +241,11 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
 _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
 _TRANSLATE_MAX_WORKERS = 10  # traduções EN→PT paralelas via Google Translate
 
+
+# ── Funções auxiliares de extração ──────────────────────────────────────────────
+# Cada função "_extrair_*" isola a lógica de um campo específico da resposta da API TMDB.
+# Isso permite testar cada campo individualmente e facilita a leitura de _parse_detail().
+# Convenção: retornam None quando o dado não existe, em vez de string vazia.
 
 def _extrair_elenco(creditos: dict, limite: int = 5) -> Optional[str]:
     """Top N atores por ordem de billing, separados por vírgula."""
@@ -806,20 +813,23 @@ def collect_and_write_details(
     df_existing = pd.DataFrame()
     for yr in df["year"].dropna().unique().tolist():
         try:
+            # Passo 1: lê os registros existentes da partição year={yr}
+            # _yr=yr "captura" o valor atual de yr na criação da lambda —
+            # sem isso, todas as lambdas do loop usariam o último yr (late binding Python)
             df_read = wr.s3.read_parquet(
                 path=s3_path,
                 dataset=True,
                 partition_filter=lambda x, _yr=yr: x["year"] == str(_yr),
             )
             if not df_read.empty:
-                df_existing = pd.concat(
-                    [df_existing, df_read[~df_read["id"].isin(df["id"])]],
-                    ignore_index=True,
-                )
-                logger.info(f"Mantendo {len(df_read[~df_read['id'].isin(df['id'])])} registros existentes para year={yr}.")
+                # Passo 2: remove do existente os IDs que serão re-escritos (evita duplicatas)
+                df_sem_novos = df_read[~df_read["id"].isin(df["id"])]
+                df_existing = pd.concat([df_existing, df_sem_novos], ignore_index=True)
+                logger.info(f"Mantendo {len(df_sem_novos)} registros existentes para year={yr}.")
         except Exception as exc:
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
+    # Passo 3: concatena existentes + novos (novos por último para keep="last" funcionar corretamente)
     if not df_existing.empty:
         df = pd.concat([df_existing, df], ignore_index=True)
 
@@ -827,6 +837,8 @@ def collect_and_write_details(
     # keep="last" preserva o registro novo (concat coloca novos por último) sobre o existente stale.
     df = df.drop_duplicates(subset=["id"], keep="last")
 
+    # Passo 4: grava de volta — overwrite_partitions substitui apenas as partições afetadas,
+    # preservando o histórico de anos anteriores intacto.
     logger.info(
         f"Gravando {len(df)} registros de detalhes em {s3_path} | "
         f"particao=[year] | mode=overwrite_partitions"
