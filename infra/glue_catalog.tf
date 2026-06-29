@@ -462,7 +462,19 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
+      name = "screenplay"
+      type = "string"
+    }
+    columns {
+      name = "music_composer"
+      type = "string"
+    }
+    columns {
       name = "keywords"
+      type = "string"
+    }
+    columns {
+      name = "keywords_pt"
       type = "string"
     }
     columns {
@@ -476,6 +488,10 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
     columns {
       name = "imdb_id"
       type = "string"
+    }
+    columns {
+      name = "origin_country"
+      type = "array<string>"
     }
     columns {
       name = "dt_processamento"
@@ -582,7 +598,23 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "string"
     }
     columns {
+      name = "director"
+      type = "string"
+    }
+    columns {
+      name = "screenplay"
+      type = "string"
+    }
+    columns {
+      name = "music_composer"
+      type = "string"
+    }
+    columns {
       name = "keywords"
+      type = "string"
+    }
+    columns {
+      name = "keywords_pt"
       type = "string"
     }
     columns {

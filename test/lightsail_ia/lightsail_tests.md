@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`) e as funções de formatação (`app/lightsail_ia/formatacao.py`). O `test_agent.py` cobre `recomendar()`, `buscar_titulos_spec()`, validação SQL, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`). Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recomendar()`, `buscar_titulos_spec()`, validação SQL, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`). O `test_componentes.py` cobre a renderização de cards e grids (`renderizar_card`, `renderizar_grid`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -11,6 +11,7 @@ test/lightsail_ia/
 ├── conftest.py               # Fixtures locais da suite
 ├── requirements_tests.txt    # Dependências de teste
 ├── test_agent.py             # Testes do agente (LLM, Athena, cache, validação)
+├── test_componentes.py       # Testes de renderização HTML (cards e grids)
 └── test_formatacao.py        # Testes das funções puras de formatação
 ```
 
@@ -99,6 +100,33 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `etapa` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
 
+## Casos de teste — `test_componentes.py`
+
+### `TestRenderizarCard` — Renderização de cards individuais
+
+| Teste | O que verifica |
+|---|---|
+| `test_card_basico_contem_titulo` | Card renderiza o título do filme |
+| `test_card_ignora_tagline` | Card não renderiza tagline mesmo quando fornecida |
+| `test_card_com_elenco` | Card exibe nomes do elenco |
+| `test_card_com_diretor` | Card exibe "Dir: {nome}" para filmes |
+| `test_card_com_certificacao` | Card exibe badge de classificação indicativa |
+| `test_card_com_trailer` | Card exibe link clicável para o trailer |
+| `test_card_ignora_colecao` | Card não renderiza coleção/franquia mesmo quando fornecida |
+| `test_card_ignora_criadores` | Card não renderiza criadores mesmo quando fornecidos |
+| `test_card_ignora_redes_tv` | Card não renderiza redes de TV mesmo quando fornecidas |
+| `test_card_sem_campos_opcionais_nao_gera_divs_vazias` | Campos opcionais ausentes não geram HTML vazio |
+| `test_card_cinema_em_cartaz` | Card exibe "Em cartaz até DD/MM/YYYY" quando `in_theaters=True` |
+| `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
+| `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
+
+### `TestRenderizarGrid` — Renderização do grid de cards
+
+| Teste | O que verifica |
+|---|---|
+| `test_grid_vazio` | Grid vazio renderiza container sem cards |
+| `test_grid_com_titulos` | Grid com múltiplos títulos renderiza múltiplos cards |
+
 ## Casos de teste — `test_formatacao.py`
 
 ### `TestFormatarTipo` — Conversão de `media_type`
@@ -160,6 +188,8 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | Teste | O que verifica |
 |---|---|
 | `test_registro_completo_filme` | Registro de filme formatado com todos os campos corretos |
+| `test_novos_campos_filme` | Campos `roteiristas`, `compositor`, `keywords` (pt) formatados corretamente |
+| `test_novos_campos_nulos` | Campos `roteiristas` e `compositor` retornam `None` quando ausentes |
 | `test_registro_serie` | Registro de série com `tipo="série"` e duração formatada com temporadas |
 
 ## Como executar

@@ -63,7 +63,9 @@ class TestRunAthenaQuery:
 
             assert "actor_names" in sql
             assert "director" in sql
-            assert "keywords" in sql
+            assert "screenplay" in sql
+            assert "music_composer" in sql
+            assert "keywords_pt" in sql
             assert "certification" in sql
             assert "tagline" in sql
             assert "collection_name" in sql

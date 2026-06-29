@@ -129,8 +129,9 @@ genre_names AS (
 movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, status, collection_name, budget, revenue, production_companies,
-        spoken_languages, actor_names, director, keywords, certification,
-        trailer_url, imdb_id,
+        spoken_languages, actor_names, director, screenplay, music_composer,
+        keywords, keywords_pt, certification,
+        trailer_url, imdb_id, origin_country,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_movie}.{tb_details_movie}
 ),
@@ -138,8 +139,9 @@ movie_details_ranked AS (
 movie_details AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, status, collection_name, budget, revenue, production_companies,
-        spoken_languages, actor_names, director, keywords, certification,
-        trailer_url, imdb_id
+        spoken_languages, actor_names, director, screenplay, music_composer,
+        keywords, keywords_pt, certification,
+        trailer_url, imdb_id, origin_country
     FROM movie_details_ranked
     WHERE rn = 1
 ),
@@ -157,7 +159,8 @@ tv_details_ranked AS (
         overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, status, production_companies, spoken_languages,
         created_by, networks, in_production, last_air_date, tv_type,
-        actor_names, keywords, certification, trailer_url, imdb_id,
+        actor_names, director, screenplay, music_composer,
+        keywords, keywords_pt, certification, trailer_url, imdb_id,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_tv}.{tb_details_tv}
 ),
@@ -167,7 +170,8 @@ tv_details AS (
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
            tagline, status, production_companies, spoken_languages,
            created_by, networks, in_production, last_air_date, tv_type,
-           actor_names, keywords, certification, trailer_url, imdb_id
+           actor_names, director, screenplay, music_composer,
+           keywords, keywords_pt, certification, trailer_url, imdb_id
     FROM tv_details_ranked
     WHERE rn = 1
 ),
@@ -184,8 +188,9 @@ details AS (
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
            tagline, status, collection_name, budget, revenue,
            production_companies, spoken_languages,
-           actor_names, director, keywords, certification,
-           trailer_url, imdb_id,
+           actor_names, director, screenplay, music_composer,
+           keywords, keywords_pt, certification,
+           trailer_url, imdb_id, origin_country,
            NULL AS created_by,
            NULL AS networks,
            CAST(NULL AS BOOLEAN) AS in_production,
@@ -200,9 +205,9 @@ details AS (
            tagline, status,
            NULL AS collection_name, CAST(NULL AS BIGINT) AS budget, CAST(NULL AS BIGINT) AS revenue,
            production_companies, spoken_languages,
-           actor_names,
-           NULL AS director,
-           keywords, certification, trailer_url, imdb_id,
+           actor_names, director, screenplay, music_composer,
+           keywords, keywords_pt, certification, trailer_url, imdb_id,
+           CAST(NULL AS ARRAY<VARCHAR>) AS origin_country,
            created_by, networks, in_production, last_air_date, tv_type
     FROM tv_details
 ),
@@ -345,7 +350,7 @@ spec_raw AS (
         u.popularity,
         ROUND(u.vote_average, 2)                                                    AS vote_average,
         u.vote_count,
-        u.origin_country,
+        COALESCE(d.origin_country, u.origin_country) AS origin_country,
         ctry.native_name                          AS origin_country_name,
         u.adult,
         u.year,
@@ -362,7 +367,9 @@ spec_raw AS (
         d.spoken_languages,
         d.actor_names,
         d.director,
-        d.keywords,
+        d.screenplay,
+        d.music_composer,
+        d.keywords_pt,
         d.certification,
         d.trailer_url,
         d.imdb_id,
@@ -384,7 +391,7 @@ spec_raw AS (
     LEFT JOIN {db_movie}.{tb_configuration_languages} lang
         ON lang.iso_639_1 = u.original_language
     LEFT JOIN {db_tv}.{tb_configuration_countries} ctry
-        ON ctry.iso_3166_1 = element_at(u.origin_country, 1)
+        ON ctry.iso_3166_1 = element_at(COALESCE(d.origin_country, u.origin_country), 1)
     LEFT JOIN details d
         ON  d.id = u.id AND d.media_type = u.media_type
     LEFT JOIN providers p
@@ -411,7 +418,7 @@ SELECT
     runtime_minutes, number_of_seasons, number_of_episodes, episode_runtime_minutes,
     tagline, title_status, collection_name, budget, revenue,
     production_companies, spoken_languages,
-    actor_names, director, keywords, certification,
+    actor_names, director, screenplay, music_composer, keywords_pt, certification,
     trailer_url, imdb_id, created_by, networks, in_production, last_air_date, tv_type,
     streaming_providers, in_theaters, theater_start_date, theater_end_date
 FROM spec_deduped

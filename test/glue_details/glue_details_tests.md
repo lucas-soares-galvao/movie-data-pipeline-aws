@@ -58,6 +58,8 @@ test/glue_details/
 
 Testa as funções individuais:
 
+- `_extrair_roteiristas` (`TestExtrairRoteiristas`): roteirista único, múltiplos (Screenplay + Writer), deduplicação por nome, crew vazio
+- `_extrair_compositor` (`TestExtrairCompositor`): compositor único, múltiplos, crew vazio
 - `api_get` (de `shared_utils.api_client`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
