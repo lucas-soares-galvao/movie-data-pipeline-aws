@@ -67,5 +67,4 @@ build/
 # --- Sistema ---
 .DS_Store
 Thumbs.db
-scripts/
 CLAUDE.md

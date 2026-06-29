@@ -1,0 +1,106 @@
+name: Backfill
+
+# =============================================================================
+# Executa scripts de backfill sob demanda no ambiente prod.
+#
+# Scripts disponíveis (em scripts/):
+#   - backfill_enriquecimento.py — re-busca detalhes enriquecidos via Glue Details
+#   - backfill_historico.py      — popula discovers históricos via Lambda
+#   - backfill_data_quality.py   — aciona Glue Data Quality
+#   - backfill_traducao.py       — traduz títulos/sinopses para português
+#
+# Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
+# do padrão de nomenclatura do Terraform (tmdb-*-prod / db_tmdb_*_prod / etc.).
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Script de backfill a executar"
+        required: true
+        type: choice
+        options:
+          - enriquecimento
+          - historico
+          - data_quality
+          - traducao
+      start_year:
+        description: "Ano inicial do backfill"
+        required: true
+        default: "2000"
+        type: string
+      end_year:
+        description: "Ano final do backfill (vazio = ano atual)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+          role-session-name: GitHub_to_AWS_Backfill
+          aws-region: sa-east-1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: |
+          pip install boto3
+          if [ "${{ inputs.script }}" = "traducao" ]; then
+            pip install -r scripts/requirements_backfill.txt
+          fi
+
+      - name: Executar backfill_${{ inputs.script }}
+        env:
+          AWS_REGION: sa-east-1
+
+          # Jobs
+          GLUE_DETAILS_JOB_NAME: tmdb-glue-details-prod
+          GLUE_DATA_QUALITY_JOB_NAME: tmdb-glue-data-quality-prod
+          LAMBDA_FUNCTION_NAME: tmdb-lambda-api-prod
+
+          # Databases
+          GLUE_DATABASE_MOVIE: db_tmdb_movie_prod
+          GLUE_DATABASE_TV: db_tmdb_tv_prod
+          GLUE_DATABASE_UNIFIED: db_tmdb_unified_prod
+
+          # Buckets
+          S3_BUCKET_SOT: lsg-sa-east-1-bucket-sot-prod
+
+          # Tabelas
+          TABLE_DISCOVER_MOVIE: tb_tmdb_discover_movie_prod
+          TABLE_DISCOVER_TV: tb_tmdb_discover_tv_prod
+          TABLE_GENRE_MOVIE: tb_tmdb_genre_movie_prod
+          TABLE_GENRE_TV: tb_tmdb_genre_tv_prod
+          TABLE_CONFIGURATION_LANGUAGES: tb_tmdb_configuration_languages_prod
+          TABLE_CONFIGURATION_COUNTRIES: tb_tmdb_configuration_countries_prod
+          TABLE_DETAILS_MOVIE: tb_tmdb_details_movie_prod
+          TABLE_DETAILS_TV: tb_tmdb_details_tv_prod
+          TABLE_WATCH_PROVIDERS_MOVIE: tb_tmdb_watch_providers_movie_prod
+          TABLE_WATCH_PROVIDERS_TV: tb_tmdb_watch_providers_tv_prod
+          TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_tmdb_watch_providers_ref_movie_prod
+          TABLE_WATCH_PROVIDERS_REF_TV: tb_tmdb_watch_providers_ref_tv_prod
+          BACKFILL_START_YEAR: ${{ inputs.start_year }}
+        run: |
+          if [ -n "${{ inputs.end_year }}" ]; then
+            export BACKFILL_END_YEAR="${{ inputs.end_year }}"
+          fi
+          python scripts/backfill_${{ inputs.script }}.py
