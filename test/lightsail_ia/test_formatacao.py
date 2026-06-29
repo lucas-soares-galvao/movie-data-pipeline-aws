@@ -155,7 +155,9 @@ class TestFormatarRegistro:
             "tagline": "Uma frase marcante",
             "actor_names": "Jack Nicholson, Shelley Duvall",
             "director": "Stanley Kubrick",
-            "keywords": "hotel, terror psicológico",
+            "screenplay": "Stephen King, Stanley Kubrick",
+            "music_composer": "Wendy Carlos",
+            "keywords_pt": "hotel, terror psicológico",
             "certification": "16",
             "trailer_url": "https://youtube.com/watch?v=abc",
             "collection_name": None,
@@ -167,6 +169,8 @@ class TestFormatarRegistro:
         assert resultado["tagline"] == "Uma frase marcante"
         assert resultado["elenco"] == "Jack Nicholson, Shelley Duvall"
         assert resultado["diretor"] == "Stanley Kubrick"
+        assert resultado["roteiristas"] == "Stephen King, Stanley Kubrick"
+        assert resultado["compositor"] == "Wendy Carlos"
         assert resultado["keywords"] == "hotel, terror psicológico"
         assert resultado["certificacao"] == "16"
         assert resultado["trailer_url"] == "https://youtube.com/watch?v=abc"
@@ -180,6 +184,8 @@ class TestFormatarRegistro:
         assert resultado["tagline"] is None
         assert resultado["elenco"] is None
         assert resultado["diretor"] is None
+        assert resultado["roteiristas"] is None
+        assert resultado["compositor"] is None
 
     def test_registro_serie(self):
         serie = {

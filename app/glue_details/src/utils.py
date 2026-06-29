@@ -248,10 +248,31 @@ def _extrair_elenco(creditos: dict, limite: int = 5) -> Optional[str]:
 
 
 def _extrair_diretor(creditos: dict) -> Optional[str]:
-    """Diretor(es) do filme (job == 'Director' no crew)."""
+    """Diretor(es) do filme/série (job == 'Director' no crew)."""
     crew = creditos.get("crew", [])
     diretores = [c["name"] for c in crew if c.get("job") == "Director"]
     return ", ".join(diretores) if diretores else None
+
+
+def _extrair_roteiristas(creditos: dict) -> Optional[str]:
+    """Roteiristas (job in Screenplay/Writer no crew), deduplicados."""
+    crew = creditos.get("crew", [])
+    nomes: list[str] = []
+    vistos: set[str] = set()
+    for c in crew:
+        if c.get("job") in ("Screenplay", "Writer") and c.get("name"):
+            nome = c["name"]
+            if nome not in vistos:
+                vistos.add(nome)
+                nomes.append(nome)
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_compositor(creditos: dict) -> Optional[str]:
+    """Compositor(es) da trilha sonora (job == 'Original Music Composer')."""
+    crew = creditos.get("crew", [])
+    compositores = [c["name"] for c in crew if c.get("job") == "Original Music Composer"]
+    return ", ".join(compositores) if compositores else None
 
 
 def _extrair_keywords(dados_keywords: dict) -> Optional[str]:
@@ -345,10 +366,13 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "spoken_languages":     _extrair_spoken_languages(detalhe.get("spoken_languages")),
             "actor_names":          _extrair_elenco(creditos),
             "director":             _extrair_diretor(creditos),
+            "screenplay":           _extrair_roteiristas(creditos),
+            "music_composer":       _extrair_compositor(creditos),
             "keywords":             _extrair_keywords(keywords_data),
             "certification":        _extrair_certificacao_br_movie(detalhe.get("release_dates", {})),
             "trailer_url":          _extrair_trailer_url(videos_data),
             "imdb_id":              external_ids.get("imdb_id"),
+            "origin_country":       detalhe.get("origin_country"),
             "dt_processamento":     date.today(),
             "year":                 year,
         }
@@ -374,6 +398,9 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "last_air_date":        detalhe.get("last_air_date"),
             "tv_type":              detalhe.get("type"),
             "actor_names":          _extrair_elenco(creditos),
+            "director":             _extrair_diretor(creditos),
+            "screenplay":           _extrair_roteiristas(creditos),
+            "music_composer":       _extrair_compositor(creditos),
             "keywords":             _extrair_keywords(keywords_data),
             "certification":        _extrair_certificacao_br_tv(detalhe.get("content_ratings", {})),
             "trailer_url":          _extrair_trailer_url(videos_data),
@@ -412,6 +439,39 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
         traduzidos = list(executor.map(_translate, valores))
     df.loc[mask, "overview_pt"] = traduzidos
+
+    return df
+
+
+def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona coluna keywords_pt ao DataFrame de detalhes.
+
+    Traduz keywords de inglês para português via Google Translate.
+    Keywords da TMDB são sempre em inglês, independente do idioma original do título.
+    """
+    df["keywords_pt"] = None
+
+    mask = df["keywords"].notna() & (df["keywords"] != "")
+    if not mask.any():
+        return df
+
+    def _translate(texto: str) -> str:
+        if not texto:
+            return ""
+        try:
+            return GoogleTranslator(source="en", target="pt").translate(texto)
+        except Exception as exc:
+            logger.warning(f"Falha ao traduzir keywords: {exc}. Mantendo original.")
+            return texto
+
+    total = mask.sum()
+    logger.info(f"Traduzindo keywords de {total} registros ({_TRANSLATE_MAX_WORKERS} workers).")
+
+    valores = df.loc[mask, "keywords"].fillna("").tolist()
+    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+        traduzidos = list(executor.map(_translate, valores))
+    df.loc[mask, "keywords_pt"] = traduzidos
 
     return df
 
@@ -467,6 +527,7 @@ def collect_and_write_details(
     df = df.dropna(subset=["year"])
 
     df = _adicionar_traducoes_pt(df)
+    df = _adicionar_traducoes_keywords_pt(df)
     # original_language foi usado apenas para filtrar a tradução; já existe em tb_discover
     df = df.drop(columns=["original_language"])
 

@@ -37,8 +37,9 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `data_lancamento` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
-- `tagline` (frase de efeito), `elenco` (top 5 atores), `diretor` (apenas filmes)
-- `keywords` (tags temáticas), `certificacao` (classificação indicativa BR: L/10/12/14/16/18)
+- `tagline` (frase de efeito), `elenco` (top 5 atores), `diretor` (filmes e séries)
+- `roteiristas` (escritores/roteiristas), `compositor` (compositor da trilha sonora)
+- `keywords` (tags temáticas em português), `certificacao` (classificação indicativa BR: L/10/12/14/16/18)
 - `trailer_url` (link do YouTube), `colecao` (saga/franquia, apenas filmes)
 - `produtoras` (estúdios), `redes_tv` (redes originais, apenas séries), `criadores` (apenas séries)
 
@@ -54,12 +55,9 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
   - Título, ano e tipo (filme/série)
   - Badges laranja por gênero
   - Linha com nota (★), duração (⏱), data de lançamento (📅)
-  - Tagline em itálico abaixo do título (quando disponível)
   - Badge de classificação indicativa (L/10/12/14/16/18)
-  - Linha com diretor (filmes) ou criadores (séries)
+  - Linha com diretor (filmes)
   - Linha com elenco (top 5 atores)
-  - Badge de coleção/franquia (filmes)
-  - Linha com redes de TV (séries)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
   - Link clicável ▶ Trailer (quando disponível)

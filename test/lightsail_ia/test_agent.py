@@ -39,6 +39,9 @@ COLUMNS = [
     "vote_average", "poster_url", "backdrop_url",
     "runtime_minutes", "number_of_seasons",
     "number_of_episodes", "episode_runtime_minutes",
+    "tagline", "actor_names", "director", "screenplay", "music_composer",
+    "keywords_pt", "certification", "trailer_url", "collection_name",
+    "production_companies", "networks", "created_by",
     "streaming_providers",
     "in_theaters", "theater_end_date",
 ]

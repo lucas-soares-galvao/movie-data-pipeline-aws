@@ -39,14 +39,10 @@ def renderizar_card(t: dict) -> str:
     streaming_providers = t.get("streaming_providers") or ""
     in_theaters = t.get("in_theaters") or False
     theater_end_date = html.escape(t.get("theater_end_date") or "")
-    tagline = html.escape(t.get("tagline") or "")
     elenco = html.escape(t.get("elenco") or "")
     diretor = html.escape(t.get("diretor") or "")
     certificacao = html.escape(t.get("certificacao") or "")
     trailer_url = t.get("trailer_url") or ""
-    colecao = html.escape(t.get("colecao") or "")
-    criadores = html.escape(t.get("criadores") or "")
-    redes_tv = html.escape(t.get("redes_tv") or "")
 
     img_html = (
         f'<img src="{poster}" alt="{titulo}"'
@@ -66,11 +62,6 @@ def renderizar_card(t: dict) -> str:
             f'<span class="cinema-badge">{html.escape(label)}</span></div>'
         )
 
-    tagline_html = (
-        f'<p class="tagline"><em>{tagline}</em></p>'
-        if tagline else ""
-    )
-
     certificacao_html = (
         f'<span class="certificacao-badge">{certificacao}</span>'
         if certificacao else ""
@@ -85,22 +76,6 @@ def renderizar_card(t: dict) -> str:
         f'<div class="meta-row"><span class="meta-icon">🎬</span>'
         f'<span class="diretor">Dir: {diretor}</span></div>'
         if diretor else ""
-    )
-    criadores_html = (
-        f'<div class="meta-row"><span class="meta-icon">✍</span>'
-        f'<span class="criadores">Criado por: {criadores}</span></div>'
-        if criadores else ""
-    )
-    redes_tv_html = (
-        f'<div class="meta-row"><span class="meta-icon">📡</span>'
-        f'<span class="redes-tv">{redes_tv}</span></div>'
-        if redes_tv else ""
-    )
-
-    colecao_html = (
-        f'<div class="meta-row"><span class="meta-icon">📚</span>'
-        f'<span class="colecao">{colecao}</span></div>'
-        if colecao else ""
     )
 
     trailer_html = ""
@@ -146,18 +121,14 @@ def renderizar_card(t: dict) -> str:
       <div class="card-body">
         <strong>{titulo}</strong>
         <span class="card-subtitle">
-          &nbsp;({ano}) — {tipo} {certificacao_html}
+          &nbsp;({ano}) — {tipo}
         </span>
-        {tagline_html}
-        <div class="generos-container">{generos_html}</div>
+        <div class="generos-container">{generos_html} {certificacao_html}</div>
         {nota_html}
         {duracao_html}
         {data_html}
         {diretor_html}
-        {criadores_html}
         {elenco_html}
-        {colecao_html}
-        {redes_tv_html}
         {cinema_html}
         {providers_html}
         {trailer_html}

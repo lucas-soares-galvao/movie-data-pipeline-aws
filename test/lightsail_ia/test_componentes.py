@@ -33,11 +33,10 @@ class TestRenderizarCard:
         html = componentes.renderizar_card(TITULO_BASE)
         assert "O Iluminado" in html
 
-    def test_card_com_tagline(self):
+    def test_card_ignora_tagline(self):
         t = {**TITULO_BASE, "tagline": "Uma frase marcante"}
         html = componentes.renderizar_card(t)
-        assert "Uma frase marcante" in html
-        assert "<em>" in html
+        assert "Uma frase marcante" not in html
 
     def test_card_com_elenco(self):
         t = {**TITULO_BASE, "elenco": "Jack Nicholson, Shelley Duvall"}
@@ -61,20 +60,20 @@ class TestRenderizarCard:
         assert "https://youtube.com/watch?v=abc123" in html
         assert "Trailer" in html
 
-    def test_card_com_colecao(self):
+    def test_card_ignora_colecao(self):
         t = {**TITULO_BASE, "colecao": "The Shining Collection"}
         html = componentes.renderizar_card(t)
-        assert "The Shining Collection" in html
+        assert "The Shining Collection" not in html
 
-    def test_card_com_criadores(self):
+    def test_card_ignora_criadores(self):
         t = {**TITULO_BASE, "criadores": "Vince Gilligan"}
         html = componentes.renderizar_card(t)
-        assert "Criado por: Vince Gilligan" in html
+        assert "Criado por:" not in html
 
-    def test_card_com_redes_tv(self):
+    def test_card_ignora_redes_tv(self):
         t = {**TITULO_BASE, "redes_tv": "HBO"}
         html = componentes.renderizar_card(t)
-        assert "HBO" in html
+        assert 'redes-tv' not in html
 
     def test_card_sem_campos_opcionais_nao_gera_divs_vazias(self):
         html = componentes.renderizar_card(TITULO_BASE)
