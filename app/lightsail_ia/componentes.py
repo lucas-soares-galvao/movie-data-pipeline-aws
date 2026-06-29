@@ -37,7 +37,6 @@ def renderizar_card(t: dict) -> str:
     duracao = t.get("duracao") or ""
     data_lancamento = html.escape(t.get("data_lancamento") or "")
     streaming_providers = t.get("streaming_providers") or ""
-    rent_buy_providers = t.get("aluguel_compra") or ""
     in_theaters = t.get("in_theaters") or False
     theater_end_date = html.escape(t.get("theater_end_date") or "")
     certificacao = html.escape(t.get("certificacao") or "")
@@ -107,18 +106,6 @@ def renderizar_card(t: dict) -> str:
             f'<span class="meta-icon">📺</span>{stream_badges}</div>'
         )
 
-    rent_buy_html = ""
-    if rent_buy_providers:
-        rb_badges = "".join(
-            f'<span class="provider">{html.escape(p.strip())}</span>'
-            for p in rent_buy_providers.split(",")
-            if p.strip()
-        )
-        rent_buy_html = (
-            f'<div class="meta-row providers-row">'
-            f'<span class="meta-icon">🛒</span>{rb_badges}</div>'
-        )
-
     nota_html = (
         f'<div class="meta-row"><span class="meta-icon">★</span>'
         f'<span class="nota">{html.escape(str(nota))}</span></div>'
@@ -149,7 +136,6 @@ def renderizar_card(t: dict) -> str:
         {data_html}
         {cinema_html}
         {providers_html}
-        {rent_buy_html}
         {trailer_html}
         <p class="sinopse">{sinopse}</p>
       </div>

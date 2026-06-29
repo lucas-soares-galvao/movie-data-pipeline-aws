@@ -56,15 +56,13 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Cada card exibe:
   - Imagem de fundo (backdrop preferido sobre poster)
-  - Título, ano e tipo (filme/série)
+  - Título, ano, tipo (filme/série) e badge de classificação indicativa (L/10/12/14/16/18)
   - Badges laranja por gênero
   - Linha com nota (★), duração (⏱), data de lançamento (📅)
-  - Badge de classificação indicativa (L/10/12/14/16/18)
   - Linha com diretor (filmes)
   - Linha com elenco (top 5 atores)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
-  - Badges 🛒 com plataformas de aluguel/compra no Brasil
   - Link clicável ▶ Trailer (quando disponível)
   - Sinopse
 
