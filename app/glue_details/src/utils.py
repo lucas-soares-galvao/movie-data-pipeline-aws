@@ -501,6 +501,7 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     def _translate(texto: str) -> str:
+        """Traduz texto de inglês para português via Google Translate."""
         if not texto:
             return ""
         try:
@@ -534,6 +535,7 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     def _translate(texto: str) -> str:
+        """Traduz keywords de inglês para português via Google Translate."""
         if not texto:
             return ""
         try:
@@ -578,14 +580,13 @@ def collect_and_write_details(
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
 
     def fetch_and_parse(item_id: int) -> None:
+        """Busca detalhes de um ID na TMDB e acumula o registro parseado."""
         try:
             detalhe = fetch_tmdb_details(api_key, content_type, item_id)
             registro = _parse_detail(detalhe, content_type)
             with lock:
                 registros.append(registro)
         except requests.RequestException as exc:
-            # Se um ID falhar (ex: ID deletado da TMDB), apenas registra o aviso
-            # e continua para os próximos IDs sem interromper o job inteiro
             logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
 
     logger.info(f"Buscando detalhes de {len(ids)} IDs ({content_type}) com {_TMDB_MAX_WORKERS} workers...")
@@ -932,6 +933,7 @@ def collect_and_write_watch_providers(
     lock = threading.Lock()
 
     def fetch_and_parse(item_id: int) -> None:
+        """Busca watch providers de um ID na TMDB e acumula os registros parseados."""
         try:
             br_data = fetch_tmdb_watch_providers(api_key, content_type, item_id)
             parsed = _parse_watch_providers(br_data, item_id, year)

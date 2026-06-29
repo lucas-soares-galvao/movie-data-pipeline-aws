@@ -60,6 +60,7 @@ _MAX_CONSULTAS_POR_HORA = 20
 
 @st.cache_resource
 def _criar_historico_por_ip() -> dict[str, list[float]]:
+    """Cria dict compartilhado para rastrear timestamps de consultas por IP."""
     return {}
 
 
@@ -67,11 +68,13 @@ _historico_por_ip = _criar_historico_por_ip()
 
 
 def _obter_ip_cliente() -> str:
+    """Extrai o IP do cliente a partir do header X-Forwarded-For repassado pelo Caddy."""
     forwarded = st.context.headers.get("X-Forwarded-For", "")
     return forwarded.split(",")[0].strip() if forwarded else "local"
 
 
 def _consultas_na_ultima_hora(ip: str) -> int:
+    """Conta consultas na última hora para o IP e limpa registros expirados."""
     agora = time.time()
     historico = [t for t in _historico_por_ip.get(ip, []) if t > agora - 3600]
     _historico_por_ip[ip] = historico
@@ -79,6 +82,7 @@ def _consultas_na_ultima_hora(ip: str) -> int:
 
 
 def _segundos_para_liberar(ip: str) -> int:
+    """Calcula quantos segundos faltam até a consulta mais antiga do IP expirar."""
     historico = _historico_por_ip.get(ip, [])
     if not historico:
         return 0

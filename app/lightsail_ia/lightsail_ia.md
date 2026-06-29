@@ -61,9 +61,6 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
   - Linha com nota (★), duração (⏱), data de lançamento (📅)
   - Badge de classificação indicativa (L/10/12/14/16/18)
   - Linha com diretor (filmes)
-  - Linha com produtor(es) (quando disponível)
-  - Linha com diretor de fotografia (quando disponível)
-  - Linha com montador(a) (quando disponível)
   - Linha com elenco (top 5 atores)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil

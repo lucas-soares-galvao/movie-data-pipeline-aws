@@ -109,7 +109,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_card_basico_contem_titulo` | Card renderiza o título do filme |
 | `test_card_ignora_tagline` | Card não renderiza tagline mesmo quando fornecida |
 | `test_card_com_elenco` | Card exibe nomes do elenco |
-| `test_card_com_diretor` | Card exibe "Dir: {nome}" para filmes |
+| `test_card_com_diretor` | Card exibe "Diretor: {nome}" para filmes |
 | `test_card_com_certificacao` | Card exibe badge de classificação indicativa |
 | `test_card_com_trailer` | Card exibe link clicável para o trailer |
 | `test_card_ignora_colecao` | Card não renderiza coleção/franquia mesmo quando fornecida |
@@ -117,6 +117,10 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_card_ignora_redes_tv` | Card não renderiza redes de TV mesmo quando fornecidas |
 | `test_card_sem_campos_opcionais_nao_gera_divs_vazias` | Campos opcionais ausentes não geram HTML vazio |
 | `test_card_cinema_em_cartaz` | Card exibe "Em cartaz até DD/MM/YYYY" quando `in_theaters=True` |
+| `test_card_nao_exibe_produtor` | Card não renderiza produtor mesmo quando fornecido |
+| `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
+| `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
+| `test_card_com_rent_buy_providers` | Card exibe plataformas de aluguel/compra (🛒) |
 | `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 

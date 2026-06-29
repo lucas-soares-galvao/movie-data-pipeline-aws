@@ -60,6 +60,13 @@ Testa as funções individuais:
 
 - `_extrair_roteiristas` (`TestExtrairRoteiristas`): roteirista único, múltiplos (Screenplay + Writer), deduplicação por nome, crew vazio
 - `_extrair_compositor` (`TestExtrairCompositor`): compositor único, múltiplos, crew vazio
+- `_extrair_produtores` (`TestExtrairProdutores`): produtor único, produtor+executivo, deduplicação por nome, limite top 3, sem produtor, crew vazio
+- `_extrair_cinematografo` (`TestExtrairCinematografo`): cinematógrafo único, múltiplos, sem cinematógrafo, crew vazio
+- `_extrair_montador` (`TestExtrairMontador`): montador único, múltiplos, sem montador, crew vazio
+- `_extrair_paises_producao` (`TestExtrairPaisesProducao`): múltiplos países, lista vazia, entrada None
+- `_extrair_titulos_recomendados` (`TestExtrairTitulosRecomendados`): formato movie (title), formato tv (name), limite customizado, dict vazio, results vazio
+- `_extrair_titulos_similares` (`TestExtrairTitulosSimilares`): formato movie (title), formato tv (name), dict vazio
+- `_extrair_titulos_alternativos` (`TestExtrairTitulosAlternativos`): formato movie (titles key), formato tv (results key), dict vazio
 - `api_get` (de `shared_utils.api_client`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
@@ -69,6 +76,69 @@ Testa as funções individuais:
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `dt_atualizacao` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
 - `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado
+
+### `TestExtrairProdutores`
+
+| Teste | O que verifica |
+|---|---|
+| `test_produtor_unico` | Extrai um único produtor (job `Producer`) |
+| `test_produtor_e_executivo` | Extrai produtor + produtor executivo |
+| `test_deduplica_mesmo_nome` | Mesmo nome com jobs diferentes conta uma só vez |
+| `test_limite_top_3` | Limita a 3 produtores quando há mais de 3 |
+| `test_sem_produtor` | Retorna `None` quando não há produtor na crew |
+| `test_crew_vazio` | Retorna `None` para crew vazia |
+
+### `TestExtrairCinematografo`
+
+| Teste | O que verifica |
+|---|---|
+| `test_cinematografo_unico` | Extrai um único diretor de fotografia |
+| `test_multiplos_cinematografos` | Extrai múltiplos diretores de fotografia |
+| `test_sem_cinematografo` | Retorna `None` quando não há cinematógrafo |
+| `test_crew_vazio` | Retorna `None` para crew vazia |
+
+### `TestExtrairMontador`
+
+| Teste | O que verifica |
+|---|---|
+| `test_montador_unico` | Extrai um único editor/montador |
+| `test_multiplos_montadores` | Extrai múltiplos montadores |
+| `test_sem_montador` | Retorna `None` quando não há montador |
+| `test_crew_vazio` | Retorna `None` para crew vazia |
+
+### `TestExtrairPaisesProducao`
+
+| Teste | O que verifica |
+|---|---|
+| `test_paises` | Extrai múltiplos países de produção |
+| `test_vazio` | Retorna `None` para lista vazia |
+| `test_none` | Retorna `None` para entrada `None` |
+
+### `TestExtrairTitulosRecomendados`
+
+| Teste | O que verifica |
+|---|---|
+| `test_movie` | Extrai títulos recomendados via chave `title` (filmes) |
+| `test_tv` | Extrai títulos recomendados via chave `name` (séries) |
+| `test_limite` | Respeita o limite customizado (top N) |
+| `test_vazio` | Retorna `None` para dict vazio |
+| `test_results_vazio` | Retorna `None` para `results` vazio |
+
+### `TestExtrairTitulosSimilares`
+
+| Teste | O que verifica |
+|---|---|
+| `test_movie` | Extrai títulos similares via chave `title` (filmes) |
+| `test_tv` | Extrai títulos similares via chave `name` (séries) |
+| `test_vazio` | Retorna `None` para dict vazio |
+
+### `TestExtrairTitulosAlternativos`
+
+| Teste | O que verifica |
+|---|---|
+| `test_movie` | Extrai títulos alternativos via chave `titles` (filmes) |
+| `test_tv` | Extrai títulos alternativos via chave `results` (séries) |
+| `test_vazio` | Retorna `None` para dict vazio |
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
 
