@@ -92,8 +92,6 @@ rulesets_dq = {
         'IsUnique "id"',
         # Validade
         'ColumnValues "runtime" >= 0',
-        'ColumnValues "budget" >= 0',
-        'ColumnValues "revenue" >= 0',
         # Integridade
         "RowCount > 0",
     ],

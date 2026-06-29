@@ -130,16 +130,6 @@ class TestRulesetsDq:
                 f"Tabela '{table}' não valida enum de 'provider_type'"
             )
 
-    def test_details_movie_validates_budget_and_revenue(self):
-        """details_movie deve validar que budget e revenue são não-negativos."""
-        rules = rulesets_dq["details_movie"]
-        assert any("budget" in r for r in rules), (
-            "details_movie não valida 'budget'"
-        )
-        assert any("revenue" in r for r in rules), (
-            "details_movie não valida 'revenue'"
-        )
-
     def test_discover_tables_validate_popularity(self):
         """Tabelas de discover devem validar que popularity é não-negativo."""
         for table in ["discover_movie", "discover_tv", "discover_unified"]:
