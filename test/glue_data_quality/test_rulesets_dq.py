@@ -105,3 +105,45 @@ class TestRulesetsDq:
         assert any('IsComplete "year"' in r for r in rules), (
             "discover_unified não tem IsComplete para 'year'"
         )
+
+    def test_configuration_tables_validate_name_pt(self):
+        """Tabelas de configuração devem validar completude da tradução name_pt."""
+        for table in ["configuration_countries", "configuration_languages"]:
+            rules = rulesets_dq[table]
+            assert any('IsComplete "name_pt"' in r for r in rules), (
+                f"Tabela '{table}' não valida completude de 'name_pt'"
+            )
+
+    def test_watch_providers_ref_validate_canonical_name(self):
+        """Tabelas de referência de providers devem validar canonical_name."""
+        for table in ["watch_providers_ref_movie", "watch_providers_ref_tv"]:
+            rules = rulesets_dq[table]
+            assert any('IsComplete "canonical_name"' in r for r in rules), (
+                f"Tabela '{table}' não valida completude de 'canonical_name'"
+            )
+
+    def test_watch_providers_validate_provider_type_enum(self):
+        """Tabelas de providers devem validar enum de provider_type."""
+        for table in ["watch_providers_movie", "watch_providers_tv"]:
+            rules = rulesets_dq[table]
+            assert any("provider_type" in r and "in [" in r for r in rules), (
+                f"Tabela '{table}' não valida enum de 'provider_type'"
+            )
+
+    def test_details_movie_validates_budget_and_revenue(self):
+        """details_movie deve validar que budget e revenue são não-negativos."""
+        rules = rulesets_dq["details_movie"]
+        assert any("budget" in r for r in rules), (
+            "details_movie não valida 'budget'"
+        )
+        assert any("revenue" in r for r in rules), (
+            "details_movie não valida 'revenue'"
+        )
+
+    def test_discover_tables_validate_popularity(self):
+        """Tabelas de discover devem validar que popularity é não-negativo."""
+        for table in ["discover_movie", "discover_tv", "discover_unified"]:
+            rules = rulesets_dq[table]
+            assert any("popularity" in r for r in rules), (
+                f"Tabela '{table}' não valida 'popularity'"
+            )

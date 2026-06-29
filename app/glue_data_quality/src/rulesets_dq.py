@@ -20,6 +20,8 @@ rulesets_dq = {
         # Completude
         'IsComplete "iso_3166_1"',
         'IsComplete "native_name"',
+        'IsComplete "english_name"',
+        'IsComplete "name_pt"',
         # Unicidade
         'IsUnique "iso_3166_1"',
         # Validade
@@ -30,6 +32,7 @@ rulesets_dq = {
         # Completude
         'IsComplete "iso_639_1"',
         'IsComplete "english_name"',
+        'IsComplete "name_pt"',
         # Unicidade
         'IsUnique "iso_639_1"',
         # Validade
@@ -65,6 +68,7 @@ rulesets_dq = {
         # Validade
         'ColumnValues "vote_average" >= 0',
         'ColumnValues "vote_average" <= 10',
+        'ColumnValues "popularity" >= 0',
         # Integridade
         "RowCount > 0",
     ],
@@ -77,6 +81,7 @@ rulesets_dq = {
         # Validade
         'ColumnValues "vote_average" >= 0',
         'ColumnValues "vote_average" <= 10',
+        'ColumnValues "popularity" >= 0',
         # Integridade
         "RowCount > 0",
     ],
@@ -87,6 +92,8 @@ rulesets_dq = {
         'IsUnique "id"',
         # Validade
         'ColumnValues "runtime" >= 0',
+        'ColumnValues "budget" >= 0',
+        'ColumnValues "revenue" >= 0',
         # Integridade
         "RowCount > 0",
     ],
@@ -110,6 +117,7 @@ rulesets_dq = {
         # Unicidade
         'Uniqueness "id" "provider_id" "provider_type" = 1',
         # Validade
+        'ColumnValues "provider_type" in ["flatrate", "rent", "buy"]',
         # Integridade
         "RowCount > 0",
     ],
@@ -122,6 +130,7 @@ rulesets_dq = {
         # Unicidade
         'Uniqueness "id" "provider_id" "provider_type" = 1',
         # Validade
+        'ColumnValues "provider_type" in ["flatrate", "rent", "buy"]',
         # Integridade
         "RowCount > 0",
     ],
@@ -129,6 +138,7 @@ rulesets_dq = {
         # Completude
         'IsComplete "provider_id"',
         'IsComplete "provider_name"',
+        'IsComplete "canonical_name"',
         # Unicidade
         'IsUnique "provider_id"',
         # Validade
@@ -139,6 +149,7 @@ rulesets_dq = {
         # Completude
         'IsComplete "provider_id"',
         'IsComplete "provider_name"',
+        'IsComplete "canonical_name"',
         # Unicidade
         'IsUnique "provider_id"',
         # Validade
@@ -168,6 +179,7 @@ rulesets_dq = {
         'ColumnValues "media_type" in ["movie", "tv"]',
         'ColumnValues "vote_average" >= 0',
         'ColumnValues "vote_average" <= 10',
+        'ColumnValues "popularity" >= 0',
         # Integridade
         "RowCount > 0",
     ],

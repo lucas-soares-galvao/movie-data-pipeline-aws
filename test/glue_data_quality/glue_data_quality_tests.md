@@ -156,6 +156,11 @@ As 14 tabelas verificadas por `EXPECTED_TABLES` são (nomes lógicos, sem prefix
 | `test_tables_with_id_have_completeness_and_uniqueness` | Tabelas que têm coluna `id` (discover, details, genre, now_playing) têm `IsComplete "id"` e `IsUnique "id"` |
 | `test_now_playing_validates_theater_dates` | `now_playing_movie` valida completude de `theater_start_date` e `theater_end_date` |
 | `test_unified_validates_year_completeness` | `discover_unified` valida `IsComplete "year"` para a coluna de partição |
+| `test_configuration_tables_validate_name_pt` | `configuration_countries` e `configuration_languages` validam completude de `name_pt` (tradução pt-BR) |
+| `test_watch_providers_ref_validate_canonical_name` | `watch_providers_ref_movie` e `watch_providers_ref_tv` validam completude de `canonical_name` (nome normalizado do provedor) |
+| `test_watch_providers_validate_provider_type_enum` | `watch_providers_movie` e `watch_providers_tv` validam que `provider_type` é um dos valores permitidos (`flatrate`, `rent`, `buy`) |
+| `test_details_movie_validates_budget_and_revenue` | `details_movie` valida que `budget` e `revenue` são não-negativos |
+| `test_discover_tables_validate_popularity` | `discover_movie`, `discover_tv` e `discover_unified` validam que `popularity` é não-negativo |
 
 ## Como executar
 
