@@ -19,6 +19,7 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 6b. **Tradução de keywords:** traduz as keywords temáticas (sempre em inglês na TMDB, não suportam localização) para português via Google Translate, gravando na coluna `keywords_pt`. Traduz todos os registros com keywords não-nulas, independente do idioma original
 6c. **Tradução de tagline (TMDB pt-BR → Google Translate):** primeiro verifica se o TMDB já possui tradução pt-BR da tagline. Caso exista, usa diretamente. Caso contrário, traduz via Google Translate. Grava na coluna `tagline_pt`
 6d. **Países de produção:** extrai os códigos ISO 3166-1 dos países de produção (`production_countries_iso`) para lookup na tabela de referência `tb_configuration_countries` no Glue AGG (substituindo o antigo Google Translate)
+6e2. **Idiomas falados:** extrai os códigos ISO 639-1 dos idiomas falados (`spoken_languages_iso`) para lookup na tabela de referência `tb_configuration_languages` no Glue AGG, resolvendo nomes em português
 6e. **Coleções em pt-BR:** para filmes com coleção/franquia, busca o nome em português via `/collection/{id}?language=pt-BR` na API do TMDB. Chamadas deduplicadas por collection_id (1 chamada para toda a coleção, ex: Marvel = 1 chamada para 30+ filmes). Grava na coluna `collection_name_pt`
 7. **Watch providers (refresh mensal):** mesma lógica de delta — consulta a tabela `tb_watch_providers_*` e seleciona apenas IDs *stale* (desatualizados): sem registro, com data nula ou atualizados antes do mês atual
 7. Para cada ID stale, chama `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` e grava em `tb_tmdb_watch_providers_{movie|tv}_{env}`
@@ -61,6 +62,7 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `_extrair_criadores(created_by)` | Criadores de série comma-separated |
 | `_extrair_networks(networks)` | Redes de TV comma-separated |
 | `_extrair_spoken_languages(spoken_languages)` | Idiomas falados comma-separated (prioriza `name` nativo sobre `english_name`) |
+| `_extrair_spoken_languages_iso(spoken_languages)` | Códigos ISO 639-1 dos idiomas falados como array (para lookup no AGG) |
 | `_extrair_produtores(creditos, limite)` | Produtor(es) e produtores executivos, deduplicados, top N |
 | `_extrair_cinematografo(creditos)` | Diretor(es) de fotografia (job='Director of Photography') |
 | `_extrair_montador(creditos)` | Montador(es) (job='Editor') |

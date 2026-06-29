@@ -129,14 +129,15 @@ class TestRunAthenaQuery:
         assert "'Em Produção'" in sql
         assert "AS title_status" in sql
 
-    def test_query_usa_lang_name_nao_english_name(self):
+    def test_query_usa_lang_name_pt_com_fallback(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
             run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
+        assert "lang.name_pt" in sql
+        assert "lang.english_name" in sql
         assert "lang.name" in sql
-        assert "lang.english_name" not in sql
 
     def test_query_usa_ctry_name_pt(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
@@ -162,6 +163,23 @@ class TestRunAthenaQuery:
             sql = kwargs["sql"]
 
         assert "COALESCE(pcr.production_countries_pt, d.production_countries)" in sql
+
+    def test_query_usa_coalesce_spoken_languages_pt(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "COALESCE(slr.spoken_languages_pt, d.spoken_languages)" in sql
+
+    def test_query_possui_cte_spoken_languages_resolved(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "spoken_languages_resolved" in sql
+        assert "spoken_languages_iso" in sql
 
 
 class TestWriteParquetToSpec:

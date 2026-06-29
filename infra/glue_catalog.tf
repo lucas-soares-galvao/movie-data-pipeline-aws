@@ -348,6 +348,10 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       name = "name"
       type = "string"
     }
+    columns {
+      name = "name_pt"
+      type = "string"
+    }
   }
 }
 
@@ -476,6 +480,10 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
     columns {
       name = "spoken_languages"
       type = "string"
+    }
+    columns {
+      name = "spoken_languages_iso"
+      type = "array<string>"
     }
     columns {
       name = "actor_names"
@@ -640,6 +648,10 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     columns {
       name = "spoken_languages"
       type = "string"
+    }
+    columns {
+      name = "spoken_languages_iso"
+      type = "array<string>"
     }
     columns {
       name = "created_by"
