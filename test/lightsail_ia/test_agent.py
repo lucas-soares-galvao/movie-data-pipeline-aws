@@ -40,9 +40,11 @@ COLUMNS = [
     "runtime_minutes", "number_of_seasons",
     "number_of_episodes", "episode_runtime_minutes",
     "tagline", "actor_names", "director", "screenplay", "music_composer",
+    "producer", "cinematographer", "editor",
     "keywords_pt", "certification", "trailer_url", "collection_name",
-    "production_companies", "networks", "created_by",
-    "streaming_providers",
+    "production_companies", "production_countries", "networks", "created_by",
+    "streaming_providers", "rent_buy_providers",
+    "recommended_titles", "similar_titles", "alternative_titles",
     "in_theaters", "theater_end_date",
 ]
 

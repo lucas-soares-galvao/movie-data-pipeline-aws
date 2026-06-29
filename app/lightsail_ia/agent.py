@@ -226,9 +226,11 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
                tagline, actor_names, director, screenplay, music_composer,
+               producer, cinematographer, editor,
                keywords_pt, certification, trailer_url, collection_name,
-               production_companies, networks, created_by,
-               streaming_providers,
+               production_companies, production_countries, networks, created_by,
+               streaming_providers, rent_buy_providers,
+               recommended_titles, similar_titles, alternative_titles,
                in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
         WHERE vote_count >= 50 AND {filtro_where}
@@ -340,11 +342,15 @@ def recomendar(preferencia: str) -> list[dict]:
                         "- budget (bigint): orçamento em USD. Apenas filmes. Use > para filtrar alto orçamento.\n"
                         "- revenue (bigint): receita de bilheteria em USD. Apenas filmes.\n"
                         "- production_companies (string): estúdios produtores (ex: 'A24, Pixar'). Use lower() + LIKE.\n"
+                        "- production_countries (string): países de produção (ex: 'United States, New Zealand'). Diferente de origin_country (cultural). Use lower() + LIKE para coproduções.\n"
                         "- spoken_languages (string): idiomas falados no título (ex: 'English, French'). Use lower() + LIKE.\n"
                         "- actor_names (string): top 5 atores/atrizes (ex: 'Tom Hanks, Robin Wright'). Use lower() + LIKE.\n"
                         "- director (string): diretor(es) (ex: 'Christopher Nolan'). Filmes e séries. Use lower() + LIKE.\n"
                         "- screenplay (string): roteiristas/escritores (ex: 'Aaron Sorkin, Charlie Kaufman'). Filmes e séries. Use lower() + LIKE.\n"
                         "- music_composer (string): compositor da trilha sonora (ex: 'Hans Zimmer, John Williams'). Filmes e séries. Use lower() + LIKE.\n"
+                        "- producer (string): produtor(es) e produtores executivos (ex: 'Kevin Feige, Jerry Bruckheimer'). Filmes e séries. Use lower() + LIKE.\n"
+                        "- cinematographer (string): diretor de fotografia (ex: 'Roger Deakins, Emmanuel Lubezki'). Filmes e séries. Use lower() + LIKE.\n"
+                        "- editor (string): montador(a) (ex: 'Thelma Schoonmaker, Lee Smith'). Filmes e séries. Use lower() + LIKE.\n"
                         "- keywords_pt (string): tags temáticas em português (ex: 'viagem no tempo, distopia, baseado em romance'). Use lower() + LIKE.\n"
                         "- certification (string): classificação indicativa BR (ex: 'L', '10', '12', '14', '16', '18'). Use = para valor exato.\n"
                         "- trailer_url (string): link do trailer no YouTube. Não filtrar por este campo.\n"
@@ -354,7 +360,11 @@ def recomendar(preferencia: str) -> list[dict]:
                         "- in_production (boolean): se a série ainda está em produção. Apenas séries.\n"
                         "- last_air_date (string): data do último episódio exibido (séries). Formato 'YYYY-MM-DD'.\n"
                         "- tv_type (string): tipo de série ('Scripted', 'Reality', 'Documentary', 'Miniseries'). Apenas séries.\n"
-                        "- streaming_providers (string): plataformas de streaming no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
+                        "- streaming_providers (string): plataformas de streaming por assinatura no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
+                        "- rent_buy_providers (string): plataformas de aluguel/compra no Brasil (ex: 'Apple TV, Google Play'). Use lower() + LIKE.\n"
+                        "- recommended_titles (string): títulos recomendados pelo TMDB (ex: 'Interstellar, The Prestige'). Use lower() + LIKE para encontrar títulos relacionados.\n"
+                        "- similar_titles (string): títulos similares pelo TMDB. Use lower() + LIKE.\n"
+                        "- alternative_titles (string): nomes alternativos/regionais do título. Use lower() + LIKE para buscar por nome em outro idioma.\n"
                         "- in_theaters (boolean): true se está em cartaz nos cinemas\n"
                         "- theater_start_date (string): data de estreia nos cinemas ('YYYY-MM-DD')\n"
                         "- theater_end_date (string): data de saída dos cinemas ('YYYY-MM-DD')\n"

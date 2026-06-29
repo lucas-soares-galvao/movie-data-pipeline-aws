@@ -223,9 +223,9 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}"
 
     if content_type == "movie":
-        append = "credits,keywords,release_dates,videos,external_ids"
+        append = "credits,keywords,release_dates,videos,external_ids,recommendations,similar,alternative_titles"
     else:
-        append = "credits,keywords,content_ratings,videos,external_ids"
+        append = "credits,keywords,content_ratings,videos,external_ids,recommendations,similar,alternative_titles"
 
     params = {
         "api_key": api_key,
@@ -339,74 +339,151 @@ def _extrair_spoken_languages(spoken_languages: list) -> Optional[str]:
     return ", ".join(nomes) if nomes else None
 
 
+def _extrair_produtores(creditos: dict, limite: int = 3) -> Optional[str]:
+    """Produtor(es) e produtores executivos, deduplicados, limitados a top N."""
+    crew = creditos.get("crew", [])
+    nomes: list[str] = []
+    vistos: set[str] = set()
+    for c in crew:
+        if c.get("job") in ("Producer", "Executive Producer") and c.get("name"):
+            nome = c["name"]
+            if nome not in vistos:
+                vistos.add(nome)
+                nomes.append(nome)
+            if len(nomes) >= limite:
+                break
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_cinematografo(creditos: dict) -> Optional[str]:
+    """Diretor(es) de fotografia (job == 'Director of Photography' no crew)."""
+    crew = creditos.get("crew", [])
+    nomes = [c["name"] for c in crew if c.get("job") == "Director of Photography"]
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_montador(creditos: dict) -> Optional[str]:
+    """Montador(es) do filme/série (job == 'Editor' no crew)."""
+    crew = creditos.get("crew", [])
+    nomes = [c["name"] for c in crew if c.get("job") == "Editor"]
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_paises_producao(production_countries: list) -> Optional[str]:
+    """Países de produção, separados por vírgula."""
+    nomes = [c.get("name", "") for c in (production_countries or []) if c.get("name")]
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_titulos_recomendados(recommendations: dict, content_type: str, limite: int = 10) -> Optional[str]:
+    """Top N títulos recomendados pelo TMDB, separados por vírgula."""
+    results = recommendations.get("results", [])
+    campo = "title" if content_type == "movie" else "name"
+    nomes = [r[campo] for r in results[:limite] if r.get(campo)]
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_titulos_similares(similar: dict, content_type: str, limite: int = 10) -> Optional[str]:
+    """Top N títulos similares pelo TMDB, separados por vírgula."""
+    results = similar.get("results", [])
+    campo = "title" if content_type == "movie" else "name"
+    nomes = [r[campo] for r in results[:limite] if r.get(campo)]
+    return ", ".join(nomes) if nomes else None
+
+
+def _extrair_titulos_alternativos(alternative_titles: dict, content_type: str) -> Optional[str]:
+    """Títulos alternativos/regionais, separados por vírgula."""
+    campo_lista = "titles" if content_type == "movie" else "results"
+    titulos = alternative_titles.get(campo_lista, [])
+    nomes = [t["title"] for t in titulos if t.get("title")]
+    return ", ".join(nomes) if nomes else None
+
+
 def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
     """Extrai os campos relevantes da resposta de /movie/{id} ou /tv/{id}."""
     creditos = detalhe.get("credits", {})
     keywords_data = detalhe.get("keywords", {})
     videos_data = detalhe.get("videos", {})
     external_ids = detalhe.get("external_ids", {})
+    recommendations_data = detalhe.get("recommendations", {})
+    similar_data = detalhe.get("similar", {})
+    alt_titles_data = detalhe.get("alternative_titles", {})
 
     if content_type == "movie":
         release_date = detalhe.get("release_date") or ""
         year = release_date[:4] if release_date else None
         collection = detalhe.get("belongs_to_collection")
         return {
-            "id":                   detalhe.get("id"),
-            "runtime":              detalhe.get("runtime"),
-            "overview_en":          detalhe.get("overview"),
-            "poster_path_en":       detalhe.get("poster_path"),
-            "backdrop_path_en":     detalhe.get("backdrop_path"),
-            "original_language":    detalhe.get("original_language"),
-            "tagline":              detalhe.get("tagline") or None,
-            "status":               detalhe.get("status"),
-            "collection_name":      collection.get("name") if collection else None,
-            "budget":               detalhe.get("budget") or None,
-            "revenue":              detalhe.get("revenue") or None,
-            "production_companies": _extrair_produtoras(detalhe.get("production_companies")),
-            "spoken_languages":     _extrair_spoken_languages(detalhe.get("spoken_languages")),
-            "actor_names":          _extrair_elenco(creditos),
-            "director":             _extrair_diretor(creditos),
-            "screenplay":           _extrair_roteiristas(creditos),
-            "music_composer":       _extrair_compositor(creditos),
-            "keywords":             _extrair_keywords(keywords_data),
-            "certification":        _extrair_certificacao_br_movie(detalhe.get("release_dates", {})),
-            "trailer_url":          _extrair_trailer_url(videos_data),
-            "imdb_id":              external_ids.get("imdb_id"),
-            "origin_country":       detalhe.get("origin_country"),
-            "dt_processamento":     date.today(),
-            "year":                 year,
+            "id":                    detalhe.get("id"),
+            "runtime":               detalhe.get("runtime"),
+            "overview_en":           detalhe.get("overview"),
+            "poster_path_en":        detalhe.get("poster_path"),
+            "backdrop_path_en":      detalhe.get("backdrop_path"),
+            "original_language":     detalhe.get("original_language"),
+            "tagline":               detalhe.get("tagline") or None,
+            "status":                detalhe.get("status"),
+            "collection_name":       collection.get("name") if collection else None,
+            "budget":                detalhe.get("budget") or None,
+            "revenue":               detalhe.get("revenue") or None,
+            "production_companies":  _extrair_produtoras(detalhe.get("production_companies")),
+            "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
+            "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
+            "actor_names":           _extrair_elenco(creditos),
+            "director":              _extrair_diretor(creditos),
+            "screenplay":            _extrair_roteiristas(creditos),
+            "music_composer":        _extrair_compositor(creditos),
+            "producer":              _extrair_produtores(creditos),
+            "cinematographer":       _extrair_cinematografo(creditos),
+            "editor":                _extrair_montador(creditos),
+            "keywords":              _extrair_keywords(keywords_data),
+            "certification":         _extrair_certificacao_br_movie(detalhe.get("release_dates", {})),
+            "trailer_url":           _extrair_trailer_url(videos_data),
+            "imdb_id":               external_ids.get("imdb_id"),
+            "origin_country":        detalhe.get("origin_country"),
+            "recommended_titles":    _extrair_titulos_recomendados(recommendations_data, content_type),
+            "similar_titles":        _extrair_titulos_similares(similar_data, content_type),
+            "alternative_titles":    _extrair_titulos_alternativos(alt_titles_data, content_type),
+            "dt_processamento":      date.today(),
+            "year":                  year,
         }
     else:  # tv
         first_air_date = detalhe.get("first_air_date") or ""
         year = first_air_date[:4] if first_air_date else None
         return {
-            "id":                   detalhe.get("id"),
-            "number_of_seasons":    detalhe.get("number_of_seasons"),
-            "number_of_episodes":   detalhe.get("number_of_episodes"),
-            "episode_run_time":     detalhe.get("episode_run_time", []),
-            "overview_en":          detalhe.get("overview"),
-            "poster_path_en":       detalhe.get("poster_path"),
-            "backdrop_path_en":     detalhe.get("backdrop_path"),
-            "original_language":    detalhe.get("original_language"),
-            "tagline":              detalhe.get("tagline") or None,
-            "status":               detalhe.get("status"),
-            "production_companies": _extrair_produtoras(detalhe.get("production_companies")),
-            "spoken_languages":     _extrair_spoken_languages(detalhe.get("spoken_languages")),
-            "created_by":           _extrair_criadores(detalhe.get("created_by")),
-            "networks":             _extrair_networks(detalhe.get("networks")),
-            "in_production":        detalhe.get("in_production"),
-            "last_air_date":        detalhe.get("last_air_date"),
-            "tv_type":              detalhe.get("type"),
-            "actor_names":          _extrair_elenco(creditos),
-            "director":             _extrair_diretor(creditos),
-            "screenplay":           _extrair_roteiristas(creditos),
-            "music_composer":       _extrair_compositor(creditos),
-            "keywords":             _extrair_keywords(keywords_data),
-            "certification":        _extrair_certificacao_br_tv(detalhe.get("content_ratings", {})),
-            "trailer_url":          _extrair_trailer_url(videos_data),
-            "imdb_id":              external_ids.get("imdb_id"),
-            "dt_processamento":     date.today(),
-            "year":                 year,
+            "id":                    detalhe.get("id"),
+            "number_of_seasons":     detalhe.get("number_of_seasons"),
+            "number_of_episodes":    detalhe.get("number_of_episodes"),
+            "episode_run_time":      detalhe.get("episode_run_time", []),
+            "overview_en":           detalhe.get("overview"),
+            "poster_path_en":        detalhe.get("poster_path"),
+            "backdrop_path_en":      detalhe.get("backdrop_path"),
+            "original_language":     detalhe.get("original_language"),
+            "tagline":               detalhe.get("tagline") or None,
+            "status":                detalhe.get("status"),
+            "production_companies":  _extrair_produtoras(detalhe.get("production_companies")),
+            "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
+            "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
+            "created_by":            _extrair_criadores(detalhe.get("created_by")),
+            "networks":              _extrair_networks(detalhe.get("networks")),
+            "in_production":         detalhe.get("in_production"),
+            "last_air_date":         detalhe.get("last_air_date"),
+            "tv_type":               detalhe.get("type"),
+            "actor_names":           _extrair_elenco(creditos),
+            "director":              _extrair_diretor(creditos),
+            "screenplay":            _extrair_roteiristas(creditos),
+            "music_composer":        _extrair_compositor(creditos),
+            "producer":              _extrair_produtores(creditos),
+            "cinematographer":       _extrair_cinematografo(creditos),
+            "editor":                _extrair_montador(creditos),
+            "keywords":              _extrair_keywords(keywords_data),
+            "certification":         _extrair_certificacao_br_tv(detalhe.get("content_ratings", {})),
+            "trailer_url":           _extrair_trailer_url(videos_data),
+            "imdb_id":               external_ids.get("imdb_id"),
+            "recommended_titles":    _extrair_titulos_recomendados(recommendations_data, content_type),
+            "similar_titles":        _extrair_titulos_similares(similar_data, content_type),
+            "alternative_titles":    _extrair_titulos_alternativos(alt_titles_data, content_type),
+            "dt_processamento":      date.today(),
+            "year":                  year,
         }
 
 

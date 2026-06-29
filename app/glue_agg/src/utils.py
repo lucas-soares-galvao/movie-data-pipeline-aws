@@ -129,9 +129,11 @@ genre_names AS (
 movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, status, collection_name, budget, revenue, production_companies,
-        spoken_languages, actor_names, director, screenplay, music_composer,
+        production_countries, spoken_languages, actor_names, director, screenplay,
+        music_composer, producer, cinematographer, editor,
         keywords, keywords_pt, certification,
         trailer_url, imdb_id, origin_country,
+        recommended_titles, similar_titles, alternative_titles,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_movie}.{tb_details_movie}
 ),
@@ -139,9 +141,11 @@ movie_details_ranked AS (
 movie_details AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, status, collection_name, budget, revenue, production_companies,
-        spoken_languages, actor_names, director, screenplay, music_composer,
+        production_countries, spoken_languages, actor_names, director, screenplay,
+        music_composer, producer, cinematographer, editor,
         keywords, keywords_pt, certification,
-        trailer_url, imdb_id, origin_country
+        trailer_url, imdb_id, origin_country,
+        recommended_titles, similar_titles, alternative_titles
     FROM movie_details_ranked
     WHERE rn = 1
 ),
@@ -157,10 +161,13 @@ tv_details_ranked AS (
         number_of_episodes,
         element_at(episode_run_time, 1) AS episode_runtime_minutes,
         overview_en, overview_pt, poster_path_en, backdrop_path_en,
-        tagline, status, production_companies, spoken_languages,
+        tagline, status, production_companies, production_countries,
+        spoken_languages,
         created_by, networks, in_production, last_air_date, tv_type,
         actor_names, director, screenplay, music_composer,
+        producer, cinematographer, editor,
         keywords, keywords_pt, certification, trailer_url, imdb_id,
+        recommended_titles, similar_titles, alternative_titles,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_tv}.{tb_details_tv}
 ),
@@ -168,10 +175,13 @@ tv_details_ranked AS (
 tv_details AS (
     SELECT id, number_of_seasons, number_of_episodes, episode_runtime_minutes,
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
-           tagline, status, production_companies, spoken_languages,
+           tagline, status, production_companies, production_countries,
+           spoken_languages,
            created_by, networks, in_production, last_air_date, tv_type,
            actor_names, director, screenplay, music_composer,
-           keywords, keywords_pt, certification, trailer_url, imdb_id
+           producer, cinematographer, editor,
+           keywords, keywords_pt, certification, trailer_url, imdb_id,
+           recommended_titles, similar_titles, alternative_titles
     FROM tv_details_ranked
     WHERE rn = 1
 ),
@@ -187,10 +197,12 @@ details AS (
            NULL AS episode_runtime_minutes,
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
            tagline, status, collection_name, budget, revenue,
-           production_companies, spoken_languages,
+           production_companies, production_countries, spoken_languages,
            actor_names, director, screenplay, music_composer,
+           producer, cinematographer, editor,
            keywords, keywords_pt, certification,
            trailer_url, imdb_id, origin_country,
+           recommended_titles, similar_titles, alternative_titles,
            NULL AS created_by,
            NULL AS networks,
            CAST(NULL AS BOOLEAN) AS in_production,
@@ -204,10 +216,12 @@ details AS (
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
            tagline, status,
            NULL AS collection_name, CAST(NULL AS BIGINT) AS budget, CAST(NULL AS BIGINT) AS revenue,
-           production_companies, spoken_languages,
+           production_companies, production_countries, spoken_languages,
            actor_names, director, screenplay, music_composer,
+           producer, cinematographer, editor,
            keywords, keywords_pt, certification, trailer_url, imdb_id,
            CAST(NULL AS ARRAY<VARCHAR>) AS origin_country,
+           recommended_titles, similar_titles, alternative_titles,
            created_by, networks, in_production, last_air_date, tv_type
     FROM tv_details
 ),
@@ -309,6 +323,66 @@ providers AS (
     SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
 ),
 
+-- Provedores de aluguel/compra BR: mesma lógica de streaming_providers,
+-- mas com provider_type IN ('rent', 'buy') em vez de 'flatrate'.
+movie_rb_recent AS (
+    SELECT id, provider_type, provider_name,
+           DENSE_RANK() OVER (PARTITION BY id ORDER BY CAST(year AS INTEGER) DESC) AS rn
+    FROM {db_movie}.{tb_watch_providers_movie}
+    WHERE provider_type IN ('rent', 'buy')
+),
+
+tv_rb_recent AS (
+    SELECT id, provider_type, provider_name,
+           DENSE_RANK() OVER (PARTITION BY id ORDER BY CAST(year AS INTEGER) DESC) AS rn
+    FROM {db_tv}.{tb_watch_providers_tv}
+    WHERE provider_type IN ('rent', 'buy')
+),
+
+movie_rb_ranked AS (
+    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    FROM movie_rb_recent wp
+    JOIN provider_ref r ON r.provider_name = wp.provider_name
+    WHERE wp.rn = 1
+    GROUP BY wp.id, r.canonical_name
+),
+
+movie_rent_buy AS (
+    SELECT
+        id,
+        array_join(
+            array_agg(canonical_name ORDER BY min_priority ASC),
+            ', '
+        ) AS rent_buy_providers
+    FROM movie_rb_ranked
+    GROUP BY id
+),
+
+tv_rb_ranked AS (
+    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    FROM tv_rb_recent wp
+    JOIN provider_ref r ON r.provider_name = wp.provider_name
+    WHERE wp.rn = 1
+    GROUP BY wp.id, r.canonical_name
+),
+
+tv_rent_buy AS (
+    SELECT
+        id,
+        array_join(
+            array_agg(canonical_name ORDER BY min_priority ASC),
+            ', '
+        ) AS rent_buy_providers
+    FROM tv_rb_ranked
+    GROUP BY id
+),
+
+rent_buy AS (
+    SELECT id, 'movie' AS media_type, rent_buy_providers FROM movie_rent_buy
+    UNION ALL
+    SELECT id, 'tv'    AS media_type, rent_buy_providers FROM tv_rent_buy
+),
+
 -- Filmes atualmente em cartaz nos cinemas, atualizados semanalmente pela Lambda.
 -- Snapshot sem partição por ano — contém apenas os filmes da semana atual.
 now_playing AS (
@@ -364,21 +438,29 @@ spec_raw AS (
         d.budget,
         d.revenue,
         d.production_companies,
+        d.production_countries,
         d.spoken_languages,
         d.actor_names,
         d.director,
         d.screenplay,
         d.music_composer,
+        d.producer,
+        d.cinematographer,
+        d.editor,
         d.keywords_pt,
         d.certification,
         d.trailer_url,
         d.imdb_id,
+        d.recommended_titles,
+        d.similar_titles,
+        d.alternative_titles,
         d.created_by,
         d.networks,
         d.in_production,
         d.last_air_date,
         d.tv_type,
         p.streaming_providers,
+        rb.rent_buy_providers,
         -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot semanal).
         -- Séries e filmes fora de cartaz recebem FALSE (np.id = NULL no LEFT JOIN).
         CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
@@ -396,6 +478,8 @@ spec_raw AS (
         ON  d.id = u.id AND d.media_type = u.media_type
     LEFT JOIN providers p
         ON  p.id = u.id AND p.media_type = u.media_type
+    LEFT JOIN rent_buy rb
+        ON  rb.id = u.id AND rb.media_type = u.media_type
     LEFT JOIN now_playing np
         ON  np.id = u.id AND u.media_type = 'movie'
 ),
@@ -417,10 +501,15 @@ SELECT
     vote_average, vote_count, origin_country, origin_country_name, adult, year,
     runtime_minutes, number_of_seasons, number_of_episodes, episode_runtime_minutes,
     tagline, title_status, collection_name, budget, revenue,
-    production_companies, spoken_languages,
-    actor_names, director, screenplay, music_composer, keywords_pt, certification,
-    trailer_url, imdb_id, created_by, networks, in_production, last_air_date, tv_type,
-    streaming_providers, in_theaters, theater_start_date, theater_end_date
+    production_companies, production_countries, spoken_languages,
+    actor_names, director, screenplay, music_composer,
+    producer, cinematographer, editor,
+    keywords_pt, certification,
+    trailer_url, imdb_id,
+    recommended_titles, similar_titles, alternative_titles,
+    created_by, networks, in_production, last_air_date, tv_type,
+    streaming_providers, rent_buy_providers,
+    in_theaters, theater_start_date, theater_end_date
 FROM spec_deduped
 WHERE rn_final = 1
 ORDER BY year DESC, popularity DESC
