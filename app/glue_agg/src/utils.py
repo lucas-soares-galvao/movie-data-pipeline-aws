@@ -472,10 +472,10 @@ spec_raw AS (
         AND gn.media_type = u.media_type
     LEFT JOIN {db_movie}.{tb_configuration_languages} lang
         ON lang.iso_639_1 = u.original_language
-    LEFT JOIN {db_tv}.{tb_configuration_countries} ctry
-        ON ctry.iso_3166_1 = element_at(COALESCE(d.origin_country, u.origin_country), 1)
     LEFT JOIN details d
         ON  d.id = u.id AND d.media_type = u.media_type
+    LEFT JOIN {db_tv}.{tb_configuration_countries} ctry
+        ON ctry.iso_3166_1 = element_at(COALESCE(d.origin_country, u.origin_country), 1)
     LEFT JOIN providers p
         ON  p.id = u.id AND p.media_type = u.media_type
     LEFT JOIN rent_buy rb
