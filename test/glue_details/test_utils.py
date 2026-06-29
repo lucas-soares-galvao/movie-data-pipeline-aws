@@ -224,15 +224,94 @@ class TestExtrairNetworks:
 
 
 class TestExtrairSpokenLanguages:
-    def test_idiomas(self):
-        langs = [{"english_name": "English"}, {"english_name": "French"}]
-        assert u._extrair_spoken_languages(langs) == "English, French"
+    def test_prioriza_name_sobre_english_name(self):
+        langs = [{"name": "Português", "english_name": "Portuguese"}, {"name": "Français", "english_name": "French"}]
+        assert u._extrair_spoken_languages(langs) == "Português, Français"
+
+    def test_fallback_para_english_name(self):
+        langs = [{"english_name": "English"}, {"name": "Français", "english_name": "French"}]
+        assert u._extrair_spoken_languages(langs) == "English, Français"
 
     def test_vazio(self):
         assert u._extrair_spoken_languages([]) is None
 
     def test_none(self):
         assert u._extrair_spoken_languages(None) is None
+
+
+class TestExtrairTraducaoPtBr:
+    def test_extrai_overview_e_tagline_pt_br(self):
+        translations = {"translations": [
+            {"iso_639_1": "es", "iso_3166_1": "ES", "data": {"overview": "Sinopsis", "tagline": "Lema"}},
+            {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "Sinopse BR", "tagline": "Slogan BR"}},
+        ]}
+        result = u._extrair_traducao_pt_br(translations)
+        assert result["overview_pt_tmdb"] == "Sinopse BR"
+        assert result["tagline_pt_tmdb"] == "Slogan BR"
+
+    def test_retorna_none_quando_sem_pt_br(self):
+        translations = {"translations": [
+            {"iso_639_1": "es", "iso_3166_1": "ES", "data": {"overview": "Sinopsis", "tagline": "Lema"}},
+        ]}
+        result = u._extrair_traducao_pt_br(translations)
+        assert result["overview_pt_tmdb"] is None
+        assert result["tagline_pt_tmdb"] is None
+
+    def test_retorna_none_quando_translations_vazio(self):
+        result = u._extrair_traducao_pt_br({})
+        assert result["overview_pt_tmdb"] is None
+        assert result["tagline_pt_tmdb"] is None
+
+    def test_ignora_pt_de_portugal(self):
+        translations = {"translations": [
+            {"iso_639_1": "pt", "iso_3166_1": "PT", "data": {"overview": "Sinopse PT", "tagline": "Slogan PT"}},
+        ]}
+        result = u._extrair_traducao_pt_br(translations)
+        assert result["overview_pt_tmdb"] is None
+        assert result["tagline_pt_tmdb"] is None
+
+    def test_ignora_overview_vazio(self):
+        translations = {"translations": [
+            {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "", "tagline": "Slogan BR"}},
+        ]}
+        result = u._extrair_traducao_pt_br(translations)
+        assert result["overview_pt_tmdb"] is None
+        assert result["tagline_pt_tmdb"] == "Slogan BR"
+
+
+class TestAdicionarTraducoesTaglinePt:
+    def test_prioriza_tmdb_pt_br(self):
+        df = pd.DataFrame({"tagline": ["A great movie"], "tagline_pt_tmdb": ["Um grande filme"]})
+        result = u._adicionar_traducoes_tagline_pt(df)
+        assert result["tagline_pt"].iloc[0] == "Um grande filme"
+
+    def test_fallback_para_google_translator(self):
+        df = pd.DataFrame({"tagline": ["A great movie"], "tagline_pt_tmdb": [None]})
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
+        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
+            result = u._adicionar_traducoes_tagline_pt(df)
+        assert result["tagline_pt"].iloc[0] == "[PT] A great movie"
+
+    def test_nao_traduz_quando_tudo_vazio(self):
+        df = pd.DataFrame({"tagline": [None, ""], "tagline_pt_tmdb": [None, None]})
+        result = u._adicionar_traducoes_tagline_pt(df)
+        assert result["tagline_pt"].isna().all()
+
+
+class TestExtrairPaisesProducaoIso:
+    def test_extrai_codigos_iso(self):
+        countries = [
+            {"iso_3166_1": "US", "name": "United States"},
+            {"iso_3166_1": "GB", "name": "United Kingdom"},
+        ]
+        assert u._extrair_paises_producao_iso(countries) == ["US", "GB"]
+
+    def test_vazio(self):
+        assert u._extrair_paises_producao_iso([]) is None
+
+    def test_none(self):
+        assert u._extrair_paises_producao_iso(None) is None
 
 
 class TestExtrairProdutores:
@@ -363,6 +442,40 @@ class TestExtrairTitulosSimilares:
         assert u._extrair_titulos_similares({}, "tv") is None
 
 
+class TestExtrairIdsRecomendados:
+    def test_extrai_ids(self):
+        recs = {"results": [{"id": 101, "title": "A"}, {"id": 202, "title": "B"}]}
+        assert u._extrair_ids_recomendados(recs) == "101, 202"
+
+    def test_limite(self):
+        recs = {"results": [{"id": i, "title": f"M{i}"} for i in range(15)]}
+        result = u._extrair_ids_recomendados(recs, limite=3)
+        assert result == "0, 1, 2"
+
+    def test_vazio(self):
+        assert u._extrair_ids_recomendados({}) is None
+
+    def test_results_vazio(self):
+        assert u._extrair_ids_recomendados({"results": []}) is None
+
+    def test_sem_id(self):
+        recs = {"results": [{"title": "Sem ID"}]}
+        assert u._extrair_ids_recomendados(recs) is None
+
+
+class TestExtrairIdsSimilares:
+    def test_extrai_ids(self):
+        sim = {"results": [{"id": 301, "name": "X"}, {"id": 402, "name": "Y"}]}
+        assert u._extrair_ids_similares(sim) == "301, 402"
+
+    def test_vazio(self):
+        assert u._extrair_ids_similares({}) is None
+
+    def test_sem_id(self):
+        sim = {"results": [{"name": "Sem ID"}]}
+        assert u._extrair_ids_similares(sim) is None
+
+
 class TestExtrairTitulosAlternativos:
     def test_movie(self):
         alt = {"titles": [{"title": "Seven"}, {"title": "Se7en"}]}
@@ -467,12 +580,12 @@ class TestCollectAndWriteDetails:
             "original_language": "en",
             "tagline": "Uma frase de efeito",
             "status": "Released",
-            "belongs_to_collection": {"id": 1, "name": "Colecao A"},
+            "belongs_to_collection": {"id": 86311, "name": "The Avengers Collection"},
             "budget": 50000000,
             "revenue": 200000000,
             "production_companies": [{"name": "Studio A"}],
             "production_countries": [{"iso_3166_1": "US", "name": "United States"}],
-            "spoken_languages": [{"english_name": "English"}],
+            "spoken_languages": [{"name": "English", "english_name": "English"}],
             "origin_country": ["US"],
             "credits": {
                 "cast": [{"name": "Ator A", "order": 0}, {"name": "Ator B", "order": 1}],
@@ -493,9 +606,15 @@ class TestCollectAndWriteDetails:
                 {"type": "Trailer", "site": "YouTube", "official": True, "key": "abc123"},
             ]},
             "external_ids": {"imdb_id": "tt1234567"},
-            "recommendations": {"results": [{"title": "Filme Rec A"}]},
-            "similar": {"results": [{"title": "Filme Sim A"}]},
+            "recommendations": {"results": [{"id": 901, "title": "Filme Rec A"}]},
+            "similar": {"results": [{"id": 902, "title": "Filme Sim A"}]},
             "alternative_titles": {"titles": [{"title": "Film A Alt"}]},
+            "translations": {"translations": [
+                {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {
+                    "overview": "Sinopse em português do TMDB",
+                    "tagline": "Slogan em português do TMDB",
+                }},
+            ]},
         }
 
     def _mock_tv_response(self, item_id: int) -> dict:
@@ -514,7 +633,7 @@ class TestCollectAndWriteDetails:
             "status": "Returning Series",
             "production_companies": [{"name": "Studio B"}],
             "production_countries": [{"iso_3166_1": "US", "name": "United States"}, {"iso_3166_1": "GB", "name": "United Kingdom"}],
-            "spoken_languages": [{"english_name": "English"}, {"english_name": "Spanish"}],
+            "spoken_languages": [{"name": "English", "english_name": "English"}, {"name": "Español", "english_name": "Spanish"}],
             "created_by": [{"name": "Criador A"}],
             "networks": [{"name": "HBO"}],
             "in_production": True,
@@ -537,22 +656,57 @@ class TestCollectAndWriteDetails:
             ]},
             "videos": {"results": []},
             "external_ids": {"imdb_id": "tt9876543"},
-            "recommendations": {"results": [{"name": "Serie Rec A"}]},
-            "similar": {"results": [{"name": "Serie Sim A"}]},
+            "recommendations": {"results": [{"id": 903, "name": "Serie Rec A"}]},
+            "similar": {"results": [{"id": 904, "name": "Serie Sim A"}]},
             "alternative_titles": {"results": [{"title": "Serie A Alt"}]},
+            "translations": {"translations": []},
         }
+
+    def test_movie_prioriza_tmdb_pt_br_para_overview_e_tagline(self):
+        """Quando o TMDB tem tradução pt-BR, overview_pt e tagline_pt vêm do TMDB."""
+        response = self._mock_movie_response(1)
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[GT] {t}"
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_det", "db")
+            df = mock_write.call_args.kwargs["df"]
+            assert df["overview_pt"].iloc[0] == "Sinopse em português do TMDB"
+            assert df["tagline_pt"].iloc[0] == "Slogan em português do TMDB"
+
+    def test_tv_fallback_google_translator_sem_tmdb_pt_br(self):
+        """Quando o TMDB não tem tradução pt-BR, usa GoogleTranslator como fallback."""
+        response = self._mock_tv_response(10)
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[GT] {t}"
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db")
+            df = mock_write.call_args.kwargs["df"]
+            assert df["overview_pt"].iloc[0] == "[GT] Sinopse A"
+            assert df["tagline_pt"].iloc[0] == "[GT] Tagline serie"
 
     def test_movie_writes_runtime_and_year(self):
         ids = [1, 2]
         responses = [self._mock_movie_response(i) for i in ids]
         mock_translator = MagicMock()
-        # side_effect como funcao: cada chamada a translate(t) executa a lambda e retorna "[PT] <texto>".
-        # Permite verificar nas assercoes que a traducao foi aplicada (title_pt == "[PT] Filme A").
         mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={86311: "Os Vingadores"}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -562,13 +716,13 @@ class TestCollectAndWriteDetails:
             assert "id" in df_written.columns
             assert "runtime" in df_written.columns
             assert "year" in df_written.columns
-            assert "title_en" not in df_written.columns
-            assert "title_pt" not in df_written.columns
+            assert "original_language" not in df_written.columns
+            assert "overview_pt_tmdb" not in df_written.columns
+            assert "tagline_pt_tmdb" not in df_written.columns
             assert "overview_en" in df_written.columns
             assert "overview_pt" in df_written.columns
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
-            assert "original_language" not in df_written.columns
             assert "actor_names" in df_written.columns
             assert "director" in df_written.columns
             assert "screenplay" in df_written.columns
@@ -577,7 +731,10 @@ class TestCollectAndWriteDetails:
             assert "keywords_pt" in df_written.columns
             assert "certification" in df_written.columns
             assert "tagline" in df_written.columns
+            assert "tagline_pt" in df_written.columns
+            assert "collection_id" in df_written.columns
             assert "collection_name" in df_written.columns
+            assert "collection_name_pt" in df_written.columns
             assert "trailer_url" in df_written.columns
             assert "imdb_id" in df_written.columns
             assert "origin_country" in df_written.columns
@@ -585,9 +742,11 @@ class TestCollectAndWriteDetails:
             assert "cinematographer" in df_written.columns
             assert "editor" in df_written.columns
             assert "production_countries" in df_written.columns
-            assert "recommended_titles" in df_written.columns
-            assert "similar_titles" in df_written.columns
-            assert "alternative_titles" in df_written.columns
+            assert "production_countries_iso" in df_written.columns
+            assert df_written["collection_name_pt"].iloc[0] == "Os Vingadores"
+            assert df_written["production_countries_iso"].iloc[0] == ["US"]
+            assert df_written["recommended_ids"].iloc[0] == "901"
+            assert df_written["similar_ids"].iloc[0] == "902"
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
@@ -615,14 +774,13 @@ class TestCollectAndWriteDetails:
             assert "poster_path_en" in df_written.columns
             assert "backdrop_path_en" in df_written.columns
             assert "original_language" not in df_written.columns
+            assert "overview_pt_tmdb" not in df_written.columns
+            assert "tagline_pt_tmdb" not in df_written.columns
             assert "actor_names" in df_written.columns
-            assert "director" in df_written.columns
-            assert "screenplay" in df_written.columns
-            assert "music_composer" in df_written.columns
             assert "keywords" in df_written.columns
             assert "keywords_pt" in df_written.columns
-            assert "certification" in df_written.columns
             assert "tagline" in df_written.columns
+            assert "tagline_pt" in df_written.columns
             assert "created_by" in df_written.columns
             assert "networks" in df_written.columns
             assert "trailer_url" in df_written.columns
@@ -631,9 +789,14 @@ class TestCollectAndWriteDetails:
             assert "cinematographer" in df_written.columns
             assert "editor" in df_written.columns
             assert "production_countries" in df_written.columns
+            assert "production_countries_iso" in df_written.columns
             assert "recommended_titles" in df_written.columns
+            assert "recommended_ids" in df_written.columns
             assert "similar_titles" in df_written.columns
+            assert "similar_ids" in df_written.columns
             assert "alternative_titles" in df_written.columns
+            assert df_written["recommended_ids"].iloc[0] == "903"
+            assert df_written["similar_ids"].iloc[0] == "904"
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib
@@ -647,6 +810,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=side_effect),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -673,6 +837,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -695,6 +860,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -719,6 +885,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -738,6 +905,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
             patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", side_effect=Exception("S3 error")),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):

@@ -223,9 +223,9 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}"
 
     if content_type == "movie":
-        append = "credits,keywords,release_dates,videos,external_ids,recommendations,similar,alternative_titles"
+        append = "credits,keywords,release_dates,videos,external_ids,recommendations,similar,alternative_titles,translations"
     else:
-        append = "credits,keywords,content_ratings,videos,external_ids,recommendations,similar,alternative_titles"
+        append = "credits,keywords,content_ratings,videos,external_ids,recommendations,similar,alternative_titles,translations"
 
     params = {
         "api_key": api_key,
@@ -334,7 +334,7 @@ def _extrair_networks(networks: list) -> Optional[str]:
 
 def _extrair_spoken_languages(spoken_languages: list) -> Optional[str]:
     """Idiomas falados, separados por vírgula."""
-    nomes = [sl.get("english_name") or sl.get("name", "") for sl in (spoken_languages or [])]
+    nomes = [sl.get("name") or sl.get("english_name", "") for sl in (spoken_languages or [])]
     nomes = [n for n in nomes if n]
     return ", ".join(nomes) if nomes else None
 
@@ -375,6 +375,12 @@ def _extrair_paises_producao(production_countries: list) -> Optional[str]:
     return ", ".join(nomes) if nomes else None
 
 
+def _extrair_paises_producao_iso(production_countries: list) -> Optional[List[str]]:
+    """Códigos ISO 3166-1 dos países de produção como array."""
+    codes = [c["iso_3166_1"] for c in (production_countries or []) if c.get("iso_3166_1")]
+    return codes if codes else None
+
+
 def _extrair_titulos_recomendados(recommendations: dict, content_type: str, limite: int = 10) -> Optional[str]:
     """Top N títulos recomendados pelo TMDB, separados por vírgula."""
     results = recommendations.get("results", [])
@@ -389,6 +395,46 @@ def _extrair_titulos_similares(similar: dict, content_type: str, limite: int = 1
     campo = "title" if content_type == "movie" else "name"
     nomes = [r[campo] for r in results[:limite] if r.get(campo)]
     return ", ".join(nomes) if nomes else None
+
+
+def _extrair_ids_recomendados(recommendations: dict, limite: int = 10) -> Optional[str]:
+    """Top N IDs recomendados pelo TMDB, separados por vírgula."""
+    results = recommendations.get("results", [])
+    ids = [str(r["id"]) for r in results[:limite] if r.get("id") is not None]
+    return ", ".join(ids) if ids else None
+
+
+def _extrair_ids_similares(similar: dict, limite: int = 10) -> Optional[str]:
+    """Top N IDs similares pelo TMDB, separados por vírgula."""
+    results = similar.get("results", [])
+    ids = [str(r["id"]) for r in results[:limite] if r.get("id") is not None]
+    return ", ".join(ids) if ids else None
+
+
+def _extrair_traducao_pt_br(translations: dict) -> Dict[str, Optional[str]]:
+    """
+    Extrai overview e tagline em pt-BR do array de translations da API do TMDB.
+
+    Args:
+        translations: Dicionário com chave "translations" contendo a lista de traduções.
+
+    Returns:
+        Dicionário com chaves "overview_pt_tmdb" e "tagline_pt_tmdb" (None se pt-BR ausente).
+    """
+    resultado: Dict[str, Optional[str]] = {"overview_pt_tmdb": None, "tagline_pt_tmdb": None}
+
+    for t in translations.get("translations", []):
+        if t.get("iso_639_1") == "pt" and t.get("iso_3166_1") == "BR":
+            data = t.get("data", {})
+            overview = data.get("overview")
+            tagline = data.get("tagline")
+            if overview and overview.strip():
+                resultado["overview_pt_tmdb"] = overview.strip()
+            if tagline and tagline.strip():
+                resultado["tagline_pt_tmdb"] = tagline.strip()
+            break
+
+    return resultado
 
 
 def _extrair_titulos_alternativos(alternative_titles: dict, content_type: str) -> Optional[str]:
@@ -408,6 +454,7 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
     recommendations_data = detalhe.get("recommendations", {})
     similar_data = detalhe.get("similar", {})
     alt_titles_data = detalhe.get("alternative_titles", {})
+    traducao_pt_br = _extrair_traducao_pt_br(detalhe.get("translations", {}))
 
     if content_type == "movie":
         release_date = detalhe.get("release_date") or ""
@@ -422,11 +469,13 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "original_language":     detalhe.get("original_language"),
             "tagline":               detalhe.get("tagline") or None,
             "status":                detalhe.get("status"),
+            "collection_id":         collection.get("id") if collection else None,
             "collection_name":       collection.get("name") if collection else None,
             "budget":                detalhe.get("budget") or None,
             "revenue":               detalhe.get("revenue") or None,
             "production_companies":  _extrair_produtoras(detalhe.get("production_companies")),
             "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
+            "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
             "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
             "actor_names":           _extrair_elenco(creditos),
             "director":              _extrair_diretor(creditos),
@@ -441,8 +490,12 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "imdb_id":               external_ids.get("imdb_id"),
             "origin_country":        detalhe.get("origin_country"),
             "recommended_titles":    _extrair_titulos_recomendados(recommendations_data, content_type),
+            "recommended_ids":       _extrair_ids_recomendados(recommendations_data),
             "similar_titles":        _extrair_titulos_similares(similar_data, content_type),
+            "similar_ids":           _extrair_ids_similares(similar_data),
             "alternative_titles":    _extrair_titulos_alternativos(alt_titles_data, content_type),
+            "overview_pt_tmdb":      traducao_pt_br["overview_pt_tmdb"],
+            "tagline_pt_tmdb":       traducao_pt_br["tagline_pt_tmdb"],
             "dt_processamento":      date.today(),
             "year":                  year,
         }
@@ -462,6 +515,7 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "status":                detalhe.get("status"),
             "production_companies":  _extrair_produtoras(detalhe.get("production_companies")),
             "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
+            "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
             "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
             "created_by":            _extrair_criadores(detalhe.get("created_by")),
             "networks":              _extrair_networks(detalhe.get("networks")),
@@ -480,23 +534,101 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "trailer_url":           _extrair_trailer_url(videos_data),
             "imdb_id":               external_ids.get("imdb_id"),
             "recommended_titles":    _extrair_titulos_recomendados(recommendations_data, content_type),
+            "recommended_ids":       _extrair_ids_recomendados(recommendations_data),
             "similar_titles":        _extrair_titulos_similares(similar_data, content_type),
+            "similar_ids":           _extrair_ids_similares(similar_data),
             "alternative_titles":    _extrair_titulos_alternativos(alt_titles_data, content_type),
+            "overview_pt_tmdb":      traducao_pt_br["overview_pt_tmdb"],
+            "tagline_pt_tmdb":       traducao_pt_br["tagline_pt_tmdb"],
             "dt_processamento":      date.today(),
             "year":                  year,
         }
+
+
+def _buscar_colecoes_pt_br(api_key: str, collection_ids: List[int]) -> Dict[int, str]:
+    """
+    Busca nomes de coleções em pt-BR na API do TMDB.
+
+    Faz chamadas paralelas para /collection/{id} com language=pt-BR.
+
+    Args:
+        api_key:        Chave de API do TMDB.
+        collection_ids: Lista de IDs de coleções únicos a consultar.
+
+    Returns:
+        Dicionário collection_id → nome em português.
+    """
+    if not collection_ids:
+        return {}
+
+    resultado: Dict[int, str] = {}
+    lock = threading.Lock()
+
+    def _fetch(col_id: int) -> None:
+        try:
+            url = f"{TMDB_BASE_URL}/collection/{col_id}"
+            data = tmdb_get(url, {"api_key": api_key, "language": "pt-BR"})
+            nome = data.get("name")
+            if nome and nome.strip():
+                with lock:
+                    resultado[col_id] = nome.strip()
+        except Exception as exc:
+            logger.warning(f"Falha ao buscar coleção {col_id} em pt-BR: {exc}")
+
+    logger.info(f"Buscando {len(collection_ids)} coleções em pt-BR ({_TMDB_MAX_WORKERS} workers)...")
+    with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
+        futures = {executor.submit(_fetch, cid): cid for cid in collection_ids}
+        for future in as_completed(futures):
+            future.result()
+
+    logger.info(f"Coleções pt-BR encontradas: {len(resultado)}/{len(collection_ids)}.")
+    return resultado
+
+
+def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFrame:
+    """
+    Adiciona coluna collection_name_pt ao DataFrame de detalhes de filmes.
+
+    Busca nomes de coleções em pt-BR na API do TMDB, deduplicando por collection_id.
+
+    Args:
+        df:      DataFrame de detalhes com coluna collection_id.
+        api_key: Chave de API do TMDB.
+
+    Returns:
+        DataFrame com a coluna collection_name_pt adicionada.
+    """
+    df["collection_name_pt"] = None
+
+    mask = df["collection_id"].notna()
+    if not mask.any():
+        return df
+
+    ids_unicos = df.loc[mask, "collection_id"].dropna().astype(int).unique().tolist()
+    mapa = _buscar_colecoes_pt_br(api_key, ids_unicos)
+
+    if mapa:
+        df.loc[mask, "collection_name_pt"] = (
+            df.loc[mask, "collection_id"].astype(int).map(mapa)
+        )
+
+    return df
 
 
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adiciona coluna overview_pt ao DataFrame de detalhes.
 
-    Traduz apenas registros com original_language='en' (EN→PT via Google Translate).
+    Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb). Para registros sem
+    tradução TMDB e com original_language='en', traduz via Google Translate.
     Para outros idiomas, overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
     """
-    df["overview_pt"] = None
+    df["overview_pt"] = df["overview_pt_tmdb"]
 
-    mask = df["original_language"] == "en"
+    mask = (
+        (df["original_language"] == "en")
+        & (df["overview_pt"].isna() | (df["overview_pt"] == ""))
+    )
     if not mask.any():
         return df
 
@@ -511,7 +643,10 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
             return texto
 
     total = mask.sum()
-    logger.info(f"Traduzindo {total} registros com original_language='en' ({_TRANSLATE_MAX_WORKERS} workers).")
+    logger.info(
+        f"Traduzindo overview de {total} registros sem tradução TMDB pt-BR "
+        f"({_TRANSLATE_MAX_WORKERS} workers)."
+    )
 
     valores = df.loc[mask, "overview_en"].fillna("").tolist()
     with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
@@ -551,6 +686,46 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
     with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
         traduzidos = list(executor.map(_translate, valores))
     df.loc[mask, "keywords_pt"] = traduzidos
+
+    return df
+
+
+def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona coluna tagline_pt ao DataFrame de detalhes.
+
+    Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb). Para registros sem
+    tradução TMDB e com tagline não-nula, traduz via Google Translate.
+    """
+    df["tagline_pt"] = df["tagline_pt_tmdb"]
+
+    mask = (
+        df["tagline"].notna()
+        & (df["tagline"] != "")
+        & (df["tagline_pt"].isna() | (df["tagline_pt"] == ""))
+    )
+    if not mask.any():
+        return df
+
+    def _translate(texto: str) -> str:
+        if not texto:
+            return ""
+        try:
+            return GoogleTranslator(source="en", target="pt").translate(texto)
+        except Exception as exc:
+            logger.warning(f"Falha ao traduzir tagline: {exc}. Mantendo original.")
+            return texto
+
+    total = mask.sum()
+    logger.info(
+        f"Traduzindo tagline de {total} registros sem tradução TMDB pt-BR "
+        f"({_TRANSLATE_MAX_WORKERS} workers)."
+    )
+
+    valores = df.loc[mask, "tagline"].fillna("").tolist()
+    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+        traduzidos = list(executor.map(_translate, valores))
+    df.loc[mask, "tagline_pt"] = traduzidos
 
     return df
 
@@ -606,8 +781,12 @@ def collect_and_write_details(
 
     df = _adicionar_traducoes_pt(df)
     df = _adicionar_traducoes_keywords_pt(df)
-    # original_language foi usado apenas para filtrar a tradução; já existe em tb_discover
-    df = df.drop(columns=["original_language"])
+    df = _adicionar_traducoes_tagline_pt(df)
+    if content_type == "movie":
+        df = _adicionar_collection_name_pt(df, api_key)
+    # Campos intermediários: usados apenas para filtrar/priorizar traduções; não vão para o SOT
+    colunas_intermediarias = ["original_language", "overview_pt_tmdb", "tagline_pt_tmdb"]
+    df = df.drop(columns=[c for c in colunas_intermediarias if c in df.columns])
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
 

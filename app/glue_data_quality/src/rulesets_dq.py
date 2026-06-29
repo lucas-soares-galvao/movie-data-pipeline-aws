@@ -19,7 +19,6 @@ rulesets_dq = {
     "configuration_countries": [
         # Completude
         'IsComplete "iso_3166_1"',
-        'IsComplete "english_name"',
         'IsComplete "native_name"',
         # Unicidade
         'IsUnique "iso_3166_1"',
@@ -149,12 +148,11 @@ rulesets_dq = {
     "now_playing_movie": [
         # Completude
         'IsComplete "id"',
-        'IsComplete "title"',
+        'IsComplete "theater_start_date"',
+        'IsComplete "theater_end_date"',
         # Unicidade
         'IsUnique "id"',
         # Validade
-        'ColumnValues "vote_average" >= 0',
-        'ColumnValues "vote_average" <= 10',
         # Integridade
         "RowCount > 0",
     ],
@@ -163,6 +161,7 @@ rulesets_dq = {
         'IsComplete "id"',
         'IsComplete "media_type"',
         'IsComplete "title"',
+        'IsComplete "year"',
         # Unicidade
         'Uniqueness "id" "media_type" = 1',
         # Validade

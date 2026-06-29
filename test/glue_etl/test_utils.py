@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import derive_canonical_name, get_parameters_glue, get_resolved_option, read_from_sor, write_parquet_to_sot
+from src.utils import _adicionar_name_pt_countries, derive_canonical_name, get_parameters_glue, get_resolved_option, read_from_sor, write_parquet_to_sot
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +173,43 @@ class TestReadFromSorConfiguration:
             result = read_from_sor("my-sor", "movie", "configuration")
             assert len(result) == 2
             assert "iso_639_1" in result.columns
+
+    def test_tv_countries_recebe_name_pt(self):
+        s3_mock = _make_s3_mock([
+            {"iso_3166_1": "BR", "english_name": "Brazil", "native_name": "Brasil"},
+            {"iso_3166_1": "US", "english_name": "United States", "native_name": "United States"},
+        ])
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
+        with (
+            patch("boto3.client", return_value=s3_mock),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+        ):
+            result = read_from_sor("my-sor", "tv", "configuration")
+            assert "name_pt" in result.columns
+            assert result["name_pt"].iloc[0] == "[PT] Brazil"
+            assert result["name_pt"].iloc[1] == "[PT] United States"
+
+
+class TestAdicionarNamePtCountries:
+    def test_traduz_english_name(self):
+        df = pd.DataFrame({"english_name": ["Japan", "France"], "native_name": ["日本", "France"]})
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
+        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
+            result = _adicionar_name_pt_countries(df)
+        assert result["name_pt"].iloc[0] == "[PT] Japan"
+        assert result["name_pt"].iloc[1] == "[PT] France"
+
+    def test_sem_english_name(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "native_name": ["Brasil"]})
+        result = _adicionar_name_pt_countries(df)
+        assert "name_pt" not in result.columns or result.equals(df)
+
+    def test_english_name_vazio(self):
+        df = pd.DataFrame({"english_name": [None, ""]})
+        result = _adicionar_name_pt_countries(df)
+        assert result["name_pt"].isna().all()
 
 
 # ---------------------------------------------------------------------------

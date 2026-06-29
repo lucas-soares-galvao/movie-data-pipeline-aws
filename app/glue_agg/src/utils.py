@@ -128,24 +128,28 @@ genre_names AS (
 -- via append); ORDER BY dt_processamento DESC mantém o registro mais recente.
 movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
-        tagline, status, collection_name, budget, revenue, production_companies,
-        production_countries, spoken_languages, actor_names, director, screenplay,
+        tagline, tagline_pt, status, collection_id, collection_name, collection_name_pt,
+        budget, revenue, production_companies,
+        production_countries, production_countries_iso, spoken_languages,
+        actor_names, director, screenplay,
         music_composer, producer, cinematographer, editor,
         keywords, keywords_pt, certification,
         trailer_url, imdb_id, origin_country,
-        recommended_titles, similar_titles, alternative_titles,
+        recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_movie}.{tb_details_movie}
 ),
 
 movie_details AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
-        tagline, status, collection_name, budget, revenue, production_companies,
-        production_countries, spoken_languages, actor_names, director, screenplay,
+        tagline, tagline_pt, status, collection_id, collection_name, collection_name_pt,
+        budget, revenue, production_companies,
+        production_countries, production_countries_iso, spoken_languages,
+        actor_names, director, screenplay,
         music_composer, producer, cinematographer, editor,
         keywords, keywords_pt, certification,
         trailer_url, imdb_id, origin_country,
-        recommended_titles, similar_titles, alternative_titles
+        recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles
     FROM movie_details_ranked
     WHERE rn = 1
 ),
@@ -161,13 +165,13 @@ tv_details_ranked AS (
         number_of_episodes,
         element_at(episode_run_time, 1) AS episode_runtime_minutes,
         overview_en, overview_pt, poster_path_en, backdrop_path_en,
-        tagline, status, production_companies, production_countries,
-        spoken_languages,
+        tagline, tagline_pt, status, production_companies,
+        production_countries, production_countries_iso, spoken_languages,
         created_by, networks, in_production, last_air_date, tv_type,
         actor_names, director, screenplay, music_composer,
         producer, cinematographer, editor,
         keywords, keywords_pt, certification, trailer_url, imdb_id,
-        recommended_titles, similar_titles, alternative_titles,
+        recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
     FROM {db_tv}.{tb_details_tv}
 ),
@@ -175,13 +179,13 @@ tv_details_ranked AS (
 tv_details AS (
     SELECT id, number_of_seasons, number_of_episodes, episode_runtime_minutes,
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
-           tagline, status, production_companies, production_countries,
-           spoken_languages,
+           tagline, tagline_pt, status, production_companies,
+           production_countries, production_countries_iso, spoken_languages,
            created_by, networks, in_production, last_air_date, tv_type,
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
            keywords, keywords_pt, certification, trailer_url, imdb_id,
-           recommended_titles, similar_titles, alternative_titles
+           recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles
     FROM tv_details_ranked
     WHERE rn = 1
 ),
@@ -196,13 +200,16 @@ details AS (
            NULL AS number_of_episodes,
            NULL AS episode_runtime_minutes,
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
-           tagline, status, collection_name, budget, revenue,
-           production_companies, production_countries, spoken_languages,
+           tagline, tagline_pt, status,
+           COALESCE(collection_name_pt, collection_name) AS collection_name,
+           budget, revenue,
+           production_companies, production_countries, production_countries_iso,
+           spoken_languages,
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
            keywords, keywords_pt, certification,
            trailer_url, imdb_id, origin_country,
-           recommended_titles, similar_titles, alternative_titles,
+           recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
            NULL AS created_by,
            NULL AS networks,
            CAST(NULL AS BOOLEAN) AS in_production,
@@ -214,14 +221,15 @@ details AS (
            NULL AS runtime,
            number_of_seasons, number_of_episodes, episode_runtime_minutes,
            overview_en, overview_pt, poster_path_en, backdrop_path_en,
-           tagline, status,
+           tagline, tagline_pt, status,
            NULL AS collection_name, CAST(NULL AS BIGINT) AS budget, CAST(NULL AS BIGINT) AS revenue,
-           production_companies, production_countries, spoken_languages,
+           production_companies, production_countries, production_countries_iso,
+           spoken_languages,
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
            keywords, keywords_pt, certification, trailer_url, imdb_id,
            CAST(NULL AS ARRAY<VARCHAR>) AS origin_country,
-           recommended_titles, similar_titles, alternative_titles,
+           recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
            created_by, networks, in_production, last_air_date, tv_type
     FROM tv_details
 ),
@@ -383,11 +391,88 @@ rent_buy AS (
     SELECT id, 'tv'    AS media_type, rent_buy_providers FROM tv_rent_buy
 ),
 
+-- Resolução de países de produção: cruza códigos ISO com a tabela de referência
+-- para obter nomes em português. Fallback para nome em inglês se não houver tradução.
+production_countries_resolved AS (
+    SELECT
+        d.id,
+        d.media_type,
+        array_join(
+            array_agg(
+                COALESCE(ctry_pc.name_pt, t_iso.iso_code)
+                ORDER BY t_iso.ord
+            ),
+            ', '
+        ) AS production_countries_pt
+    FROM details d
+    CROSS JOIN UNNEST(d.production_countries_iso)
+        WITH ORDINALITY AS t_iso(iso_code, ord)
+    LEFT JOIN {db_tv}.{tb_configuration_countries} ctry_pc
+        ON ctry_pc.iso_3166_1 = t_iso.iso_code
+    WHERE d.production_countries_iso IS NOT NULL
+    GROUP BY d.id, d.media_type
+),
+
 -- Filmes atualmente em cartaz nos cinemas, atualizados semanalmente pela Lambda.
 -- Snapshot sem partição por ano — contém apenas os filmes da semana atual.
 now_playing AS (
     SELECT id, theater_start_date, theater_end_date
     FROM {db_movie}.{tb_now_playing_movie}
+),
+
+-- Resolução de títulos recomendados: cruza IDs com discover (pt-BR),
+-- com fallback para título em inglês quando o ID não existe no discover.
+recommended_resolved AS (
+    SELECT
+        d.id,
+        d.media_type,
+        array_join(
+            array_agg(
+                COALESCE(NULLIF(TRIM(u_rec.title), ''), t_en.titulo_en)
+                ORDER BY t_id.ord
+            ),
+            ', '
+        ) AS recommended_titles_pt
+    FROM details d
+    CROSS JOIN UNNEST(
+        split(d.recommended_ids, ', ')
+    ) WITH ORDINALITY AS t_id(rec_id_str, ord)
+    CROSS JOIN UNNEST(
+        split(d.recommended_titles, ', ')
+    ) WITH ORDINALITY AS t_en(titulo_en, ord_en)
+    LEFT JOIN unified u_rec
+        ON u_rec.id = CAST(t_id.rec_id_str AS BIGINT)
+        AND u_rec.media_type = d.media_type
+    WHERE t_id.ord = t_en.ord_en
+      AND d.recommended_ids IS NOT NULL
+    GROUP BY d.id, d.media_type
+),
+
+-- Mesma lógica de resolução para títulos similares.
+similar_resolved AS (
+    SELECT
+        d.id,
+        d.media_type,
+        array_join(
+            array_agg(
+                COALESCE(NULLIF(TRIM(u_sim.title), ''), t_en.titulo_en)
+                ORDER BY t_id.ord
+            ),
+            ', '
+        ) AS similar_titles_pt
+    FROM details d
+    CROSS JOIN UNNEST(
+        split(d.similar_ids, ', ')
+    ) WITH ORDINALITY AS t_id(sim_id_str, ord)
+    CROSS JOIN UNNEST(
+        split(d.similar_titles, ', ')
+    ) WITH ORDINALITY AS t_en(titulo_en, ord_en)
+    LEFT JOIN unified u_sim
+        ON u_sim.id = CAST(t_id.sim_id_str AS BIGINT)
+        AND u_sim.media_type = d.media_type
+    WHERE t_id.ord = t_en.ord_en
+      AND d.similar_ids IS NOT NULL
+    GROUP BY d.id, d.media_type
 ),
 
 -- ============================================================================
@@ -404,7 +489,7 @@ spec_raw AS (
         COALESCE(NULLIF(TRIM(u.overview), ''), d.overview_pt, d.overview_en)                AS overview,
         u.air_date,
         u.original_language,
-        lang.english_name                                                       AS language_name,
+        lang.name                                                               AS language_name,
         u.genre_ids,
         gn.genre_names,
         -- Constrói a URL completa do pôster adicionando o prefixo da CDN do TMDB.
@@ -425,20 +510,31 @@ spec_raw AS (
         ROUND(u.vote_average, 2)                                                    AS vote_average,
         u.vote_count,
         COALESCE(d.origin_country, u.origin_country) AS origin_country,
-        ctry.native_name                          AS origin_country_name,
+        ctry.name_pt                              AS origin_country_name,
         u.adult,
         u.year,
         d.runtime                                 AS runtime_minutes,
         d.number_of_seasons,
         d.number_of_episodes,
         d.episode_runtime_minutes,
-        d.tagline,
-        d.status                                  AS title_status,
+        COALESCE(d.tagline_pt, d.tagline)         AS tagline,
+        CASE
+            WHEN d.status = 'Released'          THEN 'Lançado'
+            WHEN d.status = 'Post Production'   THEN 'Pós-Produção'
+            WHEN d.status = 'In Production'     THEN 'Em Produção'
+            WHEN d.status = 'Planned'           THEN 'Planejado'
+            WHEN d.status = 'Canceled'          THEN 'Cancelado'
+            WHEN d.status = 'Rumored'           THEN 'Rumor'
+            WHEN d.status = 'Returning Series'  THEN 'Em Exibição'
+            WHEN d.status = 'Ended'             THEN 'Encerrada'
+            WHEN d.status = 'Pilot'             THEN 'Piloto'
+            ELSE d.status
+        END                                       AS title_status,
         d.collection_name,
         d.budget,
         d.revenue,
         d.production_companies,
-        d.production_countries,
+        COALESCE(pcr.production_countries_pt, d.production_countries) AS production_countries,
         d.spoken_languages,
         d.actor_names,
         d.director,
@@ -451,14 +547,23 @@ spec_raw AS (
         d.certification,
         d.trailer_url,
         d.imdb_id,
-        d.recommended_titles,
-        d.similar_titles,
+        COALESCE(rr.recommended_titles_pt, d.recommended_titles) AS recommended_titles,
+        COALESCE(sr.similar_titles_pt, d.similar_titles)          AS similar_titles,
         d.alternative_titles,
         d.created_by,
         d.networks,
         d.in_production,
         d.last_air_date,
-        d.tv_type,
+        CASE
+            WHEN d.tv_type = 'Documentary' THEN 'Documentário'
+            WHEN d.tv_type = 'Miniseries' THEN 'Minissérie'
+            WHEN d.tv_type = 'News'       THEN 'Notícias'
+            WHEN d.tv_type = 'Reality'    THEN 'Reality Show'
+            WHEN d.tv_type = 'Scripted'   THEN 'Roteirizada'
+            WHEN d.tv_type = 'Talk Show'  THEN 'Talk Show'
+            WHEN d.tv_type = 'Video'      THEN 'Vídeo'
+            ELSE d.tv_type
+        END AS tv_type,
         p.streaming_providers,
         rb.rent_buy_providers,
         -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot semanal).
@@ -480,6 +585,12 @@ spec_raw AS (
         ON  p.id = u.id AND p.media_type = u.media_type
     LEFT JOIN rent_buy rb
         ON  rb.id = u.id AND rb.media_type = u.media_type
+    LEFT JOIN production_countries_resolved pcr
+        ON  pcr.id = u.id AND pcr.media_type = u.media_type
+    LEFT JOIN recommended_resolved rr
+        ON  rr.id = u.id AND rr.media_type = u.media_type
+    LEFT JOIN similar_resolved sr
+        ON  sr.id = u.id AND sr.media_type = u.media_type
     LEFT JOIN now_playing np
         ON  np.id = u.id AND u.media_type = 'movie'
 ),

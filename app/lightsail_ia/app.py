@@ -167,7 +167,7 @@ if _restantes <= 0:
       .tempo-countdown {{ font-weight: 600; }}
     </style>
     <div class="msg-aviso">
-      ⚠️ Limite de consultas atingido. Disponível novamente em
+      ⚠️ Limite de {_MAX_CONSULTAS_POR_HORA} consultas atingido. Disponível novamente em
       <span class="tempo-countdown" id="countdown"></span>.
     </div>
     <script>
