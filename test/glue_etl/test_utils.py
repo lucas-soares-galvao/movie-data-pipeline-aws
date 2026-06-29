@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import _adicionar_name_pt_countries, derive_canonical_name, get_parameters_glue, get_resolved_option, read_from_sor, write_parquet_to_sot
+from src.utils import _adicionar_name_pt_countries, _adicionar_name_pt_languages, derive_canonical_name, get_parameters_glue, get_resolved_option, read_from_sor, write_parquet_to_sot
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +210,47 @@ class TestAdicionarNamePtCountries:
         df = pd.DataFrame({"english_name": [None, ""]})
         result = _adicionar_name_pt_countries(df)
         assert result["name_pt"].isna().all()
+
+
+# ---------------------------------------------------------------------------
+# _adicionar_name_pt_languages
+# ---------------------------------------------------------------------------
+
+
+class TestAdicionarNamePtLanguages:
+    def test_traduz_english_name(self):
+        df = pd.DataFrame({"english_name": ["English", "French"], "name": ["English", "Français"]})
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
+        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
+            result = _adicionar_name_pt_languages(df)
+        assert result["name_pt"].iloc[0] == "[PT] English"
+        assert result["name_pt"].iloc[1] == "[PT] French"
+
+    def test_sem_english_name(self):
+        df = pd.DataFrame({"iso_639_1": ["pt"], "name": ["Português"]})
+        result = _adicionar_name_pt_languages(df)
+        assert "name_pt" not in result.columns or result.equals(df)
+
+    def test_english_name_vazio(self):
+        df = pd.DataFrame({"english_name": [None, ""]})
+        result = _adicionar_name_pt_languages(df)
+        assert result["name_pt"].isna().all()
+
+
+class TestReadFromSorConfigurationLanguages:
+    def test_movie_configuration_recebe_name_pt(self):
+        payload = [{"iso_639_1": "en", "english_name": "English", "name": "English"}]
+        s3_mock = _make_s3_mock(payload)
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
+        with (
+            patch("src.utils.boto3.client", return_value=s3_mock),
+            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+        ):
+            df = read_from_sor("my-sor", "movie", "configuration")
+        assert "name_pt" in df.columns
+        assert df["name_pt"].iloc[0] == "[PT] English"
 
 
 # ---------------------------------------------------------------------------

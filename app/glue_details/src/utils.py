@@ -339,6 +339,12 @@ def _extrair_spoken_languages(spoken_languages: list) -> Optional[str]:
     return ", ".join(nomes) if nomes else None
 
 
+def _extrair_spoken_languages_iso(spoken_languages: list) -> Optional[List[str]]:
+    """Códigos ISO 639-1 dos idiomas falados como array."""
+    codes = [sl["iso_639_1"] for sl in (spoken_languages or []) if sl.get("iso_639_1")]
+    return codes if codes else None
+
+
 def _extrair_produtores(creditos: dict, limite: int = 3) -> Optional[str]:
     """Produtor(es) e produtores executivos, deduplicados, limitados a top N."""
     crew = creditos.get("crew", [])
@@ -477,6 +483,7 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
             "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
             "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
+            "spoken_languages_iso":  _extrair_spoken_languages_iso(detalhe.get("spoken_languages")),
             "actor_names":           _extrair_elenco(creditos),
             "director":              _extrair_diretor(creditos),
             "screenplay":            _extrair_roteiristas(creditos),
@@ -517,6 +524,7 @@ def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
             "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
             "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
             "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
+            "spoken_languages_iso":  _extrair_spoken_languages_iso(detalhe.get("spoken_languages")),
             "created_by":            _extrair_criadores(detalhe.get("created_by")),
             "networks":              _extrair_networks(detalhe.get("networks")),
             "in_production":         detalhe.get("in_production"),
