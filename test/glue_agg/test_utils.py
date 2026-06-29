@@ -75,6 +75,7 @@ class TestRunAthenaQuery:
             assert "networks" in sql
             assert "in_production" in sql
             assert "tv_type" in sql
+            assert "WHEN d.tv_type = 'Scripted'" in sql
             assert "title_status" in sql
             assert "production_companies" in sql
             assert "spoken_languages" in sql
@@ -116,6 +117,51 @@ class TestRunAthenaQuery:
         assert "PARTITION BY id, media_type" in sql
         assert "rn_final" in sql
 
+    def test_query_traduz_status_via_case_when(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "'Released'" in sql
+        assert "'Lançado'" in sql
+        assert "'Cancelado'" in sql
+        assert "'Em Produção'" in sql
+        assert "AS title_status" in sql
+
+    def test_query_usa_lang_name_nao_english_name(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "lang.name" in sql
+        assert "lang.english_name" not in sql
+
+    def test_query_usa_ctry_name_pt(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "ctry.name_pt" in sql
+        assert "ctry.native_name" not in sql
+
+    def test_query_usa_coalesce_tagline_pt(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "COALESCE(d.tagline_pt, d.tagline)" in sql
+
+    def test_query_usa_coalesce_production_countries_pt(self):
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "COALESCE(pcr.production_countries_pt, d.production_countries)" in sql
 
 
 class TestWriteParquetToSpec:

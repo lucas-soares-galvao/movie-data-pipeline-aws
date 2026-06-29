@@ -9,6 +9,7 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 from awsglue.utils import getResolvedOptions
+from deep_translator import GoogleTranslator
 
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
@@ -109,6 +110,35 @@ def get_parameters_glue() -> Dict[str, Any]:
     return args
 
 
+def _adicionar_name_pt_countries(df: pd.DataFrame) -> pd.DataFrame:
+    """Traduz english_name dos países para português e grava como name_pt."""
+    if "english_name" not in df.columns:
+        return df
+
+    mask = df["english_name"].notna() & (df["english_name"] != "")
+    if not mask.any():
+        df["name_pt"] = None
+        return df
+
+    logger.info(f"Traduzindo {mask.sum()} nomes de países para pt-BR...")
+
+    def _translate(texto: str) -> str:
+        if not texto:
+            return ""
+        try:
+            return GoogleTranslator(source="en", target="pt").translate(texto)
+        except Exception as exc:
+            logger.warning(f"Falha ao traduzir país '{texto}': {exc}. Mantendo original.")
+            return texto
+
+    df["name_pt"] = None
+    valores = df.loc[mask, "english_name"].tolist()
+    traduzidos = [_translate(v) for v in valores]
+    df.loc[mask, "name_pt"] = traduzidos
+
+    return df
+
+
 def read_from_sor(
     s3_bucket_sor: str,
     media_type: str,
@@ -155,6 +185,9 @@ def read_from_sor(
         response = s3_client.get_object(Bucket=s3_bucket_sor, Key=s3_key)
         data = json.loads(response["Body"].read())
         df = pd.DataFrame(data)
+
+        if table_type == "configuration" and media_type == "tv":
+            df = _adicionar_name_pt_countries(df)
 
     logger.info(f"Lidos {len(df)} registros.")
     return df

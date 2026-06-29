@@ -58,11 +58,10 @@ class TestRulesetsDq:
             )
 
     def test_discover_tables_validate_vote_average(self):
-        """Tabelas de discover e now_playing devem validar o intervalo de vote_average."""
+        """Tabelas de discover devem validar o intervalo de vote_average."""
         for table in [
             "discover_movie",
             "discover_tv",
-            "now_playing_movie",
             "discover_unified",
         ]:
             rules = rulesets_dq[table]
@@ -89,3 +88,20 @@ class TestRulesetsDq:
             assert any('IsUnique "id"' in r for r in rules), (
                 f"Tabela '{table}' não tem IsUnique para 'id'"
             )
+
+    def test_now_playing_validates_theater_dates(self):
+        """now_playing_movie deve validar completude das datas de exibição."""
+        rules = rulesets_dq["now_playing_movie"]
+        assert any("theater_start_date" in r for r in rules), (
+            "now_playing_movie não valida theater_start_date"
+        )
+        assert any("theater_end_date" in r for r in rules), (
+            "now_playing_movie não valida theater_end_date"
+        )
+
+    def test_unified_validates_year_completeness(self):
+        """discover_unified deve validar completude da coluna de partição year."""
+        rules = rulesets_dq["discover_unified"]
+        assert any('IsComplete "year"' in r for r in rules), (
+            "discover_unified não tem IsComplete para 'year'"
+        )

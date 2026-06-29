@@ -42,15 +42,15 @@ class TestRenderizarCard:
         html = componentes.renderizar_card(t)
         assert "Uma frase marcante" not in html
 
-    def test_card_com_elenco(self):
+    def test_card_nao_exibe_elenco(self):
         t = {**TITULO_BASE, "elenco": "Jack Nicholson, Shelley Duvall"}
         html = componentes.renderizar_card(t)
-        assert "Elenco: Jack Nicholson" in html
+        assert "Elenco:" not in html
 
-    def test_card_com_diretor(self):
+    def test_card_nao_exibe_diretor(self):
         t = {**TITULO_BASE, "diretor": "Stanley Kubrick"}
         html = componentes.renderizar_card(t)
-        assert "Diretor: Stanley Kubrick" in html
+        assert "Diretor:" not in html
 
     def test_card_com_certificacao(self):
         t = {**TITULO_BASE, "certificacao": "16"}

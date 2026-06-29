@@ -359,7 +359,7 @@ def recomendar(preferencia: str) -> list[dict]:
                         "- networks (string): redes de TV originais (ex: 'HBO, Netflix'). Apenas séries. Use lower() + LIKE.\n"
                         "- in_production (boolean): se a série ainda está em produção. Apenas séries.\n"
                         "- last_air_date (string): data do último episódio exibido (séries). Formato 'YYYY-MM-DD'.\n"
-                        "- tv_type (string): tipo de série ('Scripted', 'Reality', 'Documentary', 'Miniseries'). Apenas séries.\n"
+                        "- tv_type (string): tipo de série ('Roteirizada', 'Reality Show', 'Documentário', 'Minissérie', 'Notícias', 'Talk Show', 'Vídeo'). Apenas séries.\n"
                         "- streaming_providers (string): plataformas de streaming por assinatura no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
                         "- rent_buy_providers (string): plataformas de aluguel/compra no Brasil (ex: 'Apple TV, Google Play'). Use lower() + LIKE.\n"
                         "- recommended_titles (string): títulos recomendados pelo TMDB (ex: 'Interstellar, The Prestige'). Use lower() + LIKE para encontrar títulos relacionados.\n"

@@ -40,10 +40,17 @@ def renderizar_card(t: dict) -> str:
     rent_buy_providers = t.get("aluguel_compra") or ""
     in_theaters = t.get("in_theaters") or False
     theater_end_date = html.escape(t.get("theater_end_date") or "")
-    elenco = html.escape(t.get("elenco") or "")
-    diretor = html.escape(t.get("diretor") or "")
     certificacao = html.escape(t.get("certificacao") or "")
     trailer_url = t.get("trailer_url") or ""
+
+    _DESCRICAO_CLASSIFICACAO = {
+        "L": "Livre para todas as idades",
+        "10": "Não recomendado para menores de 10 anos",
+        "12": "Não recomendado para menores de 12 anos",
+        "14": "Não recomendado para menores de 14 anos",
+        "16": "Não recomendado para menores de 16 anos",
+        "18": "Não recomendado para menores de 18 anos",
+    }
 
     img_html = (
         f'<img src="{poster}" alt="{titulo}"'
@@ -63,21 +70,14 @@ def renderizar_card(t: dict) -> str:
             f'<span class="cinema-badge">{html.escape(label)}</span></div>'
         )
 
+    certificacao_titulo = html.escape(_DESCRICAO_CLASSIFICACAO.get(certificacao, certificacao))
     certificacao_html = (
-        f'<span class="certificacao-badge">{certificacao}</span>'
+        f'<span class="certificacao-badge" data-rating="{certificacao}"'
+        f' title="{certificacao_titulo}">'
+        f'{certificacao}</span>'
         if certificacao else ""
     )
 
-    elenco_html = (
-        f'<div class="meta-row"><span class="meta-icon">🎭</span>'
-        f'<span class="elenco">Elenco: {elenco}</span></div>'
-        if elenco else ""
-    )
-    diretor_html = (
-        f'<div class="meta-row"><span class="meta-icon">🎬</span>'
-        f'<span class="diretor">Diretor: {diretor}</span></div>'
-        if diretor else ""
-    )
     trailer_html = ""
     if trailer_url:
         safe_url = html.escape(trailer_url)
@@ -147,8 +147,6 @@ def renderizar_card(t: dict) -> str:
         {nota_html}
         {duracao_html}
         {data_html}
-        {diretor_html}
-        {elenco_html}
         {cinema_html}
         {providers_html}
         {rent_buy_html}

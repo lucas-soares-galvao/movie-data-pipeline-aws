@@ -152,8 +152,10 @@ As 14 tabelas verificadas por `EXPECTED_TABLES` são (nomes lógicos, sem prefix
 | `test_all_rules_are_strings` | Toda regra é do tipo `str` (formato DQDL) |
 | `test_no_empty_rules` | Nenhuma regra é string vazia ou somente espaços |
 | `test_all_tables_have_row_count_rule` | Toda tabela tem pelo menos uma regra com `RowCount` |
-| `test_discover_tables_validate_vote_average` | `discover_movie`, `discover_tv`, `now_playing_movie` e `discover_unified` têm regra validando `vote_average` |
+| `test_discover_tables_validate_vote_average` | `discover_movie`, `discover_tv` e `discover_unified` têm regra validando `vote_average` |
 | `test_tables_with_id_have_completeness_and_uniqueness` | Tabelas que têm coluna `id` (discover, details, genre, now_playing) têm `IsComplete "id"` e `IsUnique "id"` |
+| `test_now_playing_validates_theater_dates` | `now_playing_movie` valida completude de `theater_start_date` e `theater_end_date` |
+| `test_unified_validates_year_completeness` | `discover_unified` valida `IsComplete "year"` para a coluna de partição |
 
 ## Como executar
 
