@@ -65,13 +65,19 @@ Testa as funções individuais:
 - `_extrair_montador` (`TestExtrairMontador`): montador único, múltiplos, sem montador, crew vazio
 - `_extrair_paises_producao` (`TestExtrairPaisesProducao`): múltiplos países, lista vazia, entrada None
 - `_extrair_titulos_recomendados` (`TestExtrairTitulosRecomendados`): formato movie (title), formato tv (name), limite customizado, dict vazio, results vazio
+- `_extrair_ids_recomendados` (`TestExtrairIdsRecomendados`): extração de IDs, limite customizado, dict vazio, results vazio, result sem campo id
 - `_extrair_titulos_similares` (`TestExtrairTitulosSimilares`): formato movie (title), formato tv (name), dict vazio
+- `_extrair_ids_similares` (`TestExtrairIdsSimilares`): extração de IDs, dict vazio, result sem campo id
 - `_extrair_titulos_alternativos` (`TestExtrairTitulosAlternativos`): formato movie (titles key), formato tv (results key), dict vazio
+- `_extrair_traducao_pt_br` (`TestExtrairTraducaoPtBr`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
+- `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula
+- `_extrair_paises_producao_iso` (`TestExtrairPaisesProducaoIso`): extrai códigos ISO, retorna None para lista vazia e None
+- `_extrair_spoken_languages` (`TestExtrairSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
 - `api_get` (de `shared_utils.api_client`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
-- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro
+- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback para Google Translate quando TMDB não tem pt-BR (TV sem translations); campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG
 - `repair_details_duplicates` (`TestRepairDetailsDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém `dt_processamento` mais recente por ID; usa `overwrite_partitions`
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `dt_atualizacao` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
@@ -139,6 +145,16 @@ Testa as funções individuais:
 | `test_movie` | Extrai títulos alternativos via chave `titles` (filmes) |
 | `test_tv` | Extrai títulos alternativos via chave `results` (séries) |
 | `test_vazio` | Retorna `None` para dict vazio |
+
+### `TestExtrairTraducaoPtBr`
+
+| Teste | O que verifica |
+|---|---|
+| `test_extrai_overview_e_tagline_pt_br` | Extrai overview e tagline da tradução pt-BR no array de translations |
+| `test_retorna_none_quando_sem_pt_br` | Retorna `None` para ambos quando pt-BR não existe |
+| `test_retorna_none_quando_translations_vazio` | Retorna `None` para dict vazio (sem chave `translations`) |
+| `test_ignora_pt_de_portugal` | Ignora tradução pt-PT (iso_3166_1='PT'), retorna `None` |
+| `test_ignora_overview_vazio` | Retorna `None` para overview vazio, mas extrai tagline |
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
 

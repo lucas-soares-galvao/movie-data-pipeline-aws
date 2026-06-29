@@ -21,6 +21,14 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
    - Une filmes e séries via `UNION ALL`
    - Deduplica watch providers por `DENSE_RANK` sobre o ano mais recente (CTEs `movie_wp_recent` / `tv_wp_recent`), preservando todos os provedores do ano mais recente por ID
    - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas, elenco, diretor, roteiristas, compositor, produtor, cinematógrafo, montador, keywords_pt, país de origem, países de produção, classificação indicativa, trailer, coleção, produtoras, status, tagline, IMDB ID, títulos recomendados/similares/alternativos, campos TV), plataformas de streaming (assinatura e aluguel/compra) e a tabela `now_playing` (para filmes em cartaz nos cinemas)
+   - Resolve `recommended_titles` e `similar_titles` para pt-BR cruzando os IDs (`recommended_ids`/`similar_ids`) com a tabela `unified` (discover pt-BR) via CTEs `recommended_resolved` e `similar_resolved`, com fallback para o título em inglês quando o ID não existe no discover
+   - Traduz `tv_type` de inglês para português via `CASE WHEN` (ex: `Scripted` → `Roteirizada`, `Documentary` → `Documentário`)
+   - Traduz `status` de inglês para português via `CASE WHEN` (ex: `Released` → `Lançado`, `Canceled` → `Cancelado`)
+   - Usa `COALESCE(d.tagline_pt, d.tagline)` para priorizar tagline traduzida
+   - Resolve países de produção via lookup de códigos ISO na `tb_configuration_countries` (CTE `production_countries_resolved`), com fallback para nomes em inglês
+   - Usa `COALESCE(collection_name_pt, collection_name)` para priorizar nome da coleção em pt-BR
+   - Usa `lang.name` (idioma nativo) em vez de `lang.english_name` para `language_name`
+   - Usa `ctry.name_pt` (nome traduzido em pt-BR) em vez de `ctry.native_name` para `origin_country_name`
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
 3. Seleciona `title` e `overview` do discover (pt-BR nativo do TMDB) como primeira prioridade; `overview_pt` traduzido pelo Glue Details entra como fallback quando o discover retornou vazio, seguido por `overview_en` como último recurso
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC

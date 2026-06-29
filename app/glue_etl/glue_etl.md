@@ -36,6 +36,7 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
+Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via Google Translate e grava como coluna `name_pt` na SOT (~250 países, tradução única).
 
 **Fluxo para `now_playing`:**
 Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `read_from_sor` lê todos os arquivos da pasta `tmdb/now_playing/movie/` de uma vez e deduplica por `id` antes de gravar.

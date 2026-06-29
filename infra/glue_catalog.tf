@@ -344,6 +344,10 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       name = "english_name"
       type = "string"
     }
+    columns {
+      name = "name"
+      type = "string"
+    }
   }
 }
 
@@ -372,7 +376,15 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
       type = "string"
     }
     columns {
+      name = "english_name"
+      type = "string"
+    }
+    columns {
       name = "native_name"
+      type = "string"
+    }
+    columns {
+      name = "name_pt"
       type = "string"
     }
   }
@@ -430,11 +442,23 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
+      name = "tagline_pt"
+      type = "string"
+    }
+    columns {
       name = "status"
       type = "string"
     }
     columns {
+      name = "collection_id"
+      type = "int"
+    }
+    columns {
       name = "collection_name"
+      type = "string"
+    }
+    columns {
+      name = "collection_name_pt"
       type = "string"
     }
     columns {
@@ -510,11 +534,23 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
+      name = "production_countries_iso"
+      type = "array<string>"
+    }
+    columns {
       name = "recommended_titles"
       type = "string"
     }
     columns {
+      name = "recommended_ids"
+      type = "string"
+    }
+    columns {
       name = "similar_titles"
+      type = "string"
+    }
+    columns {
+      name = "similar_ids"
       type = "string"
     }
     columns {
@@ -587,6 +623,10 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     }
     columns {
       name = "tagline"
+      type = "string"
+    }
+    columns {
+      name = "tagline_pt"
       type = "string"
     }
     columns {
@@ -674,11 +714,23 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "string"
     }
     columns {
+      name = "production_countries_iso"
+      type = "array<string>"
+    }
+    columns {
       name = "recommended_titles"
       type = "string"
     }
     columns {
+      name = "recommended_ids"
+      type = "string"
+    }
+    columns {
       name = "similar_titles"
+      type = "string"
+    }
+    columns {
+      name = "similar_ids"
       type = "string"
     }
     columns {
