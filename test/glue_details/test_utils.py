@@ -235,6 +235,147 @@ class TestExtrairSpokenLanguages:
         assert u._extrair_spoken_languages(None) is None
 
 
+class TestExtrairProdutores:
+    def test_produtor_unico(self):
+        creditos = {"crew": [
+            {"name": "Kevin Feige", "job": "Producer"},
+            {"name": "Diretor X", "job": "Director"},
+        ]}
+        assert u._extrair_produtores(creditos) == "Kevin Feige"
+
+    def test_produtor_e_executivo(self):
+        creditos = {"crew": [
+            {"name": "Kevin Feige", "job": "Producer"},
+            {"name": "Victoria Alonso", "job": "Executive Producer"},
+        ]}
+        assert u._extrair_produtores(creditos) == "Kevin Feige, Victoria Alonso"
+
+    def test_deduplica_mesmo_nome(self):
+        creditos = {"crew": [
+            {"name": "Kevin Feige", "job": "Producer"},
+            {"name": "Kevin Feige", "job": "Executive Producer"},
+        ]}
+        assert u._extrair_produtores(creditos) == "Kevin Feige"
+
+    def test_limite_top_3(self):
+        creditos = {"crew": [
+            {"name": f"Produtor {i}", "job": "Producer"} for i in range(5)
+        ]}
+        assert u._extrair_produtores(creditos) == "Produtor 0, Produtor 1, Produtor 2"
+
+    def test_sem_produtor(self):
+        creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
+        assert u._extrair_produtores(creditos) is None
+
+    def test_crew_vazio(self):
+        assert u._extrair_produtores({"crew": []}) is None
+
+
+class TestExtrairCinematografo:
+    def test_cinematografo_unico(self):
+        creditos = {"crew": [
+            {"name": "Roger Deakins", "job": "Director of Photography"},
+            {"name": "Diretor X", "job": "Director"},
+        ]}
+        assert u._extrair_cinematografo(creditos) == "Roger Deakins"
+
+    def test_multiplos_cinematografos(self):
+        creditos = {"crew": [
+            {"name": "Roger Deakins", "job": "Director of Photography"},
+            {"name": "Emmanuel Lubezki", "job": "Director of Photography"},
+        ]}
+        assert u._extrair_cinematografo(creditos) == "Roger Deakins, Emmanuel Lubezki"
+
+    def test_sem_cinematografo(self):
+        creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
+        assert u._extrair_cinematografo(creditos) is None
+
+    def test_crew_vazio(self):
+        assert u._extrair_cinematografo({"crew": []}) is None
+
+
+class TestExtrairMontador:
+    def test_montador_unico(self):
+        creditos = {"crew": [
+            {"name": "Thelma Schoonmaker", "job": "Editor"},
+            {"name": "Diretor X", "job": "Director"},
+        ]}
+        assert u._extrair_montador(creditos) == "Thelma Schoonmaker"
+
+    def test_multiplos_montadores(self):
+        creditos = {"crew": [
+            {"name": "Thelma Schoonmaker", "job": "Editor"},
+            {"name": "Lee Smith", "job": "Editor"},
+        ]}
+        assert u._extrair_montador(creditos) == "Thelma Schoonmaker, Lee Smith"
+
+    def test_sem_montador(self):
+        creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
+        assert u._extrair_montador(creditos) is None
+
+    def test_crew_vazio(self):
+        assert u._extrair_montador({"crew": []}) is None
+
+
+class TestExtrairPaisesProducao:
+    def test_paises(self):
+        countries = [{"iso_3166_1": "US", "name": "United States"}, {"iso_3166_1": "NZ", "name": "New Zealand"}]
+        assert u._extrair_paises_producao(countries) == "United States, New Zealand"
+
+    def test_vazio(self):
+        assert u._extrair_paises_producao([]) is None
+
+    def test_none(self):
+        assert u._extrair_paises_producao(None) is None
+
+
+class TestExtrairTitulosRecomendados:
+    def test_movie(self):
+        recs = {"results": [{"title": "Interstellar"}, {"title": "The Prestige"}]}
+        assert u._extrair_titulos_recomendados(recs, "movie") == "Interstellar, The Prestige"
+
+    def test_tv(self):
+        recs = {"results": [{"name": "Breaking Bad"}, {"name": "Better Call Saul"}]}
+        assert u._extrair_titulos_recomendados(recs, "tv") == "Breaking Bad, Better Call Saul"
+
+    def test_limite(self):
+        recs = {"results": [{"title": f"Movie {i}"} for i in range(15)]}
+        result = u._extrair_titulos_recomendados(recs, "movie", limite=3)
+        assert result == "Movie 0, Movie 1, Movie 2"
+
+    def test_vazio(self):
+        assert u._extrair_titulos_recomendados({}, "movie") is None
+
+    def test_results_vazio(self):
+        assert u._extrair_titulos_recomendados({"results": []}, "movie") is None
+
+
+class TestExtrairTitulosSimilares:
+    def test_movie(self):
+        sim = {"results": [{"title": "Inception"}, {"title": "Tenet"}]}
+        assert u._extrair_titulos_similares(sim, "movie") == "Inception, Tenet"
+
+    def test_tv(self):
+        sim = {"results": [{"name": "The Wire"}, {"name": "The Sopranos"}]}
+        assert u._extrair_titulos_similares(sim, "tv") == "The Wire, The Sopranos"
+
+    def test_vazio(self):
+        assert u._extrair_titulos_similares({}, "tv") is None
+
+
+class TestExtrairTitulosAlternativos:
+    def test_movie(self):
+        alt = {"titles": [{"title": "Seven"}, {"title": "Se7en"}]}
+        assert u._extrair_titulos_alternativos(alt, "movie") == "Seven, Se7en"
+
+    def test_tv(self):
+        alt = {"results": [{"title": "La Casa de Papel"}, {"title": "Money Heist"}]}
+        assert u._extrair_titulos_alternativos(alt, "tv") == "La Casa de Papel, Money Heist"
+
+    def test_vazio(self):
+        assert u._extrair_titulos_alternativos({}, "movie") is None
+
+
 # ---------------------------------------------------------------------------
 # fetch_ids_from_sot
 # ---------------------------------------------------------------------------
@@ -330,6 +471,7 @@ class TestCollectAndWriteDetails:
             "budget": 50000000,
             "revenue": 200000000,
             "production_companies": [{"name": "Studio A"}],
+            "production_countries": [{"iso_3166_1": "US", "name": "United States"}],
             "spoken_languages": [{"english_name": "English"}],
             "origin_country": ["US"],
             "credits": {
@@ -338,6 +480,9 @@ class TestCollectAndWriteDetails:
                     {"name": "Diretor A", "job": "Director"},
                     {"name": "Roteirista A", "job": "Screenplay"},
                     {"name": "Compositor A", "job": "Original Music Composer"},
+                    {"name": "Produtor A", "job": "Producer"},
+                    {"name": "Foto A", "job": "Director of Photography"},
+                    {"name": "Montador A", "job": "Editor"},
                 ],
             },
             "keywords": {"keywords": [{"id": 1, "name": "keyword1"}]},
@@ -348,6 +493,9 @@ class TestCollectAndWriteDetails:
                 {"type": "Trailer", "site": "YouTube", "official": True, "key": "abc123"},
             ]},
             "external_ids": {"imdb_id": "tt1234567"},
+            "recommendations": {"results": [{"title": "Filme Rec A"}]},
+            "similar": {"results": [{"title": "Filme Sim A"}]},
+            "alternative_titles": {"titles": [{"title": "Film A Alt"}]},
         }
 
     def _mock_tv_response(self, item_id: int) -> dict:
@@ -365,6 +513,7 @@ class TestCollectAndWriteDetails:
             "tagline": "Tagline serie",
             "status": "Returning Series",
             "production_companies": [{"name": "Studio B"}],
+            "production_countries": [{"iso_3166_1": "US", "name": "United States"}, {"iso_3166_1": "GB", "name": "United Kingdom"}],
             "spoken_languages": [{"english_name": "English"}, {"english_name": "Spanish"}],
             "created_by": [{"name": "Criador A"}],
             "networks": [{"name": "HBO"}],
@@ -377,6 +526,9 @@ class TestCollectAndWriteDetails:
                     {"name": "Diretor TV", "job": "Director"},
                     {"name": "Roteirista TV", "job": "Writer"},
                     {"name": "Compositor TV", "job": "Original Music Composer"},
+                    {"name": "Produtor TV", "job": "Executive Producer"},
+                    {"name": "Foto TV", "job": "Director of Photography"},
+                    {"name": "Montador TV", "job": "Editor"},
                 ],
             },
             "keywords": {"results": [{"id": 1, "name": "drama"}]},
@@ -385,6 +537,9 @@ class TestCollectAndWriteDetails:
             ]},
             "videos": {"results": []},
             "external_ids": {"imdb_id": "tt9876543"},
+            "recommendations": {"results": [{"name": "Serie Rec A"}]},
+            "similar": {"results": [{"name": "Serie Sim A"}]},
+            "alternative_titles": {"results": [{"title": "Serie A Alt"}]},
         }
 
     def test_movie_writes_runtime_and_year(self):
@@ -426,6 +581,13 @@ class TestCollectAndWriteDetails:
             assert "trailer_url" in df_written.columns
             assert "imdb_id" in df_written.columns
             assert "origin_country" in df_written.columns
+            assert "producer" in df_written.columns
+            assert "cinematographer" in df_written.columns
+            assert "editor" in df_written.columns
+            assert "production_countries" in df_written.columns
+            assert "recommended_titles" in df_written.columns
+            assert "similar_titles" in df_written.columns
+            assert "alternative_titles" in df_written.columns
             assert len(df_written) == 2
 
     def test_tv_writes_seasons_episodes_runtime(self):
@@ -465,6 +627,13 @@ class TestCollectAndWriteDetails:
             assert "networks" in df_written.columns
             assert "trailer_url" in df_written.columns
             assert "imdb_id" in df_written.columns
+            assert "producer" in df_written.columns
+            assert "cinematographer" in df_written.columns
+            assert "editor" in df_written.columns
+            assert "production_countries" in df_written.columns
+            assert "recommended_titles" in df_written.columns
+            assert "similar_titles" in df_written.columns
+            assert "alternative_titles" in df_written.columns
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib

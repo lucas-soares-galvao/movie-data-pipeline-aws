@@ -2,11 +2,11 @@
 
 ## O que é
 
-O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios, plataformas de streaming disponíveis no Brasil, elenco (top 5 atores), diretor, roteiristas, compositor da trilha sonora, país de origem (filmes), keywords temáticas, classificação indicativa BR, trailer, coleção/franquia, produtoras, status, tagline e IMDB ID. Também traduz sinopses e keywords do inglês para o português (via Google Translate). Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
+O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios, plataformas de streaming disponíveis no Brasil, elenco (top 5 atores), diretor, roteiristas, compositor da trilha sonora, produtor(es), diretor de fotografia, montador(a), país de origem (filmes), países de produção, keywords temáticas, classificação indicativa BR, trailer, coleção/franquia, produtoras, status, tagline, IMDB ID, títulos recomendados, títulos similares e títulos alternativos/regionais. Também traduz sinopses e keywords do inglês para o português (via Google Translate). Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
 
 ## Por que existe
 
-A API de discover do TMDB retorna metadados básicos (título, nota, gênero). Informações como duração de filmes, número de temporadas de séries, elenco, diretor, keywords temáticas, classificação indicativa e onde assistir no Brasil requerem endpoints específicos por ID. Este job faz esse enriquecimento de forma eficiente em paralelo, usando o parâmetro `append_to_response` para obter credits, keywords, release_dates/content_ratings, videos e external_ids na mesma chamada de API (sem custo adicional de rate limit).
+A API de discover do TMDB retorna metadados básicos (título, nota, gênero). Informações como duração de filmes, número de temporadas de séries, elenco, diretor, produtor, diretor de fotografia, montador, keywords temáticas, classificação indicativa, títulos recomendados/similares/alternativos e onde assistir no Brasil requerem endpoints específicos por ID. Este job faz esse enriquecimento de forma eficiente em paralelo, usando o parâmetro `append_to_response` para obter credits, keywords, release_dates/content_ratings, videos, external_ids, recommendations, similar e alternative_titles na mesma chamada de API (sem custo adicional de rate limit).
 
 ## Como funciona
 
@@ -58,6 +58,13 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `_extrair_criadores(created_by)` | Criadores de série comma-separated |
 | `_extrair_networks(networks)` | Redes de TV comma-separated |
 | `_extrair_spoken_languages(spoken_languages)` | Idiomas falados comma-separated |
+| `_extrair_produtores(creditos, limite)` | Produtor(es) e produtores executivos, deduplicados, top N |
+| `_extrair_cinematografo(creditos)` | Diretor(es) de fotografia (job='Director of Photography') |
+| `_extrair_montador(creditos)` | Montador(es) (job='Editor') |
+| `_extrair_paises_producao(production_countries)` | Países de produção comma-separated |
+| `_extrair_titulos_recomendados(recommendations, content_type, limite)` | Top N títulos recomendados pelo TMDB |
+| `_extrair_titulos_similares(similar, content_type, limite)` | Top N títulos similares pelo TMDB |
+| `_extrair_titulos_alternativos(alternative_titles, content_type)` | Títulos alternativos/regionais |
 | `collect_and_write_details(ids, ...)` | Faz chamadas paralelas e grava tabela de detalhes |
 | `collect_and_write_watch_providers(ids, ...)` | Faz chamadas paralelas e grava tabela de watch providers |
 | `repair_discover_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro de maior `popularity` e regrava apenas se houver mudanças |

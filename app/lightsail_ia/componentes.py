@@ -37,6 +37,7 @@ def renderizar_card(t: dict) -> str:
     duracao = t.get("duracao") or ""
     data_lancamento = html.escape(t.get("data_lancamento") or "")
     streaming_providers = t.get("streaming_providers") or ""
+    rent_buy_providers = t.get("aluguel_compra") or ""
     in_theaters = t.get("in_theaters") or False
     theater_end_date = html.escape(t.get("theater_end_date") or "")
     elenco = html.escape(t.get("elenco") or "")
@@ -69,22 +70,29 @@ def renderizar_card(t: dict) -> str:
 
     elenco_html = (
         f'<div class="meta-row"><span class="meta-icon">🎭</span>'
-        f'<span class="elenco">{elenco}</span></div>'
+        f'<span class="elenco">Elenco: {elenco}</span></div>'
         if elenco else ""
     )
     diretor_html = (
         f'<div class="meta-row"><span class="meta-icon">🎬</span>'
-        f'<span class="diretor">Dir: {diretor}</span></div>'
+        f'<span class="diretor">Diretor: {diretor}</span></div>'
         if diretor else ""
     )
-
     trailer_html = ""
     if trailer_url:
         safe_url = html.escape(trailer_url)
+        yt_svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" '
+            'fill="red"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.546 12 '
+            '3.546 12 3.546s-7.505 0-9.377.504A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 '
+            '3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.504 9.376.504 9.376.504s7.505 0 '
+            '9.377-.504a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 '
+            '15.568V8.432L15.818 12l-6.273 3.568z"/></svg>'
+        )
         trailer_html = (
-            f'<div class="meta-row">'
+            f'<div class="meta-row"><span class="meta-icon">{yt_svg}</span>'
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
-            f'▶ Trailer</a></div>'
+            f'Trailer</a></div>'
         )
 
     providers_html = ""
@@ -97,6 +105,18 @@ def renderizar_card(t: dict) -> str:
         providers_html = (
             f'<div class="meta-row providers-row">'
             f'<span class="meta-icon">📺</span>{stream_badges}</div>'
+        )
+
+    rent_buy_html = ""
+    if rent_buy_providers:
+        rb_badges = "".join(
+            f'<span class="provider">{html.escape(p.strip())}</span>'
+            for p in rent_buy_providers.split(",")
+            if p.strip()
+        )
+        rent_buy_html = (
+            f'<div class="meta-row providers-row">'
+            f'<span class="meta-icon">🛒</span>{rb_badges}</div>'
         )
 
     nota_html = (
@@ -131,6 +151,7 @@ def renderizar_card(t: dict) -> str:
         {elenco_html}
         {cinema_html}
         {providers_html}
+        {rent_buy_html}
         {trailer_html}
         <p class="sinopse">{sinopse}</p>
       </div>

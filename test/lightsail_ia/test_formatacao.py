@@ -179,6 +179,28 @@ class TestFormatarRegistro:
         assert resultado["redes_tv"] is None
         assert resultado["criadores"] is None
 
+    def test_novos_campos_crew_e_extras(self):
+        registro = {
+            **TITULO_FAKE,
+            "producer": "Kevin Feige",
+            "cinematographer": "Roger Deakins",
+            "editor": "Thelma Schoonmaker",
+            "production_countries": "United States, New Zealand",
+            "rent_buy_providers": "Apple TV, Google Play",
+            "recommended_titles": "Interstellar, The Prestige",
+            "similar_titles": "Inception, Tenet",
+            "alternative_titles": "Seven, Se7en",
+        }
+        resultado = formatacao.formatar_registro(registro)
+        assert resultado["produtor"] == "Kevin Feige"
+        assert resultado["cinematografo"] == "Roger Deakins"
+        assert resultado["montador"] == "Thelma Schoonmaker"
+        assert resultado["paises_producao"] == "United States, New Zealand"
+        assert resultado["aluguel_compra"] == "Apple TV, Google Play"
+        assert resultado["recomendados"] == "Interstellar, The Prestige"
+        assert resultado["similares"] == "Inception, Tenet"
+        assert resultado["titulos_alternativos"] == "Seven, Se7en"
+
     def test_novos_campos_nulos(self):
         resultado = formatacao.formatar_registro(TITULO_FAKE)
         assert resultado["tagline"] is None
@@ -186,6 +208,14 @@ class TestFormatarRegistro:
         assert resultado["diretor"] is None
         assert resultado["roteiristas"] is None
         assert resultado["compositor"] is None
+        assert resultado["produtor"] is None
+        assert resultado["cinematografo"] is None
+        assert resultado["montador"] is None
+        assert resultado["paises_producao"] is None
+        assert resultado["aluguel_compra"] is None
+        assert resultado["recomendados"] is None
+        assert resultado["similares"] is None
+        assert resultado["titulos_alternativos"] is None
 
     def test_registro_serie(self):
         serie = {

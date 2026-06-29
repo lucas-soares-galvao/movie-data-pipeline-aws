@@ -39,9 +39,13 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 - `tagline` (frase de efeito), `elenco` (top 5 atores), `diretor` (filmes e séries)
 - `roteiristas` (escritores/roteiristas), `compositor` (compositor da trilha sonora)
+- `produtor` (produtores/produtores executivos), `cinematografo` (diretor de fotografia), `montador` (editor/montador)
 - `keywords` (tags temáticas em português), `certificacao` (classificação indicativa BR: L/10/12/14/16/18)
 - `trailer_url` (link do YouTube), `colecao` (saga/franquia, apenas filmes)
-- `produtoras` (estúdios), `redes_tv` (redes originais, apenas séries), `criadores` (apenas séries)
+- `produtoras` (estúdios), `paises_producao` (países de produção, diferente de país de origem)
+- `redes_tv` (redes originais, apenas séries), `criadores` (apenas séries)
+- `aluguel_compra` (plataformas de aluguel/compra no Brasil)
+- `recomendados` (títulos recomendados pelo TMDB), `similares` (títulos similares), `titulos_alternativos` (nomes regionais)
 
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
@@ -57,9 +61,13 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
   - Linha com nota (★), duração (⏱), data de lançamento (📅)
   - Badge de classificação indicativa (L/10/12/14/16/18)
   - Linha com diretor (filmes)
+  - Linha com produtor(es) (quando disponível)
+  - Linha com diretor de fotografia (quando disponível)
+  - Linha com montador(a) (quando disponível)
   - Linha com elenco (top 5 atores)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
+  - Badges 🛒 com plataformas de aluguel/compra no Brasil
   - Link clicável ▶ Trailer (quando disponível)
   - Sinopse
 

@@ -494,6 +494,34 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "array<string>"
     }
     columns {
+      name = "producer"
+      type = "string"
+    }
+    columns {
+      name = "cinematographer"
+      type = "string"
+    }
+    columns {
+      name = "editor"
+      type = "string"
+    }
+    columns {
+      name = "production_countries"
+      type = "string"
+    }
+    columns {
+      name = "recommended_titles"
+      type = "string"
+    }
+    columns {
+      name = "similar_titles"
+      type = "string"
+    }
+    columns {
+      name = "alternative_titles"
+      type = "string"
+    }
+    columns {
       name = "dt_processamento"
       type = "date"
     }
@@ -627,6 +655,34 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     }
     columns {
       name = "imdb_id"
+      type = "string"
+    }
+    columns {
+      name = "producer"
+      type = "string"
+    }
+    columns {
+      name = "cinematographer"
+      type = "string"
+    }
+    columns {
+      name = "editor"
+      type = "string"
+    }
+    columns {
+      name = "production_countries"
+      type = "string"
+    }
+    columns {
+      name = "recommended_titles"
+      type = "string"
+    }
+    columns {
+      name = "similar_titles"
+      type = "string"
+    }
+    columns {
+      name = "alternative_titles"
       type = "string"
     }
     columns {

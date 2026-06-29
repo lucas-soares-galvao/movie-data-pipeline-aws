@@ -13,11 +13,15 @@ TITULO_BASE = {
     "duracao": "2h 26min",
     "data_lancamento": "Maio de 1980",
     "streaming_providers": "Netflix",
+    "aluguel_compra": None,
     "in_theaters": False,
     "theater_end_date": None,
     "tagline": None,
     "elenco": None,
     "diretor": None,
+    "produtor": None,
+    "cinematografo": None,
+    "montador": None,
     "keywords": None,
     "certificacao": None,
     "trailer_url": None,
@@ -41,12 +45,12 @@ class TestRenderizarCard:
     def test_card_com_elenco(self):
         t = {**TITULO_BASE, "elenco": "Jack Nicholson, Shelley Duvall"}
         html = componentes.renderizar_card(t)
-        assert "Jack Nicholson" in html
+        assert "Elenco: Jack Nicholson" in html
 
     def test_card_com_diretor(self):
         t = {**TITULO_BASE, "diretor": "Stanley Kubrick"}
         html = componentes.renderizar_card(t)
-        assert "Dir: Stanley Kubrick" in html
+        assert "Diretor: Stanley Kubrick" in html
 
     def test_card_com_certificacao(self):
         t = {**TITULO_BASE, "certificacao": "16"}
@@ -79,13 +83,34 @@ class TestRenderizarCard:
         html = componentes.renderizar_card(TITULO_BASE)
         assert "tagline" not in html
         assert "trailer-link" not in html
-        assert "Dir:" not in html
+        assert "Diretor:" not in html
         assert "Criado por:" not in html
 
     def test_card_cinema_em_cartaz(self):
         t = {**TITULO_BASE, "in_theaters": True, "theater_end_date": "15/07/2025"}
         html = componentes.renderizar_card(t)
         assert "Em cartaz até 15/07/2025" in html
+
+    def test_card_nao_exibe_produtor(self):
+        t = {**TITULO_BASE, "produtor": "Kevin Feige"}
+        html = componentes.renderizar_card(t)
+        assert "Produtor:" not in html
+
+    def test_card_nao_exibe_cinematografo(self):
+        t = {**TITULO_BASE, "cinematografo": "Roger Deakins"}
+        html = componentes.renderizar_card(t)
+        assert "Cinematógrafo:" not in html
+
+    def test_card_nao_exibe_montador(self):
+        t = {**TITULO_BASE, "montador": "Thelma Schoonmaker"}
+        html = componentes.renderizar_card(t)
+        assert "Montador:" not in html
+
+    def test_card_com_rent_buy_providers(self):
+        t = {**TITULO_BASE, "aluguel_compra": "Apple TV, Google Play"}
+        html = componentes.renderizar_card(t)
+        assert "Apple TV" in html
+        assert "Google Play" in html
 
     def test_card_com_streaming_providers(self):
         html = componentes.renderizar_card(TITULO_BASE)
