@@ -55,7 +55,9 @@ def get_parameters_glue() -> Dict[str, Any]:
     params = get_resolved_option(required_args)
 
     # Opcional: quando True, ignora o delta mensal e re-busca todos os IDs na API.
-    # Não faz parte dos required_args para manter compatibilidade com runs normais.
+    # FORCE_REFETCH não pode estar em required_args porque getResolvedOptions falha para qualquer
+    # argumento não passado na chamada (sem suporte a valor padrão). Lemos manualmente aqui
+    # para mantê-lo opcional sem precisar altererar os runs normais.
     params["FORCE_REFETCH"] = False
     for i, arg in enumerate(sys.argv):
         if arg == "--FORCE_REFETCH" and i + 1 < len(sys.argv):
@@ -240,6 +242,83 @@ _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limi
 _TRANSLATE_MAX_WORKERS = 10  # traduções EN→PT paralelas via Google Translate
 
 
+def _run_parallel(func: Any, items: list, max_workers: int = _TMDB_MAX_WORKERS) -> None:
+    """
+    Executa func(item) em paralelo para cada item da lista.
+
+    Propaga exceções levantadas dentro de func — se alguma thread falhar de forma
+    inesperada, o job é interrompido. Erros tratáveis (ex: HTTPError de um ID)
+    devem ser capturados dentro de func antes de chegar aqui.
+
+    Args:
+        func:        Função a executar para cada item. Deve aceitar um único argumento.
+        items:       Lista de itens a processar.
+        max_workers: Número máximo de threads simultâneas.
+    """
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(func, item) for item in items]
+        for future in as_completed(futures):
+            future.result()
+
+
+def _google_translate(texto: str) -> str:
+    """
+    Traduz texto de inglês para português via Google Translate.
+
+    Compartilhada pelas três funções _adicionar_traducoes_* deste módulo.
+    Retorna o texto original em caso de falha — qualquer exceção (rede,
+    rate limit, resposta vazia) é tratada aqui para não interromper o job.
+
+    Args:
+        texto: Texto em inglês a ser traduzido.
+
+    Returns:
+        Texto traduzido para português, ou o texto original se a tradução falhar.
+    """
+    if not texto:
+        return ""
+    try:
+        return GoogleTranslator(source="en", target="pt").translate(texto)
+    except Exception as exc:
+        logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
+        return texto
+
+
+# ── Funções auxiliares de extração ──────────────────────────────────────────────
+# Cada função "_extrair_*" isola a lógica de um campo específico da resposta da API TMDB.
+# Isso permite testar cada campo individualmente e facilita a leitura de _parse_detail().
+# Convenção: retornam None quando o dado não existe, em vez de string vazia.
+
+
+def _extrair_nomes_de_lista(
+    lista: list,
+    *,
+    filtro_campo: Optional[str] = None,
+    filtro_valor: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Extrai nomes de uma lista de dicts e os une por vírgula.
+
+    Usada pelas funções _extrair_* que seguem o padrão: filtrar uma lista,
+    extrair o campo "name" de cada item e juntar em string separada por vírgula.
+
+    Args:
+        lista:         Lista de dicts com chave "name".
+        filtro_campo:  Campo a verificar como critério de inclusão (ex: "job").
+                       Se None, inclui todos os itens que tiverem "name".
+        filtro_valor:  Valor esperado no filtro_campo (ex: "Director").
+
+    Returns:
+        String com nomes separados por vírgula, ou None se a lista for vazia.
+    """
+    if filtro_campo and filtro_valor:
+        nomes = [item["name"] for item in (lista or [])
+                 if item.get("name") and item.get(filtro_campo) == filtro_valor]
+    else:
+        nomes = [item["name"] for item in (lista or []) if item.get("name")]
+    return ", ".join(nomes) if nomes else None
+
+
 def _extrair_elenco(creditos: dict, limite: int = 5) -> Optional[str]:
     """Top N atores por ordem de billing, separados por vírgula."""
     cast = creditos.get("cast", [])
@@ -249,9 +328,7 @@ def _extrair_elenco(creditos: dict, limite: int = 5) -> Optional[str]:
 
 def _extrair_diretor(creditos: dict) -> Optional[str]:
     """Diretor(es) do filme/série (job == 'Director' no crew)."""
-    crew = creditos.get("crew", [])
-    diretores = [c["name"] for c in crew if c.get("job") == "Director"]
-    return ", ".join(diretores) if diretores else None
+    return _extrair_nomes_de_lista(creditos.get("crew", []), filtro_campo="job", filtro_valor="Director")
 
 
 def _extrair_roteiristas(creditos: dict) -> Optional[str]:
@@ -270,9 +347,7 @@ def _extrair_roteiristas(creditos: dict) -> Optional[str]:
 
 def _extrair_compositor(creditos: dict) -> Optional[str]:
     """Compositor(es) da trilha sonora (job == 'Original Music Composer')."""
-    crew = creditos.get("crew", [])
-    compositores = [c["name"] for c in crew if c.get("job") == "Original Music Composer"]
-    return ", ".join(compositores) if compositores else None
+    return _extrair_nomes_de_lista(creditos.get("crew", []), filtro_campo="job", filtro_valor="Original Music Composer")
 
 
 def _extrair_keywords(dados_keywords: dict) -> Optional[str]:
@@ -316,20 +391,17 @@ def _extrair_trailer_url(videos: dict) -> Optional[str]:
 
 def _extrair_produtoras(companies: list) -> Optional[str]:
     """Nomes das produtoras, separados por vírgula."""
-    nomes = [c["name"] for c in (companies or []) if c.get("name")]
-    return ", ".join(nomes) if nomes else None
+    return _extrair_nomes_de_lista(companies)
 
 
 def _extrair_criadores(created_by: list) -> Optional[str]:
     """Criadores de série, separados por vírgula."""
-    nomes = [c["name"] for c in (created_by or []) if c.get("name")]
-    return ", ".join(nomes) if nomes else None
+    return _extrair_nomes_de_lista(created_by)
 
 
 def _extrair_networks(networks: list) -> Optional[str]:
     """Redes de TV, separadas por vírgula."""
-    nomes = [n["name"] for n in (networks or []) if n.get("name")]
-    return ", ".join(nomes) if nomes else None
+    return _extrair_nomes_de_lista(networks)
 
 
 def _extrair_spoken_languages(spoken_languages: list) -> Optional[str]:
@@ -363,22 +435,17 @@ def _extrair_produtores(creditos: dict, limite: int = 3) -> Optional[str]:
 
 def _extrair_cinematografo(creditos: dict) -> Optional[str]:
     """Diretor(es) de fotografia (job == 'Director of Photography' no crew)."""
-    crew = creditos.get("crew", [])
-    nomes = [c["name"] for c in crew if c.get("job") == "Director of Photography"]
-    return ", ".join(nomes) if nomes else None
+    return _extrair_nomes_de_lista(creditos.get("crew", []), filtro_campo="job", filtro_valor="Director of Photography")
 
 
 def _extrair_montador(creditos: dict) -> Optional[str]:
     """Montador(es) do filme/série (job == 'Editor' no crew)."""
-    crew = creditos.get("crew", [])
-    nomes = [c["name"] for c in crew if c.get("job") == "Editor"]
-    return ", ".join(nomes) if nomes else None
+    return _extrair_nomes_de_lista(creditos.get("crew", []), filtro_campo="job", filtro_valor="Editor")
 
 
 def _extrair_paises_producao(production_countries: list) -> Optional[str]:
     """Países de produção, separados por vírgula."""
-    nomes = [c.get("name", "") for c in (production_countries or []) if c.get("name")]
-    return ", ".join(nomes) if nomes else None
+    return _extrair_nomes_de_lista(production_countries)
 
 
 def _extrair_paises_producao_iso(production_countries: list) -> Optional[List[str]]:
@@ -451,106 +518,86 @@ def _extrair_titulos_alternativos(alternative_titles: dict, content_type: str) -
     return ", ".join(nomes) if nomes else None
 
 
+# ── Montagem do registro final ────────────────────────────────────────────────
+# As três funções abaixo separam os campos em: comuns a ambos os tipos, exclusivos
+# de filmes e exclusivos de séries. _parse_detail() combina os três em um dict final.
+
+
+def _campos_comuns(detalhe: dict, content_type: str) -> dict:
+    """Campos compartilhados entre filmes e séries na resposta da API TMDB."""
+    creditos = detalhe.get("credits", {})
+    traducao_pt_br = _extrair_traducao_pt_br(detalhe.get("translations", {}))
+    return {
+        "id":                       detalhe.get("id"),
+        "overview_en":              detalhe.get("overview"),
+        "poster_path_en":           detalhe.get("poster_path"),
+        "backdrop_path_en":         detalhe.get("backdrop_path"),
+        "original_language":        detalhe.get("original_language"),
+        "tagline":                  detalhe.get("tagline") or None,
+        "status":                   detalhe.get("status"),
+        "production_companies":     _extrair_produtoras(detalhe.get("production_companies")),
+        "production_countries":     _extrair_paises_producao(detalhe.get("production_countries")),
+        "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
+        "spoken_languages":         _extrair_spoken_languages(detalhe.get("spoken_languages")),
+        "spoken_languages_iso":     _extrair_spoken_languages_iso(detalhe.get("spoken_languages")),
+        "actor_names":              _extrair_elenco(creditos),
+        "director":                 _extrair_diretor(creditos),
+        "screenplay":               _extrair_roteiristas(creditos),
+        "music_composer":           _extrair_compositor(creditos),
+        "producer":                 _extrair_produtores(creditos),
+        "cinematographer":          _extrair_cinematografo(creditos),
+        "editor":                   _extrair_montador(creditos),
+        "keywords":                 _extrair_keywords(detalhe.get("keywords", {})),
+        "trailer_url":              _extrair_trailer_url(detalhe.get("videos", {})),
+        "imdb_id":                  detalhe.get("external_ids", {}).get("imdb_id"),
+        "recommended_titles":       _extrair_titulos_recomendados(detalhe.get("recommendations", {}), content_type),
+        "recommended_ids":          _extrair_ids_recomendados(detalhe.get("recommendations", {})),
+        "similar_titles":           _extrair_titulos_similares(detalhe.get("similar", {}), content_type),
+        "similar_ids":              _extrair_ids_similares(detalhe.get("similar", {})),
+        "alternative_titles":       _extrair_titulos_alternativos(detalhe.get("alternative_titles", {}), content_type),
+        "overview_pt_tmdb":         traducao_pt_br["overview_pt_tmdb"],
+        "tagline_pt_tmdb":          traducao_pt_br["tagline_pt_tmdb"],
+        "dt_processamento":         date.today(),
+    }
+
+
+def _campos_movie(detalhe: dict) -> dict:
+    """Campos exclusivos de filmes (complementam _campos_comuns)."""
+    release_date = detalhe.get("release_date") or ""
+    collection = detalhe.get("belongs_to_collection")
+    return {
+        "year":            release_date[:4] if release_date else None,
+        "runtime":         detalhe.get("runtime"),
+        "collection_id":   collection.get("id") if collection else None,
+        "collection_name": collection.get("name") if collection else None,
+        "budget":          detalhe.get("budget") or None,
+        "revenue":         detalhe.get("revenue") or None,
+        "origin_country":  detalhe.get("origin_country"),
+        "certification":   _extrair_certificacao_br_movie(detalhe.get("release_dates", {})),
+    }
+
+
+def _campos_tv(detalhe: dict) -> dict:
+    """Campos exclusivos de séries (complementam _campos_comuns)."""
+    first_air_date = detalhe.get("first_air_date") or ""
+    return {
+        "year":               first_air_date[:4] if first_air_date else None,
+        "number_of_seasons":  detalhe.get("number_of_seasons"),
+        "number_of_episodes": detalhe.get("number_of_episodes"),
+        "episode_run_time":   detalhe.get("episode_run_time", []),
+        "created_by":         _extrair_criadores(detalhe.get("created_by")),
+        "networks":           _extrair_networks(detalhe.get("networks")),
+        "in_production":      detalhe.get("in_production"),
+        "last_air_date":      detalhe.get("last_air_date"),
+        "tv_type":            detalhe.get("type"),
+        "certification":      _extrair_certificacao_br_tv(detalhe.get("content_ratings", {})),
+    }
+
+
 def _parse_detail(detalhe: dict, content_type: str) -> Optional[dict]:
     """Extrai os campos relevantes da resposta de /movie/{id} ou /tv/{id}."""
-    creditos = detalhe.get("credits", {})
-    keywords_data = detalhe.get("keywords", {})
-    videos_data = detalhe.get("videos", {})
-    external_ids = detalhe.get("external_ids", {})
-    recommendations_data = detalhe.get("recommendations", {})
-    similar_data = detalhe.get("similar", {})
-    alt_titles_data = detalhe.get("alternative_titles", {})
-    traducao_pt_br = _extrair_traducao_pt_br(detalhe.get("translations", {}))
-
-    if content_type == "movie":
-        release_date = detalhe.get("release_date") or ""
-        year = release_date[:4] if release_date else None
-        collection = detalhe.get("belongs_to_collection")
-        return {
-            "id":                    detalhe.get("id"),
-            "runtime":               detalhe.get("runtime"),
-            "overview_en":           detalhe.get("overview"),
-            "poster_path_en":        detalhe.get("poster_path"),
-            "backdrop_path_en":      detalhe.get("backdrop_path"),
-            "original_language":     detalhe.get("original_language"),
-            "tagline":               detalhe.get("tagline") or None,
-            "status":                detalhe.get("status"),
-            "collection_id":         collection.get("id") if collection else None,
-            "collection_name":       collection.get("name") if collection else None,
-            "budget":                detalhe.get("budget") or None,
-            "revenue":               detalhe.get("revenue") or None,
-            "production_companies":  _extrair_produtoras(detalhe.get("production_companies")),
-            "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
-            "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
-            "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
-            "spoken_languages_iso":  _extrair_spoken_languages_iso(detalhe.get("spoken_languages")),
-            "actor_names":           _extrair_elenco(creditos),
-            "director":              _extrair_diretor(creditos),
-            "screenplay":            _extrair_roteiristas(creditos),
-            "music_composer":        _extrair_compositor(creditos),
-            "producer":              _extrair_produtores(creditos),
-            "cinematographer":       _extrair_cinematografo(creditos),
-            "editor":                _extrair_montador(creditos),
-            "keywords":              _extrair_keywords(keywords_data),
-            "certification":         _extrair_certificacao_br_movie(detalhe.get("release_dates", {})),
-            "trailer_url":           _extrair_trailer_url(videos_data),
-            "imdb_id":               external_ids.get("imdb_id"),
-            "origin_country":        detalhe.get("origin_country"),
-            "recommended_titles":    _extrair_titulos_recomendados(recommendations_data, content_type),
-            "recommended_ids":       _extrair_ids_recomendados(recommendations_data),
-            "similar_titles":        _extrair_titulos_similares(similar_data, content_type),
-            "similar_ids":           _extrair_ids_similares(similar_data),
-            "alternative_titles":    _extrair_titulos_alternativos(alt_titles_data, content_type),
-            "overview_pt_tmdb":      traducao_pt_br["overview_pt_tmdb"],
-            "tagline_pt_tmdb":       traducao_pt_br["tagline_pt_tmdb"],
-            "dt_processamento":      date.today(),
-            "year":                  year,
-        }
-    else:  # tv
-        first_air_date = detalhe.get("first_air_date") or ""
-        year = first_air_date[:4] if first_air_date else None
-        return {
-            "id":                    detalhe.get("id"),
-            "number_of_seasons":     detalhe.get("number_of_seasons"),
-            "number_of_episodes":    detalhe.get("number_of_episodes"),
-            "episode_run_time":      detalhe.get("episode_run_time", []),
-            "overview_en":           detalhe.get("overview"),
-            "poster_path_en":        detalhe.get("poster_path"),
-            "backdrop_path_en":      detalhe.get("backdrop_path"),
-            "original_language":     detalhe.get("original_language"),
-            "tagline":               detalhe.get("tagline") or None,
-            "status":                detalhe.get("status"),
-            "production_companies":  _extrair_produtoras(detalhe.get("production_companies")),
-            "production_countries":  _extrair_paises_producao(detalhe.get("production_countries")),
-            "production_countries_iso": _extrair_paises_producao_iso(detalhe.get("production_countries")),
-            "spoken_languages":      _extrair_spoken_languages(detalhe.get("spoken_languages")),
-            "spoken_languages_iso":  _extrair_spoken_languages_iso(detalhe.get("spoken_languages")),
-            "created_by":            _extrair_criadores(detalhe.get("created_by")),
-            "networks":              _extrair_networks(detalhe.get("networks")),
-            "in_production":         detalhe.get("in_production"),
-            "last_air_date":         detalhe.get("last_air_date"),
-            "tv_type":               detalhe.get("type"),
-            "actor_names":           _extrair_elenco(creditos),
-            "director":              _extrair_diretor(creditos),
-            "screenplay":            _extrair_roteiristas(creditos),
-            "music_composer":        _extrair_compositor(creditos),
-            "producer":              _extrair_produtores(creditos),
-            "cinematographer":       _extrair_cinematografo(creditos),
-            "editor":                _extrair_montador(creditos),
-            "keywords":              _extrair_keywords(keywords_data),
-            "certification":         _extrair_certificacao_br_tv(detalhe.get("content_ratings", {})),
-            "trailer_url":           _extrair_trailer_url(videos_data),
-            "imdb_id":               external_ids.get("imdb_id"),
-            "recommended_titles":    _extrair_titulos_recomendados(recommendations_data, content_type),
-            "recommended_ids":       _extrair_ids_recomendados(recommendations_data),
-            "similar_titles":        _extrair_titulos_similares(similar_data, content_type),
-            "similar_ids":           _extrair_ids_similares(similar_data),
-            "alternative_titles":    _extrair_titulos_alternativos(alt_titles_data, content_type),
-            "overview_pt_tmdb":      traducao_pt_br["overview_pt_tmdb"],
-            "tagline_pt_tmdb":       traducao_pt_br["tagline_pt_tmdb"],
-            "dt_processamento":      date.today(),
-            "year":                  year,
-        }
+    campos_especificos = _campos_movie(detalhe) if content_type == "movie" else _campos_tv(detalhe)
+    return {**_campos_comuns(detalhe, content_type), **campos_especificos}
 
 
 def _buscar_colecoes_pt_br(api_key: str, collection_ids: List[int]) -> Dict[int, str]:
@@ -584,10 +631,7 @@ def _buscar_colecoes_pt_br(api_key: str, collection_ids: List[int]) -> Dict[int,
             logger.warning(f"Falha ao buscar coleção {col_id} em pt-BR: {exc}")
 
     logger.info(f"Buscando {len(collection_ids)} coleções em pt-BR ({_TMDB_MAX_WORKERS} workers)...")
-    with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
-        futures = {executor.submit(_fetch, cid): cid for cid in collection_ids}
-        for future in as_completed(futures):
-            future.result()
+    _run_parallel(_fetch, collection_ids)
 
     logger.info(f"Coleções pt-BR encontradas: {len(resultado)}/{len(collection_ids)}.")
     return resultado
@@ -623,6 +667,14 @@ def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFram
     return df
 
 
+def _traduzir_coluna(df: pd.DataFrame, mask, coluna_fonte: str, coluna_destino: str) -> None:
+    """Traduz em paralelo os valores de coluna_fonte onde mask é True e grava em coluna_destino."""
+    valores = df.loc[mask, coluna_fonte].fillna("").tolist()
+    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+        traduzidos = list(executor.map(_google_translate, valores))
+    df.loc[mask, coluna_destino] = traduzidos
+
+
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adiciona coluna overview_pt ao DataFrame de detalhes.
@@ -640,27 +692,13 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     if not mask.any():
         return df
 
-    def _translate(texto: str) -> str:
-        """Traduz texto de inglês para português via Google Translate."""
-        if not texto:
-            return ""
-        try:
-            return GoogleTranslator(source="en", target="pt").translate(texto)
-        except Exception as exc:
-            logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
-            return texto
-
     total = mask.sum()
     logger.info(
         f"Traduzindo overview de {total} registros sem tradução TMDB pt-BR "
         f"({_TRANSLATE_MAX_WORKERS} workers)."
     )
 
-    valores = df.loc[mask, "overview_en"].fillna("").tolist()
-    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(_translate, valores))
-    df.loc[mask, "overview_pt"] = traduzidos
-
+    _traduzir_coluna(df, mask, "overview_en", "overview_pt")
     return df
 
 
@@ -677,24 +715,10 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
     if not mask.any():
         return df
 
-    def _translate(texto: str) -> str:
-        """Traduz keywords de inglês para português via Google Translate."""
-        if not texto:
-            return ""
-        try:
-            return GoogleTranslator(source="en", target="pt").translate(texto)
-        except Exception as exc:
-            logger.warning(f"Falha ao traduzir keywords: {exc}. Mantendo original.")
-            return texto
-
     total = mask.sum()
     logger.info(f"Traduzindo keywords de {total} registros ({_TRANSLATE_MAX_WORKERS} workers).")
 
-    valores = df.loc[mask, "keywords"].fillna("").tolist()
-    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(_translate, valores))
-    df.loc[mask, "keywords_pt"] = traduzidos
-
+    _traduzir_coluna(df, mask, "keywords", "keywords_pt")
     return df
 
 
@@ -715,27 +739,31 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
     if not mask.any():
         return df
 
-    def _translate(texto: str) -> str:
-        if not texto:
-            return ""
-        try:
-            return GoogleTranslator(source="en", target="pt").translate(texto)
-        except Exception as exc:
-            logger.warning(f"Falha ao traduzir tagline: {exc}. Mantendo original.")
-            return texto
-
     total = mask.sum()
     logger.info(
         f"Traduzindo tagline de {total} registros sem tradução TMDB pt-BR "
         f"({_TRANSLATE_MAX_WORKERS} workers)."
     )
 
-    valores = df.loc[mask, "tagline"].fillna("").tolist()
-    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(_translate, valores))
-    df.loc[mask, "tagline_pt"] = traduzidos
-
+    _traduzir_coluna(df, mask, "tagline", "tagline_pt")
     return df
+
+
+def _buscar_e_processar_detalhe(
+    item_id: int,
+    api_key: str,
+    content_type: str,
+    lock: threading.Lock,
+    registros: list,
+) -> None:
+    """Busca detalhes de um ID na API TMDB e acumula o registro parseado na lista compartilhada."""
+    try:
+        detalhe = fetch_tmdb_details(api_key, content_type, item_id)
+        registro = _parse_detail(detalhe, content_type)
+        with lock:
+            registros.append(registro)
+    except requests.RequestException as exc:
+        logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
 
 
 def collect_and_write_details(
@@ -763,20 +791,10 @@ def collect_and_write_details(
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
 
     def fetch_and_parse(item_id: int) -> None:
-        """Busca detalhes de um ID na TMDB e acumula o registro parseado."""
-        try:
-            detalhe = fetch_tmdb_details(api_key, content_type, item_id)
-            registro = _parse_detail(detalhe, content_type)
-            with lock:
-                registros.append(registro)
-        except requests.RequestException as exc:
-            logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
+        _buscar_e_processar_detalhe(item_id, api_key, content_type, lock, registros)
 
     logger.info(f"Buscando detalhes de {len(ids)} IDs ({content_type}) com {_TMDB_MAX_WORKERS} workers...")
-    with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
-        futures = {executor.submit(fetch_and_parse, item_id): item_id for item_id in ids}
-        for future in as_completed(futures):
-            future.result()  # propaga exceções inesperadas (além de RequestException)
+    _run_parallel(fetch_and_parse, ids)
 
     if not registros:
         logger.warning(f"Nenhum detalhe coletado para '{content_type}'. Nada gravado.")
@@ -806,20 +824,23 @@ def collect_and_write_details(
     df_existing = pd.DataFrame()
     for yr in df["year"].dropna().unique().tolist():
         try:
+            # Passo 1: lê os registros existentes da partição year={yr}
+            # _yr=yr "captura" o valor atual de yr na criação da lambda —
+            # sem isso, todas as lambdas do loop usariam o último yr (late binding Python)
             df_read = wr.s3.read_parquet(
                 path=s3_path,
                 dataset=True,
                 partition_filter=lambda x, _yr=yr: x["year"] == str(_yr),
             )
             if not df_read.empty:
-                df_existing = pd.concat(
-                    [df_existing, df_read[~df_read["id"].isin(df["id"])]],
-                    ignore_index=True,
-                )
-                logger.info(f"Mantendo {len(df_read[~df_read['id'].isin(df['id'])])} registros existentes para year={yr}.")
+                # Passo 2: remove do existente os IDs que serão re-escritos (evita duplicatas)
+                df_sem_novos = df_read[~df_read["id"].isin(df["id"])]
+                df_existing = pd.concat([df_existing, df_sem_novos], ignore_index=True)
+                logger.info(f"Mantendo {len(df_sem_novos)} registros existentes para year={yr}.")
         except Exception as exc:
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
+    # Passo 3: concatena existentes + novos (novos por último para keep="last" funcionar corretamente)
     if not df_existing.empty:
         df = pd.concat([df_existing, df], ignore_index=True)
 
@@ -827,6 +848,8 @@ def collect_and_write_details(
     # keep="last" preserva o registro novo (concat coloca novos por último) sobre o existente stale.
     df = df.drop_duplicates(subset=["id"], keep="last")
 
+    # Passo 4: grava de volta — overwrite_partitions substitui apenas as partições afetadas,
+    # preservando o histórico de anos anteriores intacto.
     logger.info(
         f"Gravando {len(df)} registros de detalhes em {s3_path} | "
         f"particao=[year] | mode=overwrite_partitions"
@@ -841,6 +864,78 @@ def collect_and_write_details(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
+
+
+# ── Remoção de duplicatas intra-partição ─────────────────────────────────────
+# As três funções repair_* abaixo seguem o mesmo padrão — implementado em
+# _reparar_duplicatas_particao — e diferem apenas na coluna de ordenação e na
+# chave de deduplicação. Ver _reparar_duplicatas_particao para a lógica completa.
+
+
+def _reparar_duplicatas_particao(
+    s3_path: str,
+    database: str,
+    table_name: str,
+    year: str,
+    sort_by: str,
+    subset_cols: List[str],
+) -> None:
+    """
+    Lê uma partição year, remove duplicatas e regrava somente se houver mudanças.
+
+    Padrão: ordena por sort_by ASC → keep="last" mantém o maior valor (mais recente/popular).
+
+    Args:
+        s3_path:     Caminho base da tabela no S3 (ex: "s3://bucket/tmdb/tb_name/").
+        database:    Nome do banco de dados no Glue Catalog.
+        table_name:  Nome da tabela (usado no log e na gravação).
+        year:        Partição a verificar.
+        sort_by:     Coluna de ordenação antes do drop_duplicates.
+        subset_cols: Colunas que definem uma duplicata (ex: ["id"]).
+    """
+    year_str = str(year)
+    logger.info(f"Verificando duplicatas na partição year={year_str} de '{table_name}'...")
+    try:
+        df_yr = wr.s3.read_parquet(
+            path=s3_path,
+            dataset=True,
+            partition_filter=lambda x: x["year"] == year_str,
+        )
+    except Exception as exc:
+        logger.warning(f"Não foi possível ler '{table_name}' year={year_str}: {exc}")
+        return
+
+    if df_yr.empty:
+        logger.info(f"Partição year={year_str} de '{table_name}' vazia. Nada a reparar.")
+        return
+
+    before = len(df_yr)
+    df_deduped = (
+        df_yr
+        .sort_values(sort_by, ascending=True)
+        .drop_duplicates(subset=subset_cols, keep="last")
+        .reset_index(drop=True)
+    )
+    after = len(df_deduped)
+
+    if before == after:
+        logger.info(f"Nenhuma duplicata em '{table_name}' year={year_str}. Nada a reparar.")
+        return
+
+    logger.info(
+        f"Partição year={year_str} em '{table_name}': "
+        f"{before - after} duplicatas removidas ({before} → {after} registros). Regravando..."
+    )
+    wr.s3.to_parquet(
+        df=df_deduped,
+        path=s3_path,
+        dataset=True,
+        partition_cols=["year"],
+        mode="overwrite_partitions",
+        database=database,
+        table=table_name,
+    )
+    logger.info(f"Partição year={year_str} de '{table_name}' reparada com sucesso.")
 
 
 def repair_details_duplicates(
@@ -865,50 +960,7 @@ def repair_details_duplicates(
         year:           Ano da partição a reparar.
     """
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/"
-
-    logger.info(f"Verificando duplicatas na partição year={year} de '{table_details}'...")
-    try:
-        df_yr = wr.s3.read_parquet(
-            path=s3_path,
-            dataset=True,
-            partition_filter=lambda x: x["year"] == str(year),
-        )
-    except Exception as exc:
-        logger.warning(f"Não foi possível ler '{table_details}' year={year}: {exc}")
-        return
-
-    if df_yr.empty:
-        logger.info(f"Partição year={year} de '{table_details}' vazia. Nada a reparar.")
-        return
-
-    before = len(df_yr)
-    # Ordena crescente: keep="last" mantém o registro com dt_processamento mais recente
-    df_deduped = (
-        df_yr
-        .sort_values("dt_processamento", ascending=True)
-        .drop_duplicates(subset=["id"], keep="last")
-        .reset_index(drop=True)
-    )
-    after = len(df_deduped)
-
-    if before == after:
-        logger.info(f"Nenhuma duplicata em '{table_details}' year={year}. Nada a reparar.")
-        return
-
-    logger.info(
-        f"Partição year={year} em '{table_details}': "
-        f"{before - after} duplicatas removidas ({before} → {after} registros). Regravando..."
-    )
-    wr.s3.to_parquet(
-        df=df_deduped,
-        path=s3_path,
-        dataset=True,
-        partition_cols=["year"],
-        mode="overwrite_partitions",
-        database=database,
-        table=table_details,
-    )
-    logger.info(f"Partição year={year} de '{table_details}' reparada com sucesso.")
+    _reparar_duplicatas_particao(s3_path, database, table_details, year, "dt_processamento", ["id"])
 
 
 def repair_discover_duplicates(
@@ -931,50 +983,7 @@ def repair_discover_duplicates(
         year:            Ano da partição a reparar.
     """
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_discover}/"
-
-    logger.info(f"Verificando duplicatas na partição year={year} de '{table_discover}'...")
-    try:
-        df_yr = wr.s3.read_parquet(
-            path=s3_path,
-            dataset=True,
-            partition_filter=lambda x: x["year"] == str(year),
-        )
-    except Exception as exc:
-        logger.warning(f"Não foi possível ler '{table_discover}' year={year}: {exc}")
-        return
-
-    if df_yr.empty:
-        logger.info(f"Partição year={year} de '{table_discover}' vazia. Nada a reparar.")
-        return
-
-    before = len(df_yr)
-    # Ordena crescente: keep="last" mantém o registro com maior popularity (o mais popular)
-    df_deduped = (
-        df_yr
-        .sort_values("popularity", ascending=True)
-        .drop_duplicates(subset=["id"], keep="last")
-        .reset_index(drop=True)
-    )
-    after = len(df_deduped)
-
-    if before == after:
-        logger.info(f"Nenhuma duplicata em '{table_discover}' year={year}. Nada a reparar.")
-        return
-
-    logger.info(
-        f"Partição year={year} em '{table_discover}': "
-        f"{before - after} duplicatas removidas ({before} → {after} registros). Regravando..."
-    )
-    wr.s3.to_parquet(
-        df=df_deduped,
-        path=s3_path,
-        dataset=True,
-        partition_cols=["year"],
-        mode="overwrite_partitions",
-        database=database,
-        table=table_discover,
-    )
-    logger.info(f"Partição year={year} de '{table_discover}' reparada com sucesso.")
+    _reparar_duplicatas_particao(s3_path, database, table_discover, year, "popularity", ["id"])
 
 
 def repair_watch_providers_duplicates(
@@ -998,50 +1007,10 @@ def repair_watch_providers_duplicates(
         year:                  Ano da partição a reparar.
     """
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_watch_providers}/"
-
-    logger.info(f"Verificando duplicatas na partição year={year} de '{table_watch_providers}'...")
-    try:
-        df_yr = wr.s3.read_parquet(
-            path=s3_path,
-            dataset=True,
-            partition_filter=lambda x: x["year"] == str(year),
-        )
-    except Exception as exc:
-        logger.warning(f"Não foi possível ler '{table_watch_providers}' year={year}: {exc}")
-        return
-
-    if df_yr.empty:
-        logger.info(f"Partição year={year} de '{table_watch_providers}' vazia. Nada a reparar.")
-        return
-
-    before = len(df_yr)
-    # Ordena crescente: keep="last" mantém o registro com dt_atualizacao mais recente
-    df_deduped = (
-        df_yr
-        .sort_values("dt_atualizacao", ascending=True)
-        .drop_duplicates(subset=["id", "provider_type", "provider_id"], keep="last")
-        .reset_index(drop=True)
+    _reparar_duplicatas_particao(
+        s3_path, database, table_watch_providers, year,
+        "dt_atualizacao", ["id", "provider_type", "provider_id"],
     )
-    after = len(df_deduped)
-
-    if before == after:
-        logger.info(f"Nenhuma duplicata em '{table_watch_providers}' year={year}. Nada a reparar.")
-        return
-
-    logger.info(
-        f"Partição year={year} em '{table_watch_providers}': "
-        f"{before - after} duplicatas removidas ({before} → {after} registros). Regravando..."
-    )
-    wr.s3.to_parquet(
-        df=df_deduped,
-        path=s3_path,
-        dataset=True,
-        partition_cols=["year"],
-        mode="overwrite_partitions",
-        database=database,
-        table=table_watch_providers,
-    )
-    logger.info(f"Partição year={year} de '{table_watch_providers}' reparada com sucesso.")
 
 
 def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) -> dict:
@@ -1095,6 +1064,25 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
     return records
 
 
+def _buscar_e_processar_watch_provider(
+    item_id: int,
+    api_key: str,
+    content_type: str,
+    year: str,
+    lock: threading.Lock,
+    registros: list,
+) -> None:
+    """Busca watch providers de um ID na API TMDB e acumula os registros na lista compartilhada."""
+    try:
+        br_data = fetch_tmdb_watch_providers(api_key, content_type, item_id)
+        parsed = _parse_watch_providers(br_data, item_id, year)
+        if parsed:
+            with lock:
+                registros.extend(parsed)
+    except requests.RequestException as exc:
+        logger.warning(f"Erro ao buscar watch providers do ID {item_id}: {exc}")
+
+
 def collect_and_write_watch_providers(
     api_key: str,
     ids: List[int],
@@ -1120,24 +1108,13 @@ def collect_and_write_watch_providers(
     lock = threading.Lock()
 
     def fetch_and_parse(item_id: int) -> None:
-        """Busca watch providers de um ID na TMDB e acumula os registros parseados."""
-        try:
-            br_data = fetch_tmdb_watch_providers(api_key, content_type, item_id)
-            parsed = _parse_watch_providers(br_data, item_id, year)
-            if parsed:
-                with lock:
-                    registros.extend(parsed)
-        except requests.RequestException as exc:
-            logger.warning(f"Erro ao buscar watch providers do ID {item_id}: {exc}")
+        _buscar_e_processar_watch_provider(item_id, api_key, content_type, year, lock, registros)
 
     logger.info(
         f"Buscando watch providers BR de {len(ids)} IDs ({content_type}) "
         f"com {_TMDB_MAX_WORKERS} workers..."
     )
-    with ThreadPoolExecutor(max_workers=_TMDB_MAX_WORKERS) as executor:
-        futures = {executor.submit(fetch_and_parse, item_id): item_id for item_id in ids}
-        for future in as_completed(futures):
-            future.result()
+    _run_parallel(fetch_and_parse, ids)
 
     if not registros:
         logger.warning(f"Nenhum watch provider BR coletado para '{content_type}'. Nada gravado.")

@@ -74,6 +74,7 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `_extrair_titulos_alternativos(alternative_titles, content_type)` | Títulos alternativos/regionais |
 | `_extrair_traducao_pt_br(translations)` | Extrai overview e tagline em pt-BR do array de translations do TMDB |
 | `_extrair_paises_producao_iso(production_countries)` | Códigos ISO 3166-1 dos países de produção como array |
+| `_google_translate(texto)` | Traduz texto EN→PT via Google Translate; compartilhada pelas três `_adicionar_traducoes_*`; retorna original em caso de falha |
 | `_adicionar_traducoes_pt(df)` | Prioriza overview pt-BR do TMDB; fallback para Google Translate (só `original_language='en'`) |
 | `_adicionar_traducoes_keywords_pt(df)` | Traduz keywords EN→PT via Google Translate (TMDB não localiza keywords) |
 | `_adicionar_traducoes_tagline_pt(df)` | Prioriza tagline pt-BR do TMDB; fallback para Google Translate |

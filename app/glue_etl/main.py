@@ -23,20 +23,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-_TABLE_TYPE_TO_PARTITION = {
-    "discover":            ["year"],
-    "genre":               None,
-    "configuration":       None,
-    "watch_providers_ref": None,
-    "now_playing":         None,
-}
-
-_TABLE_TYPE_TO_MODE = {
-    "discover":            "overwrite_partitions",
-    "genre":               "overwrite",
-    "configuration":       "overwrite",
-    "watch_providers_ref": "overwrite",
-    "now_playing":         "overwrite",
+# Configuração de escrita por tipo de tabela.
+# partition_cols: coluna(s) de partição no S3/Catalog, ou None para tabelas sem partição.
+# mode: "overwrite_partitions" preserva anos anteriores ao atualizar uma partição;
+#       "overwrite" substitui a tabela inteira (para tabelas pequenas sem partição por ano).
+_TABLE_CONFIG = {
+    "discover":            {"partition_cols": ["year"], "mode": "overwrite_partitions"},
+    "genre":               {"partition_cols": None,     "mode": "overwrite"},
+    "configuration":       {"partition_cols": None,     "mode": "overwrite"},
+    "watch_providers_ref": {"partition_cols": None,     "mode": "overwrite"},
+    "now_playing":         {"partition_cols": None,     "mode": "overwrite"},
 }
 
 
@@ -59,8 +55,8 @@ def main() -> None:
     year             = args.get("YEAR")
     end_year         = args.get("END_YEAR")
 
-    partition_cols = _TABLE_TYPE_TO_PARTITION[table_type]
-    mode = _TABLE_TYPE_TO_MODE[table_type]
+    partition_cols = _TABLE_CONFIG[table_type]["partition_cols"]
+    mode = _TABLE_CONFIG[table_type]["mode"]
 
     logger.info(
         f"Processando table_type={table_type} | media_type={media_type} | year={year}"
