@@ -54,15 +54,22 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_discover = event["table_discover_tv"]
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
 
-    # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf):
-    #   Semanal:  only_weekly_tables=True  → pula referências, roda discover + now_playing
-    #   Mensal:   only_monthly_tables=True → roda referências + discover do ano anterior
-    #   Anual:    only_annual_tables=True  → pula referências, roda discover (backfill histórico)
-    #   Legado:   skip_weekly=True         → só referências (genre, config, watch_providers_ref)
+    # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf).
+    # Cada flag ativa um "modo" de execução diferente:
+    #
+    # Modo           | only_weekly | only_annual | only_monthly | skip_weekly | O que roda
+    # ---------------|-------------|-------------|--------------|-------------|-----------------------------
+    # Semanal        |    True     |    False    |    False     |    False    | discover + now_playing (sem referências)
+    # Mensal         |    False    |    False    |    True      |    False    | referências + discover do ano anterior
+    # Anual backfill |    False    |    True     |    False     |    False    | discover histórico (sem referências)
+    # Só referências |    False    |    False    |    False     |    True     | genre + config + watch_providers_ref
+    #
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
     skip_weekly = event.get("skip_weekly", False)
     only_monthly_tables = event.get("only_monthly_tables", False)
+    # Modos semanal e anual pulam referências porque elas mudam raramente (gêneros, idiomas, países)
+    # e não precisam ser atualizadas a cada coleta de discover.
     skip_reference = only_weekly_tables or only_annual_tables
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
@@ -74,6 +81,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     end_year       = int(event.get("end_year",   current_year))
     loop_end_year  = int(event.get("loop_end_year", end_year))
 
+    # Modo mensal: ignora os anos do payload e força o ano anterior.
+    # O EventBridge envia um payload padrão com os anos do ciclo corrente, mas o modo mensal
+    # sempre quer re-coletar o ano anterior (ex: em 2025, recoleta o discover de 2024).
+    # Sobrescrever aqui evita criar um payload separado para o trigger mensal.
     if only_monthly_tables:
         start_year = current_year - 1
         end_year = current_year - 1

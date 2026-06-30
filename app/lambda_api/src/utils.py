@@ -11,6 +11,7 @@ from requests.exceptions import HTTPError
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
+# boto3 não tem stub de tipo para S3Client; Any permite o type checker continuar sem erro.
 S3Client = Any
 
 logger = logging.getLogger()
@@ -173,7 +174,8 @@ def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> 
             continue
 
         total_pages = data.get("total_pages", 0)
-        if page > total_pages:
+        # total_pages == 0 significa resposta inesperada da API; encerra o loop imediatamente.
+        if total_pages == 0 or page > total_pages:
             logger.info(
                 f"now_playing: {total_pages} página(s) disponível(is). Encerrando na página {page - 1}."
             )

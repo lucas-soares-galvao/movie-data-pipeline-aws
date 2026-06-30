@@ -114,6 +114,78 @@ def read_table_from_catalog(
     return glue_context.create_dynamic_frame.from_catalog(**kwargs)
 
 
+def _executar_avaliacao_dq(
+    glue_context: GlueContext,
+    dynamic_frame: DynamicFrame,
+    ruleset: str,
+    table_name: str,
+    year: Optional[str],
+) -> SparkDataFrame:
+    """
+    Aplica filtro de year (quando presente) e executa o motor DQDL.
+
+    Retorna o resultado bruto como Spark DataFrame (colunas ainda em PascalCase).
+    O filtro duplo (push_down_predicate + filter aqui) é necessário porque o cache
+    do Glue Catalog pode incluir metadados de outras partições.
+    """
+    if year is not None:
+        df_source = dynamic_frame.toDF().filter(col("year") == year)
+        dynamic_frame = DynamicFrame.fromDF(df_source, glue_context, "filtered_frame")
+        logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
+
+    dq_results = EvaluateDataQuality.apply(
+        frame=dynamic_frame,
+        ruleset=ruleset,
+        publishing_options={
+            "dataQualityEvaluationContext": table_name,
+            "enableDataQualityCloudWatchMetrics": True,
+            "enableDataQualityResultsPublishing": True,
+        },
+    )
+    return dq_results.toDF()
+
+
+def _renomear_e_classificar_colunas(
+    df: SparkDataFrame,
+    table_name: str,
+    database: str,
+    year: Optional[str],
+) -> SparkDataFrame:
+    """
+    Renomeia colunas para snake_case, classifica a dimensão DQ e adiciona metadados de contexto.
+
+    Glue DQ devolve PascalCase; Athena espera snake_case para failure_reason funcionar corretamente.
+    """
+    df = (
+        df
+        .withColumnRenamed("Rule", "rule")
+        .withColumnRenamed("Outcome", "outcome")
+        .withColumnRenamed("FailureReason", "failure_reason")
+        .withColumnRenamed("EvaluatedMetrics", "evaluated_metrics")
+        .drop("EvaluatedRule")  # coluna interna do Glue DQ fora do nosso schema
+    )
+    # EvaluatedMetrics é map<string, double> e failure_reason pode ser null —
+    # cast para StringType garante compatibilidade com o Wrangler e o Athena.
+    df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
+    df = df.withColumn("failure_reason", col("failure_reason").cast(StringType()))
+
+    # Dois prefixos mapeiam para "Unicidade": o DQDL legado usava "IsUnique" e o atual
+    # usa "Uniqueness" — ambos representam a mesma dimensão.
+    df = df.withColumn(
+        "category",
+        when(col("rule").startswith("IsComplete"), "Completude")
+        .when(col("rule").startswith("IsUnique"), "Unicidade")
+        .when(col("rule").startswith("Uniqueness"), "Unicidade")
+        .when(col("rule").startswith("ColumnValues"), "Validade")
+        .when(col("rule").startswith("RowCount"), "Integridade"),
+    )
+    df = df.withColumn("year", lit(year).cast(StringType()))
+    df = df.withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))
+    df = df.withColumn("source_database", lit(database))
+    df = df.withColumn("source_table", lit(table_name))
+    return df
+
+
 def evaluate_data_quality(
     glue_context: GlueContext,
     dynamic_frame: DynamicFrame,
@@ -140,66 +212,8 @@ def evaluate_data_quality(
         Spark DataFrame com os resultados da avaliação e colunas de contexto.
     """
     logger.info(f"Avaliando qualidade de dados da tabela '{table_name}'...")
-
-    # Para tabelas com partição por ano, aplica filtro duplo:
-    # 1. push_down_predicate no read_table_from_catalog (filtro no S3 — evita ler arquivos errados)
-    # 2. Este filtro no DataFrame Spark (garante que apenas linhas do ano correto são avaliadas)
-    # O filtro duplo é necessário porque o Glue Catalog às vezes inclui metadados de outras
-    # partições no cache, então o push_down_predicate sozinho pode não ser suficiente.
-    if year is not None:
-        df_source = dynamic_frame.toDF().filter(col("year") == year)
-        dynamic_frame = DynamicFrame.fromDF(df_source, glue_context, "filtered_frame")
-        logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
-
-    # DynamicFrame é a estrutura de dados nativa do Glue (similar ao DataFrame do Pandas,
-    # mas distribuída e com schema flexível). O motor de DQ do Glue exige DynamicFrame como
-    # entrada; após a avaliação, convertemos de volta para DataFrame Spark para manipular.
-    dq_results = EvaluateDataQuality.apply(
-        frame=dynamic_frame,
-        ruleset=ruleset,
-        publishing_options={
-            "dataQualityEvaluationContext": table_name,
-            "enableDataQualityCloudWatchMetrics": True,
-            "enableDataQualityResultsPublishing": True,
-        },
-    )
-
-    # Glue DQ devolve colunas em PascalCase; Athena espera snake_case para ler failure_reason corretamente.
-    df = (
-        dq_results.toDF()
-        .withColumnRenamed("Rule", "rule")
-        .withColumnRenamed("Outcome", "outcome")
-        .withColumnRenamed("FailureReason", "failure_reason")
-        .withColumnRenamed("EvaluatedMetrics", "evaluated_metrics")
-        .drop(
-            "EvaluatedRule"
-        )  # coluna interna do Glue DQ que não faz parte do nosso schema
-    )
-
-    # EvaluatedMetrics é map<string, double> — o Wrangler não serializa esse tipo em Parquet.
-    df = df.withColumn("evaluated_metrics", col("evaluated_metrics").cast(StringType()))
-    # failure_reason fica totalmente nulo quando todas as regras passam;
-    # sem cast explícito, toPandas() gera dtype object e o Wrangler não infere o tipo Athena.
-    df = df.withColumn("failure_reason", col("failure_reason").cast(StringType()))
-
-    # Classifica cada regra pela dimensão de qualidade com base no prefixo DQDL
-    # para permitir filtros no Athena (ex: "Quais regras de Completude falharam?").
-    df = df.withColumn(
-        "category",
-        when(col("rule").startswith("IsComplete"), "Completude")
-        .when(col("rule").startswith("IsUnique"), "Unicidade")
-        .when(col("rule").startswith("Uniqueness"), "Unicidade")
-        .when(col("rule").startswith("ColumnValues"), "Validade")
-        .when(col("rule").startswith("RowCount"), "Integridade"),
-    )
-
-    df = df.withColumn("year", lit(year).cast(StringType()))
-    df = df.withColumn(
-        "datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo")
-    )
-    df = df.withColumn("source_database", lit(database))
-    df = df.withColumn("source_table", lit(table_name))
-
+    df = _executar_avaliacao_dq(glue_context, dynamic_frame, ruleset, table_name, year)
+    df = _renomear_e_classificar_colunas(df, table_name, database, year)
     logger.info(f"Avaliação concluída. Regras avaliadas: {df.count()}")
     return df
 
@@ -207,7 +221,7 @@ def evaluate_data_quality(
 def write_results_to_s3(
     df: SparkDataFrame,
     s3_bucket_data_quality: str,
-    table_name: str,
+    source_table_name: str,
     database: str,
     output_table: str,
     year: Optional[str] = None,
@@ -224,18 +238,22 @@ def write_results_to_s3(
     Args:
         df:                     Spark DataFrame com os resultados da avaliação.
         s3_bucket_data_quality: Nome do bucket de Data Quality.
-        table_name:             Nome da tabela avaliada.
-        database:               Nome do banco de dados no Glue Catalog.
-        output_table:           Nome da tabela de saída no Glue Catalog.
+        source_table_name:      Nome da tabela que foi avaliada (ex: tb_tmdb_discover_movie_dev).
+        database:               Nome do banco de dados no Glue Catalog onde fica a tabela de resultados.
+        output_table:           Nome da tabela de saída dos resultados DQ no Glue Catalog.
         year:                   Ano da partição. None para tabelas sem partição por ano.
     """
     s3_path = f"s3://{s3_bucket_data_quality}/tmdb/{output_table}/"
 
     if year is None:
+        # "sem_ano" (string, não None): overwrite_partitions no Athena não funciona com
+        # partições NULL — o caminho S3 ficaria "year=None/" e o Athena não o reconheceria.
+        # Todas as tabelas usam ["source_table", "year"] como partição; precisamos de um
+        # valor fixo mesmo para tabelas sem partição por ano (genre, configuration).
         df = df.fillna({"year": "sem_ano"})
 
     logger.info(
-        f"Gravando resultados em {s3_path} | source_table='{table_name}' | year='{year}'"
+        f"Gravando resultados em {s3_path} | source_table='{source_table_name}' | year='{year}'"
     )
 
     pandas_df = df.toPandas()
@@ -251,7 +269,7 @@ def write_results_to_s3(
         mode="overwrite_partitions",
     )
 
-    logger.info(f"Resultados de '{table_name}' gravados com sucesso!")
+    logger.info(f"Resultados de '{source_table_name}' gravados com sucesso!")
 
 
 def notify_failed_outcomes(

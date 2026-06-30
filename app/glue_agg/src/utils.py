@@ -370,6 +370,7 @@ movie_rent_buy AS (
     GROUP BY id
 ),
 
+-- Mesma lógica de aluguel/compra para séries.
 tv_rb_ranked AS (
     SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
     FROM tv_rb_recent wp
@@ -389,6 +390,7 @@ tv_rent_buy AS (
     GROUP BY id
 ),
 
+-- Provedores de aluguel/compra unificados: filmes e séries num único conjunto com media_type como chave.
 rent_buy AS (
     SELECT id, 'movie' AS media_type, rent_buy_providers FROM movie_rent_buy
     UNION ALL
@@ -682,7 +684,14 @@ def get_parameters_glue() -> Dict[str, Any]:
 
 
 def _table_names(env: str) -> Dict[str, str]:
-    """Constrói os nomes das tabelas do Glue Catalog a partir do ambiente."""
+    """
+    Constrói os nomes das tabelas do Glue Catalog a partir do ambiente.
+
+    Returns:
+        Dict com 13 chaves no formato {"tb_<sufixo>": "tb_tmdb_<sufixo>_<env>"}.
+        Ex (env="dev"): {"tb_discover_movie": "tb_tmdb_discover_movie_dev",
+                         "tb_genre_movie":    "tb_tmdb_genre_movie_dev", ...}
+    """
     prefix = "tmdb"
     names = [
         "discover_movie",
@@ -744,7 +753,6 @@ def run_athena_query(
     )
     logger.info(f"Query executada com sucesso. {len(df)} registros retornados.")
     return df
-
 
 
 def write_parquet_to_spec(

@@ -248,7 +248,9 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
     )
     execution_id = exec_response["QueryExecutionId"]
 
-    # Aguarda a conclusão (polling simples com backoff fixo de 1 s)
+    # Aguarda a conclusão com polling de 1s fixo.
+    # 1s é suficiente: queries do FilmBot levam ~2-5s no Athena (filtra poucos dados via WHERE).
+    # Backoff progressivo não é necessário porque o custo de cada poll é mínimo (API leve).
     while True:
         status = athena.get_query_execution(QueryExecutionId=execution_id)
         state = status["QueryExecution"]["Status"]["State"]
