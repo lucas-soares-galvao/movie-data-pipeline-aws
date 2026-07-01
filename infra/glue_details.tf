@@ -56,7 +56,9 @@ resource "aws_glue_job" "details_job_pythonshell" {
     aws_cloudwatch_log_group.glue_details_output,
   ]
 
-  # 2 discover ETLs (1 movie + 1 TV) + 2 de buffer para retries/invocações manuais
+  # Semanal: 1 movie + 1 TV em paralelo.
+  # Backfill (SFN): até 4 simultâneos em janelas longas (Details próximo do timeout de 30min).
+  # job_run_queuing_enabled garante enfileiramento sem falha se o limite for atingido.
   execution_property {
     max_concurrent_runs = 4
   }
