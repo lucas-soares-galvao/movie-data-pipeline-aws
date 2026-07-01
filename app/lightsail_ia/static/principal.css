@@ -157,7 +157,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .nota { color: #f97316; font-weight: bold; font-size: 16px; }
 .duracao { color: #a3a3a3; font-size: 14px; }
 .data-lancamento { color: #a3a3a3; font-size: 14px; }
-.sinopse { color: #d4d4d4; font-size: 12px; margin-top: 6px; line-height: 1.5; flex: 1; }
+.sinopse { color: #d4d4d4; font-size: 14px; margin-top: 6px; line-height: 1.5; flex: 1; }
 
 
 .provider {

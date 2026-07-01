@@ -15,13 +15,9 @@ _DESCRICAO_CLASSIFICACAO = {
     "18": "Não recomendado para menores de 18 anos",
 }
 
-_YT_SVG = (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" '
-    'fill="red"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.546 12 '
-    '3.546 12 3.546s-7.505 0-9.377.504A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 '
-    '3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.504 9.376.504 9.376.504s7.505 0 '
-    '9.377-.504a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 '
-    '15.568V8.432L15.818 12l-6.273 3.568z"/></svg>'
+_YT_IMG = (
+    '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
+    ' width="20" height="20" alt="YouTube" style="display:inline-block;vertical-align:middle;" />'
 )
 
 
@@ -89,7 +85,7 @@ def renderizar_card(t: dict) -> str:
     if trailer_url:
         safe_url = html.escape(trailer_url)
         trailer_html = (
-            f'<div class="meta-row"><span class="meta-icon">{_YT_SVG}</span>'
+            f'<div class="meta-row"><span class="meta-icon">{_YT_IMG}</span>'
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
             f'Trailer</a></div>'
         )
