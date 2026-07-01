@@ -11,14 +11,14 @@ from typing import Any
 import boto3
 from requests.exceptions import HTTPError
 
+from shared_utils.api_client import get_api_secret
+from shared_utils.triggers import trigger_glue_job
 from src.utils import (
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
     collect_now_playing_data,
     collect_watch_providers_ref,
-    get_api_secret,
-    trigger_glue_job,
 )
 
 logger = logging.getLogger()
@@ -53,6 +53,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_configuration = event["table_configuration_countries"]
         table_discover = event["table_discover_tv"]
         table_watch_providers_ref = event["table_watch_providers_ref_tv"]
+        table_now_playing = None  # TV não tem now_playing
 
     # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf).
     # Cada flag ativa um "modo" de execução diferente:
@@ -140,6 +141,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {loop_end_year}..."
     )
 
+    # loop_end_year pode ser menor que end_year em backfills particionados pela Step Functions
     for year in range(start_year, loop_end_year + 1):
         logger.info(f"=== Ano: {year} | Tipo: {content_type} ===")
 

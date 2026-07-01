@@ -5,9 +5,7 @@ Glue ETL — transforma JSON do SOR em Parquet no SOT e dispara jobs downstream.
 um único ano; os demais tipos usam overwrite simples.
 """
 
-import logging
-import sys
-
+from shared_utils.glue_helpers import configurar_logging_glue
 from src.utils import (
     get_parameters_glue,
     read_from_sor,
@@ -15,13 +13,7 @@ from src.utils import (
     write_parquet_to_sot,
 )
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    force=True,
-)
-logger = logging.getLogger()
+logger = configurar_logging_glue()
 
 # Configuração de escrita por tipo de tabela.
 # partition_cols: coluna(s) de partição no S3/Catalog, ou None para tabelas sem partição.

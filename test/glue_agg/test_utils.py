@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.utils import get_parameters_glue, get_resolved_option, run_athena_query, write_parquet_to_spec
+from src.utils import get_parameters_glue, run_athena_query, write_parquet_to_spec
 
 
 class TestRunAthenaQuery:
@@ -222,14 +222,6 @@ class TestWriteParquetToSpec:
         with patch("awswrangler.s3.to_parquet", return_value={"paths": []}):
             with pytest.raises(RuntimeError, match="Escrita falhou"):
                 write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
-
-
-class TestGetResolvedOption:
-    def test_delegates_to_getResolvedOptions(self):
-        with patch("src.utils.getResolvedOptions", return_value={"TABLE_NAME": "tb_unified"}) as mock_gro:
-            result = get_resolved_option(["TABLE_NAME"])
-        mock_gro.assert_called_once()
-        assert result == {"TABLE_NAME": "tb_unified"}
 
 
 class TestGetParametersGlue:
