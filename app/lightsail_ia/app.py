@@ -262,6 +262,6 @@ if st.session_state.get("busca_concluida") and not titulos and not st.session_st
 elif titulos:
     palavra = "opção" if len(titulos) == 1 else "opções"
     st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
-    st.markdown(renderizar_grid(titulos), unsafe_allow_html=True)
+    st.html(renderizar_grid(titulos))
 
 renderizar_rodape()
