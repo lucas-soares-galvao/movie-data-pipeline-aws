@@ -23,7 +23,7 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
-    WAIT_SECONDS          (padrão: 60 — tempo entre runs para não estourar max_concurrent_runs)
+    WAIT_SECONDS          (padrão: 300 — tempo entre runs para não estourar max_concurrent_runs)
     FORCE_REFETCH         (padrão: false — quando true, ignora delta mensal e re-busca todos os IDs)
 """
 
@@ -91,7 +91,7 @@ def main() -> None:
 
     start_year     = int(os.environ.get("BACKFILL_START_YEAR", 2000))
     end_year       = int(os.environ.get("BACKFILL_END_YEAR", datetime.now().year))
-    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 60))
+    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 300))
     force_refetch  = os.environ.get("FORCE_REFETCH", "true").lower() == "true"
 
     client = boto3.client("glue", region_name=region)

@@ -109,6 +109,7 @@ locals {
   shared_src_path         = "${path.root}/../app/shared_src"
   shared_wheel_build_path = "${path.module}/.shared_build"
   shared_wheel_filename   = "tmdb_shared-0.0.0-py3-none-any.whl"
+  shared_zip_filename     = "tmdb_shared.zip"
 
   # ===========================================================================
   # MÓDULOS PYTHON ADICIONAIS PARA OS JOBS GLUE

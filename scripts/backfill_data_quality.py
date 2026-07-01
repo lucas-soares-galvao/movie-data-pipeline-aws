@@ -86,7 +86,7 @@ def main() -> None:
 
     start_year   = int(os.environ.get("BACKFILL_START_YEAR", 2000))
     end_year     = int(os.environ.get("BACKFILL_END_YEAR", datetime.now().year))
-    year_sleep   = int(os.environ.get("YEAR_SLEEP_SECONDS", 60))
+    year_sleep   = int(os.environ.get("YEAR_SLEEP_SECONDS", 300))
 
     tables: List[Tuple[str, str]] = [
         (_require_env("TABLE_DISCOVER_MOVIE"),        db_movie),
