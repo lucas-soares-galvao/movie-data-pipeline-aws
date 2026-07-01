@@ -10,22 +10,17 @@ from typing import Any, Dict, List, Optional
 import awswrangler as wr
 import pandas as pd
 import requests
-from awsglue.utils import getResolvedOptions
-from deep_translator import GoogleTranslator
 
 # noqa: F401 = diz ao linter para ignorar "import não usado" — esses imports são
 # re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
+from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
+from shared_utils.traducao import traduzir_texto
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 logger = logging.getLogger()
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
-
-
-def get_resolved_option(args: list) -> Dict[str, Any]:
-    """Wrapper de getResolvedOptions — converte lista de nomes em dicionário nome→valor."""
-    return getResolvedOptions(sys.argv, args)
 
 
 def get_parameters_glue() -> Dict[str, Any]:
@@ -259,29 +254,6 @@ def _run_parallel(func: Any, items: list, max_workers: int = _TMDB_MAX_WORKERS) 
         futures = [executor.submit(func, item) for item in items]
         for future in as_completed(futures):
             future.result()
-
-
-def _google_translate(texto: str) -> str:
-    """
-    Traduz texto de inglês para português via Google Translate.
-
-    Compartilhada pelas três funções _adicionar_traducoes_* deste módulo.
-    Retorna o texto original em caso de falha — qualquer exceção (rede,
-    rate limit, resposta vazia) é tratada aqui para não interromper o job.
-
-    Args:
-        texto: Texto em inglês a ser traduzido.
-
-    Returns:
-        Texto traduzido para português, ou o texto original se a tradução falhar.
-    """
-    if not texto:
-        return ""
-    try:
-        return GoogleTranslator(source="en", target="pt").translate(texto)
-    except Exception as exc:
-        logger.warning(f"Falha ao traduzir: {exc}. Mantendo original.")
-        return texto
 
 
 # ── Funções auxiliares de extração ──────────────────────────────────────────────
@@ -671,7 +643,7 @@ def _traduzir_coluna(df: pd.DataFrame, mask, coluna_fonte: str, coluna_destino: 
     """Traduz em paralelo os valores de coluna_fonte onde mask é True e grava em coluna_destino."""
     valores = df.loc[mask, coluna_fonte].fillna("").tolist()
     with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(_google_translate, valores))
+        traduzidos = list(executor.map(traduzir_texto, valores))
     df.loc[mask, coluna_destino] = traduzidos
 
 
@@ -749,23 +721,6 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _buscar_e_processar_detalhe(
-    item_id: int,
-    api_key: str,
-    content_type: str,
-    lock: threading.Lock,
-    registros: list,
-) -> None:
-    """Busca detalhes de um ID na API TMDB e acumula o registro parseado na lista compartilhada."""
-    try:
-        detalhe = fetch_tmdb_details(api_key, content_type, item_id)
-        registro = _parse_detail(detalhe, content_type)
-        with lock:
-            registros.append(registro)
-    except requests.RequestException as exc:
-        logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
-
-
 def collect_and_write_details(
     api_key: str,
     ids: List[int],
@@ -791,7 +746,13 @@ def collect_and_write_details(
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
 
     def fetch_and_parse(item_id: int) -> None:
-        _buscar_e_processar_detalhe(item_id, api_key, content_type, lock, registros)
+        try:
+            detalhe = fetch_tmdb_details(api_key, content_type, item_id)
+            registro = _parse_detail(detalhe, content_type)
+            with lock:
+                registros.append(registro)
+        except requests.RequestException as exc:
+            logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
 
     logger.info(f"Buscando detalhes de {len(ids)} IDs ({content_type}) com {_TMDB_MAX_WORKERS} workers...")
     _run_parallel(fetch_and_parse, ids)
@@ -825,12 +786,11 @@ def collect_and_write_details(
     for yr in df["year"].dropna().unique().tolist():
         try:
             # Passo 1: lê os registros existentes da partição year={yr}
-            # _yr=yr "captura" o valor atual de yr na criação da lambda —
-            # sem isso, todas as lambdas do loop usariam o último yr (late binding Python)
+            year_str = str(yr)
             df_read = wr.s3.read_parquet(
                 path=s3_path,
                 dataset=True,
-                partition_filter=lambda x, _yr=yr: x["year"] == str(_yr),
+                partition_filter=lambda x: x["year"] == year_str,
             )
             if not df_read.empty:
                 # Passo 2: remove do existente os IDs que serão re-escritos (evita duplicatas)
@@ -1064,25 +1024,6 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
     return records
 
 
-def _buscar_e_processar_watch_provider(
-    item_id: int,
-    api_key: str,
-    content_type: str,
-    year: str,
-    lock: threading.Lock,
-    registros: list,
-) -> None:
-    """Busca watch providers de um ID na API TMDB e acumula os registros na lista compartilhada."""
-    try:
-        br_data = fetch_tmdb_watch_providers(api_key, content_type, item_id)
-        parsed = _parse_watch_providers(br_data, item_id, year)
-        if parsed:
-            with lock:
-                registros.extend(parsed)
-    except requests.RequestException as exc:
-        logger.warning(f"Erro ao buscar watch providers do ID {item_id}: {exc}")
-
-
 def collect_and_write_watch_providers(
     api_key: str,
     ids: List[int],
@@ -1108,7 +1049,14 @@ def collect_and_write_watch_providers(
     lock = threading.Lock()
 
     def fetch_and_parse(item_id: int) -> None:
-        _buscar_e_processar_watch_provider(item_id, api_key, content_type, year, lock, registros)
+        try:
+            br_data = fetch_tmdb_watch_providers(api_key, content_type, item_id)
+            parsed = _parse_watch_providers(br_data, item_id, year)
+            if parsed:
+                with lock:
+                    registros.extend(parsed)
+        except requests.RequestException as exc:
+            logger.warning(f"Erro ao buscar watch providers do ID {item_id}: {exc}")
 
     logger.info(
         f"Buscando watch providers BR de {len(ids)} IDs ({content_type}) "

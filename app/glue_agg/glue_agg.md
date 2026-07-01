@@ -45,7 +45,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
 | **Escrita** | S3 SPEC — `tb_tmdb_discover_unified_{env}` particionada por `(media_type, year)` + Glue Catalog |
 | **Aciona** | Glue Data Quality (tabela unificada completa, sem partição de ano) |
 
-## SQL de unificação (resumo)
+## SQL de unificação (resumo) — `src/queries.py`
 
 ```sql
 WITH unified AS (
@@ -76,7 +76,7 @@ LEFT JOIN providers p  ON p.id = u.id AND p.media_type = u.media_type
 LEFT JOIN tb_tmdb_now_playing_movie_{env} np ON np.id = u.id AND u.media_type = 'movie'
 ```
 
-## Funções principais (`src/utils.py`)
+## Funções principais (`src/utils.py` · query em `src/queries.py`)
 
 | Função | Responsabilidade |
 |---|---|

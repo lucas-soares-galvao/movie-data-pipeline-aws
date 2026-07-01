@@ -303,9 +303,7 @@ class TestAdicionarTraducoesTaglinePt:
 
     def test_fallback_para_google_translator(self):
         df = pd.DataFrame({"tagline": ["A great movie"], "tagline_pt_tmdb": [None]})
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = u._adicionar_traducoes_tagline_pt(df)
         assert result["tagline_pt"].iloc[0] == "[PT] A great movie"
 
@@ -681,12 +679,10 @@ class TestCollectAndWriteDetails:
     def test_movie_prioriza_tmdb_pt_br_para_overview_e_tagline(self):
         """Quando o TMDB tem tradução pt-BR, overview_pt e tagline_pt vêm do TMDB."""
         response = self._mock_movie_response(1)
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[GT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
             patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -699,12 +695,10 @@ class TestCollectAndWriteDetails:
     def test_tv_fallback_google_translator_sem_tmdb_pt_br(self):
         """Quando o TMDB não tem tradução pt-BR, usa GoogleTranslator como fallback."""
         response = self._mock_tv_response(10)
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[GT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[GT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -716,12 +710,10 @@ class TestCollectAndWriteDetails:
     def test_movie_writes_runtime_and_year(self):
         ids = [1, 2]
         responses = [self._mock_movie_response(i) for i in ids]
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
             patch("src.utils._buscar_colecoes_pt_br", return_value={86311: "Os Vingadores"}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -768,12 +760,10 @@ class TestCollectAndWriteDetails:
     def test_tv_writes_seasons_episodes_runtime(self):
         ids = [10, 20]
         responses = [self._mock_tv_response(i) for i in ids]
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -847,12 +837,10 @@ class TestCollectAndWriteDetails:
 
     def test_writes_with_year_partition_and_overwrite_mode(self):
         responses = [self._mock_movie_response(1)]
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: t
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
             patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -863,9 +851,6 @@ class TestCollectAndWriteDetails:
 
     def test_merges_existing_records_not_in_batch(self):
         """Registros existentes cujos IDs nao estao no batch atual sao preservados."""
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: t
-
         existing_df = pd.DataFrame([{
             "id": 99, "runtime": 120, "year": "2023",
             "overview_en": "", "overview_pt": "",
@@ -875,7 +860,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
             patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -888,9 +873,6 @@ class TestCollectAndWriteDetails:
 
     def test_overwrites_id_already_in_batch(self):
         """Se um ID existente esta sendo re-escrito, o registro antigo e substituido."""
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: t
-
         existing_df = pd.DataFrame([{
             "id": 1, "runtime": 999, "year": "2023",
             "overview_en": "", "overview_pt": "",
@@ -900,7 +882,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
             patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -915,12 +897,9 @@ class TestCollectAndWriteDetails:
 
     def test_read_parquet_failure_falls_back_to_new_data_only(self):
         """Se read_parquet falhar, a funcao grava apenas os novos registros sem erro."""
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: t
-
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
             patch("src.utils._buscar_colecoes_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", side_effect=Exception("S3 error")),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -1058,14 +1037,6 @@ class TestCollectAndWriteWatchProviders:
 # ---------------------------------------------------------------------------
 # get_resolved_option / get_parameters_glue
 # ---------------------------------------------------------------------------
-
-
-class TestGetResolvedOption:
-    def test_delegates_to_getResolvedOptions(self):
-        with patch("src.utils.getResolvedOptions", return_value={"DATABASE": "db"}) as mock_gro:
-            result = u.get_resolved_option(["DATABASE"])
-        mock_gro.assert_called_once()
-        assert result == {"DATABASE": "db"}
 
 
 class TestGetParametersGlue:
