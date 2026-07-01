@@ -29,7 +29,7 @@ resource "aws_glue_job" "data_quality_job" {
 
   default_arguments = {
     "--job-language"              = "python"
-    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_data_quality_job_name}/app_bundle.zip"
+    "--extra-py-files"            = "s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/${local.envs.glue_data_quality_job_name}/app_bundle.zip,s3://${local.envs.s3_bucket_aux}/${local.tmdb_prefix}/shared/${local.shared_zip_filename}"
     "--additional-python-modules" = local.glue_data_quality_additional_python_modules
     "--custom-logGroup-prefix"    = "/${local.envs.glue_data_quality_job_name}"
     "--S3_BUCKET_DATA_QUALITY"    = local.envs.s3_bucket_data_quality
@@ -46,6 +46,7 @@ resource "aws_glue_job" "data_quality_job" {
   depends_on = [
     aws_s3_object.deploy_scripts_bucket_data_quality,
     aws_s3_object.deploy_app_bundle_data_quality,
+    aws_s3_object.deploy_shared_zip,
     aws_iam_role_policy_attachment.glue_dq_base,
     aws_iam_role_policy_attachment.glue_dq_read_code,
     aws_iam_role_policy.glue_dq_logs,

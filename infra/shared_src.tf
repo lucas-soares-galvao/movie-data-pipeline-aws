@@ -24,3 +24,19 @@ resource "aws_s3_object" "deploy_shared_wheel" {
   source_hash = null_resource.shared_wheel_build.triggers.source_hash
   depends_on  = [null_resource.shared_wheel_build, aws_s3_bucket.auxiliary_bucket]
 }
+
+
+data "archive_file" "shared_zip" {
+  type        = "zip"
+  output_path = "${path.module}/${local.shared_zip_filename}"
+  source_dir  = local.shared_src_path
+  excludes    = ["**/__pycache__/**", "**/*.pyc", "**/*.md"]
+}
+
+resource "aws_s3_object" "deploy_shared_zip" {
+  bucket     = aws_s3_bucket.auxiliary_bucket.id
+  key        = "${local.tmdb_prefix}/shared/${local.shared_zip_filename}"
+  source     = data.archive_file.shared_zip.output_path
+  etag       = data.archive_file.shared_zip.output_md5
+  depends_on = [aws_s3_bucket.auxiliary_bucket]
+}
