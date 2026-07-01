@@ -5,13 +5,8 @@ Invoca a Lambda uma vez por ano para cada tipo (movie, tv), mantendo-se dentro
 do timeout de 900 s por invocação. Cada invocação aciona automaticamente o
 Glue ETL → Glue Details → (se último run de tv) Glue AGG.
 
-Fluxo em duas fases:
-  Fase 0 — tabelas de referência (genre, configuration, watch_providers_ref):
-    Roda uma única vez para movie e tv sem only_discover, pois esses dados não
-    variam por ano e precisam existir antes dos discovers downstream.
-  Fase 1 — discovers por ano (2000…ano_atual):
-    Roda com only_discover=True para cada ano, pulando as tabelas de referência
-    já populadas na fase anterior.
+Para popular referências (genre, configuration, watch_providers_ref) antes de
+rodar o histórico, use backfill_referencias.py.
 
 Uso:
     python scripts/backfill_historico.py
@@ -63,12 +58,12 @@ def _require_env(name: str) -> str:
 
 
 def _assert_single_year(payload: dict[str, Any]) -> None:
-    """Valida que start_year == end_year no payload."""
-    sy, ey = payload["start_year"], payload["end_year"]
-    if sy != ey:
+    """Valida que start_year == loop_end_year no payload (uma partição por invocação)."""
+    sy, ley = payload["start_year"], payload["loop_end_year"]
+    if sy != ley:
         raise ValueError(
-            f"Backfill esperava start_year == end_year, mas recebeu "
-            f"start_year={sy}, end_year={ey}. Corrija o loop antes de continuar."
+            f"Backfill esperava start_year == loop_end_year, mas recebeu "
+            f"start_year={sy}, loop_end_year={ley}. Corrija o loop antes de continuar."
         )
 
 
@@ -118,49 +113,34 @@ def main() -> None:
 
     client = boto3.client("lambda", region_name=region)
 
-    wait_seconds = 300  # 5 minutos entre invocações
+    wait_seconds = 60  # 1 minuto entre invocação
 
     years = list(range(start_year, end_year + 1))
-    # Fase 0 (2 invocações) + Fase 1 (len(years) * 2 invocações)
-    total = 2 + len(years) * 2
+    total = len(years) * 2
     logger.info(
-        "Backfill de %d até %d | fase 0: 2 invocações (referência) | fase 1: %d invocações (discover)",
-        start_year, end_year, len(years) * 2,
+        "Backfill de %d até %d | %d invocações (discover movie + tv por ano)",
+        start_year, end_year, total,
     )
 
-    # ------------------------------------------------------------------
-    # Fase 0: tabelas de referência — roda uma vez sem only_discover
-    # ------------------------------------------------------------------
-    logger.info("[1/%d] FASE 0 | movie | tabelas de referência (genre, configuration, providers_ref)", total)
-    _invoke(client, function_name, {**base_movie, "start_year": end_year, "end_year": end_year, "skip_discover": True})
-    logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
-    time.sleep(wait_seconds)
+    for i, year in enumerate(years, start=1):
+        n_movie = i * 2 - 1
+        logger.info("[%d/%d] movie | ano=%d", n_movie, total, year)
+        payload_movie = {**base_movie, "start_year": year, "loop_end_year": year, "end_year": end_year, "only_discover": True}
+        _assert_single_year(payload_movie)
+        _invoke(client, function_name, payload_movie)
+        logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
+        time.sleep(wait_seconds)
 
-    logger.info("[2/%d] FASE 0 | tv    | tabelas de referência (genre, configuration, providers_ref)", total)
-    _invoke(client, function_name, {**base_tv, "start_year": end_year, "end_year": end_year, "skip_discover": True})
-    logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
-    time.sleep(wait_seconds)
+        n_tv = i * 2
+        logger.info("[%d/%d] tv    | ano=%d", n_tv, total, year)
+        payload_tv = {**base_tv, "start_year": year, "loop_end_year": year, "end_year": end_year, "only_discover": True}
+        _assert_single_year(payload_tv)
+        _invoke(client, function_name, payload_tv)
+        if n_tv < total:
+            logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
+            time.sleep(wait_seconds)
 
-    # ------------------------------------------------------------------
-    # Fase 1: discovers por ano com only_discover=True
-    # ------------------------------------------------------------------
-    # for i, year in enumerate(years, start=3):
-    #     logger.info("[%d/%d] FASE 1 | movie | ano=%d", i, total, year)
-    #     _assert_single_year({**base_movie, "start_year": year, "end_year": year})
-    #     _invoke(client, function_name, {**base_movie, "start_year": year, "end_year": year, "only_discover": True})
-    #     if i < total:
-    #         logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
-    #         time.sleep(wait_seconds)
-
-    # for i, year in enumerate(years, start=3 + len(years)):
-    #     logger.info("[%d/%d] FASE 1 | tv    | ano=%d", i, total, year)
-    #     _assert_single_year({**base_tv, "start_year": year, "end_year": year})
-    #     _invoke(client, function_name, {**base_tv, "start_year": year, "end_year": year, "only_discover": True})
-    #     if i < total:
-    #         logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
-    #         time.sleep(wait_seconds)
-
-    # logger.info("Backfill concluído: %d até %d", start_year, end_year)
+    logger.info("Backfill concluído: %d até %d", start_year, end_year)
 
 
 if __name__ == "__main__":

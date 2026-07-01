@@ -1,13 +1,14 @@
 name: 5. Backfill
 
 # =============================================================================
-# Executa scripts de backfill sob demanda no ambiente prod.
+# Executa backfills pontuais sob demanda no ambiente prod.
 #
-# Scripts disponíveis (em scripts/):
-#   - backfill_enriquecimento.py — re-busca detalhes enriquecidos via Glue Details
-#   - backfill_historico.py      — popula discovers históricos via Lambda
-#   - backfill_data_quality.py   — aciona Glue Data Quality
-#   - backfill_traducao.py       — traduz títulos/sinopses para português
+# Grupos de tabelas disponíveis:
+#   - discover              — gaps de anos via Lambda (ETL → DQ → Details → AGG)
+#   - referencias           — genre, configuration, watch_providers_ref via Lambda
+#   - detalhes_e_providers  — re-enriquece details + watch_providers via Glue Details
+#   - data_quality          — re-executa DQ via Glue
+#   - traducao              — adiciona title_pt/overview_pt nos details (sem API TMDB)
 #
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
 # do padrão de nomenclatura do Terraform (tmdb-*-prod / db_tmdb_*_prod / etc.).
@@ -16,22 +17,23 @@ name: 5. Backfill
 on:
   workflow_dispatch:
     inputs:
-      script:
-        description: "Script de backfill a executar"
+      table_group:
+        description: "Grupo de tabelas a atualizar"
         required: true
         type: choice
         options:
-          - enriquecimento
-          - historico
+          - discover
+          - referencias
+          - detalhes_e_providers
           - data_quality
           - traducao
       start_year:
-        description: "Ano inicial do backfill"
+        description: "Ano inicial (ignorado para referencias)"
         required: true
         default: "2000"
         type: string
       end_year:
-        description: "Ano final do backfill (vazio = ano atual)"
+        description: "Ano final (vazio = ano atual; ignorado para referencias)"
         required: false
         default: ""
         type: string
@@ -64,13 +66,14 @@ jobs:
       - name: Instalar dependências
         run: |
           pip install boto3
-          if [ "${{ inputs.script }}" = "traducao" ]; then
+          if [ "${{ inputs.table_group }}" = "traducao" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
-      - name: Executar backfill_${{ inputs.script }}
+      - name: Executar backfill (${{ inputs.table_group }})
         env:
           AWS_REGION: sa-east-1
+          FORCE_REFETCH: "true"
 
           # Jobs
           GLUE_DETAILS_JOB_NAME: tmdb-glue-details-prod
@@ -103,4 +106,10 @@ jobs:
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"
           fi
-          python scripts/backfill_${{ inputs.script }}.py
+          case "${{ inputs.table_group }}" in
+            discover)             python scripts/backfill_historico.py ;;
+            referencias)          python scripts/backfill_referencias.py ;;
+            detalhes_e_providers) python scripts/backfill_enriquecimento.py ;;
+            data_quality)         python scripts/backfill_data_quality.py ;;
+            traducao)             python scripts/backfill_traducao.py ;;
+          esac

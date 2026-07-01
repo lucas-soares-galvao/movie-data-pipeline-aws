@@ -163,7 +163,7 @@ def main() -> None:
 
     start_year   = int(os.environ.get("BACKFILL_START_YEAR",   2000))
     end_year     = int(os.environ.get("BACKFILL_END_YEAR",     datetime.now().year))
-    wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 30))
+    wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 60))
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
