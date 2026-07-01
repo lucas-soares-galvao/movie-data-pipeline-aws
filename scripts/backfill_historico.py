@@ -113,7 +113,7 @@ def main() -> None:
 
     client = boto3.client("lambda", region_name=region)
 
-    wait_seconds = 60  # 1 minuto entre invocação
+    wait_seconds = 300
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2

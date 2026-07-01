@@ -91,7 +91,7 @@ def main() -> None:
     }
 
     client       = boto3.client("lambda", region_name=region)
-    wait_seconds = 60
+    wait_seconds = 300
 
     logger.info("Atualizando referências (genre, configuration, watch_providers_ref) — 2 invocações")
 
