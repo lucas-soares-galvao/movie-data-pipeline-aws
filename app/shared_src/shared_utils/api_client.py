@@ -19,6 +19,17 @@ logger = logging.getLogger()
 _TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
 
 
+def _calcular_espera(attempt: int, response=None) -> float:
+    """Backoff exponencial com jitter. Respeita Retry-After em 429."""
+    # Para 429, o servidor pode informar no header "Retry-After" quanto tempo esperar.
+    # Para os demais erros, usa backoff exponencial (1s → 2s → 4s).
+    # random.uniform(0, 1) adiciona um "jitter" (variação aleatória) de até 1s
+    # para evitar que múltiplos workers acordem exatamente ao mesmo tempo.
+    if response is not None and response.status_code == 429 and "Retry-After" in response.headers:
+        return int(response.headers["Retry-After"]) + random.uniform(0, 1)
+    return (2 ** attempt) + random.uniform(0, 1)
+
+
 def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
     """
     GET com retry e backoff exponencial em erros transientes.
@@ -36,55 +47,42 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
         ConnectionError / Timeout: Se não conseguir conectar após max_retries tentativas.
     """
     for attempt in range(max_retries):
-        is_last_attempt = attempt == max_retries - 1
+        eh_ultima_tentativa = attempt == max_retries - 1
+        wait: float
         try:
             # timeout=30 evita que o job fique preso esperando por uma resposta
             # que nunca chega (servidor travado, rede lenta, etc.)
             response = requests.get(url, params=params, timeout=30)
 
-            if response.status_code in _TRANSIENT_HTTP_CODES:
-                if is_last_attempt:
-                    logger.error(
-                        f"HTTP {response.status_code} após {max_retries} tentativas. "
-                        f"Todas as tentativas esgotadas para {url}."
-                    )
-                    response.raise_for_status()
+            if response.status_code not in _TRANSIENT_HTTP_CODES:
+                # Status não é transiente: raise_for_status() lança exceção para 4xx/5xx
+                # permanentes (ex: 401, 404). Para 200 OK, não faz nada e retorna o JSON.
+                response.raise_for_status()
+                return response.json()
 
-                # Para 429, o servidor pode informar no header "Retry-After" quanto tempo esperar.
-                # Para os demais erros transientes, usa backoff exponencial (1s → 2s → 4s).
-                # random.uniform(0, 1) adiciona um "jitter" (variação aleatória) de até 1s
-                # para evitar que múltiplos workers acordem exatamente ao mesmo tempo.
-                if response.status_code == 429 and "Retry-After" in response.headers:
-                    wait = int(response.headers["Retry-After"]) + random.uniform(0, 1)
-                else:
-                    wait = (2 ** attempt) + random.uniform(0, 1)
-
-                logger.warning(
-                    f"HTTP {response.status_code} (tentativa {attempt + 1}/{max_retries}). "
-                    f"Aguardando {wait:.1f}s..."
+            if eh_ultima_tentativa:
+                logger.error(
+                    f"HTTP {response.status_code} após {max_retries} tentativas. "
+                    f"Todas as tentativas esgotadas para {url}."
                 )
-                time.sleep(wait)
-                continue
+                response.raise_for_status()
 
-            # Se chegou aqui, o status não é transiente — raise_for_status() lança exceção
-            # para qualquer outro erro 4xx/5xx (ex: 401, 404). Para 200 OK retorna normalmente.
-            response.raise_for_status()
-            return response.json()
+            wait = _calcular_espera(attempt, response)
 
         except (ConnectionError, Timeout) as e:
             # Erros de rede (sem conexão, timeout) também merecem retry.
-            if is_last_attempt:
+            if eh_ultima_tentativa:
                 logger.error(
                     f"Erro de conexão após {max_retries} tentativas: {e}. "
                     f"Todas as tentativas esgotadas para {url}."
                 )
                 raise
-            wait = (2 ** attempt) + random.uniform(0, 1)
-            logger.warning(
-                f"Erro de conexão (tentativa {attempt + 1}/{max_retries}): {e}. "
-                f"Aguardando {wait:.1f}s..."
-            )
-            time.sleep(wait)
+            wait = _calcular_espera(attempt)
+
+        logger.warning(
+            f"Tentativa {attempt + 1}/{max_retries} falhou. Aguardando {wait:.1f}s..."
+        )
+        time.sleep(wait)
 
 
 def get_api_secret(secret_arn: str, key_name: str) -> str:

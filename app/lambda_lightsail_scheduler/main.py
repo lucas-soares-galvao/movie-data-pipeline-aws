@@ -32,7 +32,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info(f"Instância '{instance_name}' sendo parada.")
         return {"status": "stopping", "instance": instance_name}
 
-    elif action == "start":
+    if action == "start":
         client.start_instance(instanceName=instance_name)
         logger.info(f"Instância '{instance_name}' sendo iniciada.")
         return {"status": "starting", "instance": instance_name}

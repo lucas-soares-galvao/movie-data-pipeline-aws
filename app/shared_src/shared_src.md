@@ -12,6 +12,8 @@ app/shared_src/
 └── shared_utils/          ← pacote Python (importado como shared_utils)
     ├── __init__.py
     ├── api_client.py      ← acesso a APIs externas (retry, Secrets Manager)
+    ├── glue_helpers.py    ← utilitários compartilhados de jobs Glue
+    ├── traducao.py        ← tradução inglês → português via Google Translate
     └── triggers.py        ← disparo genérico de jobs Glue
 ```
 
@@ -24,6 +26,19 @@ app/shared_src/
 | `api_get(url, params, max_retries)` | GET com retry/backoff exponencial para lidar com rate limits de APIs (429, 5xx) |
 | `get_api_secret(secret_arn, key_name)` | Busca um segredo no AWS Secrets Manager |
 
+### `shared_utils/glue_helpers.py`
+
+| Função | Responsabilidade |
+|---|---|
+| `get_resolved_option(args)` | Wrapper de `getResolvedOptions` — converte lista de nomes em dicionário nome→valor |
+| `configurar_logging_glue()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp) e retorna o logger raiz |
+
+### `shared_utils/traducao.py`
+
+| Função | Responsabilidade |
+|---|---|
+| `traduzir_texto(texto, contexto)` | Traduz texto de inglês para português via Google Translate; retorna o original em caso de falha para não interromper o job |
+
 ### `shared_utils/triggers.py`
 
 | Função | Responsabilidade |
@@ -35,9 +50,13 @@ app/shared_src/
 | Componente | Funções importadas |
 |---|---|
 | `lambda_api` | `api_get`, `get_api_secret` |
-| `glue_details` | `api_get`, `get_api_secret`, `trigger_glue_job` |
-| `glue_etl` | `trigger_glue_job` |
-| `glue_agg` | `trigger_glue_job` |
+| `glue_details` | `api_get`, `get_api_secret`, `get_resolved_option`, `traduzir_texto`, `trigger_glue_job` |
+| `glue_etl` | `get_resolved_option`, `traduzir_texto`, `trigger_glue_job` |
+| `glue_agg` | `get_resolved_option`, `trigger_glue_job` |
+| `glue_agg/main` | `configurar_logging_glue` |
+| `glue_etl/main` | `configurar_logging_glue` |
+| `glue_data_quality/main` | `configurar_logging_glue` |
+| `glue_details/main` | `configurar_logging_glue` |
 
 ## Deploy
 

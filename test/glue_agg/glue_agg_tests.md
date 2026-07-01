@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `main()` em `app/glue_agg/main.py` e as funções utilitárias em `app/glue_agg/src/utils.py`. O ponto central é garantir que as duas etapas principais do pipeline (query Athena → escrita na SPEC) e o acionamento do Data Quality ocorrem na **ordem correta** e com os argumentos certos. Todas as dependências externas (Athena, S3) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem fazer chamadas reais, mantendo os testes rápidos, gratuitos e isolados.
+Testa a função `main()` em `app/glue_agg/main.py` e as funções utilitárias em `app/glue_agg/src/utils.py`. A constante `_DISCOVER_UNIFIED_QUERY` (em `src/queries.py`) é coberta indiretamente por `TestRunAthenaQuery` — os testes chamam `run_athena_query` e inspecionam o SQL resultante, sem importar a constante diretamente. O ponto central é garantir que as duas etapas principais do pipeline (query Athena → escrita na SPEC) e o acionamento do Data Quality ocorrem na **ordem correta** e com os argumentos certos. Todas as dependências externas (Athena, S3) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem fazer chamadas reais, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 

@@ -179,11 +179,9 @@ class TestReadFromSorConfiguration:
             {"iso_3166_1": "BR", "english_name": "Brazil", "native_name": "Brasil"},
             {"iso_3166_1": "US", "english_name": "United States", "native_name": "United States"},
         ])
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
         ):
             result = read_from_sor("my-sor", "tv", "configuration")
             assert "name_pt" in result.columns
@@ -194,9 +192,7 @@ class TestReadFromSorConfiguration:
 class TestAdicionarNamePtCountries:
     def test_traduz_english_name(self):
         df = pd.DataFrame({"english_name": ["Japan", "France"], "native_name": ["日本", "France"]})
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _adicionar_name_pt_countries(df)
         assert result["name_pt"].iloc[0] == "[PT] Japan"
         assert result["name_pt"].iloc[1] == "[PT] France"
@@ -220,9 +216,7 @@ class TestAdicionarNamePtCountries:
 class TestAdicionarNamePtLanguages:
     def test_traduz_english_name(self):
         df = pd.DataFrame({"english_name": ["English", "French"], "name": ["English", "Français"]})
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
-        with patch("src.utils.GoogleTranslator", return_value=mock_translator):
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _adicionar_name_pt_languages(df)
         assert result["name_pt"].iloc[0] == "[PT] English"
         assert result["name_pt"].iloc[1] == "[PT] French"
@@ -242,11 +236,9 @@ class TestReadFromSorConfigurationLanguages:
     def test_movie_configuration_recebe_name_pt(self):
         payload = [{"iso_639_1": "en", "english_name": "English", "name": "English"}]
         s3_mock = _make_s3_mock(payload)
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = lambda t: f"[PT] {t}"
         with (
             patch("src.utils.boto3.client", return_value=s3_mock),
-            patch("src.utils.GoogleTranslator", return_value=mock_translator),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
         ):
             df = read_from_sor("my-sor", "movie", "configuration")
         assert "name_pt" in df.columns
@@ -409,14 +401,6 @@ class TestDeriveCanonicalName:
 # ---------------------------------------------------------------------------
 # get_resolved_option / get_parameters_glue
 # ---------------------------------------------------------------------------
-
-
-class TestGetResolvedOption:
-    def test_delegates_to_getResolvedOptions(self):
-        with patch("src.utils.getResolvedOptions", return_value={"S3_BUCKET_SOR": "my-sor"}) as mock_gro:
-            result = get_resolved_option(["S3_BUCKET_SOR"])
-        mock_gro.assert_called_once()
-        assert result == {"S3_BUCKET_SOR": "my-sor"}
 
 
 class TestGetParametersGlue:

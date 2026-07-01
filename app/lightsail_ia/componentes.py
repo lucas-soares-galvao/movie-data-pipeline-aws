@@ -1,11 +1,28 @@
 """componentes.py — Funções auxiliares de renderização para o FilmBot."""
 
 import html
-import re
 from datetime import date
 from pathlib import Path
 
 import streamlit as st
+
+_DESCRICAO_CLASSIFICACAO = {
+    "L": "Livre para todas as idades",
+    "10": "Não recomendado para menores de 10 anos",
+    "12": "Não recomendado para menores de 12 anos",
+    "14": "Não recomendado para menores de 14 anos",
+    "16": "Não recomendado para menores de 16 anos",
+    "18": "Não recomendado para menores de 18 anos",
+}
+
+_YT_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" '
+    'fill="red"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.546 12 '
+    '3.546 12 3.546s-7.505 0-9.377.504A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 '
+    '3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.504 9.376.504 9.376.504s7.505 0 '
+    '9.377-.504a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 '
+    '15.568V8.432L15.818 12l-6.273 3.568z"/></svg>'
+)
 
 
 def _injetar_css(arquivo: str) -> None:
@@ -42,15 +59,6 @@ def renderizar_card(t: dict) -> str:
     certificacao = html.escape(t.get("certificacao") or "")
     trailer_url = t.get("trailer_url") or ""
 
-    _DESCRICAO_CLASSIFICACAO = {
-        "L": "Livre para todas as idades",
-        "10": "Não recomendado para menores de 10 anos",
-        "12": "Não recomendado para menores de 12 anos",
-        "14": "Não recomendado para menores de 14 anos",
-        "16": "Não recomendado para menores de 16 anos",
-        "18": "Não recomendado para menores de 18 anos",
-    }
-
     img_html = (
         f'<img src="{poster}" alt="{titulo}"'
         f' class="card-img" loading="lazy" />'
@@ -80,16 +88,8 @@ def renderizar_card(t: dict) -> str:
     trailer_html = ""
     if trailer_url:
         safe_url = html.escape(trailer_url)
-        yt_svg = (
-            '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" '
-            'fill="red"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.546 12 '
-            '3.546 12 3.546s-7.505 0-9.377.504A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 '
-            '3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.504 9.376.504 9.376.504s7.505 0 '
-            '9.377-.504a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 '
-            '15.568V8.432L15.818 12l-6.273 3.568z"/></svg>'
-        )
         trailer_html = (
-            f'<div class="meta-row"><span class="meta-icon">{yt_svg}</span>'
+            f'<div class="meta-row"><span class="meta-icon">{_YT_SVG}</span>'
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
             f'Trailer</a></div>'
         )
@@ -146,8 +146,7 @@ def renderizar_card(t: dict) -> str:
 def renderizar_grid(titulos: list[dict]) -> str:
     """Monta o HTML completo do grid de cards."""
     cards = [renderizar_card(t) for t in titulos]
-    grid_html = '<div class="grid-filmes">' + "".join(cards) + "</div>"
-    return re.sub(r"\s+", " ", grid_html)
+    return '<div class="grid-filmes">' + "".join(cards) + "</div>"
 
 
 def renderizar_rodape() -> None:

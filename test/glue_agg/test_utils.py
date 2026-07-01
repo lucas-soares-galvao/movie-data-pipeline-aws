@@ -224,14 +224,6 @@ class TestWriteParquetToSpec:
                 write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
 
-class TestGetResolvedOption:
-    def test_delegates_to_getResolvedOptions(self):
-        with patch("src.utils.getResolvedOptions", return_value={"TABLE_NAME": "tb_unified"}) as mock_gro:
-            result = get_resolved_option(["TABLE_NAME"])
-        mock_gro.assert_called_once()
-        assert result == {"TABLE_NAME": "tb_unified"}
-
-
 class TestGetParametersGlue:
     def _required(self):
         return {

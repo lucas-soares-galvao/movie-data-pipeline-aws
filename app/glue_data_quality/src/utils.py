@@ -100,18 +100,21 @@ def read_table_from_catalog(
         DynamicFrame com os dados da tabela (ou partição, quando year é fornecido).
     """
     logger.info(f"Lendo tabela '{database}.{table_name}' do Glue Catalog...")
-    kwargs: Dict[str, Any] = {
-        "database": database,
-        "table_name": table_name
-    }
     if year is not None:
         # push_down_predicate = "filtro de partição empurrado para baixo"
         # Em vez de carregar TODOS os dados e depois filtrar em memória,
         # o Glue instrui o S3 a já retornar apenas os arquivos da pasta "year=XXXX/".
         # Isso é muito mais rápido e barato para tabelas grandes com vários anos.
-        kwargs["push_down_predicate"] = f"year = '{year}'"
         logger.info(f"Aplicando filtro de partição: year = '{year}'")
-    return glue_context.create_dynamic_frame.from_catalog(**kwargs)
+        return glue_context.create_dynamic_frame.from_catalog(
+            database=database,
+            table_name=table_name,
+            push_down_predicate=f"year = '{year}'",
+        )
+    return glue_context.create_dynamic_frame.from_catalog(
+        database=database,
+        table_name=table_name,
+    )
 
 
 def _executar_avaliacao_dq(
@@ -129,8 +132,8 @@ def _executar_avaliacao_dq(
     do Glue Catalog pode incluir metadados de outras partições.
     """
     if year is not None:
-        df_source = dynamic_frame.toDF().filter(col("year") == year)
-        dynamic_frame = DynamicFrame.fromDF(df_source, glue_context, "filtered_frame")
+        df_filtrado = dynamic_frame.toDF().filter(col("year") == year)
+        dynamic_frame = DynamicFrame.fromDF(df_filtrado, glue_context, "filtered_frame")
         logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
 
     dq_results = EvaluateDataQuality.apply(
@@ -174,8 +177,10 @@ def _renomear_e_classificar_colunas(
     df = df.withColumn(
         "category",
         when(col("rule").startswith("IsComplete"), "Completude")
-        .when(col("rule").startswith("IsUnique"), "Unicidade")
-        .when(col("rule").startswith("Uniqueness"), "Unicidade")
+        .when(
+            col("rule").startswith("IsUnique") | col("rule").startswith("Uniqueness"),
+            "Unicidade",
+        )
         .when(col("rule").startswith("ColumnValues"), "Validade")
         .when(col("rule").startswith("RowCount"), "Integridade"),
     )

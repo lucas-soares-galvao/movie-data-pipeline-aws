@@ -3,12 +3,10 @@ Glue Data Quality — avalia regras DQDL (nulos, unicidade, ranges) contra tabel
 Requer Spark/GlueContext porque o motor de DQ do Glue não está disponível em PythonShell.
 """
 
-import logging
-import sys
-
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
 
+from shared_utils.glue_helpers import configurar_logging_glue
 from src.utils import (
     evaluate_data_quality,
     get_parameters_glue,
@@ -18,13 +16,7 @@ from src.utils import (
     write_results_to_s3,
 )
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    force=True,
-)
-logger = logging.getLogger()
+logger = configurar_logging_glue()
 
 
 def main() -> None:

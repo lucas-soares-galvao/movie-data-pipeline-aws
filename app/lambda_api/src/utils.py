@@ -6,10 +6,7 @@ from typing import Any, Optional
 
 from requests.exceptions import HTTPError
 
-# noqa: F401 = diz ao linter para ignorar "import não usado" — esses imports são
-# re-exportados para que main.py os importe diretamente de src.utils.
-from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
-from shared_utils.triggers import trigger_glue_job  # noqa: F401
+from shared_utils.api_client import api_get as tmdb_get
 
 # boto3 não tem stub de tipo para S3Client; Any permite o type checker continuar sem erro.
 S3Client = Any

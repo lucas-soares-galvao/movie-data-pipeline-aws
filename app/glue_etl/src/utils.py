@@ -2,15 +2,14 @@
 
 import json
 import logging
-import sys
 from typing import Any, Dict, List, Optional
 
 import awswrangler as wr
 import boto3
 import pandas as pd
-from awsglue.utils import getResolvedOptions
-from deep_translator import GoogleTranslator
 
+from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
+from shared_utils.traducao import traduzir_texto
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 # Caminhos no S3 SOR organizados por media_type e table_type.
@@ -67,11 +66,11 @@ def derive_canonical_name(name: str) -> str:
         Nome canônico normalizado
     """
     result = name.strip()
-    lower = result.lower()
+    name_lower = result.lower()
 
     # Remove o primeiro sufixo que corresponder (por ordem de especificidade)
     for suffix in _CANONICAL_SUFFIXES:
-        if lower.endswith(suffix.lower()):
+        if name_lower.endswith(suffix.lower()):
             result = result[: -len(suffix)]  # Remove os últimos N caracteres
             break
 
@@ -80,11 +79,6 @@ def derive_canonical_name(name: str) -> str:
 
 
 logger = logging.getLogger()
-
-
-def get_resolved_option(args: list) -> Dict[str, Any]:
-    """Wrapper de getResolvedOptions — converte lista de nomes em dicionário nome→valor."""
-    return getResolvedOptions(sys.argv, args)
 
 
 def get_parameters_glue() -> Dict[str, Any]:
@@ -139,23 +133,13 @@ def _adicionar_traducao(df: pd.DataFrame, descricao: str) -> pd.DataFrame:
 
     logger.info(f"Traduzindo {mask.sum()} nomes de {descricao} para pt-BR...")
 
-    def _translate(texto: str) -> str:
-        if not texto:
-            return ""
-        try:
-            return GoogleTranslator(source="en", target="pt").translate(texto)
-        except Exception as exc:
-            # Intencionalmente amplo: preferimos manter o original a falhar o job.
-            logger.warning(f"Falha ao traduzir {descricao} '{texto}': {exc}. Mantendo original.")
-            return texto
-
     # Loop sequencial (não paralelo): genre e configuration têm no máximo ~250 itens.
     # Para volumes pequenos, o overhead do ThreadPoolExecutor supera o ganho de paralelismo.
     # O glue_details usa ThreadPoolExecutor porque processa milhares de IDs por execução.
     df["name_pt"] = None
-    valores = df.loc[mask, "english_name"].tolist()
-    traduzidos = [_translate(v) for v in valores]
-    df.loc[mask, "name_pt"] = traduzidos
+    df.loc[mask, "name_pt"] = df.loc[mask, "english_name"].map(
+        lambda t: traduzir_texto(t, contexto=descricao)
+    )
 
     return df
 
@@ -219,13 +203,13 @@ def read_from_sor(
         df = pd.DataFrame(_ler_json_do_s3(s3_bucket_sor, s3_key))
         df["canonical_name"] = df["provider_name"].apply(derive_canonical_name)
 
-    else:
+    elif table_type in ("genre", "configuration"):
         df = pd.DataFrame(_ler_json_do_s3(s3_bucket_sor, s3_key))
 
         if table_type == "configuration" and media_type == "tv":
             df = _adicionar_name_pt_countries(df)
 
-        if table_type == "configuration" and media_type == "movie":
+        elif table_type == "configuration" and media_type == "movie":
             df = _adicionar_name_pt_languages(df)
 
     logger.info(f"Lidos {len(df)} registros.")
