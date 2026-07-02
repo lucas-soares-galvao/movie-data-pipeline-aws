@@ -1,0 +1,6 @@
+# Raciocinio: fixa dependencias necessarias para importar e rodar os scripts de backfill nos testes.
+
+boto3
+awswrangler
+pandas
+deep_translator
