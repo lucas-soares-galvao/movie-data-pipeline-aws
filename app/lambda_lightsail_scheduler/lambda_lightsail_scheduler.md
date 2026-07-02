@@ -35,6 +35,8 @@ A instância Lightsail (que hospeda o bot FilmBot) não precisa ficar ligada 24 
 | **Escrita** | Nenhuma (apenas chamada à API Lightsail) |
 | **Aciona** | Nenhum outro componente |
 
+> **Nota:** este módulo não tem `requirements.txt` — o único import externo é `boto3`, que já vem embutido no runtime da Lambda.
+
 ## Infraestrutura
 
 - Só é provisionada quando `var.lightsail_enabled = true` (produção) — todos os recursos usam `count` condicional.

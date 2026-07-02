@@ -13,6 +13,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
 | `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda | Lambda | — |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano | Lambda | — |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz title/overview para português via Google Translate | S3 (direto) | awswrangler, pandas, deep_translator |
@@ -28,7 +29,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 ### Via GitHub Actions (recomendado)
 
 1. Ir em **Actions > 5. Backfill > Run workflow**
-2. Selecionar o script, ano inicial e ano final
+2. Selecionar o grupo de tabelas (`table_group`), ano inicial e ano final (ambos ignorados para `referencias`)
 3. Acompanhar logs na aba do workflow
 
 O workflow (`.github/workflows/05_backfill.yml`) autentica via OIDC no ambiente **prod** e configura todas as variáveis de ambiente automaticamente.
@@ -44,7 +45,7 @@ python scripts/backfill_enriquecimento.py
 
 ## Variáveis comuns
 
-Todos os scripts aceitam:
+Todos os scripts aceitam, **exceto `backfill_referencias.py`** (que não depende de ano e ignora ambas):
 
 | Variável | Padrão | Descrição |
 |---|---|---|

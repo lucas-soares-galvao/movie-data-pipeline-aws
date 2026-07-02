@@ -30,7 +30,7 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 > **DQDL (Data Quality Definition Language)** é a linguagem nativa do AWS Glue para escrever regras de qualidade. A sintaxe é declarativa: você descreve *o que* deve ser verdade nos dados (ex: "id não pode ser nulo"), e o motor do Glue avalia e retorna Pass/Fail para cada regra.
 
-As regras são definidas em DQDL (Data Quality Definition Language), linguagem nativa do AWS Glue. Cada tabela tem seu ruleset mapeado por nome. Exemplos:
+As regras são definidas em DQDL (Data Quality Definition Language), linguagem nativa do AWS Glue. Cada tabela tem seu ruleset mapeado por nome — ao todo, 14 tabelas têm regras cadastradas (incluindo `now_playing_movie` e `discover_unified`, a tabela unificada gerada pelo Glue AGG). Exemplos:
 
 ```
 # Tabela discover (filmes/séries populares)
@@ -73,7 +73,7 @@ Rules = [
 | `get_ruleset(table_name, environment)` | Retorna o DQDL ruleset correspondente ao nome da tabela |
 | `read_table_from_catalog(glue_context, database, table_name, year)` | Lê tabela do Catalog com pushdown de partição por ano |
 | `evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name, database, year)` | Executa avaliação das regras via motor Glue DQ e retorna DataFrame com resultados e colunas de contexto |
-| `write_results_to_s3(df, s3_bucket_data_quality, table_name, database, output_table, year)` | Salva resultados como Parquet na camada DQ |
+| `write_results_to_s3(df, s3_bucket_data_quality, source_table_name, database, output_table, year)` | Salva resultados como Parquet na camada DQ |
 | `notify_failed_outcomes(df, table_name, sns_topic_arn, environment, year)` | Envia e-mail via SNS se alguma regra falhou |
 
 ## Tecnologias

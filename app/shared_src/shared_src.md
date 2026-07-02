@@ -49,7 +49,7 @@ app/shared_src/
 
 | Componente | Funções importadas |
 |---|---|
-| `lambda_api` | `api_get`, `get_api_secret` |
+| `lambda_api` | `api_get`, `get_api_secret`, `trigger_glue_job` |
 | `glue_details` | `api_get`, `get_api_secret`, `get_resolved_option`, `traduzir_texto`, `trigger_glue_job` |
 | `glue_etl` | `get_resolved_option`, `traduzir_texto`, `trigger_glue_job` |
 | `glue_agg` | `get_resolved_option`, `trigger_glue_job` |

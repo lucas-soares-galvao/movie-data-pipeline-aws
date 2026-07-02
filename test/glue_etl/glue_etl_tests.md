@@ -16,12 +16,16 @@ test/glue_etl/
 
 ## Fixtures (`conftest.py`)
 
-| Fixture | Tipo | Descrição |
-|---|---|---|
-| `_BASE` (constante) | `dict` | Argumentos comuns a todos os runs (buckets, nomes de jobs, databases) |
-| Mocks via `patch.object` | `MagicMock` | `read_from_sor`, `write_parquet_to_sot`, `trigger_glue_job` (de `shared_utils.triggers`) substituídos por mock em cada teste |
+`conftest.py` não define fixtures pytest — é um bootstrap de import/ambiente:
+
+| Item | Descrição |
+|---|---|
+| Ajuste de `sys.path` | Insere `app/glue_etl/` no início de `sys.path`, permitindo `from src.utils import ...` como no runtime do Glue |
+| Stub de `awsglue` | Registra `awsglue`/`awsglue.utils` em `sys.modules` com `getResolvedOptions` como `MagicMock()` e `GlueArgumentError = Exception` |
 
 ## Casos de teste — `test_main.py`
+
+Usa a constante `_BASE` (dict com args comuns: buckets, nomes de jobs, databases) definida em `test_main.py`, e mocks via `patch.object` — `read_from_sor`, `write_parquet_to_sot`, `trigger_glue_job` (de `shared_utils.triggers`) são substituídos localmente em cada teste.
 
 ### `TestRunDiscover` — `TABLE_TYPE="discover"`
 
@@ -74,14 +78,13 @@ Testa individualmente as funções utilitárias: leitura do SOR por `table_type`
 - **`TestReadFromSorDiscover`** (4 testes): path S3 correto (`tmdb/discover/{media_type}/ano={year}/`) para movie e tv; coluna `year` adicionada ao DataFrame com valor correto
 - **`TestReadFromSorGenre`** (3 testes): chave S3 correta para movie (`generos_filmes.json`) e tv (`generos_series.json`); retorna DataFrame da lista JSON
 - **`TestReadFromSorWatchProvidersRef`** (4 testes): chave S3 correta para movie/tv; coluna `canonical_name` adicionada via `derive_canonical_name`; override aplicado (ex: "Paramount Plus" → "Paramount+")
-- **`TestReadFromSorConfiguration`** (4 testes): movie → `languages/idiomas.json`; tv → `countries/paises.json`; retorna DataFrame com colunas corretas; tv countries recebe coluna `name_pt` traduzida via Google Translate
-- **`TestAdicionarNamePtCountries`** (3 testes): traduz `english_name` para pt-BR; sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo
-- **`TestAdicionarNamePtLanguages`** (3 testes): traduz `english_name` dos idiomas para pt-BR; sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo
-- **`TestReadFromSorConfigurationLanguages`** (1 teste): movie configuration recebe coluna `name_pt` traduzida via Google Translate
+- **`TestReadFromSorConfiguration`** (4 testes): movie → `languages/idiomas.json`; tv → `countries/paises.json`; retorna DataFrame com colunas corretas; tv countries recebe coluna `name_pt` traduzida via `traduzir_texto` (`shared_utils.traducao`, mockada em `src.utils.traduzir_texto`)
+- **`TestAdicionarNamePtCountries`** (3 testes): traduz `english_name` para pt-BR via `traduzir_texto` (mockada); sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo
+- **`TestAdicionarNamePtLanguages`** (3 testes): traduz `english_name` dos idiomas para pt-BR via `traduzir_texto` (mockada); sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo
+- **`TestReadFromSorConfigurationLanguages`** (1 teste): movie configuration recebe coluna `name_pt` traduzida via `traduzir_texto` (mockada)
 - **`TestReadFromSorNowPlaying`** (3 testes): path S3 `tmdb/now_playing/movie/`; deduplica por `id`; retorna DataFrame
 - **`TestWriteParquetToSot`** (4 testes): `awswrangler.s3.to_parquet` chamado com `partition_cols`, `mode` e `path` (`s3://{bucket}/tmdb/{table_name}/`) corretos; `mode` customizado repassado
 - **`TestDeriveCanonicalName`** (12 testes): remoção de sufixos ("Standard with Ads", "Premium", "Plus Premium", "Amazon Channel"); overrides manuais ("Paramount Plus" → "Paramount+", "Claro video" → "Claro Video"); composição ("Paramount Plus Premium" → "Paramount+", "MGM Plus Amazon Channel" → "MGM+")
-- **`TestGetResolvedOption`** (1 teste): delega corretamente ao `getResolvedOptions` do Glue runtime
 - **`TestGetParametersGlue`** (3 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar)
 
 ## Como executar

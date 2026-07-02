@@ -20,7 +20,9 @@ O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Fun
   "limite": 10
 }
 ```
-Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz). O limite máximo de resultados é 10.
+Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz, diretor, elenco). O limite máximo de resultados é 10.
+
+O schema informado ao LLM inclui colunas de ficha técnica como `director` e `actor_names` (além de `screenplay`, `music_composer`, `producer`, `cinematographer`, `editor`), permitindo buscas como "filmes do Christopher Nolan" ou "filmes com Tom Hanks" — mesmo que esses campos não sejam exibidos no card (ver seção "Interface").
 
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit.
 
@@ -37,7 +39,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `data_lancamento` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
-- `tagline` (frase de efeito), `elenco` (top 5 atores), `diretor` (filmes e séries)
+- `tagline`, `elenco` (top 5 atores), `diretor` (filmes e séries) — campos formatados mas atualmente não renderizados por `renderizar_card()` (`componentes.py`), junto com `colecao`, `criadores`, `redes_tv`, `produtor`, `cinematografo`, `montador`
 - `roteiristas` (escritores/roteiristas), `compositor` (compositor da trilha sonora)
 - `produtor` (produtores/produtores executivos), `cinematografo` (diretor de fotografia), `montador` (editor/montador)
 - `keywords` (tags temáticas em português), `certificacao` (classificação indicativa BR: L/10/12/14/16/18)
@@ -59,8 +61,6 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
   - Título, ano, tipo (filme/série) e badge de classificação indicativa (L/10/12/14/16/18)
   - Badges laranja por gênero
   - Linha com nota (★), duração (⏱), data de lançamento (📅)
-  - Linha com diretor (filmes)
-  - Linha com elenco (top 5 atores)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
   - Link clicável ▶ Trailer (quando disponível)
@@ -80,12 +80,16 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 |---|---|---|
 | `agent.py` | `recomendar(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) |
 | `agent.py` | `buscar_titulos_spec(filtro_where, limite)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 10) |
-| `agent.py` | `_validar_where(filtro_where)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries) |
+| `agent.py` | `_validar_where(filtro_where)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries, UPDATE, ALTER, CREATE, GRANT, TRUNCATE, EXEC, MERGE, REPLACE, CALL) |
+| `agent.py` | `_carregar_llm_api_key()` | Busca `LLM_API_KEY` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou usa `.env` como fallback em desenvolvimento |
+| `agent.py` | `_chave_cache(preferencia)` | Calcula o hash MD5 da preferência normalizada (lowercase + strip), usado como chave do cache de WHERE clauses |
 | `agent.py` | `_buscar_cache_where(preferencia)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
 | `agent.py` | `_salvar_cache_where(preferencia, args)` | Salva cláusula WHERE no cache em memória com timestamp |
-| `agent.py` | `_logar_uso_tokens(etapa, resposta)` | Registra `prompt_tokens`, `completion_tokens` e `total_tokens` da resposta do LLM via `logging.info` |
+| `agent.py` | `_logar_uso_tokens(etapa, resposta)` | Registra `prompt_tokens`, `completion_tokens` e `total_tokens` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens") |
 | `formatacao.py` | `formatar_registro(registro)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
 | `formatacao.py` | `_formatar_tipo()`, `_formatar_generos()`, `_formatar_duracao_titulo()`, `_formatar_data_lancamento()`, `_formatar_theater_end_date()`, `_formatar_nota()` | Funções puras de formatação de campos individuais |
+| `app.py` | `_carregar_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
+| `app.py` | `_criar_historico_por_ip()` | Factory `@st.cache_resource` que cria o dict compartilhado `_historico_por_ip`, garantindo que o histórico de rate limiting sobreviva a reruns e reset apenas no restart do processo |
 | `app.py` | `_obter_ip_cliente()` | Obtém o IP do cliente via header `X-Forwarded-For` (repassado pelo Caddy) |
 | `app.py` | `_consultas_na_ultima_hora(ip)` | Conta consultas na última hora (janela deslizante) para o IP fornecido e limpa registros expirados |
 | `app.py` | `_segundos_para_liberar(ip)` | Calcula quantos segundos faltam até a consulta mais antiga expirar |
@@ -148,4 +152,6 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 ## Observabilidade de tokens
 
-Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa`. Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
+Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa` (`_logar_uso_tokens()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
+
+`app.py` eleva o root logger para `ERROR` quando o CloudWatch está configurado (`logging.root.setLevel(logging.ERROR)`), para silenciar bibliotecas ruidosas. Como isso suprimiria por herança os `logger.info(...)` de `_logar_uso_tokens()`, `agent.py` define explicitamente `logger.setLevel(logging.INFO)` no seu próprio logger — garantindo que os logs de tokens continuem passando pelo handler do root independentemente do nível herdado.

@@ -67,10 +67,14 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 | Função | Origem | Responsabilidade |
 |---|---|---|
 | `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, Details, AGG) com argumentos dinâmicos |
+| `get_resolved_option(args)` | `shared_utils.glue_helpers` | Resolve argumentos do job Glue (`getResolvedOptions`), usada por `get_parameters_glue()` |
+| `configurar_logging_glue()` | `shared_utils.glue_helpers` | Configura e retorna o `logger` padrão dos jobs Glue |
+| `traduzir_texto(texto, contexto)` | `shared_utils.traducao` | Traduz texto via Google Translate; usada para preencher `name_pt` em `configuration` |
 
 ## Tecnologias
 
 - **awswrangler** — leitura/escrita de Parquet no S3 e registro no Glue Catalog
 - **pandas** — manipulação de DataFrames
 - **boto3** — acionamento de outros jobs Glue
+- **shared_utils** — logging, resolução de argumentos do Glue e tradução compartilhados entre módulos do pipeline
 - **Glue runtime** — execução do job no ambiente AWS Glue
