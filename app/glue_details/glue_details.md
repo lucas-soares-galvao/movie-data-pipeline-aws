@@ -13,7 +13,7 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 1. Lê os argumentos do job (media_type, year, end_year, databases, nomes dos buckets e jobs)
 2. Busca a chave da API TMDB no Secrets Manager (cofre de senhas da AWS)
 3. Consulta o Athena para obter a lista de todos os IDs únicos da tabela `discover` para o ano especificado
-4. **Delta de detalhes (refresh mensal):** em vez de buscar detalhes de todos os IDs toda vez (o que custaria muitas chamadas à API), o job calcula o *delta* — ou seja, apenas os IDs que ainda não foram processados no mês atual. Para isso, consulta a tabela `tb_details_*` em **todas as partições `year`** e exclui IDs já processados no mês atual. Isso evita que um ID cujo `release_date` pertence a um `year` diferente do `year` do discover seja tratado como novo por um job concorrente. Somente os IDs ausentes ou de meses anteriores são buscados na API
+4. **Delta de detalhes (refresh mensal):** em vez de buscar detalhes de todos os IDs toda vez (o que custaria muitas chamadas à API), o job calcula o *delta* — ou seja, apenas os IDs que ainda não foram processados no mês atual. Para isso, consulta a tabela `tb_details_*` em **todas as partições `year`** e exclui IDs já processados no mês atual. Isso evita que um ID cujo `release_date` pertence a um `year` diferente do `year` do discover seja tratado como novo por um job concorrente. Somente os IDs ausentes ou de meses anteriores são buscados na API. Opcionalmente, o argumento `FORCE_REFETCH=true` ignora todo esse cálculo de delta e rebusca todos os IDs do discover na API — útil para forçar um refresh completo fora do ciclo mensal
 5. Para cada ID novo, chama `/movie/{id}` ou `/tv/{id}` (via `ThreadPoolExecutor`) e grava em `tb_tmdb_details_{movie|tv}_{env}`
 6. **Tradução de sinopses (TMDB pt-BR → Google Translate):** primeiro verifica se o TMDB já possui tradução pt-BR (extraída do `append_to_response=translations`). Caso exista, usa diretamente. Caso contrário, para títulos com `original_language='en'`, traduz via `deep_translator.GoogleTranslator`. Grava na coluna `overview_pt`. Para outros idiomas sem tradução TMDB, `overview_pt` fica nulo
 6b. **Tradução de keywords:** traduz as keywords temáticas (sempre em inglês na TMDB, não suportam localização) para português via Google Translate, gravando na coluna `keywords_pt`. Traduz todos os registros com keywords não-nulas, independente do idioma original
@@ -33,7 +33,7 @@ Chamadas à API usam **retry com backoff exponencial e jitter** para lidar com r
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`, `END_YEAR`, `DATABASE`, nomes dos buckets e jobs |
+| **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`, `END_YEAR`, `DATABASE`, nomes dos buckets e jobs, `FORCE_REFETCH` (opcional, default `false`) |
 | **Leitura** | Athena (IDs da tabela discover na SOT), Secrets Manager (chave API), API TMDB |
 | **Escrita** | S3 SOT — tabelas `tb_details_*` e `tb_watch_providers_*` como Parquet + Glue Catalog |
 | **Aciona** | Glue Data Quality (por tabela gravada) + Glue AGG (apenas na última execução de séries) |
@@ -46,10 +46,16 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 
 | Função | Responsabilidade |
 |---|---|
-| `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
+| `get_parameters_glue()` | Lê e valida os argumentos de execução do job (inclui leitura manual de `FORCE_REFETCH`, opcional) |
 | `fetch_ids_from_sot(...)` | Consulta Athena para listar todos os IDs únicos do discover |
 | `fetch_existing_ids_from_details(...)` | Retorna IDs já processados no mês atual em **qualquer partição `year`** (sem filtro de ano) — usados para calcular o delta e evitar reprocessamento por jobs concorrentes |
 | `fetch_ids_stale_watch_providers(...)` | Retorna IDs sem watch providers ou atualizados antes do mês atual |
+| `fetch_tmdb_details(api_key, content_type, item_id)` | Chama `/movie/{id}` ou `/tv/{id}` na API do TMDB e retorna o JSON bruto |
+| `fetch_tmdb_watch_providers(api_key, content_type, item_id)` | Chama `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` e retorna a seção `BR` do payload |
+| `_parse_watch_providers(br_data, item_id, year)` | Converte a seção `BR` de watch providers em registros (um por provedor/tipo `flatrate`/`rent`/`buy`) |
+| `_run_parallel(func, items, max_workers)` | Helper genérico de execução paralela via `ThreadPoolExecutor`, usado por `collect_and_write_details`/`collect_and_write_watch_providers` e por `_buscar_colecoes_pt_br` |
+| `_extrair_nomes_de_lista(lista, *, filtro_campo, filtro_valor)` | Helper compartilhado por várias `_extrair_*` que filtram uma lista de dicts por campo/valor e retornam nomes comma-separated |
+| `_campos_comuns`, `_campos_movie`, `_campos_tv`, `_parse_detail` | Montam o registro final de detalhes a partir do JSON da API, combinando campos comuns e específicos de filme/série |
 | `_extrair_elenco(creditos, limite)` | Top N atores por billing order, comma-separated |
 | `_extrair_diretor(creditos)` | Diretor(es) do filme/série (job='Director' no crew) |
 | `_extrair_roteiristas(creditos)` | Roteiristas (job='Screenplay'/'Writer' no crew), deduplicados |
@@ -74,7 +80,7 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `_extrair_titulos_alternativos(alternative_titles, content_type)` | Títulos alternativos/regionais |
 | `_extrair_traducao_pt_br(translations)` | Extrai overview e tagline em pt-BR do array de translations do TMDB |
 | `_extrair_paises_producao_iso(production_countries)` | Códigos ISO 3166-1 dos países de produção como array |
-| `_google_translate(texto)` | Traduz texto EN→PT via Google Translate; compartilhada pelas três `_adicionar_traducoes_*`; retorna original em caso de falha |
+| `_traduzir_coluna(df, mask, coluna_fonte, coluna_destino)` | Helper compartilhado pelas três `_adicionar_traducoes_*`: aplica `shared_utils.traducao.traduzir_texto` linha a linha nas posições selecionadas por `mask`, gravando o resultado na coluna de destino |
 | `_adicionar_traducoes_pt(df)` | Prioriza overview pt-BR do TMDB; fallback para Google Translate (só `original_language='en'`) |
 | `_adicionar_traducoes_keywords_pt(df)` | Traduz keywords EN→PT via Google Translate (TMDB não localiza keywords) |
 | `_adicionar_traducoes_tagline_pt(df)` | Prioriza tagline pt-BR do TMDB; fallback para Google Translate |
@@ -82,6 +88,7 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `_adicionar_collection_name_pt(df, api_key)` | Adiciona coluna `collection_name_pt` ao DataFrame de detalhes de filmes |
 | `collect_and_write_details(ids, ...)` | Faz chamadas paralelas e grava tabela de detalhes |
 | `collect_and_write_watch_providers(ids, ...)` | Faz chamadas paralelas e grava tabela de watch providers |
+| `_reparar_duplicatas_particao(...)` | Implementação compartilhada pelos três `repair_*` abaixo: lê a partição `year` via S3, aplica `drop_duplicates` com a chave/critério de desempate recebidos como parâmetro e regrava apenas se houver mudanças |
 | `repair_discover_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro de maior `popularity` e regrava apenas se houver mudanças |
 | `repair_watch_providers_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id, provider_type, provider_id)` mantendo o `dt_atualizacao` mais recente e regrava apenas se houver mudanças |
 | `repair_details_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro com `dt_processamento` mais recente e regrava apenas se houver mudanças |
@@ -95,6 +102,9 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, AGG) com argumentos dinâmicos |
+| `traduzir_texto(texto, contexto="")` | `shared_utils.traducao` | Traduz texto EN→PT via Google Translate; retorna o texto original em caso de falha |
+| `get_resolved_option(args)` | `shared_utils.glue_helpers` | Wrapper de `getResolvedOptions` — converte lista de nomes de argumentos em dicionário nome→valor |
+| `configurar_logging_glue()` | `shared_utils.glue_helpers` | Configura o logging padrão dos jobs Glue (stdout, nível INFO, formato com timestamp) |
 
 ## Tecnologias
 

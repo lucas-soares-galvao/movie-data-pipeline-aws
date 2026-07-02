@@ -16,13 +16,9 @@ test/glue_details/
 
 ## Fixtures (`conftest.py`)
 
-| Fixture | Tipo | Descrição |
-|---|---|---|
-| `mock_ids` | `list[int]` | Lista de IDs simulados retornados pelo Athena |
-| `mock_tmdb_response` | `dict` | Resposta simulada da API TMDB (runtime, seasons, etc.) |
-| `mock_watch_providers_response` | `dict` | Resposta simulada de watch providers BR |
-| `mock_boto3` | `MagicMock` | Substitui Secrets Manager e Glue client |
-| `mock_awswrangler` | `MagicMock` | Substitui consultas Athena e escrita Parquet |
+O `conftest.py` desta suite **não define nenhuma `@pytest.fixture`**. Ele só faz duas coisas: adiciona `app/glue_details/` ao início de `sys.path` (para que `from src.utils import ...` funcione nos testes) e cria stubs dos módulos `awsglue`/`awsglue.utils` (que só existem no runtime do Glue), substituindo `getResolvedOptions` por um `MagicMock()`.
+
+Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(...)` inline em cada caso de teste, mais alguns helpers locais definidos diretamente em `test_utils.py` (ex.: `_BASE`, `_mock_movie_response`, `_mock_tv_response`) para montar respostas simuladas da API TMDB.
 
 ## Casos de teste — `test_main.py`
 
@@ -40,6 +36,7 @@ test/glue_details/
 | `test_triggers_data_quality_twice_for_details_and_watch_providers` | DQ é acionado uma vez para cada tabela gravada |
 | `test_skip_collect_details_when_no_new_ids` | `collect_and_write_details` **não** é chamado quando todos os IDs já existem no mês atual |
 | `test_skip_collect_watch_providers_when_no_stale_ids` | `collect_and_write_watch_providers` **não** é chamado quando não há IDs stale |
+| `test_force_refetch_skips_existing_ids_check` | Com `FORCE_REFETCH=true`, `fetch_existing_ids_from_details` não é chamado e todos os IDs do discover são rebuscados |
 
 ### Acionamento condicional do repair e do Glue AGG
 
@@ -58,8 +55,17 @@ test/glue_details/
 
 Testa as funções individuais:
 
+- `_extrair_elenco` (`TestExtrairElenco`): top 5 por `order`, menos que o limite, cast vazio, sem chave `cast`, limite customizado
+- `_extrair_diretor` (`TestExtrairDiretor`): diretor único, múltiplos diretores, sem diretor, crew vazio
 - `_extrair_roteiristas` (`TestExtrairRoteiristas`): roteirista único, múltiplos (Screenplay + Writer), deduplicação por nome, crew vazio
 - `_extrair_compositor` (`TestExtrairCompositor`): compositor único, múltiplos, crew vazio
+- `_extrair_keywords` (`TestExtrairKeywords`): formato movie (chave `keywords`), formato tv (chave `results`), dict vazio, lista vazia
+- `_extrair_certificacao_br_movie` (`TestExtrairCertificacaoBrMovie`): encontra BR, sem BR, BR sem certification, dict vazio
+- `_extrair_certificacao_br_tv` (`TestExtrairCertificacaoBrTv`): encontra BR, sem BR, rating vazio
+- `_extrair_trailer_url` (`TestExtrairTrailerUrl`): trailer oficial do YouTube, fallback para não-oficial, sem YouTube, sem trailer, dict vazio
+- `_extrair_produtoras` (`TestExtrairProdutoras`): produtoras comma-separated, lista vazia, entrada None
+- `_extrair_criadores` (`TestExtrairCriadores`): criadores comma-separated, lista vazia
+- `_extrair_networks` (`TestExtrairNetworks`): networks comma-separated, lista vazia
 - `_extrair_produtores` (`TestExtrairProdutores`): produtor único, produtor+executivo, deduplicação por nome, limite top 3, sem produtor, crew vazio
 - `_extrair_cinematografo` (`TestExtrairCinematografo`): cinematógrafo único, múltiplos, sem cinematógrafo, crew vazio
 - `_extrair_montador` (`TestExtrairMontador`): montador único, múltiplos, sem montador, crew vazio
@@ -74,15 +80,91 @@ Testa as funções individuais:
 - `_extrair_paises_producao_iso` (`TestExtrairPaisesProducaoIso`): extrai códigos ISO, retorna None para lista vazia e None
 - `_extrair_spoken_languages` (`TestExtrairSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
 - `_extrair_spoken_languages_iso` (`TestExtrairSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None
-- `api_get` (de `shared_utils.api_client`): retry com backoff exponencial em caso de erro HTTP (429, 500), sucesso após N tentativas
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
-- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback para Google Translate quando TMDB não tem pt-BR (TV sem translations); campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG; grava `spoken_languages_iso` como array de ISO codes para lookup no AGG
+- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; não escreve nada quando todos os IDs falham (`test_does_not_write_when_all_ids_fail`); prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback para Google Translate quando TMDB não tem pt-BR (TV sem translations); campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG (a gravação de `spoken_languages_iso` é coberta em nível de extração por `TestExtrairSpokenLanguagesIso`, não neste teste de escrita)
 - `repair_details_duplicates` (`TestRepairDetailsDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém `dt_processamento` mais recente por ID; usa `overwrite_partitions`
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `dt_atualizacao` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
 - `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado
+
+### `TestExtrairElenco`
+
+| Teste | O que verifica |
+|---|---|
+| `test_top_5_por_ordem` | Extrai top 5 atores ordenados por `order` (billing order) |
+| `test_menos_que_limite` | Funciona com menos atores do que o limite |
+| `test_cast_vazio` | Retorna `None` para `cast` vazio |
+| `test_sem_cast` | Retorna `None` quando não há chave `cast` |
+| `test_limite_customizado` | Respeita o parâmetro `limite` customizado |
+
+### `TestExtrairDiretor`
+
+| Teste | O que verifica |
+|---|---|
+| `test_diretor_unico` | Extrai um único diretor (job `Director` no crew) |
+| `test_multiplos_diretores` | Extrai múltiplos diretores |
+| `test_sem_diretor` | Retorna `None` quando não há diretor na crew |
+| `test_crew_vazio` | Retorna `None` para crew vazia |
+
+### `TestExtrairKeywords`
+
+| Teste | O que verifica |
+|---|---|
+| `test_formato_movie` | Extrai keywords via chave `keywords` (filmes) |
+| `test_formato_tv` | Extrai keywords via chave `results` (séries) |
+| `test_vazio` | Retorna `None` para dict vazio |
+| `test_lista_vazia` | Retorna `None` para lista de keywords vazia |
+
+### `TestExtrairCertificacaoBrMovie`
+
+| Teste | O que verifica |
+|---|---|
+| `test_encontra_br` | Extrai a certificação do release BR (`iso_3166_1='BR'`) |
+| `test_sem_br` | Retorna `None` quando não há release BR |
+| `test_br_sem_certification` | Retorna `None` quando o release BR tem `certification` vazia |
+| `test_vazio` | Retorna `None` para dict vazio |
+
+### `TestExtrairCertificacaoBrTv`
+
+| Teste | O que verifica |
+|---|---|
+| `test_encontra_br` | Extrai o `rating` BR (`iso_3166_1='BR'`) |
+| `test_sem_br` | Retorna `None` quando não há rating BR |
+| `test_rating_vazio` | Retorna `None` quando o rating BR está vazio |
+
+### `TestExtrairTrailerUrl`
+
+| Teste | O que verifica |
+|---|---|
+| `test_trailer_oficial` | Prioriza trailer oficial do YouTube |
+| `test_fallback_nao_oficial` | Usa trailer não-oficial do YouTube quando não há oficial |
+| `test_sem_youtube` | Retorna `None` quando o único trailer não é do YouTube |
+| `test_sem_trailer` | Retorna `None` quando só há vídeos do tipo `Teaser` |
+| `test_vazio` | Retorna `None` para dict vazio |
+
+### `TestExtrairProdutoras`
+
+| Teste | O que verifica |
+|---|---|
+| `test_produtoras` | Extrai nomes de produtoras comma-separated |
+| `test_lista_vazia` | Retorna `None` para lista vazia |
+| `test_none` | Retorna `None` para entrada `None` |
+
+### `TestExtrairCriadores`
+
+| Teste | O que verifica |
+|---|---|
+| `test_criadores` | Extrai nomes de criadores comma-separated |
+| `test_vazio` | Retorna `None` para lista vazia |
+
+### `TestExtrairNetworks`
+
+| Teste | O que verifica |
+|---|---|
+| `test_networks` | Extrai nomes de redes de TV comma-separated |
+| `test_vazio` | Retorna `None` para lista vazia |
 
 ### `TestExtrairProdutores`
 
@@ -184,30 +266,13 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `test_generates_records_for_multiple_provider_types` | Processa `flatrate`, `rent` e `buy` gerando registros distintos por tipo |
 | `test_ignores_providers_without_name` | Provedores sem `provider_name` são ignorados |
 
-### `TestTriggerDataQuality`
-
-| Teste | O que verifica |
-|---|---|
-| `test_starts_dq_job_with_table_database_and_year` | `start_job_run` chamado com `--TABLE_NAME`, `--DATABASE` e `--YEAR` corretos |
-| `test_returns_job_run_id` | Retorna o `JobRunId` da resposta do Glue |
-
-### `TestGetResolvedOption`
-
-| Teste | O que verifica |
-|---|---|
-| `test_delegates_to_getResolvedOptions` | Delega ao `getResolvedOptions` do AWS Glue e retorna o resultado |
-
 ### `TestGetParametersGlue`
 
 | Teste | O que verifica |
 |---|---|
 | `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `AGG_JOB_NAME`, etc.) |
 
-### `TestGetApiSecret`
-
-| Teste | O que verifica |
-|---|---|
-| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor da chave especificada |
+> **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`) e `get_api_secret` (`TestGetApiSecret`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py` e `test/shared_src/test_glue_helpers.py` junto com a extração dessas funções para `shared_utils/`.
 
 ## Como executar
 

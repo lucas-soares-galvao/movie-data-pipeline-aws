@@ -84,6 +84,11 @@ def _carregar_llm_api_key() -> str | None:
 _LLM_API_KEY = _carregar_llm_api_key()
 
 logger = logging.getLogger(__name__)
+# Nível explícito: app.py eleva o root logger para ERROR quando o CloudWatch
+# está configurado (para silenciar bibliotecas ruidosas), o que suprimiria os
+# logs de uso de tokens (INFO) por herança. Definir o nível aqui, no logger
+# deste módulo, garante que esses logs continuem passando pelo handler do root.
+logger.setLevel(logging.INFO)
 
 _CACHE_WHERE: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL_SEGUNDOS = 3600

@@ -14,11 +14,13 @@ test/lambda_lightsail_scheduler/
 └── __init__.py
 ```
 
-## Fixtures (`conftest.py`)
+## Configuração de ambiente (`conftest.py`)
 
-| Fixture | Tipo | Descrição |
+O `conftest.py` não define `@pytest.fixture` — apenas efeitos executados no import do módulo:
+
+| Item | Tipo | Descrição |
 |---|---|---|
-| `LIGHTSAIL_INSTANCE_NAME` (env var) | `str` | Nome da instância Lightsail simulada (`"test-instance"`) |
+| `LIGHTSAIL_INSTANCE_NAME` (env var) | `str` | Nome da instância Lightsail simulada (`"test-instance"`), definida via `os.environ.setdefault` |
 | `lambda_lightsail_scheduler_main` (módulo) | `ModuleType` | Módulo carregado via `importlib.util` com nome único para evitar conflito com outros `main.py` |
 
 ## Casos de teste — `test_main.py`

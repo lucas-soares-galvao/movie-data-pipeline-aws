@@ -99,6 +99,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 |---|---|
 | `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `etapa` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
+| `test_logger_tem_nivel_info_explicito` | `agent.logger.level` é `logging.INFO`, garantindo que os logs de tokens não sejam suprimidos quando `app.py` eleva o root logger para `ERROR` |
 
 ## Casos de teste — `test_componentes.py`
 
@@ -108,8 +109,8 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 |---|---|
 | `test_card_basico_contem_titulo` | Card renderiza o título do filme |
 | `test_card_ignora_tagline` | Card não renderiza tagline mesmo quando fornecida |
-| `test_card_com_elenco` | Card exibe nomes do elenco |
-| `test_card_com_diretor` | Card exibe "Diretor: {nome}" para filmes |
+| `test_card_nao_exibe_elenco` | Card não renderiza nomes do elenco mesmo quando fornecidos |
+| `test_card_nao_exibe_diretor` | Card não renderiza "Diretor: {nome}" mesmo quando fornecido |
 | `test_card_com_certificacao` | Card exibe badge de classificação indicativa |
 | `test_card_com_trailer` | Card exibe link clicável para o trailer |
 | `test_card_ignora_colecao` | Card não renderiza coleção/franquia mesmo quando fornecida |
@@ -192,6 +193,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 |---|---|
 | `test_registro_completo_filme` | Registro de filme formatado com todos os campos corretos |
 | `test_novos_campos_filme` | Campos `roteiristas`, `compositor`, `keywords` (pt) formatados corretamente |
+| `test_novos_campos_crew_e_extras` | Campos `produtor`, `cinematografo`, `montador`, `paises_producao`, `aluguel_compra`, `recomendados`, `similares`, `titulos_alternativos` formatados corretamente |
 | `test_novos_campos_nulos` | Campos `roteiristas` e `compositor` retornam `None` quando ausentes |
 | `test_registro_serie` | Registro de série com `tipo="série"` e duração formatada com temporadas |
 
