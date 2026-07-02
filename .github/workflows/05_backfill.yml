@@ -1,4 +1,5 @@
 name: 5. Backfill
+run-name: "Backfill: ${{ inputs.table_group }} (${{ inputs.start_year }}-${{ inputs.end_year != '' && inputs.end_year || 'atual' }})"
 
 # =============================================================================
 # Executa backfills pontuais sob demanda no ambiente prod.

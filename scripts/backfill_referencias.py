@@ -1,7 +1,7 @@
 """
 backfill_referencias.py — Atualiza tabelas de referência via Lambda.
 
-Invoca a Lambda uma vez para movie e uma vez para tv com skip_discover=True,
+Invoca a Lambda uma vez para movie e uma vez para tv com skip_weekly=True,
 coletando genre, configuration e watch_providers_ref. Não depende de ano.
 
 Uso:
@@ -96,12 +96,12 @@ def main() -> None:
     logger.info("Atualizando referências (genre, configuration, watch_providers_ref) — 2 invocações")
 
     logger.info("[1/2] movie | referências")
-    _invoke(client, function_name, {**base_movie, "start_year": ano_ref, "end_year": ano_ref, "skip_discover": True})
+    _invoke(client, function_name, {**base_movie, "start_year": ano_ref, "end_year": ano_ref, "skip_weekly": True})
     logger.info("Aguardando %d segundos...", wait_seconds)
     time.sleep(wait_seconds)
 
     logger.info("[2/2] tv    | referências")
-    _invoke(client, function_name, {**base_tv, "start_year": ano_ref, "end_year": ano_ref, "skip_discover": True})
+    _invoke(client, function_name, {**base_tv, "start_year": ano_ref, "end_year": ano_ref, "skip_weekly": True})
 
     logger.info("Referências atualizadas.")
 
