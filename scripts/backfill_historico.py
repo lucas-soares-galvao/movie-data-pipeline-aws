@@ -125,7 +125,7 @@ def main() -> None:
     for i, year in enumerate(years, start=1):
         n_movie = i * 2 - 1
         logger.info("[%d/%d] movie | ano=%d", n_movie, total, year)
-        payload_movie = {**base_movie, "start_year": year, "loop_end_year": year, "end_year": end_year, "only_discover": True}
+        payload_movie = {**base_movie, "start_year": year, "loop_end_year": year, "end_year": end_year, "only_annual_tables": True}
         _assert_single_year(payload_movie)
         _invoke(client, function_name, payload_movie)
         logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
@@ -133,7 +133,7 @@ def main() -> None:
 
         n_tv = i * 2
         logger.info("[%d/%d] tv    | ano=%d", n_tv, total, year)
-        payload_tv = {**base_tv, "start_year": year, "loop_end_year": year, "end_year": end_year, "only_discover": True}
+        payload_tv = {**base_tv, "start_year": year, "loop_end_year": year, "end_year": end_year, "only_annual_tables": True}
         _assert_single_year(payload_tv)
         _invoke(client, function_name, payload_tv)
         if n_tv < total:
