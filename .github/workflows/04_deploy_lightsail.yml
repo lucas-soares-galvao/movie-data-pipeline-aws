@@ -7,7 +7,7 @@ name: "4. Deploy Lightsail (Reusable)"
 # Etapas principais:
 #   1. Lê os outputs do Terraform (IP público, chave SSH, credenciais AWS do agente)
 #   2. Aguarda a instância ficar disponível via SSH (até 30 tentativas, 10s cada)
-#   3. Cria .env e secrets.toml com credenciais na instância (sem passar por /tmp)
+#   3. Cria .env com credenciais na instância (sem passar por /tmp)
 #   4. Clona ou atualiza o repositório e reinicia o serviço systemd do FilmBot
 #
 # Ambientes:

@@ -8,7 +8,7 @@ Testa a função `lambda_handler` em `app/lambda_api/main.py` e as funções uti
 
 ```
 test/lambda_api/
-├── conftest.py               # Fixtures locais da suite
+├── conftest.py               # Placeholder de configuração (sem fixtures no momento)
 ├── requirements_tests.txt    # Dependências de teste
 ├── test_main.py              # Testes do lambda_handler
 └── test_utils.py             # Testes das funções utilitárias
@@ -78,6 +78,16 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_only_annual_tables_executa_loop_normalmente` | Loop de discover roda normalmente, Glue acionado 1x por ano |
 | `test_only_annual_tables_retorna_status_200` | Handler retorna 200 com only_annual_tables |
 
+### `TestApenasAnoAnterior` — flag `only_monthly_tables=True`
+
+| Teste | O que verifica |
+|---|---|
+| `test_only_monthly_table_coleta_referencia` | `collect_genre_data`, `collect_configuration_data` e `collect_watch_providers_ref` são chamados normalmente |
+| `test_only_monthly_table_discover_roda_para_ano_passado` | `collect_discover_data` é chamado uma única vez com `year=current_year - 1` |
+| `test_only_monthly_table_nao_coleta_now_playing` | `collect_now_playing_data` **não** é chamado, mesmo com `table_now_playing_movie` presente no evento |
+| `test_only_monthly_table_glue_recebe_end_year_correto` | A chamada de discover ao Glue recebe `YEAR` e `END_YEAR` iguais a `current_year - 1` |
+| `test_only_monthly_table_retorna_status_200` | Handler retorna 200 com only_monthly_tables |
+
 ### `TestNowPlaying` — coleta de filmes em cartaz
 
 | Teste | O que verifica |
@@ -88,24 +98,9 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 
 ## Casos de teste — `test_utils.py`
 
-Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `shared/`: coleta da API TMDB, salvamento no S3 e acionamento do Glue. Cada método usa `with patch(...)` como context manager para substituir dependências externas. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
+Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salvamento no S3. Cada método usa `with patch(...)` como context manager para substituir dependências externas. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
 
-### `TestApiGet` (de `shared_utils.api_client`)
-
-| Teste | O que verifica |
-|---|---|
-| `test_retorna_json_em_sucesso` | Retorna JSON correto em resposta 200, sem chamar `time.sleep` |
-| `test_retry_em_status_transiente_e_retorna_em_sucesso` | Faz 2 tentativas e retorna o JSON na segunda, quando a primeira falha com 500 |
-| `test_retry_em_429_usa_retry_after` | Espera pelo menos o tempo indicado no header `Retry-After` ao receber 429 |
-| `test_retry_em_connection_error_e_retorna_em_sucesso` | Tenta novamente após `ConnectionError` e retorna em sucesso |
-| `test_levanta_apos_esgotar_tentativas_http` | Levanta `HTTPError` após esgotar 3 tentativas com erro HTTP |
-| `test_levanta_apos_esgotar_tentativas_connection` | Levanta `ConnectionError` após esgotar 3 tentativas com falha de rede |
-
-### `TestGetApiSecret` (de `shared_utils.api_client`)
-
-| Teste | O que verifica |
-|---|---|
-| `test_retorna_chave_do_secrets_manager` | Lê o segredo pelo ARN fornecido e retorna o valor da chave especificada do JSON do Secrets Manager |
+> Os testes de `shared_utils.api_client` (`TestApiGet`, `TestGetApiSecret`) e `shared_utils.triggers` (`TestTriggerGlueJob`) vivem em `test/shared_src/test_api_client.py` e `test/shared_src/test_triggers.py`, não em `test/lambda_api/test_utils.py` — não fazem parte deste módulo de testes.
 
 ### `TestFetchTmdbData`
 
@@ -122,18 +117,6 @@ Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `
 |---|---|
 | `test_salva_json_no_s3_com_parametros_corretos` | `put_object` chamado com `Bucket`, `Key` e `ContentType="application/json"` corretos |
 | `test_conteudo_salvo_e_json_valido` | O corpo salvo pode ser desserializado como JSON e os dados são preservados |
-
-### `TestTriggerGlueJob`
-
-| Teste | O que verifica |
-|---|---|
-| `test_inicia_job_e_retorna_run_id` | Retorna o `JobRunId` da resposta do Glue |
-| `test_argumentos_do_glue_contem_year_e_tabelas` | `--YEAR`, `--DATABASE`, `--TABLE_TYPE` e `--TABLE_NAME` presentes nos argumentos do Glue |
-| `test_sem_year_nao_inclui_argumento_year` | `--YEAR` ausente quando chamado sem `year` (tabelas de referência) |
-| `test_table_type_incluido_nos_argumentos_do_glue` | `--TABLE_TYPE` sempre repassado ao Glue |
-| `test_table_name_incluido_nos_argumentos_do_glue` | `--TABLE_NAME` sempre repassado ao Glue |
-| `test_discover_inclui_end_year` | `--END_YEAR` presente para chamadas de discover |
-| `test_genre_nao_inclui_end_year` | `--END_YEAR` ausente para chamadas de genre/configuration |
 
 ### `TestFetchTmdbReference`
 
@@ -166,11 +149,19 @@ Testa individualmente as funções de `src/utils.py` e do pacote compartilhado `
 | `test_s3_key_tem_formato_correto` | Chave S3 segue o padrão `tmdb/discover/{type}/ano={ano}/pagina_NNN.json` |
 | `test_salva_apenas_results_sem_metadados_de_paginacao` | Dados salvos no S3 são apenas o campo `results`, sem metadados de paginação (`page`, `total_pages`, `total_results`) |
 
-### `collect_watch_providers_ref`
+### `TestCollectWatchProvidersRef`
 
-7 testes verificando coleta de plataformas de streaming de referência: endpoint correto por `content_type` (movie/tv); `watch_region=BR` enviado; path S3 correto por tipo; extração de campos (`provider_id`, `provider_name`, `display_priority_br`); tratamento de `display_priority_br` ausente.
+| Teste | O que verifica |
+|---|---|
+| `test_movie_chama_endpoint_correto` | Usa `/watch/providers/movie` |
+| `test_tv_chama_endpoint_correto` | Usa `/watch/providers/tv` |
+| `test_envia_watch_region_br` | Params enviados são `{"watch_region": "BR"}` |
+| `test_s3_key_movie` | Chave S3 é `tmdb/watch_providers_ref/movie/watch_providers_ref.json` |
+| `test_s3_key_tv` | Chave S3 é `tmdb/watch_providers_ref/tv/watch_providers_ref.json` |
+| `test_extrai_campos_corretos_do_provider` | Extrai `provider_id`, `provider_name`, `display_priority_br`; descarta `logo_path` |
+| `test_display_priority_br_none_quando_ausente` | `display_priority_br` é `None` quando `display_priorities` está ausente no provider |
 
-### `collect_now_playing_data`
+### `TestCollectNowPlayingData`
 
 | Teste | O que verifica |
 |---|---|

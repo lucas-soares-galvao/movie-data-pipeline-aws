@@ -9,6 +9,8 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 3. **Deploy**: publica a aplicação FilmBot no Lightsail
 4. **Promoção**: cria PRs automáticos entre branches (`feature → develop → main`)
 
+Além do fluxo automático acima, o `05_backfill.yml` é um workflow independente, disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda em prod.
+
 ---
 
 ## Diagrama de Fluxo
@@ -23,6 +25,8 @@ flowchart TD
     TEST --> PR_FEAT["03_pr_auto.yml\nPR: feature → develop"]
     TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
     TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
+
+    MANUAL["workflow_dispatch manual"] --> BACKFILL["05_backfill.yml\nBackfill sob demanda (prod)"]
 ```
 
 ---
@@ -35,6 +39,7 @@ flowchart TD
 | `push` | `develop` | terraform (dev) → PR develop→main |
 | `push` | `main` | terraform (prod) → deploy (prod) |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy apenas se ambiente = prod |
+| `workflow_dispatch` (`05_backfill.yml`) | — | backfill sob demanda em prod (independente do `00_pipeline.yml`) |
 
 ---
 
@@ -140,6 +145,38 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
 |---|---|
 | `dev` | `develop` |
 | `prod` | `main` |
+
+---
+
+### `05_backfill.yml` — Backfill Manual
+
+Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workflow_dispatch`) para reprocessar dados históricos sob demanda. Sempre roda no ambiente **prod** (autentica via `AWS_ASSUME_ROLE_ARN_PROD`).
+
+**Entradas:**
+
+| Input | Obrigatório | Default | Descrição |
+|---|---|---|---|
+| `table_group` | sim | — | Grupo de tabelas a atualizar (choice) |
+| `start_year` | sim | `2000` | Ano inicial (ignorado para `referencias`) |
+| `end_year` | não | vazio (= ano atual) | Ano final (ignorado para `referencias`) |
+
+**Grupos de tabelas (`table_group`) e script executado:**
+
+| `table_group` | Script | Serviço AWS |
+|---|---|---|
+| `discover` | `scripts/backfill_historico.py` | Lambda |
+| `referencias` | `scripts/backfill_referencias.py` | Lambda |
+| `detalhes_e_providers` | `scripts/backfill_enriquecimento.py` | Glue Details |
+| `data_quality` | `scripts/backfill_data_quality.py` | Glue Data Quality |
+| `traducao` | `scripts/backfill_traducao.py` | S3 (direto) |
+
+**Etapas principais:**
+
+1. Checkout + autenticação AWS via OIDC (fixa em prod)
+2. Setup Python 3.12, instala `boto3` (e `scripts/requirements_backfill.txt` apenas se `table_group == traducao`)
+3. Executa o script correspondente ao `table_group` escolhido, com todas as variáveis de ambiente dos recursos AWS derivadas automaticamente do padrão de nomenclatura do Terraform (`tmdb-*-prod`, `db_tmdb_*_prod`, etc.)
+
+`timeout-minutes: 360` — backfills históricos podem levar horas dependendo do volume de dados.
 
 ---
 

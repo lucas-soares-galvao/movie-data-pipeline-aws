@@ -70,12 +70,6 @@ test/glue_agg/
 | `test_registra_tabela_no_catalog` | `to_parquet` recebe `database` e `table` corretos para registrar no Glue Catalog |
 | `test_levanta_runtime_error_quando_nenhum_arquivo_escrito` | Levanta `RuntimeError("Escrita falhou")` quando `to_parquet` retorna `{"paths": []}` (nenhum arquivo gravado) |
 
-### `TestGetResolvedOption`
-
-| Teste | O que verifica |
-|---|---|
-| `test_delegates_to_getResolvedOptions` | Delega ao `getResolvedOptions` do AWS Glue e retorna o resultado |
-
 ### `TestGetParametersGlue`
 
 | Teste | O que verifica |

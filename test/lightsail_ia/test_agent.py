@@ -7,6 +7,7 @@
 # Se houver cache hit, a chamada é pulada.
 
 import json
+import logging
 import time
 
 import pytest
@@ -427,5 +428,11 @@ class TestLogarUsoTokens:
             agent._logar_uso_tokens("passo_1_where", resposta)
 
         mock_logger.info.assert_not_called()
+
+    def test_logger_tem_nivel_info_explicito(self):
+        """app.py eleva o root logger para ERROR quando o CloudWatch está
+        configurado; sem um nível INFO explícito aqui, esses logs seriam
+        suprimidos por herança (ver seção "Observabilidade de tokens" do doc)."""
+        assert agent.logger.level == logging.INFO
 
 

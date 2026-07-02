@@ -1,0 +1,5 @@
+# Raciocinio: fixa dependencias de teste do pacote shared_src para execucao local isolada.
+
+boto3
+requests
+deep-translator

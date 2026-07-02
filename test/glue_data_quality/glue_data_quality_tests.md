@@ -8,22 +8,28 @@ Testa a função `main()` em `app/glue_data_quality/main.py`, as funções utili
 
 ```
 test/glue_data_quality/
-├── conftest.py               # Fixtures locais da suite
+├── conftest.py               # Stubs de módulos AWS Glue/PySpark (sem fixtures)
 ├── requirements_tests.txt    # Dependências de teste
 ├── test_main.py              # Testes da função main()
 ├── test_utils.py             # Testes das funções utilitárias
 └── test_rulesets_dq.py       # Testes dos rulesets DQDL por tabela
 ```
 
-## Fixtures (`conftest.py`)
+## Stubs de módulo (`conftest.py`)
 
-| Fixture | Tipo | Descrição |
-|---|---|---|
-| `mock_glue_context` | `MagicMock` | Substitui `GlueContext` e `SparkContext` do ambiente Glue |
-| `mock_dynamic_frame` | `MagicMock` | DataFrame Spark simulado para avaliação de regras |
-| `mock_dq_results` | `pd.DataFrame` | Resultados simulados da avaliação DQ (Pass/Fail por regra) |
-| `mock_boto3_sns` | `MagicMock` | Substitui cliente SNS para verificar envio de notificações |
-| `mock_awswrangler` | `MagicMock` | Substitui escrita Parquet no S3 DQ |
+`conftest.py` não define fixtures via `@pytest.fixture` — em vez disso, registra em
+`sys.modules` stubs dos pacotes que só existem no runtime AWS Glue (`awsglue`,
+`awsgluedq`, `pyspark`), usando o helper `_make_module()`. Cada teste individual mocka
+`GlueContext`, `SparkContext`, `boto3` e `awswrangler` diretamente via `unittest.mock.patch`.
+
+| Módulo stubado | Atributos relevantes |
+|---|---|
+| `awsglue.utils` | `getResolvedOptions=None`, `GlueArgumentError=Exception` |
+| `awsglue.context` | `GlueContext=None` |
+| `awsglue.dynamicframe` | `DynamicFrame=None` |
+| `awsgluedq.transforms` | `EvaluateDataQuality=None` |
+| `pyspark.sql.functions` | `col=MagicMock()`, `when=MagicMock()` (chamadas diretamente pelo código, precisam ser `MagicMock`, não `None`) |
+| `pyspark.sql.types` | `StringType=MagicMock()` |
 
 ## Casos de teste — `test_main.py`
 
@@ -116,7 +122,7 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 
 ### `TestEvaluateDataQuality`
 
-Verifica a lógica de avaliação Spark (mocka `EvaluateDataQuality.apply`, `DynamicFrame`, funções `col`, `lit`, `current_timestamp`, `when`, `StringType`). Cobre: contexto Glue passado corretamente, DynamicFrame recebido, ruleset, nome e banco da tabela, comportamento com `year=None` vs `year` fornecido, enriquecimento de resultados com colunas `source_table`, `dt_atualizacao` e `year`, e que o DataFrame retornado contém colunas esperadas.
+Verifica a lógica de avaliação Spark (mocka `EvaluateDataQuality.apply`, `DynamicFrame`, funções `col`, `lit`, `current_timestamp`, `when`, `StringType`). Cobre: contexto Glue passado corretamente, DynamicFrame recebido, ruleset, nome e banco da tabela, comportamento com `year=None` vs `year` fornecido, enriquecimento de resultados com colunas `source_table`, `source_database`, `datetime_process` e `year`, e que o DataFrame retornado contém colunas esperadas.
 
 ### `TestWriteResultsToS3`
 
@@ -124,18 +130,18 @@ Verifica que `write_results_to_s3` grava os resultados DQ no bucket correto com 
 
 ### `TestNotifyFailedOutcomes`
 
-| Teste (descrição) | O que verifica |
+| Teste | O que verifica |
 |---|---|
-| Sem falhas → não publica | SNS não é chamado quando todas as regras passam |
-| Com falha → publica | SNS é chamado quando pelo menos uma regra retorna `Fail` |
-| Mensagem contém nome da tabela | `source_table` aparece no corpo da mensagem SNS |
-| Mensagem contém regra que falhou | `RuleName` da linha com `Fail` aparece na mensagem |
-| Mensagem contém `year` | Partição de ano aparece na mensagem quando fornecida |
-| Filtra apenas linhas `Fail` | Linhas com `Outcome="Pass"` não são incluídas na notificação |
-| Múltiplas falhas → todas listadas | Todas as regras com `Fail` aparecem na mensagem |
-| ARN correto | SNS é chamado com o `TopicArn` passado como argumento |
-| Subject correto | Subject da mensagem contém o nome da tabela e o ambiente |
-| Retorna `MessageId` | Retorna o `MessageId` da resposta do SNS |
+| `test_does_not_publish_when_all_rules_pass` | SNS não é chamado quando todas as regras passam |
+| `test_publishes_when_any_rule_fails` | SNS é chamado quando pelo menos uma regra retorna `Failed` |
+| `test_subject_contains_environment_uppercased` | Subject contém o ambiente em maiúsculas (o Subject **não** contém o nome da tabela — apenas `[{ENVIRONMENT}] DQ Métrica Falha`) |
+| `test_message_contains_table_name` | `table_name` aparece no corpo da mensagem SNS |
+| `test_message_contains_failed_rule` | A regra (`rule`) da linha com `Failed` aparece na mensagem |
+| `test_message_contains_failure_reason` | O `failure_reason` da regra que falhou aparece na mensagem |
+| `test_publishes_to_correct_topic_arn` | SNS é chamado com o `TopicArn` passado como argumento |
+| `test_message_lists_all_failed_rules` | Múltiplas falhas → todas as regras com `Failed` aparecem na mensagem |
+| `test_message_contains_partition_when_year_provided` | Mensagem contém a partição `year=<ano>` quando `year` é fornecido |
+| `test_message_does_not_contain_partition_when_year_is_none` | Mensagem não menciona partição quando `year` é `None` |
 
 ## Casos de teste — `test_rulesets_dq.py`
 
@@ -159,7 +165,6 @@ As 14 tabelas verificadas por `EXPECTED_TABLES` são (nomes lógicos, sem prefix
 | `test_configuration_tables_validate_name_pt` | `configuration_countries` e `configuration_languages` validam completude de `name_pt` (tradução pt-BR) |
 | `test_watch_providers_ref_validate_canonical_name` | `watch_providers_ref_movie` e `watch_providers_ref_tv` validam completude de `canonical_name` (nome normalizado do provedor) |
 | `test_watch_providers_validate_provider_type_enum` | `watch_providers_movie` e `watch_providers_tv` validam que `provider_type` é um dos valores permitidos (`flatrate`, `rent`, `buy`) |
-| `test_details_movie_validates_budget_and_revenue` | `details_movie` valida que `budget` e `revenue` são não-negativos |
 | `test_discover_tables_validate_popularity` | `discover_movie`, `discover_tv` e `discover_unified` validam que `popularity` é não-negativo |
 
 ## Como executar

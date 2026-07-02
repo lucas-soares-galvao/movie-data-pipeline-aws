@@ -24,7 +24,7 @@ Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
     WAIT_SECONDS          (padrão: 300 — tempo entre runs para não estourar max_concurrent_runs)
-    FORCE_REFETCH         (padrão: false — quando true, ignora delta mensal e re-busca todos os IDs)
+    FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
 """
 
 import json

@@ -19,8 +19,13 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`skip_weekly=True`** (modo legado — referências apenas): pula o loop de discover.
    - Sem flags: coleta tudo.
 4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL.
-5. Para dados de discover: itera por cada ano (`start_year` padrão = ano atual; `end_year` padrão = ano atual, se não fornecidos no evento), faz requisições paginadas à API, salva um arquivo JSON por página no S3 SOR (`pagina_001.json`, `pagina_002.json`, ...) e aciona o Glue ETL para aquele ano.
-6. Para filmes (`content_type="movie"`), após o loop de discover, coleta também os filmes em cartaz nos cinemas via `collect_now_playing_data()`: pagina o endpoint `/movie/now_playing`, extrai as datas da janela teatral (`theater_start_date`, `theater_end_date`) e salva os resultados no S3 SOR, depois aciona o Glue ETL com `table_type="now_playing"`. Esse passo é condicional: só ocorre se `table_now_playing` estiver presente no evento.
+5. Para dados de discover: itera por cada ano no intervalo `[start_year, loop_end_year]` (`start_year` padrão = ano atual; `end_year` padrão = ano atual, se não fornecidos no evento; `loop_end_year` padrão = `end_year`, mas pode ser passado separadamente no evento para desacoplar o limite real do loop do `end_year` usado como marcador de "último ano do ciclo" repassado ao Glue), faz requisições paginadas à API (até `MAX_PAGES = 100` páginas por ano — TMDB permite até 500, mas o limite evita estourar o timeout da Lambda), salva um arquivo JSON por página no S3 SOR (`pagina_001.json`, `pagina_002.json`, ...) e aciona o Glue ETL para aquele ano.
+6. Para filmes (`content_type="movie"`), após o loop de discover, coleta também os filmes em cartaz nos cinemas via `collect_now_playing_data()`: pagina o endpoint `/movie/now_playing`, extrai as datas da janela teatral (`theater_start_date`, `theater_end_date`) e salva os resultados no S3 SOR, depois aciona o Glue ETL com `table_type="now_playing"`. Esse passo é condicional: só ocorre se `table_now_playing` estiver presente no evento **e** `only_monthly_tables` for `False` (execuções mensais nunca coletam now_playing, mesmo com a tabela presente no evento).
+
+### Tratamento de erros
+
+- `collect_discover_data` e `collect_now_playing_data` levantam `RuntimeError` se nenhuma página for salva com sucesso (todas as tentativas falharam) — isso propaga a falha para o handler em vez de acionar o Glue com dados vazios.
+- `collect_watch_providers_ref` é o único coletor de referência com tratamento especial: captura `HTTPError`, loga o erro e segue em frente sem interromper a execução, preservando os dados anteriores já salvos no S3. `collect_genre_data` e `collect_configuration_data` não têm esse tratamento — uma falha neles propaga normalmente.
 
 ## Entradas e saídas
 
@@ -47,6 +52,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 |---|---|---|
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
+| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona o job Glue ETL, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, etc.) |
 
 ## Tecnologias
 
