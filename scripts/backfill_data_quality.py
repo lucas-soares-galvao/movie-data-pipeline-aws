@@ -70,10 +70,9 @@ def _trigger_dq_job(
     )
     run_id = response["JobRunId"]
     logger.info(
-        "Acionado: tabela='%s' | year=%s | RunId=%s",
+        "Acionado: tabela='%s' | year=%s",
         table_name,
         year,
-        run_id,
     )
     return run_id
 

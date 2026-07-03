@@ -28,5 +28,5 @@ def trigger_glue_job(job_name: str, **arguments: str | None) -> str:
     glue_client = boto3.client("glue")
     response = glue_client.start_job_run(JobName=job_name, Arguments=glue_args)
     run_id = response["JobRunId"]
-    logger.info(f"Job '{job_name}' iniciado. RunId: {run_id}")
+    logger.info(f"Job '{job_name}' iniciado.")
     return run_id
