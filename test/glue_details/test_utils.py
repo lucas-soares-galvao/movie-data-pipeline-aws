@@ -835,6 +835,21 @@ class TestCollectAndWriteDetails:
             u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             mock_write.assert_not_called()
 
+    def test_does_not_write_when_all_records_missing_year(self):
+        """Titulos sem release_date/first_air_date ficam sem 'year' apos o dropna
+        e nao devem chegar ao wr.s3.to_parquet (regressao do EmptyDataFrame)."""
+        response = self._mock_movie_response(1)
+        response["release_date"] = None
+        response["belongs_to_collection"] = None
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+            mock_write.assert_not_called()
+
     def test_writes_with_year_partition_and_overwrite_mode(self):
         responses = [self._mock_movie_response(1)]
 
