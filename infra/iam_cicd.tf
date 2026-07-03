@@ -475,6 +475,18 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
       },
       {
+        # PutQueryDefinition não suporta restrição por ARN de log group — o ID da query
+        # definition só existe depois de criada, então a AWS exige Resource "*" para essas ações.
+        Sid    = "CloudWatchLogsQueryDefinitions"
+        Effect = "Allow"
+        Action = [
+          "logs:PutQueryDefinition",
+          "logs:DeleteQueryDefinition",
+          "logs:DescribeQueryDefinitions",
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "CloudWatchAlarms"
         Effect = "Allow"
         Action = [
