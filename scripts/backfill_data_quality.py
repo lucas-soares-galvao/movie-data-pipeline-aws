@@ -73,7 +73,6 @@ def _trigger_dq_job(
         "Acionado: tabela='%s' | year=%s",
         table_name,
         year,
-        run_id,
     )
     return run_id
 
