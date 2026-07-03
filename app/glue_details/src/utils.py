@@ -732,7 +732,9 @@ def collect_and_write_details(
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
 
-    IDs que falharem na API são descartados silenciosamente.
+    IDs que falharem na API são descartados silenciosamente. Registros sem "year"
+    (sem release_date/first_air_date) também são descartados; se isso esvaziar
+    o DataFrame por completo, a função não grava nada.
 
     Args:
         api_key:       Chave de API do TMDB.
@@ -765,6 +767,12 @@ def collect_and_write_details(
     # Remove linhas sem year — registros sem data de lançamento não podem ser particionados
     # e causariam erro ao tentar criar a pasta "year=None/" no S3
     df = df.dropna(subset=["year"])
+    if df.empty:
+        logger.warning(
+            f"Todos os {len(registros)} registros coletados para '{content_type}' "
+            "ficaram sem 'year' (sem data de lançamento). Nada gravado."
+        )
+        return
 
     df = _adicionar_traducoes_pt(df)
     df = _adicionar_traducoes_keywords_pt(df)
