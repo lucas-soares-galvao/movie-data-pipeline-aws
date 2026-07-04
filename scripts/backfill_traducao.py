@@ -192,7 +192,7 @@ def main() -> None:
             s3_bucket_sot=s3_bucket_sot,
         )
         if n < total:
-            logger.info("Aguardando %ds...", wait_seconds)
+            logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
             time.sleep(wait_seconds)
 
         n += 1
@@ -205,7 +205,7 @@ def main() -> None:
             s3_bucket_sot=s3_bucket_sot,
         )
         if n < total:
-            logger.info("Aguardando %ds...", wait_seconds)
+            logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
             time.sleep(wait_seconds)
 
     logger.info("Backfill de tradução concluído: %d até %d", start_year, end_year)

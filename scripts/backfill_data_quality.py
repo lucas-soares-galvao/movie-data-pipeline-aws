@@ -24,7 +24,7 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
-    YEAR_SLEEP_SECONDS    (padrão: 300 — pausa entre anos)
+    WAIT_SECONDS    (padrão: 300 — pausa entre anos)
 """
 
 import logging
@@ -85,7 +85,7 @@ def main() -> None:
 
     start_year   = int(os.environ.get("BACKFILL_START_YEAR", 2000))
     end_year     = int(os.environ.get("BACKFILL_END_YEAR", datetime.now().year))
-    year_sleep   = int(os.environ.get("YEAR_SLEEP_SECONDS", 300))
+    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 300))
 
     tables: List[Tuple[str, str]] = [
         (_require_env("TABLE_DISCOVER_MOVIE"),        db_movie),
@@ -100,12 +100,12 @@ def main() -> None:
     total = len(years) * len(tables)
 
     logger.info(
-        "Backfill DQ | anos %d–%d | %d tabelas | %d execuções | year_sleep=%ds",
+        "Backfill DQ | anos %d–%d | %d tabelas | %d execuções | wait_seconds=%ds",
         start_year,
         end_year,
         len(tables),
         total,
-        year_sleep,
+        wait_seconds,
     )
 
     client = boto3.client("glue", region_name=region)
@@ -119,9 +119,10 @@ def main() -> None:
             run_id = _trigger_dq_job(client, job_name, table_name, database, str(year))
             run_ids.append(run_id)
 
-        if year_sleep > 0 and year < end_year:
-            logger.info("Ano %d concluído. Aguardando %ds antes do próximo ano...", year, year_sleep)
-            time.sleep(year_sleep)
+        if wait_seconds > 0 and year < end_year:
+            logger.info("Ano %d concluído.", year) 
+            logger.info("Aguardando %ds antes do próximo ano...", wait_seconds)
+            time.sleep(wait_seconds)
 
     logger.info("Backfill DQ concluído: %d execuções submetidas.", total)
 
