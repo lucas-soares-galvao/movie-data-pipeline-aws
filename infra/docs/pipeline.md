@@ -60,4 +60,3 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
 - **Log groups** para Lambda, Glue, Step Functions e Lightsail (FilmBot) com retenção configurável:
   - `dev`: 1 dia (reduz custo)
   - `prod`: 5 dias (permite investigar incidentes)
-- **Query salva do CloudWatch Logs Insights** (`tmdb-glue-logs-codigo-{env}`): filtra, dentro dos log groups `/output` dos jobs Glue (que misturam bootstrap do harness — download de script/whl, `pip install` de `--additional-python-modules` — com os logs da aplicação, pois ambos escrevem em stdout), apenas as linhas no formato do logger (`timestamp INFO/WARNING/...`), escondendo o ruído de bootstrap sem precisar mudar onde o `logger` escreve nem alterar os log groups `/error`
