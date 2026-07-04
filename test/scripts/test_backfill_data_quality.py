@@ -79,10 +79,10 @@ class TestLoopPrincipal:
         mock_client, mock_sleep = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         assert mock_sleep.call_count == 2  # 3 anos -> pausa após ano 1 e ano 2, não após o 3º
 
-    def test_year_sleep_zero_desativa_a_pausa(self, monkeypatch):
+    def test_wait_zero_desativa_a_pausa(self, monkeypatch):
         _, mock_sleep = _run_main(
             monkeypatch,
-            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022", "YEAR_SLEEP_SECONDS": "0"},
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022", "WAIT_SECONDS": "0"},
         )
         mock_sleep.assert_not_called()
 

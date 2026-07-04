@@ -97,7 +97,7 @@ def main() -> None:
 
     logger.info("[1/2] movie | referências")
     _invoke(client, function_name, {**base_movie, "start_year": ano_ref, "end_year": ano_ref, "skip_weekly": True})
-    logger.info("Aguardando %d segundos...", wait_seconds)
+    logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
     time.sleep(wait_seconds)
 
     logger.info("[2/2] tv    | referências")
