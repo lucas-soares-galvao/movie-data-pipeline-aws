@@ -475,16 +475,14 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
       },
       {
-        Sid      = "CloudWatchQueryDefinitionsList"
-        Effect   = "Allow"
-        Action   = "logs:DescribeQueryDefinitions"
+        Sid    = "CloudWatchQueryDefinitions"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeQueryDefinitions",
+          "logs:DeleteQueryDefinition",
+        ]
+        # Estas ações não suportam permissão em nível de recurso na AWS — apenas Resource = "*" é aceito.
         Resource = "*"
-      },
-      {
-        Sid      = "CloudWatchQueryDefinitions"
-        Effect   = "Allow"
-        Action   = "logs:DeleteQueryDefinition"
-        Resource = "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:query-definition:*"
       },
       {
         Sid    = "CloudWatchAlarms"
