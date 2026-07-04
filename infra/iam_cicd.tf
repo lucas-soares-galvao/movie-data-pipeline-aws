@@ -475,6 +475,18 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
       },
       {
+        Sid      = "CloudWatchQueryDefinitionsList"
+        Effect   = "Allow"
+        Action   = "logs:DescribeQueryDefinitions"
+        Resource = "*"
+      },
+      {
+        Sid      = "CloudWatchQueryDefinitions"
+        Effect   = "Allow"
+        Action   = "logs:DeleteQueryDefinition"
+        Resource = "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:query-definition:*"
+      },
+      {
         Sid    = "CloudWatchAlarms"
         Effect = "Allow"
         Action = [
