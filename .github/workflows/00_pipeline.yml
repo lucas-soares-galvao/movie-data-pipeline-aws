@@ -50,16 +50,38 @@ jobs:
     if: startsWith(github.ref_name, 'feature/')
     uses: ./.github/workflows/01_test.yml
 
+  # Resolve o ambiente (dev/prod) uma única vez para os jobs terraform e
+  # deploy-lightsail, evitando repetir a mesma ternária nos dois:
+  # - workflow_dispatch → usa o ambiente selecionado manualmente pelo usuário
+  # - push em develop   → ambiente "dev"
+  # - push em main      → ambiente "prod"
+  resolve-env:
+    if: |
+      github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      - name: Resolver ambiente
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref_name }}" = "develop" ]; then
+            ENV="dev"
+          else
+            ENV="prod"
+          fi
+          echo "environment=$ENV" >> "$GITHUB_OUTPUT"
+          echo "🌎 Ambiente resolvido: $ENV"
+
   terraform:
+    needs: resolve-env
     if: |
       github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/02_terraform.yml
     with:
-      # Lógica de seleção de ambiente:
-      # - workflow_dispatch → usa o ambiente selecionado manualmente pelo usuário
-      # - push em develop   → ambiente "dev"
-      # - push em main      → ambiente "prod"
-      environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
+      environment: ${{ needs.resolve-env.outputs.environment }}
     secrets:
       # Secrets possuem sufixo _DEV ou _PROD. A expressão seleciona o correto
       # com base no mesmo critério do ambiente acima:
@@ -72,7 +94,7 @@ jobs:
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
   deploy-lightsail:
-    needs: terraform
+    needs: [resolve-env, terraform]
     # Deploy apenas em prod (main ou dispatch manual com environment=prod)
     # e somente se o Terraform aplicou com sucesso (não destruiu a infra)
     if: |
@@ -81,7 +103,7 @@ jobs:
       needs.terraform.outputs.was_destroyed != 'true'
     uses: ./.github/workflows/04_deploy_lightsail.yml
     with:
-      environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || github.ref_name == 'develop' && 'dev' || 'prod' }}
+      environment: ${{ needs.resolve-env.outputs.environment }}
     secrets:
       # Mesma lógica de seleção de secrets do job terraform acima
       aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}

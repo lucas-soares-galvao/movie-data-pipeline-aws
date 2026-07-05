@@ -104,45 +104,25 @@ jobs:
           fi
           echo "✅ Shared wheel criado com sucesso"
 
-      # O plan referencia o .whl do Glue ETL; precisa existir antes do plan.
+      # O plan referencia os .whl dos jobs Glue Python Shell; precisam existir antes do plan.
       # Build sempre executado aqui (não via null_resource/local-exec do Terraform),
       # pois o state remoto pode considerar o build "já feito" mesmo em um runner
       # novo onde o arquivo local não existe.
-      - name: Build Glue ETL Wheel
+      # Módulos listados em glue_wheel_modules (infra/config/project.json) — adicionar
+      # um novo job Glue Python Shell é só incluir o nome do módulo nesse array.
+      - name: Build Glue Wheels
         run: |
-          python infra/scripts/build_glue_wheel.py \
-            --src app/glue_etl \
-            --dest infra/.glue_etl_build \
-            --name glue_etl_src
-          if [ -z "$(ls -A infra/.glue_etl_build/ 2>/dev/null)" ]; then
-            echo "❌ Build do Glue ETL falhou — diretório infra/.glue_etl_build está vazio."
-            exit 1
-          fi
-          echo "✅ Glue ETL wheel criado com sucesso"
-
-      - name: Build Glue Agg Wheel
-        run: |
-          python infra/scripts/build_glue_wheel.py \
-            --src app/glue_agg \
-            --dest infra/.glue_agg_build \
-            --name glue_agg_src
-          if [ -z "$(ls -A infra/.glue_agg_build/ 2>/dev/null)" ]; then
-            echo "❌ Build do Glue Agg falhou — diretório infra/.glue_agg_build está vazio."
-            exit 1
-          fi
-          echo "✅ Glue Agg wheel criado com sucesso"
-
-      - name: Build Glue Details Wheel
-        run: |
-          python infra/scripts/build_glue_wheel.py \
-            --src app/glue_details \
-            --dest infra/.glue_details_build \
-            --name glue_details_src
-          if [ -z "$(ls -A infra/.glue_details_build/ 2>/dev/null)" ]; then
-            echo "❌ Build do Glue Details falhou — diretório infra/.glue_details_build está vazio."
-            exit 1
-          fi
-          echo "✅ Glue Details wheel criado com sucesso"
+          while IFS= read -r MODULE; do
+            python infra/scripts/build_glue_wheel.py \
+              --src "app/${MODULE}" \
+              --dest "infra/.${MODULE}_build" \
+              --name "${MODULE}_src"
+            if [ -z "$(ls -A "infra/.${MODULE}_build/" 2>/dev/null)" ]; then
+              echo "❌ Build do Glue ${MODULE} falhou — diretório infra/.${MODULE}_build está vazio."
+              exit 1
+            fi
+            echo "✅ Glue ${MODULE} wheel criado com sucesso"
+          done < <(jq -r '.glue_wheel_modules[]' infra/config/project.json)
 
       # destroy_config.json controla se a infra deve ser destruída (teardown).
       # Formato: { "dev": false, "prod": false }

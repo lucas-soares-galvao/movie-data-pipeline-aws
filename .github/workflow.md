@@ -47,9 +47,9 @@ flowchart TD
 
 ### `00_pipeline.yml` — Orquestrador
 
-Ponto de entrada do pipeline. Não executa lógica diretamente; apenas chama os outros workflows na ordem certa usando `needs:` e condicionais de branch.
+Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job.
 
-**Lógica de ambiente:**
+**Lógica de ambiente (job `resolve-env`):**
 
 | Branch | Ambiente |
 |---|---|
@@ -93,7 +93,7 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 **Etapas principais:**
 
 1. Lê `infra/config/project.json` via `jq` — nome do wheel compartilhado, nome/prefixo da role e policies de CI/CD, key do state file (fonte única de identidade do projeto, também lida diretamente pelo Terraform)
-2. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`) e wheels Glue (ETL, Agg, Details, Shared) — verifica se os artefatos foram gerados
+2. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`), do wheel Shared e dos wheels dos módulos Glue Python Shell listados em `glue_wheel_modules` (`infra/config/project.json`, hoje: ETL, Agg, Details) — verifica se os artefatos foram gerados; adicionar um novo módulo Glue Python Shell é só incluí-lo nesse array
 3. Lê `infra/config/destroy_config.json` para decidir se destrói ou aplica — valida que o valor é `true` ou `false`
 4. `terraform init` com backend S3 + DynamoDB
 5. `terraform validate` e `terraform fmt -check` (**bloqueantes**) + TFLint e Checkov (não-bloqueantes — apenas avisos)
