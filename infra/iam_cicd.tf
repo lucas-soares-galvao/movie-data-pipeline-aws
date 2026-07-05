@@ -7,7 +7,7 @@
 # =============================================================================
 
 data "aws_iam_role" "github_actions" {
-  name = "${var.cicd_role_name}-${var.env}"
+  name = "${local.project_config.cicd_role_name}-${var.env}"
 }
 
 # =============================================================================
@@ -15,7 +15,7 @@ data "aws_iam_role" "github_actions" {
 # =============================================================================
 
 resource "aws_iam_policy" "cicd_backend" {
-  name        = "cicd-terraform-backend-${var.env}"
+  name        = "${local.project_config.cicd_policy_prefix}-backend-${var.env}"
   description = "Terraform state lock (DynamoDB) e caller identity (STS)"
 
   policy = jsonencode({
@@ -54,7 +54,7 @@ resource "aws_iam_role_policy_attachment" "cicd_backend" {
 # =============================================================================
 
 resource "aws_iam_policy" "cicd_s3" {
-  name        = "cicd-terraform-s3-${var.env}"
+  name        = "${local.project_config.cicd_policy_prefix}-s3-${var.env}"
   description = "Gerenciamento dos 6 buckets do projeto e do state file do Terraform"
 
   policy = jsonencode({
@@ -163,7 +163,7 @@ resource "aws_iam_role_policy_attachment" "cicd_s3" {
 # - PassRole restrito aos 4 serviços que recebem roles do projeto
 
 resource "aws_iam_policy" "iam_cicd" {
-  name        = "cicd-terraform-iam-${var.env}"
+  name        = "${local.project_config.cicd_policy_prefix}-iam-${var.env}"
   description = "Gerenciamento de roles/policies/users tmdb-* e auto-gerenciamento da role CI/CD"
 
   policy = jsonencode({
@@ -196,7 +196,7 @@ resource "aws_iam_policy" "iam_cicd" {
           "iam:ListAttachedRolePolicies",
           "iam:ListRoleTags",
         ]
-        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.cicd_role_name}-*"
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.project_config.cicd_role_name}-*"
       },
       {
         Sid    = "IAMInlineRolePolicyCRUD"
@@ -212,7 +212,7 @@ resource "aws_iam_policy" "iam_cicd" {
         Sid      = "IAMCICDInlineRolePolicyReadOnly"
         Effect   = "Allow"
         Action   = "iam:GetRolePolicy"
-        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.cicd_role_name}-*"
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.project_config.cicd_role_name}-*"
       },
       {
         Sid    = "IAMManagedPolicyCRUD"
@@ -231,7 +231,7 @@ resource "aws_iam_policy" "iam_cicd" {
         ]
         Resource = [
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.tmdb_prefix}-*",
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/cicd-terraform-*",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.project_config.cicd_policy_prefix}-*",
         ]
       },
       {
@@ -243,13 +243,13 @@ resource "aws_iam_policy" "iam_cicd" {
         ]
         Resource = [
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.tmdb_prefix}-*",
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.cicd_role_name}-*",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.project_config.cicd_role_name}-*",
         ]
         Condition = {
           ArnLike = {
             "iam:PolicyArn" = [
               "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.tmdb_prefix}-*",
-              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/cicd-terraform-*",
+              "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.project_config.cicd_policy_prefix}-*",
               "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole",
             ]
           }
@@ -310,7 +310,7 @@ resource "aws_iam_role_policy_attachment" "iam_cicd" {
 # =============================================================================
 
 resource "aws_iam_policy" "cicd_compute" {
-  name        = "cicd-terraform-compute-${var.env}"
+  name        = "${local.project_config.cicd_policy_prefix}-compute-${var.env}"
   description = "Gerenciamento de Lambda, Glue (jobs + catalog) e Step Functions"
 
   policy = jsonencode({
@@ -422,7 +422,7 @@ resource "aws_iam_role_policy_attachment" "cicd_compute" {
 # =============================================================================
 
 resource "aws_iam_policy" "cicd_observability" {
-  name        = "cicd-terraform-observability-${var.env}"
+  name        = "${local.project_config.cicd_policy_prefix}-observability-${var.env}"
   description = "Gerenciamento de EventBridge rules, CloudWatch logs/alarms e SNS topics"
 
   policy = jsonencode({
@@ -539,7 +539,7 @@ resource "aws_iam_role_policy_attachment" "cicd_observability" {
 # (us-east-1). Apenas criação e listagens usam Resource "*" (obrigatório).
 
 resource "aws_iam_policy" "cicd_lightsail" {
-  name        = "cicd-terraform-lightsail-${var.env}"
+  name        = "${local.project_config.cicd_policy_prefix}-lightsail-${var.env}"
   description = "Gerenciamento de instância, key pair e static IP do Lightsail em us-east-1"
 
   policy = jsonencode({

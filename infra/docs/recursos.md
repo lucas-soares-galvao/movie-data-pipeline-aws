@@ -29,7 +29,7 @@
 4 jobs Glue. Os jobs ETL, Details e AGG são do tipo **PythonShell** (Glue 3.9). O job Data Quality é do tipo **Spark (`glueetl`)** (Glue 5.0, 2 workers G.1X, execução FLEX) — exigido pela API `EvaluateDataQuality` da AWS. Cada job tem:
 - Worker type e número de workers configurados por ambiente
 - Wheel Python gerado por `infra/scripts/build_glue_wheel.py` e enviado ao bucket AUX
-- Wheel compartilhado (`tmdb_shared`) com funções reutilizadas entre jobs (retry HTTP, triggers), gerado por `shared_src.tf` e referenciado via `--extra-py-files` junto ao wheel do job
+- Wheel compartilhado (`tmdb_shared`, nome configurável via `shared_wheel_name` em `infra/config/project.json`) com funções reutilizadas entre jobs (retry HTTP, triggers), gerado por `shared_src.tf` e referenciado via `--extra-py-files` junto ao wheel do job
 - Argumentos padrão definidos no Terraform (buckets, nomes de tabelas, databases)
 - Argumentos dinâmicos injetados no momento do `start_job_run` pela Lambda/job anterior
 

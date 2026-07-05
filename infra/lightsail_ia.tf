@@ -192,3 +192,18 @@ output "lightsail_filmbot_secret_arn" {
   description = "ARN do segredo no Secrets Manager com llm_api_key e filmbot_password"
   value       = var.filmbot_secret_arn
 }
+
+output "lightsail_athena_s3_output" {
+  description = "ATHENA_S3_OUTPUT para o arquivo .env na instância (caminho S3 para resultados temporários do Athena)"
+  value       = "s3://${local.envs.s3_bucket_temp}/${local.tmdb_prefix}/athena/lightsail_ia"
+}
+
+output "lightsail_glue_database" {
+  description = "GLUE_DATABASE para o arquivo .env na instância"
+  value       = local.envs.glue_catalog_db_unified
+}
+
+output "lightsail_spec_table" {
+  description = "SPEC_TABLE para o arquivo .env na instância (tabela SPEC, registrada em runtime pelo Glue AGG)"
+  value       = local.envs.glue_catalog_tb_discover_unified
+}

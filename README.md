@@ -71,7 +71,7 @@ Liga e desliga automaticamente a instância Lightsail onde o FilmBot roda, reduz
 ### Orquestrador de backfill (Step Functions)
 Responsável por coordenar a coleta histórica de dados de 1 em 1 ano, sem ser limitado pelo timeout de 15 minutos da Lambda. Acionado automaticamente no dia 1º de janeiro, divide os anos (a partir de 2000) em batches de 1 ano e executa a Lambda sequencialmente para cada batch, com intervalos de 5 minutos entre filmes/séries e entre batches para evitar concorrência nos jobs Glue.
 
-Além desse backfill anual automático, existe também um backfill manual sob demanda via workflow `05_backfill.yml` (`workflow_dispatch`), que roda os scripts em `scripts/` para reprocessar um grupo específico de tabelas (discover, referências, detalhes/providers, data quality ou tradução) em prod, fora do ciclo anual. Veja [`scripts/scripts.md`](scripts/scripts.md) para detalhes.
+Além desse backfill anual automático, existe também um backfill manual sob demanda via workflow `05_backfill.yml` (`workflow_dispatch`), que roda os scripts em `scripts/` para reprocessar um grupo específico de tabelas (discover, referências, detalhes/providers, data quality ou tradução), fora do ciclo anual. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow. Veja [`scripts/scripts.md`](scripts/scripts.md) para detalhes.
 
 ---
 

@@ -12,7 +12,7 @@ resource "null_resource" "shared_wheel_build" {
   }
 
   provisioner "local-exec" {
-    command = "python ${path.module}/scripts/build_glue_wheel.py --src ${local.shared_src_path} --dest ${local.shared_wheel_build_path} --name tmdb_shared --package shared_utils"
+    command = "python ${path.module}/scripts/build_glue_wheel.py --src ${local.shared_src_path} --dest ${local.shared_wheel_build_path} --name ${local.project_config.shared_wheel_name} --package shared_utils"
   }
 }
 
