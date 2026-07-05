@@ -1,14 +1,15 @@
 name: "4. Deploy Lightsail (Reusable)"
 
 # =============================================================================
-# Deploy do app FilmBot na instância AWS Lightsail.
-# Chamado pelo 00_pipeline.yml apenas em prod, após o Terraform aplicar com sucesso.
+# Deploy do app configurado (nome/pasta em infra/config/project.json) na
+# instância AWS Lightsail. Chamado pelo 00_pipeline.yml apenas em prod, após
+# o Terraform aplicar com sucesso.
 #
 # Etapas principais:
 #   1. Lê os outputs do Terraform (IP público, chave SSH, credenciais AWS do agente)
 #   2. Aguarda a instância ficar disponível via SSH (até 30 tentativas, 10s cada)
 #   3. Cria .env com credenciais na instância (sem passar por /tmp)
-#   4. Clona ou atualiza o repositório e reinicia o serviço systemd do FilmBot
+#   4. Clona ou atualiza o repositório e reinicia o serviço systemd do app
 #
 # Ambientes:
 #   dev  → deploy da branch "develop"
@@ -41,6 +42,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Ler configuração do projeto
+        id: project
+        run: |
+          CONFIG=infra/config/project.json
+          echo "statefile_key=$(jq -r '.statefile_key' $CONFIG)" >> $GITHUB_OUTPUT
+          echo "app_name=$(jq -r '.app_name' $CONFIG)" >> $GITHUB_OUTPUT
+          echo "app_display_name=$(jq -r '.app_display_name' $CONFIG)" >> $GITHUB_OUTPUT
+          echo "app_folder=$(jq -r '.app_folder' $CONFIG)" >> $GITHUB_OUTPUT
+
       # terraform_wrapper: false necessário para ler outputs como texto puro
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -59,7 +69,7 @@ jobs:
         run: |
           cd infra && terraform init \
             -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
-            -backend-config="key=proj-eng-dados-filmes-aws" \
+            -backend-config="key=${{ steps.project.outputs.statefile_key }}" \
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
 
@@ -112,6 +122,15 @@ jobs:
           echo "::add-mask::${FILMBOT_SECRET_ARN}"
           echo "filmbot_secret_arn=${FILMBOT_SECRET_ARN}" >> $GITHUB_OUTPUT
 
+          ATHENA_S3_OUTPUT=$(terraform output -raw lightsail_athena_s3_output)
+          echo "athena_s3_output=${ATHENA_S3_OUTPUT}" >> $GITHUB_OUTPUT
+
+          GLUE_DATABASE=$(terraform output -raw lightsail_glue_database)
+          echo "glue_database=${GLUE_DATABASE}" >> $GITHUB_OUTPUT
+
+          SPEC_TABLE=$(terraform output -raw lightsail_spec_table)
+          echo "spec_table=${SPEC_TABLE}" >> $GITHUB_OUTPUT
+
           echo "✅ Terraform outputs lidos com sucesso (IP: $PUBLIC_IP)"
 
       - name: Check instance state
@@ -137,8 +156,8 @@ jobs:
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           mkdir -p ~/.ssh
-          cp "${{ steps.tf.outputs.key_file }}" ~/.ssh/filmbot_key
-          chmod 600 ~/.ssh/filmbot_key
+          cp "${{ steps.tf.outputs.key_file }}" ~/.ssh/${{ steps.project.outputs.app_name }}_key
+          chmod 600 ~/.ssh/${{ steps.project.outputs.app_name }}_key
           SSH_READY=0
           for i in $(seq 1 30); do
             ssh-keyscan -T 5 -H "${{ steps.tf.outputs.public_ip }}" >> ~/.ssh/known_hosts 2>/dev/null && { SSH_READY=1; break; }
@@ -155,16 +174,18 @@ jobs:
       - name: Create .env file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nFILMBOT_SECRET_ARN=%s\nATHENA_S3_OUTPUT=s3://lsg-sa-east-1-bucket-temp-%s/tmdb/athena/lightsail_ia\nGLUE_DATABASE=db_tmdb_unified_prod\nSPEC_TABLE=tb_tmdb_discover_unified_prod\nCLOUDWATCH_LOG_GROUP=%s\n' \
+          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nFILMBOT_SECRET_ARN=%s\nATHENA_S3_OUTPUT=%s\nGLUE_DATABASE=%s\nSPEC_TABLE=%s\nCLOUDWATCH_LOG_GROUP=%s\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
             "${{ steps.tf.outputs.secret_access_key }}" \
             "${{ steps.tf.outputs.filmbot_secret_arn }}" \
-            "${{ inputs.environment }}" \
+            "${{ steps.tf.outputs.athena_s3_output }}" \
+            "${{ steps.tf.outputs.glue_database }}" \
+            "${{ steps.tf.outputs.spec_table }}" \
             "${{ steps.tf.outputs.cw_log_group }}" \
-            | ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-                "sudo mkdir -p /opt/filmbot/app/lightsail_ia && sudo tee /opt/filmbot/app/lightsail_ia/.env > /dev/null && sudo chmod 600 /opt/filmbot/app/lightsail_ia/.env"
-          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-            "test -s /opt/filmbot/app/lightsail_ia/.env" || { echo "❌ Arquivo .env não foi criado na instância"; exit 1; }
+            | ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+                "sudo mkdir -p /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }} && sudo tee /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env > /dev/null && sudo chmod 600 /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env"
+          ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+            "test -s /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env" || { echo "❌ Arquivo .env não foi criado na instância"; exit 1; }
           echo "✅ Arquivo .env criado com sucesso na instância"
 
       - name: Deploy app
@@ -172,10 +193,15 @@ jobs:
         run: |
           # dev → clona/atualiza branch "develop" | prod → branch "main"
           DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
-          ssh -i ~/.ssh/filmbot_key ubuntu@${{ steps.tf.outputs.public_ip }} BRANCH="$DEPLOY_BRANCH" bash << 'ENDSSH'
+          ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+            BRANCH="$DEPLOY_BRANCH" \
+            APP_NAME="${{ steps.project.outputs.app_name }}" \
+            APP_FOLDER="${{ steps.project.outputs.app_folder }}" \
+            REPO_URL="https://github.com/${{ github.repository }}.git" \
+            bash << 'ENDSSH'
             set -e
             sudo apt-get update -q && sudo apt-get install -y python3-venv python3-pip git debian-keyring debian-archive-keyring apt-transport-https curl -q
-            sudo useradd -m filmbot || true
+            sudo useradd -m "$APP_NAME" || true
 
             # Instalar Caddy (proxy reverso HTTPS) se ainda não instalado
             if ! command -v caddy &> /dev/null; then
@@ -184,50 +210,52 @@ jobs:
               sudo apt-get update -q && sudo apt-get install -y caddy -q
             fi
 
-            if [ -d "/opt/filmbot/.git" ]; then
+            APP_DIR="/opt/$APP_NAME"
+
+            if [ -d "$APP_DIR/.git" ]; then
               echo "==> Atualizando código existente (branch: $BRANCH)..."
-              sudo git config --global --add safe.directory /opt/filmbot
-              cd /opt/filmbot
+              sudo git config --global --add safe.directory "$APP_DIR"
+              cd "$APP_DIR"
               sudo git fetch origin
               sudo git checkout "$BRANCH"
               sudo git pull origin "$BRANCH"
-              sudo chown -R filmbot:filmbot /opt/filmbot
-              sudo chown filmbot:filmbot /opt/filmbot/app/lightsail_ia/.env
-              cd /opt/filmbot/app/lightsail_ia
+              sudo chown -R "$APP_NAME:$APP_NAME" "$APP_DIR"
+              sudo chown "$APP_NAME:$APP_NAME" "$APP_DIR/app/$APP_FOLDER/.env"
+              cd "$APP_DIR/app/$APP_FOLDER"
               sudo python3 -m venv .venv
               sudo .venv/bin/pip install --upgrade pip -q
               sudo .venv/bin/pip install -r requirements.txt -q
-              sudo cp deploy/filmbot.service /etc/systemd/system/filmbot.service
+              sudo cp "deploy/$APP_NAME.service" "/etc/systemd/system/$APP_NAME.service"
               sudo cp deploy/caddy.service /etc/systemd/system/caddy.service
               sudo systemctl daemon-reload
-              sudo systemctl enable filmbot caddy
-              sudo systemctl restart filmbot caddy
+              sudo systemctl enable "$APP_NAME" caddy
+              sudo systemctl restart "$APP_NAME" caddy
             else
               echo "==> Primeiro deploy (branch: $BRANCH)..."
-              sudo git clone -b "$BRANCH" https://github.com/lucas-soares-galvao/movie-data-pipeline-aws.git /tmp/filmbot_new
-              sudo cp -rn /tmp/filmbot_new/. /opt/filmbot/
-              sudo rm -rf /tmp/filmbot_new
-              sudo git config --global --add safe.directory /opt/filmbot
-              sudo chown -R filmbot:filmbot /opt/filmbot
-              sudo chown filmbot:filmbot /opt/filmbot/app/lightsail_ia/.env
-              cd /opt/filmbot/app/lightsail_ia
+              sudo git clone -b "$BRANCH" "$REPO_URL" "/tmp/${APP_NAME}_new"
+              sudo cp -rn "/tmp/${APP_NAME}_new/." "$APP_DIR/"
+              sudo rm -rf "/tmp/${APP_NAME}_new"
+              sudo git config --global --add safe.directory "$APP_DIR"
+              sudo chown -R "$APP_NAME:$APP_NAME" "$APP_DIR"
+              sudo chown "$APP_NAME:$APP_NAME" "$APP_DIR/app/$APP_FOLDER/.env"
+              cd "$APP_DIR/app/$APP_FOLDER"
               sudo python3 -m venv .venv
               sudo .venv/bin/pip install --upgrade pip -q
               sudo .venv/bin/pip install -r requirements.txt -q
-              sudo cp /opt/filmbot/app/lightsail_ia/deploy/filmbot.service /etc/systemd/system/filmbot.service
-              sudo cp /opt/filmbot/app/lightsail_ia/deploy/caddy.service /etc/systemd/system/caddy.service
+              sudo cp "$APP_DIR/app/$APP_FOLDER/deploy/$APP_NAME.service" "/etc/systemd/system/$APP_NAME.service"
+              sudo cp "$APP_DIR/app/$APP_FOLDER/deploy/caddy.service" /etc/systemd/system/caddy.service
               sudo systemctl daemon-reload
-              sudo systemctl enable filmbot caddy
-              sudo systemctl restart filmbot caddy
+              sudo systemctl enable "$APP_NAME" caddy
+              sudo systemctl restart "$APP_NAME" caddy
             fi
-            sudo systemctl status filmbot --no-pager
+            sudo systemctl status "$APP_NAME" --no-pager
             sudo systemctl status caddy --no-pager
 
-            if sudo systemctl is-active --quiet filmbot && sudo systemctl is-active --quiet caddy; then
-              echo "✅ Serviços filmbot e caddy ativos"
+            if sudo systemctl is-active --quiet "$APP_NAME" && sudo systemctl is-active --quiet caddy; then
+              echo "✅ Serviços $APP_NAME e caddy ativos"
             else
               echo "❌ Um ou mais serviços não estão ativos:"
-              sudo systemctl is-active filmbot || echo "   - filmbot: inativo"
+              sudo systemctl is-active "$APP_NAME" || echo "   - $APP_NAME: inativo"
               sudo systemctl is-active caddy || echo "   - caddy: inativo"
               exit 1
             fi
@@ -255,6 +283,6 @@ jobs:
       - name: Show app URL
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
-          echo "🔗 FilmBot: http://${{ steps.tf.outputs.public_ip }}"
-          echo "## 🔗 FilmBot" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 ${{ steps.project.outputs.app_display_name }}: http://${{ steps.tf.outputs.public_ip }}"
+          echo "## 🔗 ${{ steps.project.outputs.app_display_name }}" >> $GITHUB_STEP_SUMMARY
           echo "http://${{ steps.tf.outputs.public_ip }}" >> $GITHUB_STEP_SUMMARY

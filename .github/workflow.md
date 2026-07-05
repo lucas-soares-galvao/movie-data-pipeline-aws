@@ -9,7 +9,7 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 3. **Deploy**: publica a aplicação FilmBot no Lightsail
 4. **Promoção**: cria PRs automáticos entre branches (`feature → develop → main`)
 
-Além do fluxo automático acima, o `05_backfill.yml` é um workflow independente, disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda em prod.
+Além do fluxo automático acima, o `05_backfill.yml` é um workflow independente, disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
 
 ---
 
@@ -26,7 +26,7 @@ flowchart TD
     TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
     TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
 
-    MANUAL["workflow_dispatch manual"] --> BACKFILL["05_backfill.yml\nBackfill sob demanda (prod)"]
+    MANUAL["workflow_dispatch manual"] --> BACKFILL["05_backfill.yml\nBackfill sob demanda (ambiente por branch)"]
 ```
 
 ---
@@ -39,7 +39,7 @@ flowchart TD
 | `push` | `develop` | terraform (dev) → PR develop→main |
 | `push` | `main` | terraform (prod) → deploy (prod) |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy apenas se ambiente = prod |
-| `workflow_dispatch` (`05_backfill.yml`) | — | backfill sob demanda em prod (independente do `00_pipeline.yml`) |
+| `workflow_dispatch` (`05_backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
 
 ---
 
@@ -92,15 +92,16 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 
 **Etapas principais:**
 
-1. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`) e wheels Glue (ETL, Agg, Details) — verifica se os artefatos foram gerados
-2. Lê `infra/config/destroy_config.json` para decidir se destrói ou aplica — valida que o valor é `true` ou `false`
-3. `terraform init` com backend S3 + DynamoDB
-4. `terraform validate` e `terraform fmt -check` (**bloqueantes**) + TFLint e Checkov (não-bloqueantes — apenas avisos)
-5. Injeta o e-mail de notificação no `.tfvars` (não é commitado no repo)
-6. **Bootstrap das IAM policies** — aplica com `-target` as 6 policies do CI/CD antes do plan principal, resolvendo o problema de bootstrap (a role precisa das policies para gerenciar os recursos, mas as policies são criadas pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op. Verifica via polling (a cada 5s, timeout 60s) com `aws iam list-attached-role-policies` se as 6 policies estão de fato attachadas à role — falha o pipeline se alguma estiver ausente
-7. `terraform destroy` **ou** `terraform plan` + Infracost + `terraform apply`
+1. Lê `infra/config/project.json` via `jq` — nome do wheel compartilhado, nome/prefixo da role e policies de CI/CD, key do state file (fonte única de identidade do projeto, também lida diretamente pelo Terraform)
+2. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`) e wheels Glue (ETL, Agg, Details, Shared) — verifica se os artefatos foram gerados
+3. Lê `infra/config/destroy_config.json` para decidir se destrói ou aplica — valida que o valor é `true` ou `false`
+4. `terraform init` com backend S3 + DynamoDB
+5. `terraform validate` e `terraform fmt -check` (**bloqueantes**) + TFLint e Checkov (não-bloqueantes — apenas avisos)
+6. Injeta o e-mail de notificação no `.tfvars` (não é commitado no repo)
+7. **Bootstrap das IAM policies** — aplica com `-target` as 6 policies do CI/CD antes do plan principal, resolvendo o problema de bootstrap (a role precisa das policies para gerenciar os recursos, mas as policies são criadas pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op. Verifica via polling (a cada 5s, timeout 60s) com `aws iam list-attached-role-policies` se as 6 policies estão de fato attachadas à role — falha o pipeline se alguma estiver ausente
+8. `terraform destroy` **ou** `terraform plan` + Infracost + `terraform apply`
 
-**Autenticação AWS:** OIDC — assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`). As variáveis `cicd_statefile_s3_bucket` e `cicd_lock_dynamodb_table` são passadas via `-var` a partir dos secrets `aws-statefile-s3-bucket` e `aws-lock-dynamodb-table`.
+**Autenticação AWS:** OIDC — assume a role `lsg-github-actions-{env}` (nome configurável via `infra/config/project.json`) com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`). As variáveis `cicd_statefile_s3_bucket` e `cicd_lock_dynamodb_table` são passadas via `-var` a partir dos secrets `aws-statefile-s3-bucket` e `aws-lock-dynamodb-table`.
 
 ---
 
@@ -127,17 +128,18 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
 
 **Etapas principais:**
 
-1. Lê outputs do Terraform (IP, chave SSH, credenciais AWS do FilmBot, nome da instância, log group do CloudWatch) — valida que nenhum output crítico está vazio
-2. Verifica o estado da instância via `aws lightsail get-instance` — se não estiver `running` (ex: parada pelo scheduler noturno), **pula os steps de deploy** com warning (mas ainda exibe a URL do app no final)
-3. Configura SSH com retry (até 30 tentativas, intervalo de 10s) — falha o pipeline se SSH não ficar disponível em 5 minutos
-4. Cria `.env` na instância com variáveis de ambiente da aplicação (credenciais AWS, ARN do Secrets Manager, Athena, CloudWatch) — verifica via SSH se o arquivo foi criado
-5. Instala o Caddy como proxy reverso HTTPS (se ainda não instalado)
-6. Deploy por SSH:
-   - **Primeiro deploy**: clone do repo, venv, systemd services (filmbot + caddy)
+1. Lê `infra/config/project.json` via `jq` — `app_name`, `app_display_name`, `app_folder`, `statefile_key` (por padrão `filmbot`/`FilmBot`/`lightsail_ia`)
+2. Lê outputs do Terraform (IP, chave SSH, credenciais AWS do agente, nome da instância, log group do CloudWatch, ARN do Secrets Manager, `ATHENA_S3_OUTPUT`/`GLUE_DATABASE`/`SPEC_TABLE`) — valida que nenhum output crítico está vazio
+3. Verifica o estado da instância via `aws lightsail get-instance` — se não estiver `running` (ex: parada pelo scheduler noturno), **pula os steps de deploy** com warning (mas ainda exibe a URL do app no final)
+4. Configura SSH com retry (até 30 tentativas, intervalo de 10s) — falha o pipeline se SSH não ficar disponível em 5 minutos
+5. Cria `.env` na instância com variáveis de ambiente da aplicação (credenciais AWS, ARN do Secrets Manager, Athena, Glue, CloudWatch) — todas lidas dos outputs do Terraform, nenhuma hardcoded no workflow — verifica via SSH se o arquivo foi criado
+6. Instala o Caddy como proxy reverso HTTPS (se ainda não instalado)
+7. Deploy por SSH (`app_name`/`app_folder` passados como variáveis de ambiente da sessão SSH):
+   - **Primeiro deploy**: clone do repo (URL derivada de `${{ github.repository }}`), venv, systemd services (`<app_name>` + `caddy`)
    - **Updates**: git pull, pip install, restart de ambos os services
-   - Verifica se os serviços `filmbot` e `caddy` estão ativos (`systemctl is-active`) — falha o pipeline se algum estiver inativo
-7. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
-8. Exibe a URL do FilmBot no log e no Job Summary (clicável)
+   - Verifica se os serviços `<app_name>` e `caddy` estão ativos (`systemctl is-active`) — falha o pipeline se algum estiver inativo
+8. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
+9. Exibe a URL do app (`app_display_name`) no log e no Job Summary (clicável)
 
 **Branch deployada por ambiente:**
 
@@ -150,7 +152,7 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. Execu
 
 ### `05_backfill.yml` — Backfill Manual
 
-Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workflow_dispatch`) para reprocessar dados históricos sob demanda. Sempre roda no ambiente **prod** (autentica via `AWS_ASSUME_ROLE_ARN_PROD`).
+Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workflow_dispatch`) para reprocessar dados históricos sob demanda. O ambiente é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS.
 
 **Entradas:**
 
@@ -172,9 +174,11 @@ Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workf
 
 **Etapas principais:**
 
-1. Checkout + autenticação AWS via OIDC (fixa em prod)
-2. Setup Python 3.12, instala `boto3` (e `scripts/requirements_backfill.txt` apenas se `table_group == traducao`)
-3. Executa o script correspondente ao `table_group` escolhido, com todas as variáveis de ambiente dos recursos AWS derivadas automaticamente do padrão de nomenclatura do Terraform (`tmdb-*-prod`, `db_tmdb_*_prod`, etc.)
+1. Checkout + resolve o ambiente a partir do branch (`main`→prod, `develop`→dev, outro branch → falha)
+2. Lê `infra/config/project.json` via `jq` — `project_prefix`
+3. Autenticação AWS via OIDC — assume `AWS_ASSUME_ROLE_ARN_DEV` ou `AWS_ASSUME_ROLE_ARN_PROD` conforme o ambiente resolvido
+4. Setup Python 3.12, instala `boto3` (e `scripts/requirements_backfill.txt` apenas se `table_group == traducao`)
+5. Executa o script correspondente ao `table_group` escolhido, com todas as variáveis de ambiente dos recursos AWS montadas dinamicamente como `<project_prefix>-...-<ambiente>` / `<project_prefix>_..._<ambiente>` (ex.: `tmdb-glue-details-dev`, `db_tmdb_movie_prod`) — prefixo lido de `infra/config/project.json`, ambiente resolvido pelo branch
 
 `timeout-minutes: 360` — backfills históricos podem levar horas dependendo do volume de dados.
 

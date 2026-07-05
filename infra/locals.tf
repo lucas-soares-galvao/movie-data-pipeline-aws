@@ -9,8 +9,12 @@ locals {
   # Capacidade mínima de DPU para jobs PythonShell (1/16 de DPU)
   pythonshell_min_capacity = 0.0625
 
-  # Prefixo tmdb que identifica o projeto (escopo de isolamento por projeto)
-  tmdb_prefix = "tmdb"
+  # Fonte única de nomes/identidade do projeto — permite reusar os workflows
+  # e este Terraform em outro projeto editando só este arquivo.
+  project_config = jsondecode(file("${path.module}/config/project.json"))
+
+  # Prefixo que identifica o projeto (escopo de isolamento por projeto)
+  tmdb_prefix = local.project_config.project_prefix
 
   default_resource_tags = {
     Service     = "movie-data-pipeline-aws"
@@ -108,8 +112,8 @@ locals {
 
   shared_src_path         = "${path.root}/../app/shared_src"
   shared_wheel_build_path = "${path.module}/.shared_build"
-  shared_wheel_filename   = "tmdb_shared-0.0.0-py3-none-any.whl"
-  shared_zip_filename     = "tmdb_shared.zip"
+  shared_wheel_filename   = "${local.project_config.shared_wheel_name}-0.0.0-py3-none-any.whl"
+  shared_zip_filename     = "${local.project_config.shared_wheel_name}.zip"
 
   # ===========================================================================
   # MÓDULOS PYTHON ADICIONAIS PARA OS JOBS GLUE

@@ -22,7 +22,7 @@ Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada*
 
 ## Permissões do CI/CD (`iam_cicd.tf`)
 
-A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform:
+A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
 
 | Policy | Escopo |
 |---|---|
