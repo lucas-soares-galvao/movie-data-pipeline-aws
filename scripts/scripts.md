@@ -28,11 +28,11 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 
 ### Via GitHub Actions (recomendado)
 
-1. Ir em **Actions > 5. Backfill > Run workflow**
+1. Ir em **Actions > 5. Backfill > Run workflow**, escolhendo o branch `main` (prod) ou `develop` (dev) no seletor "Use workflow from" — esse branch determina o ambiente
 2. Selecionar o grupo de tabelas (`table_group`), ano inicial e ano final (ambos ignorados para `referencias`)
 3. Acompanhar logs na aba do workflow
 
-O workflow (`.github/workflows/05_backfill.yml`) autentica via OIDC no ambiente **prod** e configura todas as variáveis de ambiente automaticamente.
+O workflow (`.github/workflows/05_backfill.yml`) resolve o ambiente automaticamente pelo branch selecionado, autentica via OIDC no ambiente correspondente e configura todas as variáveis de ambiente automaticamente.
 
 ### Localmente (requer credenciais AWS configuradas)
 

@@ -56,6 +56,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Ler configuração do projeto
+        id: project
+        run: |
+          CONFIG=infra/config/project.json
+          echo "shared_wheel_name=$(jq -r '.shared_wheel_name' $CONFIG)" >> $GITHUB_OUTPUT
+          echo "cicd_role_name=$(jq -r '.cicd_role_name' $CONFIG)" >> $GITHUB_OUTPUT
+          echo "cicd_policy_prefix=$(jq -r '.cicd_policy_prefix' $CONFIG)" >> $GITHUB_OUTPUT
+          echo "statefile_key=$(jq -r '.statefile_key' $CONFIG)" >> $GITHUB_OUTPUT
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -87,7 +96,7 @@ jobs:
           python infra/scripts/build_glue_wheel.py \
             --src app/shared_src \
             --dest infra/.shared_build \
-            --name tmdb_shared \
+            --name ${{ steps.project.outputs.shared_wheel_name }} \
             --package shared_utils
           if [ -z "$(ls -A infra/.shared_build/ 2>/dev/null)" ]; then
             echo "❌ Build do Shared falhou — diretório infra/.shared_build está vazio."
@@ -153,7 +162,7 @@ jobs:
         run: |
           cd infra && terraform init \
             -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
-            -backend-config="key=proj-eng-dados-filmes-aws" \
+            -backend-config="key=${{ steps.project.outputs.statefile_key }}" \
             -backend-config="region=sa-east-1" \
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
           echo "✅ Terraform init concluído com sucesso"
@@ -222,14 +231,14 @@ jobs:
             -target=aws_iam_policy.cicd_lightsail \
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -auto-approve
-          ROLE_NAME="lsg-github-actions-${{ inputs.environment }}"
+          ROLE_NAME="${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
           EXPECTED_POLICIES=(
-            "cicd-terraform-backend-${{ inputs.environment }}"
-            "cicd-terraform-s3-${{ inputs.environment }}"
-            "cicd-terraform-iam-${{ inputs.environment }}"
-            "cicd-terraform-compute-${{ inputs.environment }}"
-            "cicd-terraform-observability-${{ inputs.environment }}"
-            "cicd-terraform-lightsail-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-backend-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-s3-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-iam-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-compute-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-observability-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-lightsail-${{ inputs.environment }}"
           )
 
           MAX_WAIT=60

@@ -1,8 +1,14 @@
 name: 5. Backfill
-run-name: "Backfill: ${{ inputs.table_group }} (${{ inputs.start_year }}-${{ inputs.end_year != '' && inputs.end_year || 'atual' }})"
+run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ inputs.table_group }} (${{ inputs.start_year }}-${{ inputs.end_year != '' && inputs.end_year || 'atual' }})"
 
 # =============================================================================
-# Executa backfills pontuais sob demanda no ambiente prod.
+# Executa backfills pontuais sob demanda.
+#
+# O ambiente (dev/prod) é resolvido automaticamente a partir do branch
+# selecionado em "Use workflow from" ao disparar o workflow:
+#   - main    → prod
+#   - develop → dev
+#   - qualquer outro branch → falha (ver step "Resolver ambiente a partir do branch")
 #
 # Grupos de tabelas disponíveis:
 #   - discover              — gaps de anos via Lambda (ETL → DQ → Details → AGG)
@@ -12,7 +18,7 @@ run-name: "Backfill: ${{ inputs.table_group }} (${{ inputs.start_year }}-${{ inp
 #   - traducao              — adiciona title_pt/overview_pt nos details (sem API TMDB)
 #
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
-# do padrão de nomenclatura do Terraform (tmdb-*-prod / db_tmdb_*_prod / etc.).
+# do padrão de nomenclatura do Terraform (tmdb-*-<env> / db_tmdb_*_<env> / etc.).
 # =============================================================================
 
 on:
@@ -52,10 +58,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Resolver ambiente a partir do branch
+        id: env
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "name=prod" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "develop" ]; then
+            echo "name=dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "❌ Branch '${{ github.ref_name }}' inválido — dispare este workflow a partir de 'main' (prod) ou 'develop' (dev)."
+            exit 1
+          fi
+          echo "🌎 Ambiente resolvido a partir do branch '${{ github.ref_name }}'"
+
+      - name: Ler configuração do projeto
+        id: project
+        run: |
+          echo "project_prefix=$(jq -r '.project_prefix' infra/config/project.json)" >> $GITHUB_OUTPUT
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+          role-to-assume: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_PROD || secrets.AWS_ASSUME_ROLE_ARN_DEV }}
           role-session-name: GitHub_to_AWS_Backfill
           aws-region: sa-east-1
 
@@ -77,31 +101,31 @@ jobs:
           FORCE_REFETCH: "true"
 
           # Jobs
-          GLUE_DETAILS_JOB_NAME: tmdb-glue-details-prod
-          GLUE_DATA_QUALITY_JOB_NAME: tmdb-glue-data-quality-prod
-          LAMBDA_FUNCTION_NAME: tmdb-lambda-api-prod
+          GLUE_DETAILS_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-details-${{ steps.env.outputs.name }}
+          GLUE_DATA_QUALITY_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-data-quality-${{ steps.env.outputs.name }}
+          LAMBDA_FUNCTION_NAME: ${{ steps.project.outputs.project_prefix }}-lambda-api-${{ steps.env.outputs.name }}
 
           # Databases
-          GLUE_DATABASE_MOVIE: db_tmdb_movie_prod
-          GLUE_DATABASE_TV: db_tmdb_tv_prod
-          GLUE_DATABASE_UNIFIED: db_tmdb_unified_prod
+          GLUE_DATABASE_MOVIE: db_${{ steps.project.outputs.project_prefix }}_movie_${{ steps.env.outputs.name }}
+          GLUE_DATABASE_TV: db_${{ steps.project.outputs.project_prefix }}_tv_${{ steps.env.outputs.name }}
+          GLUE_DATABASE_UNIFIED: db_${{ steps.project.outputs.project_prefix }}_unified_${{ steps.env.outputs.name }}
 
           # Buckets
-          S3_BUCKET_SOT: lsg-sa-east-1-bucket-sot-prod
+          S3_BUCKET_SOT: lsg-sa-east-1-bucket-sot-${{ steps.env.outputs.name }}
 
           # Tabelas
-          TABLE_DISCOVER_MOVIE: tb_tmdb_discover_movie_prod
-          TABLE_DISCOVER_TV: tb_tmdb_discover_tv_prod
-          TABLE_GENRE_MOVIE: tb_tmdb_genre_movie_prod
-          TABLE_GENRE_TV: tb_tmdb_genre_tv_prod
-          TABLE_CONFIGURATION_LANGUAGES: tb_tmdb_configuration_languages_prod
-          TABLE_CONFIGURATION_COUNTRIES: tb_tmdb_configuration_countries_prod
-          TABLE_DETAILS_MOVIE: tb_tmdb_details_movie_prod
-          TABLE_DETAILS_TV: tb_tmdb_details_tv_prod
-          TABLE_WATCH_PROVIDERS_MOVIE: tb_tmdb_watch_providers_movie_prod
-          TABLE_WATCH_PROVIDERS_TV: tb_tmdb_watch_providers_tv_prod
-          TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_tmdb_watch_providers_ref_movie_prod
-          TABLE_WATCH_PROVIDERS_REF_TV: tb_tmdb_watch_providers_ref_tv_prod
+          TABLE_DISCOVER_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_discover_movie_${{ steps.env.outputs.name }}
+          TABLE_DISCOVER_TV: tb_${{ steps.project.outputs.project_prefix }}_discover_tv_${{ steps.env.outputs.name }}
+          TABLE_GENRE_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_genre_movie_${{ steps.env.outputs.name }}
+          TABLE_GENRE_TV: tb_${{ steps.project.outputs.project_prefix }}_genre_tv_${{ steps.env.outputs.name }}
+          TABLE_CONFIGURATION_LANGUAGES: tb_${{ steps.project.outputs.project_prefix }}_configuration_languages_${{ steps.env.outputs.name }}
+          TABLE_CONFIGURATION_COUNTRIES: tb_${{ steps.project.outputs.project_prefix }}_configuration_countries_${{ steps.env.outputs.name }}
+          TABLE_DETAILS_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_details_movie_${{ steps.env.outputs.name }}
+          TABLE_DETAILS_TV: tb_${{ steps.project.outputs.project_prefix }}_details_tv_${{ steps.env.outputs.name }}
+          TABLE_WATCH_PROVIDERS_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_movie_${{ steps.env.outputs.name }}
+          TABLE_WATCH_PROVIDERS_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_tv_${{ steps.env.outputs.name }}
+          TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_movie_${{ steps.env.outputs.name }}
+          TABLE_WATCH_PROVIDERS_REF_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_tv_${{ steps.env.outputs.name }}
           BACKFILL_START_YEAR: ${{ inputs.start_year }}
         run: |
           if [ -n "${{ inputs.end_year }}" ]; then

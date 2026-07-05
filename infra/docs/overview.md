@@ -6,7 +6,7 @@ Toda a infraestrutura do projeto é gerenciada como código com **Terraform**. I
 
 O estado do Terraform é armazenado remotamente em um bucket S3 com backend configurado em `provider.tf`.
 
-Todos os recursos AWS deste projeto recebem o prefixo `tmdb-` (ou `tmdb_` para databases/tabelas do Glue Catalog), definido em `local.tmdb_prefix` (`locals.tf`). O objetivo é isolar os recursos deste projeto de outros que eventualmente compartilhem a mesma conta/região AWS.
+Todos os recursos AWS deste projeto recebem o prefixo `tmdb-` (ou `tmdb_` para databases/tabelas do Glue Catalog), definido em `local.tmdb_prefix` (`locals.tf`), que por sua vez lê o campo `project_prefix` de `infra/config/project.json` — a fonte única de nomes/identidade do projeto, compartilhada entre o Terraform e os workflows do GitHub Actions. O objetivo é isolar os recursos deste projeto de outros que eventualmente compartilhem a mesma conta/região AWS.
 
 ## Ambientes
 
@@ -26,9 +26,9 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 | `02_terraform.yml` | Reusável: `terraform init` + `apply` ou `destroy` |
 | `03_pr_auto.yml` | Reusável: cria PR automático após deploy |
 | `04_deploy_lightsail.yml` | Deploy do app FilmBot na instância Lightsail |
-| `05_backfill.yml` | Manual (`workflow_dispatch`): backfill pontual em prod para 5 grupos de tabelas (discover, referencias, detalhes_e_providers, data_quality, traducao) |
+| `05_backfill.yml` | Manual (`workflow_dispatch`): backfill pontual para 5 grupos de tabelas (discover, referencias, detalhes_e_providers, data_quality, traducao). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (`main` → prod, `develop` → dev) |
 
-Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`).
+Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` (nome configurável em `infra/config/project.json`) com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`).
 
 ## Como aplicar
 

@@ -1,0 +1,10 @@
+{
+  "project_prefix": "tmdb",
+  "cicd_role_name": "lsg-github-actions",
+  "cicd_policy_prefix": "cicd-terraform",
+  "shared_wheel_name": "tmdb_shared",
+  "statefile_key": "proj-eng-dados-filmes-aws",
+  "app_name": "filmbot",
+  "app_display_name": "FilmBot",
+  "app_folder": "lightsail_ia"
+}

@@ -33,7 +33,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
    - **InvokeLambdaTV** — invoca a Lambda com payload de séries para o batch (Retry: 2 tentativas, intervalo de 30s, backoff 2.0)
    - **WaitBeforeNextBatch** — aguarda 5 min antes do próximo batch
 
-> Além deste backfill anual automático, existe também um backfill manual sob demanda via workflow `05_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality em prod, sem passar pela state machine — usado para correções pontuais fora do ciclo anual (ver `overview.md`).
+> Além deste backfill anual automático, existe também um backfill manual sob demanda via workflow `05_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality, sem passar pela state machine — usado para correções pontuais fora do ciclo anual. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
 
 ## Notificações — SNS (`sns_topics.tf`)
 
