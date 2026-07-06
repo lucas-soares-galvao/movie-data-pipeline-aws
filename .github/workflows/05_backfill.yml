@@ -82,6 +82,11 @@ jobs:
           role-to-assume: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_PROD || secrets.AWS_ASSUME_ROLE_ARN_DEV }}
           role-session-name: GitHub_to_AWS_Backfill
           aws-region: sa-east-1
+          # Backfills históricos podem rodar por horas (ver timeout-minutes acima).
+          # 21600s (6h) alinha a sessão STS com o teto máximo de um job em runner
+          # hospedado do GitHub, evitando ExpiredTokenException em execuções longas.
+          # Requer MaxSessionDuration >= 21600 na role IAM (ver infra/docs/iam.md).
+          role-duration-seconds: 21600
 
       - name: Setup Python
         uses: actions/setup-python@v5

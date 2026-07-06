@@ -35,6 +35,7 @@ from datetime import datetime
 from typing import Any, List, Tuple
 
 import boto3
+from botocore.exceptions import ClientError
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -52,6 +53,16 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _log_expired_token(exc: ClientError, contexto: str) -> None:
+    """Loga um erro claro se a credencial AWS expirou durante o backfill."""
+    if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
+        logger.error(
+            "Credenciais AWS expiraram durante %s. Verifique role-duration-seconds no "
+            "workflow e MaxSessionDuration da role IAM (ver infra/docs/iam.md).",
+            contexto,
+        )
+
+
 def _trigger_dq_job(
     client: Any,
     job_name: str,
@@ -60,14 +71,18 @@ def _trigger_dq_job(
     year: str,
 ) -> str:
     """Dispara o job Glue DQ de forma assíncrona e retorna o JobRunId."""
-    response = client.start_job_run(
-        JobName=job_name,
-        Arguments={
-            "--TABLE_NAME": table_name,
-            "--DATABASE": database,
-            "--YEAR": year,
-        },
-    )
+    try:
+        response = client.start_job_run(
+            JobName=job_name,
+            Arguments={
+                "--TABLE_NAME": table_name,
+                "--DATABASE": database,
+                "--YEAR": year,
+            },
+        )
+    except ClientError as exc:
+        _log_expired_token(exc, f"disparo do job DQ para '{table_name}' (year={year})")
+        raise
     run_id = response["JobRunId"]
     logger.info(
         "Acionado: tabela='%s' | year=%s",
