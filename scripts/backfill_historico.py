@@ -40,6 +40,7 @@ from datetime import datetime
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -67,13 +68,27 @@ def _assert_single_year(payload: dict[str, Any]) -> None:
         )
 
 
+def _log_expired_token(exc: ClientError, contexto: str) -> None:
+    """Loga um erro claro se a credencial AWS expirou durante o backfill."""
+    if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
+        logger.error(
+            "Credenciais AWS expiraram durante %s. Verifique role-duration-seconds no "
+            "workflow e MaxSessionDuration da role IAM (ver infra/docs/iam.md).",
+            contexto,
+        )
+
+
 def _invoke(client: Any, function_name: str, payload: dict[str, Any]) -> None:
     """Invoca a Lambda de forma síncrona e lança exceção se falhar."""
-    response = client.invoke(
-        FunctionName=function_name,
-        InvocationType="RequestResponse",
-        Payload=json.dumps(payload).encode(),
-    )
+    try:
+        response = client.invoke(
+            FunctionName=function_name,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload).encode(),
+        )
+    except ClientError as exc:
+        _log_expired_token(exc, f"invocação da Lambda '{function_name}'")
+        raise
     status = response["StatusCode"]
     body = json.loads(response["Payload"].read())
 

@@ -9,6 +9,7 @@ backfill_historico.py, que interrompe tudo no primeiro erro.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 import backfill_enriquecimento as be
 
@@ -70,6 +71,32 @@ class TestWaitForJob:
         assert estado == "FAILED"
         assert client.get_job_run.call_count == 3
         mock_sleep.assert_called_with(10)
+
+    def test_propaga_expired_token_com_log_claro(self, caplog):
+        client = MagicMock()
+        client.get_job_run.side_effect = ClientError(
+            {"Error": {"Code": "ExpiredTokenException", "Message": "The security token included in the request is expired"}},
+            "GetJobRun",
+        )
+
+        with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
+            with pytest.raises(ClientError):
+                be._wait_for_job(client, "job", "run-1")
+
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
+
+    def test_propaga_outros_client_error_sem_log_de_credenciais(self, caplog):
+        client = MagicMock()
+        client.get_job_run.side_effect = ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "GetJobRun",
+        )
+
+        with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
+            with pytest.raises(ClientError):
+                be._wait_for_job(client, "job", "run-1")
+
+        assert not any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
 def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, job_states=None):

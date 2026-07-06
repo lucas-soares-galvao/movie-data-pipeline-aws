@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from botocore.exceptions import ClientError
 
 import backfill_traducao as bt
 
@@ -103,6 +104,16 @@ class TestLoadDiscoverMap:
         assert list(resultado.columns) == ["id", "original_language"]
         assert len(resultado) == 2
 
+    def test_expired_token_loga_e_repropaga(self, caplog):
+        with patch("backfill_traducao.wr") as mock_wr:
+            mock_wr.s3.read_parquet.side_effect = ClientError(
+                {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "GetObject",
+            )
+            with caplog.at_level("ERROR", logger="backfill_traducao"):
+                with pytest.raises(ClientError):
+                    bt._load_discover_map("discover_movie", "bucket-sot-test")
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
+
 
 class TestBackfillYear:
     def test_sem_arquivos_retorna_false_e_nao_escreve(self):
@@ -126,6 +137,33 @@ class TestBackfillYear:
             mock_wr.s3.read_parquet.side_effect = RuntimeError("acesso negado")
             with pytest.raises(RuntimeError, match="acesso negado"):
                 bt._backfill_year("db_movie", "details_movie", pd.DataFrame(), "2020", "bucket-sot-test")
+
+    def test_expired_token_na_leitura_loga_e_repropaga(self, caplog):
+        with patch("backfill_traducao.wr") as mock_wr:
+            mock_wr.s3.read_parquet.side_effect = ClientError(
+                {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "GetObject",
+            )
+            with caplog.at_level("ERROR", logger="backfill_traducao"):
+                with pytest.raises(ClientError):
+                    bt._backfill_year("db_movie", "details_movie", pd.DataFrame(), "2020", "bucket-sot-test")
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
+
+    def test_expired_token_na_escrita_loga_e_repropaga(self, caplog):
+        details_df = pd.DataFrame({"id": [1], "title_en": ["A"], "overview_en": ["a"]})
+        discover_map = pd.DataFrame({"id": [1], "original_language": ["en"]})
+
+        with (
+            patch("backfill_traducao.wr") as mock_wr,
+            patch("backfill_traducao._translate", side_effect=lambda t: f"{t}_PT"),
+        ):
+            mock_wr.s3.read_parquet.return_value = details_df
+            mock_wr.s3.to_parquet.side_effect = ClientError(
+                {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "PutObject",
+            )
+            with caplog.at_level("ERROR", logger="backfill_traducao"):
+                with pytest.raises(ClientError):
+                    bt._backfill_year("db_movie", "details_movie", discover_map, "2020", "bucket-sot-test")
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
     def test_escreve_com_particao_e_modo_overwrite_partitions(self):
         details_df = pd.DataFrame({
