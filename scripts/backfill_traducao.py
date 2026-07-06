@@ -24,7 +24,7 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR    (padrão: 2000)
     BACKFILL_END_YEAR      (padrão: ano atual)
-    BACKFILL_WAIT_SECONDS  (padrão: 30 — pausa entre partições para não saturar Google Translate)
+    BACKFILL_WAIT_SECONDS  (padrão: 300 — pausa entre partições para não saturar Google Translate)
 """
 
 import logging
@@ -36,6 +36,7 @@ from datetime import datetime
 
 import awswrangler as wr
 import pandas as pd
+from botocore.exceptions import ClientError
 from deep_translator import GoogleTranslator
 
 logging.basicConfig(
@@ -54,6 +55,16 @@ def _require_env(name: str) -> str:
     if not value:
         raise EnvironmentError(f"Variável de ambiente obrigatória não definida: {name}")
     return value
+
+
+def _log_expired_token(exc: ClientError, contexto: str) -> None:
+    """Loga um erro claro se a credencial AWS expirou durante o backfill."""
+    if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
+        logger.error(
+            "Credenciais AWS expiraram durante %s. Verifique role-duration-seconds no "
+            "workflow e MaxSessionDuration da role IAM (ver infra/docs/iam.md).",
+            contexto,
+        )
 
 
 def _translate(texto: str) -> str:
@@ -97,7 +108,11 @@ def _load_discover_map(table_discover: str, s3_bucket_sot: str) -> pd.DataFrame:
     """Lê toda a tabela discover do S3 e retorna DataFrame id→original_language único."""
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_discover}/"
     logger.info("  Carregando discover de %s...", s3_path)
-    df = wr.s3.read_parquet(path=s3_path, columns=["id", "original_language"])
+    try:
+        df = wr.s3.read_parquet(path=s3_path, columns=["id", "original_language"])
+    except ClientError as exc:
+        _log_expired_token(exc, f"leitura de {s3_path}")
+        raise
     return df.drop_duplicates(subset=["id"])[["id", "original_language"]].reset_index(drop=True)
 
 
@@ -117,6 +132,9 @@ def _backfill_year(
 
     try:
         df = wr.s3.read_parquet(path=s3_details_path)
+    except ClientError as exc:
+        _log_expired_token(exc, f"leitura de {s3_details_path}")
+        raise
     except Exception as exc:
         if "NoFilesFound" in type(exc).__name__ or "NoFilesFound" in str(exc):
             logger.info("  Nenhum arquivo em %s. Pulando.", s3_details_path)
@@ -137,15 +155,19 @@ def _backfill_year(
     df["year"] = year
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/"
-    wr.s3.to_parquet(
-        df=df,
-        path=s3_path,
-        dataset=True,
-        partition_cols=["year"],
-        mode="overwrite_partitions",
-        database=database,
-        table=table_details,
-    )
+    try:
+        wr.s3.to_parquet(
+            df=df,
+            path=s3_path,
+            dataset=True,
+            partition_cols=["year"],
+            mode="overwrite_partitions",
+            database=database,
+            table=table_details,
+        )
+    except ClientError as exc:
+        _log_expired_token(exc, f"escrita de {s3_path} (year={year})")
+        raise
     logger.info("  %d registros escritos em %s (year=%s).", len(df), s3_path, year)
     return True
 

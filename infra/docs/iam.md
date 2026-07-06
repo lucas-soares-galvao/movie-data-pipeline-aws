@@ -24,6 +24,13 @@ Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada*
 
 A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
 
+**MaxSessionDuration:** a role precisa ter `MaxSessionDuration = 21600` (6h) em ambos os ambientes, pois o workflow `05_backfill.yml` pede `role-duration-seconds: 21600` (backfills históricos podem rodar por horas, e 6h é o teto de um job em runner hospedado do GitHub). Como a role é manual, ajuste com:
+
+```bash
+aws iam update-role --role-name lsg-github-actions-dev  --max-session-duration 21600
+aws iam update-role --role-name lsg-github-actions-prod --max-session-duration 21600
+```
+
 | Policy | Escopo |
 |---|---|
 | `cicd-terraform-backend-{env}` | DynamoDB (state lock) + STS (caller identity) |

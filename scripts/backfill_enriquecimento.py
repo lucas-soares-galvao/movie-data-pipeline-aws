@@ -23,7 +23,9 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
-    WAIT_SECONDS          (padrão: 300 — tempo entre runs para não estourar max_concurrent_runs)
+    WAIT_SECONDS          (padrão: 60 — tempo entre runs; cada run do Glue Details dispara 2 runs do
+                           Glue Data Quality em fire-and-forget, então o intervalo evita saturar o
+                           max_concurrent_runs do Data Quality, compartilhado com o restante do pipeline)
     FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
 """
 
@@ -36,6 +38,7 @@ from datetime import datetime
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -76,7 +79,17 @@ def _start_glue_job(
 def _wait_for_job(client: Any, job_name: str, run_id: str, poll_interval: int = 30) -> str:
     """Aguarda o Glue job terminar e retorna o estado final."""
     while True:
-        response = client.get_job_run(JobName=job_name, RunId=run_id)
+        try:
+            response = client.get_job_run(JobName=job_name, RunId=run_id)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
+                logger.error(
+                    "Credenciais AWS expiraram durante o polling do job %s (run_id=%s). "
+                    "Verifique role-duration-seconds no workflow e MaxSessionDuration da role IAM "
+                    "(ver infra/docs/iam.md).",
+                    job_name, run_id,
+                )
+            raise
         state = response["JobRun"]["JobRunState"]
         if state in ("SUCCEEDED", "FAILED", "STOPPED", "ERROR", "TIMEOUT"):
             return state
@@ -91,7 +104,7 @@ def main() -> None:
 
     start_year     = int(os.environ.get("BACKFILL_START_YEAR", 2000))
     end_year       = int(os.environ.get("BACKFILL_END_YEAR", datetime.now().year))
-    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 300))
+    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 60))
     force_refetch  = os.environ.get("FORCE_REFETCH", "true").lower() == "true"
 
     client = boto3.client("glue", region_name=region)

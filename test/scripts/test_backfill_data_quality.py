@@ -9,6 +9,7 @@ espera o job terminar (não deve chamar get_job_run).
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 import backfill_data_quality as bdq
 
@@ -43,6 +44,16 @@ class TestTriggerDqJob:
             JobName="job",
             Arguments={"--TABLE_NAME": "discover_movie", "--DATABASE": "db_movie", "--YEAR": "2020"},
         )
+
+    def test_expired_token_loga_e_repropaga(self, caplog):
+        client = MagicMock()
+        client.start_job_run.side_effect = ClientError(
+            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "StartJobRun",
+        )
+        with caplog.at_level("ERROR", logger="backfill_data_quality"):
+            with pytest.raises(ClientError):
+                bdq._trigger_dq_job(client, "job", "discover_movie", "db_movie", "2020")
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
 def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None):

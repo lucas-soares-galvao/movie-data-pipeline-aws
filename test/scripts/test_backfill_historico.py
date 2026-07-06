@@ -11,6 +11,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 import backfill_historico as bh
 
@@ -132,6 +133,16 @@ class TestErros:
         monkeypatch.delenv("LAMBDA_FUNCTION_NAME", raising=False)
         with pytest.raises(EnvironmentError):
             bh.main()
+
+    def test_expired_token_loga_e_repropaga(self, caplog):
+        client = MagicMock()
+        client.invoke.side_effect = ClientError(
+            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "Invoke",
+        )
+        with caplog.at_level("ERROR", logger="backfill_historico"):
+            with pytest.raises(ClientError):
+                bh._invoke(client, "func", {"a": 1})
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
 class TestAssertSingleYear:
