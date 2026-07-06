@@ -113,6 +113,24 @@ class TestLoopPrincipal:
         mock_client, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_sleep.call_count == mock_client.start_job_run.call_count - 1
 
+    def test_loga_resumo_das_falhas_ao_final(self, monkeypatch, caplog):
+        with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
+            _run_main(
+                monkeypatch,
+                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"},
+                job_states=["FAILED", "SUCCEEDED", "SUCCEEDED", "TIMEOUT"],
+            )
+        resumo = [r.message for r in caplog.records if "precisam ser re-executados" in r.message]
+        assert len(resumo) == 1
+        assert "movie/2020 (FAILED)" in resumo[0]
+        assert "tv/2021 (TIMEOUT)" in resumo[0]
+
+    def test_nao_loga_resumo_quando_tudo_sucede(self, monkeypatch, caplog):
+        with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        resumo = [r.message for r in caplog.records if "precisam ser re-executados" in r.message]
+        assert resumo == []
+
 
 class TestForceRefetch:
     def test_default_e_true(self, monkeypatch):

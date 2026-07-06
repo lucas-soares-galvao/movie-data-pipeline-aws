@@ -104,6 +104,7 @@ def main() -> None:
     )
 
     run_count = 0
+    failures: list[tuple[str, int, str]] = []
     for media_type, database in [("movie", db_movie), ("tv", db_tv)]:
         for year in years:
             run_count += 1
@@ -121,6 +122,7 @@ def main() -> None:
                     "Glue Details FALHOU (%s) para %s year=%d. Continuando com o próximo...",
                     state, media_type, year,
                 )
+                failures.append((media_type, year, state))
             else:
                 logger.info("Glue Details concluído com sucesso para %s year=%d.", media_type, year)
 
@@ -129,6 +131,12 @@ def main() -> None:
                 time.sleep(wait_seconds)
 
     logger.info("Backfill de enriquecimento concluído: %d runs executados.", total_runs)
+    if failures:
+        logger.error(
+            "%d run(s) falharam e precisam ser re-executados: %s",
+            len(failures),
+            ", ".join(f"{media_type}/{year} ({state})" for media_type, year, state in failures),
+        )
 
 
 if __name__ == "__main__":
