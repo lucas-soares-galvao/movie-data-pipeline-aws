@@ -45,6 +45,18 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
 
+    # Serializa execuções por ambiente — evita que dois pushes próximos (ex.:
+    # dois merges seguidos em develop) disparem runs concorrentes contra o
+    # mesmo state (backend S3 + lock DynamoDB), o que causaria uma corrida
+    # TOCTOU no check de idempotência do step de import abaixo (os dois runs
+    # veem "não importado ainda" antes de qualquer um adquirir o lock).
+    # cancel-in-progress: false — nunca cancelar um apply/import em andamento,
+    # isso poderia deixar o lock do DynamoDB órfão ou o state parcialmente
+    # aplicado. O segundo run apenas espera na fila.
+    concurrency:
+      group: terraform-${{ inputs.environment }}
+      cancel-in-progress: false
+
     outputs:
       destroyed_status: ${{ steps.read-destroy-config.outputs.destroy }}
 
@@ -70,10 +82,11 @@ jobs:
         with:
           terraform_version: 1.8.3
           # O wrapper JS (default) captura stdout/stderr via um pipe interno e
-          # trava com "Error: write EPIPE" quando esse stdout é consumido por
-          # algo que fecha a leitura cedo (ex.: "terraform state list | grep -q"
-          # no step de import abaixo) — o crash faz o comando "falhar" para o
-          # shell (pipefail), causando falsos negativos no check de idempotência.
+          # pode travar com "Error: write EPIPE" quando esse stdout é consumido
+          # por algo que fecha a leitura cedo. Isso removia apenas essa camada
+          # extra de pipe — a causa raiz completa dos falsos negativos no check
+          # de idempotência do step de import abaixo está resolvida lá (ver
+          # comentário no step), trocando o pipe por "terraform state show".
           # Nenhum step deste workflow usa steps.*.outputs.stdout/stderr do
           # wrapper, então desabilitá-lo é seguro.
           terraform_wrapper: false
@@ -161,10 +174,19 @@ jobs:
       # plan/apply, senão o Terraform tenta CreateRole nela e falha (a própria
       # role não tem permissão para se auto-criar). Idempotente — se o import
       # já foi feito, é um no-op.
+      #
+      # O check usa "terraform state show <addr>" (não "state list | grep"):
+      # com "state list | grep -qx", se o grep encontra a linha e fecha o pipe
+      # antes do terraform terminar de imprimir o restante do state (dezenas
+      # de resources), o terraform recebe EPIPE e sai com erro — com pipefail
+      # (definido em defaults.run.shell acima), isso derruba o "if" inteiro
+      # mesmo o grep tendo funcionado, caindo no "else" e tentando importar um
+      # resource que já está no state ("Error: Resource already managed").
+      # "state show" consulta um único resource diretamente, sem pipe.
       - name: Import existing CI/CD role (adoção única no state)
         run: |
           cd infra
-          if terraform state list | grep -qx "aws_iam_role.github_actions"; then
+          if terraform state show aws_iam_role.github_actions > /dev/null 2>&1; then
             echo "✅ aws_iam_role.github_actions já está no state — nada a importar"
           else
             terraform import -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
