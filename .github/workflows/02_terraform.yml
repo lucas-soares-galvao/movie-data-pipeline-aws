@@ -147,6 +147,26 @@ jobs:
             -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
           echo "✅ Terraform init concluído com sucesso"
 
+      # A role lsg-github-actions-{env} existe há mais tempo do que o resource
+      # aws_iam_role.github_actions no código (ver infra/docs/iam.md) — o state
+      # de cada ambiente precisa adotá-la uma vez via import antes de qualquer
+      # plan/apply, senão o Terraform tenta CreateRole nela e falha (a própria
+      # role não tem permissão para se auto-criar). Idempotente — se o import
+      # já foi feito, é um no-op.
+      - name: Import existing CI/CD role (adoção única no state)
+        run: |
+          cd infra
+          if terraform state list | grep -qx "aws_iam_role.github_actions"; then
+            echo "✅ aws_iam_role.github_actions já está no state — nada a importar"
+          else
+            terraform import -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
+              -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
+              -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+              -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
+              aws_iam_role.github_actions "${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
+            echo "✅ aws_iam_role.github_actions importada para o state"
+          fi
+
       - name: Terraform Validate
         run: |
           cd infra && terraform validate
