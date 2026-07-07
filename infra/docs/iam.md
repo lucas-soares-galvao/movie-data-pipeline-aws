@@ -22,14 +22,11 @@ Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada*
 
 ## Permissões do CI/CD (`iam_cicd.tf`)
 
-A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
+A role do GitHub Actions (`lsg-github-actions-{env}`) foi originalmente criada **manualmente** e é gerenciada como `aws_iam_role.github_actions` em `iam_cicd.tf`, que também cria e anexa 6 policies managed de privilégio mínimo. Como a role já existia antes do resource, o step "Import existing CI/CD role" em `02_terraform.yml` adota ela no state via `terraform import` antes do plan/apply de cada ambiente (checa `terraform state list` primeiro — no-op depois da primeira adoção); sem isso o Terraform tentaria `CreateRole` nela, que a própria role não tem permissão de fazer contra si mesma. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
 
-**MaxSessionDuration:** a role precisa ter `MaxSessionDuration = 21600` (6h) em ambos os ambientes, pois o workflow `05_backfill.yml` pede `role-duration-seconds: 21600` (backfills históricos podem rodar por horas, e 6h é o teto de um job em runner hospedado do GitHub). Como a role é manual, ajuste com:
+**MaxSessionDuration:** a role tem `max_session_duration = 21600` (6h) fixado no código — um teto, não uma duração forçada. O workflow `05_backfill.yml` não pede mais `role-duration-seconds` customizado (usa o default de 1h da action `aws-actions/configure-aws-credentials`): backfills históricos podem rodar por horas e a sessão expira antes do fim, e em vez de esticar a sessão o step "Executar backfill" trata `ExpiredTokenException` especificamente — reassume a role via `aws sts assume-role-with-web-identity` inline (nova sessão de 1h) e retoma o script do checkpoint em S3 (ver `scripts/backfill_checkpoint.py` e a seção `05_backfill.yml` em `estrutura-projeto.md`). O teto de 21600s na role não precisa ser reduzido — só deixa de ser usado na prática.
 
-```bash
-aws iam update-role --role-name lsg-github-actions-dev  --max-session-duration 21600
-aws iam update-role --role-name lsg-github-actions-prod --max-session-duration 21600
-```
+A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se auto-gerenciar (`iam:UpdateRole`, `iam:UpdateAssumeRolePolicy`, `iam:TagRole`/`UntagRole`), sem poder se criar ou deletar (statement `IAMCICDRoleManagement`).
 
 | Policy | Escopo |
 |---|---|

@@ -13,6 +13,7 @@ Uso:
 
 Variáveis de ambiente obrigatórias:
     AWS_REGION
+    TABLE_GROUP            (identifica o checkpoint; valor "traducao" neste script)
     S3_BUCKET_SOT
     GLUE_DATABASE_MOVIE
     GLUE_DATABASE_TV
@@ -25,6 +26,13 @@ Variáveis opcionais:
     BACKFILL_START_YEAR    (padrão: 2000)
     BACKFILL_END_YEAR      (padrão: ano atual)
     BACKFILL_WAIT_SECONDS  (padrão: 300 — pausa entre partições para não saturar Google Translate)
+
+Retomada automática:
+    Se ExpiredTokenException ocorrer, o script sai com exit code 75
+    (backfill_checkpoint.RETRYABLE_EXIT_CODE). O workflow renova a credencial
+    e roda o script de novo — como o progresso é lido do checkpoint em S3
+    (s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json), as
+    partições (ano+tipo) já concluídas são puladas.
 """
 
 import logging
@@ -35,9 +43,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import awswrangler as wr
+import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
 from deep_translator import GoogleTranslator
+
+import backfill_checkpoint as checkpoint
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -61,8 +72,8 @@ def _log_expired_token(exc: ClientError, contexto: str) -> None:
     """Loga um erro claro se a credencial AWS expirou durante o backfill."""
     if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
         logger.error(
-            "Credenciais AWS expiraram durante %s. Verifique role-duration-seconds no "
-            "workflow e MaxSessionDuration da role IAM (ver infra/docs/iam.md).",
+            "Credenciais AWS expiraram durante %s. O workflow vai renovar a credencial "
+            "e retomar do checkpoint automaticamente (ver scripts/backfill_checkpoint.py).",
             contexto,
         )
 
@@ -173,8 +184,10 @@ def _backfill_year(
 
 
 def main() -> None:
-    os.environ["AWS_DEFAULT_REGION"] = _require_env("AWS_REGION")
+    region = _require_env("AWS_REGION")
+    os.environ["AWS_DEFAULT_REGION"] = region
 
+    table_group          = _require_env("TABLE_GROUP")
     s3_bucket_sot        = _require_env("S3_BUCKET_SOT")
     db_movie             = _require_env("GLUE_DATABASE_MOVIE")
     db_tv                = _require_env("GLUE_DATABASE_TV")
@@ -194,6 +207,8 @@ def main() -> None:
         start_year, end_year, total, wait_seconds,
     )
 
+    s3_client = boto3.client("s3", region_name=region)
+
     logger.info("Carregando tabelas discover do S3...")
     discover_map_movie = _load_discover_map(table_discover_movie, s3_bucket_sot)
     discover_map_tv    = _load_discover_map(table_discover_tv, s3_bucket_sot)
@@ -202,36 +217,44 @@ def main() -> None:
         len(discover_map_movie), len(discover_map_tv),
     )
 
-    n = 0
+    completed = checkpoint.load_checkpoint(s3_client, s3_bucket_sot, table_group, start_year, end_year)
+
+    unidades = []
     for year in years:
-        n += 1
-        logger.info("[%d/%d] movie | year=%d", n, total, year)
+        unidades.append(("movie", year, db_movie, table_details_movie, discover_map_movie))
+        unidades.append(("tv", year, db_tv, table_details_tv, discover_map_tv))
+
+    pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]
+    if len(pendentes) < len(unidades):
+        logger.info(
+            "%d de %d partições já concluídas no checkpoint; retomando com %d pendente(s).",
+            len(unidades) - len(pendentes), len(unidades), len(pendentes),
+        )
+
+    for i, (tipo, year, database, table_details, discover_map) in enumerate(pendentes, start=1):
+        logger.info("[%d/%d] %s | year=%d", i, len(pendentes), tipo, year)
         _backfill_year(
-            database=db_movie,
-            table_details=table_details_movie,
-            discover_map=discover_map_movie,
+            database=database,
+            table_details=table_details,
+            discover_map=discover_map,
             year=str(year),
             s3_bucket_sot=s3_bucket_sot,
         )
-        if n < total:
+        completed.add(f"{tipo}:{year}")
+        checkpoint.save_checkpoint(s3_client, s3_bucket_sot, table_group, start_year, end_year, completed)
+        if i < len(pendentes):
             logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
             time.sleep(wait_seconds)
 
-        n += 1
-        logger.info("[%d/%d] tv    | year=%d", n, total, year)
-        _backfill_year(
-            database=db_tv,
-            table_details=table_details_tv,
-            discover_map=discover_map_tv,
-            year=str(year),
-            s3_bucket_sot=s3_bucket_sot,
-        )
-        if n < total:
-            logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
-            time.sleep(wait_seconds)
-
+    checkpoint.clear_checkpoint(s3_client, s3_bucket_sot, table_group)
     logger.info("Backfill de tradução concluído: %d até %d", start_year, end_year)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ClientError as exc:
+        codigo = checkpoint.expired_token_exit_code(exc)
+        if codigo is not None:
+            sys.exit(codigo)
+        raise
