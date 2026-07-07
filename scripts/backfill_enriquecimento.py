@@ -25,7 +25,7 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
-    WAIT_SECONDS          (padrão: 60 — tempo entre runs; cada run do Glue Details dispara 2 runs do
+    WAIT_SECONDS          (padrão: 300 — tempo entre runs; cada run do Glue Details dispara 2 runs do
                            Glue Data Quality em fire-and-forget, então o intervalo evita saturar o
                            max_concurrent_runs do Data Quality, compartilhado com o restante do pipeline)
     FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
@@ -128,7 +128,7 @@ def main() -> None:
 
     start_year     = int(os.environ.get("BACKFILL_START_YEAR", 2000))
     end_year       = int(os.environ.get("BACKFILL_END_YEAR", datetime.now().year))
-    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 60))
+    wait_seconds   = int(os.environ.get("WAIT_SECONDS", 300))
     force_refetch  = os.environ.get("FORCE_REFETCH", "true").lower() == "true"
 
     client    = boto3.client("glue", region_name=region)
