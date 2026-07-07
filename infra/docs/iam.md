@@ -22,14 +22,11 @@ Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada*
 
 ## Permissões do CI/CD (`iam_cicd.tf`)
 
-A role do GitHub Actions (`lsg-github-actions-{env}`) é criada **manualmente** (fora do Terraform) e recebe 6 policies managed de privilégio mínimo criadas pelo Terraform. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
+A role do GitHub Actions (`lsg-github-actions-{env}`) foi originalmente criada **manualmente** e depois importada (`terraform import`) para ser gerenciada como `aws_iam_role.github_actions` em `iam_cicd.tf`, que também cria e anexa 6 policies managed de privilégio mínimo. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
 
-**MaxSessionDuration:** a role precisa ter `MaxSessionDuration = 21600` (6h) em ambos os ambientes, pois o workflow `05_backfill.yml` pede `role-duration-seconds: 21600` (backfills históricos podem rodar por horas, e 6h é o teto de um job em runner hospedado do GitHub). Como a role é manual, ajuste com:
+**MaxSessionDuration:** a role tem `max_session_duration = 21600` (6h) fixado no código, pois o workflow `05_backfill.yml` pede `role-duration-seconds: 21600` (backfills históricos podem rodar por horas, e 6h é o teto de um job em runner hospedado do GitHub). Por ser gerenciada pelo Terraform, esse valor não sofre mais drift manual — qualquer mudança deve ser feita em `iam_cicd.tf`.
 
-```bash
-aws iam update-role --role-name lsg-github-actions-dev  --max-session-duration 21600
-aws iam update-role --role-name lsg-github-actions-prod --max-session-duration 21600
-```
+A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se auto-gerenciar (`iam:UpdateRole`, `iam:UpdateAssumeRolePolicy`, `iam:TagRole`/`UntagRole`), sem poder se criar ou deletar (statement `IAMCICDRoleManagement`).
 
 | Policy | Escopo |
 |---|---|
