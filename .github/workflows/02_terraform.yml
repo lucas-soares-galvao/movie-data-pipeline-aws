@@ -69,6 +69,14 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.3
+          # O wrapper JS (default) captura stdout/stderr via um pipe interno e
+          # trava com "Error: write EPIPE" quando esse stdout é consumido por
+          # algo que fecha a leitura cedo (ex.: "terraform state list | grep -q"
+          # no step de import abaixo) — o crash faz o comando "falhar" para o
+          # shell (pipefail), causando falsos negativos no check de idempotência.
+          # Nenhum step deste workflow usa steps.*.outputs.stdout/stderr do
+          # wrapper, então desabilitá-lo é seguro.
+          terraform_wrapper: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
