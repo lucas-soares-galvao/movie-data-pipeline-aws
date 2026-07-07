@@ -85,7 +85,7 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 | `test_outro_client_error_no_start_job_run_repropaga_sem_log_de_credenciais` | Outro `ClientError` não gera o log específico de credenciais |
 | `test_retorna_imediatamente_quando_ja_terminou` / `test_faz_polling_ate_estado_terminal` | `_wait_for_job` faz polling com `time.sleep(poll_interval)` até estado terminal |
 | `test_total_de_runs_e_anos_vezes_dois_tipos` | Total de runs = anos × 2 |
-| `test_roda_todos_os_anos_de_movie_antes_de_tv` | Ordem é todos os anos de `movie`, depois todos os anos de `tv` (diferente de `backfill_historico.py`, que alterna por ano) |
+| `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_historico.py` |
 | `test_falha_em_um_run_nao_interrompe_o_backfill` | Um estado `FAILED` é logado mas **não** aborta o loop (diferente de `backfill_historico.py`, que aborta no primeiro erro) |
 | `test_nao_pausa_apos_ultimo_run` | Sem `time.sleep` após o último run |
 | `test_default_e_true` / `test_false_omite_o_argumento` | `FORCE_REFETCH` lido corretamente do ambiente |
