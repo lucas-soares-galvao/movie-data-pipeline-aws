@@ -1,13 +1,43 @@
 # =============================================================================
-# iam_cicd.tf — Políticas IAM de privilégio mínimo para a role do GitHub Actions
+# iam_cicd.tf — Role e políticas IAM de privilégio mínimo para o GitHub Actions
 # =============================================================================
 #
-# A role lsg-github-actions-{env} já existe (criada manualmente). Este arquivo
-# apenas cria as políticas managed e as anexa à role existente.
+# A role lsg-github-actions-{env} foi originalmente criada manualmente e agora
+# é importada e gerenciada pelo Terraform (max_session_duration = 21600, exigido
+# pelo workflow 05_backfill.yml — ver infra/docs/iam.md). Este arquivo também
+# cria as políticas managed e as anexa à role.
 # =============================================================================
 
-data "aws_iam_role" "github_actions" {
+resource "aws_iam_role" "github_actions" {
   name = "${local.project_config.cicd_role_name}-${var.env}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:lucas-soares-galvao/*",
+              "repo:lucas-soares-galvao/*",
+            ]
+          }
+        }
+      },
+    ]
+  })
+
+  max_session_duration = 21600
+
+  tags = merge(local.default_resource_tags, local.component_tags.shared)
 }
 
 # =============================================================================
@@ -45,7 +75,7 @@ resource "aws_iam_policy" "cicd_backend" {
 }
 
 resource "aws_iam_role_policy_attachment" "cicd_backend" {
-  role       = data.aws_iam_role.github_actions.name
+  role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.cicd_backend.arn
 }
 
@@ -149,7 +179,7 @@ resource "aws_iam_policy" "cicd_s3" {
 }
 
 resource "aws_iam_role_policy_attachment" "cicd_s3" {
-  role       = data.aws_iam_role.github_actions.name
+  role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.cicd_s3.arn
 }
 
@@ -158,7 +188,7 @@ resource "aws_iam_role_policy_attachment" "cicd_s3" {
 # =============================================================================
 # Segurança:
 # - CRUD completo apenas em roles tmdb-* (infraestrutura do projeto)
-# - Leitura-only na role CI/CD (para o data source, sem poder deletar a si mesma)
+# - Auto-gerenciamento (Update/Tag) na própria role CI/CD, sem poder criar/deletar a si mesma
 # - AttachRolePolicy com Condition restringindo quais policies podem ser anexadas
 # - PassRole restrito aos 4 serviços que recebem roles do projeto
 
@@ -188,12 +218,20 @@ resource "aws_iam_policy" "iam_cicd" {
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.tmdb_prefix}-*"
       },
       {
-        Sid    = "IAMCICDRoleReadOnly"
+        # Sem Create/DeleteRole — a role CI/CD não pode se auto-criar nem se
+        # auto-deletar, mas precisa gerenciar seus próprios atributos (ex.:
+        # max_session_duration, assume_role_policy) agora que é um resource
+        # Terraform em vez de um data source.
+        Sid    = "IAMCICDRoleManagement"
         Effect = "Allow"
         Action = [
           "iam:GetRole",
+          "iam:UpdateRole",
+          "iam:UpdateAssumeRolePolicy",
           "iam:ListRolePolicies",
           "iam:ListAttachedRolePolicies",
+          "iam:TagRole",
+          "iam:UntagRole",
           "iam:ListRoleTags",
         ]
         Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.project_config.cicd_role_name}-*"
@@ -301,7 +339,7 @@ resource "aws_iam_policy" "iam_cicd" {
 }
 
 resource "aws_iam_role_policy_attachment" "iam_cicd" {
-  role       = data.aws_iam_role.github_actions.name
+  role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.iam_cicd.arn
 }
 
@@ -413,7 +451,7 @@ resource "aws_iam_policy" "cicd_compute" {
 }
 
 resource "aws_iam_role_policy_attachment" "cicd_compute" {
-  role       = data.aws_iam_role.github_actions.name
+  role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.cicd_compute.arn
 }
 
@@ -528,7 +566,7 @@ resource "aws_iam_policy" "cicd_observability" {
 }
 
 resource "aws_iam_role_policy_attachment" "cicd_observability" {
-  role       = data.aws_iam_role.github_actions.name
+  role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.cicd_observability.arn
 }
 
@@ -621,7 +659,7 @@ resource "aws_iam_policy" "cicd_lightsail" {
 }
 
 resource "aws_iam_role_policy_attachment" "cicd_lightsail" {
-  role       = data.aws_iam_role.github_actions.name
+  role       = aws_iam_role.github_actions.name
   policy_arn = aws_iam_policy.cicd_lightsail.arn
 }
 
