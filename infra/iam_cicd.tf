@@ -3,9 +3,11 @@
 # =============================================================================
 #
 # A role lsg-github-actions-{env} foi originalmente criada manualmente e agora
-# é importada e gerenciada pelo Terraform (max_session_duration = 21600, exigido
-# pelo workflow 05_backfill.yml — ver infra/docs/iam.md). Este arquivo também
-# cria as políticas managed e as anexa à role.
+# é importada e gerenciada pelo Terraform (max_session_duration = 21600 — teto,
+# não duração forçada; o workflow 05_backfill.yml usa o default de 1h e trata
+# ExpiredTokenException com retomada automática via checkpoint — ver
+# infra/docs/iam.md). Este arquivo também cria as políticas managed e as
+# anexa à role.
 # =============================================================================
 
 resource "aws_iam_role" "github_actions" {
@@ -26,7 +28,6 @@ resource "aws_iam_role" "github_actions" {
           }
           StringLike = {
             "token.actions.githubusercontent.com:sub" = [
-              "repo:lucas-soares-galvao/*",
               "repo:lucas-soares-galvao/*",
             ]
           }

@@ -82,11 +82,12 @@ jobs:
           role-to-assume: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_PROD || secrets.AWS_ASSUME_ROLE_ARN_DEV }}
           role-session-name: GitHub_to_AWS_Backfill
           aws-region: sa-east-1
-          # Backfills históricos podem rodar por horas (ver timeout-minutes acima).
-          # 21600s (6h) alinha a sessão STS com o teto máximo de um job em runner
-          # hospedado do GitHub, evitando ExpiredTokenException em execuções longas.
-          # Requer MaxSessionDuration >= 21600 na role IAM (ver infra/docs/iam.md).
-          role-duration-seconds: 21600
+          # Sessão padrão de 1h (default da action). Backfills históricos podem
+          # rodar por horas e a sessão expira antes do fim — em vez de esticar
+          # a duração, o step "Executar backfill" abaixo trata
+          # ExpiredTokenException especificamente: renova a credencial (nova
+          # sessão de 1h via OIDC) e retoma o script do checkpoint em S3, sem
+          # perder o progresso já feito (ver scripts/backfill_checkpoint.py).
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -104,6 +105,10 @@ jobs:
         env:
           AWS_REGION: sa-east-1
           FORCE_REFETCH: "true"
+          TABLE_GROUP: ${{ inputs.table_group }}
+
+          # Role para renovar a credencial via OIDC se ExpiredTokenException ocorrer no meio do backfill
+          ROLE_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_PROD || secrets.AWS_ASSUME_ROLE_ARN_DEV }}
 
           # Jobs
           GLUE_DETAILS_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-details-${{ steps.env.outputs.name }}
@@ -136,10 +141,51 @@ jobs:
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"
           fi
-          case "${{ inputs.table_group }}" in
-            discover)             python scripts/backfill_historico.py ;;
-            referencias)          python scripts/backfill_referencias.py ;;
-            detalhes_e_providers) python scripts/backfill_enriquecimento.py ;;
-            data_quality)         python scripts/backfill_data_quality.py ;;
-            traducao)             python scripts/backfill_traducao.py ;;
-          esac
+
+          executar_script() {
+            case "${{ inputs.table_group }}" in
+              discover)             python scripts/backfill_historico.py ;;
+              referencias)          python scripts/backfill_referencias.py ;;
+              detalhes_e_providers) python scripts/backfill_enriquecimento.py ;;
+              data_quality)         python scripts/backfill_data_quality.py ;;
+              traducao)             python scripts/backfill_traducao.py ;;
+            esac
+          }
+
+          # Re-assume a role via OIDC (mesma mecânica de aws-actions/configure-aws-credentials,
+          # inline para poder repetir a cada tentativa) e exporta uma sessão nova de 1h.
+          renovar_credenciais() {
+            echo "Token expirado — renovando credenciais AWS (nova sessão de 1h via OIDC)..."
+            oidc_token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+            creds=$(aws sts assume-role-with-web-identity \
+              --role-arn "$ROLE_ARN" \
+              --role-session-name GitHub_to_AWS_Backfill \
+              --web-identity-token "$oidc_token" \
+              --duration-seconds 3600 \
+              --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+              --output text)
+            export AWS_ACCESS_KEY_ID=$(echo "$creds" | cut -f1)
+            export AWS_SECRET_ACCESS_KEY=$(echo "$creds" | cut -f2)
+            export AWS_SESSION_TOKEN=$(echo "$creds" | cut -f3)
+          }
+
+          # Nota: backfill_referencias.py não itera por ano, não grava checkpoint e nunca
+          # sai com código 75 — para ele, este loop roda uma única vez e sai normalmente.
+          max_tentativas=10
+          tentativa=1
+          while true; do
+            echo "Tentativa $tentativa/$max_tentativas..."
+            executar_script
+            codigo=$?
+            if [ $codigo -eq 0 ]; then
+              echo "Backfill concluído com sucesso."
+              break
+            elif [ $codigo -eq 75 ] && [ $tentativa -lt $max_tentativas ]; then
+              tentativa=$((tentativa + 1))
+              renovar_credenciais
+            else
+              echo "Backfill falhou (código $codigo)."
+              exit $codigo
+            fi
+          done
