@@ -18,6 +18,10 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz title/overview para português via Google Translate | S3 (direto) | awswrangler, pandas, deep_translator |
 
+`backfill_checkpoint.py` não é executado diretamente — é um módulo compartilhado
+pelos 4 scripts acima (exceto `backfill_referencias.py`) para o checkpoint de
+retomada automática (ver seção "Retomada automática" abaixo).
+
 ## Pré-requisitos
 
 - Python 3.12+ com as dependências do projeto instaladas
@@ -52,4 +56,34 @@ Todos os scripts aceitam, **exceto `backfill_referencias.py`** (que não depende
 | `BACKFILL_START_YEAR` | `2000` | Ano inicial do backfill |
 | `BACKFILL_END_YEAR` | ano atual | Ano final do backfill |
 
+Os 4 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimento.py`,
+`backfill_data_quality.py`, `backfill_traducao.py`) também exigem:
+
+| Variável | Descrição |
+|---|---|
+| `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`) |
+| `S3_BUCKET_SOT` | Bucket onde o checkpoint é armazenado |
+
 Cada script possui variáveis adicionais documentadas em sua docstring.
+
+## Retomada automática (ExpiredTokenException)
+
+Os 4 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou
+tabela+ano), um checkpoint em
+`s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json` (ver
+`scripts/backfill_checkpoint.py`). Se a credencial AWS expirar no meio do
+backfill (`ExpiredTokenException`), o script sai com o exit code 75
+(`backfill_checkpoint.RETRYABLE_EXIT_CODE`) em vez de propagar a exceção crua.
+
+O workflow `.github/workflows/05_backfill.yml` reconhece esse código: renova a
+credencial (nova sessão de 1h via `sts assume-role-with-web-identity`, usando
+o token OIDC do próprio job) e roda o script de novo, dentro do mesmo job —
+até 10 tentativas. Como o script relê o checkpoint no início, ele pula direto
+para as unidades ainda pendentes em vez de recomeçar do `BACKFILL_START_YEAR`.
+
+Qualquer outro tipo de erro (não relacionado a token expirado) continua
+falhando o job normalmente, sem retry automático. O checkpoint só é apagado
+quando o backfill termina 100% sem falhas — se sobrarem falhas "soft" (ex.:
+um run do Glue Details que terminou em `FAILED`), o checkpoint permanece,
+então disparar o workflow de novo com o mesmo range de anos re-tenta só as
+unidades que faltaram.

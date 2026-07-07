@@ -6,6 +6,7 @@ contrato "erro em um run não aborta o backfill inteiro" — diferente de
 backfill_historico.py, que interrompe tudo no primeiro erro.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +17,8 @@ import backfill_enriquecimento as be
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",
     "GLUE_DETAILS_JOB_NAME": "tmdb-glue-details-test",
+    "TABLE_GROUP": "detalhes_e_providers",
+    "S3_BUCKET_SOT": "bucket-sot-test",
     "GLUE_DATABASE_MOVIE": "db_movie",
     "GLUE_DATABASE_TV": "db_tv",
 }
@@ -24,6 +27,15 @@ ENV_BASE = {
 def _set_env(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None) -> None:
     for key, value in {**ENV_BASE, **(overrides or {})}.items():
         monkeypatch.setenv(key, value)
+
+
+def _s3_client_sem_checkpoint() -> MagicMock:
+    """Cliente S3 mockado simulando ausência de checkpoint (comportamento padrão nos testes)."""
+    client = MagicMock()
+    client.get_object.side_effect = ClientError(
+        {"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject",
+    )
+    return client
 
 
 class TestStartGlueJob:
@@ -45,6 +57,31 @@ class TestStartGlueJob:
 
         args = client.start_job_run.call_args.kwargs["Arguments"]
         assert args["--FORCE_REFETCH"] == "true"
+
+    def test_expired_token_no_start_job_run_loga_e_repropaga(self, caplog):
+        """Regressão: era o único ponto do script sem o wrapper de log/re-raise de ExpiredTokenException."""
+        client = MagicMock()
+        client.start_job_run.side_effect = ClientError(
+            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "StartJobRun",
+        )
+
+        with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
+            with pytest.raises(ClientError):
+                be._start_glue_job(client, "job", "movie", 2020, 2025, "db_movie")
+
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
+
+    def test_outro_client_error_no_start_job_run_repropaga_sem_log_de_credenciais(self, caplog):
+        client = MagicMock()
+        client.start_job_run.side_effect = ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}}, "StartJobRun",
+        )
+
+        with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
+            with pytest.raises(ClientError):
+                be._start_glue_job(client, "job", "movie", 2020, 2025, "db_movie")
+
+        assert not any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
 class TestWaitForJob:
@@ -99,37 +136,42 @@ class TestWaitForJob:
         assert not any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
-def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, job_states=None):
+def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, job_states=None, mock_s3: MagicMock | None = None):
     """Roda be.main() com o client Glue mockado. job_states define o resultado de cada _wait_for_job."""
     _set_env(monkeypatch, overrides)
-    mock_client = MagicMock()
-    mock_client.start_job_run.side_effect = [
+    mock_glue = MagicMock()
+    mock_glue.start_job_run.side_effect = [
         {"JobRunId": f"run-{i}"} for i in range(1000)
     ]
+    mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
+
+    def _client_factory(service_name, **kwargs):
+        return {"glue": mock_glue, "s3": mock_s3}[service_name]
+
     with (
         patch("backfill_enriquecimento.boto3") as mock_boto3,
         patch("backfill_enriquecimento.time.sleep") as mock_sleep,
         patch("backfill_enriquecimento._wait_for_job") as mock_wait,
     ):
-        mock_boto3.client.return_value = mock_client
+        mock_boto3.client.side_effect = _client_factory
         mock_wait.side_effect = job_states or (lambda *a, **k: "SUCCEEDED")
         be.main()
-    return mock_client, mock_sleep, mock_wait
+    return mock_glue, mock_sleep, mock_wait, mock_s3
 
 
 class TestLoopPrincipal:
     def test_total_de_runs_e_anos_vezes_dois_tipos(self, monkeypatch):
-        mock_client, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
+        mock_client, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         assert mock_client.start_job_run.call_count == 6  # 3 anos x 2 tipos
 
     def test_roda_todos_os_anos_de_movie_antes_de_tv(self, monkeypatch):
-        mock_client, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        mock_client, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         media_types = [c.kwargs["Arguments"]["--MEDIA_TYPE"] for c in mock_client.start_job_run.call_args_list]
         assert media_types == ["movie", "movie", "tv", "tv"]
 
     def test_falha_em_um_run_nao_interrompe_o_backfill(self, monkeypatch):
         """Diferente de backfill_historico.py: um estado != SUCCEEDED aqui só é logado, não aborta o loop."""
-        mock_client, _, _ = _run_main(
+        mock_client, _, _, _ = _run_main(
             monkeypatch,
             {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"},
             job_states=["FAILED", "SUCCEEDED", "SUCCEEDED", "SUCCEEDED"],
@@ -137,7 +179,7 @@ class TestLoopPrincipal:
         assert mock_client.start_job_run.call_count == 4
 
     def test_nao_pausa_apos_ultimo_run(self, monkeypatch):
-        mock_client, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        mock_client, mock_sleep, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_sleep.call_count == mock_client.start_job_run.call_count - 1
 
     def test_loga_resumo_das_falhas_ao_final(self, monkeypatch, caplog):
@@ -161,12 +203,12 @@ class TestLoopPrincipal:
 
 class TestForceRefetch:
     def test_default_e_true(self, monkeypatch):
-        mock_client, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mock_client, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         args = mock_client.start_job_run.call_args_list[0].kwargs["Arguments"]
         assert args["--FORCE_REFETCH"] == "true"
 
     def test_false_omite_o_argumento(self, monkeypatch):
-        mock_client, _, _ = _run_main(
+        mock_client, _, _, _ = _run_main(
             monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "FORCE_REFETCH": "false"}
         )
         args = mock_client.start_job_run.call_args_list[0].kwargs["Arguments"]
@@ -179,3 +221,62 @@ class TestErros:
         monkeypatch.delenv("GLUE_DETAILS_JOB_NAME", raising=False)
         with pytest.raises(EnvironmentError):
             be.main()
+
+    def test_outro_erro_nao_gera_codigo_de_retomada(self):
+        exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "StartJobRun")
+        assert be.checkpoint.expired_token_exit_code(exc) is None
+
+    def test_expired_token_gera_codigo_75(self):
+        exc = ClientError({"Error": {"Code": "ExpiredTokenException", "Message": "x"}}, "StartJobRun")
+        assert be.checkpoint.expired_token_exit_code(exc) == 75
+
+
+class TestCheckpoint:
+    def test_pula_unidades_ja_concluidas(self, monkeypatch):
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {
+            "Body": MagicMock(read=MagicMock(return_value=json.dumps(
+                {"start_year": 2020, "end_year": 2021, "completed": ["movie:2020", "movie:2021"]}
+            ).encode()))
+        }
+
+        mock_client, _, _, _ = _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"}, mock_s3=mock_s3,
+        )
+
+        media_types = [c.kwargs["Arguments"]["--MEDIA_TYPE"] for c in mock_client.start_job_run.call_args_list]
+        anos = [c.kwargs["Arguments"]["--YEAR"] for c in mock_client.start_job_run.call_args_list]
+        assert list(zip(media_types, anos)) == [("tv", "2020"), ("tv", "2021")]
+
+    def test_salva_checkpoint_apenas_para_runs_com_sucesso(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            job_states=["FAILED", "SUCCEEDED"],
+            mock_s3=mock_s3,
+        )
+
+        assert mock_s3.put_object.call_count == 1
+        body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert body["completed"] == ["tv:2020"]
+
+    def test_limpa_checkpoint_ao_concluir_tudo_com_sucesso(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3)
+
+        mock_s3.delete_object.assert_called_once()
+
+    def test_nao_limpa_checkpoint_quando_ha_falhas(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            job_states=["FAILED", "SUCCEEDED"],
+            mock_s3=mock_s3,
+        )
+
+        mock_s3.delete_object.assert_not_called()

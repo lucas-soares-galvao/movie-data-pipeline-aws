@@ -7,7 +7,8 @@ _load_discover_map) isoladamente, e a orquestração de main() via mocks dessas
 funções — evita montar DataFrames grandes só para testar o loop de anos.
 """
 
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -17,6 +18,7 @@ import backfill_traducao as bt
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",
+    "TABLE_GROUP": "traducao",
     "S3_BUCKET_SOT": "bucket-sot-test",
     "GLUE_DATABASE_MOVIE": "db_movie",
     "GLUE_DATABASE_TV": "db_tv",
@@ -30,6 +32,15 @@ ENV_BASE = {
 def _set_env(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None) -> None:
     for key, value in {**ENV_BASE, **(overrides or {})}.items():
         monkeypatch.setenv(key, value)
+
+
+def _s3_client_sem_checkpoint() -> MagicMock:
+    """Cliente S3 mockado simulando ausência de checkpoint (comportamento padrão nos testes)."""
+    client = MagicMock()
+    client.get_object.side_effect = ClientError(
+        {"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject",
+    )
+    return client
 
 
 class TestTranslate:
@@ -191,34 +202,37 @@ class TestBackfillYear:
         assert (kwargs["df"]["year"] == "2020").all()
 
 
-def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None):
+def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mock_s3: MagicMock | None = None):
     _set_env(monkeypatch, overrides)
+    mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
     with (
         patch("backfill_traducao._load_discover_map") as mock_load,
         patch("backfill_traducao._backfill_year") as mock_backfill,
         patch("backfill_traducao.time.sleep") as mock_sleep,
+        patch("backfill_traducao.boto3") as mock_boto3,
     ):
         mock_load.return_value = pd.DataFrame({"id": [], "original_language": []})
+        mock_boto3.client.return_value = mock_s3
         bt.main()
-    return mock_load, mock_backfill, mock_sleep
+    return mock_load, mock_backfill, mock_sleep, mock_s3
 
 
 class TestMain:
     def test_carrega_discover_map_uma_vez_por_tipo(self, monkeypatch):
-        mock_load, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        mock_load, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_load.call_count == 2  # movie + tv, independente do numero de anos
 
     def test_backfill_year_chamado_para_cada_ano_e_tipo(self, monkeypatch):
-        _, mock_backfill, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
+        _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         assert mock_backfill.call_count == 6  # 3 anos x 2 tipos
 
     def test_alterna_movie_e_tv_por_ano(self, monkeypatch):
-        _, mock_backfill, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         databases = [c.kwargs["database"] for c in mock_backfill.call_args_list]
         assert databases == ["db_movie", "db_tv"]
 
     def test_nao_pausa_apos_ultima_chamada(self, monkeypatch):
-        _, mock_backfill, mock_sleep = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        _, mock_backfill, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_sleep.call_count == mock_backfill.call_count - 1
 
 
@@ -228,3 +242,76 @@ class TestErros:
         monkeypatch.delenv("S3_BUCKET_SOT", raising=False)
         with pytest.raises(EnvironmentError):
             bt.main()
+
+    def test_outro_erro_nao_gera_codigo_de_retomada(self):
+        exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "GetObject")
+        assert bt.checkpoint.expired_token_exit_code(exc) is None
+
+    def test_expired_token_gera_codigo_75(self):
+        exc = ClientError({"Error": {"Code": "ExpiredTokenException", "Message": "x"}}, "GetObject")
+        assert bt.checkpoint.expired_token_exit_code(exc) == 75
+
+
+class TestCheckpoint:
+    def test_pula_particoes_ja_concluidas(self, monkeypatch):
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {
+            "Body": MagicMock(read=MagicMock(return_value=json.dumps(
+                {"start_year": 2020, "end_year": 2021, "completed": ["movie:2020", "tv:2020"]}
+            ).encode()))
+        }
+
+        _, mock_backfill, _, _ = _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"}, mock_s3=mock_s3,
+        )
+
+        anos = [(c.kwargs["database"], c.kwargs["year"]) for c in mock_backfill.call_args_list]
+        assert anos == [("db_movie", "2021"), ("db_tv", "2021")]
+
+    def test_salva_checkpoint_apos_cada_particao(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3)
+
+        assert mock_s3.put_object.call_count == 2  # movie:2020, tv:2020
+
+    def test_marca_completo_mesmo_quando_backfill_year_retorna_false(self, monkeypatch):
+        """Nenhum arquivo/registro para a partição ainda conta como concluído (nada para fazer, não é falha)."""
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3,
+        )
+
+        body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert body["completed"] == ["movie:2020", "tv:2020"]
+
+    def test_limpa_checkpoint_ao_concluir_tudo_com_sucesso(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3)
+
+        mock_s3.delete_object.assert_called_once()
+
+    def test_checkpoint_reflete_progresso_parcial_quando_interrompido(self, monkeypatch):
+        _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        with (
+            patch("backfill_traducao._load_discover_map") as mock_load,
+            patch("backfill_traducao._backfill_year") as mock_backfill,
+            patch("backfill_traducao.time.sleep"),
+            patch("backfill_traducao.boto3") as mock_boto3,
+        ):
+            mock_load.return_value = pd.DataFrame({"id": [], "original_language": []})
+            mock_boto3.client.return_value = mock_s3
+            mock_backfill.side_effect = [
+                True,
+                ClientError({"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "GetObject"),
+            ]
+            with pytest.raises(ClientError):
+                bt.main()
+
+        assert mock_s3.put_object.call_count == 1
+        body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert body["completed"] == ["movie:2020"]
