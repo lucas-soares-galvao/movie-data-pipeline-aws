@@ -3,8 +3,8 @@
 # =============================================================================
 #
 # A role lsg-github-actions-{env} foi originalmente criada manualmente e agora
-# é importada e gerenciada pelo Terraform (max_session_duration = 21600 — teto,
-# não duração forçada; o workflow 05_backfill.yml usa o default de 1h e trata
+# é importada e gerenciada pelo Terraform (max_session_duration = 3600, 1h —
+# o workflow 05_backfill.yml usa exatamente essa duração e trata
 # ExpiredTokenException com retomada automática via checkpoint — ver
 # infra/docs/iam.md). Este arquivo também cria as políticas managed e as
 # anexa à role.
@@ -36,7 +36,7 @@ resource "aws_iam_role" "github_actions" {
     ]
   })
 
-  max_session_duration = 21600
+  max_session_duration = 3600
 
   tags = merge(local.default_resource_tags, local.component_tags.shared)
 }
