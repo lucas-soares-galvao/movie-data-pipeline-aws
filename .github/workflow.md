@@ -96,13 +96,15 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 2. Build do pacote Lambda (`infra/scripts/build_lambda_package.py`), do wheel Shared e dos wheels dos módulos Glue Python Shell listados em `glue_wheel_modules` (`infra/config/project.json`, hoje: ETL, Agg, Details) — verifica se os artefatos foram gerados; adicionar um novo módulo Glue Python Shell é só incluí-lo nesse array
 3. Lê `infra/config/destroy_config.json` para decidir se destrói ou aplica — valida que o valor é `true` ou `false`
 4. `terraform init` com backend S3 + DynamoDB
-5. **Import da role de CI/CD** — a role `lsg-github-actions-{env}` existe fora do Terraform desde antes de virar `resource` em `iam_cicd.tf`; este step adota ela no state via `terraform import` (checa `terraform state list` antes — no-op após a primeira adoção). Sem isso o Terraform tentaria `CreateRole` nela, que a própria role não tem permissão de fazer contra si mesma
+5. **Import da role de CI/CD** — a role `lsg-github-actions-{env}` existe fora do Terraform desde antes de virar `resource` em `iam_cicd.tf`; este step adota ela no state via `terraform import` (checa `terraform state show` antes — no-op após a primeira adoção; usa `state show` de um resource específico em vez de `state list | grep` para não depender de um pipe entre dois comandos, que sob `pipefail` podia gerar falso negativo por broken pipe e reimportar uma role já adotada). Sem isso o Terraform tentaria `CreateRole` nela, que a própria role não tem permissão de fazer contra si mesma
 6. `terraform validate` e `terraform fmt -check` (**bloqueantes**) + TFLint e Checkov (não-bloqueantes — apenas avisos)
 7. Injeta o e-mail de notificação no `.tfvars` (não é commitado no repo)
 8. **Bootstrap das IAM policies** — aplica com `-target` as 6 policies do CI/CD antes do plan principal, resolvendo o problema de bootstrap (a role precisa das policies para gerenciar os recursos, mas as policies são criadas pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op. Verifica via polling (a cada 5s, timeout 60s) com `aws iam list-attached-role-policies` se as 6 policies estão de fato attachadas à role — falha o pipeline se alguma estiver ausente
 9. `terraform destroy` **ou** `terraform plan` + Infracost + `terraform apply`
 
 **Autenticação AWS:** OIDC — assume a role `lsg-github-actions-{env}` (nome configurável via `infra/config/project.json`) com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`). As variáveis `cicd_statefile_s3_bucket` e `cicd_lock_dynamodb_table` são passadas via `-var` a partir dos secrets `aws-statefile-s3-bucket` e `aws-lock-dynamodb-table`.
+
+**Concorrência:** o job `terraform` usa `concurrency: group: terraform-{environment}` (`cancel-in-progress: false`) — runs do mesmo ambiente (ex.: dois pushes seguidos em `develop`) são enfileirados em vez de rodar em paralelo contra o mesmo state; dev e prod têm grupos separados e não se bloqueiam entre si. Evita uma corrida entre o step de import (item 5) e o lock do DynamoDB quando dois runs do mesmo ambiente coincidem.
 
 ---
 

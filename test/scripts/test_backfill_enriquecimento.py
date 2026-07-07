@@ -164,10 +164,10 @@ class TestLoopPrincipal:
         mock_client, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         assert mock_client.start_job_run.call_count == 6  # 3 anos x 2 tipos
 
-    def test_roda_todos_os_anos_de_movie_antes_de_tv(self, monkeypatch):
+    def test_intercala_movie_e_tv_por_ano(self, monkeypatch):
         mock_client, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         media_types = [c.kwargs["Arguments"]["--MEDIA_TYPE"] for c in mock_client.start_job_run.call_args_list]
-        assert media_types == ["movie", "movie", "tv", "tv"]
+        assert media_types == ["movie", "tv", "movie", "tv"]
 
     def test_falha_em_um_run_nao_interrompe_o_backfill(self, monkeypatch):
         """Diferente de backfill_historico.py: um estado != SUCCEEDED aqui só é logado, não aborta o loop."""

@@ -145,8 +145,8 @@ def main() -> None:
 
     unidades = [
         (media_type, year, database)
-        for media_type, database in [("movie", db_movie), ("tv", db_tv)]
         for year in years
+        for media_type, database in [("movie", db_movie), ("tv", db_tv)]
     ]
     pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]
     if len(pendentes) < len(unidades):
