@@ -13,6 +13,7 @@
 | `tmdb-eventbridge-sfn-{env}` | EventBridge (regra anual) | `states:StartExecution` sobre a state machine de backfill |
 | `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |
 | `tmdb-filmbot-agent-{env}` (user) | Lightsail FilmBot | Athena, S3 (SPEC, TEMP), Glue Catalog, CloudWatch Logs, Secrets Manager |
+| `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`05_backfill.yml`) | `lambda:InvokeFunction` (Lambda API), `glue:StartJobRun`/`GetJobRun` (jobs Details e Data Quality), S3 (checkpoints + tabelas discover/details movie/tv no SOT), Glue Catalog (tabelas details movie/tv) |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
@@ -40,3 +41,20 @@ A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se 
 O workflow do GitHub Actions (`02_terraform.yml`) resolve o problema de bootstrap automaticamente: antes do `terraform plan`, um step aplica as 6 policies com `-target`, garantindo que a role tenha permissões antes de gerenciar os demais recursos. O step é idempotente — se as policies já existem, é um no-op.
 
 Um recurso `terraform_data.cicd_policies_ready` sincroniza a criação: os buckets S3 e as IAM roles do projeto só são criados **depois** que as 6 policies estejam attachadas à role do GitHub Actions.
+
+## Permissões do backfill manual (`iam_backfill.tf`)
+
+O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 5 scripts `scripts/backfill_*.py` usam:
+
+| Policy | Escopo |
+|---|---|
+| `tmdb-backfill-invoke-lambda-{env}` | `lambda:InvokeFunction` restrito à Lambda API (`backfill_historico.py`, `backfill_referencias.py`) |
+| `tmdb-backfill-glue-jobs-{env}` | `glue:StartJobRun`/`GetJobRun` restrito aos jobs Details e Data Quality (`backfill_enriquecimento.py`, `backfill_data_quality.py`) |
+| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `_backfill_checkpoints/*` (todos os scripts, exceto `backfill_referencias.py`) e às tabelas discover/details movie/tv no bucket SOT (`backfill_traducao.py`) |
+| `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas details movie/tv — usado implicitamente pelo `awswrangler` em `backfill_traducao.py` |
+
+Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token OIDC também por branch (`ref:refs/heads/develop` em dev, `ref:refs/heads/main` em prod, casando com a resolução de ambiente feita pelo próprio `05_backfill.yml`), não só por repositório — reforço de segurança possível porque é uma role nova, sem histórico de uso a preservar.
+
+Não há problema de bootstrap circular: a policy `cicd-terraform-iam-{env}` já cobre `role/tmdb-*` (wildcard existente), então a role de CI/CD já pode criar/gerenciar `tmdb-backfill-role-{env}` num apply normal, sem `-target` nem step de bootstrap adicional.
+
+Não confundir com `tmdb-sfn-backfill-{env}` (tabela acima) — aquela serve o backfill **anual automático** via Step Functions, assumida pelo serviço `states.amazonaws.com`; esta serve o backfill **manual sob demanda**, assumida via OIDC do GitHub Actions.
