@@ -172,7 +172,9 @@ jobs:
 
           # Nota: backfill_referencias.py não itera por ano, não grava checkpoint e nunca
           # sai com código 75 — para ele, este loop roda uma única vez e sai normalmente.
-          max_tentativas=10
+          # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
+          # se o timeout mudar, ajustar aqui também.
+          max_tentativas=6
           tentativa=1
           while true; do
             echo "Tentativa $tentativa/$max_tentativas..."
