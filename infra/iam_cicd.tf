@@ -373,7 +373,6 @@ resource "aws_iam_policy" "cicd_compute" {
           "lambda:TagResource",
           "lambda:UntagResource",
           "lambda:ListTags",
-          "lambda:InvokeFunction",
         ]
         Resource = "arn:aws:lambda:sa-east-1:${data.aws_caller_identity.current.account_id}:function:${local.tmdb_prefix}-*"
       },
@@ -387,8 +386,6 @@ resource "aws_iam_policy" "cicd_compute" {
           "glue:GetJobs",
           "glue:UpdateJob",
           "glue:BatchGetJobs",
-          "glue:StartJobRun",
-          "glue:GetJobRun",
           "glue:TagResource",
           "glue:UntagResource",
           "glue:GetTags",
