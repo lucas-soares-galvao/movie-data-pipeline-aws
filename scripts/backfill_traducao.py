@@ -1,9 +1,9 @@
 """
-backfill_traducao.py — Adiciona title_pt/overview_pt aos detalhes históricos.
+backfill_traducao.py — Adiciona overview_pt aos detalhes históricos.
 
-Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano, traduz title_en e
-overview_en para português (apenas registros com original_language='en') e
-reescreve a partição com as novas colunas. Não re-chama a API do TMDB.
+Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano, traduz overview_en
+para português (apenas registros com original_language='en') e reescreve a
+partição com a nova coluna. Não re-chama a API do TMDB.
 
 Leitura feita diretamente do S3 (parquet) — sem Athena/CTAS — para evitar
 necessidade de athena:GetWorkGroup e glue:DeleteTable no usuário prod_temp.
@@ -95,8 +95,7 @@ def _translate(texto: str) -> str:
 
 
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
-    """Adiciona title_pt e overview_pt; traduz apenas original_language='en'."""
-    df["title_pt"] = None
+    """Adiciona overview_pt; traduz apenas original_language='en'."""
     df["overview_pt"] = None
 
     mask = df["original_language"] == "en"
@@ -106,11 +105,10 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     total = mask.sum()
     logger.info("  Traduzindo %d registros EN→PT (%d workers)...", total, _TRANSLATE_MAX_WORKERS)
 
-    for col_en, col_pt in (("title_en", "title_pt"), ("overview_en", "overview_pt")):
-        valores = df.loc[mask, col_en].fillna("").tolist()
-        with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-            traduzidos = list(executor.map(_translate, valores))
-        df.loc[mask, col_pt] = traduzidos
+    valores = df.loc[mask, "overview_en"].fillna("").tolist()
+    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
+        traduzidos = list(executor.map(_translate, valores))
+    df.loc[mask, "overview_pt"] = traduzidos
 
     return df
 

@@ -15,7 +15,7 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - referencias           — genre, configuration, watch_providers_ref via Lambda
 #   - detalhes_e_providers  — re-enriquece details + watch_providers via Glue Details
 #   - data_quality          — re-executa DQ via Glue
-#   - traducao              — adiciona title_pt/overview_pt nos details (sem API TMDB)
+#   - traducao              — adiciona overview_pt nos details (sem API TMDB)
 #
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
 # do padrão de nomenclatura do Terraform (tmdb-*-<env> / db_tmdb_*_<env> / etc.).
@@ -178,8 +178,13 @@ jobs:
           tentativa=1
           while true; do
             echo "Tentativa $tentativa/$max_tentativas..."
+            # set +e/-e: sob "set -e" (padrão dos steps run: do GitHub Actions), um
+            # exit code != 0 de executar_script derruba o script aqui mesmo, antes de
+            # "codigo=$?" rodar — o retry abaixo nunca seria alcançado.
+            set +e
             executar_script
             codigo=$?
+            set -e
             if [ $codigo -eq 0 ]; then
               echo "Backfill concluído com sucesso."
               break
