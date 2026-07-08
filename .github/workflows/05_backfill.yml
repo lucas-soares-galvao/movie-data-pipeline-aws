@@ -79,7 +79,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_PROD || secrets.AWS_ASSUME_ROLE_ARN_DEV }}
+          role-to-assume: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_PROD || secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_DEV }}
           role-session-name: GitHub_to_AWS_Backfill
           aws-region: sa-east-1
           # Sessão padrão de 1h (default da action). Backfills históricos podem
@@ -108,7 +108,7 @@ jobs:
           TABLE_GROUP: ${{ inputs.table_group }}
 
           # Role para renovar a credencial via OIDC se ExpiredTokenException ocorrer no meio do backfill
-          ROLE_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_PROD || secrets.AWS_ASSUME_ROLE_ARN_DEV }}
+          ROLE_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_PROD || secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_DEV }}
 
           # Jobs
           GLUE_DETAILS_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-details-${{ steps.env.outputs.name }}
