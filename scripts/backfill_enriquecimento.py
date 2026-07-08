@@ -163,8 +163,6 @@ def main() -> None:
         )
 
         run_id = _start_glue_job(client, job_name, media_type, year, end_year, database, force_refetch)
-        logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
-
         state = _wait_for_job(client, job_name, run_id)
         if state != "SUCCEEDED":
             logger.error(
