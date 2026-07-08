@@ -185,6 +185,15 @@ Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workf
 
 `timeout-minutes: 360` — backfills históricos podem levar horas dependendo do volume de dados.
 
+**Retomada automática após expiração de credencial:**
+
+A sessão AWS assumida via OIDC dura 1h (padrão da action `configure-aws-credentials`), mas backfills como `detalhes_e_providers` podem levar várias horas. Em vez de esticar a duração da sessão, o step "Executar backfill" trata isso com dois mecanismos complementares:
+
+- **Retry em bash**: os scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`) detectam `ExpiredTokenException` e saem com `exit code 75` (`scripts/backfill_checkpoint.py`). Um laço `while` no step captura esse código, renova a credencial inline via OIDC (`assume-role-with-web-identity`, nova sessão de 1h) e roda o script de novo — até `max_tentativas=6`, alinhado ao `timeout-minutes: 360` (~6 sessões de 1h). Qualquer outro código de saída propaga a falha imediatamente, sem retry. (`backfill_referencias.py` não itera por ano e nunca sai com 75 — para ele o laço roda uma única vez.)
+- **Checkpoint em S3**: cada reinício acima é um processo Python novo, sem memória do progresso anterior. Para não refazer trabalho já concluído, esses mesmos scripts persistem as unidades (`tipo:ano`) já processadas com sucesso em `s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{table_group}.json` a cada unidade concluída, e leem esse checkpoint no início para pular direto para as pendentes. O checkpoint é apagado ao final de um backfill sem falhas pendentes.
+
+Se o `table_group` escolhido falhar por outro motivo (não expiração de credencial) ou esgotar as 6 tentativas, é preciso disparar o workflow manualmente de novo — ele também vai retomar do checkpoint salvo, agora numa nova execução.
+
 ---
 
 ## Promoção de Branches

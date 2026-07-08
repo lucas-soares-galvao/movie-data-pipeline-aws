@@ -16,7 +16,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano | Lambda | — |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
-| `backfill_traducao.py` | Traduz title/overview para português via Google Translate | S3 (direto) | awswrangler, pandas, deep_translator |
+| `backfill_traducao.py` | Traduz overview para português via Google Translate | S3 (direto) | awswrangler, pandas, deep_translator |
 
 `backfill_checkpoint.py` não é executado diretamente — é um módulo compartilhado
 pelos 4 scripts acima (exceto `backfill_referencias.py`) para o checkpoint de

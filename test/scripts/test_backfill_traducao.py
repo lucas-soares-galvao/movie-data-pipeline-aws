@@ -76,25 +76,21 @@ class TestTranslate:
 
 class TestAdicionarTraducoesPt:
     def test_sem_registros_en_nao_chama_traducao(self):
-        df = pd.DataFrame({"original_language": ["pt", "es"], "title_en": ["a", "b"], "overview_en": ["c", "d"]})
+        df = pd.DataFrame({"original_language": ["pt", "es"], "overview_en": ["c", "d"]})
         with patch("backfill_traducao._translate") as mock_translate:
             resultado = bt._adicionar_traducoes_pt(df)
         mock_translate.assert_not_called()
-        assert resultado["title_pt"].isna().all()
         assert resultado["overview_pt"].isna().all()
 
     def test_traduz_apenas_registros_en(self):
         df = pd.DataFrame({
             "original_language": ["en", "pt"],
-            "title_en": ["Movie", "Filme"],
             "overview_en": ["Overview", "Sinopse"],
         })
         with patch("backfill_traducao._translate", side_effect=lambda t: f"{t}_PT"):
             resultado = bt._adicionar_traducoes_pt(df)
 
-        assert resultado.loc[0, "title_pt"] == "Movie_PT"
         assert resultado.loc[0, "overview_pt"] == "Overview_PT"
-        assert pd.isna(resultado.loc[1, "title_pt"])
         assert pd.isna(resultado.loc[1, "overview_pt"])
 
 
@@ -160,7 +156,7 @@ class TestBackfillYear:
         assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
     def test_expired_token_na_escrita_loga_e_repropaga(self, caplog):
-        details_df = pd.DataFrame({"id": [1], "title_en": ["A"], "overview_en": ["a"]})
+        details_df = pd.DataFrame({"id": [1], "overview_en": ["a"]})
         discover_map = pd.DataFrame({"id": [1], "original_language": ["en"]})
 
         with (
@@ -179,7 +175,6 @@ class TestBackfillYear:
     def test_escreve_com_particao_e_modo_overwrite_partitions(self):
         details_df = pd.DataFrame({
             "id": [1, 2],
-            "title_en": ["A", "B"],
             "overview_en": ["a", "b"],
         })
         discover_map = pd.DataFrame({"id": [1, 2], "original_language": ["en", None]})
