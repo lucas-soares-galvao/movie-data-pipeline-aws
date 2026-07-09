@@ -41,12 +41,15 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from pathlib import Path
 
 import awswrangler as wr
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
-from deep_translator import GoogleTranslator
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
+from shared_utils.traducao import traduzir_texto  # noqa: E402
 
 import backfill_checkpoint as checkpoint
 
@@ -78,22 +81,6 @@ def _log_expired_token(exc: ClientError, contexto: str) -> None:
         )
 
 
-def _translate(texto: str) -> str:
-    """Traduz texto EN→PT via Google Translate com até 3 tentativas."""
-    if not texto:
-        return ""
-    for tentativa in range(1, 4):
-        try:
-            resultado = GoogleTranslator(source="en", target="pt").translate(texto)
-            if resultado:
-                return resultado
-        except Exception as exc:
-            logger.debug("Tentativa %d falhou: %s", tentativa, exc)
-        time.sleep(tentativa * 2)
-    logger.warning("Falha ao traduzir após 3 tentativas: %.80s...", texto)
-    return texto
-
-
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     """Adiciona overview_pt; traduz apenas original_language='en'."""
     df["overview_pt"] = None
@@ -107,7 +94,7 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
 
     valores = df.loc[mask, "overview_en"].fillna("").tolist()
     with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(_translate, valores))
+        traduzidos = list(executor.map(traduzir_texto, valores))
     df.loc[mask, "overview_pt"] = traduzidos
 
     return df
