@@ -37,7 +37,7 @@ app/shared_src/
 
 | Função | Responsabilidade |
 |---|---|
-| `traduzir_texto(texto, contexto)` | Traduz texto de inglês para português via Google Translate; retorna o original em caso de falha para não interromper o job |
+| `traduzir_texto(texto, contexto)` | Traduz texto de inglês para português via Google Translate, com até 5 tentativas (mesmo padrão de `api_get`) e backoff entre elas; retorna o original se todas as tentativas falharem, para não interromper o job |
 
 ### `shared_utils/triggers.py`
 
