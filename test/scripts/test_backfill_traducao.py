@@ -1,10 +1,11 @@
 """
-Testa scripts/backfill_traducao.py com awswrangler, GoogleTranslator e boto3
+Testa scripts/backfill_traducao.py com awswrangler, traduzir_texto e boto3
 mockados (nenhuma chamada real à AWS ou ao Google Translate).
 
-Foco: as funções puras (_translate, _adicionar_traducoes_pt, _backfill_year,
+Foco: as funções puras (_adicionar_traducoes_pt, _backfill_year,
 _load_discover_map) isoladamente, e a orquestração de main() via mocks dessas
 funções — evita montar DataFrames grandes só para testar o loop de anos.
+Retry/backoff da tradução em si é coberto em test/shared_src/test_traducao.py.
 """
 
 import json
@@ -43,41 +44,10 @@ def _s3_client_sem_checkpoint() -> MagicMock:
     return client
 
 
-class TestTranslate:
-    def test_string_vazia_retorna_vazia_sem_chamar_google(self):
-        with patch("backfill_traducao.GoogleTranslator") as mock_google:
-            assert bt._translate("") == ""
-        mock_google.assert_not_called()
-
-    def test_traduz_com_sucesso_na_primeira_tentativa(self):
-        with patch("backfill_traducao.GoogleTranslator") as mock_google:
-            mock_google.return_value.translate.return_value = "traduzido"
-            assert bt._translate("hello") == "traduzido"
-        assert mock_google.return_value.translate.call_count == 1
-
-    def test_tenta_novamente_apos_excecao_e_depois_sucede(self):
-        with (
-            patch("backfill_traducao.GoogleTranslator") as mock_google,
-            patch("backfill_traducao.time.sleep"),
-        ):
-            mock_google.return_value.translate.side_effect = [Exception("timeout"), "traduzido"]
-            assert bt._translate("hello") == "traduzido"
-        assert mock_google.return_value.translate.call_count == 2
-
-    def test_retorna_texto_original_apos_tres_falhas(self):
-        with (
-            patch("backfill_traducao.GoogleTranslator") as mock_google,
-            patch("backfill_traducao.time.sleep"),
-        ):
-            mock_google.return_value.translate.side_effect = Exception("timeout")
-            assert bt._translate("hello") == "hello"
-        assert mock_google.return_value.translate.call_count == 3
-
-
 class TestAdicionarTraducoesPt:
     def test_sem_registros_en_nao_chama_traducao(self):
         df = pd.DataFrame({"original_language": ["pt", "es"], "overview_en": ["c", "d"]})
-        with patch("backfill_traducao._translate") as mock_translate:
+        with patch("backfill_traducao.traduzir_texto") as mock_translate:
             resultado = bt._adicionar_traducoes_pt(df)
         mock_translate.assert_not_called()
         assert resultado["overview_pt"].isna().all()
@@ -87,7 +57,7 @@ class TestAdicionarTraducoesPt:
             "original_language": ["en", "pt"],
             "overview_en": ["Overview", "Sinopse"],
         })
-        with patch("backfill_traducao._translate", side_effect=lambda t: f"{t}_PT"):
+        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"):
             resultado = bt._adicionar_traducoes_pt(df)
 
         assert resultado.loc[0, "overview_pt"] == "Overview_PT"
@@ -161,7 +131,7 @@ class TestBackfillYear:
 
         with (
             patch("backfill_traducao.wr") as mock_wr,
-            patch("backfill_traducao._translate", side_effect=lambda t: f"{t}_PT"),
+            patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"),
         ):
             mock_wr.s3.read_parquet.return_value = details_df
             mock_wr.s3.to_parquet.side_effect = ClientError(
@@ -181,7 +151,7 @@ class TestBackfillYear:
 
         with (
             patch("backfill_traducao.wr") as mock_wr,
-            patch("backfill_traducao._translate", side_effect=lambda t: f"{t}_PT"),
+            patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"),
         ):
             mock_wr.s3.read_parquet.return_value = details_df
             resultado = bt._backfill_year("db_movie", "details_movie", discover_map, "2020", "bucket-sot-test")
