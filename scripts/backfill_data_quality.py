@@ -29,7 +29,8 @@ Variáveis opcionais:
     WAIT_SECONDS    (padrão: 300 — pausa entre anos)
 
 Retomada automática:
-    Se ExpiredTokenException ocorrer, o script sai com exit code 75
+    Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
+    do S3), o script sai com exit code 75
     (backfill_checkpoint.RETRYABLE_EXIT_CODE). O workflow renova a credencial
     e roda o script de novo — como o progresso é lido do checkpoint em S3
     (s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json), as
@@ -64,16 +65,6 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _log_expired_token(exc: ClientError, contexto: str) -> None:
-    """Loga um erro claro se a credencial AWS expirou durante o backfill."""
-    if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
-        logger.error(
-            "Credenciais AWS expiraram durante %s. O workflow vai renovar a credencial "
-            "e retomar do checkpoint automaticamente (ver scripts/backfill_checkpoint.py).",
-            contexto,
-        )
-
-
 def _trigger_dq_job(
     client: Any,
     job_name: str,
@@ -92,7 +83,7 @@ def _trigger_dq_job(
             },
         )
     except ClientError as exc:
-        _log_expired_token(exc, f"disparo do job DQ para '{table_name}' (year={year})")
+        checkpoint.log_expired_token(exc, f"disparo do job DQ para '{table_name}' (year={year})")
         raise
     run_id = response["JobRunId"]
     logger.info(

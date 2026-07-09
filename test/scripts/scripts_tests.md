@@ -8,7 +8,9 @@ O foco principal é o **contrato do payload/argumentos** enviado a cada serviço
 
 Dois bugs reais motivaram este módulo: `backfill_historico.py` enviava a chave `only_discover` e `backfill_referencias.py` enviava `skip_discover` — nenhuma das duas é lida por `app/lambda_api/main.py` (que só reconhece `only_annual_tables` e `skip_weekly`). Como uma chave de dict inexistente não gera erro, o bug só apareceria revisando logs de uma execução real de horas contra prod. Os testes de contrato de payload existem para travar exatamente esse tipo de regressão.
 
-Um terceiro bug real motivou a suíte de checkpoint/retomada: `backfill_enriquecimento.py::_start_glue_job` chamava `client.start_job_run(...)` sem o wrapper de log/re-raise de `ExpiredTokenException` que o resto do script já tinha — foi exatamente esse ponto que derrubou um backfill de produção sem deixar rastro do progresso já feito. `test_expired_token_no_start_job_run_loga_e_repropaga` trava essa regressão.
+Um terceiro bug real motivou a suíte de checkpoint/retomada: `backfill_enriquecimento.py::_start_glue_job` chamava `client.start_job_run(...)` sem o wrapper de log/re-raise de token expirado que o resto do script já tinha — foi exatamente esse ponto que derrubou um backfill de produção sem deixar rastro do progresso já feito. `test_expired_token_no_start_job_run_loga_e_repropaga` trava essa regressão.
+
+Um quarto bug real motivou a cobertura dos dois códigos de erro: `backfill_checkpoint.is_expired_token_error()` (usado por todos os pontos acima) só reconhecia `ExpiredTokenException` (código do STS). A chamada que efetivamente derrubou um backfill de tradução em produção foi `wr.s3.read_parquet` → `ListObjectsV2`, que retorna o código `ExpiredToken` do S3 — string diferente, então a checagem `==` não batia e o retry automático nunca disparava. Os testes de token expirado em todo `test/scripts/` agora são parametrizados sobre os dois códigos (`ExpiredTokenException` e `ExpiredToken`) para travar essa regressão.
 
 ## Estrutura
 
@@ -53,7 +55,8 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 | `test_nao_pausa_apos_ultima_invocacao` | `time.sleep` não é chamado após a última invocação do loop |
 | `test_erro_da_lambda_interrompe_o_backfill` | `RuntimeError` (Lambda com erro) propaga e para o script |
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
-| `test_expired_token_no_topo_sai_com_codigo_75` / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue ExpiredTokenException (retomável) de outros erros |
+| `test_expired_token_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | `_invoke` loga aviso de credenciais e repropaga erro de token expirado |
+| `test_expired_token_no_topo_sai_com_codigo_75` (parametrizado) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado (retomável) de outros erros |
 | `test_lanca_erro_quando_anos_diferentes` / `test_nao_lanca_erro_quando_anos_iguais` | `_assert_single_year` valida `start_year == loop_end_year` |
 
 ### `TestCheckpoint`
@@ -63,7 +66,7 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 | `test_pula_unidades_ja_concluidas` | Unidades presentes no checkpoint não geram nova invocação da Lambda |
 | `test_salva_checkpoint_apos_cada_unidade` | `put_object` chamado a cada unidade concluída |
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado quando o loop termina sem erro |
-| `test_checkpoint_reflete_progresso_parcial_quando_interrompido` | Uma exceção no meio do loop ainda deixa o checkpoint com as unidades já concluídas |
+| `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Uma exceção no meio do loop ainda deixa o checkpoint com as unidades já concluídas |
 
 ## Casos de teste — `test_backfill_referencias.py`
 
@@ -78,19 +81,45 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 
 ## Casos de teste — `test_backfill_enriquecimento.py`
 
+### `TestStartGlueJob`
+
 | Teste | O que verifica |
 |---|---|
 | `test_argumentos_padrao_sem_force_refetch` / `test_inclui_force_refetch_quando_true` | `_start_glue_job` monta `Arguments` corretos, com `--FORCE_REFETCH` apenas quando `force_refetch=True` |
-| `test_expired_token_no_start_job_run_loga_e_repropaga` | Regressão: `_start_glue_job` também loga/repropaga `ExpiredTokenException` (faltava, era o ponto que derrubou produção) |
+| `test_expired_token_no_start_job_run_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Regressão: `_start_glue_job` também loga/repropaga erro de token expirado (faltava, era o ponto que derrubou produção) |
 | `test_outro_client_error_no_start_job_run_repropaga_sem_log_de_credenciais` | Outro `ClientError` não gera o log específico de credenciais |
+
+### `TestWaitForJob`
+
+| Teste | O que verifica |
+|---|---|
 | `test_retorna_imediatamente_quando_ja_terminou` / `test_faz_polling_ate_estado_terminal` | `_wait_for_job` faz polling com `time.sleep(poll_interval)` até estado terminal |
+| `test_propaga_expired_token_com_log_claro` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Token expirado no polling loga aviso de credenciais e repropaga |
+| `test_propaga_outros_client_error_sem_log_de_credenciais` | Outro `ClientError` no polling não gera o log específico de credenciais |
+
+### `TestLoopPrincipal`
+
+| Teste | O que verifica |
+|---|---|
 | `test_total_de_runs_e_anos_vezes_dois_tipos` | Total de runs = anos × 2 |
 | `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_historico.py` |
 | `test_falha_em_um_run_nao_interrompe_o_backfill` | Um estado `FAILED` é logado mas **não** aborta o loop (diferente de `backfill_historico.py`, que aborta no primeiro erro) |
 | `test_nao_pausa_apos_ultimo_run` | Sem `time.sleep` após o último run |
+| `test_loga_resumo_das_falhas_ao_final` | Ao final, loga um resumo único com todas as unidades (`media_type`/`year`/`state`) que falharam |
+| `test_nao_loga_resumo_quando_tudo_sucede` | Nenhum log de resumo de falhas quando todos os runs sucedem |
+
+### `TestForceRefetch`
+
+| Teste | O que verifica |
+|---|---|
 | `test_default_e_true` / `test_false_omite_o_argumento` | `FORCE_REFETCH` lido corretamente do ambiente |
+
+### `TestErros`
+
+| Teste | O que verifica |
+|---|---|
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
-| `test_expired_token_gera_codigo_75` / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue ExpiredTokenException de outros erros |
+| `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
 
 ### `TestCheckpoint`
 
@@ -103,15 +132,28 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 
 ## Casos de teste — `test_backfill_data_quality.py`
 
+### `TestTriggerDqJob`
+
 | Teste | O que verifica |
 |---|---|
 | `test_argumentos_enviados_ao_glue` | `_trigger_dq_job` monta `Arguments` (`--TABLE_NAME`, `--DATABASE`, `--YEAR`) corretos |
+| `test_expired_token_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Token expirado no disparo do job loga aviso de credenciais e repropaga |
+
+### `TestLoopPrincipal`
+
+| Teste | O que verifica |
+|---|---|
 | `test_total_de_execucoes_e_anos_vezes_seis_tabelas` | Total = anos × 6 tabelas |
 | `test_percorre_as_seis_tabelas_dentro_de_cada_ano` | Ordem fixa das 6 tabelas dentro de cada ano |
 | `test_e_assincrono_nunca_espera_o_job_terminar` | `get_job_run` nunca é chamado — contrato fire-and-forget |
-| `test_pausa_entre_anos_mas_nao_apos_o_ultimo` / `test_year_sleep_zero_desativa_a_pausa` | `time.sleep` respeita `YEAR_SLEEP_SECONDS` e não pausa após o último ano |
+| `test_pausa_entre_anos_mas_nao_apos_o_ultimo` / `test_wait_zero_desativa_a_pausa` | `time.sleep` respeita `WAIT_SECONDS` e não pausa após o último ano |
+
+### `TestErros`
+
+| Teste | O que verifica |
+|---|---|
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
-| `test_expired_token_gera_codigo_75` / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue ExpiredTokenException de outros erros |
+| `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
 
 ### `TestCheckpoint`
 
@@ -124,18 +166,66 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 
 ## Casos de teste — `test_backfill_traducao.py`
 
+Retry/backoff da tradução em si (`traduzir_texto`, 5 tentativas com backoff) é coberto em `test/shared_src/test_traducao.py` — o script apenas importa e usa a função do módulo compartilhado, sem lógica própria de retry.
+
+### `TestAdicionarTraducoesPt`
+
 | Teste | O que verifica |
 |---|---|
-| `test_string_vazia_retorna_vazia_sem_chamar_google` | `_translate("")` não chama `GoogleTranslator` |
-| `test_traduz_com_sucesso_na_primeira_tentativa` / `test_tenta_novamente_apos_excecao_e_depois_sucede` / `test_retorna_texto_original_apos_tres_falhas` | Retry de `_translate` (até 3 tentativas, fallback para o texto original) |
-| `test_sem_registros_en_nao_chama_traducao` / `test_traduz_apenas_registros_en` | `_adicionar_traducoes_pt` só traduz `original_language == "en"` |
+| `test_sem_registros_en_nao_chama_traducao` | `_adicionar_traducoes_pt` não chama `traduzir_texto` quando não há registros `en` |
+| `test_traduz_apenas_registros_en` | `_adicionar_traducoes_pt` só traduz `original_language == "en"` |
+| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | Contagem de sucesso ignora registros em que `traduzir_texto` devolveu o texto original (fallback de falha) |
+| `test_pula_registros_ja_traduzidos_com_sucesso` | Registro com `overview_pt` já preenchido e diferente de `overview_en` não é retraduzido; valor existente é preservado |
+| `test_retenta_registro_cujo_overview_pt_ficou_igual_ao_original` | `overview_pt == overview_en` (fallback de falha de um run anterior) é tratado como pendente e re-tentado |
+| `test_todos_ja_traduzidos_nao_chama_traducao` | Quando todos os registros `en` já têm tradução válida, `traduzir_texto` não é chamado |
+
+### `TestAdicionarTraducoesTaglinePt`
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_tagline_nao_chama_traducao` | Não traduz quando `tagline` é nula/vazia |
+| `test_traduz_qualquer_idioma_sem_filtro_original_language` | Diferente de `overview_pt`, `tagline_pt` não filtra por `original_language` (espelha `glue_details`) |
+| `test_pula_registros_ja_traduzidos` | `tagline_pt` já preenchido e diferente de `tagline` não é retraduzido |
+| `test_retenta_registro_cujo_tagline_pt_ficou_igual_ao_original` | `tagline_pt == tagline` (fallback de falha anterior) é tratado como pendente |
+
+### `TestAdicionarTraducoesKeywordsPt`
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_keywords_nao_chama_traducao` | Não traduz quando `keywords` é nula/vazia |
+| `test_traduz_qualquer_idioma_sem_filtro_original_language` | `keywords_pt` não filtra por `original_language` — TMDB sempre devolve keywords em inglês |
+| `test_pula_registros_ja_traduzidos` | `keywords_pt` já preenchido e diferente de `keywords` não é retraduzido |
+
+### `TestLoadDiscoverMap`
+
+| Teste | O que verifica |
+|---|---|
 | `test_remove_duplicatas_e_seleciona_colunas` | `_load_discover_map` deduplica por `id` e retorna só `id`/`original_language` |
+| `test_expired_token_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura loga aviso de credenciais e repropaga |
+
+### `TestBackfillYear`
+
+| Teste | O que verifica |
+|---|---|
 | `test_sem_arquivos_retorna_false_e_nao_escreve` / `test_df_vazio_retorna_false_e_nao_escreve` | `_backfill_year` pula partições ausentes/vazias sem escrever |
 | `test_outras_excecoes_sao_repropagadas` | Exceções que não são `NoFilesFound` são relançadas |
+| `test_expired_token_na_leitura_loga_e_repropaga` / `test_expired_token_na_escrita_loga_e_repropaga` (parametrizados: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura ou na escrita loga aviso de credenciais e repropaga |
 | `test_escreve_com_particao_e_modo_overwrite_partitions` | `wr.s3.to_parquet` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
+| `test_soma_traduzidos_de_overview_tagline_e_keywords` | `traduzidos` retornado por `_backfill_year` soma os três campos (`overview_pt` + `tagline_pt` + `keywords_pt`), não só `overview_pt` |
+
+### `TestMain`
+
+| Teste | O que verifica |
+|---|---|
 | `test_carrega_discover_map_uma_vez_por_tipo` / `test_backfill_year_chamado_para_cada_ano_e_tipo` / `test_alterna_movie_e_tv_por_ano` / `test_nao_pausa_apos_ultima_chamada` | Orquestração de `main()` (via mocks de `_load_discover_map`/`_backfill_year`) |
+| `test_loga_total_de_traduzidos_com_sucesso_acumulado` | O log final soma os traduzidos com sucesso de cada partição (`_backfill_year` retorna `(escreveu, traduzidos)`), não a quantidade de partições |
+
+### `TestErros`
+
+| Teste | O que verifica |
+|---|---|
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
-| `test_expired_token_gera_codigo_75` / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue ExpiredTokenException de outros erros |
+| `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
 
 ### `TestCheckpoint`
 
@@ -154,11 +244,12 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 | `test_sem_checkpoint_retorna_vazio` | `NoSuchKey` no `get_object` retorna conjunto vazio |
 | `test_checkpoint_compativel_retorna_completed` | Checkpoint com o mesmo `start_year`/`end_year` retorna as unidades salvas |
 | `test_checkpoint_range_incompativel_retorna_vazio_e_loga_aviso` | Range diferente do salvo é ignorado (loga aviso), não apagado |
-| `test_outro_client_error_e_repropagado` | `ClientError` que não é `NoSuchKey`/`ExpiredTokenException` propaga |
-| `test_expired_token_loga_e_repropaga` (load/save/clear) | `ExpiredTokenException` loga e repropaga nos 3 pontos de acesso a S3 |
+| `test_outro_client_error_e_repropagado` | `ClientError` que não é `NoSuchKey`/token expirado propaga |
+| `test_expired_token_loga_e_repropaga` (load/save/clear; parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Token expirado loga e repropaga nos 3 pontos de acesso a S3 |
 | `test_grava_json_esperado` | `save_checkpoint` grava `start_year`, `end_year`, `completed` (ordenado) e `updated_at` |
 | `test_chama_delete_object_com_a_chave_correta` | `clear_checkpoint` remove exatamente `_backfill_checkpoints/{table_group}.json` |
-| `test_expired_token_retorna_codigo_retomavel` / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para ExpiredTokenException |
+| `test_codigos_de_token_expirado_retornam_true` / `test_outros_codigos_retornam_false` (parametrizados) | `is_expired_token_error` reconhece `ExpiredTokenException` (STS) e `ExpiredToken` (S3); rejeita outros códigos |
+| `test_expired_token_retorna_codigo_retomavel` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para token expirado |
 
 ## Como executar
 

@@ -16,7 +16,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano | Lambda | — |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
-| `backfill_traducao.py` | Traduz overview para português via Google Translate | S3 (direto) | awswrangler, pandas, deep_translator |
+| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate (não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 
 `backfill_checkpoint.py` não é executado diretamente — é um módulo compartilhado
 pelos 4 scripts acima (exceto `backfill_referencias.py`) para o checkpoint de
@@ -66,19 +66,24 @@ Os 4 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimen
 
 Cada script possui variáveis adicionais documentadas em sua docstring.
 
-## Retomada automática (ExpiredTokenException)
+## Retomada automática (token expirado)
 
 Os 4 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou
 tabela+ano), um checkpoint em
 `s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json` (ver
 `scripts/backfill_checkpoint.py`). Se a credencial AWS expirar no meio do
-backfill (`ExpiredTokenException`), o script sai com o exit code 75
+backfill, o script sai com o exit code 75
 (`backfill_checkpoint.RETRYABLE_EXIT_CODE`) em vez de propagar a exceção crua.
+`backfill_checkpoint.is_expired_token_error()` reconhece os dois códigos de
+erro que a AWS usa para credencial expirada: `ExpiredTokenException` (STS —
+ex.: chamadas de Lambda/Glue) e `ExpiredToken` (S3 — ex.: `ListObjectsV2` via
+awswrangler, `get_object`/`put_object`/`delete_object`).
 
 O workflow `.github/workflows/05_backfill.yml` reconhece esse código: renova a
 credencial (nova sessão de 1h via `sts assume-role-with-web-identity`, usando
 o token OIDC do próprio job) e roda o script de novo, dentro do mesmo job —
-até 10 tentativas. Como o script relê o checkpoint no início, ele pula direto
+até 6 tentativas (alinhado ao timeout de 360min do job / ~1h por sessão AWS).
+Como o script relê o checkpoint no início, ele pula direto
 para as unidades ainda pendentes em vez de recomeçar do `BACKFILL_START_YEAR`.
 
 Qualquer outro tipo de erro (não relacionado a token expirado) continua
