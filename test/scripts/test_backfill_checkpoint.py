@@ -2,7 +2,8 @@
 Testa scripts/backfill_checkpoint.py com boto3 mockado (nenhuma chamada real à AWS).
 
 Foco: contrato de load/save/clear usado pelos 4 scripts de backfill que
-iteram por ano, para permitir retomada automática após ExpiredTokenException.
+iteram por ano, para permitir retomada automática após credencial AWS
+expirada (`ExpiredTokenException` do STS ou `ExpiredToken` do S3).
 """
 
 import json
@@ -62,9 +63,10 @@ class TestLoadCheckpoint:
         with pytest.raises(ClientError):
             bc.load_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025)
 
-    def test_expired_token_loga_e_repropaga(self, caplog):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_loga_e_repropaga(self, caplog, codigo):
         client = MagicMock()
-        client.get_object.side_effect = _client_error("ExpiredTokenException")
+        client.get_object.side_effect = _client_error(codigo)
 
         with caplog.at_level("ERROR", logger="backfill_checkpoint"):
             with pytest.raises(ClientError):
@@ -88,9 +90,10 @@ class TestSaveCheckpoint:
         assert body["completed"] == ["movie:2000", "tv:2001"]
         assert "updated_at" in body
 
-    def test_expired_token_loga_e_repropaga(self, caplog):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_loga_e_repropaga(self, caplog, codigo):
         client = MagicMock()
-        client.put_object.side_effect = _client_error("ExpiredTokenException")
+        client.put_object.side_effect = _client_error(codigo)
 
         with caplog.at_level("ERROR", logger="backfill_checkpoint"):
             with pytest.raises(ClientError):
@@ -99,9 +102,20 @@ class TestSaveCheckpoint:
         assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
+class TestIsExpiredTokenError:
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_codigos_de_token_expirado_retornam_true(self, codigo):
+        assert bc.is_expired_token_error(_client_error(codigo)) is True
+
+    @pytest.mark.parametrize("codigo", ["ThrottlingException", "AccessDenied"])
+    def test_outros_codigos_retornam_false(self, codigo):
+        assert bc.is_expired_token_error(_client_error(codigo)) is False
+
+
 class TestExpiredTokenExitCode:
-    def test_expired_token_retorna_codigo_retomavel(self):
-        exc = _client_error("ExpiredTokenException")
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_retorna_codigo_retomavel(self, codigo):
+        exc = _client_error(codigo)
 
         assert bc.expired_token_exit_code(exc) == bc.RETRYABLE_EXIT_CODE
 
@@ -121,9 +135,10 @@ class TestClearCheckpoint:
             Bucket="bucket", Key="_backfill_checkpoints/detalhes_e_providers.json"
         )
 
-    def test_expired_token_loga_e_repropaga(self, caplog):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_loga_e_repropaga(self, caplog, codigo):
         client = MagicMock()
-        client.delete_object.side_effect = _client_error("ExpiredTokenException")
+        client.delete_object.side_effect = _client_error(codigo)
 
         with caplog.at_level("ERROR", logger="backfill_checkpoint"):
             with pytest.raises(ClientError):
