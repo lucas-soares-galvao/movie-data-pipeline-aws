@@ -58,11 +58,12 @@ class TestStartGlueJob:
         args = client.start_job_run.call_args.kwargs["Arguments"]
         assert args["--FORCE_REFETCH"] == "true"
 
-    def test_expired_token_no_start_job_run_loga_e_repropaga(self, caplog):
-        """Regressão: era o único ponto do script sem o wrapper de log/re-raise de ExpiredTokenException."""
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_no_start_job_run_loga_e_repropaga(self, caplog, codigo):
+        """Regressão: era o único ponto do script sem o wrapper de log/re-raise de token expirado."""
         client = MagicMock()
         client.start_job_run.side_effect = ClientError(
-            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "StartJobRun",
+            {"Error": {"Code": codigo, "Message": "expired"}}, "StartJobRun",
         )
 
         with caplog.at_level("ERROR", logger="backfill_enriquecimento"):
@@ -109,10 +110,11 @@ class TestWaitForJob:
         assert client.get_job_run.call_count == 3
         mock_sleep.assert_called_with(10)
 
-    def test_propaga_expired_token_com_log_claro(self, caplog):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_propaga_expired_token_com_log_claro(self, caplog, codigo):
         client = MagicMock()
         client.get_job_run.side_effect = ClientError(
-            {"Error": {"Code": "ExpiredTokenException", "Message": "The security token included in the request is expired"}},
+            {"Error": {"Code": codigo, "Message": "The security token included in the request is expired"}},
             "GetJobRun",
         )
 
@@ -226,8 +228,9 @@ class TestErros:
         exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "StartJobRun")
         assert be.checkpoint.expired_token_exit_code(exc) is None
 
-    def test_expired_token_gera_codigo_75(self):
-        exc = ClientError({"Error": {"Code": "ExpiredTokenException", "Message": "x"}}, "StartJobRun")
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_gera_codigo_75(self, codigo):
+        exc = ClientError({"Error": {"Code": codigo, "Message": "x"}}, "StartJobRun")
         assert be.checkpoint.expired_token_exit_code(exc) == 75
 
 

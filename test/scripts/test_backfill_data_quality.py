@@ -57,10 +57,11 @@ class TestTriggerDqJob:
             Arguments={"--TABLE_NAME": "discover_movie", "--DATABASE": "db_movie", "--YEAR": "2020"},
         )
 
-    def test_expired_token_loga_e_repropaga(self, caplog):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_loga_e_repropaga(self, caplog, codigo):
         client = MagicMock()
         client.start_job_run.side_effect = ClientError(
-            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "StartJobRun",
+            {"Error": {"Code": codigo, "Message": "expired"}}, "StartJobRun",
         )
         with caplog.at_level("ERROR", logger="backfill_data_quality"):
             with pytest.raises(ClientError):
@@ -126,8 +127,9 @@ class TestErros:
         exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "StartJobRun")
         assert bdq.checkpoint.expired_token_exit_code(exc) is None
 
-    def test_expired_token_gera_codigo_75(self):
-        exc = ClientError({"Error": {"Code": "ExpiredTokenException", "Message": "x"}}, "StartJobRun")
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_gera_codigo_75(self, codigo):
+        exc = ClientError({"Error": {"Code": codigo, "Message": "x"}}, "StartJobRun")
         assert bdq.checkpoint.expired_token_exit_code(exc) == 75
 
 

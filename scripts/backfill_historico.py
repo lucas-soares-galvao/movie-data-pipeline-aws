@@ -33,7 +33,8 @@ Variáveis opcionais:
     BACKFILL_END_YEAR     (padrão: ano atual)
 
 Retomada automática:
-    Se ExpiredTokenException ocorrer, o script sai com exit code 75
+    Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
+    do S3), o script sai com exit code 75
     (backfill_checkpoint.RETRYABLE_EXIT_CODE). O workflow renova a credencial
     e roda o script de novo — como o progresso é lido do checkpoint em S3
     (s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json), as
@@ -79,16 +80,6 @@ def _assert_single_year(payload: dict[str, Any]) -> None:
         )
 
 
-def _log_expired_token(exc: ClientError, contexto: str) -> None:
-    """Loga um erro claro se a credencial AWS expirou durante o backfill."""
-    if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
-        logger.error(
-            "Credenciais AWS expiraram durante %s. O workflow vai renovar a credencial "
-            "e retomar do checkpoint automaticamente (ver scripts/backfill_checkpoint.py).",
-            contexto,
-        )
-
-
 def _invoke(client: Any, function_name: str, payload: dict[str, Any]) -> None:
     """Invoca a Lambda de forma síncrona e lança exceção se falhar."""
     try:
@@ -98,7 +89,7 @@ def _invoke(client: Any, function_name: str, payload: dict[str, Any]) -> None:
             Payload=json.dumps(payload).encode(),
         )
     except ClientError as exc:
-        _log_expired_token(exc, f"invocação da Lambda '{function_name}'")
+        checkpoint.log_expired_token(exc, f"invocação da Lambda '{function_name}'")
         raise
     status = response["StatusCode"]
     body = json.loads(response["Payload"].read())

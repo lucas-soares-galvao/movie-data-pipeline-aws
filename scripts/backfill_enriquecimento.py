@@ -31,7 +31,8 @@ Variáveis opcionais:
     FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
 
 Retomada automática:
-    Se ExpiredTokenException ocorrer, o script sai com exit code 75
+    Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
+    do S3), o script sai com exit code 75
     (backfill_checkpoint.RETRYABLE_EXIT_CODE). O workflow renova a credencial
     e roda o script de novo — como o progresso é lido do checkpoint em S3
     (s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json), as
@@ -87,7 +88,7 @@ def _start_glue_job(
             Arguments=arguments,
         )
     except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
+        if checkpoint.is_expired_token_error(exc):
             logger.error(
                 "Credenciais AWS expiraram durante o disparo do job %s (%s/%d). O workflow "
                 "vai renovar a credencial e retomar do checkpoint automaticamente "
@@ -104,7 +105,7 @@ def _wait_for_job(client: Any, job_name: str, run_id: str, poll_interval: int = 
         try:
             response = client.get_job_run(JobName=job_name, RunId=run_id)
         except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") == "ExpiredTokenException":
+            if checkpoint.is_expired_token_error(exc):
                 logger.error(
                     "Credenciais AWS expiraram durante o polling do job %s (run_id=%s). "
                     "O workflow vai renovar a credencial e retomar do checkpoint "

@@ -155,21 +155,23 @@ class TestErros:
         with pytest.raises(EnvironmentError):
             bh.main()
 
-    def test_expired_token_loga_e_repropaga(self, caplog):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_loga_e_repropaga(self, caplog, codigo):
         client = MagicMock()
         client.invoke.side_effect = ClientError(
-            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "Invoke",
+            {"Error": {"Code": codigo, "Message": "expired"}}, "Invoke",
         )
         with caplog.at_level("ERROR", logger="backfill_historico"):
             with pytest.raises(ClientError):
                 bh._invoke(client, "func", {"a": 1})
         assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
-    def test_expired_token_no_topo_sai_com_codigo_75(self, monkeypatch):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_expired_token_no_topo_sai_com_codigo_75(self, monkeypatch, codigo):
         _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         mock_client = MagicMock()
         mock_client.invoke.side_effect = ClientError(
-            {"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "Invoke",
+            {"Error": {"Code": codigo, "Message": "expired"}}, "Invoke",
         )
         mock_s3 = _s3_client_sem_checkpoint()
 
@@ -233,12 +235,13 @@ class TestCheckpoint:
 
         mock_s3.delete_object.assert_called_once()
 
-    def test_checkpoint_reflete_progresso_parcial_quando_interrompido(self, monkeypatch):
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_checkpoint_reflete_progresso_parcial_quando_interrompido(self, monkeypatch, codigo):
         _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         mock_lambda = MagicMock()
         mock_lambda.invoke.side_effect = [
             _lambda_ok_response(),  # movie:2020 sucede
-            ClientError({"Error": {"Code": "ExpiredTokenException", "Message": "expired"}}, "Invoke"),  # tv:2020 falha
+            ClientError({"Error": {"Code": codigo, "Message": "expired"}}, "Invoke"),  # tv:2020 falha
         ]
         mock_s3 = _s3_client_sem_checkpoint()
 
