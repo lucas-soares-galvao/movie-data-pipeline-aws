@@ -1,6 +1,14 @@
 from unittest.mock import MagicMock, patch
 
-from shared_utils.traducao import traduzir_texto
+import pandas as pd
+
+from shared_utils.traducao import (
+    elegivel_keywords_pt,
+    elegivel_overview_pt,
+    elegivel_tagline_pt,
+    traduzir_em_paralelo,
+    traduzir_texto,
+)
 
 
 class TestTraduzirTexto:
@@ -125,3 +133,57 @@ class TestTraduzirTexto:
         with patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator) as mock_cls:
             traduzir_texto("test")
         mock_cls.assert_called_once_with(source="auto", target="pt")
+
+
+class TestTraduzirEmParalelo:
+    def test_traduz_cada_valor_e_preserva_a_ordem(self):
+        traduzir_fn = MagicMock(side_effect=lambda t: f"[PT] {t}")
+        resultado = traduzir_em_paralelo(["Hello", "World"], traduzir_fn)
+        assert resultado == ["[PT] Hello", "[PT] World"]
+
+    def test_lista_vazia_nao_chama_traduzir_fn(self):
+        traduzir_fn = MagicMock()
+        assert traduzir_em_paralelo([], traduzir_fn) == []
+        traduzir_fn.assert_not_called()
+
+    def test_usa_max_workers_informado(self):
+        """max_workers é repassado ao ThreadPoolExecutor, não hardcoded."""
+        with patch("shared_utils.traducao.ThreadPoolExecutor") as mock_executor_cls:
+            mock_executor = mock_executor_cls.return_value.__enter__.return_value
+            mock_executor.map.return_value = iter(["ok"])
+            traduzir_em_paralelo(["Hello"], MagicMock(), max_workers=3)
+        mock_executor_cls.assert_called_once_with(max_workers=3)
+
+
+class TestElegivelOverviewPt:
+    def test_elegivel_quando_en_e_overview_preenchido(self):
+        df = pd.DataFrame({"original_language": ["en"], "overview_en": ["Hello"]})
+        assert elegivel_overview_pt(df).tolist() == [True]
+
+    def test_nao_elegivel_quando_idioma_nao_e_en(self):
+        df = pd.DataFrame({"original_language": ["fr"], "overview_en": ["Bonjour"]})
+        assert elegivel_overview_pt(df).tolist() == [False]
+
+    def test_nao_elegivel_quando_overview_en_vazio_ou_nulo(self):
+        df = pd.DataFrame({"original_language": ["en", "en"], "overview_en": ["", None]})
+        assert elegivel_overview_pt(df).tolist() == [False, False]
+
+
+class TestElegivelTaglinePt:
+    def test_elegivel_para_qualquer_idioma_com_tagline_preenchida(self):
+        df = pd.DataFrame({"tagline": ["Slogan A", "Slogan B"]})
+        assert elegivel_tagline_pt(df).tolist() == [True, True]
+
+    def test_nao_elegivel_quando_tagline_vazia_ou_nula(self):
+        df = pd.DataFrame({"tagline": ["", None]})
+        assert elegivel_tagline_pt(df).tolist() == [False, False]
+
+
+class TestElegivelKeywordsPt:
+    def test_elegivel_para_qualquer_idioma_com_keywords_preenchidas(self):
+        df = pd.DataFrame({"keywords": ["action, drama"]})
+        assert elegivel_keywords_pt(df).tolist() == [True]
+
+    def test_nao_elegivel_quando_keywords_vazias_ou_nulas(self):
+        df = pd.DataFrame({"keywords": ["", None]})
+        assert elegivel_keywords_pt(df).tolist() == [False, False]

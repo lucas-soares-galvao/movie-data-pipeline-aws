@@ -53,7 +53,6 @@ Retomada automática:
 import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import awswrangler as wr
@@ -62,7 +61,13 @@ import pandas as pd
 from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
-from shared_utils.traducao import traduzir_texto  # noqa: E402
+from shared_utils.traducao import (  # noqa: E402
+    elegivel_keywords_pt,
+    elegivel_overview_pt,
+    elegivel_tagline_pt,
+    traduzir_em_paralelo,
+    traduzir_texto,
+)
 
 import backfill_shared as shared
 
@@ -107,8 +112,7 @@ def _traduzir_pendentes(
     logger.info("  Traduzindo %d registros para %s (%d workers)...", total, coluna_pt, _TRANSLATE_MAX_WORKERS)
 
     valores = df.loc[mask, coluna_fonte].fillna("").tolist()
-    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(traduzir_texto, valores))
+    traduzidos = traduzir_em_paralelo(valores, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS)
     df.loc[mask, coluna_pt] = traduzidos
 
     sucesso = sum(1 for original, traduzido in zip(valores, traduzidos) if original and traduzido != original)
@@ -124,11 +128,7 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
 
-    mask_en = (
-        (df["original_language"] == "en")
-        & df["overview_en"].notna()
-        & (df["overview_en"] != "")
-    )
+    mask_en = elegivel_overview_pt(df)
     if not mask_en.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_en)
@@ -139,7 +139,7 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int
     """Adiciona tagline_pt aos registros com tagline preenchida (qualquer idioma, espelha glue_details)."""
     if "tagline" not in df.columns:
         return df, 0
-    mask_elegivel = df["tagline"].notna() & (df["tagline"] != "")
+    mask_elegivel = elegivel_tagline_pt(df)
     if not mask_elegivel.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel)
@@ -150,7 +150,7 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, in
     """Adiciona keywords_pt aos registros com keywords preenchidas (TMDB sempre devolve em inglês)."""
     if "keywords" not in df.columns:
         return df, 0
-    mask_elegivel = df["keywords"].notna() & (df["keywords"] != "")
+    mask_elegivel = elegivel_keywords_pt(df)
     if not mask_elegivel.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel)
