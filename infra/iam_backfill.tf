@@ -10,9 +10,9 @@
 #
 # Esta role cobre exatamente o que os scripts scripts/backfill_*.py usam:
 # invocar a Lambda API, iniciar/monitorar os jobs Glue Details e Data Quality,
-# ler/gravar checkpoints e parquet no bucket SOT, e ler/gravar partições no
-# Glue Data Catalog (usado implicitamente pelo awswrangler em
-# backfill_traducao.py).
+# ler/gravar checkpoints no bucket TEMP, ler/gravar parquet no bucket SOT, e
+# ler/gravar partições no Glue Data Catalog (usado implicitamente pelo
+# awswrangler em backfill_traducao.py).
 #
 # Não confundir com aws_iam_role.sfn_backfill_role (iam_roles.tf), que serve
 # o backfill anual automático via Step Functions — mecanismo separado,
@@ -105,8 +105,8 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
 }
 
 # =============================================================================
-# POLICY 3 — S3 no bucket SOT: checkpoints (todos os scripts, exceto
-# backfill_referencias.py) e tabelas discover/details movie/tv
+# POLICY 3 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
+# backfill_referencias.py) e tabelas discover/details movie/tv no bucket SOT
 # (backfill_traducao.py, via awswrangler)
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_s3" {
@@ -120,18 +120,30 @@ resource "aws_iam_role_policy" "backfill_s3" {
         # awswrangler faz ListObjectsV2 para descobrir partições antes de
         # ler/escrever — exige o bucket inteiro como Resource, restrito por
         # Condition ao prefixo.
-        Sid      = "ListScopedPrefixes"
+        Sid      = "ListScopedPrefixesSot"
         Effect   = "Allow"
         Action   = "s3:ListBucket"
         Resource = aws_s3_bucket.sot_bucket.arn
         Condition = {
           StringLike = {
             "s3:prefix" = [
-              "_backfill_checkpoints/*",
               "tmdb/${aws_glue_catalog_table.tb_movie_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_tv_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_details_movie_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_details_tv_tmdb.name}/*",
+            ]
+          }
+        }
+      },
+      {
+        Sid      = "ListScopedPrefixesTemp"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.temporary_bucket.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "tmdb/backfill_checkpoints/*",
             ]
           }
         }
@@ -144,7 +156,7 @@ resource "aws_iam_role_policy" "backfill_s3" {
           "s3:PutObject",
           "s3:DeleteObject",
         ]
-        Resource = "${aws_s3_bucket.sot_bucket.arn}/_backfill_checkpoints/*"
+        Resource = "${aws_s3_bucket.temporary_bucket.arn}/tmdb/backfill_checkpoints/*"
       },
       {
         Sid    = "ReadDiscoverForTraducao"

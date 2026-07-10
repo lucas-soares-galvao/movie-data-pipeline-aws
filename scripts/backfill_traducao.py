@@ -27,7 +27,8 @@ Uso:
 Variáveis de ambiente obrigatórias:
     AWS_REGION
     TABLE_GROUP            (identifica o checkpoint; valor "traducao" neste script)
-    S3_BUCKET_SOT
+    S3_BUCKET_SOT          (parquets reais de tb_details_movie/tv_tmdb e tb_discover_movie/tv_tmdb)
+    S3_BUCKET_TEMP         (onde o checkpoint de retomada é armazenado)
     GLUE_DATABASE_MOVIE
     GLUE_DATABASE_TV
     TABLE_DETAILS_MOVIE
@@ -43,18 +44,16 @@ Variáveis opcionais:
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
     do S3), o script sai com exit code 75
-    (backfill_checkpoint.RETRYABLE_EXIT_CODE). O workflow renova a credencial
+    (backfill_shared.RETRYABLE_EXIT_CODE). O workflow renova a credencial
     e roda o script de novo — como o progresso é lido do checkpoint em S3
-    (s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json), as
+    (s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json), as
     partições (ano+tipo) já concluídas são puladas.
 """
 
-import logging
 import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 import awswrangler as wr
@@ -65,24 +64,11 @@ from botocore.exceptions import ClientError
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
 from shared_utils.traducao import traduzir_texto  # noqa: E402
 
-import backfill_checkpoint as checkpoint
+import backfill_shared as shared
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
-logger = logging.getLogger()
+logger = shared.setup_logging()
 
 _TRANSLATE_MAX_WORKERS = 10
-
-
-def _require_env(name: str) -> str:
-    """Lê variável de ambiente obrigatória ou levanta erro."""
-    value = os.environ.get(name)
-    if not value:
-        raise EnvironmentError(f"Variável de ambiente obrigatória não definida: {name}")
-    return value
 
 
 def _traduzir_pendentes(
@@ -172,7 +158,7 @@ def _load_discover_map(table_discover: str, s3_bucket_sot: str) -> pd.DataFrame:
     try:
         df = wr.s3.read_parquet(path=s3_path, columns=["id", "original_language"])
     except ClientError as exc:
-        checkpoint.log_expired_token(exc, f"leitura de {s3_path}")
+        shared.log_expired_token(exc, f"leitura de {s3_path}")
         raise
     return df.drop_duplicates(subset=["id"])[["id", "original_language"]].reset_index(drop=True)
 
@@ -197,7 +183,7 @@ def _backfill_year(
     try:
         df = wr.s3.read_parquet(path=s3_details_path)
     except ClientError as exc:
-        checkpoint.log_expired_token(exc, f"leitura de {s3_details_path}")
+        shared.log_expired_token(exc, f"leitura de {s3_details_path}")
         raise
     except Exception as exc:
         if "NoFilesFound" in type(exc).__name__ or "NoFilesFound" in str(exc):
@@ -233,27 +219,27 @@ def _backfill_year(
             table=table_details,
         )
     except ClientError as exc:
-        checkpoint.log_expired_token(exc, f"escrita de {s3_path} (year={year})")
+        shared.log_expired_token(exc, f"escrita de {s3_path} (year={year})")
         raise
     logger.info("  %d registros escritos em %s (year=%s).", len(df), s3_path, year)
     return True, traduzidos
 
 
 def main() -> None:
-    region = _require_env("AWS_REGION")
+    region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
 
-    table_group          = _require_env("TABLE_GROUP")
-    s3_bucket_sot        = _require_env("S3_BUCKET_SOT")
-    db_movie             = _require_env("GLUE_DATABASE_MOVIE")
-    db_tv                = _require_env("GLUE_DATABASE_TV")
-    table_details_movie  = _require_env("TABLE_DETAILS_MOVIE")
-    table_details_tv     = _require_env("TABLE_DETAILS_TV")
-    table_discover_movie = _require_env("TABLE_DISCOVER_MOVIE")
-    table_discover_tv    = _require_env("TABLE_DISCOVER_TV")
+    table_group          = shared.require_env("TABLE_GROUP")
+    s3_bucket_sot         = shared.require_env("S3_BUCKET_SOT")
+    s3_bucket_temp        = shared.require_env("S3_BUCKET_TEMP")
+    db_movie              = shared.require_env("GLUE_DATABASE_MOVIE")
+    db_tv                 = shared.require_env("GLUE_DATABASE_TV")
+    table_details_movie   = shared.require_env("TABLE_DETAILS_MOVIE")
+    table_details_tv      = shared.require_env("TABLE_DETAILS_TV")
+    table_discover_movie  = shared.require_env("TABLE_DISCOVER_MOVIE")
+    table_discover_tv     = shared.require_env("TABLE_DISCOVER_TV")
 
-    start_year   = int(os.environ.get("BACKFILL_START_YEAR",   2000))
-    end_year     = int(os.environ.get("BACKFILL_END_YEAR",     datetime.now().year))
+    start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 300))
 
     years = list(range(start_year, end_year + 1))
@@ -273,7 +259,7 @@ def main() -> None:
         len(discover_map_movie), len(discover_map_tv),
     )
 
-    completed = checkpoint.load_checkpoint(s3_client, s3_bucket_sot, table_group, start_year, end_year)
+    completed = shared.load_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year)
 
     unidades = []
     for year in years:
@@ -281,11 +267,7 @@ def main() -> None:
         unidades.append(("tv", year, db_tv, table_details_tv, discover_map_tv))
 
     pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]
-    if len(pendentes) < len(unidades):
-        logger.info(
-            "%d de %d partições já concluídas no checkpoint; retomando com %d pendente(s).",
-            len(unidades) - len(pendentes), len(unidades), len(pendentes),
-        )
+    shared.log_resume_progress(logger, "partições já concluídas", len(unidades), len(pendentes))
 
     total_traduzidos = 0
     for i, (tipo, year, database, table_details, discover_map) in enumerate(pendentes, start=1):
@@ -299,12 +281,12 @@ def main() -> None:
         )
         total_traduzidos += traduzidos
         completed.add(f"{tipo}:{year}")
-        checkpoint.save_checkpoint(s3_client, s3_bucket_sot, table_group, start_year, end_year, completed)
+        shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year, completed)
         if i < len(pendentes):
             logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
             time.sleep(wait_seconds)
 
-    checkpoint.clear_checkpoint(s3_client, s3_bucket_sot, table_group)
+    shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
     logger.info(
         "Backfill de tradução concluído: %d até %d | %d campos traduzidos com sucesso "
         "(overview_pt + tagline_pt + keywords_pt)",
@@ -313,10 +295,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except ClientError as exc:
-        codigo = checkpoint.expired_token_exit_code(exc)
-        if codigo is not None:
-            sys.exit(codigo)
-        raise
+    shared.run_with_retry_exit(main)
