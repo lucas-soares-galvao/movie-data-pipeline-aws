@@ -2,7 +2,7 @@
 
 ## O que é
 
-O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios, plataformas de streaming disponíveis no Brasil, elenco (top 5 atores), diretor, roteiristas, compositor da trilha sonora, produtor(es), diretor de fotografia, montador(a), país de origem (filmes), países de produção, keywords temáticas, classificação indicativa BR, trailer, coleção/franquia, produtoras, status, tagline, IMDB ID, títulos recomendados, títulos similares e títulos alternativos/regionais. Também obtém traduções pt-BR de sinopses e taglines diretamente do TMDB (via `append_to_response=translations`) e, quando não disponíveis, traduz do inglês para o português via Google Translate. Keywords são sempre traduzidas via Google Translate (o TMDB não as localiza). Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
+O Glue Details é o terceiro estágio do pipeline de dados. Acionado pelo Glue ETL após cada tabela `discover` ser processada, ele busca na API do TMDB informações complementares para cada filme ou série: duração, número de temporadas/episódios, plataformas de streaming disponíveis no Brasil, elenco (top 5 atores), diretor, roteiristas, compositor da trilha sonora, produtor(es), diretor de fotografia, montador(a), país de origem (filmes), países de produção, keywords temáticas, classificação indicativa BR, trailer, coleção/franquia, produtoras, status, tagline, IMDB ID, títulos recomendados, títulos similares e títulos alternativos/regionais. Também obtém traduções pt-BR de sinopses e taglines diretamente do TMDB (via `append_to_response=translations`) e, quando não disponíveis, traduz para o português via Google Translate (detecção automática do idioma de origem). Keywords são sempre traduzidas via Google Translate (o TMDB não as localiza). Grava os resultados em tabelas separadas na camada SOT e, ao final do processamento total (após o último ano de séries), aciona o Glue AGG.
 
 ## Por que existe
 
@@ -15,9 +15,9 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 3. Consulta o Athena para obter a lista de todos os IDs únicos da tabela `discover` para o ano especificado
 4. **Delta de detalhes (refresh mensal):** em vez de buscar detalhes de todos os IDs toda vez (o que custaria muitas chamadas à API), o job calcula o *delta* — ou seja, apenas os IDs que ainda não foram processados no mês atual. Para isso, consulta a tabela `tb_details_*` em **todas as partições `year`** e exclui IDs já processados no mês atual. Isso evita que um ID cujo `release_date` pertence a um `year` diferente do `year` do discover seja tratado como novo por um job concorrente. Somente os IDs ausentes ou de meses anteriores são buscados na API. Opcionalmente, o argumento `FORCE_REFETCH=true` ignora todo esse cálculo de delta e rebusca todos os IDs do discover na API — útil para forçar um refresh completo fora do ciclo mensal
 5. Para cada ID novo, chama `/movie/{id}` ou `/tv/{id}` (via `ThreadPoolExecutor`) e grava em `tb_tmdb_details_{movie|tv}_{env}`. Registros sem `release_date`/`first_air_date` ficam sem `year` e são descartados antes da gravação — se **todos** os registros do lote ficarem sem `year`, nada é gravado neste run (evita erro de partição vazia no S3)
-6. **Tradução de sinopses (TMDB pt-BR → Google Translate):** primeiro verifica se o TMDB já possui tradução pt-BR (extraída do `append_to_response=translations`). Caso exista, usa diretamente. Caso contrário, para títulos com `original_language='en'`, traduz via `deep_translator.GoogleTranslator` (com retry/backoff em `traduzir_texto`, já que o endpoint não-oficial falha esporadicamente sob alto volume). Grava na coluna `overview_pt`. Para outros idiomas sem tradução TMDB, `overview_pt` fica nulo
+6. **Tradução de sinopses (TMDB pt-BR → Google Translate):** primeiro verifica se o TMDB já possui tradução pt-BR (extraída do `append_to_response=translations`). Caso exista, usa diretamente. Caso contrário, para títulos com `original_language='en'`, traduz via `deep_translator.GoogleTranslator` com `source="auto"` (detecção automática de idioma; com retry/backoff em `traduzir_texto`, já que o endpoint não-oficial falha esporadicamente sob alto volume). Grava na coluna `overview_pt`. Para outros idiomas sem tradução TMDB, `overview_pt` fica nulo
 6b. **Tradução de keywords:** traduz as keywords temáticas (sempre em inglês na TMDB, não suportam localização) para português via Google Translate, gravando na coluna `keywords_pt`. Traduz todos os registros com keywords não-nulas, independente do idioma original
-6c. **Tradução de tagline (TMDB pt-BR → Google Translate):** primeiro verifica se o TMDB já possui tradução pt-BR da tagline. Caso exista, usa diretamente. Caso contrário, traduz via Google Translate. Grava na coluna `tagline_pt`
+6c. **Tradução de tagline (TMDB pt-BR → Google Translate):** primeiro verifica se o TMDB já possui tradução pt-BR da tagline. Caso exista, usa diretamente. Caso contrário, traduz via Google Translate — o idioma de origem é detectado automaticamente (`source="auto"`), o que importa aqui porque a tagline é traduzida para qualquer `original_language`, não só inglês. Grava na coluna `tagline_pt`
 6d. **Países de produção:** extrai os códigos ISO 3166-1 dos países de produção (`production_countries_iso`) para lookup na tabela de referência `tb_configuration_countries` no Glue AGG (substituindo o antigo Google Translate)
 6e2. **Idiomas falados:** extrai os códigos ISO 639-1 dos idiomas falados (`spoken_languages_iso`) para lookup na tabela de referência `tb_configuration_languages` no Glue AGG, resolvendo nomes em português
 6e. **Coleções em pt-BR:** para filmes com coleção/franquia, busca o nome em português via `/collection/{id}?language=pt-BR` na API do TMDB. Chamadas deduplicadas por collection_id (1 chamada para toda a coleção, ex: Marvel = 1 chamada para 30+ filmes). Grava na coluna `collection_name_pt`
@@ -82,8 +82,8 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `_extrair_paises_producao_iso(production_countries)` | Códigos ISO 3166-1 dos países de produção como array |
 | `_traduzir_coluna(df, mask, coluna_fonte, coluna_destino)` | Helper compartilhado pelas três `_adicionar_traducoes_*`: aplica `shared_utils.traducao.traduzir_texto` linha a linha nas posições selecionadas por `mask`, gravando o resultado na coluna de destino |
 | `_adicionar_traducoes_pt(df)` | Prioriza overview pt-BR do TMDB; fallback para Google Translate (só `original_language='en'`) |
-| `_adicionar_traducoes_keywords_pt(df)` | Traduz keywords EN→PT via Google Translate (TMDB não localiza keywords) |
-| `_adicionar_traducoes_tagline_pt(df)` | Prioriza tagline pt-BR do TMDB; fallback para Google Translate |
+| `_adicionar_traducoes_keywords_pt(df)` | Traduz keywords para PT via Google Translate (TMDB não localiza keywords) |
+| `_adicionar_traducoes_tagline_pt(df)` | Prioriza tagline pt-BR do TMDB; fallback para Google Translate (idioma de origem detectado automaticamente, já que a tagline pode não estar em inglês) |
 | `_buscar_colecoes_pt_br(api_key, collection_ids)` | Busca nomes de coleções em pt-BR na API do TMDB via chamadas paralelas |
 | `_adicionar_collection_name_pt(df, api_key)` | Adiciona coluna `collection_name_pt` ao DataFrame de detalhes de filmes |
 | `collect_and_write_details(ids, ...)` | Faz chamadas paralelas e grava tabela de detalhes |
@@ -102,13 +102,13 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, AGG) com argumentos dinâmicos |
-| `traduzir_texto(texto, contexto="")` | `shared_utils.traducao` | Traduz texto EN→PT via Google Translate; retorna o texto original em caso de falha |
+| `traduzir_texto(texto, contexto="")` | `shared_utils.traducao` | Traduz texto para PT via Google Translate com detecção automática do idioma de origem; retorna o texto original em caso de falha |
 | `get_resolved_option(args)` | `shared_utils.glue_helpers` | Wrapper de `getResolvedOptions` — converte lista de nomes de argumentos em dicionário nome→valor |
 | `configurar_logging_glue()` | `shared_utils.glue_helpers` | Configura o logging padrão dos jobs Glue (stdout, nível INFO, formato com timestamp) |
 
 ## Tecnologias
 
 - **requests** + **ThreadPoolExecutor** — chamadas paralelas à API com controle de concorrência
-- **deep_translator** (GoogleTranslator) — tradução EN→PT como fallback (sinopses, keywords, taglines) quando a tradução pt-BR não existe no TMDB
+- **deep_translator** (GoogleTranslator, `source="auto"`) — tradução para PT como fallback (sinopses, keywords, taglines) quando a tradução pt-BR não existe no TMDB, com detecção automática do idioma de origem
 - **awswrangler** — consultas Athena e escrita Parquet
 - **boto3** — Secrets Manager e acionamento de jobs Glue

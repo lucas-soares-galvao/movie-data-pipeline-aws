@@ -13,7 +13,7 @@ app/shared_src/
     ├── __init__.py
     ├── api_client.py      ← acesso a APIs externas (retry, Secrets Manager)
     ├── glue_helpers.py    ← utilitários compartilhados de jobs Glue
-    ├── traducao.py        ← tradução inglês → português via Google Translate
+    ├── traducao.py        ← tradução para português via Google Translate (detecção automática de idioma)
     └── triggers.py        ← disparo genérico de jobs Glue
 ```
 
@@ -37,7 +37,7 @@ app/shared_src/
 
 | Função | Responsabilidade |
 |---|---|
-| `traduzir_texto(texto, contexto)` | Traduz texto de inglês para português via Google Translate, com até 5 tentativas (mesmo padrão de `api_get`) e backoff entre elas; uma tentativa é considerada falha tanto por exceção quanto por retornar o texto idêntico ao original (bloqueio/rate-limit silencioso do endpoint); retorna o original se todas as tentativas falharem, para não interromper o job |
+| `traduzir_texto(texto, contexto)` | Traduz texto para português via Google Translate com detecção automática do idioma de origem (`source="auto"`), com até 5 tentativas (mesmo padrão de `api_get`) e backoff entre elas; uma tentativa é considerada falha tanto por exceção quanto por retornar o texto idêntico ao original (bloqueio/rate-limit silencioso do endpoint); retorna o original se todas as tentativas falharem, para não interromper o job |
 
 ### `shared_utils/triggers.py`
 
