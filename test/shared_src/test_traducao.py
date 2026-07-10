@@ -54,10 +54,11 @@ class TestTraduzirTexto:
         assert mock_translator.translate.call_count == 2
         mock_sleep.assert_called_once_with(2)
 
-    def test_retorna_original_quando_sempre_identico_sem_excecao(self):
-        """Nenhuma exceção é lançada em nenhuma tentativa, mas o texto nunca muda
-        (bloqueio/rate-limit silencioso do endpoint) — mesmo assim esgota as
-        tentativas e devolve o original, igual ao caso de exceção."""
+    def test_desiste_cedo_quando_sempre_identico_sem_excecao(self):
+        """Nenhuma exceção é lançada em nenhuma tentativa, mas o texto nunca muda —
+        isso costuma indicar que não há o que traduzir (nome próprio, termo
+        emprestado), não bloqueio transitório, então desiste em
+        _MAX_TENTATIVAS_SEM_ERRO tentativas (2), não nas 5 completas."""
         mock_translator = MagicMock()
         mock_translator.translate.return_value = "Hello"
         with (
@@ -66,9 +67,9 @@ class TestTraduzirTexto:
         ):
             result = traduzir_texto("Hello")
         assert result == "Hello"
-        assert mock_translator.translate.call_count == 5
+        assert mock_translator.translate.call_count == 2
 
-    def test_log_warning_quando_sempre_identico_sem_excecao(self, caplog):
+    def test_log_info_quando_desiste_cedo_por_resultado_identico(self, caplog):
         import logging
         mock_translator = MagicMock()
         mock_translator.translate.return_value = "Hello"
@@ -76,9 +77,23 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao.time.sleep"),
         ):
-            with caplog.at_level(logging.WARNING):
+            with caplog.at_level(logging.INFO):
                 traduzir_texto("Hello")
-        assert "Falha ao traduzir" in caplog.text
+        assert "não há tradução a fazer" in caplog.text
+
+    def test_contador_de_resultado_identico_nao_precisa_ser_consecutivo(self):
+        """O limite de _MAX_TENTATIVAS_SEM_ERRO soma tentativas sem erro e resultado
+        idêntico ao total (mesmo com uma exceção intercalada), não exige que sejam
+        consecutivas."""
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = ["Hello", Exception("timeout"), "Hello"]
+        with (
+            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
+            patch("shared_utils.traducao.time.sleep"),
+        ):
+            result = traduzir_texto("Hello")
+        assert result == "Hello"
+        assert mock_translator.translate.call_count == 3
 
     def test_log_warning_em_caso_de_excecao(self, caplog):
         import logging

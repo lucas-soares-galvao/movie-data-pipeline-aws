@@ -118,11 +118,17 @@ def _traduzir_pendentes(
 
 
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Adiciona overview_pt aos registros original_language='en' ainda pendentes."""
+    """Adiciona overview_pt aos registros original_language='en' com overview_en
+    preenchido, ainda pendentes (registros com overview_en vazio não têm o que
+    traduzir e distorceriam a contagem de sucesso)."""
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
 
-    mask_en = df["original_language"] == "en"
+    mask_en = (
+        (df["original_language"] == "en")
+        & df["overview_en"].notna()
+        & (df["overview_en"] != "")
+    )
     if not mask_en.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_en)
