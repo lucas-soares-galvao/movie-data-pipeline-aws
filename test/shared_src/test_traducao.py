@@ -77,7 +77,10 @@ class TestTraduzirTexto:
         assert result == "Hello"
         assert mock_translator.translate.call_count == 2
 
-    def test_log_info_quando_desiste_cedo_por_resultado_identico(self, caplog):
+    def test_log_debug_quando_desiste_cedo_por_resultado_identico(self, caplog):
+        """Nível DEBUG (não INFO): esse desfecho é comum (nomes próprios, termos
+        emprestados) e não deve poluir o log padrão do workflow com uma linha por
+        registro — só o resumo por coluna aparece em INFO."""
         import logging
         mock_translator = MagicMock()
         mock_translator.translate.return_value = "Hello"
@@ -85,7 +88,7 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao.time.sleep"),
         ):
-            with caplog.at_level(logging.INFO):
+            with caplog.at_level(logging.DEBUG):
                 traduzir_texto("Hello")
         assert "não há tradução a fazer" in caplog.text
 

@@ -60,7 +60,7 @@ def traduzir_texto(texto: str, contexto: str = "") -> str:
                 "do Google Translate, ou simplesmente não há o que traduzir)."
             )
             if tentativas_sem_erro >= _MAX_TENTATIVAS_SEM_ERRO:
-                logger.info(
+                logger.debug(
                     f"'{prefixo}{texto:.80}' não mudou em {tentativas_sem_erro} tentativa(s) sem "
                     "erro; provavelmente não há tradução a fazer (nome próprio, termo emprestado). "
                     "Mantendo original."
