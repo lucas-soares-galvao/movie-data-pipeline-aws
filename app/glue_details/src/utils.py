@@ -663,9 +663,9 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     Adiciona coluna overview_pt ao DataFrame de detalhes.
 
     Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb). Para registros sem
-    tradução TMDB, com original_language='en' e overview_en não-vazio, traduz via
-    Google Translate. Para outros idiomas, overview_pt fica nulo — o glue_agg usará
-    overview_en nesses casos.
+    tradução TMDB, com idioma original diferente de pt e overview_en não-vazio,
+    traduz via Google Translate. Para registros já em pt ou sem overview_en,
+    overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
     """
     df["overview_pt"] = df["overview_pt_tmdb"]
 
@@ -687,8 +687,9 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adiciona coluna keywords_pt ao DataFrame de detalhes.
 
-    Traduz keywords de inglês para português via Google Translate.
-    Keywords da TMDB são sempre em inglês, independente do idioma original do título.
+    Traduz keywords para português via Google Translate, exceto quando o idioma
+    original já é pt (evita reenviar à API keywords que já podem estar em
+    português; a TMDB devolve keywords em inglês para os demais idiomas).
     """
     df["keywords_pt"] = None
 
@@ -708,7 +709,8 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
     Adiciona coluna tagline_pt ao DataFrame de detalhes.
 
     Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb). Para registros sem
-    tradução TMDB e com tagline não-nula, traduz via Google Translate.
+    tradução TMDB, com tagline não-nula e idioma original diferente de pt,
+    traduz via Google Translate.
     """
     df["tagline_pt"] = df["tagline_pt_tmdb"]
 

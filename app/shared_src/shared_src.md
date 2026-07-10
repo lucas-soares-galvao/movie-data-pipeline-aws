@@ -39,9 +39,9 @@ app/shared_src/
 |---|---|
 | `traduzir_texto(texto, contexto)` | Traduz texto para português via Google Translate com detecção automática do idioma de origem (`source="auto"`), com backoff entre tentativas (mesmo padrão de `api_get`); uma exceção usa o orçamento completo de 5 tentativas (tende a ser transitório — rede, rate limit), enquanto um resultado idêntico ao original sem exceção desiste em só 2 (normalmente indica que não há o que traduzir — nome próprio, termo emprestado — não bloqueio); retorna o original se as tentativas se esgotarem, para não interromper o job |
 | `traduzir_em_paralelo(valores, traduzir_fn, max_workers)` | Aplica `traduzir_fn` a cada item de `valores` em paralelo via `ThreadPoolExecutor`; recebe a função de tradução como parâmetro (em vez de chamar `traduzir_texto` diretamente) para que os chamadores continuem passando sua própria referência local, preservando os mocks de teste existentes em `glue_details` e `backfill_traducao.py` |
-| `elegivel_overview_pt(df)` | Mask de candidatos à tradução de overview: `original_language=='en'` e `overview_en` não-vazio. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
-| `elegivel_tagline_pt(df)` | Mask de candidatos à tradução de tagline: campo não-vazio, independente do idioma original. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
-| `elegivel_keywords_pt(df)` | Mask de candidatos à tradução de keywords: campo não-vazio, independente do idioma original (TMDB sempre devolve keywords em inglês). Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
+| `elegivel_overview_pt(df)` | Mask de candidatos à tradução de overview: `original_language != 'pt'` e `overview_en` não-vazio. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
+| `elegivel_tagline_pt(df)` | Mask de candidatos à tradução de tagline: campo não-vazio e `original_language != 'pt'`. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
+| `elegivel_keywords_pt(df)` | Mask de candidatos à tradução de keywords: campo não-vazio e `original_language != 'pt'` (TMDB sempre devolve keywords em inglês para os demais idiomas; pular pt evita tradução à toa). Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
 
 ### `shared_utils/triggers.py`
 
