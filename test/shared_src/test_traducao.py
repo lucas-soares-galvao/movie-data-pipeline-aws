@@ -109,4 +109,4 @@ class TestTraduzirTexto:
         mock_translator.translate.return_value = "ok"
         with patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator) as mock_cls:
             traduzir_texto("test")
-        mock_cls.assert_called_once_with(source="en", target="pt")
+        mock_cls.assert_called_once_with(source="auto", target="pt")
