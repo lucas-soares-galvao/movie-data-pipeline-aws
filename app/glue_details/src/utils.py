@@ -15,7 +15,13 @@ import requests
 # re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
-from shared_utils.traducao import traduzir_texto
+from shared_utils.traducao import (
+    elegivel_keywords_pt,
+    elegivel_overview_pt,
+    elegivel_tagline_pt,
+    traduzir_em_paralelo,
+    traduzir_texto,
+)
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 logger = logging.getLogger()
@@ -642,8 +648,7 @@ def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFram
 def _traduzir_coluna(df: pd.DataFrame, mask, coluna_fonte: str, coluna_destino: str) -> None:
     """Traduz em paralelo os valores de coluna_fonte onde mask é True e grava em coluna_destino."""
     valores = df.loc[mask, coluna_fonte].fillna("").tolist()
-    with ThreadPoolExecutor(max_workers=_TRANSLATE_MAX_WORKERS) as executor:
-        traduzidos = list(executor.map(traduzir_texto, valores))
+    traduzidos = traduzir_em_paralelo(valores, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS)
     df.loc[mask, coluna_destino] = traduzidos
 
 
@@ -652,15 +657,13 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     Adiciona coluna overview_pt ao DataFrame de detalhes.
 
     Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb). Para registros sem
-    tradução TMDB e com original_language='en', traduz via Google Translate.
-    Para outros idiomas, overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
+    tradução TMDB, com original_language='en' e overview_en não-vazio, traduz via
+    Google Translate. Para outros idiomas, overview_pt fica nulo — o glue_agg usará
+    overview_en nesses casos.
     """
     df["overview_pt"] = df["overview_pt_tmdb"]
 
-    mask = (
-        (df["original_language"] == "en")
-        & (df["overview_pt"].isna() | (df["overview_pt"] == ""))
-    )
+    mask = elegivel_overview_pt(df) & (df["overview_pt"].isna() | (df["overview_pt"] == ""))
     if not mask.any():
         return df
 
@@ -683,7 +686,7 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     df["keywords_pt"] = None
 
-    mask = df["keywords"].notna() & (df["keywords"] != "")
+    mask = elegivel_keywords_pt(df)
     if not mask.any():
         return df
 
@@ -703,11 +706,7 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     df["tagline_pt"] = df["tagline_pt_tmdb"]
 
-    mask = (
-        df["tagline"].notna()
-        & (df["tagline"] != "")
-        & (df["tagline_pt"].isna() | (df["tagline_pt"] == ""))
-    )
+    mask = elegivel_tagline_pt(df) & (df["tagline_pt"].isna() | (df["tagline_pt"] == ""))
     if not mask.any():
         return df
 

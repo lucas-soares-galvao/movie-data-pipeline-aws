@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List
 
+import pandas as pd
 from deep_translator import GoogleTranslator
 
 logger = logging.getLogger()
@@ -70,3 +73,45 @@ def traduzir_texto(texto: str, contexto: str = "") -> str:
         "com erro. Mantendo original."
     )
     return texto
+
+
+def traduzir_em_paralelo(
+    valores: List[str], traduzir_fn: Callable[[str], str], max_workers: int = 10
+) -> List[str]:
+    """
+    Aplica traduzir_fn a cada item de valores em paralelo via ThreadPoolExecutor.
+
+    Recebe a função de tradução como parâmetro (em vez de chamar traduzir_texto
+    diretamente) para que os chamadores continuem passando sua própria referência
+    local de traduzir_texto — a mesma que seus testes fazem mock.
+
+    Args:
+        valores:     Textos a traduzir, na ordem em que devem ser retornados.
+        traduzir_fn: Função chamada para cada item (ex.: traduzir_texto).
+        max_workers: Número de threads concorrentes.
+
+    Returns:
+        Lista de textos traduzidos, na mesma ordem de valores.
+    """
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        return list(executor.map(traduzir_fn, valores))
+
+
+def elegivel_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":
+    """Candidatos à tradução de overview: original_language='en' e overview_en preenchido."""
+    return (
+        (df["original_language"] == "en")
+        & df["overview_en"].notna()
+        & (df["overview_en"] != "")
+    )
+
+
+def elegivel_tagline_pt(df: pd.DataFrame) -> "pd.Series[bool]":
+    """Candidatos à tradução de tagline: campo preenchido, independente do idioma original."""
+    return df["tagline"].notna() & (df["tagline"] != "")
+
+
+def elegivel_keywords_pt(df: pd.DataFrame) -> "pd.Series[bool]":
+    """Candidatos à tradução de keywords: campo preenchido, independente do idioma original
+    (a API do TMDB sempre devolve keywords em inglês)."""
+    return df["keywords"].notna() & (df["keywords"] != "")
