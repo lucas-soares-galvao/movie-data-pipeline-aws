@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as quatro funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto`/`traduzir_em_paralelo`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -13,7 +13,7 @@ test/shared_src/
 ├── requirements_tests.txt  # Dependências de teste
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configurar_logging_glue
-├── test_traducao.py        # Testes de traduzir_texto
+├── test_traducao.py        # Testes de traduzir_texto, traduzir_em_paralelo e das máscaras elegivel_*
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -80,15 +80,50 @@ test/shared_src/
 
 ### `TestTraduzirTexto`
 
+`traduzir_texto` sempre usa `GoogleTranslator(source="auto", target="pt")` — detecção
+automática do idioma de origem — com até `_MAX_TENTATIVAS = 5` tentativas e backoff
+(`time.sleep(tentativa * 2)`), mas desiste mais cedo (`_MAX_TENTATIVAS_SEM_ERRO = 2`)
+quando o resultado vem idêntico ao original sem lançar exceção (indício de que não há
+o que traduzir, e não de falha transitória).
+
 | Teste | O que verifica |
 |---|---|
 | `test_retorna_string_vazia_para_entrada_vazia` | Texto `""` retorna `""` sem chamar o tradutor |
 | `test_retorna_string_vazia_para_none` | Texto `None` retorna `""` sem chamar o tradutor |
 | `test_traduz_texto_com_sucesso` | Tradução bem-sucedida retorna o texto traduzido e chama `translate` com o texto original |
-| `test_retorna_original_em_caso_de_excecao` | Exceção do tradutor faz a função retornar o texto original |
+| `test_retorna_original_apos_esgotar_tentativas` | Exceção em todas as `_MAX_TENTATIVAS` (5) tentativas faz a função retornar o texto original |
+| `test_tenta_novamente_apos_excecao_e_depois_sucede` | Uma exceção seguida de sucesso: 2 chamadas ao tradutor, `time.sleep(2)` entre elas, retorna o texto traduzido |
+| `test_tenta_novamente_quando_resultado_identico_ao_original` | Sem exceção, mas resultado igual ao original conta como tentativa falha e tenta de novo |
+| `test_desiste_cedo_quando_sempre_identico_sem_excecao` | Resultado sempre idêntico ao original, sem exceção: desiste em `_MAX_TENTATIVAS_SEM_ERRO` (2) tentativas, não nas 5 completas |
+| `test_log_debug_quando_desiste_cedo_por_resultado_identico` | Esse desfecho (comum para nomes próprios/termos emprestados) loga em `DEBUG`, não `INFO` — não deve poluir o log padrão do workflow |
+| `test_contador_de_resultado_identico_nao_precisa_ser_consecutivo` | O contador de tentativas "sem erro e resultado idêntico" soma o total mesmo com uma exceção intercalada, não exige consecutividade |
 | `test_log_warning_em_caso_de_excecao` | Mensagem `"Falha ao traduzir"` aparece no log de warning quando a tradução falha |
 | `test_contexto_aparece_no_log` | O parâmetro `contexto` aparece na mensagem de log de warning |
-| `test_cria_translator_com_idiomas_corretos` | `GoogleTranslator` é instanciado com `source="en", target="pt"` |
+| `test_cria_translator_com_idiomas_corretos` | `GoogleTranslator` é instanciado com `source="auto", target="pt"` (detecção automática do idioma de origem) |
+
+### `TestTraduzirEmParalelo`
+
+| Teste | O que verifica |
+|---|---|
+| `test_traduz_cada_valor_e_preserva_a_ordem` | Aplica `traduzir_fn` a cada valor via `ThreadPoolExecutor`, preservando a ordem de entrada |
+| `test_lista_vazia_nao_chama_traduzir_fn` | Lista vazia retorna `[]` sem chamar `traduzir_fn` |
+| `test_usa_max_workers_informado` | `max_workers` é repassado ao `ThreadPoolExecutor`, não hardcoded |
+
+### `TestElegivelOverviewPt` / `TestElegivelTaglinePt` / `TestElegivelKeywordsPt`
+
+As três máscaras (candidatos à tradução de `overview_pt`, `tagline_pt` e `keywords_pt`)
+compartilham a mesma regra: elegível quando `original_language != "pt"` e o campo de
+origem está preenchido. `overview_pt` ainda depende de `overview_en` estar preenchido
+(campos vazios não são reenviados ao tradutor).
+
+| Teste | O que verifica |
+|---|---|
+| `test_elegivel_quando_en_e_overview_preenchido` (`TestElegivelOverviewPt`) | Idioma `en` com `overview_en` preenchido é elegível |
+| `test_elegivel_para_qualquer_idioma_diferente_de_pt` (nas três classes) | Idiomas como `fr`, `ja`, `es` são elegíveis — não é mais uma lista restrita a `en` |
+| `test_nao_elegivel_quando_idioma_e_pt` (nas três classes) | `original_language == "pt"` nunca é elegível, mesmo com o campo preenchido — evita reenviar ao Google Translate texto que já está em português |
+| `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestElegivelOverviewPt`) | `overview_en` vazio/`None` não é elegível mesmo com idioma diferente de `pt` |
+| `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestElegivelTaglinePt`) | `tagline` vazia/`None` não é elegível |
+| `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestElegivelKeywordsPt`) | `keywords` vazia/`None` não é elegível |
 
 ## Como executar
 

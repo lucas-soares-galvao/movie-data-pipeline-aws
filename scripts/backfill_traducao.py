@@ -4,12 +4,14 @@ detalhes históricos.
 
 Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano e traduz para
 português, via Google Translate, os campos ainda pendentes (espelhando o que
-o Glue Details faz para dados novos):
-  - overview_pt:  apenas original_language='en'
-  - tagline_pt:   qualquer registro com tagline preenchida
-  - keywords_pt:  qualquer registro com keywords preenchidas (a API do TMDB
-                   sempre devolve keywords em inglês, independente do idioma
-                   original do título)
+o Glue Details faz para dados novos). As três colunas usam a mesma regra de
+elegibilidade: qualquer idioma original diferente de pt (evita reenviar à
+API conteúdo que já está em português):
+  - overview_pt:  original_language != 'pt' e overview_en preenchido
+  - tagline_pt:   original_language != 'pt' e tagline preenchida
+  - keywords_pt:  original_language != 'pt' e keywords preenchidas (a API do
+                   TMDB sempre devolve keywords em inglês para os demais
+                   idiomas)
 Um campo é considerado "já traduzido" (e não é retraduzido) quando a coluna
 _pt está preenchida e é diferente da coluna de origem. Campos sem tradução,
 ou cuja coluna _pt ficou igual à de origem (fallback de uma tradução que
@@ -122,21 +124,22 @@ def _traduzir_pendentes(
 
 
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Adiciona overview_pt aos registros original_language='en' com overview_en
-    preenchido, ainda pendentes (registros com overview_en vazio não têm o que
-    traduzir e distorceriam a contagem de sucesso)."""
+    """Adiciona overview_pt aos registros com idioma original diferente de pt e
+    overview_en preenchido, ainda pendentes (registros com overview_en vazio não
+    têm o que traduzir e distorceriam a contagem de sucesso)."""
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
 
-    mask_en = elegivel_overview_pt(df)
-    if not mask_en.any():
+    mask_elegivel = elegivel_overview_pt(df)
+    if not mask_elegivel.any():
         return df, 0
-    sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_en)
+    sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel)
     return df, sucesso
 
 
 def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Adiciona tagline_pt aos registros com tagline preenchida (qualquer idioma, espelha glue_details)."""
+    """Adiciona tagline_pt aos registros com tagline preenchida e idioma original
+    diferente de pt (espelha glue_details)."""
     if "tagline" not in df.columns:
         return df, 0
     mask_elegivel = elegivel_tagline_pt(df)
@@ -147,7 +150,8 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int
 
 
 def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Adiciona keywords_pt aos registros com keywords preenchidas (TMDB sempre devolve em inglês)."""
+    """Adiciona keywords_pt aos registros com keywords preenchidas e idioma original
+    diferente de pt (TMDB sempre devolve keywords em inglês para os demais idiomas)."""
     if "keywords" not in df.columns:
         return df, 0
     mask_elegivel = elegivel_keywords_pt(df)

@@ -77,7 +77,7 @@ Testa as funções individuais:
 - `_extrair_titulos_alternativos` (`TestExtrairTitulosAlternativos`): formato movie (titles key), formato tv (results key), dict vazio
 - `_extrair_traducao_pt_br` (`TestExtrairTraducaoPtBr`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
 - `_traduzir_coluna` (`TestTraduzirColuna`): loga resumo "X de Y traduzidos com sucesso (coluna)" em INFO; falha na tradução (texto mantido igual ao original) não conta como sucesso; soma corretamente sucesso e falha na mesma chamada
-- `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula
+- `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula, não traduz quando `original_language` já é `pt`
 - `_extrair_paises_producao_iso` (`TestExtrairPaisesProducaoIso`): extrai códigos ISO, retorna None para lista vazia e None
 - `_extrair_spoken_languages` (`TestExtrairSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
 - `_extrair_spoken_languages_iso` (`TestExtrairSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None

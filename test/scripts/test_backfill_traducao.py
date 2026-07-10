@@ -46,25 +46,26 @@ def _s3_client_sem_checkpoint() -> MagicMock:
 
 
 class TestAdicionarTraducoesPt:
-    def test_sem_registros_en_nao_chama_traducao(self):
-        df = pd.DataFrame({"original_language": ["pt", "es"], "overview_en": ["c", "d"]})
+    def test_sem_registros_elegiveis_nao_chama_traducao(self):
+        df = pd.DataFrame({"original_language": ["pt", "pt"], "overview_en": ["c", "d"]})
         with patch("backfill_traducao.traduzir_texto") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
         mock_translate.assert_not_called()
         assert resultado["overview_pt"].isna().all()
         assert sucesso == 0
 
-    def test_traduz_apenas_registros_en(self):
+    def test_traduz_qualquer_idioma_diferente_de_pt(self):
         df = pd.DataFrame({
-            "original_language": ["en", "pt"],
-            "overview_en": ["Overview", "Sinopse"],
+            "original_language": ["en", "es", "pt"],
+            "overview_en": ["Overview", "Resumen", "Sinopse"],
         })
         with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"):
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
 
         assert resultado.loc[0, "overview_pt"] == "Overview_PT"
-        assert pd.isna(resultado.loc[1, "overview_pt"])
-        assert sucesso == 1
+        assert resultado.loc[1, "overview_pt"] == "Resumen_PT"
+        assert pd.isna(resultado.loc[2, "overview_pt"])
+        assert sucesso == 2
 
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self):
         """traduzir_texto devolve o texto original quando falha após todas as tentativas."""
@@ -141,27 +142,38 @@ class TestAdicionarTraducoesPt:
 
 class TestAdicionarTraducoesTaglinePt:
     def test_sem_tagline_nao_chama_traducao(self):
-        df = pd.DataFrame({"tagline": [None, ""]})
+        df = pd.DataFrame({"original_language": ["en", "en"], "tagline": [None, ""]})
         with patch("backfill_traducao.traduzir_texto") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
         mock_translate.assert_not_called()
         assert sucesso == 0
 
-    def test_traduz_qualquer_idioma_sem_filtro_original_language(self):
-        """Diferente de overview_pt, tagline_pt não filtra por original_language (espelha glue_details)."""
+    def test_traduz_qualquer_idioma_diferente_de_pt(self):
         df = pd.DataFrame({
-            "original_language": ["pt", "es"],
-            "tagline": ["Uma frase.", "Otra frase."],
+            "original_language": ["en", "es"],
+            "tagline": ["A phrase.", "Otra frase."],
         })
         with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
 
         assert mock_translate.call_count == 2
-        assert resultado.loc[0, "tagline_pt"] == "Uma frase._PT"
+        assert resultado.loc[0, "tagline_pt"] == "A phrase._PT"
         assert sucesso == 2
+
+    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+        """Sem nenhum registro elegível, tagline_pt nem chega a ser criada (mesma
+        semântica do caso "sem tagline preenchida")."""
+        df = pd.DataFrame({"original_language": ["pt"], "tagline": ["Uma frase."]})
+        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+            resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
+
+        mock_translate.assert_not_called()
+        assert "tagline_pt" not in resultado.columns
+        assert sucesso == 0
 
     def test_pula_registros_ja_traduzidos(self):
         df = pd.DataFrame({
+            "original_language": ["en", "en"],
             "tagline": ["Já traduzida", "Pendente"],
             "tagline_pt": ["Already translated", None],
         })
@@ -174,7 +186,11 @@ class TestAdicionarTraducoesTaglinePt:
         assert sucesso == 1
 
     def test_retenta_registro_cujo_tagline_pt_ficou_igual_ao_original(self):
-        df = pd.DataFrame({"tagline": ["Falhou antes"], "tagline_pt": ["Falhou antes"]})
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "tagline": ["Falhou antes"],
+            "tagline_pt": ["Falhou antes"],
+        })
         with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
 
@@ -185,16 +201,16 @@ class TestAdicionarTraducoesTaglinePt:
 
 class TestAdicionarTraducoesKeywordsPt:
     def test_sem_keywords_nao_chama_traducao(self):
-        df = pd.DataFrame({"keywords": [None, ""]})
+        df = pd.DataFrame({"original_language": ["en", "en"], "keywords": [None, ""]})
         with patch("backfill_traducao.traduzir_texto") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df)
         mock_translate.assert_not_called()
         assert sucesso == 0
 
-    def test_traduz_qualquer_idioma_sem_filtro_original_language(self):
-        """TMDB sempre devolve keywords em inglês, independente do idioma original do título."""
+    def test_traduz_qualquer_idioma_diferente_de_pt(self):
+        """TMDB sempre devolve keywords em inglês para idiomas diferentes de pt."""
         df = pd.DataFrame({
-            "original_language": ["pt"],
+            "original_language": ["en"],
             "keywords": ["space, alien"],
         })
         with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
@@ -204,8 +220,20 @@ class TestAdicionarTraducoesKeywordsPt:
         assert resultado.loc[0, "keywords_pt"] == "space, alien_PT"
         assert sucesso == 1
 
+    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+        """Sem nenhum registro elegível, keywords_pt nem chega a ser criada (mesma
+        semântica do caso "sem keywords preenchidas")."""
+        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, alienígena"]})
+        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+            resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df)
+
+        mock_translate.assert_not_called()
+        assert "keywords_pt" not in resultado.columns
+        assert sucesso == 0
+
     def test_pula_registros_ja_traduzidos(self):
         df = pd.DataFrame({
+            "original_language": ["en", "en"],
             "keywords": ["já traduzida", "pendente"],
             "keywords_pt": ["already translated", None],
         })
@@ -318,7 +346,7 @@ class TestBackfillYear:
             resultado, traduzidos = bt._backfill_year("db_movie", "details_movie", discover_map, "2020", "bucket-sot-test")
 
         assert resultado is True
-        assert traduzidos == 1  # só o id=1 é "en"; id=2 é "und" (original_language=None) e não é traduzido
+        assert traduzidos == 2  # id=1 é "en" e id=2 é "und" (original_language=None) — ambos != "pt", logo elegíveis
         kwargs = mock_wr.s3.to_parquet.call_args.kwargs
         assert kwargs["path"] == "s3://bucket-sot-test/tmdb/details_movie/"
         assert kwargs["partition_cols"] == ["year"]
