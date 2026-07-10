@@ -19,7 +19,7 @@ ENV_BASE = {
     "AWS_REGION": "sa-east-1",
     "LAMBDA_FUNCTION_NAME": "tmdb-lambda-api-test",
     "TABLE_GROUP": "discover",
-    "S3_BUCKET_SOT": "bucket-sot-test",
+    "S3_BUCKET_TEMP": "bucket-temp-test",
     "GLUE_DATABASE_MOVIE": "db_movie",
     "GLUE_DATABASE_TV": "db_tv",
     "GLUE_DATABASE_UNIFIED": "db_unified",
@@ -116,8 +116,9 @@ class TestLoopDeAnos:
         assert tipos == ["movie", "tv"]
 
     def test_usa_ano_atual_como_default_de_end_year(self, monkeypatch):
-        with patch("backfill_historico.datetime") as mock_dt:
+        with patch("backfill_shared.datetime") as mock_dt:
             mock_dt.now.return_value.year = 2030
+            mock_dt.now.return_value.isoformat.return_value = "2030-01-01T00:00:00+00:00"
             mock_client, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2030"})
         assert mock_client.invoke.call_count == 2
 
@@ -163,7 +164,7 @@ class TestErros:
         )
         with caplog.at_level("ERROR", logger="backfill_historico"):
             with pytest.raises(ClientError):
-                bh._invoke(client, "func", {"a": 1})
+                bh.shared.invoke_lambda_sync(client, "func", {"a": 1})
         assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
     @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
@@ -186,14 +187,14 @@ class TestErros:
             try:
                 bh.main()
             except ClientError as exc:
-                codigo = bh.checkpoint.expired_token_exit_code(exc)
+                codigo = bh.shared.expired_token_exit_code(exc)
                 assert codigo == 75
             else:
                 pytest.fail("esperava ClientError propagado de main()")
 
     def test_outro_erro_nao_gera_codigo_de_retomada(self):
         exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "Invoke")
-        assert bh.checkpoint.expired_token_exit_code(exc) is None
+        assert bh.shared.expired_token_exit_code(exc) is None
 
 
 class TestAssertSingleYear:

@@ -18,9 +18,12 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate (não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 
-`backfill_checkpoint.py` não é executado diretamente — é um módulo compartilhado
-pelos 4 scripts acima (exceto `backfill_referencias.py`) para o checkpoint de
-retomada automática (ver seção "Retomada automática" abaixo).
+`backfill_shared.py` não é executado diretamente — é um módulo compartilhado
+por todos os 5 scripts acima: leitura de variável de ambiente obrigatória,
+setup de logging, invocação síncrona da Lambda API, payloads base de
+movie/tv, leitura do range de anos, wrapper de retry do exit code 75 e, para
+os 4 scripts que iteram por ano (todos exceto `backfill_referencias.py`), o
+checkpoint de retomada automática (ver seção "Retomada automática" abaixo).
 
 ## Pré-requisitos
 
@@ -62,7 +65,12 @@ Os 4 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimen
 | Variável | Descrição |
 |---|---|
 | `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`) |
-| `S3_BUCKET_SOT` | Bucket onde o checkpoint é armazenado |
+| `S3_BUCKET_TEMP` | Bucket onde o checkpoint é armazenado (dados temporários, não os dados reais do pipeline) |
+
+`backfill_traducao.py` exige adicionalmente `S3_BUCKET_SOT`, usado para ler e
+escrever os parquets reais de `tb_discover_movie/tv_tmdb` e
+`tb_details_movie/tv_tmdb` — separado do checkpoint, que fica no bucket TEMP
+como os demais.
 
 Cada script possui variáveis adicionais documentadas em sua docstring.
 
@@ -70,11 +78,11 @@ Cada script possui variáveis adicionais documentadas em sua docstring.
 
 Os 4 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou
 tabela+ano), um checkpoint em
-`s3://{S3_BUCKET_SOT}/_backfill_checkpoints/{TABLE_GROUP}.json` (ver
-`scripts/backfill_checkpoint.py`). Se a credencial AWS expirar no meio do
+`s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (ver
+`scripts/backfill_shared.py`). Se a credencial AWS expirar no meio do
 backfill, o script sai com o exit code 75
-(`backfill_checkpoint.RETRYABLE_EXIT_CODE`) em vez de propagar a exceção crua.
-`backfill_checkpoint.is_expired_token_error()` reconhece os dois códigos de
+(`backfill_shared.RETRYABLE_EXIT_CODE`) em vez de propagar a exceção crua.
+`backfill_shared.is_expired_token_error()` reconhece os dois códigos de
 erro que a AWS usa para credencial expirada: `ExpiredTokenException` (STS —
 ex.: chamadas de Lambda/Glue) e `ExpiredToken` (S3 — ex.: `ListObjectsV2` via
 awswrangler, `get_object`/`put_object`/`delete_object`).
