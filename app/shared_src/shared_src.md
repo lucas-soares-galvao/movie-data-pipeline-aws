@@ -37,7 +37,7 @@ app/shared_src/
 
 | Função | Responsabilidade |
 |---|---|
-| `traduzir_texto(texto, contexto)` | Traduz texto para português via Google Translate com detecção automática do idioma de origem (`source="auto"`), com até 5 tentativas (mesmo padrão de `api_get`) e backoff entre elas; uma tentativa é considerada falha tanto por exceção quanto por retornar o texto idêntico ao original (bloqueio/rate-limit silencioso do endpoint); retorna o original se todas as tentativas falharem, para não interromper o job |
+| `traduzir_texto(texto, contexto)` | Traduz texto para português via Google Translate com detecção automática do idioma de origem (`source="auto"`), com backoff entre tentativas (mesmo padrão de `api_get`); uma exceção usa o orçamento completo de 5 tentativas (tende a ser transitório — rede, rate limit), enquanto um resultado idêntico ao original sem exceção desiste em só 2 (normalmente indica que não há o que traduzir — nome próprio, termo emprestado — não bloqueio); retorna o original se as tentativas se esgotarem, para não interromper o job |
 
 ### `shared_utils/triggers.py`
 

@@ -111,6 +111,19 @@ class TestAdicionarTraducoesPt:
         assert resultado.loc[0, "overview_pt"] == "Falhou antes_PT"
         assert sucesso == 1
 
+    def test_ignora_registros_com_overview_en_vazio(self):
+        """overview_en vazio/None não tem o que traduzir — não entra na contagem
+        de elegíveis (distorceria o "X de Y traduzidos com sucesso" do log)."""
+        df = pd.DataFrame({
+            "original_language": ["en", "en", "en"],
+            "overview_en": ["Overview", "", None],
+        })
+        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+            resultado, sucesso = bt._adicionar_traducoes_pt(df)
+
+        mock_translate.assert_called_once_with("Overview")
+        assert sucesso == 1
+
     def test_todos_ja_traduzidos_nao_chama_traducao(self):
         df = pd.DataFrame({
             "original_language": ["en", "en"],
