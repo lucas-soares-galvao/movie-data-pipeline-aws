@@ -87,7 +87,7 @@ jobs:
           # a duração, o step "Executar backfill" abaixo trata
           # ExpiredTokenException especificamente: renova a credencial (nova
           # sessão de 1h via OIDC) e retoma o script do checkpoint em S3, sem
-          # perder o progresso já feito (ver scripts/backfill_checkpoint.py).
+          # perder o progresso já feito (ver scripts/backfill_shared.py).
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -121,7 +121,10 @@ jobs:
           GLUE_DATABASE_UNIFIED: db_${{ steps.project.outputs.project_prefix }}_unified_${{ steps.env.outputs.name }}
 
           # Buckets
+          # SOT: parquets reais de discover/details (só backfill_traducao.py)
+          # TEMP: checkpoint de retomada de todos os 4 scripts que iteram por ano
           S3_BUCKET_SOT: lsg-sa-east-1-bucket-sot-${{ steps.env.outputs.name }}
+          S3_BUCKET_TEMP: lsg-sa-east-1-bucket-temp-${{ steps.env.outputs.name }}
 
           # Tabelas
           TABLE_DISCOVER_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_discover_movie_${{ steps.env.outputs.name }}

@@ -18,7 +18,7 @@ ENV_BASE = {
     "AWS_REGION": "sa-east-1",
     "GLUE_DETAILS_JOB_NAME": "tmdb-glue-details-test",
     "TABLE_GROUP": "detalhes_e_providers",
-    "S3_BUCKET_SOT": "bucket-sot-test",
+    "S3_BUCKET_TEMP": "bucket-temp-test",
     "GLUE_DATABASE_MOVIE": "db_movie",
     "GLUE_DATABASE_TV": "db_tv",
 }
@@ -226,12 +226,12 @@ class TestErros:
 
     def test_outro_erro_nao_gera_codigo_de_retomada(self):
         exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "StartJobRun")
-        assert be.checkpoint.expired_token_exit_code(exc) is None
+        assert be.shared.expired_token_exit_code(exc) is None
 
     @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
     def test_expired_token_gera_codigo_75(self, codigo):
         exc = ClientError({"Error": {"Code": codigo, "Message": "x"}}, "StartJobRun")
-        assert be.checkpoint.expired_token_exit_code(exc) == 75
+        assert be.shared.expired_token_exit_code(exc) == 75
 
 
 class TestCheckpoint:
