@@ -295,6 +295,44 @@ class TestExtrairTraducaoPtBr:
         assert result["tagline_pt_tmdb"] == "Slogan BR"
 
 
+class TestTraduzirColuna:
+    def test_loga_resumo_de_sucesso(self, caplog):
+        df = pd.DataFrame({"origem": ["A great movie"], "destino": [None]})
+        mask = pd.Series([True])
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            with caplog.at_level("INFO"):
+                u._traduzir_coluna(df, mask, "origem", "destino")
+
+        assert df["destino"].iloc[0] == "[PT] A great movie"
+        resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
+        assert resumo == ["1 de 1 traduzidos com sucesso (destino)."]
+
+    def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self, caplog):
+        """traduzir_texto devolve o texto original quando falha após todas as tentativas."""
+        df = pd.DataFrame({"origem": ["Falhou"], "destino": [None]})
+        mask = pd.Series([True])
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t):
+            with caplog.at_level("INFO"):
+                u._traduzir_coluna(df, mask, "origem", "destino")
+
+        assert df["destino"].iloc[0] == "Falhou"
+        resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
+        assert resumo == ["0 de 1 traduzidos com sucesso (destino)."]
+
+    def test_soma_sucesso_e_falha_na_mesma_chamada(self, caplog):
+        df = pd.DataFrame({"origem": ["OK", "Falhou"], "destino": [None, None]})
+        mask = pd.Series([True, True])
+        with patch(
+            "src.utils.traduzir_texto",
+            side_effect=lambda t, **kw: "[PT] OK" if t == "OK" else t,
+        ):
+            with caplog.at_level("INFO"):
+                u._traduzir_coluna(df, mask, "origem", "destino")
+
+        resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
+        assert resumo == ["1 de 2 traduzidos com sucesso (destino)."]
+
+
 class TestAdicionarTraducoesTaglinePt:
     def test_prioriza_tmdb_pt_br(self):
         df = pd.DataFrame({"tagline": ["A great movie"], "tagline_pt_tmdb": ["Um grande filme"]})
