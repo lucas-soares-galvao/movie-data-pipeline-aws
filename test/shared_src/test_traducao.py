@@ -163,8 +163,15 @@ class TestElegivelOverviewPt:
         df = pd.DataFrame({"original_language": ["en"], "overview_en": ["Hello"]})
         assert elegivel_overview_pt(df).tolist() == [True]
 
-    def test_nao_elegivel_quando_idioma_nao_e_en(self):
-        df = pd.DataFrame({"original_language": ["fr"], "overview_en": ["Bonjour"]})
+    def test_elegivel_para_qualquer_idioma_diferente_de_pt(self):
+        df = pd.DataFrame({
+            "original_language": ["fr", "ja", "es"],
+            "overview_en": ["Bonjour", "Konnichiwa", "Hola"],
+        })
+        assert elegivel_overview_pt(df).tolist() == [True, True, True]
+
+    def test_nao_elegivel_quando_idioma_e_pt(self):
+        df = pd.DataFrame({"original_language": ["pt"], "overview_en": ["Olá"]})
         assert elegivel_overview_pt(df).tolist() == [False]
 
     def test_nao_elegivel_quando_overview_en_vazio_ou_nulo(self):
@@ -173,20 +180,31 @@ class TestElegivelOverviewPt:
 
 
 class TestElegivelTaglinePt:
-    def test_elegivel_para_qualquer_idioma_com_tagline_preenchida(self):
-        df = pd.DataFrame({"tagline": ["Slogan A", "Slogan B"]})
+    def test_elegivel_para_qualquer_idioma_diferente_de_pt(self):
+        df = pd.DataFrame({
+            "original_language": ["en", "fr"],
+            "tagline": ["Slogan A", "Slogan B"],
+        })
         assert elegivel_tagline_pt(df).tolist() == [True, True]
 
+    def test_nao_elegivel_quando_idioma_e_pt(self):
+        df = pd.DataFrame({"original_language": ["pt"], "tagline": ["Já em português"]})
+        assert elegivel_tagline_pt(df).tolist() == [False]
+
     def test_nao_elegivel_quando_tagline_vazia_ou_nula(self):
-        df = pd.DataFrame({"tagline": ["", None]})
+        df = pd.DataFrame({"original_language": ["en", "en"], "tagline": ["", None]})
         assert elegivel_tagline_pt(df).tolist() == [False, False]
 
 
 class TestElegivelKeywordsPt:
-    def test_elegivel_para_qualquer_idioma_com_keywords_preenchidas(self):
-        df = pd.DataFrame({"keywords": ["action, drama"]})
-        assert elegivel_keywords_pt(df).tolist() == [True]
+    def test_elegivel_para_qualquer_idioma_diferente_de_pt(self):
+        df = pd.DataFrame({"original_language": ["en", "fr"], "keywords": ["action, drama", "espion"]})
+        assert elegivel_keywords_pt(df).tolist() == [True, True]
+
+    def test_nao_elegivel_quando_idioma_e_pt(self):
+        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, drama"]})
+        assert elegivel_keywords_pt(df).tolist() == [False]
 
     def test_nao_elegivel_quando_keywords_vazias_ou_nulas(self):
-        df = pd.DataFrame({"keywords": ["", None]})
+        df = pd.DataFrame({"original_language": ["en", "en"], "keywords": ["", None]})
         assert elegivel_keywords_pt(df).tolist() == [False, False]

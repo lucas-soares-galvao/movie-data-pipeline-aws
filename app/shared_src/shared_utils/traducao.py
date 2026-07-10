@@ -98,20 +98,28 @@ def traduzir_em_paralelo(
 
 
 def elegivel_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de overview: original_language='en' e overview_en preenchido."""
+    """Candidatos à tradução de overview: idioma original diferente de pt, com overview_en preenchido."""
     return (
-        (df["original_language"] == "en")
+        (df["original_language"] != "pt")
         & df["overview_en"].notna()
         & (df["overview_en"] != "")
     )
 
 
 def elegivel_tagline_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de tagline: campo preenchido, independente do idioma original."""
-    return df["tagline"].notna() & (df["tagline"] != "")
+    """Candidatos à tradução de tagline: campo preenchido e idioma original diferente de pt."""
+    return (
+        df["tagline"].notna()
+        & (df["tagline"] != "")
+        & (df["original_language"] != "pt")
+    )
 
 
 def elegivel_keywords_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de keywords: campo preenchido, independente do idioma original
-    (a API do TMDB sempre devolve keywords em inglês)."""
-    return df["keywords"].notna() & (df["keywords"] != "")
+    """Candidatos à tradução de keywords: campo preenchido e idioma original diferente de pt
+    (evita reenviar ao Google Translate keywords que já podem estar em português)."""
+    return (
+        df["keywords"].notna()
+        & (df["keywords"] != "")
+        & (df["original_language"] != "pt")
+    )

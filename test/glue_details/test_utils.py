@@ -335,20 +335,43 @@ class TestTraduzirColuna:
 
 class TestAdicionarTraducoesTaglinePt:
     def test_prioriza_tmdb_pt_br(self):
-        df = pd.DataFrame({"tagline": ["A great movie"], "tagline_pt_tmdb": ["Um grande filme"]})
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "tagline": ["A great movie"],
+            "tagline_pt_tmdb": ["Um grande filme"],
+        })
         result = u._adicionar_traducoes_tagline_pt(df)
         assert result["tagline_pt"].iloc[0] == "Um grande filme"
 
     def test_fallback_para_google_translator(self):
-        df = pd.DataFrame({"tagline": ["A great movie"], "tagline_pt_tmdb": [None]})
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "tagline": ["A great movie"],
+            "tagline_pt_tmdb": [None],
+        })
         with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = u._adicionar_traducoes_tagline_pt(df)
         assert result["tagline_pt"].iloc[0] == "[PT] A great movie"
 
     def test_nao_traduz_quando_tudo_vazio(self):
-        df = pd.DataFrame({"tagline": [None, ""], "tagline_pt_tmdb": [None, None]})
+        df = pd.DataFrame({
+            "original_language": ["en", "en"],
+            "tagline": [None, ""],
+            "tagline_pt_tmdb": [None, None],
+        })
         result = u._adicionar_traducoes_tagline_pt(df)
         assert result["tagline_pt"].isna().all()
+
+    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+        df = pd.DataFrame({
+            "original_language": ["pt"],
+            "tagline": ["Já em português"],
+            "tagline_pt_tmdb": [None],
+        })
+        with patch("src.utils.traduzir_texto") as mock_translate:
+            result = u._adicionar_traducoes_tagline_pt(df)
+        mock_translate.assert_not_called()
+        assert pd.isna(result["tagline_pt"].iloc[0])
 
 
 class TestExtrairPaisesProducaoIso:
