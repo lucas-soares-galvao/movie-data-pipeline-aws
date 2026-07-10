@@ -18,8 +18,11 @@ def traduzir_texto(texto: str, contexto: str = "") -> str:
 
     Faz até _MAX_TENTATIVAS tentativas com backoff entre elas, já que o
     endpoint não-oficial do Google Translate falha esporadicamente sob alto
-    volume de chamadas paralelas. Retorna o texto original se todas as
-    tentativas falharem, para não interromper o job.
+    volume de chamadas paralelas. Duas formas de falha contam como tentativa
+    malsucedida: a chamada lançar exceção, ou retornar normalmente um texto
+    idêntico ao original (bloqueio/rate-limit silencioso do endpoint, que não
+    é sinalizado como erro). Retorna o texto original se todas as tentativas
+    falharem, para não interromper o job.
 
     Args:
         texto:    Texto em inglês a ser traduzido.
@@ -33,12 +36,21 @@ def traduzir_texto(texto: str, contexto: str = "") -> str:
     prefixo = f"{contexto} " if contexto else ""
     for tentativa in range(1, _MAX_TENTATIVAS + 1):
         try:
-            return GoogleTranslator(source="en", target="pt").translate(texto)
+            resultado = GoogleTranslator(source="en", target="pt").translate(texto)
         except Exception as exc:
             logger.debug(f"Tentativa {tentativa} de traduzir {prefixo}'{texto}' falhou: {exc}")
-            if tentativa < _MAX_TENTATIVAS:
-                time.sleep(tentativa * 2)
+        else:
+            if resultado and resultado != texto:
+                return resultado
+            logger.debug(
+                f"Tentativa {tentativa} de traduzir {prefixo}'{texto:.80}' não lançou erro, mas "
+                "devolveu texto idêntico ao original (possível bloqueio/rate-limit silencioso "
+                "do Google Translate)."
+            )
+        if tentativa < _MAX_TENTATIVAS:
+            time.sleep(tentativa * 2)
     logger.warning(
-        f"Falha ao traduzir {prefixo}'{texto:.80}' após {_MAX_TENTATIVAS} tentativas. Mantendo original."
+        f"Falha ao traduzir {prefixo}'{texto:.80}' após {_MAX_TENTATIVAS} tentativas "
+        "(erro ou resposta idêntica ao original em todas elas). Mantendo original."
     )
     return texto
