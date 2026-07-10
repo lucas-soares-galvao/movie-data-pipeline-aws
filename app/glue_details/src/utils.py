@@ -645,11 +645,17 @@ def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFram
     return df
 
 
-def _traduzir_coluna(df: pd.DataFrame, mask, coluna_fonte: str, coluna_destino: str) -> None:
+def _traduzir_coluna(df: pd.DataFrame, mask: "pd.Series[bool]", coluna_fonte: str, coluna_destino: str) -> None:
     """Traduz em paralelo os valores de coluna_fonte onde mask é True e grava em coluna_destino."""
     valores = df.loc[mask, coluna_fonte].fillna("").tolist()
     traduzidos = traduzir_em_paralelo(valores, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS)
     df.loc[mask, coluna_destino] = traduzidos
+
+    sucesso = 0
+    for original, traduzido in zip(valores, traduzidos):
+        if original and traduzido != original:
+            sucesso += 1
+    logger.info(f"{sucesso} de {len(valores)} traduzidos com sucesso ({coluna_destino}).")
 
 
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
