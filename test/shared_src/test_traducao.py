@@ -41,6 +41,45 @@ class TestTraduzirTexto:
         assert mock_translator.translate.call_count == 2
         mock_sleep.assert_called_once_with(2)
 
+    def test_tenta_novamente_quando_resultado_identico_ao_original(self):
+        """Sem exceção, mas resultado igual ao original: conta como tentativa falha."""
+        mock_translator = MagicMock()
+        mock_translator.translate.side_effect = ["Hello", "Olá"]
+        with (
+            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
+            patch("shared_utils.traducao.time.sleep") as mock_sleep,
+        ):
+            result = traduzir_texto("Hello")
+        assert result == "Olá"
+        assert mock_translator.translate.call_count == 2
+        mock_sleep.assert_called_once_with(2)
+
+    def test_retorna_original_quando_sempre_identico_sem_excecao(self):
+        """Nenhuma exceção é lançada em nenhuma tentativa, mas o texto nunca muda
+        (bloqueio/rate-limit silencioso do endpoint) — mesmo assim esgota as
+        tentativas e devolve o original, igual ao caso de exceção."""
+        mock_translator = MagicMock()
+        mock_translator.translate.return_value = "Hello"
+        with (
+            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
+            patch("shared_utils.traducao.time.sleep"),
+        ):
+            result = traduzir_texto("Hello")
+        assert result == "Hello"
+        assert mock_translator.translate.call_count == 5
+
+    def test_log_warning_quando_sempre_identico_sem_excecao(self, caplog):
+        import logging
+        mock_translator = MagicMock()
+        mock_translator.translate.return_value = "Hello"
+        with (
+            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
+            patch("shared_utils.traducao.time.sleep"),
+        ):
+            with caplog.at_level(logging.WARNING):
+                traduzir_texto("Hello")
+        assert "Falha ao traduzir" in caplog.text
+
     def test_log_warning_em_caso_de_excecao(self, caplog):
         import logging
         mock_translator = MagicMock()
