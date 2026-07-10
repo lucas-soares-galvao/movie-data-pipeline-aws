@@ -76,6 +76,7 @@ Testa as funções individuais:
 - `_extrair_ids_similares` (`TestExtrairIdsSimilares`): extração de IDs, dict vazio, result sem campo id
 - `_extrair_titulos_alternativos` (`TestExtrairTitulosAlternativos`): formato movie (titles key), formato tv (results key), dict vazio
 - `_extrair_traducao_pt_br` (`TestExtrairTraducaoPtBr`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
+- `_traduzir_coluna` (`TestTraduzirColuna`): loga resumo "X de Y traduzidos com sucesso (coluna)" em INFO; falha na tradução (texto mantido igual ao original) não conta como sucesso; soma corretamente sucesso e falha na mesma chamada
 - `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula
 - `_extrair_paises_producao_iso` (`TestExtrairPaisesProducaoIso`): extrai códigos ISO, retorna None para lista vazia e None
 - `_extrair_spoken_languages` (`TestExtrairSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
@@ -238,6 +239,14 @@ Testa as funções individuais:
 | `test_retorna_none_quando_translations_vazio` | Retorna `None` para dict vazio (sem chave `translations`) |
 | `test_ignora_pt_de_portugal` | Ignora tradução pt-PT (iso_3166_1='PT'), retorna `None` |
 | `test_ignora_overview_vazio` | Retorna `None` para overview vazio, mas extrai tagline |
+
+### `TestTraduzirColuna`
+
+| Teste | O que verifica |
+|---|---|
+| `test_loga_resumo_de_sucesso` | Traduz com sucesso e loga `"1 de 1 traduzidos com sucesso (coluna)."` em INFO |
+| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `traduzir_texto` devolve o original em caso de falha; log reporta `"0 de 1 traduzidos com sucesso"` |
+| `test_soma_sucesso_e_falha_na_mesma_chamada` | Mistura de sucesso e falha na mesma chamada soma corretamente no resumo logado |
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
 
