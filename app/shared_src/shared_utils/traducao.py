@@ -167,7 +167,9 @@ def _traduzir_aws_translate(texto: str, region: str) -> str:
 
     Args:
         texto:  Texto a ser traduzido (idioma de origem detectado automaticamente).
-        region: Região AWS do cliente do Translate.
+        region: Região AWS do cliente do Translate. AWS Translate não está disponível
+                em sa-east-1 (região principal do pipeline) — ver default em
+                criar_traduzir_fn_com_aws_translate.
 
     Returns:
         Texto traduzido para português, ou o texto original se a tradução falhar.
@@ -186,7 +188,7 @@ def _traduzir_aws_translate(texto: str, region: str) -> str:
 
 
 def criar_traduzir_fn_com_aws_translate(
-    traduzir_fn_primario: Callable[[str], str], max_chamadas: int, region: str = "sa-east-1"
+    traduzir_fn_primario: Callable[[str], str], max_chamadas: int, region: str = "us-east-1"
 ) -> Callable[[str], str]:
     """
     Compõe uma função de tradução primária (ex.: traduzir_texto, Google Translate)
@@ -206,7 +208,11 @@ def criar_traduzir_fn_com_aws_translate(
     Args:
         traduzir_fn_primario: Função de tradução tentada primeiro (ex.: traduzir_texto).
         max_chamadas:         Limite de chamadas ao AWS Translate nesta execução.
-        region:                Região AWS do cliente do Translate.
+        region:                Região AWS do cliente do Translate. Default us-east-1
+                                (não sa-east-1, região principal do pipeline — AWS
+                                Translate não está disponível em São Paulo). A chamada
+                                à API é stateless (não precisa de localidade com os
+                                outros recursos), então usar outra região é seguro.
 
     Returns:
         Função de tradução (texto) -> texto traduzido, pronta para ser passada como
