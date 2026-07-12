@@ -5,7 +5,7 @@ import sys
 import threading
 from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import awswrangler as wr
 import pandas as pd
@@ -16,6 +16,7 @@ import requests
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
 from shared_utils.traducao import (
+    criar_traduzir_fn_com_aws_translate,
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
@@ -63,6 +64,14 @@ def get_parameters_glue() -> Dict[str, Any]:
     for i, arg in enumerate(sys.argv):
         if arg == "--FORCE_REFETCH" and i + 1 < len(sys.argv):
             params["FORCE_REFETCH"] = sys.argv[i + 1].lower() == "true"
+            break
+
+    # Opcional: limite de chamadas ao AWS Translate nesta execução (3ª camada de
+    # tradução, usada só quando o Google Translate falha). 0 (padrão) desliga essa camada.
+    params["AWS_TRANSLATE_MAX_PER_RUN"] = 0
+    for i, arg in enumerate(sys.argv):
+        if arg == "--AWS_TRANSLATE_MAX_PER_RUN" and i + 1 < len(sys.argv):
+            params["AWS_TRANSLATE_MAX_PER_RUN"] = int(sys.argv[i + 1])
             break
 
     return params
@@ -645,7 +654,7 @@ def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFram
     return df
 
 
-def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
+def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
     """
     Adiciona coluna overview_pt ao DataFrame de detalhes.
 
@@ -654,6 +663,10 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     traduz via Google Translate. Para registros já em pt ou sem overview_en,
     overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
     """
+    # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
+    # patch("src.utils.traduzir_texto", ...) nos testes continue funcionando quando
+    # o chamador não passa um traduzir_fn explícito.
+    traduzir_fn = traduzir_fn or traduzir_texto
     df["overview_pt"] = df["overview_pt_tmdb"]
 
     mask_elegivel = elegivel_overview_pt(df)
@@ -665,13 +678,13 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
         f"({_TRANSLATE_MAX_WORKERS} workers)."
     )
     sucesso = traduzir_coluna_pendente(
-        df, "overview_en", "overview_pt", mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+        df, "overview_en", "overview_pt", mask_elegivel, traduzir_fn, max_workers=_TRANSLATE_MAX_WORKERS
     )
     logger.info(f"{sucesso} registros traduzidos com sucesso (overview_pt).")
     return df
 
 
-def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
+def _adicionar_traducoes_keywords_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
     """
     Adiciona coluna keywords_pt ao DataFrame de detalhes.
 
@@ -679,6 +692,7 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
     original já é pt (evita reenviar à API keywords que já podem estar em
     português; a TMDB devolve keywords em inglês para os demais idiomas).
     """
+    traduzir_fn = traduzir_fn or traduzir_texto
     df["keywords_pt"] = None
 
     mask_elegivel = elegivel_keywords_pt(df)
@@ -687,13 +701,13 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
 
     logger.info(f"Traduzindo keywords de até {mask_elegivel.sum()} registros ({_TRANSLATE_MAX_WORKERS} workers).")
     sucesso = traduzir_coluna_pendente(
-        df, "keywords", "keywords_pt", mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+        df, "keywords", "keywords_pt", mask_elegivel, traduzir_fn, max_workers=_TRANSLATE_MAX_WORKERS
     )
     logger.info(f"{sucesso} registros traduzidos com sucesso (keywords_pt).")
     return df
 
 
-def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
+def _adicionar_traducoes_tagline_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
     """
     Adiciona coluna tagline_pt ao DataFrame de detalhes.
 
@@ -701,6 +715,7 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
     tradução TMDB, com tagline não-nula e idioma original diferente de pt,
     traduz via Google Translate.
     """
+    traduzir_fn = traduzir_fn or traduzir_texto
     df["tagline_pt"] = df["tagline_pt_tmdb"]
 
     mask_elegivel = elegivel_tagline_pt(df)
@@ -712,7 +727,7 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
         f"({_TRANSLATE_MAX_WORKERS} workers)."
     )
     sucesso = traduzir_coluna_pendente(
-        df, "tagline", "tagline_pt", mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+        df, "tagline", "tagline_pt", mask_elegivel, traduzir_fn, max_workers=_TRANSLATE_MAX_WORKERS
     )
     logger.info(f"{sucesso} registros traduzidos com sucesso (tagline_pt).")
     return df
@@ -725,6 +740,7 @@ def collect_and_write_details(
     s3_bucket_sot: str,
     table_name: str,
     database: str,
+    aws_translate_max_calls: int = 0,
 ) -> None:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -734,12 +750,15 @@ def collect_and_write_details(
     o DataFrame por completo, a função não grava nada.
 
     Args:
-        api_key:       Chave de API do TMDB.
-        ids:           Lista de IDs a consultar.
-        content_type:  "movie" ou "tv".
-        s3_bucket_sot: Nome do bucket SOT de destino.
-        table_name:    Nome da tabela no Glue Catalog.
-        database:      Nome do banco de dados no Glue Catalog.
+        api_key:                  Chave de API do TMDB.
+        ids:                      Lista de IDs a consultar.
+        content_type:             "movie" ou "tv".
+        s3_bucket_sot:            Nome do bucket SOT de destino.
+        table_name:               Nome da tabela no Glue Catalog.
+        database:                 Nome do banco de dados no Glue Catalog.
+        aws_translate_max_calls:  Limite de chamadas ao AWS Translate nesta execução,
+                                   usado como 3ª camada quando o Google Translate falha.
+                                   0 (padrão) desliga essa camada.
     """
     registros = []
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
@@ -771,9 +790,10 @@ def collect_and_write_details(
         )
         return
 
-    df = _adicionar_traducoes_pt(df)
-    df = _adicionar_traducoes_keywords_pt(df)
-    df = _adicionar_traducoes_tagline_pt(df)
+    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
+    df = _adicionar_traducoes_pt(df, traduzir_fn)
+    df = _adicionar_traducoes_keywords_pt(df, traduzir_fn)
+    df = _adicionar_traducoes_tagline_pt(df, traduzir_fn)
     if content_type == "movie":
         df = _adicionar_collection_name_pt(df, api_key)
     # Campos intermediários: usados apenas para filtrar/priorizar traduções; não vão para o SOT

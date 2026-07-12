@@ -76,6 +76,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     aws_iam_role_policy.glue_etl_logs,
     aws_iam_role_policy.glue_etl_sor_sot,
     aws_iam_role_policy.glue_etl_catalog,
+    aws_iam_role_policy.glue_etl_translate,
     aws_glue_job.data_quality_job,
     aws_glue_job.agg_job_pythonshell,
     aws_glue_job.details_job_pythonshell,

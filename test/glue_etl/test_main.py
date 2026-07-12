@@ -42,7 +42,9 @@ class TestRunDiscover:
             patch.object(m, "trigger_glue_job"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "discover", "2023")
+            mock_read.assert_called_once()
+            assert mock_read.call_args.args[:4] == ("my-sor", "movie", "discover", "2023")
+            assert callable(mock_read.call_args.args[4])
 
     def test_writes_to_discover_table_with_year_partition(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
@@ -74,7 +76,8 @@ class TestRunDiscover:
             patch.object(m, "trigger_glue_job"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "tv", "discover", "2022")
+            mock_read.assert_called_once()
+            assert mock_read.call_args.args[:4] == ("my-sor", "tv", "discover", "2022")
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
@@ -136,7 +139,8 @@ class TestRunGenre:
             patch.object(m, "trigger_glue_job"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "genre", None)
+            mock_read.assert_called_once()
+            assert mock_read.call_args.args[:4] == ("my-sor", "movie", "genre", None)
 
     def test_writes_to_genre_table_without_partition(self):
         df_mock = pd.DataFrame([{"id": 28, "name": "Ação"}])
@@ -196,7 +200,8 @@ class TestRunConfiguration:
             patch.object(m, "trigger_glue_job"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "configuration", None)
+            mock_read.assert_called_once()
+            assert mock_read.call_args.args[:4] == ("my-sor", "movie", "configuration", None)
 
     def test_writes_to_configuration_table_without_partition(self):
         df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
@@ -229,7 +234,8 @@ class TestRunConfiguration:
             patch.object(m, "trigger_glue_job"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "tv", "configuration", None)
+            mock_read.assert_called_once()
+            assert mock_read.call_args.args[:4] == ("my-sor", "tv", "configuration", None)
             mock_write.assert_called_once_with(
                 df=df_mock,
                 s3_bucket_sot="my-sot",
@@ -371,7 +377,8 @@ class TestRunNowPlaying:
             patch.object(m, "trigger_glue_job"),
         ):
             m.main()
-            mock_read.assert_called_once_with("my-sor", "movie", "now_playing", None)
+            mock_read.assert_called_once()
+            assert mock_read.call_args.args[:4] == ("my-sor", "movie", "now_playing", None)
 
     def test_writes_to_now_playing_table_without_partition(self):
         df_mock = pd.DataFrame([{"id": 1, "title": "Filme X"}])

@@ -2,14 +2,14 @@
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import awswrangler as wr
 import boto3
 import pandas as pd
 
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
-from shared_utils.traducao import traduzir_texto
+from shared_utils.traducao import criar_traduzir_fn_com_aws_translate, traduzir_texto  # noqa: F401
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 # Caminhos no S3 SOR organizados por media_type e table_type.
@@ -109,16 +109,30 @@ def get_parameters_glue() -> Dict[str, Any]:
     except SystemExit:
         pass
 
+    # Opcional: limite de chamadas ao AWS Translate nesta execução (fallback quando
+    # o Google Translate falha ao traduzir name_pt de países/idiomas). Ausente = "0"
+    # (desligado) — mesmo padrão de opcional usado acima para YEAR/END_YEAR.
+    try:
+        args.update(get_resolved_option(["AWS_TRANSLATE_MAX_PER_RUN"]))
+    except SystemExit:
+        args["AWS_TRANSLATE_MAX_PER_RUN"] = "0"
+
     return args
 
 
-def _adicionar_traducao(df: pd.DataFrame, descricao: str) -> pd.DataFrame:
+def _adicionar_traducao(
+    df: pd.DataFrame, descricao: str, traduzir_fn: Optional[Callable[[str], str]] = None
+) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt.
 
     Args:
-        df:         DataFrame com coluna english_name.
-        descricao:  Descrição dos itens para o log (ex: "países", "idiomas").
+        df:          DataFrame com coluna english_name.
+        descricao:   Descrição dos itens para o log (ex: "países", "idiomas").
+        traduzir_fn: Função de tradução (texto) -> texto traduzido. Por padrão usa
+                     traduzir_texto puro (Google Translate); passe o resultado de
+                     criar_traduzir_fn_com_aws_translate para habilitar o fallback
+                     via AWS Translate.
 
     Returns:
         DataFrame com coluna name_pt adicionada.
@@ -133,25 +147,28 @@ def _adicionar_traducao(df: pd.DataFrame, descricao: str) -> pd.DataFrame:
 
     logger.info(f"Traduzindo {mask.sum()} nomes de {descricao} para pt-BR...")
 
+    # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
+    # patch("src.utils.traduzir_texto", ...) nos testes continue funcionando quando
+    # o chamador não passa um traduzir_fn explícito.
+    fn = traduzir_fn or (lambda t: traduzir_texto(t, contexto=descricao))
+
     # Loop sequencial (não paralelo): genre e configuration têm no máximo ~250 itens.
     # Para volumes pequenos, o overhead do ThreadPoolExecutor supera o ganho de paralelismo.
     # O glue_details usa ThreadPoolExecutor porque processa milhares de IDs por execução.
     df["name_pt"] = None
-    df.loc[mask, "name_pt"] = df.loc[mask, "english_name"].map(
-        lambda t: traduzir_texto(t, contexto=descricao)
-    )
+    df.loc[mask, "name_pt"] = df.loc[mask, "english_name"].map(fn)
 
     return df
 
 
-def _adicionar_name_pt_countries(df: pd.DataFrame) -> pd.DataFrame:
+def _adicionar_name_pt_countries(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
     """Traduz english_name dos países para português e grava como name_pt."""
-    return _adicionar_traducao(df, "países")
+    return _adicionar_traducao(df, "países", traduzir_fn)
 
 
-def _adicionar_name_pt_languages(df: pd.DataFrame) -> pd.DataFrame:
+def _adicionar_name_pt_languages(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
     """Traduz english_name dos idiomas para português e grava como name_pt."""
-    return _adicionar_traducao(df, "idiomas")
+    return _adicionar_traducao(df, "idiomas", traduzir_fn)
 
 
 def _ler_json_do_s3(bucket: str, key: str) -> list:
@@ -166,6 +183,7 @@ def read_from_sor(
     media_type: str,
     table_type: str,
     year: Optional[str] = None,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
@@ -180,6 +198,8 @@ def read_from_sor(
         media_type:    "movie" ou "tv"
         table_type:    Tipo da tabela (determina como ler)
         year:          Ano para o discover (ex: "2024")
+        traduzir_fn:   Função de tradução usada para name_pt em configuration (ver
+                       _adicionar_traducao); só relevante para table_type="configuration".
 
     Returns:
         DataFrame com os dados lidos e prontos para gravação no SOT
@@ -207,10 +227,10 @@ def read_from_sor(
         df = pd.DataFrame(_ler_json_do_s3(s3_bucket_sor, s3_key))
 
         if table_type == "configuration" and media_type == "tv":
-            df = _adicionar_name_pt_countries(df)
+            df = _adicionar_name_pt_countries(df, traduzir_fn)
 
         elif table_type == "configuration" and media_type == "movie":
-            df = _adicionar_name_pt_languages(df)
+            df = _adicionar_name_pt_languages(df, traduzir_fn)
 
     logger.info(f"Lidos {len(df)} registros.")
     return df

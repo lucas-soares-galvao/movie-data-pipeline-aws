@@ -36,8 +36,8 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
-Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via Google Translate e grava como coluna `name_pt` na SOT (~250 países, tradução única).
-Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_name` dos idiomas para português via Google Translate e grava como coluna `name_pt` na SOT (~190 idiomas, tradução única).
+Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via Google Translate (com fallback opcional via AWS Translate, `AWS_TRANSLATE_MAX_PER_RUN`) e grava como coluna `name_pt` na SOT (~250 países, tradução única).
+Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_name` dos idiomas para português via Google Translate (mesmo fallback) e grava como coluna `name_pt` na SOT (~190 idiomas, tradução única).
 
 **Fluxo para `now_playing`:**
 Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `read_from_sor` lê todos os arquivos da pasta `tmdb/now_playing/movie/` de uma vez e deduplica por `id` antes de gravar.
@@ -46,7 +46,7 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos do Glue job: `MEDIA_TYPE`, `TABLE_TYPE`, `TABLE_NAME`, `DATABASE`, `YEAR` (apenas discover), `END_YEAR`, nomes dos buckets e jobs |
+| **Entrada** | Argumentos do Glue job: `MEDIA_TYPE`, `TABLE_TYPE`, `TABLE_NAME`, `DATABASE`, `YEAR` (apenas discover), `END_YEAR`, nomes dos buckets e jobs, `AWS_TRANSLATE_MAX_PER_RUN` (opcional, default `0` — limite de chamadas ao AWS Translate como fallback do Google Translate em `configuration`) |
 | **Leitura** | S3 SOR — JSON bruto por tipo de tabela e ano |
 | **Escrita** | S3 SOT — Parquet particionado (ou não) + registro no Glue Catalog |
 | **Aciona** | Glue Data Quality (sempre) + Glue Details (apenas para `TABLE_TYPE=discover`) |
@@ -55,8 +55,8 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 
 | Função | Responsabilidade |
 |---|---|
-| `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
-| `read_from_sor(bucket, media_type, table_type, year)` | Lê JSON/Parquet da camada SOR; para `configuration` adiciona tradução `name_pt` (countries em tv, languages em movie) |
+| `get_parameters_glue()` | Lê e valida os argumentos de execução do job (inclui leitura opcional de `YEAR`/`END_YEAR` e `AWS_TRANSLATE_MAX_PER_RUN`) |
+| `read_from_sor(bucket, media_type, table_type, year, traduzir_fn=None)` | Lê JSON/Parquet da camada SOR; para `configuration` adiciona tradução `name_pt` (countries em tv, languages em movie) via `traduzir_fn` |
 | `write_parquet_to_sot(df, bucket, table_name, database, partition_cols, mode)` | Escreve Parquet e registra no Glue Catalog via AWS Wrangler |
 | `derive_canonical_name(name)` | Padroniza um nome de plataforma de streaming (ex: "Netflix Standard with Ads" → "Netflix"); usada internamente por `read_from_sor()` |
 
@@ -69,7 +69,8 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 | `trigger_glue_job(job_name, **arguments)` | `shared_utils.triggers` | Dispara qualquer job Glue (DQ, Details, AGG) com argumentos dinâmicos |
 | `get_resolved_option(args)` | `shared_utils.glue_helpers` | Resolve argumentos do job Glue (`getResolvedOptions`), usada por `get_parameters_glue()` |
 | `configurar_logging_glue()` | `shared_utils.glue_helpers` | Configura e retorna o `logger` padrão dos jobs Glue |
-| `traduzir_texto(texto, contexto)` | `shared_utils.traducao` | Traduz texto via Google Translate; usada para preencher `name_pt` em `configuration` |
+| `traduzir_texto(texto, contexto)` | `shared_utils.traducao` | Traduz texto via Google Translate; usada como fallback padrão para preencher `name_pt` em `configuration` |
+| `criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas, region)` | `shared_utils.traducao` | Compõe `traduzir_texto` com fallback via AWS Translate (3ª camada), limitado a `AWS_TRANSLATE_MAX_PER_RUN` chamadas; montada uma vez em `main()` e passada a `read_from_sor` |
 
 ## Tecnologias
 

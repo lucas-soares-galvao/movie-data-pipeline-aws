@@ -16,7 +16,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano | Lambda | — |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
-| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate (não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
+| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate, com AWS Translate como 3ª camada opcional (não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
 por todos os 5 scripts acima: leitura de variável de ambiente obrigatória,
@@ -70,7 +70,11 @@ Os 4 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimen
 `backfill_traducao.py` exige adicionalmente `S3_BUCKET_SOT`, usado para ler e
 escrever os parquets reais de `tb_discover_movie/tv_tmdb` e
 `tb_details_movie/tv_tmdb` — separado do checkpoint, que fica no bucket TEMP
-como os demais.
+como os demais. Aceita opcionalmente `AWS_TRANSLATE_MAX_PER_RUN` (default `0`
+— desligado): limite de chamadas ao AWS Translate (3ª camada de tradução,
+usada só quando o Google Translate falha) para **a execução inteira** (todas
+as partições ano+tipo do run), não por partição — exposto no workflow como o
+input `aws_translate_max_per_run`.
 
 Cada script possui variáveis adicionais documentadas em sua docstring.
 
