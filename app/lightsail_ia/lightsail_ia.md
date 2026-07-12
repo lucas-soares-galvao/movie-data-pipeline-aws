@@ -26,6 +26,8 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit.
 
+**Fallback automático de LLM (opcional):** se `LLM_MODEL_FALLBACK` estiver configurada, `_chamar_llm_passo1()` tenta um modelo secundário (tipicamente um modelo AWS Bedrock, autenticado via IAM em vez de API key) quando a chamada ao `LLM_MODEL` primário falhar por erro de infraestrutura (timeout, 5xx, rate limit, autenticação — `openai.APIError` e subclasses, a classe-base real usada pelo litellm para erros de provedor; `litellm.exceptions.APIError` **não** é essa base, apesar do nome parecido). Não é acionado quando o LLM responde normalmente sem `tool_calls` (resultado vazio legítimo) nem por erros de parsing dos argumentos da tool — só por falha real na chamada ao provedor. Indefinida por padrão = sem fallback (comportamento original). Candidato sugerido para `LLM_MODEL_FALLBACK`: GPT OSS 20B na Bedrock (`bedrock/openai.gpt-oss-20b`) — escolhido por custo/capacidade dentre um shortlist (GLM 4.7 Flash, Nemotron Nano 9B v2, MiniMax M2 como alternativas), mas a escolha final depende de um teste de qualidade das cláusulas WHERE geradas por cada candidato, ainda não realizado.
+
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validar_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
 
@@ -85,7 +87,9 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 | `agent.py` | `_chave_cache(preferencia)` | Calcula o hash MD5 da preferência normalizada (lowercase + strip), usado como chave do cache de WHERE clauses |
 | `agent.py` | `_buscar_cache_where(preferencia)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
 | `agent.py` | `_salvar_cache_where(preferencia, args)` | Salva cláusula WHERE no cache em memória com timestamp |
-| `agent.py` | `_logar_uso_tokens(etapa, resposta)` | Registra `prompt_tokens`, `completion_tokens` e `total_tokens` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens") |
+| `agent.py` | `_chamar_llm_passo1(preferencia)` | Chama o LLM primário (`LLM_MODEL`); se falhar por erro de infraestrutura e `LLM_MODEL_FALLBACK` estiver configurada, tenta uma vez o modelo de fallback (via credenciais AWS/IAM, sem API key) |
+| `agent.py` | `_logar_uso_tokens(etapa, resposta, modelo=None)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `modelo` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens"). `modelo` identifica qual modelo respondeu (primário ou fallback); default `None` loga `LLM_MODEL` |
+| `agent.py` | `_logar_fallback_llm(preferencia, erro)` | Registra em `logging.warning` o acionamento do fallback (preferência, modelo primário, modelo de fallback, erro) — logado antes da chamada de fallback, para ficar visível mesmo se ela também falhar |
 | `formatacao.py` | `formatar_registro(registro)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
 | `formatacao.py` | `_formatar_tipo()`, `_formatar_generos()`, `_formatar_duracao_titulo()`, `_formatar_data_lancamento()`, `_formatar_theater_end_date()`, `_formatar_nota()` | Funções puras de formatação de campos individuais |
 | `app.py` | `_carregar_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
@@ -133,6 +137,8 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 | `FILMBOT_SECRET_ARN` | ARN do segredo unificado no Secrets Manager (contém `llm_api_key`, `tmdb_api_key`, `filmbot_password`). Em produção, o app busca LLM_API_KEY e FILMBOT_PASSWORD desse secret em runtime |
 | `LLM_API_KEY` | Fallback para desenvolvimento local (usado quando `FILMBOT_SECRET_ARN` não está definida) |
 | `LLM_MODEL` | Modelo LLM a usar (padrão: `deepseek/deepseek-v4-flash`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
+| `LLM_MODEL_FALLBACK` | *(Opcional)* Modelo usado quando a chamada ao `LLM_MODEL` falhar por erro de infraestrutura. Indefinida = fallback desativado. Ex: `bedrock/openai.gpt-oss-20b` |
+| `AWS_REGION_BEDROCK` | *(Opcional)* Região AWS usada na chamada de fallback (padrão: `us-east-1`). Não reaproveita `AWS_REGION`, que fica fixa em `sa-east-1` para Athena/Glue/Secrets Manager |
 | `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
 | `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
 | `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
@@ -145,6 +151,7 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 - **Streamlit** — framework de interface web em Python
 - **litellm** — abstração de chamadas LLM (suporta OpenAI, DeepSeek, Claude, etc.)
+- **openai** — dependência direta usada apenas para capturar `openai.APIError` (classe-base real dos erros de provedor no litellm) na lógica de fallback de LLM
 - **LLM configurável via `LLM_MODEL`** — padrão `deepseek/deepseek-v4-flash`; suporta qualquer modelo compatível com litellm (DeepSeek, OpenAI, Claude, etc.)
 - **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
 - **watchtower** — handler de logging que envia logs Python diretamente ao CloudWatch Logs via boto3
@@ -153,5 +160,7 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 ## Observabilidade de tokens
 
 Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa` (`_logar_uso_tokens()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
+
+Uso do fallback é identificável nos logs de duas formas: `etapa="passo_1_where_fallback"` no log de `_logar_uso_tokens` (em vez de `"passo_1_where"`), e uma mensagem WARNING dedicada "Fallback de LLM acionado" (`_logar_fallback_llm()`), emitida antes da chamada de fallback — fica registrada mesmo que a chamada de fallback também falhe.
 
 `app.py` eleva o root logger para `ERROR` quando o CloudWatch está configurado (`logging.root.setLevel(logging.ERROR)`), para silenciar bibliotecas ruidosas. Como isso suprimiria por herança os `logger.info(...)` de `_logar_uso_tokens()`, `agent.py` define explicitamente `logger.setLevel(logging.INFO)` no seu próprio logger — garantindo que os logs de tokens continuem passando pelo handler do root independentemente do nível herdado.
