@@ -6,6 +6,7 @@ from shared_utils.traducao import (
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
+    traduzir_coluna_pendente,
     traduzir_em_paralelo,
     traduzir_texto,
 )
@@ -156,6 +157,84 @@ class TestTraduzirEmParalelo:
             mock_executor.map.return_value = iter(["ok"])
             traduzir_em_paralelo(["Hello"], MagicMock(), max_workers=3)
         mock_executor_cls.assert_called_once_with(max_workers=3)
+
+
+class TestTraduzirColunaPendente:
+    def test_traduz_registros_elegiveis_pendentes(self):
+        df = pd.DataFrame({"fonte": ["Hello", "World"], "destino": [None, None]})
+        traduzir_fn = MagicMock(side_effect=lambda t: f"[PT] {t}")
+        mask = pd.Series([True, True])
+
+        sucesso = traduzir_coluna_pendente(df, "fonte", "destino", mask, traduzir_fn)
+
+        assert sucesso == 2
+        assert df["destino"].tolist() == ["[PT] Hello", "[PT] World"]
+
+    def test_cria_coluna_destino_se_nao_existir(self):
+        df = pd.DataFrame({"fonte": ["Hello"]})
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
+
+        traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True]), traduzir_fn)
+
+        assert df["destino"].tolist() == ["Olá"]
+
+    def test_pula_registro_ja_traduzido_com_sucesso(self):
+        """destino preenchido e diferente da fonte: não é retraduzido."""
+        df = pd.DataFrame({"fonte": ["Hello"], "destino": ["Olá"]})
+        traduzir_fn = MagicMock()
+
+        sucesso = traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True]), traduzir_fn)
+
+        assert sucesso == 0
+        assert df["destino"].tolist() == ["Olá"]
+        traduzir_fn.assert_not_called()
+
+    def test_retenta_quando_destino_igual_a_fonte(self):
+        """destino == fonte indica fallback de uma tradução que falhou em um run
+        anterior (ver traduzir_texto) — deve ser retentado, não pulado."""
+        df = pd.DataFrame({"fonte": ["Hello"], "destino": ["Hello"]})
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
+
+        sucesso = traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True]), traduzir_fn)
+
+        assert sucesso == 1
+        assert df["destino"].tolist() == ["Olá"]
+
+    def test_nao_elegivel_nao_e_traduzido(self):
+        df = pd.DataFrame({"fonte": ["Hello"], "destino": [None]})
+        traduzir_fn = MagicMock()
+
+        sucesso = traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([False]), traduzir_fn)
+
+        assert sucesso == 0
+        traduzir_fn.assert_not_called()
+
+    def test_mask_vazia_nao_chama_traduzir_fn(self):
+        df = pd.DataFrame({"fonte": [], "destino": []})
+        traduzir_fn = MagicMock()
+
+        sucesso = traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([], dtype=bool), traduzir_fn)
+
+        assert sucesso == 0
+        traduzir_fn.assert_not_called()
+
+    def test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original(self):
+        """traduzir_fn pode devolver o próprio texto original em caso de falha
+        (ver traduzir_texto); esses casos não contam como sucesso."""
+        df = pd.DataFrame({"fonte": ["Hello", "World"], "destino": [None, None]})
+        traduzir_fn = MagicMock(side_effect=lambda t: t if t == "Hello" else f"[PT] {t}")
+
+        sucesso = traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True, True]), traduzir_fn)
+
+        assert sucesso == 1
+        assert df["destino"].tolist() == ["Hello", "[PT] World"]
+
+    def test_usa_max_workers_informado(self):
+        with patch("shared_utils.traducao.traduzir_em_paralelo") as mock_paralelo:
+            mock_paralelo.return_value = ["Olá"]
+            df = pd.DataFrame({"fonte": ["Hello"], "destino": [None]})
+            traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True]), MagicMock(), max_workers=3)
+        assert mock_paralelo.call_args.kwargs["max_workers"] == 3
 
 
 class TestElegivelOverviewPt:

@@ -76,8 +76,9 @@ Testa as funções individuais:
 - `_extrair_ids_similares` (`TestExtrairIdsSimilares`): extração de IDs, dict vazio, result sem campo id
 - `_extrair_titulos_alternativos` (`TestExtrairTitulosAlternativos`): formato movie (titles key), formato tv (results key), dict vazio
 - `_extrair_traducao_pt_br` (`TestExtrairTraducaoPtBr`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
-- `_traduzir_coluna` (`TestTraduzirColuna`): loga resumo "X de Y traduzidos com sucesso (coluna)" em INFO; falha na tradução (texto mantido igual ao original) não conta como sucesso; soma corretamente sucesso e falha na mesma chamada
-- `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula, não traduz quando `original_language` já é `pt`
+- `_adicionar_traducoes_pt` (`TestAdicionarTraducoesOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, não traduz quando `original_language` já é `pt`, loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, retenta quando `overview_pt_tmdb` fica igual a `overview_en`
+- `_adicionar_traducoes_keywords_pt` (`TestAdicionarTraducoesKeywordsPt`): traduz via Google Translate, não traduz quando `original_language` já é `pt`, não traduz quando `keywords` vazia
+- `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula, não traduz quando `original_language` já é `pt`, retenta quando `tagline_pt_tmdb` fica igual a `tagline`
 - `_extrair_paises_producao_iso` (`TestExtrairPaisesProducaoIso`): extrai códigos ISO, retorna None para lista vazia e None
 - `_extrair_spoken_languages` (`TestExtrairSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
 - `_extrair_spoken_languages_iso` (`TestExtrairSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None
@@ -240,13 +241,24 @@ Testa as funções individuais:
 | `test_ignora_pt_de_portugal` | Ignora tradução pt-PT (iso_3166_1='PT'), retorna `None` |
 | `test_ignora_overview_vazio` | Retorna `None` para overview vazio, mas extrai tagline |
 
-### `TestTraduzirColuna`
+### `TestAdicionarTraducoesOverviewPt`
 
 | Teste | O que verifica |
 |---|---|
-| `test_loga_resumo_de_sucesso` | Traduz com sucesso e loga `"1 de 1 traduzidos com sucesso (coluna)."` em INFO |
-| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `traduzir_texto` devolve o original em caso de falha; log reporta `"0 de 1 traduzidos com sucesso"` |
-| `test_soma_sucesso_e_falha_na_mesma_chamada` | Mistura de sucesso e falha na mesma chamada soma corretamente no resumo logado |
+| `test_prioriza_tmdb_pt_br` | Usa `overview_pt_tmdb` quando presente, sem chamar Google Translate |
+| `test_fallback_para_google_translator` | Traduz via Google Translate quando não há `overview_pt_tmdb` |
+| `test_nao_traduz_quando_idioma_original_ja_e_pt` | Não chama `traduzir_texto` quando `original_language == "pt"` |
+| `test_loga_resumo_de_sucesso` | Loga `"1 registros traduzidos com sucesso (overview_pt)."` em INFO |
+| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `traduzir_texto` devolve o original em caso de falha; log reporta `"0 registros traduzidos com sucesso"` |
+| `test_retenta_quando_overview_pt_tmdb_igual_a_overview_en` | Caso de borda: `overview_pt_tmdb` idêntico a `overview_en` é reenviado ao Google Translate (mesma regra de retry do backfill) |
+
+### `TestAdicionarTraducoesKeywordsPt`
+
+| Teste | O que verifica |
+|---|---|
+| `test_traduz_keywords` | Traduz `keywords` via Google Translate |
+| `test_nao_traduz_quando_idioma_original_ja_e_pt` | Não chama `traduzir_texto` quando `original_language == "pt"` |
+| `test_nao_traduz_quando_keywords_vazias` | `keywords_pt` fica nulo quando `keywords` está vazia/nula |
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
 
