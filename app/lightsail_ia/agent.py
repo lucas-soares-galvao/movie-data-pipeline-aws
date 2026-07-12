@@ -48,6 +48,15 @@ VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
   GLUE_DATABASE      → banco no Glue Catalog (padrão: "db_tmdb_unified_prod")
   SPEC_TABLE         → tabela SPEC (padrão: "tb_tmdb_discover_unified_prod")
   ATHENA_S3_OUTPUT   → caminho S3 para resultados temporários do Athena
+
+VARIÁVEIS OPCIONAIS — fallback automático de LLM:
+  LLM_MODEL_FALLBACK → modelo Bedrock usado quando a chamada ao LLM_MODEL falhar
+                        por erro de infraestrutura (timeout, 5xx, rate limit,
+                        autenticação). Indefinida por padrão = fallback desativado
+                        (comportamento atual). Ex: "bedrock/openai.gpt-oss-20b"
+  AWS_REGION_BEDROCK → região AWS usada na chamada de fallback (padrão: "us-east-1").
+                        Não reaproveita AWS_REGION porque essa fica fixa em
+                        "sa-east-1" para Athena/Glue/Secrets Manager.
 """
 
 import gc
@@ -59,6 +68,7 @@ import logging
 import hashlib
 import boto3
 import litellm
+import openai
 from dotenv import load_dotenv
 from formatacao import formatar_registro
 
@@ -68,6 +78,8 @@ from formatacao import formatar_registro
 load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
+_LLM_MODEL_FALLBACK = os.getenv("LLM_MODEL_FALLBACK")
+_AWS_REGION_BEDROCK = os.getenv("AWS_REGION_BEDROCK", "us-east-1")
 
 
 def _carregar_llm_api_key() -> str | None:
@@ -120,8 +132,13 @@ def _salvar_cache_where(preferencia: str, args: dict) -> None:
     _CACHE_WHERE[chave] = (time.time(), args)
 
 
-def _logar_uso_tokens(etapa: str, resposta: object) -> None:
-    """Registra no log o consumo de tokens (prompt, completion, total) de uma chamada LLM."""
+def _logar_uso_tokens(etapa: str, resposta: object, modelo: str | None = None) -> None:
+    """Registra no log o consumo de tokens (prompt, completion, total) de uma chamada LLM.
+
+    Args:
+        modelo: modelo que efetivamente respondeu. Default None loga _LLM_MODEL
+                (chamada primária); a chamada de fallback passa o modelo real usado.
+    """
     usage = getattr(resposta, "usage", None)
     if not usage:
         return
@@ -129,10 +146,27 @@ def _logar_uso_tokens(etapa: str, resposta: object) -> None:
         "LLM token usage",
         extra={
             "etapa": etapa,
-            "modelo": _LLM_MODEL,
+            "modelo": modelo or _LLM_MODEL,
             "prompt_tokens": usage.prompt_tokens,
             "completion_tokens": usage.completion_tokens,
             "total_tokens": usage.total_tokens,
+        },
+    )
+
+
+def _logar_fallback_llm(preferencia: str, erro: Exception) -> None:
+    """Registra em WARNING que o fallback de LLM foi acionado (chamada primária falhou).
+
+    Log dedicado (além de _logar_uso_tokens com etapa="passo_1_where_fallback") para que
+    o acionamento do fallback fique visível mesmo se a chamada de fallback também falhar.
+    """
+    logger.warning(
+        "Fallback de LLM acionado",
+        extra={
+            "preferencia": preferencia,
+            "modelo_primario": _LLM_MODEL,
+            "modelo_fallback": _LLM_MODEL_FALLBACK,
+            "erro": f"{type(erro).__name__}: {erro}",
         },
     )
 
@@ -352,6 +386,49 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
     return records
 
 
+def _chamar_llm_passo1(preferencia: str) -> object:
+    """Chama o LLM do Passo 1. Se a chamada primária (_LLM_MODEL) falhar por erro de
+    infraestrutura (timeout, 5xx, rate limit, autenticação — openai.APIError e
+    subclasses, que é a classe-base real usada pelo litellm para erros de provedor;
+    litellm.exceptions.APIError NÃO é essa base, apesar do nome parecido) e
+    LLM_MODEL_FALLBACK estiver configurada, tenta uma vez com o modelo de fallback
+    (ex: um modelo Bedrock, autenticado via credenciais AWS do IAM user do agente).
+
+    NÃO intercepta ValueError/json.JSONDecodeError — essas ocorrem depois desta função
+    retornar (parsing dos tool_calls, em recomendar()), então uma resposta primária
+    malformada continua se comportando como hoje (propaga o erro), sem acionar fallback.
+
+    Raises:
+        openai.APIError (ou subclasse): se a chamada primária falhar sem fallback
+            configurado, ou se a chamada de fallback também falhar.
+    """
+    mensagens = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": preferencia},
+    ]
+    try:
+        resposta = litellm.completion(
+            model=_LLM_MODEL,
+            api_key=_LLM_API_KEY,
+            messages=mensagens,
+            tools=[TOOL],
+        )
+        _logar_uso_tokens("passo_1_where", resposta, _LLM_MODEL)
+        return resposta
+    except openai.APIError as erro:
+        if not _LLM_MODEL_FALLBACK:
+            raise
+        _logar_fallback_llm(preferencia, erro)
+        resposta = litellm.completion(
+            model=_LLM_MODEL_FALLBACK,
+            messages=mensagens,
+            tools=[TOOL],
+            aws_region_name=_AWS_REGION_BEDROCK,
+        )
+        _logar_uso_tokens("passo_1_where_fallback", resposta, _LLM_MODEL_FALLBACK)
+        return resposta
+
+
 # ==============================================================================
 # PASSO 1 + 2 + formatação: Orquestração do agente (função principal)
 # ==============================================================================
@@ -382,16 +459,7 @@ def recomendar(preferencia: str) -> list[dict]:
     if args_cache is not None:
         args = args_cache
     else:
-        resposta = litellm.completion(
-            model=_LLM_MODEL,
-            api_key=_LLM_API_KEY,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": preferencia},
-            ],
-            tools=[TOOL],
-        )
-        _logar_uso_tokens("passo_1_where", resposta)
+        resposta = _chamar_llm_passo1(preferencia)
 
         # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
         # function.arguments: string JSON com os argumentos que o LLM escolheu
