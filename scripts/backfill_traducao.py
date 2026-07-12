@@ -253,7 +253,10 @@ def main() -> None:
     # Um único traduzir_fn para toda a execução (não por partição) — o limite de
     # chamadas ao AWS Translate vale para o backfill inteiro, evitando gasto
     # descontrolado num run que varre start_year→end_year de uma vez.
-    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls, region=region)
+    # Não usa `region` (AWS_REGION = sa-east-1, região do pipeline): AWS Translate
+    # não está disponível em sa-east-1, então criar_traduzir_fn_com_aws_translate usa
+    # seu próprio default (us-east-1) — chamada stateless, não precisa de localidade.
+    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
 
     s3_client = boto3.client("s3", region_name=region)
 

@@ -282,7 +282,7 @@ class TestCriarTraduzirFnComAwsTranslate:
             fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
             result = fn("Hello")
         assert result == "Olá via AWS"
-        mock_aws.assert_called_once_with("Hello", "sa-east-1")
+        mock_aws.assert_called_once_with("Hello", "us-east-1")
 
     def test_nao_chama_nada_para_texto_vazio(self):
         traduzir_fn_primario = MagicMock(return_value="")
