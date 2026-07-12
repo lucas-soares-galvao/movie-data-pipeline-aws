@@ -53,6 +53,7 @@ Usa a constante `_BASE` (dict com args comuns: buckets, nomes de jobs, databases
 | `test_writes_to_configuration_table_without_partition` | Escrita sem partição, mode `overwrite` |
 | `test_tv_uses_configuration_countries_table` | Para `MEDIA_TYPE="tv"`, usa tabela `tb_tmdb_configuration_countries_{env}` |
 | `test_triggers_data_quality_without_year` | DQ acionado sem `year` para configuration |
+| `test_passes_s3_bucket_sot_and_table_name_for_translation_cache` | `read_from_sor` recebe `s3_bucket_sot`/`table_name` nos kwargs — usados para reaproveitar `name_pt` já gravado na SOT (cache de tradução) |
 
 ### `TestRunNowPlaying` — `TABLE_TYPE="now_playing"`
 
@@ -78,10 +79,11 @@ Testa individualmente as funções utilitárias: leitura do SOR por `table_type`
 - **`TestReadFromSorDiscover`** (4 testes): path S3 correto (`tmdb/discover/{media_type}/ano={year}/`) para movie e tv; coluna `year` adicionada ao DataFrame com valor correto
 - **`TestReadFromSorGenre`** (3 testes): chave S3 correta para movie (`generos_filmes.json`) e tv (`generos_series.json`); retorna DataFrame da lista JSON
 - **`TestReadFromSorWatchProvidersRef`** (4 testes): chave S3 correta para movie/tv; coluna `canonical_name` adicionada via `derive_canonical_name`; override aplicado (ex: "Paramount Plus" → "Paramount+")
-- **`TestReadFromSorConfiguration`** (4 testes): movie → `languages/idiomas.json`; tv → `countries/paises.json`; retorna DataFrame com colunas corretas; tv countries recebe coluna `name_pt` traduzida via `traduzir_texto` (`shared_utils.traducao`, mockada em `src.utils.traduzir_texto`)
-- **`TestAdicionarNamePtCountries`** (3 testes): traduz `english_name` para pt-BR via `traduzir_texto` (mockada); sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo
-- **`TestAdicionarNamePtLanguages`** (3 testes): traduz `english_name` dos idiomas para pt-BR via `traduzir_texto` (mockada); sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo
+- **`TestReadFromSorConfiguration`** (6 testes): movie → `languages/idiomas.json`; tv → `countries/paises.json`; retorna DataFrame com colunas corretas; tv countries recebe coluna `name_pt` traduzida via `traduzir_texto` (`shared_utils.traducao`, mockada em `src.utils.traduzir_texto`); **cache de tradução:** quando `s3_bucket_sot`/`table_name` são passados e `english_name` é idêntico ao já gravado na SOT (`wr.s3.read_parquet` mockado), reaproveita `name_pt` sem chamar `traduzir_texto` (`test_reaproveita_name_pt_quando_english_name_nao_mudou`); quando `english_name` mudou, traduz normalmente (`test_retraduz_quando_english_name_mudou`)
+- **`TestAdicionarNamePtCountries`** (5 testes): traduz `english_name` para pt-BR via `traduzir_texto` (mockada); sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo; com `df_anterior` e fonte idêntica reaproveita `name_pt` sem chamar `traduzir_texto`; com fonte diferente traduz normalmente
+- **`TestAdicionarNamePtLanguages`** (5 testes): traduz `english_name` dos idiomas para pt-BR via `traduzir_texto` (mockada); sem coluna `english_name` retorna inalterado; `english_name` vazio/nulo resulta em `name_pt` nulo; com `df_anterior` e fonte idêntica reaproveita `name_pt` sem chamar `traduzir_texto`; com fonte diferente traduz normalmente
 - **`TestReadFromSorConfigurationLanguages`** (1 teste): movie configuration recebe coluna `name_pt` traduzida via `traduzir_texto` (mockada)
+- **`TestLerConfigurationExistente`** (2 testes): retorna o DataFrame lido via `wr.s3.read_parquet` (path `s3://{bucket}/tmdb/{table_name}/`); retorna `DataFrame()` vazio quando a leitura falha (tabela ainda não existe)
 - **`TestReadFromSorNowPlaying`** (3 testes): path S3 `tmdb/now_playing/movie/`; deduplica por `id`; retorna DataFrame
 - **`TestWriteParquetToSot`** (4 testes): `awswrangler.s3.to_parquet` chamado com `partition_cols`, `mode` e `path` (`s3://{bucket}/tmdb/{table_name}/`) corretos; `mode` customizado repassado
 - **`TestDeriveCanonicalName`** (12 testes): remoção de sufixos ("Standard with Ads", "Premium", "Plus Premium", "Amazon Channel"); overrides manuais ("Paramount Plus" → "Paramount+", "Claro video" → "Claro Video"); composição ("Paramount Plus Premium" → "Paramount+", "MGM Plus Amazon Channel" → "MGM+")

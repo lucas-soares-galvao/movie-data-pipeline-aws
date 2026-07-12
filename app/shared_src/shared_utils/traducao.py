@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import boto3
 import pandas as pd
@@ -232,6 +232,73 @@ def criar_traduzir_fn_com_aws_translate(
         return _traduzir_aws_translate(texto, region)
 
     return _traduzir_fn
+
+
+def reaproveitar_traducao_existente(
+    df: pd.DataFrame,
+    df_anterior: Optional[pd.DataFrame],
+    coluna_fonte: str,
+    coluna_destino: str,
+    coluna_chave: str = "id",
+) -> pd.DataFrame:
+    """
+    Preenche coluna_destino com a tradução já existente (df_anterior) quando
+    coluna_fonte não mudou entre o registro antigo e o novo, para a mesma
+    coluna_chave. Evita retraduzir texto idêntico ao da última execução.
+
+    Não sobrescreve valores já preenchidos em coluna_destino neste run (ex.:
+    tradução nativa do TMDB, atribuída antes desta chamada) — essa prioridade é
+    preservada. A checagem final de "já traduzido" continua em
+    traduzir_coluna_pendente ou na máscara de elegibilidade do chamador; esta
+    função só fornece o valor de cache para essas checagens localizarem. Se o
+    valor reaproveitado for igual à fonte (falha de tradução de um run
+    anterior), o chamador vai marcá-lo como pendente e retentar sozinho.
+
+    Compartilhada entre glue_details (coluna_chave="id", default) e glue_etl
+    (coluna_chave="iso_3166_1"/"iso_639_1" para a tabela configuration).
+
+    Args:
+        df:            DataFrame novo (run atual), com colunas coluna_chave,
+                        coluna_fonte e coluna_destino já inicializada (mesmo
+                        que com nulos).
+        df_anterior:   Registros já persistidos que serão sobrescritos neste
+                        run, ou None/vazio se não há histórico.
+        coluna_fonte:  Nome da coluna de texto fonte (ex.: "overview_en").
+        coluna_destino: Nome da coluna de tradução a (pré-)preencher.
+        coluna_chave:  Coluna usada para casar registros antigos e novos
+                       (default "id").
+
+    Returns:
+        df com coluna_destino atualizada (também modificado in-place).
+    """
+    if df_anterior is None or df_anterior.empty:
+        return df
+    colunas_necessarias = {coluna_chave, coluna_fonte, coluna_destino}
+    if not colunas_necessarias.issubset(df_anterior.columns):
+        # Schema antigo (partição/tabela gravada antes da coluna existir) — nada a reaproveitar.
+        return df
+
+    cache = (
+        df_anterior[[coluna_chave, coluna_fonte, coluna_destino]]
+        .drop_duplicates(subset=coluna_chave, keep="last")
+        .set_index(coluna_chave)
+    )
+    fonte_antiga = df[coluna_chave].map(cache[coluna_fonte])
+    destino_antigo = df[coluna_chave].map(cache[coluna_destino])
+
+    destino_novo_vazio = df[coluna_destino].isna() | (df[coluna_destino] == "")
+    fonte_valida = df[coluna_fonte].notna() & (df[coluna_fonte] != "")
+    destino_antigo_valido = destino_antigo.notna() & (destino_antigo != "")
+    fonte_inalterada = fonte_valida & (fonte_antiga == df[coluna_fonte])
+
+    pode_reaproveitar = destino_novo_vazio & destino_antigo_valido & fonte_inalterada
+    if pode_reaproveitar.any():
+        df.loc[pode_reaproveitar, coluna_destino] = destino_antigo[pode_reaproveitar]
+        logger.info(
+            f"Reaproveitando tradução existente de {pode_reaproveitar.sum()} registro(s) "
+            f"para '{coluna_destino}' (fonte '{coluna_fonte}' inalterada)."
+        )
+    return df
 
 
 def elegivel_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":

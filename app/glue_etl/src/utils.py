@@ -9,7 +9,11 @@ import boto3
 import pandas as pd
 
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
-from shared_utils.traducao import criar_traduzir_fn_com_aws_translate, traduzir_texto  # noqa: F401
+from shared_utils.traducao import (  # noqa: F401
+    criar_traduzir_fn_com_aws_translate,
+    reaproveitar_traducao_existente,
+    traduzir_texto,
+)
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 # Caminhos no S3 SOR organizados por media_type e table_type.
@@ -121,18 +125,31 @@ def get_parameters_glue() -> Dict[str, Any]:
 
 
 def _adicionar_traducao(
-    df: pd.DataFrame, descricao: str, traduzir_fn: Optional[Callable[[str], str]] = None
+    df: pd.DataFrame,
+    descricao: str,
+    coluna_chave: str,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    df_anterior: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt.
 
+    Antes de traduzir, reaproveita name_pt já existente em df_anterior quando
+    english_name não mudou desde a última execução (ver reaproveitar_traducao_existente
+    em shared_utils.traducao) — evita chamar a API de tradução para países/idiomas
+    cujo nome em inglês é idêntico ao já processado.
+
     Args:
-        df:          DataFrame com coluna english_name.
-        descricao:   Descrição dos itens para o log (ex: "países", "idiomas").
-        traduzir_fn: Função de tradução (texto) -> texto traduzido. Por padrão usa
-                     traduzir_texto puro (Google Translate); passe o resultado de
-                     criar_traduzir_fn_com_aws_translate para habilitar o fallback
-                     via AWS Translate.
+        df:           DataFrame com coluna english_name.
+        descricao:    Descrição dos itens para o log (ex: "países", "idiomas").
+        coluna_chave: Coluna usada para casar registros antigos e novos no cache
+                      de tradução (ex: "iso_3166_1" para países, "iso_639_1" para idiomas).
+        traduzir_fn:  Função de tradução (texto) -> texto traduzido. Por padrão usa
+                      traduzir_texto puro (Google Translate); passe o resultado de
+                      criar_traduzir_fn_com_aws_translate para habilitar o fallback
+                      via AWS Translate.
+        df_anterior:  Tabela configuration já gravada na SOT (ver ler_configuration_existente),
+                      usada como cache de tradução, ou None se não há histórico.
 
     Returns:
         DataFrame com coluna name_pt adicionada.
@@ -140,9 +157,16 @@ def _adicionar_traducao(
     if "english_name" not in df.columns:
         return df
 
-    mask = df["english_name"].notna() & (df["english_name"] != "")
+    df["name_pt"] = None
+    df = reaproveitar_traducao_existente(
+        df, df_anterior, "english_name", "name_pt", coluna_chave=coluna_chave
+    )
+
+    mask = (
+        df["english_name"].notna() & (df["english_name"] != "")
+        & (df["name_pt"].isna() | (df["name_pt"] == ""))
+    )
     if not mask.any():
-        df["name_pt"] = None
         return df
 
     logger.info(f"Traduzindo {mask.sum()} nomes de {descricao} para pt-BR...")
@@ -155,20 +179,49 @@ def _adicionar_traducao(
     # Loop sequencial (não paralelo): genre e configuration têm no máximo ~250 itens.
     # Para volumes pequenos, o overhead do ThreadPoolExecutor supera o ganho de paralelismo.
     # O glue_details usa ThreadPoolExecutor porque processa milhares de IDs por execução.
-    df["name_pt"] = None
     df.loc[mask, "name_pt"] = df.loc[mask, "english_name"].map(fn)
 
     return df
 
 
-def _adicionar_name_pt_countries(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
+def _adicionar_name_pt_countries(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    df_anterior: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """Traduz english_name dos países para português e grava como name_pt."""
-    return _adicionar_traducao(df, "países", traduzir_fn)
+    return _adicionar_traducao(df, "países", "iso_3166_1", traduzir_fn, df_anterior)
 
 
-def _adicionar_name_pt_languages(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
+def _adicionar_name_pt_languages(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    df_anterior: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """Traduz english_name dos idiomas para português e grava como name_pt."""
-    return _adicionar_traducao(df, "idiomas", traduzir_fn)
+    return _adicionar_traducao(df, "idiomas", "iso_639_1", traduzir_fn, df_anterior)
+
+
+def ler_configuration_existente(s3_bucket_sot: str, table_name: str) -> pd.DataFrame:
+    """
+    Lê a tabela configuration já gravada na SOT, usada como cache de tradução em
+    _adicionar_traducao (reaproveita name_pt quando english_name não mudou desde
+    a última execução).
+
+    Args:
+        s3_bucket_sot: Nome do bucket SOT.
+        table_name:    Nome da tabela configuration no Glue Catalog.
+
+    Returns:
+        DataFrame com os registros existentes, ou vazio se a tabela ainda não
+        existir (primeira execução) ou a leitura falhar por qualquer outro motivo.
+    """
+    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
+    try:
+        return wr.s3.read_parquet(path=s3_path, dataset=True)
+    except Exception as exc:
+        logger.info(f"Sem dados existentes para '{table_name}' (provavelmente primeira execução): {exc}")
+        return pd.DataFrame()
 
 
 def _ler_json_do_s3(bucket: str, key: str) -> list:
@@ -184,6 +237,8 @@ def read_from_sor(
     table_type: str,
     year: Optional[str] = None,
     traduzir_fn: Optional[Callable[[str], str]] = None,
+    s3_bucket_sot: Optional[str] = None,
+    table_name: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
@@ -200,6 +255,11 @@ def read_from_sor(
         year:          Ano para o discover (ex: "2024")
         traduzir_fn:   Função de tradução usada para name_pt em configuration (ver
                        _adicionar_traducao); só relevante para table_type="configuration".
+        s3_bucket_sot: Bucket SOT, usado para ler a tabela configuration já gravada
+                       (cache de tradução, ver ler_configuration_existente); só
+                       relevante para table_type="configuration". Se omitido, a
+                       tradução roda sem cache (comportamento anterior).
+        table_name:    Nome da tabela configuration no Glue Catalog; ver s3_bucket_sot.
 
     Returns:
         DataFrame com os dados lidos e prontos para gravação no SOT
@@ -226,11 +286,16 @@ def read_from_sor(
     elif table_type in ("genre", "configuration"):
         df = pd.DataFrame(_ler_json_do_s3(s3_bucket_sor, s3_key))
 
-        if table_type == "configuration" and media_type == "tv":
-            df = _adicionar_name_pt_countries(df, traduzir_fn)
+        if table_type == "configuration":
+            df_anterior = None
+            if s3_bucket_sot and table_name:
+                df_anterior = ler_configuration_existente(s3_bucket_sot, table_name)
 
-        elif table_type == "configuration" and media_type == "movie":
-            df = _adicionar_name_pt_languages(df, traduzir_fn)
+            if media_type == "tv":
+                df = _adicionar_name_pt_countries(df, traduzir_fn, df_anterior)
+
+            elif media_type == "movie":
+                df = _adicionar_name_pt_languages(df, traduzir_fn, df_anterior)
 
     logger.info(f"Lidos {len(df)} registros.")
     return df
