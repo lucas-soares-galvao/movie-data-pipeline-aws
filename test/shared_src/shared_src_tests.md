@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto`/`traduzir_em_paralelo`/`traduzir_coluna_pendente`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto`/`traduzir_em_paralelo`/`traduzir_coluna_pendente`/`criar_traduzir_fn_com_aws_translate`/`_traduzir_aws_translate`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -143,6 +143,31 @@ origem está preenchido. `overview_pt` ainda depende de `overview_en` estar pree
 | `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestElegivelOverviewPt`) | `overview_en` vazio/`None` não é elegível mesmo com idioma diferente de `pt` |
 | `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestElegivelTaglinePt`) | `tagline` vazia/`None` não é elegível |
 | `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestElegivelKeywordsPt`) | `keywords` vazia/`None` não é elegível |
+
+### `TestTraduzirAwsTranslate`
+
+Testa `_traduzir_aws_translate` (função privada) via `boto3.client("translate")` mockado.
+
+| Teste | O que verifica |
+|---|---|
+| `test_traduz_com_sucesso` | Chama `translate_text(Text=..., SourceLanguageCode="auto", TargetLanguageCode="pt")` e retorna `TranslatedText` |
+| `test_retorna_original_em_caso_de_excecao` | Exceção (ex.: `boto3.client` falhando) retorna o texto original, sem propagar |
+| `test_retorna_original_quando_resposta_vazia` | `TranslatedText` vazio retorna o texto original |
+
+### `TestCriarTraduzirFnComAwsTranslate`
+
+Testa a composição de uma função de tradução primária (ex.: `traduzir_texto`) com fallback
+via AWS Translate, limitado a `max_chamadas` por execução — a 3ª camada de tradução.
+
+| Teste | O que verifica |
+|---|---|
+| `test_nao_chama_aws_translate_quando_traducao_primaria_tem_sucesso` | AWS Translate não é chamado quando a função primária já traduz com sucesso |
+| `test_chama_aws_translate_quando_traducao_primaria_falha` | AWS Translate é chamado quando a função primária devolve o texto original (mesmo contrato de `traduzir_texto`) |
+| `test_nao_chama_nada_para_texto_vazio` | Texto vazio não chama nem a função primária de verdade útil nem AWS Translate |
+| `test_max_chamadas_zero_desliga_fallback` | `max_chamadas=0` nunca aciona o AWS Translate — comportamento de `traduzir_fn_primario` puro |
+| `test_para_de_chamar_aws_translate_apos_cap_esgotado` | Após `max_chamadas` chamadas, resultados adicionais mantêm o texto da função primária (não chama mais AWS Translate) |
+| `test_usa_region_informada` | O parâmetro `region` é repassado a `_traduzir_aws_translate` |
+| `test_thread_safety_nao_ultrapassa_cap_sob_concorrencia` | Com 20 chamadas concorrentes (`ThreadPoolExecutor`) e `max_chamadas=5`, o AWS Translate é chamado exatamente 5 vezes — o lock protege o contador |
 
 ## Como executar
 

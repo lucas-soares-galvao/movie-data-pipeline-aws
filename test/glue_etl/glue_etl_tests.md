@@ -31,7 +31,7 @@ Usa a constante `_BASE` (dict com args comuns: buckets, nomes de jobs, databases
 
 | Teste | O que verifica |
 |---|---|
-| `test_calls_read_from_sor_with_discover_args` | `read_from_sor` chamado com `(bucket, media_type, "discover", year)` |
+| `test_calls_read_from_sor_with_discover_args` | `read_from_sor` chamado com `(bucket, media_type, "discover", year)` nos 4 primeiros posicionais, mais um `traduzir_fn` callable como 5º (fallback via AWS Translate, montado uma vez em `main()`) |
 | `test_writes_to_discover_table_with_year_partition` | `write_parquet_to_sot` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
 | `test_tv_media_type_forwarded_to_read_from_sor` | Para `MEDIA_TYPE="tv"`, lê e escreve com os argumentos corretos de tv |
 | `test_write_is_called_exactly_once` | `write_parquet_to_sot` é chamado exatamente uma vez por execução |
@@ -85,7 +85,7 @@ Testa individualmente as funções utilitárias: leitura do SOR por `table_type`
 - **`TestReadFromSorNowPlaying`** (3 testes): path S3 `tmdb/now_playing/movie/`; deduplica por `id`; retorna DataFrame
 - **`TestWriteParquetToSot`** (4 testes): `awswrangler.s3.to_parquet` chamado com `partition_cols`, `mode` e `path` (`s3://{bucket}/tmdb/{table_name}/`) corretos; `mode` customizado repassado
 - **`TestDeriveCanonicalName`** (12 testes): remoção de sufixos ("Standard with Ads", "Premium", "Plus Premium", "Amazon Channel"); overrides manuais ("Paramount Plus" → "Paramount+", "Claro video" → "Claro Video"); composição ("Paramount Plus Premium" → "Paramount+", "MGM Plus Amazon Channel" → "MGM+")
-- **`TestGetParametersGlue`** (3 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar)
+- **`TestGetParametersGlue`** (5 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar); `AWS_TRANSLATE_MAX_PER_RUN` tem default `"0"` quando ausente e é lido corretamente quando fornecido (opcional, mesmo padrão de `YEAR`/`END_YEAR` — `getResolvedOptions` levanta `SystemExit` para argumento ausente)
 
 ## Como executar
 

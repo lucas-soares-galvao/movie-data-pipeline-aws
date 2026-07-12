@@ -49,6 +49,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
     aws_iam_role_policy.glue_details_catalog,
     aws_iam_role_policy.glue_details_athena,
     aws_iam_role_policy.glue_details_secrets,
+    aws_iam_role_policy.glue_details_translate,
     aws_iam_role_policy.glue_details_start_agg,
     aws_iam_role_policy.glue_details_start_dq,
     aws_glue_job.agg_job_pythonshell,

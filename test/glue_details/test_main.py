@@ -19,6 +19,7 @@ _BASE = {
     "YEAR": "2025",
     "END_YEAR": "2025",
     "FORCE_REFETCH": False,
+    "AWS_TRANSLATE_MAX_PER_RUN": 0,
 }
 
 _IDS = [1, 2]

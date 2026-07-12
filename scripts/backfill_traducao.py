@@ -39,9 +39,12 @@ Variáveis de ambiente obrigatórias:
     TABLE_DISCOVER_TV
 
 Variáveis opcionais:
-    BACKFILL_START_YEAR    (padrão: 2000)
-    BACKFILL_END_YEAR      (padrão: ano atual)
-    BACKFILL_WAIT_SECONDS  (padrão: 300 — pausa entre partições para não saturar Google Translate)
+    BACKFILL_START_YEAR       (padrão: 2000)
+    BACKFILL_END_YEAR         (padrão: ano atual)
+    BACKFILL_WAIT_SECONDS     (padrão: 300 — pausa entre partições para não saturar Google Translate)
+    AWS_TRANSLATE_MAX_PER_RUN (padrão: 0 — desligado; limite de chamadas ao AWS Translate
+                                nesta execução inteira, usado como 3ª camada quando o
+                                Google Translate falha)
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -57,6 +60,8 @@ import sys
 import time
 from pathlib import Path
 
+from typing import Callable, Optional
+
 import awswrangler as wr
 import boto3
 import pandas as pd
@@ -64,6 +69,7 @@ from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
 from shared_utils.traducao import (  # noqa: E402
+    criar_traduzir_fn_com_aws_translate,
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
@@ -83,6 +89,7 @@ def _traduzir_pendentes(
     coluna_fonte: str,
     coluna_pt: str,
     mask_elegivel: "pd.Series[bool]",
+    traduzir_fn: Callable[[str], str],
 ) -> int:
     """Traduz coluna_fonte → coluna_pt para os registros elegíveis ainda pendentes
     (ver traduzir_coluna_pendente em shared_utils/traducao.py para a regra de
@@ -92,47 +99,53 @@ def _traduzir_pendentes(
         mask_elegivel.sum(), coluna_pt, _TRANSLATE_MAX_WORKERS,
     )
     sucesso = traduzir_coluna_pendente(
-        df, coluna_fonte, coluna_pt, mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+        df, coluna_fonte, coluna_pt, mask_elegivel, traduzir_fn, max_workers=_TRANSLATE_MAX_WORKERS
     )
     logger.info("  %d traduzidos com sucesso (%s).", sucesso, coluna_pt)
     return sucesso
 
 
-def _adicionar_traducoes_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
     """Adiciona overview_pt aos registros com idioma original diferente de pt e
     overview_en preenchido, ainda pendentes (registros com overview_en vazio não
     têm o que traduzir e distorceriam a contagem de sucesso)."""
+    # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
+    # patch("backfill_traducao.traduzir_texto", ...) nos testes continue funcionando
+    # quando o chamador não passa um traduzir_fn explícito.
+    traduzir_fn = traduzir_fn or traduzir_texto
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
 
     mask_elegivel = elegivel_overview_pt(df)
     if not mask_elegivel.any():
         return df, 0
-    sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel)
+    sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel, traduzir_fn)
     return df, sucesso
 
 
-def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+def _adicionar_traducoes_tagline_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
     """Adiciona tagline_pt aos registros com tagline preenchida e idioma original
     diferente de pt (espelha glue_details)."""
+    traduzir_fn = traduzir_fn or traduzir_texto
     if "tagline" not in df.columns:
         return df, 0
     mask_elegivel = elegivel_tagline_pt(df)
     if not mask_elegivel.any():
         return df, 0
-    sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel)
+    sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel, traduzir_fn)
     return df, sucesso
 
 
-def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+def _adicionar_traducoes_keywords_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
     """Adiciona keywords_pt aos registros com keywords preenchidas e idioma original
     diferente de pt (TMDB sempre devolve keywords em inglês para os demais idiomas)."""
+    traduzir_fn = traduzir_fn or traduzir_texto
     if "keywords" not in df.columns:
         return df, 0
     mask_elegivel = elegivel_keywords_pt(df)
     if not mask_elegivel.any():
         return df, 0
-    sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel)
+    sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel, traduzir_fn)
     return df, sucesso
 
 
@@ -154,6 +167,7 @@ def _backfill_year(
     discover_map: pd.DataFrame,
     year: str,
     s3_bucket_sot: str,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
 ) -> tuple[bool, int]:
     """
     Lê uma partição de year em tb_details_* diretamente do S3, adiciona
@@ -163,6 +177,7 @@ def _backfill_year(
     Returns:
         Tupla (escreveu, quantidade traduzida com sucesso).
     """
+    traduzir_fn = traduzir_fn or traduzir_texto
     s3_details_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/year={year}/"
 
     try:
@@ -185,9 +200,9 @@ def _backfill_year(
     df = df.merge(discover_map, on="id", how="left")
     df["original_language"] = df["original_language"].fillna("und")
 
-    df, sucesso_overview = _adicionar_traducoes_pt(df)
-    df, sucesso_tagline = _adicionar_traducoes_tagline_pt(df)
-    df, sucesso_keywords = _adicionar_traducoes_keywords_pt(df)
+    df, sucesso_overview = _adicionar_traducoes_pt(df, traduzir_fn)
+    df, sucesso_tagline = _adicionar_traducoes_tagline_pt(df, traduzir_fn)
+    df, sucesso_keywords = _adicionar_traducoes_keywords_pt(df, traduzir_fn)
     traduzidos = sucesso_overview + sucesso_tagline + sucesso_keywords
     df = df.drop(columns=["original_language"])
     df["year"] = year
@@ -226,13 +241,19 @@ def main() -> None:
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 300))
+    aws_translate_max_calls = int(os.environ.get("AWS_TRANSLATE_MAX_PER_RUN", 0))
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
     logger.info(
-        "Backfill de tradução: %d até %d | %d partições (movie + tv) | pausa=%ds entre partições",
-        start_year, end_year, total, wait_seconds,
+        "Backfill de tradução: %d até %d | %d partições (movie + tv) | pausa=%ds entre partições "
+        "| limite AWS Translate=%d chamadas na execução inteira",
+        start_year, end_year, total, wait_seconds, aws_translate_max_calls,
     )
+    # Um único traduzir_fn para toda a execução (não por partição) — o limite de
+    # chamadas ao AWS Translate vale para o backfill inteiro, evitando gasto
+    # descontrolado num run que varre start_year→end_year de uma vez.
+    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls, region=region)
 
     s3_client = boto3.client("s3", region_name=region)
 
@@ -263,6 +284,7 @@ def main() -> None:
             discover_map=discover_map,
             year=str(year),
             s3_bucket_sot=s3_bucket_sot,
+            traduzir_fn=traduzir_fn,
         )
         total_traduzidos += traduzidos
         completed.add(f"{tipo}:{year}")

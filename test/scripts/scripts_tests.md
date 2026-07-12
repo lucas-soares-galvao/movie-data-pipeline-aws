@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa os 6 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS ou ao Google Translate.
+Testa os 6 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate ou ao AWS Translate.
 
 O foco principal é o **contrato do payload/argumentos** enviado a cada serviço (Lambda ou Glue), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 80% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
 
@@ -166,7 +166,7 @@ Import direto por nome de módulo (`import backfill_historico`), sem pacote — 
 
 ## Casos de teste — `test_backfill_traducao.py`
 
-Retry/backoff da tradução em si (`traduzir_texto`, 5 tentativas com backoff) é coberto em `test/shared_src/test_traducao.py` — o script apenas importa e usa a função do módulo compartilhado, sem lógica própria de retry.
+Retry/backoff da tradução em si (`traduzir_texto`, 5 tentativas com backoff) é coberto em `test/shared_src/test_traducao.py` — o script apenas importa e usa a função do módulo compartilhado, sem lógica própria de retry. O mesmo vale para o fallback via AWS Translate (`criar_traduzir_fn_com_aws_translate`, opcional via `AWS_TRANSLATE_MAX_PER_RUN`, default desligado) — `_adicionar_traducoes_*` e `_backfill_year` só recebem e repassam o `traduzir_fn` já composto por `main()`.
 
 ### `TestAdicionarTraducoesPt`
 

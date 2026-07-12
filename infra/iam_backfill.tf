@@ -218,6 +218,26 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
   })
 }
 
+# =============================================================================
+# POLICY 5 — AWS Translate (backfill_traducao.py). Fallback de tradução (3ª
+# camada, só quando o Google Translate falha) — translate:TranslateText não tem
+# restrição por recurso na AWS (Resource = "*").
+# =============================================================================
+resource "aws_iam_role_policy" "backfill_translate" {
+  name = "${local.tmdb_prefix}-backfill-translate-${var.env}"
+  role = aws_iam_role.backfill.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "TranslateFallback"
+      Effect   = "Allow"
+      Action   = ["translate:TranslateText"]
+      Resource = "*"
+    }]
+  })
+}
+
 output "backfill_role_arn" {
   description = "ARN da role de backfill manual (usar como valor da secret AWS_ASSUME_ROLE_ARN_BACKFILL_{DEV|PROD})"
   value       = aws_iam_role.backfill.arn
