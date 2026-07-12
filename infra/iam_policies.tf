@@ -242,6 +242,22 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
   })
 }
 
+# Fallback de tradução via AWS Translate (3ª camada, só quando o Google Translate
+# falha) — translate:TranslateText não tem restrição por recurso na AWS (Resource = "*").
+resource "aws_iam_role_policy" "glue_etl_translate" {
+  name = "${local.tmdb_prefix}-glue-etl-translate-${var.env}"
+  role = aws_iam_role.glue_etl_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["translate:TranslateText"]
+      Resource = "*"
+    }]
+  })
+}
+
 # Permite que o Glue ETL inicie o job de Data Quality ao final do processamento.
 resource "aws_iam_role_policy" "glue_etl_start_dq" {
   name = "${local.tmdb_prefix}-glue-etl-start-dq-${var.env}"
@@ -921,6 +937,22 @@ resource "aws_iam_role_policy" "glue_details_secrets" {
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
       Resource = var.filmbot_secret_arn
+    }]
+  })
+}
+
+# Fallback de tradução via AWS Translate (3ª camada, só quando o Google Translate
+# falha) — translate:TranslateText não tem restrição por recurso na AWS (Resource = "*").
+resource "aws_iam_role_policy" "glue_details_translate" {
+  name = "${local.tmdb_prefix}-glue-details-translate-${var.env}"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["translate:TranslateText"]
+      Resource = "*"
     }]
   })
 }

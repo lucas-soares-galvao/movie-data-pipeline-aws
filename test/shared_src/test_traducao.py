@@ -1,8 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
+import shared_utils.traducao as traducao
 from shared_utils.traducao import (
+    criar_traduzir_fn_com_aws_translate,
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
@@ -235,6 +238,92 @@ class TestTraduzirColunaPendente:
             df = pd.DataFrame({"fonte": ["Hello"], "destino": [None]})
             traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True]), MagicMock(), max_workers=3)
         assert mock_paralelo.call_args.kwargs["max_workers"] == 3
+
+
+class TestTraduzirAwsTranslate:
+    def test_traduz_com_sucesso(self):
+        mock_client = MagicMock()
+        mock_client.translate_text.return_value = {"TranslatedText": "Olá"}
+        with patch("shared_utils.traducao.boto3.client", return_value=mock_client) as mock_boto:
+            result = traducao._traduzir_aws_translate("Hello", region="sa-east-1")
+        assert result == "Olá"
+        mock_boto.assert_called_once_with("translate", region_name="sa-east-1")
+        mock_client.translate_text.assert_called_once_with(
+            Text="Hello", SourceLanguageCode="auto", TargetLanguageCode="pt",
+        )
+
+    def test_retorna_original_em_caso_de_excecao(self):
+        with patch("shared_utils.traducao.boto3.client", side_effect=Exception("boom")):
+            result = traducao._traduzir_aws_translate("Hello", region="sa-east-1")
+        assert result == "Hello"
+
+    def test_retorna_original_quando_resposta_vazia(self):
+        mock_client = MagicMock()
+        mock_client.translate_text.return_value = {"TranslatedText": ""}
+        with patch("shared_utils.traducao.boto3.client", return_value=mock_client):
+            result = traducao._traduzir_aws_translate("Hello", region="sa-east-1")
+        assert result == "Hello"
+
+
+class TestCriarTraduzirFnComAwsTranslate:
+    def test_nao_chama_aws_translate_quando_traducao_primaria_tem_sucesso(self):
+        traduzir_fn_primario = MagicMock(return_value="Olá")
+        with patch("shared_utils.traducao._traduzir_aws_translate") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
+            result = fn("Hello")
+        assert result == "Olá"
+        mock_aws.assert_not_called()
+
+    def test_chama_aws_translate_quando_traducao_primaria_falha(self):
+        """traduzir_fn_primario devolve o texto original quando falha (mesmo contrato
+        de traduzir_texto) — é esse sinal que aciona o fallback."""
+        traduzir_fn_primario = MagicMock(return_value="Hello")
+        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="Olá via AWS") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
+            result = fn("Hello")
+        assert result == "Olá via AWS"
+        mock_aws.assert_called_once_with("Hello", "sa-east-1")
+
+    def test_nao_chama_nada_para_texto_vazio(self):
+        traduzir_fn_primario = MagicMock(return_value="")
+        with patch("shared_utils.traducao._traduzir_aws_translate") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
+            result = fn("")
+        assert result == ""
+        mock_aws.assert_not_called()
+
+    def test_max_chamadas_zero_desliga_fallback(self):
+        traduzir_fn_primario = MagicMock(return_value="Hello")
+        with patch("shared_utils.traducao._traduzir_aws_translate") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=0)
+            result = fn("Hello")
+        assert result == "Hello"
+        mock_aws.assert_not_called()
+
+    def test_para_de_chamar_aws_translate_apos_cap_esgotado(self):
+        traduzir_fn_primario = MagicMock(side_effect=lambda t: t)
+        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="traduzido") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=1)
+            r1 = fn("A")
+            r2 = fn("B")
+        assert r1 == "traduzido"
+        assert r2 == "B"
+        assert mock_aws.call_count == 1
+
+    def test_usa_region_informada(self):
+        traduzir_fn_primario = MagicMock(return_value="Hello")
+        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="ok") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=1, region="us-east-1")
+            fn("Hello")
+        mock_aws.assert_called_once_with("Hello", "us-east-1")
+
+    def test_thread_safety_nao_ultrapassa_cap_sob_concorrencia(self):
+        traduzir_fn_primario = MagicMock(side_effect=lambda t: t)
+        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="traduzido") as mock_aws:
+            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                list(executor.map(fn, [f"texto{i}" for i in range(20)]))
+        assert mock_aws.call_count == 5
 
 
 class TestElegivelOverviewPt:

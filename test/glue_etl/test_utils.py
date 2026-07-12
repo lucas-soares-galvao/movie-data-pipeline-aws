@@ -418,24 +418,37 @@ class TestGetParametersGlue:
         }
 
     def test_returns_required_args(self):
-        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1)]):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
             result = get_parameters_glue()
         assert result["S3_BUCKET_SOR"] == "sor"
         assert result["TABLE_TYPE"] == "discover"
 
     def test_includes_year_when_provided(self):
         year_args = {"YEAR": "2024", "END_YEAR": "2025"}
-        with patch("src.utils.get_resolved_option", side_effect=[self._required(), year_args]):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), year_args, SystemExit(1)]):
             result = get_parameters_glue()
         assert result["YEAR"] == "2024"
         assert result["END_YEAR"] == "2025"
 
     def test_omits_year_when_not_provided(self):
         def _side_effect(args):
-            if "YEAR" in args:
+            if "YEAR" in args or "AWS_TRANSLATE_MAX_PER_RUN" in args:
                 raise SystemExit(1)
             return self._required()
 
         with patch("src.utils.get_resolved_option", side_effect=_side_effect):
             result = get_parameters_glue()
         assert "YEAR" not in result
+
+    def test_defaults_aws_translate_max_per_run_to_zero_when_not_provided(self):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
+            result = get_parameters_glue()
+        assert result["AWS_TRANSLATE_MAX_PER_RUN"] == "0"
+
+    def test_includes_aws_translate_max_per_run_when_provided(self):
+        with patch(
+            "src.utils.get_resolved_option",
+            side_effect=[self._required(), SystemExit(1), {"AWS_TRANSLATE_MAX_PER_RUN": "50"}],
+        ):
+            result = get_parameters_glue()
+        assert result["AWS_TRANSLATE_MAX_PER_RUN"] == "50"

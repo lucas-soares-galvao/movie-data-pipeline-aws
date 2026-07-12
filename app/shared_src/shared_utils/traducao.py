@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List
 
+import boto3
 import pandas as pd
 from deep_translator import GoogleTranslator
 
@@ -150,6 +152,80 @@ def traduzir_coluna_pendente(
     df.loc[mask, coluna_destino] = traduzidos
 
     return sum(1 for original, traduzido in zip(valores, traduzidos) if original and traduzido != original)
+
+
+def _traduzir_aws_translate(texto: str, region: str) -> str:
+    """
+    Traduz texto para português via AWS Translate (detecção automática de idioma),
+    usada como fallback quando o Google Translate falha.
+
+    Diferente de traduzir_texto, não implementa retry manual: o AWS Translate é uma
+    API oficial (sem o comportamento de bloqueio silencioso do endpoint não-oficial
+    do Google Translate) e o cliente boto3 já reaplica retry em erros transitórios
+    por padrão. Nunca lança exceção — devolve o texto original em caso de erro, para
+    não interromper o job.
+
+    Args:
+        texto:  Texto a ser traduzido (idioma de origem detectado automaticamente).
+        region: Região AWS do cliente do Translate.
+
+    Returns:
+        Texto traduzido para português, ou o texto original se a tradução falhar.
+    """
+    try:
+        cliente = boto3.client("translate", region_name=region)
+        resposta = cliente.translate_text(
+            Text=texto, SourceLanguageCode="auto", TargetLanguageCode="pt",
+        )
+        traduzido = resposta.get("TranslatedText", "").strip()
+        if traduzido:
+            return traduzido
+    except Exception as exc:
+        logger.warning(f"Falha ao traduzir via AWS Translate '{texto:.80}': {exc}")
+    return texto
+
+
+def criar_traduzir_fn_com_aws_translate(
+    traduzir_fn_primario: Callable[[str], str], max_chamadas: int, region: str = "sa-east-1"
+) -> Callable[[str], str]:
+    """
+    Compõe uma função de tradução primária (ex.: traduzir_texto, Google Translate)
+    com um fallback via AWS Translate, limitado a max_chamadas chamadas nesta
+    execução — o AWS Translate é pago por caractere, diferente do Google Translate.
+
+    traduzir_fn_primario é recebido como parâmetro (em vez de chamar traduzir_texto
+    diretamente) pelo mesmo motivo de traduzir_em_paralelo: o chamador passa sua
+    própria referência local de traduzir_texto — a mesma que seus testes fazem mock.
+
+    O AWS Translate só é chamado quando traduzir_fn_primario falha (resultado igual
+    ao texto original). Com max_chamadas=0, a função devolvida se comporta como
+    traduzir_fn_primario puro (fallback desligado). Thread-safe: o contador de
+    chamadas é protegido por lock, já que a função é usada dentro de
+    ThreadPoolExecutor via traduzir_em_paralelo.
+
+    Args:
+        traduzir_fn_primario: Função de tradução tentada primeiro (ex.: traduzir_texto).
+        max_chamadas:         Limite de chamadas ao AWS Translate nesta execução.
+        region:                Região AWS do cliente do Translate.
+
+    Returns:
+        Função de tradução (texto) -> texto traduzido, pronta para ser passada como
+        traduzir_fn a traduzir_coluna_pendente/traduzir_em_paralelo.
+    """
+    chamadas_restantes = [max_chamadas]
+    lock = threading.Lock()
+
+    def _traduzir_fn(texto: str) -> str:
+        resultado = traduzir_fn_primario(texto)
+        if not texto or resultado != texto:
+            return resultado
+        with lock:
+            if chamadas_restantes[0] <= 0:
+                return resultado
+            chamadas_restantes[0] -= 1
+        return _traduzir_aws_translate(texto, region)
+
+    return _traduzir_fn
 
 
 def elegivel_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":

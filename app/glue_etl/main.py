@@ -7,8 +7,10 @@ um único ano; os demais tipos usam overwrite simples.
 
 from shared_utils.glue_helpers import configurar_logging_glue
 from src.utils import (
+    criar_traduzir_fn_com_aws_translate,
     get_parameters_glue,
     read_from_sor,
+    traduzir_texto,
     trigger_glue_job,
     write_parquet_to_sot,
 )
@@ -46,6 +48,7 @@ def main() -> None:
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year             = args.get("YEAR")
     end_year         = args.get("END_YEAR")
+    aws_translate_max_calls = int(args.get("AWS_TRANSLATE_MAX_PER_RUN", 0))
 
     partition_cols = _TABLE_CONFIG[table_type]["partition_cols"]
     mode = _TABLE_CONFIG[table_type]["mode"]
@@ -54,7 +57,8 @@ def main() -> None:
         f"Processando table_type={table_type} | media_type={media_type} | year={year}"
     )
 
-    df = read_from_sor(s3_bucket_sor, media_type, table_type, year)
+    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
+    df = read_from_sor(s3_bucket_sor, media_type, table_type, year, traduzir_fn)
 
     write_parquet_to_sot(
         df=df,
