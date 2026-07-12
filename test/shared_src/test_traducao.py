@@ -9,6 +9,7 @@ from shared_utils.traducao import (
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
+    reaproveitar_traducao_existente,
     traduzir_coluna_pendente,
     traduzir_em_paralelo,
     traduzir_texto,
@@ -324,6 +325,76 @@ class TestCriarTraduzirFnComAwsTranslate:
             with ThreadPoolExecutor(max_workers=10) as executor:
                 list(executor.map(fn, [f"texto{i}" for i in range(20)]))
         assert mock_aws.call_count == 5
+
+
+class TestReaproveitarTraducaoExistente:
+    def test_reaproveita_quando_fonte_identica(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": [None]})
+        df_anterior = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": ["Traduzido antes"]})
+        result = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
+        assert result["overview_pt"].iloc[0] == "Traduzido antes"
+
+    def test_nao_reaproveita_quando_fonte_mudou(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse nova"], "overview_pt": [None]})
+        df_anterior = pd.DataFrame({"id": [1], "overview_en": ["Sinopse antiga"], "overview_pt": ["Traduzido antes"]})
+        result = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
+        assert pd.isna(result["overview_pt"].iloc[0])
+
+    def test_nao_reaproveita_id_novo_sem_historico(self):
+        df = pd.DataFrame({"id": [2], "overview_en": ["Sinopse"], "overview_pt": [None]})
+        df_anterior = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": ["Traduzido antes"]})
+        result = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
+        assert pd.isna(result["overview_pt"].iloc[0])
+
+    def test_df_anterior_none_nao_quebra(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": [None]})
+        result = reaproveitar_traducao_existente(df, None, "overview_en", "overview_pt")
+        assert pd.isna(result["overview_pt"].iloc[0])
+
+    def test_df_anterior_vazio_nao_quebra(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": [None]})
+        result = reaproveitar_traducao_existente(df, pd.DataFrame(), "overview_en", "overview_pt")
+        assert pd.isna(result["overview_pt"].iloc[0])
+
+    def test_nao_sobrescreve_destino_ja_preenchido(self):
+        """Prioridade da tradução nativa do TMDB (já atribuída ao df novo) é preservada."""
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": ["Tradução nativa TMDB"]})
+        df_anterior = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": ["Traduzido antes"]})
+        result = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
+        assert result["overview_pt"].iloc[0] == "Tradução nativa TMDB"
+
+    def test_ignora_schema_antigo_sem_coluna(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": [None]})
+        df_anterior = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"]})  # sem overview_pt
+        result = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
+        assert pd.isna(result["overview_pt"].iloc[0])
+
+    def test_ids_duplicados_no_df_anterior_usa_ultimo(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": [None]})
+        df_anterior = pd.DataFrame({
+            "id": [1, 1],
+            "overview_en": ["Sinopse", "Sinopse"],
+            "overview_pt": ["Traducao antiga", "Traducao mais recente"],
+        })
+        result = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
+        assert result["overview_pt"].iloc[0] == "Traducao mais recente"
+
+    def test_coluna_chave_customizada(self):
+        """glue_etl usa coluna_chave='iso_3166_1'/'iso_639_1' em vez do default 'id'."""
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": [None]})
+        df_anterior = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": ["Brasil"]})
+        result = reaproveitar_traducao_existente(
+            df, df_anterior, "english_name", "name_pt", coluna_chave="iso_3166_1"
+        )
+        assert result["name_pt"].iloc[0] == "Brasil"
+
+    def test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": [None]})
+        df_anterior = pd.DataFrame({"iso_3166_1": ["US"], "english_name": ["United States"], "name_pt": ["Estados Unidos"]})
+        result = reaproveitar_traducao_existente(
+            df, df_anterior, "english_name", "name_pt", coluna_chave="iso_3166_1"
+        )
+        assert pd.isna(result["name_pt"].iloc[0])
 
 
 class TestElegivelOverviewPt:

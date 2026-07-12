@@ -261,6 +261,21 @@ class TestRunConfiguration:
                 YEAR=None,
             )
 
+    def test_passes_s3_bucket_sot_and_table_name_for_translation_cache(self):
+        """read_from_sor recebe s3_bucket_sot/table_name para reaproveitar name_pt já
+        gravado na SOT (cache de tradução), evitando retraduzir países/idiomas
+        cujo nome não mudou desde a última execução."""
+        df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_glue_job"),
+        ):
+            m.main()
+            assert mock_read.call_args.kwargs["s3_bucket_sot"] == "my-sot"
+            assert mock_read.call_args.kwargs["table_name"] == "tb_tmdb_configuration_languages_dev"
+
 
 # ---------------------------------------------------------------------------
 # Disparo condicional do Glue Details

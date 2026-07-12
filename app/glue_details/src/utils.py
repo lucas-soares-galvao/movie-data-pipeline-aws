@@ -20,6 +20,7 @@ from shared_utils.traducao import (
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
+    reaproveitar_traducao_existente,
     traduzir_coluna_pendente,
     traduzir_texto,
 )
@@ -654,20 +655,27 @@ def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFram
     return df
 
 
-def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
+def _adicionar_traducoes_pt(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    df_anterior: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """
     Adiciona coluna overview_pt ao DataFrame de detalhes.
 
-    Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb). Para registros sem
-    tradução TMDB, com idioma original diferente de pt e overview_en não-vazio,
-    traduz via Google Translate. Para registros já em pt ou sem overview_en,
-    overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
+    Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb). Em seguida, reaproveita
+    a tradução já existente no S3 quando overview_en não mudou desde o último
+    processamento (ver reaproveitar_traducao_existente). Para registros sem
+    tradução TMDB nem cache aproveitável, com idioma original diferente de pt e
+    overview_en não-vazio, traduz via Google Translate. Para registros já em pt ou
+    sem overview_en, overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
     """
     # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("src.utils.traduzir_texto", ...) nos testes continue funcionando quando
     # o chamador não passa um traduzir_fn explícito.
     traduzir_fn = traduzir_fn or traduzir_texto
     df["overview_pt"] = df["overview_pt_tmdb"]
+    df = reaproveitar_traducao_existente(df, df_anterior, "overview_en", "overview_pt")
 
     mask_elegivel = elegivel_overview_pt(df)
     if not mask_elegivel.any():
@@ -684,16 +692,23 @@ def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[st
     return df
 
 
-def _adicionar_traducoes_keywords_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
+def _adicionar_traducoes_keywords_pt(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    df_anterior: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """
     Adiciona coluna keywords_pt ao DataFrame de detalhes.
 
-    Traduz keywords para português via Google Translate, exceto quando o idioma
-    original já é pt (evita reenviar à API keywords que já podem estar em
-    português; a TMDB devolve keywords em inglês para os demais idiomas).
+    Reaproveita a tradução já existente no S3 quando keywords não mudou desde o
+    último processamento (ver reaproveitar_traducao_existente). Caso contrário,
+    traduz para português via Google Translate, exceto quando o idioma original
+    já é pt (evita reenviar à API keywords que já podem estar em português; a
+    TMDB devolve keywords em inglês para os demais idiomas).
     """
     traduzir_fn = traduzir_fn or traduzir_texto
     df["keywords_pt"] = None
+    df = reaproveitar_traducao_existente(df, df_anterior, "keywords", "keywords_pt")
 
     mask_elegivel = elegivel_keywords_pt(df)
     if not mask_elegivel.any():
@@ -707,16 +722,23 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame, traduzir_fn: Optional[Cal
     return df
 
 
-def _adicionar_traducoes_tagline_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> pd.DataFrame:
+def _adicionar_traducoes_tagline_pt(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    df_anterior: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """
     Adiciona coluna tagline_pt ao DataFrame de detalhes.
 
-    Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb). Para registros sem
-    tradução TMDB, com tagline não-nula e idioma original diferente de pt,
-    traduz via Google Translate.
+    Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb). Em seguida, reaproveita
+    a tradução já existente no S3 quando tagline não mudou desde o último
+    processamento (ver reaproveitar_traducao_existente). Para registros sem
+    tradução TMDB nem cache aproveitável, com tagline não-nula e idioma original
+    diferente de pt, traduz via Google Translate.
     """
     traduzir_fn = traduzir_fn or traduzir_texto
     df["tagline_pt"] = df["tagline_pt_tmdb"]
+    df = reaproveitar_traducao_existente(df, df_anterior, "tagline", "tagline_pt")
 
     mask_elegivel = elegivel_tagline_pt(df)
     if not mask_elegivel.any():
@@ -790,27 +812,17 @@ def collect_and_write_details(
         )
         return
 
-    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
-    df = _adicionar_traducoes_pt(df, traduzir_fn)
-    df = _adicionar_traducoes_keywords_pt(df, traduzir_fn)
-    df = _adicionar_traducoes_tagline_pt(df, traduzir_fn)
-    if content_type == "movie":
-        df = _adicionar_collection_name_pt(df, api_key)
-    # Campos intermediários: usados apenas para filtrar/priorizar traduções; não vão para o SOT
-    colunas_intermediarias = ["original_language", "overview_pt_tmdb", "tagline_pt_tmdb"]
-    df = df.drop(columns=[c for c in colunas_intermediarias if c in df.columns])
-
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
 
-    # Merge de dados existentes com novos (evita perder registros ao usar overwrite_partitions):
-    # 1. Para cada partição year afetada, lê os registros que já existem no S3
-    # 2. Remove do existente qualquer ID que será re-escrito (evita duplicatas)
-    # 3. Concatena existentes + novos em um único DataFrame
-    # 4. Grava de volta com overwrite_partitions (substitui só as partições afetadas)
-    df_existing = pd.DataFrame()
+    # Leitura antecipada dos registros existentes (uma única vez por partição year),
+    # produzindo duas visões a partir do mesmo df_read:
+    # - df_existing_delta: ids que SERÃO sobrescritos neste run -> cache de tradução
+    #   (compara fonte antiga vs. nova antes de chamar as APIs de tradução)
+    # - df_existing_keep:  ids que NÃO fazem parte do delta -> preservados no merge final
+    df_existing_keep = pd.DataFrame()
+    df_existing_delta = pd.DataFrame()
     for yr in df["year"].dropna().unique().tolist():
         try:
-            # Passo 1: lê os registros existentes da partição year={yr}
             year_str = str(yr)
             df_read = wr.s3.read_parquet(
                 path=s3_path,
@@ -818,22 +830,35 @@ def collect_and_write_details(
                 partition_filter=lambda x: x["year"] == year_str,
             )
             if not df_read.empty:
-                # Passo 2: remove do existente os IDs que serão re-escritos (evita duplicatas)
-                df_sem_novos = df_read[~df_read["id"].isin(df["id"])]
-                df_existing = pd.concat([df_existing, df_sem_novos], ignore_index=True)
-                logger.info(f"Mantendo {len(df_sem_novos)} registros existentes para year={yr}.")
+                mask_delta = df_read["id"].isin(df["id"])
+                df_existing_keep = pd.concat([df_existing_keep, df_read[~mask_delta]], ignore_index=True)
+                df_existing_delta = pd.concat([df_existing_delta, df_read[mask_delta]], ignore_index=True)
+                logger.info(
+                    f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
+                    f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
+                )
         except Exception as exc:
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
-    # Passo 3: concatena existentes + novos (novos por último para keep="last" funcionar corretamente)
-    if not df_existing.empty:
-        df = pd.concat([df_existing, df], ignore_index=True)
+    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
+    df = _adicionar_traducoes_pt(df, traduzir_fn, df_anterior=df_existing_delta)
+    df = _adicionar_traducoes_keywords_pt(df, traduzir_fn, df_anterior=df_existing_delta)
+    df = _adicionar_traducoes_tagline_pt(df, traduzir_fn, df_anterior=df_existing_delta)
+    if content_type == "movie":
+        df = _adicionar_collection_name_pt(df, api_key)
+    # Campos intermediários: usados apenas para filtrar/priorizar traduções; não vão para o SOT
+    colunas_intermediarias = ["original_language", "overview_pt_tmdb", "tagline_pt_tmdb"]
+    df = df.drop(columns=[c for c in colunas_intermediarias if c in df.columns])
 
-    # Garante unicidade de IDs no DataFrame final.
-    # keep="last" preserva o registro novo (concat coloca novos por último) sobre o existente stale.
+    # Merge de dados existentes com novos (evita perder registros ao usar overwrite_partitions):
+    # concatena os registros preservados (fora do delta) com os novos e garante
+    # unicidade por id. keep="last" preserva o registro novo (concat coloca novos
+    # por último) sobre o existente stale.
+    if not df_existing_keep.empty:
+        df = pd.concat([df_existing_keep, df], ignore_index=True)
     df = df.drop_duplicates(subset=["id"], keep="last")
 
-    # Passo 4: grava de volta — overwrite_partitions substitui apenas as partições afetadas,
+    # Grava de volta — overwrite_partitions substitui apenas as partições afetadas,
     # preservando o histórico de anos anteriores intacto.
     logger.info(
         f"Gravando {len(df)} registros de detalhes em {s3_path} | "

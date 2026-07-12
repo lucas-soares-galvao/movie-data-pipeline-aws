@@ -36,8 +36,9 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
-Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via Google Translate (com fallback opcional via AWS Translate, `AWS_TRANSLATE_MAX_PER_RUN`) e grava como coluna `name_pt` na SOT (~250 países, tradução única).
-Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_name` dos idiomas para português via Google Translate (mesmo fallback) e grava como coluna `name_pt` na SOT (~190 idiomas, tradução única).
+Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via Google Translate (com fallback opcional via AWS Translate, `AWS_TRANSLATE_MAX_PER_RUN`) e grava como coluna `name_pt` na SOT (~250 países).
+Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_name` dos idiomas para português via Google Translate (mesmo fallback) e grava como coluna `name_pt` na SOT (~190 idiomas).
+**Cache de tradução:** como `configuration` é regravada por completo a cada execução (`mode="overwrite"`, sem partição) e a Lambda aciona esse job mensalmente, `read_from_sor` lê a tabela `configuration` já gravada na SOT (`ler_configuration_existente`) antes de traduzir e reaproveita `name_pt` para os registros cujo `english_name` não mudou desde a última execução — evita retraduzir países/idiomas cujo nome em inglês é idêntico ao já processado (ver `reaproveitar_traducao_existente` em `shared_utils.traducao`). Registros novos (chave ausente no histórico) ou com `english_name` alterado são traduzidos normalmente.
 
 **Fluxo para `now_playing`:**
 Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `read_from_sor` lê todos os arquivos da pasta `tmdb/now_playing/movie/` de uma vez e deduplica por `id` antes de gravar.
@@ -56,7 +57,10 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 | Função | Responsabilidade |
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job (inclui leitura opcional de `YEAR`/`END_YEAR` e `AWS_TRANSLATE_MAX_PER_RUN`) |
-| `read_from_sor(bucket, media_type, table_type, year, traduzir_fn=None)` | Lê JSON/Parquet da camada SOR; para `configuration` adiciona tradução `name_pt` (countries em tv, languages em movie) via `traduzir_fn` |
+| `read_from_sor(bucket, media_type, table_type, year=None, traduzir_fn=None, s3_bucket_sot=None, table_name=None)` | Lê JSON/Parquet da camada SOR; para `configuration` adiciona tradução `name_pt` (countries em tv, languages em movie) via `traduzir_fn`. Quando `s3_bucket_sot`/`table_name` são informados (só relevante para `configuration`), lê a tabela já gravada na SOT via `ler_configuration_existente` e usa como cache de tradução (`_adicionar_name_pt_countries`/`_adicionar_name_pt_languages`) |
+| `_adicionar_traducao(df, descricao, coluna_chave, traduzir_fn=None, df_anterior=None)` | Traduz `english_name → name_pt` sequencialmente (sem `ThreadPoolExecutor` — volumes pequenos, ~250 itens). Antes de traduzir, reaproveita `name_pt` de `df_anterior` via `reaproveitar_traducao_existente` (`shared_utils.traducao`) quando `english_name` não mudou para a mesma `coluna_chave`; só traduz os registros restantes |
+| `_adicionar_name_pt_countries(df, traduzir_fn=None, df_anterior=None)` / `_adicionar_name_pt_languages(df, traduzir_fn=None, df_anterior=None)` | Wrappers de `_adicionar_traducao` para países (`coluna_chave="iso_3166_1"`) e idiomas (`coluna_chave="iso_639_1"`) |
+| `ler_configuration_existente(s3_bucket_sot, table_name)` | Lê a tabela `configuration` já gravada na SOT (cache de tradução); retorna `DataFrame` vazio se a tabela ainda não existir (primeira execução) ou a leitura falhar |
 | `write_parquet_to_sot(df, bucket, table_name, database, partition_cols, mode)` | Escreve Parquet e registra no Glue Catalog via AWS Wrangler |
 | `derive_canonical_name(name)` | Padroniza um nome de plataforma de streaming (ex: "Netflix Standard with Ads" → "Netflix"); usada internamente por `read_from_sor()` |
 
@@ -71,6 +75,7 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 | `configurar_logging_glue()` | `shared_utils.glue_helpers` | Configura e retorna o `logger` padrão dos jobs Glue |
 | `traduzir_texto(texto, contexto)` | `shared_utils.traducao` | Traduz texto via Google Translate; usada como fallback padrão para preencher `name_pt` em `configuration` |
 | `criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas, region)` | `shared_utils.traducao` | Compõe `traduzir_texto` com fallback via AWS Translate (3ª camada), limitado a `AWS_TRANSLATE_MAX_PER_RUN` chamadas; montada uma vez em `main()` e passada a `read_from_sor` |
+| `reaproveitar_traducao_existente(df, df_anterior, coluna_fonte, coluna_destino, coluna_chave)` | `shared_utils.traducao` | Pré-preenche `name_pt` com o valor já persistido na SOT quando `english_name` não mudou para o mesmo `iso_3166_1`/`iso_639_1` — evita retraduzir países/idiomas sem mudança. Compartilhada com `glue_details` (que usa `coluna_chave="id"`, default) |
 
 ## Tecnologias
 
