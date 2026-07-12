@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto`/`traduzir_em_paralelo`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto`/`traduzir_em_paralelo`/`traduzir_coluna_pendente`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -13,7 +13,7 @@ test/shared_src/
 ├── requirements_tests.txt  # Dependências de teste
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configurar_logging_glue
-├── test_traducao.py        # Testes de traduzir_texto, traduzir_em_paralelo e das máscaras elegivel_*
+├── test_traducao.py        # Testes de traduzir_texto, traduzir_em_paralelo, traduzir_coluna_pendente e das máscaras elegivel_*
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -108,6 +108,25 @@ o que traduzir, e não de falha transitória).
 | `test_traduz_cada_valor_e_preserva_a_ordem` | Aplica `traduzir_fn` a cada valor via `ThreadPoolExecutor`, preservando a ordem de entrada |
 | `test_lista_vazia_nao_chama_traduzir_fn` | Lista vazia retorna `[]` sem chamar `traduzir_fn` |
 | `test_usa_max_workers_informado` | `max_workers` é repassado ao `ThreadPoolExecutor`, não hardcoded |
+
+### `TestTraduzirColunaPendente`
+
+Orquestra a tradução de uma coluna: um registro é pulado quando a coluna de destino já
+está preenchida e diferente da coluna fonte (já traduzido — nativo do TMDB ou run
+anterior do backfill), e retentado quando destino ficou igual à fonte (fallback de uma
+tradução que falhou — ver `traduzir_texto`). Usada por `glue_details` e
+`scripts/backfill_traducao.py` em vez de cada um manter sua própria cópia da orquestração.
+
+| Teste | O que verifica |
+|---|---|
+| `test_traduz_registros_elegiveis_pendentes` | Traduz todos os registros elegíveis, gravando na coluna de destino |
+| `test_cria_coluna_destino_se_nao_existir` | Cria a coluna de destino como `None` quando ainda não existe no DataFrame |
+| `test_pula_registro_ja_traduzido_com_sucesso` | Destino preenchido e diferente da fonte: não chama `traduzir_fn` |
+| `test_retenta_quando_destino_igual_a_fonte` | Destino igual à fonte (fallback de falha anterior): é retentado |
+| `test_nao_elegivel_nao_e_traduzido` | Registros fora da máscara de elegibilidade não são traduzidos |
+| `test_mask_vazia_nao_chama_traduzir_fn` | Máscara vazia retorna `0` sem chamar `traduzir_fn` |
+| `test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original` | Resultado igual ao original (falha de `traduzir_fn`) não conta como sucesso |
+| `test_usa_max_workers_informado` | `max_workers` é repassado a `traduzir_em_paralelo`, não hardcoded |
 
 ### `TestElegivelOverviewPt` / `TestElegivelTaglinePt` / `TestElegivelKeywordsPt`
 

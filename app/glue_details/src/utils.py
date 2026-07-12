@@ -19,7 +19,7 @@ from shared_utils.traducao import (
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
-    traduzir_em_paralelo,
+    traduzir_coluna_pendente,
     traduzir_texto,
 )
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
@@ -645,19 +645,6 @@ def _adicionar_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFram
     return df
 
 
-def _traduzir_coluna(df: pd.DataFrame, mask: "pd.Series[bool]", coluna_fonte: str, coluna_destino: str) -> None:
-    """Traduz em paralelo os valores de coluna_fonte onde mask é True e grava em coluna_destino."""
-    valores = df.loc[mask, coluna_fonte].fillna("").tolist()
-    traduzidos = traduzir_em_paralelo(valores, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS)
-    df.loc[mask, coluna_destino] = traduzidos
-
-    sucesso = 0
-    for original, traduzido in zip(valores, traduzidos):
-        if original and traduzido != original:
-            sucesso += 1
-    logger.info(f"{sucesso} de {len(valores)} traduzidos com sucesso ({coluna_destino}).")
-
-
 def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adiciona coluna overview_pt ao DataFrame de detalhes.
@@ -669,17 +656,18 @@ def _adicionar_traducoes_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     df["overview_pt"] = df["overview_pt_tmdb"]
 
-    mask = elegivel_overview_pt(df) & (df["overview_pt"].isna() | (df["overview_pt"] == ""))
-    if not mask.any():
+    mask_elegivel = elegivel_overview_pt(df)
+    if not mask_elegivel.any():
         return df
 
-    total = mask.sum()
     logger.info(
-        f"Traduzindo overview de {total} registros sem tradução TMDB pt-BR "
+        f"Traduzindo overview de até {mask_elegivel.sum()} registros sem tradução TMDB pt-BR "
         f"({_TRANSLATE_MAX_WORKERS} workers)."
     )
-
-    _traduzir_coluna(df, mask, "overview_en", "overview_pt")
+    sucesso = traduzir_coluna_pendente(
+        df, "overview_en", "overview_pt", mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+    )
+    logger.info(f"{sucesso} registros traduzidos com sucesso (overview_pt).")
     return df
 
 
@@ -693,14 +681,15 @@ def _adicionar_traducoes_keywords_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     df["keywords_pt"] = None
 
-    mask = elegivel_keywords_pt(df)
-    if not mask.any():
+    mask_elegivel = elegivel_keywords_pt(df)
+    if not mask_elegivel.any():
         return df
 
-    total = mask.sum()
-    logger.info(f"Traduzindo keywords de {total} registros ({_TRANSLATE_MAX_WORKERS} workers).")
-
-    _traduzir_coluna(df, mask, "keywords", "keywords_pt")
+    logger.info(f"Traduzindo keywords de até {mask_elegivel.sum()} registros ({_TRANSLATE_MAX_WORKERS} workers).")
+    sucesso = traduzir_coluna_pendente(
+        df, "keywords", "keywords_pt", mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+    )
+    logger.info(f"{sucesso} registros traduzidos com sucesso (keywords_pt).")
     return df
 
 
@@ -714,17 +703,18 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame) -> pd.DataFrame:
     """
     df["tagline_pt"] = df["tagline_pt_tmdb"]
 
-    mask = elegivel_tagline_pt(df) & (df["tagline_pt"].isna() | (df["tagline_pt"] == ""))
-    if not mask.any():
+    mask_elegivel = elegivel_tagline_pt(df)
+    if not mask_elegivel.any():
         return df
 
-    total = mask.sum()
     logger.info(
-        f"Traduzindo tagline de {total} registros sem tradução TMDB pt-BR "
+        f"Traduzindo tagline de até {mask_elegivel.sum()} registros sem tradução TMDB pt-BR "
         f"({_TRANSLATE_MAX_WORKERS} workers)."
     )
-
-    _traduzir_coluna(df, mask, "tagline", "tagline_pt")
+    sucesso = traduzir_coluna_pendente(
+        df, "tagline", "tagline_pt", mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+    )
+    logger.info(f"{sucesso} registros traduzidos com sucesso (tagline_pt).")
     return df
 
 

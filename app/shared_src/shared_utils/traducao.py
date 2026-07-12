@@ -97,6 +97,61 @@ def traduzir_em_paralelo(
         return list(executor.map(traduzir_fn, valores))
 
 
+def traduzir_coluna_pendente(
+    df: pd.DataFrame,
+    coluna_fonte: str,
+    coluna_destino: str,
+    mask_elegivel: "pd.Series[bool]",
+    traduzir_fn: Callable[[str], str],
+    max_workers: int = 10,
+) -> int:
+    """
+    Traduz coluna_fonte → coluna_destino para os registros elegíveis ainda pendentes.
+
+    Um registro é considerado "já traduzido" (e não é retraduzido) quando
+    coluna_destino está preenchida e é diferente de coluna_fonte — cobre tanto
+    tradução nativa do TMDB (glue_details) quanto sucesso em um run anterior
+    (backfill). Registros sem coluna_destino, ou cuja coluna_destino ficou
+    igual à coluna_fonte (fallback de uma tradução que falhou — ver
+    traduzir_texto), continuam pendentes e são (re)tentados.
+
+    traduzir_fn é recebido como parâmetro (em vez de chamar traduzir_texto
+    diretamente) para que os chamadores continuem passando sua própria
+    referência local — a mesma que seus testes fazem mock.
+
+    Args:
+        df:            DataFrame a atualizar (modificado in-place em coluna_destino).
+        coluna_fonte:  Nome da coluna com o texto de origem.
+        coluna_destino: Nome da coluna a preencher com o texto traduzido.
+        mask_elegivel: Máscara booleana dos registros candidatos à tradução.
+        traduzir_fn:   Função chamada para cada texto (ex.: traduzir_texto).
+        max_workers:   Número de threads concorrentes.
+
+    Returns:
+        Quantidade traduzida com sucesso nesta chamada. Sucesso é contado
+        comparando cada resultado com o texto original, já que traduzir_fn
+        devolve o próprio texto original quando a tradução falha após todas
+        as tentativas.
+    """
+    if coluna_destino not in df.columns:
+        df[coluna_destino] = None
+
+    ja_traduzido = (
+        df[coluna_destino].notna()
+        & (df[coluna_destino] != "")
+        & (df[coluna_destino] != df[coluna_fonte])
+    )
+    mask = mask_elegivel & ~ja_traduzido
+    if not mask.any():
+        return 0
+
+    valores = df.loc[mask, coluna_fonte].fillna("").tolist()
+    traduzidos = traduzir_em_paralelo(valores, traduzir_fn, max_workers=max_workers)
+    df.loc[mask, coluna_destino] = traduzidos
+
+    return sum(1 for original, traduzido in zip(valores, traduzidos) if original and traduzido != original)
+
+
 def elegivel_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":
     """Candidatos à tradução de overview: idioma original diferente de pt, com overview_en preenchido."""
     return (
