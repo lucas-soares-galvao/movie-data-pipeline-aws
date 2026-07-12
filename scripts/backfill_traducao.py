@@ -67,7 +67,7 @@ from shared_utils.traducao import (  # noqa: E402
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
-    traduzir_em_paralelo,
+    traduzir_coluna_pendente,
     traduzir_texto,
 )
 
@@ -84,42 +84,17 @@ def _traduzir_pendentes(
     coluna_pt: str,
     mask_elegivel: "pd.Series[bool]",
 ) -> int:
-    """Traduz coluna_fonte → coluna_pt para os registros elegíveis ainda pendentes.
-
-    Um registro é considerado "já traduzido" (e não é retraduzido) quando
-    coluna_pt está preenchida e é diferente de coluna_fonte. Registros sem
-    coluna_pt, ou cuja coluna_pt é igual a coluna_fonte (fallback de uma
-    tradução que falhou em um run anterior — ver shared_utils/traducao.py),
-    continuam pendentes e são (re)tentados.
-
-    Returns:
-        Quantidade traduzida com sucesso nesta chamada. Sucesso é contado
-        comparando cada resultado com o texto original, já que traduzir_texto
-        devolve o próprio texto original quando a tradução falha após todas
-        as tentativas.
-    """
-    if coluna_pt not in df.columns:
-        df[coluna_pt] = None
-
-    ja_traduzido = df[coluna_pt].notna() & (df[coluna_pt] != "") & (df[coluna_pt] != df[coluna_fonte])
-    mask = mask_elegivel & ~ja_traduzido
-
-    pulados = int(mask_elegivel.sum() - mask.sum())
-    if pulados:
-        logger.info("  %d registros de %s já traduzidos anteriormente; pulando.", pulados, coluna_pt)
-    if not mask.any():
-        return 0
-
-    total = mask.sum()
-    logger.info("  Traduzindo %d registros para %s (%d workers)...", total, coluna_pt, _TRANSLATE_MAX_WORKERS)
-
-    valores = df.loc[mask, coluna_fonte].fillna("").tolist()
-    traduzidos = traduzir_em_paralelo(valores, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS)
-    df.loc[mask, coluna_pt] = traduzidos
-
-    sucesso = sum(1 for original, traduzido in zip(valores, traduzidos) if original and traduzido != original)
-    logger.info("  %d de %d traduzidos com sucesso (%s).", sucesso, total, coluna_pt)
-
+    """Traduz coluna_fonte → coluna_pt para os registros elegíveis ainda pendentes
+    (ver traduzir_coluna_pendente em shared_utils/traducao.py para a regra de
+    "já traduzido" — pulado — e o retry entre execuções do backfill)."""
+    logger.info(
+        "  Traduzindo até %d registros para %s (%d workers)...",
+        mask_elegivel.sum(), coluna_pt, _TRANSLATE_MAX_WORKERS,
+    )
+    sucesso = traduzir_coluna_pendente(
+        df, coluna_fonte, coluna_pt, mask_elegivel, traduzir_texto, max_workers=_TRANSLATE_MAX_WORKERS
+    )
+    logger.info("  %d traduzidos com sucesso (%s).", sucesso, coluna_pt)
     return sucesso
 
 

@@ -295,42 +295,94 @@ class TestExtrairTraducaoPtBr:
         assert result["tagline_pt_tmdb"] == "Slogan BR"
 
 
-class TestTraduzirColuna:
+class TestAdicionarTraducoesOverviewPt:
+    def test_prioriza_tmdb_pt_br(self):
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": ["Um grande filme"],
+        })
+        result = u._adicionar_traducoes_pt(df)
+        assert result["overview_pt"].iloc[0] == "Um grande filme"
+
+    def test_fallback_para_google_translator(self):
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": [None],
+        })
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._adicionar_traducoes_pt(df)
+        assert result["overview_pt"].iloc[0] == "[PT] A great movie"
+
+    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+        df = pd.DataFrame({
+            "original_language": ["pt"],
+            "overview_en": ["Já em português"],
+            "overview_pt_tmdb": [None],
+        })
+        with patch("src.utils.traduzir_texto") as mock_translate:
+            result = u._adicionar_traducoes_pt(df)
+        mock_translate.assert_not_called()
+        assert pd.isna(result["overview_pt"].iloc[0])
+
     def test_loga_resumo_de_sucesso(self, caplog):
-        df = pd.DataFrame({"origem": ["A great movie"], "destino": [None]})
-        mask = pd.Series([True])
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": [None],
+        })
         with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
             with caplog.at_level("INFO"):
-                u._traduzir_coluna(df, mask, "origem", "destino")
-
-        assert df["destino"].iloc[0] == "[PT] A great movie"
+                u._adicionar_traducoes_pt(df)
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
-        assert resumo == ["1 de 1 traduzidos com sucesso (destino)."]
+        assert resumo == ["1 registros traduzidos com sucesso (overview_pt)."]
 
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self, caplog):
         """traduzir_texto devolve o texto original quando falha após todas as tentativas."""
-        df = pd.DataFrame({"origem": ["Falhou"], "destino": [None]})
-        mask = pd.Series([True])
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "overview_en": ["Falhou"],
+            "overview_pt_tmdb": [None],
+        })
         with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t):
             with caplog.at_level("INFO"):
-                u._traduzir_coluna(df, mask, "origem", "destino")
-
-        assert df["destino"].iloc[0] == "Falhou"
+                result = u._adicionar_traducoes_pt(df)
+        assert result["overview_pt"].iloc[0] == "Falhou"
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
-        assert resumo == ["0 de 1 traduzidos com sucesso (destino)."]
+        assert resumo == ["0 registros traduzidos com sucesso (overview_pt)."]
 
-    def test_soma_sucesso_e_falha_na_mesma_chamada(self, caplog):
-        df = pd.DataFrame({"origem": ["OK", "Falhou"], "destino": [None, None]})
-        mask = pd.Series([True, True])
-        with patch(
-            "src.utils.traduzir_texto",
-            side_effect=lambda t, **kw: "[PT] OK" if t == "OK" else t,
-        ):
-            with caplog.at_level("INFO"):
-                u._traduzir_coluna(df, mask, "origem", "destino")
+    def test_retenta_quando_overview_pt_tmdb_igual_a_overview_en(self):
+        """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
+        reenviada ao Google Translate (mesma regra de retry usada no backfill)."""
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "overview_en": ["Same text"],
+            "overview_pt_tmdb": ["Same text"],
+        })
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._adicionar_traducoes_pt(df)
+        assert result["overview_pt"].iloc[0] == "[PT] Same text"
 
-        resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
-        assert resumo == ["1 de 2 traduzidos com sucesso (destino)."]
+
+class TestAdicionarTraducoesKeywordsPt:
+    def test_traduz_keywords(self):
+        df = pd.DataFrame({"original_language": ["en"], "keywords": ["action, drama"]})
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._adicionar_traducoes_keywords_pt(df)
+        assert result["keywords_pt"].iloc[0] == "[PT] action, drama"
+
+    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, drama"]})
+        with patch("src.utils.traduzir_texto") as mock_translate:
+            result = u._adicionar_traducoes_keywords_pt(df)
+        mock_translate.assert_not_called()
+        assert pd.isna(result["keywords_pt"].iloc[0])
+
+    def test_nao_traduz_quando_keywords_vazias(self):
+        df = pd.DataFrame({"original_language": ["en"], "keywords": [None]})
+        result = u._adicionar_traducoes_keywords_pt(df)
+        assert pd.isna(result["keywords_pt"].iloc[0])
 
 
 class TestAdicionarTraducoesTaglinePt:
@@ -372,6 +424,18 @@ class TestAdicionarTraducoesTaglinePt:
             result = u._adicionar_traducoes_tagline_pt(df)
         mock_translate.assert_not_called()
         assert pd.isna(result["tagline_pt"].iloc[0])
+
+    def test_retenta_quando_tagline_pt_tmdb_igual_a_tagline(self):
+        """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
+        reenviada ao Google Translate (mesma regra de retry usada no backfill)."""
+        df = pd.DataFrame({
+            "original_language": ["en"],
+            "tagline": ["Same text"],
+            "tagline_pt_tmdb": ["Same text"],
+        })
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._adicionar_traducoes_tagline_pt(df)
+        assert result["tagline_pt"].iloc[0] == "[PT] Same text"
 
 
 class TestExtrairPaisesProducaoIso:
