@@ -10,6 +10,7 @@ import json
 import logging
 import time
 
+import openai
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -404,6 +405,130 @@ class TestCacheWhere:
         assert len(resultado) == 1
 
 
+class TestFallbackLlm:
+    """Fallback automático de LLM: dispara só em falha real da chamada ao provedor
+    (openai.APIError e subclasses — a classe-base real usada pelo litellm para erros
+    de provedor), nunca em resposta sem tool_calls ou em erro de parsing dos argumentos."""
+
+    def test_fallback_acionado_quando_llm_primario_falha(self):
+        erro_primario = openai.APIConnectionError(message="timeout", request=None)
+        with (
+            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
+            patch("agent.litellm.completion") as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+        ):
+            mock_completion.side_effect = [
+                erro_primario,
+                *_mock_litellm({"filtro_where": "media_type = 'movie'"}),
+            ]
+            resultado = agent.recomendar("filmes de terror")
+
+        assert len(resultado) == 1
+        assert mock_completion.call_count == 2
+        segunda_chamada = mock_completion.call_args_list[1].kwargs
+        assert segunda_chamada["model"] == "bedrock/test-model"
+        assert "aws_region_name" in segunda_chamada
+
+    def test_sem_fallback_configurado_propaga_erro_primario(self):
+        erro_primario = openai.APIConnectionError(message="timeout", request=None)
+        with (
+            patch("agent.litellm.completion") as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", None),
+        ):
+            mock_completion.side_effect = [erro_primario]
+            with pytest.raises(openai.APIConnectionError):
+                agent.recomendar("filmes de terror")
+
+        assert mock_completion.call_count == 1
+
+    def test_fallback_tambem_falha_propaga_erro(self):
+        erro_primario = openai.APIConnectionError(message="timeout", request=None)
+        erro_fallback = openai.APIConnectionError(message="fallback tambem falhou", request=None)
+        with (
+            patch("agent.litellm.completion") as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+        ):
+            mock_completion.side_effect = [erro_primario, erro_fallback]
+            with pytest.raises(openai.APIConnectionError):
+                agent.recomendar("filmes de terror")
+
+        assert mock_completion.call_count == 2
+
+    def test_resposta_sem_tool_calls_nao_aciona_fallback(self):
+        msg_sem_tool = MagicMock()
+        msg_sem_tool.content = None
+        msg_sem_tool.tool_calls = None
+        passo1_sem_tool = MagicMock()
+        passo1_sem_tool.choices = [MagicMock(message=msg_sem_tool)]
+
+        with (
+            patch("agent.buscar_titulos_spec") as mock_buscar,
+            patch("agent.litellm.completion", return_value=passo1_sem_tool) as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+        ):
+            resultado = agent.recomendar("filmes de terror")
+
+        assert resultado == []
+        mock_buscar.assert_not_called()
+        assert mock_completion.call_count == 1
+
+    def test_json_invalido_no_tool_call_nao_aciona_fallback(self):
+        tool_call = MagicMock()
+        tool_call.id = "call_test_123"
+        tool_call.function.name = "buscar_titulos_spec"
+        tool_call.function.arguments = "isso nao eh json valido"
+
+        msg_passo1 = MagicMock()
+        msg_passo1.content = None
+        msg_passo1.tool_calls = [tool_call]
+
+        passo1 = MagicMock()
+        passo1.choices = [MagicMock(message=msg_passo1)]
+        passo1.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+        with (
+            patch("agent.litellm.completion", return_value=passo1) as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+        ):
+            with pytest.raises(json.JSONDecodeError):
+                agent.recomendar("filmes de terror")
+
+        assert mock_completion.call_count == 1
+
+    def test_fallback_usa_regiao_bedrock_configurada(self):
+        erro_primario = openai.APIConnectionError(message="timeout", request=None)
+        with (
+            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
+            patch("agent.litellm.completion") as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+            patch.object(agent, "_AWS_REGION_BEDROCK", "us-west-2"),
+        ):
+            mock_completion.side_effect = [
+                erro_primario,
+                *_mock_litellm({"filtro_where": "media_type = 'movie'"}),
+            ]
+            agent.recomendar("filmes de terror")
+
+        segunda_chamada = mock_completion.call_args_list[1].kwargs
+        assert segunda_chamada["aws_region_name"] == "us-west-2"
+
+    def test_fallback_nao_envia_api_key_deepseek(self):
+        erro_primario = openai.APIConnectionError(message="timeout", request=None)
+        with (
+            patch("agent.buscar_titulos_spec", return_value=[TITULO_FAKE]),
+            patch("agent.litellm.completion") as mock_completion,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+        ):
+            mock_completion.side_effect = [
+                erro_primario,
+                *_mock_litellm({"filtro_where": "media_type = 'movie'"}),
+            ]
+            agent.recomendar("filmes de terror")
+
+        segunda_chamada = mock_completion.call_args_list[1].kwargs
+        assert "api_key" not in segunda_chamada
+
+
 class TestLogarUsoTokens:
 
     def test_loga_tokens_com_usage(self):
@@ -434,5 +559,51 @@ class TestLogarUsoTokens:
         configurado; sem um nível INFO explícito aqui, esses logs seriam
         suprimidos por herança (ver seção "Observabilidade de tokens" do doc)."""
         assert agent.logger.level == logging.INFO
+
+    def test_loga_modelo_explicito_quando_fornecido(self):
+        resposta = MagicMock()
+        resposta.usage.prompt_tokens = 10
+        resposta.usage.completion_tokens = 5
+        resposta.usage.total_tokens = 15
+
+        with patch("agent.logger") as mock_logger:
+            agent._logar_uso_tokens("passo_1_where_fallback", resposta, "bedrock/test-model")
+
+        extra = mock_logger.info.call_args.kwargs["extra"]
+        assert extra["etapa"] == "passo_1_where_fallback"
+        assert extra["modelo"] == "bedrock/test-model"
+
+    def test_logar_uso_tokens_usa_llm_model_por_padrao(self):
+        """Regressão: a chamada de 2 argumentos usada em todo o resto do código/testes
+        (sem passar `modelo`) precisa continuar logando o modelo primário (_LLM_MODEL)."""
+        resposta = MagicMock()
+        resposta.usage.prompt_tokens = 10
+        resposta.usage.completion_tokens = 5
+        resposta.usage.total_tokens = 15
+
+        with patch("agent.logger") as mock_logger:
+            agent._logar_uso_tokens("passo_1_where", resposta)
+
+        extra = mock_logger.info.call_args.kwargs["extra"]
+        assert extra["modelo"] == agent._LLM_MODEL
+
+
+class TestLogarFallbackLlm:
+
+    def test_loga_fallback_em_warning(self):
+        erro = openai.APIConnectionError(message="timeout", request=None)
+
+        with (
+            patch("agent.logger") as mock_logger,
+            patch.object(agent, "_LLM_MODEL_FALLBACK", "bedrock/test-model"),
+        ):
+            agent._logar_fallback_llm("filmes de terror", erro)
+
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["preferencia"] == "filmes de terror"
+        assert extra["modelo_primario"] == agent._LLM_MODEL
+        assert extra["modelo_fallback"] == "bedrock/test-model"
+        assert "APIConnectionError" in extra["erro"]
 
 
