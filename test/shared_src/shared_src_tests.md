@@ -128,6 +128,28 @@ tradução que falhou — ver `traduzir_texto`). Usada por `glue_details` e
 | `test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original` | Resultado igual ao original (falha de `traduzir_fn`) não conta como sucesso |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `traduzir_em_paralelo`, não hardcoded |
 
+### `TestReaproveitarTraducaoExistente`
+
+Pré-preenche a coluna de destino com a tradução já persistida (`df_anterior`) quando a
+coluna fonte não mudou para o mesmo `coluna_chave` (default `"id"`) — evita retraduzir
+texto idêntico ao da última execução. Não sobrescreve valor já preenchido no `df` novo
+(preserva prioridade da tradução nativa do TMDB). Usada por `glue_details`
+(`coluna_chave="id"`) e `glue_etl` (`coluna_chave="iso_3166_1"`/`"iso_639_1"`, tabela
+`configuration`).
+
+| Teste | O que verifica |
+|---|---|
+| `test_reaproveita_quando_fonte_identica` | Reaproveita a coluna de destino de `df_anterior` quando a fonte é idêntica para a mesma chave |
+| `test_nao_reaproveita_quando_fonte_mudou` | Não reaproveita quando a fonte mudou em relação a `df_anterior` |
+| `test_nao_reaproveita_id_novo_sem_historico` | Não reaproveita quando a chave não existe em `df_anterior` |
+| `test_df_anterior_none_nao_quebra` | `df_anterior=None` não lança exceção e não altera `df` |
+| `test_df_anterior_vazio_nao_quebra` | `df_anterior` vazio não lança exceção e não altera `df` |
+| `test_nao_sobrescreve_destino_ja_preenchido` | Não sobrescreve a coluna de destino já preenchida no `df` novo |
+| `test_ignora_schema_antigo_sem_coluna` | `df_anterior` sem a coluna de destino (schema antigo) não lança exceção e não reaproveita |
+| `test_ids_duplicados_no_df_anterior_usa_ultimo` | Com chaves duplicadas em `df_anterior`, usa o último valor |
+| `test_coluna_chave_customizada` | Funciona com `coluna_chave="iso_3166_1"` (caso de uso do `glue_etl`) |
+| `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `df_anterior` não reaproveita |
+
 ### `TestElegivelOverviewPt` / `TestElegivelTaglinePt` / `TestElegivelKeywordsPt`
 
 As três máscaras (candidatos à tradução de `overview_pt`, `tagline_pt` e `keywords_pt`)

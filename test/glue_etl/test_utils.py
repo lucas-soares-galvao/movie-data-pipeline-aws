@@ -3,7 +3,15 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.utils import _adicionar_name_pt_countries, _adicionar_name_pt_languages, derive_canonical_name, get_parameters_glue, read_from_sor, write_parquet_to_sot
+from src.utils import (
+    _adicionar_name_pt_countries,
+    _adicionar_name_pt_languages,
+    derive_canonical_name,
+    get_parameters_glue,
+    ler_configuration_existente,
+    read_from_sor,
+    write_parquet_to_sot,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +196,42 @@ class TestReadFromSorConfiguration:
             assert result["name_pt"].iloc[0] == "[PT] Brazil"
             assert result["name_pt"].iloc[1] == "[PT] United States"
 
+    def test_reaproveita_name_pt_quando_english_name_nao_mudou(self):
+        """Cache de tradução: english_name idêntico ao já gravado na SOT não é retraduzido."""
+        s3_mock = _make_s3_mock([
+            {"iso_3166_1": "BR", "english_name": "Brazil", "native_name": "Brasil"},
+        ])
+        existing_df = pd.DataFrame([
+            {"iso_3166_1": "BR", "english_name": "Brazil", "name_pt": "Brasil (cache)"},
+        ])
+        with (
+            patch("boto3.client", return_value=s3_mock),
+            patch("src.utils.traduzir_texto") as mock_traduzir,
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+        ):
+            result = read_from_sor(
+                "my-sor", "tv", "configuration", s3_bucket_sot="my-sot", table_name="tb_configuration_countries"
+            )
+            assert result["name_pt"].iloc[0] == "Brasil (cache)"
+            mock_traduzir.assert_not_called()
+
+    def test_retraduz_quando_english_name_mudou(self):
+        s3_mock = _make_s3_mock([
+            {"iso_3166_1": "BR", "english_name": "Brazil", "native_name": "Brasil"},
+        ])
+        existing_df = pd.DataFrame([
+            {"iso_3166_1": "BR", "english_name": "Brasil (nome antigo)", "name_pt": "Brasil (cache)"},
+        ])
+        with (
+            patch("boto3.client", return_value=s3_mock),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+        ):
+            result = read_from_sor(
+                "my-sor", "tv", "configuration", s3_bucket_sot="my-sot", table_name="tb_configuration_countries"
+            )
+            assert result["name_pt"].iloc[0] == "[PT] Brazil"
+
 
 class TestAdicionarNamePtCountries:
     def test_traduz_english_name(self):
@@ -206,6 +250,21 @@ class TestAdicionarNamePtCountries:
         df = pd.DataFrame({"english_name": [None, ""]})
         result = _adicionar_name_pt_countries(df)
         assert result["name_pt"].isna().all()
+
+    def test_reaproveita_cache_quando_fonte_identica(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        df_anterior = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": ["Brasil"]})
+        with patch("src.utils.traduzir_texto") as mock_traduzir:
+            result = _adicionar_name_pt_countries(df, df_anterior=df_anterior)
+        assert result["name_pt"].iloc[0] == "Brasil"
+        mock_traduzir.assert_not_called()
+
+    def test_nao_reaproveita_cache_quando_fonte_mudou(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        df_anterior = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Nome antigo"], "name_pt": ["Brasil"]})
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _adicionar_name_pt_countries(df, df_anterior=df_anterior)
+        assert result["name_pt"].iloc[0] == "[PT] Brazil"
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +289,42 @@ class TestAdicionarNamePtLanguages:
         df = pd.DataFrame({"english_name": [None, ""]})
         result = _adicionar_name_pt_languages(df)
         assert result["name_pt"].isna().all()
+
+    def test_reaproveita_cache_quando_fonte_identica(self):
+        df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
+        df_anterior = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"], "name_pt": ["Inglês"]})
+        with patch("src.utils.traduzir_texto") as mock_traduzir:
+            result = _adicionar_name_pt_languages(df, df_anterior=df_anterior)
+        assert result["name_pt"].iloc[0] == "Inglês"
+        mock_traduzir.assert_not_called()
+
+    def test_nao_reaproveita_cache_quando_fonte_mudou(self):
+        df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
+        df_anterior = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["Nome antigo"], "name_pt": ["Inglês"]})
+        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _adicionar_name_pt_languages(df, df_anterior=df_anterior)
+        assert result["name_pt"].iloc[0] == "[PT] English"
+
+
+# ---------------------------------------------------------------------------
+# ler_configuration_existente
+# ---------------------------------------------------------------------------
+
+
+class TestLerConfigurationExistente:
+    def test_retorna_dataframe_lido(self):
+        df_mock = pd.DataFrame([{"iso_3166_1": "BR", "english_name": "Brazil", "name_pt": "Brasil"}])
+        with patch("src.utils.wr.s3.read_parquet", return_value=df_mock) as mock_read:
+            result = ler_configuration_existente("my-sot", "tb_configuration_countries")
+            mock_read.assert_called_once_with(
+                path="s3://my-sot/tmdb/tb_configuration_countries/", dataset=True
+            )
+            assert result.equals(df_mock)
+
+    def test_retorna_vazio_quando_tabela_nao_existe(self):
+        with patch("src.utils.wr.s3.read_parquet", side_effect=Exception("tabela não encontrada")):
+            result = ler_configuration_existente("my-sot", "tb_configuration_countries")
+            assert result.empty
 
 
 class TestReadFromSorConfigurationLanguages:

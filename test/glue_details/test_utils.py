@@ -1049,6 +1049,86 @@ class TestCollectAndWriteDetails:
             assert len(df_written) == 1
             assert df_written.iloc[0]["id"] == 1
 
+    def test_nao_retraduz_quando_fonte_nao_mudou(self):
+        """Fonte idêntica ao registro existente: reaproveita a tradução sem chamar a API de tradução."""
+        existing_df = pd.DataFrame([{
+            "id": 10, "year": "2022",
+            "overview_en": "Sinopse A", "overview_pt": "Traduzido antes",
+            "tagline": "Tagline serie", "tagline_pt": "Tagline traduzida antes",
+            "keywords": "drama", "keywords_pt": "Keywords traduzidas antes",
+            "dt_processamento": "2024-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.traduzir_texto") as mock_traduzir,
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+
+            assert df_written["overview_pt"].iloc[0] == "Traduzido antes"
+            assert df_written["tagline_pt"].iloc[0] == "Tagline traduzida antes"
+            assert df_written["keywords_pt"].iloc[0] == "Keywords traduzidas antes"
+            mock_traduzir.assert_not_called()
+
+    def test_retraduz_apenas_campo_cuja_fonte_mudou(self):
+        """Só overview_en mudou: overview_pt é retraduzido, tagline_pt/keywords_pt reaproveitam o cache."""
+        existing_df = pd.DataFrame([{
+            "id": 10, "year": "2022",
+            "overview_en": "Sinopse antiga, diferente", "overview_pt": "Traduzido antes",
+            "tagline": "Tagline serie", "tagline_pt": "Tagline traduzida antes",
+            "keywords": "drama", "keywords_pt": "Keywords traduzidas antes",
+            "dt_processamento": "2024-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[GT] {t}"),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+
+            assert df_written["overview_pt"].iloc[0] == "[GT] Sinopse A"
+            assert df_written["tagline_pt"].iloc[0] == "Tagline traduzida antes"
+            assert df_written["keywords_pt"].iloc[0] == "Keywords traduzidas antes"
+
+    def test_traducao_nativa_tmdb_sobrepoe_cache(self):
+        """Tradução nativa do TMDB no run atual sobrepõe o cache, mesmo com fonte igual."""
+        existing_df = pd.DataFrame([{
+            "id": 1, "year": "2023",
+            "overview_en": "Sinopse A", "overview_pt": "Cache antigo diferente da nativa",
+            "dt_processamento": "2024-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+
+            assert df_written["overview_pt"].iloc[0] == "Sinopse em português do TMDB"
+
+    def test_le_s3_uma_unica_vez_por_particao_year(self):
+        """Regressão: a leitura do S3 por partição year deve ser reaproveitada tanto para o
+        cache de tradução quanto para o merge final, sem ler a mesma partição duas vezes."""
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
+            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
+            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()) as mock_read,
+            patch("src.utils.wr.s3.to_parquet"),
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+            assert mock_read.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # fetch_tmdb_watch_providers

@@ -58,7 +58,10 @@ def main() -> None:
     )
 
     traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
-    df = read_from_sor(s3_bucket_sor, media_type, table_type, year, traduzir_fn)
+    df = read_from_sor(
+        s3_bucket_sor, media_type, table_type, year, traduzir_fn,
+        s3_bucket_sot=s3_bucket_sot, table_name=table_name,
+    )
 
     write_parquet_to_sot(
         df=df,
