@@ -33,35 +33,35 @@ app/shared_src/
 | Função | Responsabilidade |
 |---|---|
 | `get_resolved_option(args)` | Wrapper de `getResolvedOptions` — converte lista de nomes em dicionário nome→valor |
-| `configurar_logging_glue()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp) e retorna o logger raiz |
+| `configure_glue_logging()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp) e retorna o logger raiz |
 
 ### `shared_utils/traducao_google.py`
 
 | Função | Responsabilidade |
 |---|---|
-| `traduzir_texto(texto, contexto)` | Traduz texto para português via Google Translate com detecção automática do idioma de origem (`source="auto"`), com backoff entre tentativas (mesmo padrão de `api_get`); uma exceção usa o orçamento completo de 5 tentativas (tende a ser transitório — rede, rate limit), enquanto um resultado idêntico ao original sem exceção desiste em só 2 (normalmente indica que não há o que traduzir — nome próprio, termo emprestado — não bloqueio); retorna o original se as tentativas se esgotarem, para não interromper o job |
+| `translate_text(text, context)` | Traduz texto para português via Google Translate com detecção automática do idioma de origem (`source="auto"`), com backoff entre tentativas (mesmo padrão de `api_get`); uma exceção usa o orçamento completo de 5 tentativas (tende a ser transitório — rede, rate limit), enquanto um resultado idêntico ao original sem exceção desiste em só 2 (normalmente indica que não há o que traduzir — nome próprio, termo emprestado — não bloqueio); retorna o original se as tentativas se esgotarem, para não interromper o job |
 
 ### `shared_utils/traducao_aws.py`
 
 | Função | Responsabilidade |
 |---|---|
-| `traduzir_texto_aws(texto, region="us-east-1")` | Chama `boto3.client("translate").translate_text(..., SourceLanguageCode="auto", TargetLanguageCode="pt")`. Sem retry manual (API oficial, sem o bloqueio silencioso do endpoint não-oficial do Google Translate; boto3 já reaplica retry em erros transitórios). Nunca lança exceção — devolve o texto original em caso de erro. **`region` default é `us-east-1`, não `sa-east-1`** (região principal do pipeline) — AWS Translate não está disponível em São Paulo; a chamada é stateless, então usar outra região não tem custo de localidade |
+| `translate_text_aws(text, region="us-east-1")` | Chama `boto3.client("translate").translate_text(..., SourceLanguageCode="auto", TargetLanguageCode="pt")`. Sem retry manual (API oficial, sem o bloqueio silencioso do endpoint não-oficial do Google Translate; boto3 já reaplica retry em erros transitórios). Nunca lança exceção — devolve o texto original em caso de erro. **`region` default é `us-east-1`, não `sa-east-1`** (região principal do pipeline) — AWS Translate não está disponível em São Paulo; a chamada é stateless, então usar outra região não tem custo de localidade |
 
 ### `shared_utils/traducao.py`
 
-Fachada de orquestração — reexporta `traduzir_texto` e `traduzir_texto_aws` dos dois módulos acima (nenhum
+Fachada de orquestração — reexporta `translate_text` e `translate_text_aws` dos dois módulos acima (nenhum
 chamador precisa importar diretamente de `traducao_google`/`traducao_aws`), além das funções genéricas que
-recebem qualquer `traduzir_fn` como parâmetro:
+recebem qualquer `translate_fn` como parâmetro:
 
 | Função | Responsabilidade |
 |---|---|
-| `resolver_traduzir_fn(provider, traduzir_google=traduzir_texto, traduzir_aws=traduzir_texto_aws)` | Resolve `"google"`/`"aws"` para a função correspondente — cada caminho do pipeline escolhe **um único serviço por execução**, sem composição de primário+fallback. `glue_details`/`glue_etl` (caminho automático via EventBridge) usam `"aws"` por padrão; os backfills manuais (`scripts/`) usam `"google"` por padrão, mas podem apontar para `"aws"` para testes pontuais. `traduzir_google`/`traduzir_aws` são parâmetros (mesmo motivo de `traduzir_em_paralelo`) para que o chamador passe sua própria referência local — a mesma que seus testes fazem mock. Levanta `ValueError` para qualquer outro valor de `provider` |
-| `traduzir_em_paralelo(valores, traduzir_fn, max_workers)` | Aplica `traduzir_fn` a cada item de `valores` em paralelo via `ThreadPoolExecutor`; recebe a função de tradução como parâmetro (em vez de chamar `traduzir_texto` diretamente) para que os chamadores continuem passando sua própria referência local, preservando os mocks de teste existentes em `glue_details` e `backfill_traducao.py` |
-| `traduzir_coluna_pendente(df, coluna_fonte, coluna_destino, mask_elegivel, traduzir_fn, max_workers)` | Orquestra a tradução de `coluna_fonte` → `coluna_destino` para os registros elegíveis ainda pendentes: pula registros com `coluna_destino` preenchida e diferente de `coluna_fonte` (já traduzidos — nativo do TMDB ou run anterior), retenta os que ficaram iguais à fonte (fallback de uma tradução que falhou — ver `traduzir_texto`/`traduzir_texto_aws`), grava o resultado via `traduzir_em_paralelo` e devolve a contagem de sucesso. Substitui a lógica que antes estava duplicada (com pequenas divergências) em `glue_details/src/utils.py` e `scripts/backfill_traducao.py` |
-| `reaproveitar_traducao_existente(df, df_anterior, coluna_fonte, coluna_destino, coluna_chave="id")` | Pré-preenche `coluna_destino` com a tradução já persistida (`df_anterior`) quando `coluna_fonte` não mudou para o mesmo `coluna_chave` — evita retraduzir texto idêntico ao da última execução. Não sobrescreve valor já preenchido (prioridade da tradução nativa do TMDB); a checagem final de "já traduzido" continua em `traduzir_coluna_pendente` ou na máscara do chamador. Compartilhada entre `glue_details` (`coluna_chave="id"`, default) e `glue_etl` (`coluna_chave="iso_3166_1"`/`"iso_639_1"` para a tabela `configuration`) |
-| `elegivel_overview_pt(df)` | Mask de candidatos à tradução de overview: `original_language != 'pt'` e `overview_en` não-vazio. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
-| `elegivel_tagline_pt(df)` | Mask de candidatos à tradução de tagline: campo não-vazio e `original_language != 'pt'`. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
-| `elegivel_keywords_pt(df)` | Mask de candidatos à tradução de keywords: campo não-vazio e `original_language != 'pt'` (TMDB sempre devolve keywords em inglês para os demais idiomas; pular pt evita tradução à toa). Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
+| `resolve_translate_fn(provider, translate_google=translate_text, translate_aws=translate_text_aws)` | Resolve `"google"`/`"aws"` para a função correspondente — cada caminho do pipeline escolhe **um único serviço por execução**, sem composição de primário+fallback. `glue_details`/`glue_etl` (caminho automático via EventBridge) usam `"aws"` por padrão; os backfills manuais (`scripts/`) usam `"google"` por padrão, mas podem apontar para `"aws"` para testes pontuais. `translate_google`/`translate_aws` são parâmetros (mesmo motivo de `translate_in_parallel`) para que o chamador passe sua própria referência local — a mesma que seus testes fazem mock. Levanta `ValueError` para qualquer outro valor de `provider` |
+| `translate_in_parallel(values, translate_fn, max_workers)` | Aplica `translate_fn` a cada item de `values` em paralelo via `ThreadPoolExecutor`; recebe a função de tradução como parâmetro (em vez de chamar `translate_text` diretamente) para que os chamadores continuem passando sua própria referência local, preservando os mocks de teste existentes em `glue_details` e `backfill_traducao.py` |
+| `translate_pending_column(df, source_column, target_column, eligible_mask, translate_fn, max_workers)` | Orquestra a tradução de `source_column` → `target_column` para os registros elegíveis ainda pendentes: pula registros com `target_column` preenchida e diferente de `source_column` (já traduzidos — nativo do TMDB ou run anterior), retenta os que ficaram iguais à fonte (fallback de uma tradução que falhou — ver `translate_text`/`translate_text_aws`), grava o resultado via `translate_in_parallel` e devolve a contagem de sucesso. Substitui a lógica que antes estava duplicada (com pequenas divergências) em `glue_details/src/utils.py` e `scripts/backfill_traducao.py` |
+| `reuse_existing_translation(df, previous_df, source_column, target_column, key_column="id")` | Pré-preenche `target_column` com a tradução já persistida (`previous_df`) quando `source_column` não mudou para o mesmo `key_column` — evita retraduzir texto idêntico ao da última execução. Não sobrescreve valor já preenchido (prioridade da tradução nativa do TMDB); a checagem final de "já traduzido" continua em `translate_pending_column` ou na máscara do chamador. Compartilhada entre `glue_details` (`key_column="id"`, default) e `glue_etl` (`key_column="iso_3166_1"`/`"iso_639_1"` para a tabela `configuration`) |
+| `eligible_overview_pt(df)` | Mask de candidatos à tradução de overview: `original_language != 'pt'` e `overview_en` não-vazio. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
+| `eligible_tagline_pt(df)` | Mask de candidatos à tradução de tagline: campo não-vazio e `original_language != 'pt'`. Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
+| `eligible_keywords_pt(df)` | Mask de candidatos à tradução de keywords: campo não-vazio e `original_language != 'pt'` (TMDB sempre devolve keywords em inglês para os demais idiomas; pular pt evita tradução à toa). Compartilhada entre `glue_details` e `scripts/backfill_traducao.py` |
 
 ### `shared_utils/triggers.py`
 
@@ -74,14 +74,14 @@ recebem qualquer `traduzir_fn` como parâmetro:
 | Componente | Funções importadas |
 |---|---|
 | `lambda_api` | `api_get`, `get_api_secret`, `trigger_glue_job` |
-| `glue_details` | `api_get`, `get_api_secret`, `get_resolved_option`, `traduzir_texto`, `traduzir_texto_aws`, `traduzir_coluna_pendente`, `reaproveitar_traducao_existente`, `resolver_traduzir_fn`, `elegivel_overview_pt`, `elegivel_tagline_pt`, `elegivel_keywords_pt`, `trigger_glue_job` |
-| `glue_etl` | `get_resolved_option`, `traduzir_texto`, `traduzir_texto_aws`, `reaproveitar_traducao_existente`, `resolver_traduzir_fn`, `trigger_glue_job` |
-| `scripts/backfill_traducao.py` | `traduzir_texto`, `traduzir_texto_aws`, `traduzir_coluna_pendente`, `resolver_traduzir_fn`, `elegivel_overview_pt`, `elegivel_tagline_pt`, `elegivel_keywords_pt` |
+| `glue_details` | `api_get`, `get_api_secret`, `get_resolved_option`, `translate_text`, `translate_text_aws`, `translate_pending_column`, `reuse_existing_translation`, `resolve_translate_fn`, `eligible_overview_pt`, `eligible_tagline_pt`, `eligible_keywords_pt`, `trigger_glue_job` |
+| `glue_etl` | `get_resolved_option`, `translate_text`, `translate_text_aws`, `reuse_existing_translation`, `resolve_translate_fn`, `trigger_glue_job` |
+| `scripts/backfill_traducao.py` | `translate_text`, `translate_text_aws`, `translate_pending_column`, `resolve_translate_fn`, `eligible_overview_pt`, `eligible_tagline_pt`, `eligible_keywords_pt` |
 | `glue_agg` | `get_resolved_option`, `trigger_glue_job` |
-| `glue_agg/main` | `configurar_logging_glue` |
-| `glue_etl/main` | `configurar_logging_glue` |
-| `glue_data_quality/main` | `configurar_logging_glue` |
-| `glue_details/main` | `configurar_logging_glue` |
+| `glue_agg/main` | `configure_glue_logging` |
+| `glue_etl/main` | `configure_glue_logging` |
+| `glue_data_quality/main` | `configure_glue_logging` |
+| `glue_details/main` | `configure_glue_logging` |
 
 ## Deploy
 

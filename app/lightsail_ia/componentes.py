@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-_DESCRICAO_CLASSIFICACAO = {
+_CERTIFICATION_DESCRIPTIONS = {
     "L": "Livre para todas as idades",
     "10": "Não recomendado para menores de 10 anos",
     "12": "Não recomendado para menores de 12 anos",
@@ -21,48 +21,48 @@ _YT_IMG = (
 )
 
 
-def _injetar_css(arquivo: str) -> None:
+def _inject_css(file_name: str) -> None:
     """Lê um arquivo CSS e injeta na página via st.markdown."""
-    caminho = Path(__file__).parent / "static" / arquivo
-    css = caminho.read_text(encoding="utf-8")
+    path = Path(__file__).parent / "static" / file_name
+    css = path.read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
-def carregar_css_login() -> None:
+def load_login_css() -> None:
     """Injeta os estilos da tela de login."""
-    _injetar_css("login.css")
+    _inject_css("login.css")
 
 
-def carregar_css_principal() -> None:
+def load_main_css() -> None:
     """Injeta os estilos da página principal."""
-    _injetar_css("principal.css")
+    _inject_css("principal.css")
 
 
-def renderizar_card(t: dict) -> str:
+def render_card(title: dict) -> str:
     """Monta o HTML de um card de título com escape contra XSS."""
-    poster = t.get("backdrop_url") or t.get("poster_url") or ""
-    titulo = html.escape(t.get("titulo", ""))
-    ano = html.escape(str(t.get("ano", "")))
-    tipo = html.escape(t.get("tipo", ""))
-    nota = t.get("nota")
-    sinopse = html.escape(t.get("sinopse") or "")
-    generos = t.get("generos") or []
-    duracao = t.get("duracao") or ""
-    data_lancamento = html.escape(t.get("data_lancamento") or "")
-    streaming_providers = t.get("streaming_providers") or ""
-    in_theaters = t.get("in_theaters") or False
-    theater_end_date = html.escape(t.get("theater_end_date") or "")
-    certificacao = html.escape(t.get("certificacao") or "")
-    trailer_url = t.get("trailer_url") or ""
+    poster = title.get("backdrop_url") or title.get("poster_url") or ""
+    title_name = html.escape(title.get("title", ""))
+    year = html.escape(str(title.get("year", "")))
+    title_type = html.escape(title.get("type", ""))
+    rating = title.get("rating")
+    overview = html.escape(title.get("overview") or "")
+    genres = title.get("genres") or []
+    duration = title.get("duration") or ""
+    release_date = html.escape(title.get("release_date") or "")
+    streaming_providers = title.get("streaming_providers") or ""
+    in_theaters = title.get("in_theaters") or False
+    theater_end_date = html.escape(title.get("theater_end_date") or "")
+    certification = html.escape(title.get("certification") or "")
+    trailer_url = title.get("trailer_url") or ""
 
     img_html = (
-        f'<img src="{poster}" alt="{titulo}"'
+        f'<img src="{poster}" alt="{title_name}"'
         f' class="card-img" loading="lazy" />'
         if poster else ""
     )
 
-    generos_html = "".join(
-        f'<span class="genero">{html.escape(g.strip())}</span>' for g in generos
+    genres_html = "".join(
+        f'<span class="genre">{html.escape(g.strip())}</span>' for g in genres
     )
 
     cinema_html = ""
@@ -73,12 +73,12 @@ def renderizar_card(t: dict) -> str:
             f'<span class="cinema-badge">{html.escape(label)}</span></div>'
         )
 
-    certificacao_titulo = html.escape(_DESCRICAO_CLASSIFICACAO.get(certificacao, certificacao))
-    certificacao_html = (
-        f'<span class="certificacao-badge" data-rating="{certificacao}"'
-        f' title="{certificacao_titulo}">'
-        f'{certificacao}</span>'
-        if certificacao else ""
+    certification_title = html.escape(_CERTIFICATION_DESCRIPTIONS.get(certification, certification))
+    certification_html = (
+        f'<span class="certification-badge" data-rating="{certification}"'
+        f' title="{certification_title}">'
+        f'{certification}</span>'
+        if certification else ""
     )
 
     trailer_html = ""
@@ -102,55 +102,55 @@ def renderizar_card(t: dict) -> str:
             f'<span class="meta-icon">📺</span>{stream_badges}</div>'
         )
 
-    nota_html = (
+    rating_html = (
         f'<div class="meta-row"><span class="meta-icon">★</span>'
-        f'<span class="nota">{html.escape(str(nota))}</span></div>'
-        if nota is not None else ""
+        f'<span class="rating">{html.escape(str(rating))}</span></div>'
+        if rating is not None else ""
     )
-    duracao_html = (
+    duration_html = (
         f'<div class="meta-row"><span class="meta-icon">⏱</span>'
-        f'<span class="duracao">{html.escape(duracao)}</span></div>'
-        if duracao else ""
+        f'<span class="duration">{html.escape(duration)}</span></div>'
+        if duration else ""
     )
-    data_html = (
+    release_date_html = (
         f'<div class="meta-row"><span class="meta-icon">📅</span>'
-        f'<span class="data-lancamento">{data_lancamento}</span></div>'
-        if data_lancamento else ""
+        f'<span class="release-date">{release_date}</span></div>'
+        if release_date else ""
     )
 
     return f"""
     <article class="card">
       {img_html}
       <div class="card-body">
-        <strong>{titulo}</strong>
+        <strong>{title_name}</strong>
         <span class="card-subtitle">
-          &nbsp;({ano}) — {tipo} {certificacao_html}
+          &nbsp;({year}) — {title_type} {certification_html}
         </span>
-        <div class="generos-container">{generos_html}</div>
-        {nota_html}
-        {duracao_html}
-        {data_html}
+        <div class="genres-container">{genres_html}</div>
+        {rating_html}
+        {duration_html}
+        {release_date_html}
         {cinema_html}
         {providers_html}
         {trailer_html}
-        <p class="sinopse">{sinopse}</p>
+        <p class="overview">{overview}</p>
       </div>
     </article>
     """
 
 
-def renderizar_grid(titulos: list[dict]) -> str:
+def render_grid(titles: list[dict]) -> str:
     """Monta o HTML completo do grid de cards."""
-    cards = [renderizar_card(t) for t in titulos]
-    return '<div class="grid-filmes">' + "".join(cards) + "</div>"
+    cards = [render_card(t) for t in titles]
+    return '<div class="grid-titles">' + "".join(cards) + "</div>"
 
 
-def renderizar_rodape() -> None:
+def render_footer() -> None:
     """Renderiza o rodapé da página principal com crédito TMDB."""
-    ano = date.today().year
+    year = date.today().year
     st.markdown(
-        f'<div class="rodape">'
-        f"© {ano} FilmBot · Dados fornecidos por "
+        f'<div class="footer">'
+        f"© {year} FilmBot · Dados fornecidos por "
         f'<a href="https://www.themoviedb.org/?language=pt-BR"'
         f' target="_blank" rel="noopener noreferrer">TMDB</a>'
         f" · Todos os direitos reservados"
@@ -159,12 +159,12 @@ def renderizar_rodape() -> None:
     )
 
 
-def renderizar_rodape_login() -> None:
+def render_login_footer() -> None:
     """Renderiza o rodapé simplificado da tela de login."""
-    ano = date.today().year
+    year = date.today().year
     st.markdown(
-        f'<div class="rodape-login">'
-        f"© {ano} FilmBot · Todos os direitos reservados"
+        f'<div class="footer-login">'
+        f"© {year} FilmBot · Todos os direitos reservados"
         f"</div>",
         unsafe_allow_html=True,
     )

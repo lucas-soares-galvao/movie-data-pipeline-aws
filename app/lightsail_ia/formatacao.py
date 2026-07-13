@@ -1,73 +1,73 @@
 """formatacao.py — Formatação determinística de registros do Athena para cards do FilmBot."""
 
-_MESES = {
+_MONTHS = {
     1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
     5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
     9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
 }
 
 
-def _formatar_tipo(media_type: str) -> str:
+def _format_type(media_type: str) -> str:
     """Converte media_type da API ('movie'/'tv') para português ('filme'/'série')."""
     return "filme" if media_type == "movie" else "série" if media_type == "tv" else media_type
 
 
-def _formatar_generos(genre_names: str | None) -> list[str]:
+def _format_genres(genre_names: str | None) -> list[str]:
     """Converte string de gêneros separados por vírgula em lista."""
     if not genre_names:
         return []
     return [g.strip() for g in genre_names.split(",") if g.strip()]
 
 
-def _formatar_duracao_titulo(registro: dict) -> str | None:
+def _format_title_duration(record: dict) -> str | None:
     """Formata duração: '2h 15min' para filmes, '3 temporadas · 24 eps' para séries."""
-    if registro.get("media_type") == "movie":
-        raw = registro.get("runtime_minutes")
+    if record.get("media_type") == "movie":
+        raw = record.get("runtime_minutes")
         if not raw:
             return None
-        minutos = int(raw)
-        horas, resto = divmod(minutos, 60)
-        return f"{horas}h {resto}min" if horas else f"{resto}min"
+        minutes = int(raw)
+        hours, remainder = divmod(minutes, 60)
+        return f"{hours}h {remainder}min" if hours else f"{remainder}min"
 
-    partes = []
-    seasons = registro.get("number_of_seasons")
-    episodes = registro.get("number_of_episodes")
-    ep_runtime = registro.get("episode_runtime_minutes")
+    parts = []
+    seasons = record.get("number_of_seasons")
+    episodes = record.get("number_of_episodes")
+    ep_runtime = record.get("episode_runtime_minutes")
     if seasons:
         n = int(seasons)
-        partes.append(f"{n} temporada{'s' if n != 1 else ''}")
+        parts.append(f"{n} temporada{'s' if n != 1 else ''}")
     if episodes:
-        partes.append(f"{int(episodes)} eps")
+        parts.append(f"{int(episodes)} eps")
     if ep_runtime:
-        partes.append(f"~{int(ep_runtime)} min/ep")
-    return " · ".join(partes) if partes else None
+        parts.append(f"~{int(ep_runtime)} min/ep")
+    return " · ".join(parts) if parts else None
 
 
-def _formatar_data_lancamento(air_date: str | None) -> str | None:
+def _format_release_date(air_date: str | None) -> str | None:
     """Converte data ISO 'YYYY-MM-DD' para 'Mês de Ano' em português."""
     if not air_date or len(air_date) < 7:
         return None
     try:
-        partes = air_date.split("-")
-        ano = int(partes[0])
-        mes = int(partes[1])
-        return f"{_MESES[mes]} de {ano}"
+        parts = air_date.split("-")
+        year = int(parts[0])
+        month = int(parts[1])
+        return f"{_MONTHS[month]} de {year}"
     except (ValueError, KeyError, IndexError):
         return None
 
 
-def _formatar_theater_end_date(theater_end_date: str | None, in_theaters: bool) -> str | None:
+def _format_theater_end_date(theater_end_date: str | None, in_theaters: bool) -> str | None:
     """Converte data ISO para 'DD/MM/AAAA' se o título estiver em cartaz."""
     if not in_theaters or not theater_end_date:
         return None
     try:
-        ano, mes, dia = theater_end_date.split("-")
-        return f"{dia}/{mes}/{ano}"
+        year, month, day = theater_end_date.split("-")
+        return f"{day}/{month}/{year}"
     except ValueError:
         return None
 
 
-def _formatar_nota(vote_average: object) -> float | None:
+def _format_rating(vote_average: object) -> float | None:
     """Converte nota (str, int ou float) para float, retornando None se inválida."""
     if vote_average is None or vote_average == "":
         return None
@@ -77,43 +77,43 @@ def _formatar_nota(vote_average: object) -> float | None:
         return None
 
 
-def formatar_registro(registro: dict) -> dict:
+def format_record(record: dict) -> dict:
     """Transforma um registro cru do Athena em dict formatado para o card do app."""
-    in_theaters = str(registro.get("in_theaters", "")).lower() == "true"
+    in_theaters = str(record.get("in_theaters", "")).lower() == "true"
     return {
-        "titulo": registro.get("title", ""),
-        "tipo": _formatar_tipo(registro.get("media_type", "")),
-        "ano": int(registro["year"]) if registro.get("year") else None,
-        "generos": _formatar_generos(registro.get("genre_names")),
-        "sinopse": registro.get("overview") or "",
-        "nota": _formatar_nota(registro.get("vote_average")),
-        "poster_url": registro.get("poster_url") or None,
-        "backdrop_url": registro.get("backdrop_url") or None,
-        "duracao": _formatar_duracao_titulo(registro),
-        "data_lancamento": _formatar_data_lancamento(registro.get("air_date")),
-        "streaming_providers": registro.get("streaming_providers") or None,
+        "title": record.get("title", ""),
+        "type": _format_type(record.get("media_type", "")),
+        "year": int(record["year"]) if record.get("year") else None,
+        "genres": _format_genres(record.get("genre_names")),
+        "overview": record.get("overview") or "",
+        "rating": _format_rating(record.get("vote_average")),
+        "poster_url": record.get("poster_url") or None,
+        "backdrop_url": record.get("backdrop_url") or None,
+        "duration": _format_title_duration(record),
+        "release_date": _format_release_date(record.get("air_date")),
+        "streaming_providers": record.get("streaming_providers") or None,
         "in_theaters": in_theaters,
-        "theater_end_date": _formatar_theater_end_date(
-            registro.get("theater_end_date"), in_theaters
+        "theater_end_date": _format_theater_end_date(
+            record.get("theater_end_date"), in_theaters
         ),
-        "tagline": registro.get("tagline") or None,
-        "elenco": registro.get("actor_names") or None,
-        "diretor": registro.get("director") or None,
-        "roteiristas": registro.get("screenplay") or None,
-        "compositor": registro.get("music_composer") or None,
-        "keywords": registro.get("keywords_pt") or None,
-        "certificacao": registro.get("certification") or None,
-        "trailer_url": registro.get("trailer_url") or None,
-        "colecao": registro.get("collection_name") or None,
-        "produtoras": registro.get("production_companies") or None,
-        "paises_producao": registro.get("production_countries") or None,
-        "produtor": registro.get("producer") or None,
-        "cinematografo": registro.get("cinematographer") or None,
-        "montador": registro.get("editor") or None,
-        "redes_tv": registro.get("networks") or None,
-        "criadores": registro.get("created_by") or None,
-        "aluguel_compra": registro.get("rent_buy_providers") or None,
-        "recomendados": registro.get("recommended_titles") or None,
-        "similares": registro.get("similar_titles") or None,
-        "titulos_alternativos": registro.get("alternative_titles") or None,
+        "tagline": record.get("tagline") or None,
+        "cast": record.get("actor_names") or None,
+        "director": record.get("director") or None,
+        "writers": record.get("screenplay") or None,
+        "composer": record.get("music_composer") or None,
+        "keywords": record.get("keywords_pt") or None,
+        "certification": record.get("certification") or None,
+        "trailer_url": record.get("trailer_url") or None,
+        "collection": record.get("collection_name") or None,
+        "production_companies": record.get("production_companies") or None,
+        "production_countries": record.get("production_countries") or None,
+        "producer": record.get("producer") or None,
+        "cinematographer": record.get("cinematographer") or None,
+        "editor": record.get("editor") or None,
+        "networks": record.get("networks") or None,
+        "creators": record.get("created_by") or None,
+        "rent_buy_providers": record.get("rent_buy_providers") or None,
+        "recommended": record.get("recommended_titles") or None,
+        "similar": record.get("similar_titles") or None,
+        "alternative_titles": record.get("alternative_titles") or None,
     }

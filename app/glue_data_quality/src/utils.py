@@ -117,7 +117,7 @@ def read_table_from_catalog(
     )
 
 
-def _executar_avaliacao_dq(
+def _evaluate_dq(
     glue_context: GlueContext,
     dynamic_frame: DynamicFrame,
     ruleset: str,
@@ -132,8 +132,8 @@ def _executar_avaliacao_dq(
     do Glue Catalog pode incluir metadados de outras partições.
     """
     if year is not None:
-        df_filtrado = dynamic_frame.toDF().filter(col("year") == year)
-        dynamic_frame = DynamicFrame.fromDF(df_filtrado, glue_context, "filtered_frame")
+        filtered_df = dynamic_frame.toDF().filter(col("year") == year)
+        dynamic_frame = DynamicFrame.fromDF(filtered_df, glue_context, "filtered_frame")
         logger.info(f"Filtro aplicado no DataFrame: year = '{year}'")
 
     dq_results = EvaluateDataQuality.apply(
@@ -148,7 +148,7 @@ def _executar_avaliacao_dq(
     return dq_results.toDF()
 
 
-def _renomear_e_classificar_colunas(
+def _rename_and_classify_columns(
     df: SparkDataFrame,
     table_name: str,
     database: str,
@@ -217,8 +217,8 @@ def evaluate_data_quality(
         Spark DataFrame com os resultados da avaliação e colunas de contexto.
     """
     logger.info(f"Avaliando qualidade de dados da tabela '{table_name}'...")
-    df = _executar_avaliacao_dq(glue_context, dynamic_frame, ruleset, table_name, year)
-    df = _renomear_e_classificar_colunas(df, table_name, database, year)
+    df = _evaluate_dq(glue_context, dynamic_frame, ruleset, table_name, year)
+    df = _rename_and_classify_columns(df, table_name, database, year)
     logger.info(f"Avaliação concluída. Regras avaliadas: {df.count()}")
     return df
 

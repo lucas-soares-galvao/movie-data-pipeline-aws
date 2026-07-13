@@ -1,20 +1,20 @@
 from unittest.mock import MagicMock, patch
 
-from shared_utils.traducao_google import traduzir_texto
+from shared_utils.traducao_google import translate_text
 
 
-class TestTraduzirTexto:
+class TestTranslateText:
     def test_retorna_string_vazia_para_entrada_vazia(self):
-        assert traduzir_texto("") == ""
+        assert translate_text("") == ""
 
     def test_retorna_string_vazia_para_none(self):
-        assert traduzir_texto(None) == ""
+        assert translate_text(None) == ""
 
     def test_traduz_texto_com_sucesso(self):
         mock_translator = MagicMock()
         mock_translator.translate.return_value = "Olá"
         with patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator):
-            result = traduzir_texto("Hello")
+            result = translate_text("Hello")
         assert result == "Olá"
         mock_translator.translate.assert_called_once_with("Hello")
 
@@ -25,7 +25,7 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep"),
         ):
-            result = traduzir_texto("Hello")
+            result = translate_text("Hello")
         assert result == "Hello"
         assert mock_translator.translate.call_count == 5
 
@@ -36,7 +36,7 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep") as mock_sleep,
         ):
-            result = traduzir_texto("Hello")
+            result = translate_text("Hello")
         assert result == "Olá"
         assert mock_translator.translate.call_count == 2
         mock_sleep.assert_called_once_with(2)
@@ -49,7 +49,7 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep") as mock_sleep,
         ):
-            result = traduzir_texto("Hello")
+            result = translate_text("Hello")
         assert result == "Olá"
         assert mock_translator.translate.call_count == 2
         mock_sleep.assert_called_once_with(2)
@@ -58,14 +58,14 @@ class TestTraduzirTexto:
         """Nenhuma exceção é lançada em nenhuma tentativa, mas o texto nunca muda —
         isso costuma indicar que não há o que traduzir (nome próprio, termo
         emprestado), não bloqueio transitório, então desiste em
-        _MAX_TENTATIVAS_SEM_ERRO tentativas (2), não nas 5 completas."""
+        _MAX_ATTEMPTS_NO_ERROR tentativas (2), não nas 5 completas."""
         mock_translator = MagicMock()
         mock_translator.translate.return_value = "Hello"
         with (
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep"),
         ):
-            result = traduzir_texto("Hello")
+            result = translate_text("Hello")
         assert result == "Hello"
         assert mock_translator.translate.call_count == 2
 
@@ -81,11 +81,11 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.time.sleep"),
         ):
             with caplog.at_level(logging.DEBUG):
-                traduzir_texto("Hello")
+                translate_text("Hello")
         assert "não há tradução a fazer" in caplog.text
 
     def test_contador_de_resultado_identico_nao_precisa_ser_consecutivo(self):
-        """O limite de _MAX_TENTATIVAS_SEM_ERRO soma tentativas sem erro e resultado
+        """O limite de _MAX_ATTEMPTS_NO_ERROR soma tentativas sem erro e resultado
         idêntico ao total (mesmo com uma exceção intercalada), não exige que sejam
         consecutivas."""
         mock_translator = MagicMock()
@@ -94,7 +94,7 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep"),
         ):
-            result = traduzir_texto("Hello")
+            result = translate_text("Hello")
         assert result == "Hello"
         assert mock_translator.translate.call_count == 3
 
@@ -107,7 +107,7 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.time.sleep"),
         ):
             with caplog.at_level(logging.WARNING):
-                traduzir_texto("Hello")
+                translate_text("Hello")
         assert "Falha ao traduzir" in caplog.text
 
     def test_contexto_aparece_no_log(self, caplog):
@@ -119,12 +119,12 @@ class TestTraduzirTexto:
             patch("shared_utils.traducao_google.time.sleep"),
         ):
             with caplog.at_level(logging.WARNING):
-                traduzir_texto("Hello", contexto="países")
+                translate_text("Hello", context="países")
         assert "países" in caplog.text
 
     def test_cria_translator_com_idiomas_corretos(self):
         mock_translator = MagicMock()
         mock_translator.translate.return_value = "ok"
         with patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator) as mock_cls:
-            traduzir_texto("test")
+            translate_text("test")
         mock_cls.assert_called_once_with(source="auto", target="pt")

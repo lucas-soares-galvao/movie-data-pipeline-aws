@@ -104,7 +104,7 @@ def build_base_payloads() -> tuple[dict[str, Any], dict[str, Any]]:
     campo a mais: "translate_provider" (opcional via env TRANSLATE_PROVIDER, default
     "google") — o EventBridge nunca define esse campo (cai no default "aws" do Glue
     ETL/Details), mas esses backfills manuais processam volume alto o suficiente para
-    justificar o default gratuito. Ver shared_utils.traducao.resolver_traduzir_fn.
+    justificar o default gratuito. Ver shared_utils.traducao.resolve_translate_fn.
     Usado por backfill_referencias.py e backfill_historico.py.
     """
     translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")

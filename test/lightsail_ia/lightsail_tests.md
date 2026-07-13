@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recomendar()`, `buscar_titulos_spec()`, validação SQL, cache, fallback automático de LLM e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`formatar_registro`, `_formatar_tipo`, `_formatar_generos`, `_formatar_duracao_titulo`, `_formatar_data_lancamento`, `_formatar_theater_end_date`, `_formatar_nota`). O `test_componentes.py` cobre a renderização de cards e grids (`renderizar_card`, `renderizar_grid`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, cache, fallback automático de LLM e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -29,18 +29,18 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 
 | Fixture | Escopo | Descrição |
 |---|---|---|
-| `_limpar_cache_where` | `autouse` | Limpa `agent._CACHE_WHERE` antes de cada teste para garantir isolamento entre testes |
+| `_limpar_cache_where` | `autouse` | Limpa `agent._WHERE_CACHE` antes de cada teste para garantir isolamento entre testes |
 
 ## Funções auxiliares de mock (`test_agent.py`)
 
 | Função | Descrição |
 |---|---|
 | `_setup_athena_mock(mock_boto3, rows_data)` | Configura o mock do `boto3` para simular as 3 etapas da API nativa do Athena: `start_query_execution` → `get_query_execution` (polling) → `get_paginator().paginate()`. `rows_data` define as linhas de resultado; `None` retorna apenas o header (resultado vazio). |
-| `_mock_litellm(tool_args)` | Retorna lista com 1 resposta para `side_effect` de `litellm.completion`: simula a resposta da Etapa 1 (Function Calling com `tool_args`). Inclui mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_logar_uso_tokens()`. |
+| `_mock_litellm(tool_args)` | Retorna lista com 1 resposta para `side_effect` de `litellm.completion`: simula a resposta da Etapa 1 (Function Calling com `tool_args`). Inclui mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_log_token_usage()`. |
 
 ## Casos de teste — `test_agent.py`
 
-### `TestValidarWhere` — Validação de segurança da cláusula WHERE
+### `TestValidateWhere` — Validação de segurança da cláusula WHERE
 
 | Teste | O que verifica |
 |---|---|
@@ -52,7 +52,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_rejeita_subquery_select` | Rejeita cláusulas com `SELECT` (prevenção de subquery) |
 | `test_remove_espacos_nas_pontas` | Remove espaços em branco nas extremidades da cláusula |
 
-### `TestBuscarTitulosSpec` — Consulta ao Athena (Etapa 2)
+### `TestSearchTitlesSpec` — Consulta ao Athena (Etapa 2)
 
 | Teste | O que verifica |
 |---|---|
@@ -66,22 +66,22 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_filtro_em_cartaz_na_query` | WHERE inclui `in_theaters = true` para filtro de cinema |
 | `test_filtro_plataforma_na_query` | WHERE inclui `lower(streaming_providers) LIKE '%netflix%'` para filtro de streaming |
 | `test_filtro_faixa_de_ano_na_query` | WHERE inclui `year BETWEEN '2000' AND '2010'` para faixa de ano |
-| `test_limite_aplicado_na_query` | LIMIT na query reflete o parâmetro `limite` |
-| `test_limite_e_limitado_ao_maximo_de_10` | Limita a `LIMIT 10` mesmo se `limite=100` for passado |
-| `test_limite_minimo_e_1` | Usa `LIMIT 1` quando `limite=0` for passado |
+| `test_limite_aplicado_na_query` | LIMIT na query reflete o parâmetro `limit` |
+| `test_limite_e_limitado_ao_maximo_de_10` | Limita a `LIMIT 10` mesmo se `limit=100` for passado |
+| `test_limite_minimo_e_1` | Usa `LIMIT 1` quando `limit=0` for passado |
 | `test_rejeita_where_com_sql_perigoso` | Levanta `ValueError` quando a cláusula WHERE contém SQL perigoso |
 
-### `TestRecomendar` — Fluxo completo de recomendação
+### `TestRecommend` — Fluxo completo de recomendação
 
 | Teste | O que verifica |
 |---|---|
 | `test_retorna_lista_vazia_se_athena_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
 | `test_chama_llm_uma_vez` | `litellm.completion` é chamado exatamente 1 vez (etapa 1) |
 | `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
-| `test_passa_filtros_extraidos_pelo_llm_para_athena` | `filtro_where` e `limite` extraídos na etapa 1 são passados corretamente para `buscar_titulos_spec()` |
+| `test_passa_filtros_extraidos_pelo_llm_para_athena` | `where_clause` e `limit` extraídos na etapa 1 são passados corretamente para `search_titles_spec()` |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
-| `test_retorna_data_lancamento_formatada` | Campo `data_lancamento` formatado pelo Python (ex: `"Maio de 1980"`) |
-| `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`tipo`, `ano`, `generos`, `sinopse`, `nota`, `duracao`, `streaming_providers`, `in_theaters`) |
+| `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Maio de 1980"`) |
+| `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`type`, `year`, `genres`, `overview`, `rating`, `duration`, `streaming_providers`, `in_theaters`) |
 
 ### `TestCacheWhere` — Cache de cláusulas WHERE
 
@@ -102,30 +102,30 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_fallback_acionado_quando_llm_primario_falha` | Com `LLM_MODEL_FALLBACK` configurada, uma `openai.APIConnectionError` na 1ª chamada aciona uma 2ª chamada ao modelo de fallback (`model` e `aws_region_name` corretos); recomendação retorna normalmente |
 | `test_sem_fallback_configurado_propaga_erro_primario` | Sem `LLM_MODEL_FALLBACK` configurada, o erro da chamada primária propaga e só há 1 chamada |
 | `test_fallback_tambem_falha_propaga_erro` | Se a chamada de fallback também falhar, o erro dela propaga (2 chamadas no total) |
-| `test_resposta_sem_tool_calls_nao_aciona_fallback` | Resposta primária bem-sucedida sem `tool_calls` (resultado vazio legítimo) não aciona fallback — só 1 chamada, `recomendar()` retorna `[]` |
+| `test_resposta_sem_tool_calls_nao_aciona_fallback` | Resposta primária bem-sucedida sem `tool_calls` (resultado vazio legítimo) não aciona fallback — só 1 chamada, `recommend()` retorna `[]` |
 | `test_json_invalido_no_tool_call_nao_aciona_fallback` | `tool_calls[0].function.arguments` com JSON inválido propaga `json.JSONDecodeError` sem acionar fallback — só 1 chamada |
 | `test_fallback_usa_regiao_bedrock_configurada` | A chamada de fallback usa `_AWS_REGION_BEDROCK` (não uma região fixa) |
 | `test_fallback_nao_envia_api_key_deepseek` | A chamada de fallback não inclui `api_key` (a chave DeepSeek não é enviada para o Bedrock, que autentica via IAM) |
 
-### `TestLogarUsoTokens` — Logging de uso de tokens
+### `TestLogTokenUsage` — Logging de uso de tokens
 
 | Teste | O que verifica |
 |---|---|
-| `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `etapa` no `extra` |
+| `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `step` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
 | `test_logger_tem_nivel_info_explicito` | `agent.logger.level` é `logging.INFO`, garantindo que os logs de tokens não sejam suprimidos quando `app.py` eleva o root logger para `ERROR` |
-| `test_loga_modelo_explicito_quando_fornecido` | Parâmetro `modelo` explícito é logado em `extra["modelo"]` (usado na chamada de fallback) |
-| `test_logar_uso_tokens_usa_llm_model_por_padrao` | Chamada sem `modelo` (estilo original, 2 argumentos) continua logando `_LLM_MODEL` — regressão de compatibilidade |
+| `test_loga_modelo_explicito_quando_fornecido` | Parâmetro `model` explícito é logado em `extra["model"]` (usado na chamada de fallback) |
+| `test_logar_uso_tokens_usa_llm_model_por_padrao` | Chamada sem `model` (estilo original, 2 argumentos) continua logando `_LLM_MODEL` — regressão de compatibilidade |
 
-### `TestLogarFallbackLlm` — Logging do acionamento do fallback
+### `TestLogLlmFallback` — Logging do acionamento do fallback
 
 | Teste | O que verifica |
 |---|---|
-| `test_loga_fallback_em_warning` | `_logar_fallback_llm()` chama `logger.warning` uma vez com `preferencia`, `modelo_primario`, `modelo_fallback` e o erro no `extra` |
+| `test_loga_fallback_em_warning` | `_log_llm_fallback()` chama `logger.warning` uma vez com `preference`, `primary_model`, `fallback_model` e o erro no `extra` |
 
 ## Casos de teste — `test_componentes.py`
 
-### `TestRenderizarCard` — Renderização de cards individuais
+### `TestRenderCard` — Renderização de cards individuais
 
 | Teste | O que verifica |
 |---|---|
@@ -146,7 +146,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 
-### `TestRenderizarGrid` — Renderização do grid de cards
+### `TestRenderGrid` — Renderização do grid de cards
 
 | Teste | O que verifica |
 |---|---|
@@ -155,7 +155,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 
 ## Casos de teste — `test_formatacao.py`
 
-### `TestFormatarTipo` — Conversão de `media_type`
+### `TestFormatType` — Conversão de `media_type`
 
 | Teste | O que verifica |
 |---|---|
@@ -163,7 +163,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_tv_para_serie` | `"tv"` → `"série"` |
 | `test_valor_desconhecido` | Valor desconhecido retornado sem alteração |
 
-### `TestFormatarGeneros` — Separação de gêneros
+### `TestFormatGenres` — Separação de gêneros
 
 | Teste | O que verifica |
 |---|---|
@@ -171,7 +171,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_retorna_lista_vazia_para_none` | `None` → `[]` |
 | `test_retorna_lista_vazia_para_string_vazia` | `""` → `[]` |
 
-### `TestFormatarDuracaoTitulo` — Formatação de duração
+### `TestFormatTitleDuration` — Formatação de duração
 
 | Teste | O que verifica |
 |---|---|
@@ -183,7 +183,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_serie_uma_temporada` | Singular → `"1 temporada · 10 eps"` |
 | `test_serie_sem_dados` | Todos os campos `None` → `None` |
 
-### `TestFormatarDataLancamento` — Formatação de data
+### `TestFormatReleaseDate` — Formatação de data
 
 | Teste | O que verifica |
 |---|---|
@@ -192,7 +192,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_data_vazia` | `""` → `None` |
 | `test_data_curta` | `"1980"` (sem mês) → `None` |
 
-### `TestFormatarTheaterEndDate` — Formatação de data de saída do cinema
+### `TestFormatTheaterEndDate` — Formatação de data de saída do cinema
 
 | Teste | O que verifica |
 |---|---|
@@ -200,7 +200,7 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_fora_de_cartaz` | `in_theaters=False` → `None` |
 | `test_em_cartaz_sem_data` | `theater_end_date=None` → `None` |
 
-### `TestFormatarNota` — Conversão de nota
+### `TestFormatRating` — Conversão de nota
 
 | Teste | O que verifica |
 |---|---|
@@ -209,15 +209,15 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_none` | `None` → `None` |
 | `test_string_vazia` | `""` → `None` |
 
-### `TestFormatarRegistro` — Formatação completa de um registro
+### `TestFormatRecord` — Formatação completa de um registro
 
 | Teste | O que verifica |
 |---|---|
 | `test_registro_completo_filme` | Registro de filme formatado com todos os campos corretos |
-| `test_novos_campos_filme` | Campos `roteiristas`, `compositor`, `keywords` (pt) formatados corretamente |
-| `test_novos_campos_crew_e_extras` | Campos `produtor`, `cinematografo`, `montador`, `paises_producao`, `aluguel_compra`, `recomendados`, `similares`, `titulos_alternativos` formatados corretamente |
-| `test_novos_campos_nulos` | Campos `roteiristas` e `compositor` retornam `None` quando ausentes |
-| `test_registro_serie` | Registro de série com `tipo="série"` e duração formatada com temporadas |
+| `test_novos_campos_filme` | Campos `writers`, `composer`, `keywords` (pt) formatados corretamente |
+| `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
+| `test_novos_campos_nulos` | Campos `writers` e `composer` retornam `None` quando ausentes |
+| `test_registro_serie` | Registro de série com `type="série"` e duração formatada com temporadas |
 
 ## Como executar
 

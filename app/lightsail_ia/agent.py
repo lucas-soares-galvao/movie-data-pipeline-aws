@@ -70,7 +70,7 @@ import boto3
 import litellm
 import openai
 from dotenv import load_dotenv
-from formatacao import formatar_registro
+from formatacao import format_record
 
 # Carrega as variáveis de ambiente do arquivo .env (na mesma pasta do app).
 # No ambiente de produção (Lightsail), o .env é criado pelo script de deploy
@@ -82,7 +82,7 @@ _LLM_MODEL_FALLBACK = os.getenv("LLM_MODEL_FALLBACK")
 _AWS_REGION_BEDROCK = os.getenv("AWS_REGION_BEDROCK", "us-east-1")
 
 
-def _carregar_llm_api_key() -> str | None:
+def _load_llm_api_key() -> str | None:
     """Busca a LLM_API_KEY do Secrets Manager (produção) ou do .env (desenvolvimento)."""
     secret_arn = os.getenv("FILMBOT_SECRET_ARN")
     if secret_arn:
@@ -93,7 +93,7 @@ def _carregar_llm_api_key() -> str | None:
     return os.getenv("LLM_API_KEY")
 
 
-_LLM_API_KEY = _carregar_llm_api_key()
+_LLM_API_KEY = _load_llm_api_key()
 
 logger = logging.getLogger(__name__)
 # Nível explícito: app.py eleva o root logger para ERROR quando o CloudWatch
@@ -102,51 +102,51 @@ logger = logging.getLogger(__name__)
 # deste módulo, garante que esses logs continuem passando pelo handler do root.
 logger.setLevel(logging.INFO)
 
-_CACHE_WHERE: dict[str, tuple[float, dict]] = {}
-_CACHE_TTL_SEGUNDOS = 3600
+_WHERE_CACHE: dict[str, tuple[float, dict]] = {}
+_CACHE_TTL_SECONDS = 3600
 
 
-def _chave_cache(preferencia: str) -> str:
+def _cache_key(preference: str) -> str:
     """Gera hash MD5 da preferência normalizada para uso como chave de cache."""
-    normalizada = preferencia.strip().lower()
-    return hashlib.md5(normalizada.encode()).hexdigest()
+    normalized = preference.strip().lower()
+    return hashlib.md5(normalized.encode()).hexdigest()
 
 
-def _buscar_cache_where(preferencia: str) -> dict | None:
+def _get_cached_where(preference: str) -> dict | None:
     """Verifica se já existe uma cláusula WHERE cacheada para esta preferência.
     Evita chamadas desnecessárias ao LLM quando o mesmo pedido é feito novamente dentro de 1 hora."""
-    chave = _chave_cache(preferencia)
-    if chave not in _CACHE_WHERE:
+    key = _cache_key(preference)
+    if key not in _WHERE_CACHE:
         return None
-    timestamp, args = _CACHE_WHERE[chave]
-    if time.time() - timestamp > _CACHE_TTL_SEGUNDOS:
-        del _CACHE_WHERE[chave]
+    timestamp, args = _WHERE_CACHE[key]
+    if time.time() - timestamp > _CACHE_TTL_SECONDS:
+        del _WHERE_CACHE[key]
         return None
-    logger.info("Cache hit para WHERE clause", extra={"preferencia": preferencia})
+    logger.info("Cache hit para WHERE clause", extra={"preference": preference})
     return args
 
 
-def _salvar_cache_where(preferencia: str, args: dict) -> None:
+def _save_cached_where(preference: str, args: dict) -> None:
     """Salva a cláusula WHERE no cache com timestamp atual."""
-    chave = _chave_cache(preferencia)
-    _CACHE_WHERE[chave] = (time.time(), args)
+    key = _cache_key(preference)
+    _WHERE_CACHE[key] = (time.time(), args)
 
 
-def _logar_uso_tokens(etapa: str, resposta: object, modelo: str | None = None) -> None:
+def _log_token_usage(step: str, response: object, model: str | None = None) -> None:
     """Registra no log o consumo de tokens (prompt, completion, total) de uma chamada LLM.
 
     Args:
-        modelo: modelo que efetivamente respondeu. Default None loga _LLM_MODEL
+        model: modelo que efetivamente respondeu. Default None loga _LLM_MODEL
                 (chamada primária); a chamada de fallback passa o modelo real usado.
     """
-    usage = getattr(resposta, "usage", None)
+    usage = getattr(response, "usage", None)
     if not usage:
         return
     logger.info(
         "LLM token usage",
         extra={
-            "etapa": etapa,
-            "modelo": modelo or _LLM_MODEL,
+            "step": step,
+            "model": model or _LLM_MODEL,
             "prompt_tokens": usage.prompt_tokens,
             "completion_tokens": usage.completion_tokens,
             "total_tokens": usage.total_tokens,
@@ -154,19 +154,19 @@ def _logar_uso_tokens(etapa: str, resposta: object, modelo: str | None = None) -
     )
 
 
-def _logar_fallback_llm(preferencia: str, erro: Exception) -> None:
+def _log_llm_fallback(preference: str, error: Exception) -> None:
     """Registra em WARNING que o fallback de LLM foi acionado (chamada primária falhou).
 
-    Log dedicado (além de _logar_uso_tokens com etapa="passo_1_where_fallback") para que
+    Log dedicado (além de _log_token_usage com step="step1_where_fallback") para que
     o acionamento do fallback fique visível mesmo se a chamada de fallback também falhar.
     """
     logger.warning(
         "Fallback de LLM acionado",
         extra={
-            "preferencia": preferencia,
-            "modelo_primario": _LLM_MODEL,
-            "modelo_fallback": _LLM_MODEL_FALLBACK,
-            "erro": f"{type(erro).__name__}: {erro}",
+            "preference": preference,
+            "primary_model": _LLM_MODEL,
+            "fallback_model": _LLM_MODEL_FALLBACK,
+            "error": f"{type(error).__name__}: {error}",
         },
     )
 
@@ -180,16 +180,16 @@ def _logar_fallback_llm(preferencia: str, erro: Exception) -> None:
 # Nesta abordagem "livre", o LLM recebe o schema completo da tabela SPEC
 # no system prompt e gera a cláusula WHERE diretamente. Isso permite que
 # qualquer combinação de filtros seja usada sem precisar mapear cada pergunta
-# possível no código. O parâmetro limite continua estruturado para segurança.
+# possível no código. O parâmetro limit continua estruturado para segurança.
 TOOL = {
     "type": "function",
     "function": {
-        "name": "buscar_titulos_spec",
+        "name": "search_titles_spec",
         "description": "Busca filmes e séries reais da tabela SPEC no data lake AWS.",
         "parameters": {
             "type": "object",
             "properties": {
-                "filtro_where": {
+                "where_clause": {
                     "type": "string",
                     "description": (
                         "Cláusula WHERE do SQL (sem a palavra WHERE). "
@@ -203,18 +203,18 @@ TOOL = {
                         "(sem media_type = retorna filmes E séries)"
                     ),
                 },
-                "limite": {
+                "limit": {
                     "type": "integer",
                     "description": "Quantidade máxima de resultados (padrão 10, máximo 10)",
                 },
             },
-            "required": ["filtro_where"],
+            "required": ["where_clause"],
         },
     },
 }
 
 # System prompt enviado ao LLM no Passo 1. Define o schema da tabela SPEC e as regras
-# de geração da cláusula WHERE. Fica aqui (nível de módulo) para não poluir recomendar().
+# de geração da cláusula WHERE. Fica aqui (nível de módulo) para não poluir recommend().
 _SYSTEM_PROMPT = (
     "Você é um assistente de recomendação de filmes e séries. "
     "Analise o pedido do usuário e gere a cláusula WHERE do SQL para filtrar a tabela SPEC.\n\n"
@@ -283,32 +283,32 @@ _SYSTEM_PROMPT = (
 # Palavras-chave SQL proibidas na cláusula WHERE gerada pelo LLM.
 # O Athena é read-only por natureza, mas essa validação impede que o LLM
 # gere cláusulas malformadas ou que fujam do escopo de um filtro SELECT.
-_PALAVRAS_PROIBIDAS = re.compile(
+_FORBIDDEN_KEYWORDS = re.compile(
     r"\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|GRANT|TRUNCATE|EXEC|MERGE|REPLACE|CALL)\b",
     re.IGNORECASE,
 )
 
 
-def _validar_where(filtro_where: str) -> str:
+def _validate_where(where_clause: str) -> str:
     """Valida a cláusula WHERE gerada pelo LLM e retorna a string sanitizada.
 
     Raises:
         ValueError: se a cláusula contiver SQL proibido.
     """
-    if ";" in filtro_where:
+    if ";" in where_clause:
         raise ValueError("Cláusula WHERE inválida: contém ';'")
-    if _PALAVRAS_PROIBIDAS.search(filtro_where):
+    if _FORBIDDEN_KEYWORDS.search(where_clause):
         raise ValueError("Cláusula WHERE inválida: contém palavra SQL proibida")
-    if re.search(r"\bSELECT\b", filtro_where, re.IGNORECASE):
+    if re.search(r"\bSELECT\b", where_clause, re.IGNORECASE):
         raise ValueError("Cláusula WHERE inválida: contém subquery")
-    return filtro_where.strip()
+    return where_clause.strip()
 
 
 # ==============================================================================
 # PASSO 2: Consulta real no Athena
 # ==============================================================================
 
-def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
+def search_titles_spec(where_clause: str, limit: int = 10) -> list[dict]:
     """
     Consulta a tabela SPEC no Athena e retorna os títulos que correspondem aos filtros.
 
@@ -317,14 +317,14 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
     garantir qualidade dos dados (exclui títulos com poucos votos).
 
     Args:
-        filtro_where: Cláusula WHERE gerada pelo LLM (sem a palavra WHERE).
-        limite:       Máximo de títulos retornados. Padrão 10.
+        where_clause: Cláusula WHERE gerada pelo LLM (sem a palavra WHERE).
+        limit:        Máximo de títulos retornados. Padrão 10.
 
     Returns:
         Lista de dicionários, cada um representando um título com todos os campos da SPEC.
     """
-    limite = max(1, min(int(limite), 10))
-    filtro_where = _validar_where(filtro_where)
+    limit = max(1, min(int(limit), 10))
+    where_clause = _validate_where(where_clause)
 
     sql = f"""
         SELECT title, media_type, year, air_date, genre_names, overview,
@@ -339,9 +339,9 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
                recommended_titles, similar_titles, alternative_titles,
                in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
-        WHERE vote_count >= 50 AND {filtro_where}
+        WHERE vote_count >= 50 AND {where_clause}
         ORDER BY popularity DESC
-        LIMIT {int(limite)}
+        LIMIT {int(limit)}
     """
 
     athena = boto3.client("athena", region_name=os.getenv("AWS_REGION", "sa-east-1"))
@@ -386,7 +386,7 @@ def buscar_titulos_spec(filtro_where: str, limite: int = 10) -> list[dict]:
     return records
 
 
-def _chamar_llm_passo1(preferencia: str) -> object:
+def _call_llm_step1(preference: str) -> object:
     """Chama o LLM do Passo 1. Se a chamada primária (_LLM_MODEL) falhar por erro de
     infraestrutura (timeout, 5xx, rate limit, autenticação — openai.APIError e
     subclasses, que é a classe-base real usada pelo litellm para erros de provedor;
@@ -395,45 +395,45 @@ def _chamar_llm_passo1(preferencia: str) -> object:
     (ex: um modelo Bedrock, autenticado via credenciais AWS do IAM user do agente).
 
     NÃO intercepta ValueError/json.JSONDecodeError — essas ocorrem depois desta função
-    retornar (parsing dos tool_calls, em recomendar()), então uma resposta primária
+    retornar (parsing dos tool_calls, em recommend()), então uma resposta primária
     malformada continua se comportando como hoje (propaga o erro), sem acionar fallback.
 
     Raises:
         openai.APIError (ou subclasse): se a chamada primária falhar sem fallback
             configurado, ou se a chamada de fallback também falhar.
     """
-    mensagens = [
+    messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": preferencia},
+        {"role": "user", "content": preference},
     ]
     try:
-        resposta = litellm.completion(
+        response = litellm.completion(
             model=_LLM_MODEL,
             api_key=_LLM_API_KEY,
-            messages=mensagens,
+            messages=messages,
             tools=[TOOL],
         )
-        _logar_uso_tokens("passo_1_where", resposta, _LLM_MODEL)
-        return resposta
-    except openai.APIError as erro:
+        _log_token_usage("step1_where", response, _LLM_MODEL)
+        return response
+    except openai.APIError as error:
         if not _LLM_MODEL_FALLBACK:
             raise
-        _logar_fallback_llm(preferencia, erro)
-        resposta = litellm.completion(
+        _log_llm_fallback(preference, error)
+        response = litellm.completion(
             model=_LLM_MODEL_FALLBACK,
-            messages=mensagens,
+            messages=messages,
             tools=[TOOL],
             aws_region_name=_AWS_REGION_BEDROCK,
         )
-        _logar_uso_tokens("passo_1_where_fallback", resposta, _LLM_MODEL_FALLBACK)
-        return resposta
+        _log_token_usage("step1_where_fallback", response, _LLM_MODEL_FALLBACK)
+        return response
 
 
 # ==============================================================================
 # PASSO 1 + 2 + formatação: Orquestração do agente (função principal)
 # ==============================================================================
 
-def recomendar(preferencia: str) -> list[dict]:
+def recommend(preference: str) -> list[dict]:
     """
     Orquestra os 2 passos do agente e retorna uma lista de recomendações.
 
@@ -441,12 +441,12 @@ def recomendar(preferencia: str) -> list[dict]:
     LLM extrai filtros → Athena consulta → formatação Python.
 
     Args:
-        preferencia: Texto em linguagem natural do usuário.
+        preference: Texto em linguagem natural do usuário.
                      Ex: "filmes de terror dos anos 2010"
 
     Returns:
-        Lista de dicionários, cada um com: titulo, tipo, ano, generos, sinopse,
-        nota, poster_url, backdrop_url, duracao, streaming_providers,
+        Lista de dicionários, cada um com: title, type, year, genres, overview,
+        rating, poster_url, backdrop_url, duration, streaming_providers,
         in_theaters, theater_end_date.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
     """
@@ -454,29 +454,29 @@ def recomendar(preferencia: str) -> list[dict]:
     # ------------------------------------------------------------------
     # PASSO 1: LLM analisa o texto e decide os filtros SQL (com cache)
     # ------------------------------------------------------------------
-    args_cache = _buscar_cache_where(preferencia)
+    cached_args = _get_cached_where(preference)
 
-    if args_cache is not None:
-        args = args_cache
+    if cached_args is not None:
+        args = cached_args
     else:
-        resposta = _chamar_llm_passo1(preferencia)
+        response = _call_llm_step1(preference)
 
         # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
         # function.arguments: string JSON com os argumentos que o LLM escolheu
-        tool_calls = resposta.choices[0].message.tool_calls or []
+        tool_calls = response.choices[0].message.tool_calls or []
         if not tool_calls:
             return []
         tool_call = tool_calls[0]
         args = json.loads(tool_call.function.arguments)
-        _salvar_cache_where(preferencia, args)
+        _save_cached_where(preference, args)
 
     # ------------------------------------------------------------------
     # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
     # ------------------------------------------------------------------
-    titulos_da_spec = buscar_titulos_spec(**args)
+    titles_from_spec = search_titles_spec(**args)
 
-    if not titulos_da_spec:
+    if not titles_from_spec:
         return []  # nenhum título encontrado com esses filtros
 
     # Formata todos os campos determinísticos via Python (instantâneo)
-    return [formatar_registro(r) for r in titulos_da_spec]
+    return [format_record(r) for r in titles_from_spec]

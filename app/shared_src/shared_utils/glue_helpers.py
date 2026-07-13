@@ -24,7 +24,7 @@ def get_resolved_option(args: list) -> Dict[str, Any]:
     return getResolvedOptions(sys.argv, args)
 
 
-def configurar_logging_glue() -> logging.Logger:
+def configure_glue_logging() -> logging.Logger:
     """
     Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp).
 

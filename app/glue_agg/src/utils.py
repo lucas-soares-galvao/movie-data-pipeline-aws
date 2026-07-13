@@ -85,12 +85,12 @@ def run_athena_query(
     Returns:
         DataFrame com o resultado da query.
     """
-    nomes_tabelas = _table_names(env)  # {"tb_discover_movie": "tb_tmdb_discover_movie_dev", ...}
+    table_names = _table_names(env)  # {"tb_discover_movie": "tb_tmdb_discover_movie_dev", ...}
     query = _DISCOVER_UNIFIED_QUERY.format(
         db_movie=db_movie,
         db_tv=db_tv,
         db_unified=db_unified,
-        **nomes_tabelas,
+        **table_names,
     )
     s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_agg/"
 

@@ -55,43 +55,43 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 
 Testa as funções individuais:
 
-- `_extrair_elenco` (`TestExtrairElenco`): top 5 por `order`, menos que o limite, cast vazio, sem chave `cast`, limite customizado
-- `_extrair_diretor` (`TestExtrairDiretor`): diretor único, múltiplos diretores, sem diretor, crew vazio
-- `_extrair_roteiristas` (`TestExtrairRoteiristas`): roteirista único, múltiplos (Screenplay + Writer), deduplicação por nome, crew vazio
-- `_extrair_compositor` (`TestExtrairCompositor`): compositor único, múltiplos, crew vazio
-- `_extrair_keywords` (`TestExtrairKeywords`): formato movie (chave `keywords`), formato tv (chave `results`), dict vazio, lista vazia
-- `_extrair_certificacao_br_movie` (`TestExtrairCertificacaoBrMovie`): encontra BR, sem BR, BR sem certification, dict vazio
-- `_extrair_certificacao_br_tv` (`TestExtrairCertificacaoBrTv`): encontra BR, sem BR, rating vazio
-- `_extrair_trailer_url` (`TestExtrairTrailerUrl`): trailer oficial do YouTube, fallback para não-oficial, sem YouTube, sem trailer, dict vazio
-- `_extrair_produtoras` (`TestExtrairProdutoras`): produtoras comma-separated, lista vazia, entrada None
-- `_extrair_criadores` (`TestExtrairCriadores`): criadores comma-separated, lista vazia
-- `_extrair_networks` (`TestExtrairNetworks`): networks comma-separated, lista vazia
-- `_extrair_produtores` (`TestExtrairProdutores`): produtor único, produtor+executivo, deduplicação por nome, limite top 3, sem produtor, crew vazio
-- `_extrair_cinematografo` (`TestExtrairCinematografo`): cinematógrafo único, múltiplos, sem cinematógrafo, crew vazio
-- `_extrair_montador` (`TestExtrairMontador`): montador único, múltiplos, sem montador, crew vazio
-- `_extrair_paises_producao` (`TestExtrairPaisesProducao`): múltiplos países, lista vazia, entrada None
-- `_extrair_titulos_recomendados` (`TestExtrairTitulosRecomendados`): formato movie (title), formato tv (name), limite customizado, dict vazio, results vazio
-- `_extrair_ids_recomendados` (`TestExtrairIdsRecomendados`): extração de IDs, limite customizado, dict vazio, results vazio, result sem campo id
-- `_extrair_titulos_similares` (`TestExtrairTitulosSimilares`): formato movie (title), formato tv (name), dict vazio
-- `_extrair_ids_similares` (`TestExtrairIdsSimilares`): extração de IDs, dict vazio, result sem campo id
-- `_extrair_titulos_alternativos` (`TestExtrairTitulosAlternativos`): formato movie (titles key), formato tv (results key), dict vazio
-- `_extrair_traducao_pt_br` (`TestExtrairTraducaoPtBr`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
-- `_adicionar_traducoes_pt` (`TestAdicionarTraducoesOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, não traduz quando `original_language` já é `pt`, loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, retenta quando `overview_pt_tmdb` fica igual a `overview_en`
-- `_adicionar_traducoes_keywords_pt` (`TestAdicionarTraducoesKeywordsPt`): traduz via Google Translate, não traduz quando `original_language` já é `pt`, não traduz quando `keywords` vazia
-- `_adicionar_traducoes_tagline_pt` (`TestAdicionarTraducoesTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula, não traduz quando `original_language` já é `pt`, retenta quando `tagline_pt_tmdb` fica igual a `tagline`
-- `_extrair_paises_producao_iso` (`TestExtrairPaisesProducaoIso`): extrai códigos ISO, retorna None para lista vazia e None
-- `_extrair_spoken_languages` (`TestExtrairSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
-- `_extrair_spoken_languages_iso` (`TestExtrairSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None
+- `_extract_cast` (`TestExtractCast`): top 5 por `order`, menos que o limite, cast vazio, sem chave `cast`, limite customizado
+- `_extract_director` (`TestExtractDirector`): diretor único, múltiplos diretores, sem diretor, crew vazio
+- `_extract_writers` (`TestExtractWriters`): roteirista único, múltiplos (Screenplay + Writer), deduplicação por nome, crew vazio
+- `_extract_composer` (`TestExtractComposer`): compositor único, múltiplos, crew vazio
+- `_extract_keywords` (`TestExtractKeywords`): formato movie (chave `keywords`), formato tv (chave `results`), dict vazio, lista vazia
+- `_extract_certification_br_movie` (`TestExtractCertificationBrMovie`): encontra BR, sem BR, BR sem certification, dict vazio
+- `_extract_certification_br_tv` (`TestExtractCertificationBrTv`): encontra BR, sem BR, rating vazio
+- `_extract_trailer_url` (`TestExtractTrailerUrl`): trailer oficial do YouTube, fallback para não-oficial, sem YouTube, sem trailer, dict vazio
+- `_extract_production_companies` (`TestExtractProductionCompanies`): produtoras comma-separated, lista vazia, entrada None
+- `_extract_creators` (`TestExtractCreators`): criadores comma-separated, lista vazia
+- `_extract_networks` (`TestExtractNetworks`): networks comma-separated, lista vazia
+- `_extract_producers` (`TestExtractProducers`): produtor único, produtor+executivo, deduplicação por nome, limite top 3, sem produtor, crew vazio
+- `_extract_cinematographer` (`TestExtractCinematographer`): cinematógrafo único, múltiplos, sem cinematógrafo, crew vazio
+- `_extract_editor` (`TestExtractEditor`): montador único, múltiplos, sem montador, crew vazio
+- `_extract_production_countries` (`TestExtractProductionCountries`): múltiplos países, lista vazia, entrada None
+- `_extract_recommended_titles` (`TestExtractRecommendedTitles`): formato movie (title), formato tv (name), limite customizado, dict vazio, results vazio
+- `_extract_recommended_ids` (`TestExtractRecommendedIds`): extração de IDs, limite customizado, dict vazio, results vazio, result sem campo id
+- `_extract_similar_titles` (`TestExtractSimilarTitles`): formato movie (title), formato tv (name), dict vazio
+- `_extract_similar_ids` (`TestExtractSimilarIds`): extração de IDs, dict vazio, result sem campo id
+- `_extract_alternative_titles` (`TestExtractAlternativeTitles`): formato movie (titles key), formato tv (results key), dict vazio
+- `_extract_pt_br_translation` (`TestExtractPtBrTranslation`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
+- `_add_translations_pt` (`TestAddTranslationsOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, não traduz quando `original_language` já é `pt`, loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, retenta quando `overview_pt_tmdb` fica igual a `overview_en`
+- `_add_translations_keywords_pt` (`TestAddTranslationsKeywordsPt`): traduz via Google Translate, não traduz quando `original_language` já é `pt`, não traduz quando `keywords` vazia
+- `_add_translations_tagline_pt` (`TestAddTranslationsTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para Google Translate quando TMDB não tem, ignora vazia/nula, não traduz quando `original_language` já é `pt`, retenta quando `tagline_pt_tmdb` fica igual a `tagline`
+- `_extract_production_countries_iso` (`TestExtractProductionCountriesIso`): extrai códigos ISO, retorna None para lista vazia e None
+- `_extract_spoken_languages` (`TestExtractSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
+- `_extract_spoken_languages_iso` (`TestExtractSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
 - `fetch_existing_ids_from_details`: SQL **não** contém filtro de `year` — detecta IDs processados em qualquer partição no mês atual; retorna `[]` em caso de erro (tabela inexistente na primeira execução)
 - `fetch_ids_stale_watch_providers`: SQL usa LEFT JOIN e condição mensal; retorna `[]` em caso de erro
-- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; não escreve nada quando todos os IDs falham (`test_does_not_write_when_all_ids_fail`); não escreve nada quando todos os registros ficam sem `year` após o `dropna` (`test_does_not_write_when_all_records_missing_year` — regressão do bug `EmptyDataFrame` no `wr.s3.to_parquet`); prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback via `traduzir_fn` (`translate_provider="google"` no teste, patchando `traduzir_texto`) quando TMDB não tem pt-BR (TV sem translations) — em produção o default é `translate_provider="aws"`; campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG (a gravação de `spoken_languages_iso` é coberta em nível de extração por `TestExtrairSpokenLanguagesIso`, não neste teste de escrita); **cache de tradução entre execuções:** não retraduz quando a fonte (`overview_en`/`tagline`/`keywords`) não mudou desde o registro existente no S3 (`test_nao_retraduz_quando_fonte_nao_mudou`); retraduz só o campo cuja fonte mudou, reaproveitando o cache dos demais (`test_retraduz_apenas_campo_cuja_fonte_mudou`, com `translate_provider="google"`); tradução nativa do TMDB no run atual sobrepõe o cache mesmo com fonte igual (`test_traducao_nativa_tmdb_sobrepoe_cache`); lê o S3 uma única vez por partição `year`, reaproveitada tanto para o cache de tradução quanto para o merge final (`test_le_s3_uma_unica_vez_por_particao_year`)
+- `collect_and_write_details`: chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; não escreve nada quando todos os IDs falham (`test_does_not_write_when_all_ids_fail`); não escreve nada quando todos os registros ficam sem `year` após o `dropna` (`test_does_not_write_when_all_records_missing_year` — regressão do bug `EmptyDataFrame` no `wr.s3.to_parquet`); prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback via `traduzir_fn` (`translate_provider="google"` no teste, patchando `translate_text`) quando TMDB não tem pt-BR (TV sem translations) — em produção o default é `translate_provider="aws"`; campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG (a gravação de `spoken_languages_iso` é coberta em nível de extração por `TestExtractSpokenLanguagesIso`, não neste teste de escrita); **cache de tradução entre execuções:** não retraduz quando a fonte (`overview_en`/`tagline`/`keywords`) não mudou desde o registro existente no S3 (`test_nao_retraduz_quando_fonte_nao_mudou`); retraduz só o campo cuja fonte mudou, reaproveitando o cache dos demais (`test_retraduz_apenas_campo_cuja_fonte_mudou`, com `translate_provider="google"`); tradução nativa do TMDB no run atual sobrepõe o cache mesmo com fonte igual (`test_traducao_nativa_tmdb_sobrepoe_cache`); lê o S3 uma única vez por partição `year`, reaproveitada tanto para o cache de tradução quanto para o merge final (`test_le_s3_uma_unica_vez_por_particao_year`)
 - `repair_details_duplicates` (`TestRepairDetailsDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém `dt_processamento` mais recente por ID; usa `overwrite_partitions`
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `dt_atualizacao` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
 - `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado
 
-### `TestExtrairElenco`
+### `TestExtractCast`
 
 | Teste | O que verifica |
 |---|---|
@@ -101,7 +101,7 @@ Testa as funções individuais:
 | `test_sem_cast` | Retorna `None` quando não há chave `cast` |
 | `test_limite_customizado` | Respeita o parâmetro `limite` customizado |
 
-### `TestExtrairDiretor`
+### `TestExtractDirector`
 
 | Teste | O que verifica |
 |---|---|
@@ -110,7 +110,7 @@ Testa as funções individuais:
 | `test_sem_diretor` | Retorna `None` quando não há diretor na crew |
 | `test_crew_vazio` | Retorna `None` para crew vazia |
 
-### `TestExtrairKeywords`
+### `TestExtractKeywords`
 
 | Teste | O que verifica |
 |---|---|
@@ -119,7 +119,7 @@ Testa as funções individuais:
 | `test_vazio` | Retorna `None` para dict vazio |
 | `test_lista_vazia` | Retorna `None` para lista de keywords vazia |
 
-### `TestExtrairCertificacaoBrMovie`
+### `TestExtractCertificationBrMovie`
 
 | Teste | O que verifica |
 |---|---|
@@ -128,7 +128,7 @@ Testa as funções individuais:
 | `test_br_sem_certification` | Retorna `None` quando o release BR tem `certification` vazia |
 | `test_vazio` | Retorna `None` para dict vazio |
 
-### `TestExtrairCertificacaoBrTv`
+### `TestExtractCertificationBrTv`
 
 | Teste | O que verifica |
 |---|---|
@@ -136,7 +136,7 @@ Testa as funções individuais:
 | `test_sem_br` | Retorna `None` quando não há rating BR |
 | `test_rating_vazio` | Retorna `None` quando o rating BR está vazio |
 
-### `TestExtrairTrailerUrl`
+### `TestExtractTrailerUrl`
 
 | Teste | O que verifica |
 |---|---|
@@ -146,7 +146,7 @@ Testa as funções individuais:
 | `test_sem_trailer` | Retorna `None` quando só há vídeos do tipo `Teaser` |
 | `test_vazio` | Retorna `None` para dict vazio |
 
-### `TestExtrairProdutoras`
+### `TestExtractProductionCompanies`
 
 | Teste | O que verifica |
 |---|---|
@@ -154,21 +154,21 @@ Testa as funções individuais:
 | `test_lista_vazia` | Retorna `None` para lista vazia |
 | `test_none` | Retorna `None` para entrada `None` |
 
-### `TestExtrairCriadores`
+### `TestExtractCreators`
 
 | Teste | O que verifica |
 |---|---|
 | `test_criadores` | Extrai nomes de criadores comma-separated |
 | `test_vazio` | Retorna `None` para lista vazia |
 
-### `TestExtrairNetworks`
+### `TestExtractNetworks`
 
 | Teste | O que verifica |
 |---|---|
 | `test_networks` | Extrai nomes de redes de TV comma-separated |
 | `test_vazio` | Retorna `None` para lista vazia |
 
-### `TestExtrairProdutores`
+### `TestExtractProducers`
 
 | Teste | O que verifica |
 |---|---|
@@ -179,7 +179,7 @@ Testa as funções individuais:
 | `test_sem_produtor` | Retorna `None` quando não há produtor na crew |
 | `test_crew_vazio` | Retorna `None` para crew vazia |
 
-### `TestExtrairCinematografo`
+### `TestExtractCinematographer`
 
 | Teste | O que verifica |
 |---|---|
@@ -188,7 +188,7 @@ Testa as funções individuais:
 | `test_sem_cinematografo` | Retorna `None` quando não há cinematógrafo |
 | `test_crew_vazio` | Retorna `None` para crew vazia |
 
-### `TestExtrairMontador`
+### `TestExtractEditor`
 
 | Teste | O que verifica |
 |---|---|
@@ -197,7 +197,7 @@ Testa as funções individuais:
 | `test_sem_montador` | Retorna `None` quando não há montador |
 | `test_crew_vazio` | Retorna `None` para crew vazia |
 
-### `TestExtrairPaisesProducao`
+### `TestExtractProductionCountries`
 
 | Teste | O que verifica |
 |---|---|
@@ -205,7 +205,7 @@ Testa as funções individuais:
 | `test_vazio` | Retorna `None` para lista vazia |
 | `test_none` | Retorna `None` para entrada `None` |
 
-### `TestExtrairTitulosRecomendados`
+### `TestExtractRecommendedTitles`
 
 | Teste | O que verifica |
 |---|---|
@@ -215,7 +215,7 @@ Testa as funções individuais:
 | `test_vazio` | Retorna `None` para dict vazio |
 | `test_results_vazio` | Retorna `None` para `results` vazio |
 
-### `TestExtrairTitulosSimilares`
+### `TestExtractSimilarTitles`
 
 | Teste | O que verifica |
 |---|---|
@@ -223,7 +223,7 @@ Testa as funções individuais:
 | `test_tv` | Extrai títulos similares via chave `name` (séries) |
 | `test_vazio` | Retorna `None` para dict vazio |
 
-### `TestExtrairTitulosAlternativos`
+### `TestExtractAlternativeTitles`
 
 | Teste | O que verifica |
 |---|---|
@@ -231,7 +231,7 @@ Testa as funções individuais:
 | `test_tv` | Extrai títulos alternativos via chave `results` (séries) |
 | `test_vazio` | Retorna `None` para dict vazio |
 
-### `TestExtrairTraducaoPtBr`
+### `TestExtractPtBrTranslation`
 
 | Teste | O que verifica |
 |---|---|
@@ -241,23 +241,23 @@ Testa as funções individuais:
 | `test_ignora_pt_de_portugal` | Ignora tradução pt-PT (iso_3166_1='PT'), retorna `None` |
 | `test_ignora_overview_vazio` | Retorna `None` para overview vazio, mas extrai tagline |
 
-### `TestAdicionarTraducoesOverviewPt`
+### `TestAddTranslationsOverviewPt`
 
 | Teste | O que verifica |
 |---|---|
 | `test_prioriza_tmdb_pt_br` | Usa `overview_pt_tmdb` quando presente, sem chamar Google Translate |
 | `test_fallback_para_google_translator` | Traduz via Google Translate quando não há `overview_pt_tmdb` |
-| `test_nao_traduz_quando_idioma_original_ja_e_pt` | Não chama `traduzir_texto` quando `original_language == "pt"` |
+| `test_nao_traduz_quando_idioma_original_ja_e_pt` | Não chama `translate_text` quando `original_language == "pt"` |
 | `test_loga_resumo_de_sucesso` | Loga `"1 registros traduzidos com sucesso (overview_pt)."` em INFO |
-| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `traduzir_texto` devolve o original em caso de falha; log reporta `"0 registros traduzidos com sucesso"` |
+| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `translate_text` devolve o original em caso de falha; log reporta `"0 registros traduzidos com sucesso"` |
 | `test_retenta_quando_overview_pt_tmdb_igual_a_overview_en` | Caso de borda: `overview_pt_tmdb` idêntico a `overview_en` é reenviado ao Google Translate (mesma regra de retry do backfill) |
 
-### `TestAdicionarTraducoesKeywordsPt`
+### `TestAddTranslationsKeywordsPt`
 
 | Teste | O que verifica |
 |---|---|
 | `test_traduz_keywords` | Traduz `keywords` via Google Translate |
-| `test_nao_traduz_quando_idioma_original_ja_e_pt` | Não chama `traduzir_texto` quando `original_language == "pt"` |
+| `test_nao_traduz_quando_idioma_original_ja_e_pt` | Não chama `translate_text` quando `original_language == "pt"` |
 | `test_nao_traduz_quando_keywords_vazias` | `keywords_pt` fica nulo quando `keywords` está vazia/nula |
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
@@ -293,7 +293,7 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 |---|---|
 | `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `AGG_JOB_NAME`, etc.) |
 
-> **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`), `get_api_secret` (`TestGetApiSecret`) e `reaproveitar_traducao_existente` (`TestReaproveitarTraducaoExistente`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py`, `test/shared_src/test_glue_helpers.py` e `test/shared_src/test_traducao.py` junto com a extração dessas funções para `shared_utils/`.
+> **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`), `get_api_secret` (`TestGetApiSecret`) e `reuse_existing_translation` (`TestReuseExistingTranslation`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py`, `test/shared_src/test_glue_helpers.py` e `test/shared_src/test_traducao.py` junto com a extração dessas funções para `shared_utils/`.
 
 ## Como executar
 

@@ -12,17 +12,17 @@ import boto3
 import streamlit as st
 import streamlit.components.v1 as components
 import watchtower
-from agent import recomendar
+from agent import recommend
 from componentes import (
-    carregar_css_login,
-    carregar_css_principal,
-    renderizar_grid,
-    renderizar_rodape,
-    renderizar_rodape_login,
+    load_login_css,
+    load_main_css,
+    render_grid,
+    render_footer,
+    render_login_footer,
 )
 
 
-def _carregar_filmbot_password() -> None:
+def _load_filmbot_password() -> None:
     """Busca filmbot_password do Secrets Manager e escreve em secrets.toml."""
     secret_arn = os.getenv("FILMBOT_SECRET_ARN")
     if not secret_arn:
@@ -42,7 +42,7 @@ def _carregar_filmbot_password() -> None:
     secrets_file.chmod(0o600)
 
 
-_carregar_filmbot_password()
+_load_filmbot_password()
 
 _log_group = os.getenv("CLOUDWATCH_LOG_GROUP", "")
 if _log_group:
@@ -55,38 +55,38 @@ if _log_group:
     logging.root.setLevel(logging.ERROR)
 
 _executor = ThreadPoolExecutor(max_workers=2)
-_MAX_CONSULTAS_POR_HORA = 20
+_MAX_QUERIES_PER_HOUR = 20
 
 
 @st.cache_resource
-def _criar_historico_por_ip() -> dict[str, list[float]]:
+def _create_ip_history() -> dict[str, list[float]]:
     """Cria dict compartilhado para rastrear timestamps de consultas por IP."""
     return {}
 
 
-_historico_por_ip = _criar_historico_por_ip()
+_ip_history = _create_ip_history()
 
 
-def _obter_ip_cliente() -> str:
+def _get_client_ip() -> str:
     """Extrai o IP do cliente a partir do header X-Forwarded-For repassado pelo Caddy."""
     forwarded = st.context.headers.get("X-Forwarded-For", "")
     return forwarded.split(",")[0].strip() if forwarded else "local"
 
 
-def _consultas_na_ultima_hora(ip: str) -> int:
+def _queries_in_last_hour(ip: str) -> int:
     """Conta consultas na última hora para o IP e limpa registros expirados."""
-    agora = time.time()
-    historico = [t for t in _historico_por_ip.get(ip, []) if t > agora - 3600]
-    _historico_por_ip[ip] = historico
-    return len(historico)
+    now = time.time()
+    history = [t for t in _ip_history.get(ip, []) if t > now - 3600]
+    _ip_history[ip] = history
+    return len(history)
 
 
-def _segundos_para_liberar(ip: str) -> int:
+def _seconds_until_available(ip: str) -> int:
     """Calcula quantos segundos faltam até a consulta mais antiga do IP expirar."""
-    historico = _historico_por_ip.get(ip, [])
-    if not historico:
+    history = _ip_history.get(ip, [])
+    if not history:
         return 0
-    return max(0, math.ceil(historico[0] + 3600 - time.time()))
+    return max(0, math.ceil(history[0] + 3600 - time.time()))
 
 
 st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
@@ -94,8 +94,8 @@ st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
 # ==============================================================================
 # AUTENTICAÇÃO
 # ==============================================================================
-if not st.session_state.get("autenticado"):
-    carregar_css_login()
+if not st.session_state.get("authenticated"):
+    load_login_css()
 
     _, col, _ = st.columns([1, 1.1, 1])
     with col:
@@ -107,55 +107,55 @@ if not st.session_state.get("autenticado"):
         </div>
         """, unsafe_allow_html=True)
 
-        senha = st.text_input(
+        password = st.text_input(
             "", placeholder="Digite a senha de acesso...",
             type="password", label_visibility="collapsed",
         )
-        entrar = st.button("Entrar →", use_container_width=True)
+        submit = st.button("Entrar →", use_container_width=True)
 
-        if entrar and senha == st.secrets.get("auth", {}).get("password", ""):
-            st.session_state["autenticado"] = True
+        if submit and password == st.secrets.get("auth", {}).get("password", ""):
+            st.session_state["authenticated"] = True
             st.rerun()
-        elif entrar and senha:
+        elif submit and password:
             st.markdown(
                 '<div class="login-error">❌ Senha incorreta. Tente novamente.</div>',
                 unsafe_allow_html=True,
             )
 
-    renderizar_rodape_login()
+    render_login_footer()
     st.stop()
 
 # ==============================================================================
 # PÁGINA PRINCIPAL
 # ==============================================================================
-carregar_css_principal()
+load_main_css()
 
-col_titulo, col_sair = st.columns([9, 1])
-with col_titulo:
+title_col, logout_col = st.columns([9, 1])
+with title_col:
     st.title("🎬 FilmBot — Seu assistente de filmes e séries")
     st.caption("Descubra o que assistir com ajuda da inteligência artificial")
-with col_sair:
+with logout_col:
     st.write("")
     if st.button("Sair"):
-        st.session_state["autenticado"] = False
+        st.session_state["authenticated"] = False
         st.rerun()
 
-preferencia = st.text_area(
+preference = st.text_area(
     "O que você quer assistir?",
     placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com O Senhor dos Anéis...",
     height=68,
 )
 
-_ip_cliente = _obter_ip_cliente()
-_consultas_feitas = _consultas_na_ultima_hora(_ip_cliente)
-_restantes = _MAX_CONSULTAS_POR_HORA - _consultas_feitas
+_client_ip = _get_client_ip()
+_queries_made = _queries_in_last_hour(_client_ip)
+_remaining = _MAX_QUERIES_PER_HOUR - _queries_made
 
-if _restantes <= 0:
-    _segundos = _segundos_para_liberar(_ip_cliente)
+if _remaining <= 0:
+    _seconds = _seconds_until_available(_client_ip)
     components.html(f"""
     <style>
       body {{ margin: 0; padding: 0; background: transparent; font-family: 'Source Sans Pro', sans-serif; }}
-      .msg-aviso {{
+      .msg-warning {{
         background: rgba(250,204,21,0.1);
         border: 1px solid rgba(250,204,21,0.3);
         border-radius: 10px;
@@ -164,61 +164,61 @@ if _restantes <= 0:
         font-size: 14px;
         max-width: 50%;
       }}
-      .tempo-countdown {{ font-weight: 600; }}
+      .time-countdown {{ font-weight: 600; }}
     </style>
-    <div class="msg-aviso">
-      ⚠️ Limite de {_MAX_CONSULTAS_POR_HORA} consultas atingido. Disponível novamente em
-      <span class="tempo-countdown" id="countdown"></span>.
+    <div class="msg-warning">
+      ⚠️ Limite de {_MAX_QUERIES_PER_HOUR} consultas atingido. Disponível novamente em
+      <span class="time-countdown" id="countdown"></span>.
     </div>
     <script>
-      let restante = {_segundos};
+      let remaining = {_seconds};
       const el = document.getElementById('countdown');
-      function atualizar() {{
-        if (restante <= 0) {{
+      function update() {{
+        if (remaining <= 0) {{
           el.textContent = '00:00';
           window.parent.location.reload();
           return;
         }}
-        const m = Math.floor(restante / 60);
-        const s = restante % 60;
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
         el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-        restante--;
+        remaining--;
       }}
-      atualizar();
-      setInterval(atualizar, 1000);
+      update();
+      setInterval(update, 1000);
     </script>
     """, height=55)
 else:
-    st.caption(f"Consultas restantes: {_restantes}/{_MAX_CONSULTAS_POR_HORA} por hora")
+    st.caption(f"Consultas restantes: {_remaining}/{_MAX_QUERIES_PER_HOUR} por hora")
 
 # ==============================================================================
 # LÓGICA DO BOTÃO E BUSCA ASSÍNCRONA
 # ==============================================================================
-buscando = st.session_state.get("buscando", False)
+searching = st.session_state.get("searching", False)
 
-if buscando:
-    col_rec, col_canc, _ = st.columns([1, 1, 6], gap="small")
-    with col_rec:
+if searching:
+    rec_col, cancel_col, _ = st.columns([1, 1, 6], gap="small")
+    with rec_col:
         st.button("Recomendar", type="primary", disabled=True)
-    with col_canc:
+    with cancel_col:
         if st.button("Cancelar", type="primary", key="btn_cancelar"):
-            st.session_state["buscando"] = False
-            st.session_state["busca_concluida"] = False
-            st.session_state["erro_busca"] = False
-            st.session_state["titulos"] = []
+            st.session_state["searching"] = False
+            st.session_state["search_completed"] = False
+            st.session_state["search_error"] = False
+            st.session_state["titles"] = []
             st.session_state["future"] = None
             st.rerun()
 
     future: Future = st.session_state.get("future")
     if future and future.done():
-        st.session_state["buscando"] = False
-        st.session_state["busca_concluida"] = True
+        st.session_state["searching"] = False
+        st.session_state["search_completed"] = True
         try:
-            st.session_state["titulos"] = future.result()
+            st.session_state["titles"] = future.result()
         except Exception:
             logging.exception("Erro ao buscar recomendações")
-            st.session_state["erro_busca"] = True
-            st.session_state["titulos"] = []
+            st.session_state["search_error"] = True
+            st.session_state["titles"] = []
         st.rerun()
     else:
         st.markdown("""
@@ -230,38 +230,38 @@ if buscando:
         time.sleep(0.5)
         st.rerun()
 else:
-    col_rec, _, __ = st.columns([1, 1, 6], gap="small")
-    with col_rec:
-        if st.button("Recomendar", type="primary", disabled=_restantes <= 0) and preferencia:
-            _historico_por_ip.setdefault(_ip_cliente, []).append(time.time())
-            st.session_state["future"] = _executor.submit(recomendar, preferencia)
-            st.session_state["buscando"] = True
-            st.session_state["busca_concluida"] = False
-            st.session_state["erro_busca"] = False
-            st.session_state["titulos"] = []
+    rec_col, _, __ = st.columns([1, 1, 6], gap="small")
+    with rec_col:
+        if st.button("Recomendar", type="primary", disabled=_remaining <= 0) and preference:
+            _ip_history.setdefault(_client_ip, []).append(time.time())
+            st.session_state["future"] = _executor.submit(recommend, preference)
+            st.session_state["searching"] = True
+            st.session_state["search_completed"] = False
+            st.session_state["search_error"] = False
+            st.session_state["titles"] = []
             st.rerun()
 
 # ==============================================================================
 # EXIBIÇÃO DOS RESULTADOS
 # ==============================================================================
-titulos = st.session_state.get("titulos", [])
+titles = st.session_state.get("titles", [])
 
-if st.session_state.get("erro_busca"):
+if st.session_state.get("search_error"):
     st.markdown("""
-    <div class="msg-erro">
+    <div class="msg-error">
       ❌ Algo deu errado ao buscar as recomendações. Tente novamente em instantes.
     </div>
     """, unsafe_allow_html=True)
 
-if st.session_state.get("busca_concluida") and not titulos and not st.session_state.get("erro_busca"):
+if st.session_state.get("search_completed") and not titles and not st.session_state.get("search_error"):
     st.markdown("""
-    <div class="msg-aviso">
+    <div class="msg-warning">
       ⚠️ Não encontramos nada com essa descrição. Tente usar outras palavras ou ser mais específico.
     </div>
     """, unsafe_allow_html=True)
-elif titulos:
-    palavra = "opção" if len(titulos) == 1 else "opções"
-    st.markdown(f"**Encontramos {len(titulos)} {palavra} para você!**")
-    st.html(renderizar_grid(titulos))
+elif titles:
+    word = "opção" if len(titles) == 1 else "opções"
+    st.markdown(f"**Encontramos {len(titles)} {word} para você!**")
+    st.html(render_grid(titles))
 
-renderizar_rodape()
+render_footer()

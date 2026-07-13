@@ -9,7 +9,7 @@ import src.utils as u
 # ---------------------------------------------------------------------------
 
 
-class TestExtrairElenco:
+class TestExtractCast:
     def test_top_5_por_ordem(self):
         creditos = {"cast": [
             {"name": "Ator C", "order": 2},
@@ -19,249 +19,249 @@ class TestExtrairElenco:
             {"name": "Ator E", "order": 4},
             {"name": "Ator F", "order": 5},
         ]}
-        assert u._extrair_elenco(creditos) == "Ator A, Ator B, Ator C, Ator D, Ator E"
+        assert u._extract_cast(creditos) == "Ator A, Ator B, Ator C, Ator D, Ator E"
 
     def test_menos_que_limite(self):
         creditos = {"cast": [{"name": "Ator A", "order": 0}]}
-        assert u._extrair_elenco(creditos) == "Ator A"
+        assert u._extract_cast(creditos) == "Ator A"
 
     def test_cast_vazio(self):
-        assert u._extrair_elenco({"cast": []}) is None
+        assert u._extract_cast({"cast": []}) is None
 
     def test_sem_cast(self):
-        assert u._extrair_elenco({}) is None
+        assert u._extract_cast({}) is None
 
     def test_limite_customizado(self):
         creditos = {"cast": [
             {"name": f"Ator {i}", "order": i} for i in range(10)
         ]}
-        assert u._extrair_elenco(creditos, limite=3) == "Ator 0, Ator 1, Ator 2"
+        assert u._extract_cast(creditos, limit=3) == "Ator 0, Ator 1, Ator 2"
 
 
-class TestExtrairDiretor:
+class TestExtractDirector:
     def test_diretor_unico(self):
         creditos = {"crew": [
             {"name": "Christopher Nolan", "job": "Director"},
             {"name": "Emma Thomas", "job": "Producer"},
         ]}
-        assert u._extrair_diretor(creditos) == "Christopher Nolan"
+        assert u._extract_director(creditos) == "Christopher Nolan"
 
     def test_multiplos_diretores(self):
         creditos = {"crew": [
             {"name": "Diretor A", "job": "Director"},
             {"name": "Diretor B", "job": "Director"},
         ]}
-        assert u._extrair_diretor(creditos) == "Diretor A, Diretor B"
+        assert u._extract_director(creditos) == "Diretor A, Diretor B"
 
     def test_sem_diretor(self):
         creditos = {"crew": [{"name": "Produtor", "job": "Producer"}]}
-        assert u._extrair_diretor(creditos) is None
+        assert u._extract_director(creditos) is None
 
     def test_crew_vazio(self):
-        assert u._extrair_diretor({"crew": []}) is None
+        assert u._extract_director({"crew": []}) is None
 
 
-class TestExtrairRoteiristas:
+class TestExtractWriters:
     def test_roteirista_unico(self):
         creditos = {"crew": [
             {"name": "Aaron Sorkin", "job": "Screenplay"},
             {"name": "Produtor X", "job": "Producer"},
         ]}
-        assert u._extrair_roteiristas(creditos) == "Aaron Sorkin"
+        assert u._extract_writers(creditos) == "Aaron Sorkin"
 
     def test_multiplos_roteiristas(self):
         creditos = {"crew": [
             {"name": "Roteirista A", "job": "Screenplay"},
             {"name": "Roteirista B", "job": "Writer"},
         ]}
-        assert u._extrair_roteiristas(creditos) == "Roteirista A, Roteirista B"
+        assert u._extract_writers(creditos) == "Roteirista A, Roteirista B"
 
     def test_deduplica_mesmo_nome(self):
         creditos = {"crew": [
             {"name": "Aaron Sorkin", "job": "Screenplay"},
             {"name": "Aaron Sorkin", "job": "Writer"},
         ]}
-        assert u._extrair_roteiristas(creditos) == "Aaron Sorkin"
+        assert u._extract_writers(creditos) == "Aaron Sorkin"
 
     def test_sem_roteirista(self):
         creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
-        assert u._extrair_roteiristas(creditos) is None
+        assert u._extract_writers(creditos) is None
 
     def test_crew_vazio(self):
-        assert u._extrair_roteiristas({"crew": []}) is None
+        assert u._extract_writers({"crew": []}) is None
 
 
-class TestExtrairCompositor:
+class TestExtractComposer:
     def test_compositor_unico(self):
         creditos = {"crew": [
             {"name": "Hans Zimmer", "job": "Original Music Composer"},
             {"name": "Diretor X", "job": "Director"},
         ]}
-        assert u._extrair_compositor(creditos) == "Hans Zimmer"
+        assert u._extract_composer(creditos) == "Hans Zimmer"
 
     def test_multiplos_compositores(self):
         creditos = {"crew": [
             {"name": "Hans Zimmer", "job": "Original Music Composer"},
             {"name": "John Williams", "job": "Original Music Composer"},
         ]}
-        assert u._extrair_compositor(creditos) == "Hans Zimmer, John Williams"
+        assert u._extract_composer(creditos) == "Hans Zimmer, John Williams"
 
     def test_sem_compositor(self):
         creditos = {"crew": [{"name": "Produtor", "job": "Producer"}]}
-        assert u._extrair_compositor(creditos) is None
+        assert u._extract_composer(creditos) is None
 
     def test_crew_vazio(self):
-        assert u._extrair_compositor({"crew": []}) is None
+        assert u._extract_composer({"crew": []}) is None
 
 
-class TestExtrairKeywords:
+class TestExtractKeywords:
     def test_formato_movie(self):
         dados = {"keywords": [{"id": 1, "name": "time travel"}, {"id": 2, "name": "dystopia"}]}
-        assert u._extrair_keywords(dados) == "time travel, dystopia"
+        assert u._extract_keywords(dados) == "time travel, dystopia"
 
     def test_formato_tv(self):
         dados = {"results": [{"id": 1, "name": "based on novel"}]}
-        assert u._extrair_keywords(dados) == "based on novel"
+        assert u._extract_keywords(dados) == "based on novel"
 
     def test_vazio(self):
-        assert u._extrair_keywords({}) is None
+        assert u._extract_keywords({}) is None
 
     def test_lista_vazia(self):
-        assert u._extrair_keywords({"keywords": []}) is None
+        assert u._extract_keywords({"keywords": []}) is None
 
 
-class TestExtrairCertificacaoBrMovie:
+class TestExtractCertificationBrMovie:
     def test_encontra_br(self):
         dados = {"results": [
             {"iso_3166_1": "US", "release_dates": [{"certification": "PG-13"}]},
             {"iso_3166_1": "BR", "release_dates": [{"certification": "14"}]},
         ]}
-        assert u._extrair_certificacao_br_movie(dados) == "14"
+        assert u._extract_certification_br_movie(dados) == "14"
 
     def test_sem_br(self):
         dados = {"results": [{"iso_3166_1": "US", "release_dates": [{"certification": "R"}]}]}
-        assert u._extrair_certificacao_br_movie(dados) is None
+        assert u._extract_certification_br_movie(dados) is None
 
     def test_br_sem_certification(self):
         dados = {"results": [{"iso_3166_1": "BR", "release_dates": [{"certification": ""}]}]}
-        assert u._extrair_certificacao_br_movie(dados) is None
+        assert u._extract_certification_br_movie(dados) is None
 
     def test_vazio(self):
-        assert u._extrair_certificacao_br_movie({}) is None
+        assert u._extract_certification_br_movie({}) is None
 
 
-class TestExtrairCertificacaoBrTv:
+class TestExtractCertificationBrTv:
     def test_encontra_br(self):
         dados = {"results": [
             {"iso_3166_1": "US", "rating": "TV-MA"},
             {"iso_3166_1": "BR", "rating": "16"},
         ]}
-        assert u._extrair_certificacao_br_tv(dados) == "16"
+        assert u._extract_certification_br_tv(dados) == "16"
 
     def test_sem_br(self):
         dados = {"results": [{"iso_3166_1": "US", "rating": "TV-14"}]}
-        assert u._extrair_certificacao_br_tv(dados) is None
+        assert u._extract_certification_br_tv(dados) is None
 
     def test_rating_vazio(self):
         dados = {"results": [{"iso_3166_1": "BR", "rating": ""}]}
-        assert u._extrair_certificacao_br_tv(dados) is None
+        assert u._extract_certification_br_tv(dados) is None
 
 
-class TestExtrairTrailerUrl:
+class TestExtractTrailerUrl:
     def test_trailer_oficial(self):
         videos = {"results": [
             {"type": "Trailer", "site": "YouTube", "official": True, "key": "abc123"},
             {"type": "Trailer", "site": "YouTube", "official": False, "key": "xyz789"},
         ]}
-        assert u._extrair_trailer_url(videos) == "https://youtube.com/watch?v=abc123"
+        assert u._extract_trailer_url(videos) == "https://youtube.com/watch?v=abc123"
 
     def test_fallback_nao_oficial(self):
         videos = {"results": [
             {"type": "Trailer", "site": "YouTube", "official": False, "key": "xyz789"},
         ]}
-        assert u._extrair_trailer_url(videos) == "https://youtube.com/watch?v=xyz789"
+        assert u._extract_trailer_url(videos) == "https://youtube.com/watch?v=xyz789"
 
     def test_sem_youtube(self):
         videos = {"results": [{"type": "Trailer", "site": "Vimeo", "official": True, "key": "v1"}]}
-        assert u._extrair_trailer_url(videos) is None
+        assert u._extract_trailer_url(videos) is None
 
     def test_sem_trailer(self):
         videos = {"results": [{"type": "Teaser", "site": "YouTube", "official": True, "key": "t1"}]}
-        assert u._extrair_trailer_url(videos) is None
+        assert u._extract_trailer_url(videos) is None
 
     def test_vazio(self):
-        assert u._extrair_trailer_url({}) is None
+        assert u._extract_trailer_url({}) is None
 
 
-class TestExtrairProdutoras:
+class TestExtractProductionCompanies:
     def test_produtoras(self):
         companies = [{"name": "A24"}, {"name": "Pixar"}]
-        assert u._extrair_produtoras(companies) == "A24, Pixar"
+        assert u._extract_production_companies(companies) == "A24, Pixar"
 
     def test_lista_vazia(self):
-        assert u._extrair_produtoras([]) is None
+        assert u._extract_production_companies([]) is None
 
     def test_none(self):
-        assert u._extrair_produtoras(None) is None
+        assert u._extract_production_companies(None) is None
 
 
-class TestExtrairCriadores:
+class TestExtractCreators:
     def test_criadores(self):
         created_by = [{"name": "Vince Gilligan"}, {"name": "Peter Gould"}]
-        assert u._extrair_criadores(created_by) == "Vince Gilligan, Peter Gould"
+        assert u._extract_creators(created_by) == "Vince Gilligan, Peter Gould"
 
     def test_vazio(self):
-        assert u._extrair_criadores([]) is None
+        assert u._extract_creators([]) is None
 
 
-class TestExtrairNetworks:
+class TestExtractNetworks:
     def test_networks(self):
         networks = [{"name": "HBO"}, {"name": "Netflix"}]
-        assert u._extrair_networks(networks) == "HBO, Netflix"
+        assert u._extract_networks(networks) == "HBO, Netflix"
 
     def test_vazio(self):
-        assert u._extrair_networks([]) is None
+        assert u._extract_networks([]) is None
 
 
-class TestExtrairSpokenLanguages:
+class TestExtractSpokenLanguages:
     def test_prioriza_name_sobre_english_name(self):
         langs = [{"name": "Português", "english_name": "Portuguese"}, {"name": "Français", "english_name": "French"}]
-        assert u._extrair_spoken_languages(langs) == "Português, Français"
+        assert u._extract_spoken_languages(langs) == "Português, Français"
 
     def test_fallback_para_english_name(self):
         langs = [{"english_name": "English"}, {"name": "Français", "english_name": "French"}]
-        assert u._extrair_spoken_languages(langs) == "English, Français"
+        assert u._extract_spoken_languages(langs) == "English, Français"
 
     def test_vazio(self):
-        assert u._extrair_spoken_languages([]) is None
+        assert u._extract_spoken_languages([]) is None
 
     def test_none(self):
-        assert u._extrair_spoken_languages(None) is None
+        assert u._extract_spoken_languages(None) is None
 
 
-class TestExtrairSpokenLanguagesIso:
+class TestExtractSpokenLanguagesIso:
     def test_extrai_codigos_iso(self):
         langs = [{"iso_639_1": "en", "name": "English"}, {"iso_639_1": "fr", "name": "Français"}]
-        assert u._extrair_spoken_languages_iso(langs) == ["en", "fr"]
+        assert u._extract_spoken_languages_iso(langs) == ["en", "fr"]
 
     def test_ignora_sem_iso(self):
         langs = [{"name": "English"}, {"iso_639_1": "fr", "name": "Français"}]
-        assert u._extrair_spoken_languages_iso(langs) == ["fr"]
+        assert u._extract_spoken_languages_iso(langs) == ["fr"]
 
     def test_vazio(self):
-        assert u._extrair_spoken_languages_iso([]) is None
+        assert u._extract_spoken_languages_iso([]) is None
 
     def test_none(self):
-        assert u._extrair_spoken_languages_iso(None) is None
+        assert u._extract_spoken_languages_iso(None) is None
 
 
-class TestExtrairTraducaoPtBr:
+class TestExtractPtBrTranslation:
     def test_extrai_overview_e_tagline_pt_br(self):
         translations = {"translations": [
             {"iso_639_1": "es", "iso_3166_1": "ES", "data": {"overview": "Sinopsis", "tagline": "Lema"}},
             {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "Sinopse BR", "tagline": "Slogan BR"}},
         ]}
-        result = u._extrair_traducao_pt_br(translations)
+        result = u._extract_pt_br_translation(translations)
         assert result["overview_pt_tmdb"] == "Sinopse BR"
         assert result["tagline_pt_tmdb"] == "Slogan BR"
 
@@ -269,12 +269,12 @@ class TestExtrairTraducaoPtBr:
         translations = {"translations": [
             {"iso_639_1": "es", "iso_3166_1": "ES", "data": {"overview": "Sinopsis", "tagline": "Lema"}},
         ]}
-        result = u._extrair_traducao_pt_br(translations)
+        result = u._extract_pt_br_translation(translations)
         assert result["overview_pt_tmdb"] is None
         assert result["tagline_pt_tmdb"] is None
 
     def test_retorna_none_quando_translations_vazio(self):
-        result = u._extrair_traducao_pt_br({})
+        result = u._extract_pt_br_translation({})
         assert result["overview_pt_tmdb"] is None
         assert result["tagline_pt_tmdb"] is None
 
@@ -282,7 +282,7 @@ class TestExtrairTraducaoPtBr:
         translations = {"translations": [
             {"iso_639_1": "pt", "iso_3166_1": "PT", "data": {"overview": "Sinopse PT", "tagline": "Slogan PT"}},
         ]}
-        result = u._extrair_traducao_pt_br(translations)
+        result = u._extract_pt_br_translation(translations)
         assert result["overview_pt_tmdb"] is None
         assert result["tagline_pt_tmdb"] is None
 
@@ -290,19 +290,19 @@ class TestExtrairTraducaoPtBr:
         translations = {"translations": [
             {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "", "tagline": "Slogan BR"}},
         ]}
-        result = u._extrair_traducao_pt_br(translations)
+        result = u._extract_pt_br_translation(translations)
         assert result["overview_pt_tmdb"] is None
         assert result["tagline_pt_tmdb"] == "Slogan BR"
 
 
-class TestAdicionarTraducoesOverviewPt:
+class TestAddTranslationsOverviewPt:
     def test_prioriza_tmdb_pt_br(self):
         df = pd.DataFrame({
             "original_language": ["en"],
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
-        result = u._adicionar_traducoes_pt(df)
+        result = u._add_translations_pt(df)
         assert result["overview_pt"].iloc[0] == "Um grande filme"
 
     def test_fallback_para_google_translator(self):
@@ -311,8 +311,8 @@ class TestAdicionarTraducoesOverviewPt:
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": [None],
         })
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._adicionar_traducoes_pt(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_pt(df)
         assert result["overview_pt"].iloc[0] == "[PT] A great movie"
 
     def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
@@ -321,8 +321,8 @@ class TestAdicionarTraducoesOverviewPt:
             "overview_en": ["Já em português"],
             "overview_pt_tmdb": [None],
         })
-        with patch("src.utils.traduzir_texto") as mock_translate:
-            result = u._adicionar_traducoes_pt(df)
+        with patch("src.utils.translate_text") as mock_translate:
+            result = u._add_translations_pt(df)
         mock_translate.assert_not_called()
         assert pd.isna(result["overview_pt"].iloc[0])
 
@@ -332,22 +332,22 @@ class TestAdicionarTraducoesOverviewPt:
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": [None],
         })
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             with caplog.at_level("INFO"):
-                u._adicionar_traducoes_pt(df)
+                u._add_translations_pt(df)
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
         assert resumo == ["1 registros traduzidos com sucesso (overview_pt)."]
 
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self, caplog):
-        """traduzir_texto devolve o texto original quando falha após todas as tentativas."""
+        """translate_text devolve o texto original quando falha após todas as tentativas."""
         df = pd.DataFrame({
             "original_language": ["en"],
             "overview_en": ["Falhou"],
             "overview_pt_tmdb": [None],
         })
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t):
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
             with caplog.at_level("INFO"):
-                result = u._adicionar_traducoes_pt(df)
+                result = u._add_translations_pt(df)
         assert result["overview_pt"].iloc[0] == "Falhou"
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
         assert resumo == ["0 registros traduzidos com sucesso (overview_pt)."]
@@ -360,39 +360,39 @@ class TestAdicionarTraducoesOverviewPt:
             "overview_en": ["Same text"],
             "overview_pt_tmdb": ["Same text"],
         })
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._adicionar_traducoes_pt(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_pt(df)
         assert result["overview_pt"].iloc[0] == "[PT] Same text"
 
 
-class TestAdicionarTraducoesKeywordsPt:
+class TestAddTranslationsKeywordsPt:
     def test_traduz_keywords(self):
         df = pd.DataFrame({"original_language": ["en"], "keywords": ["action, drama"]})
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._adicionar_traducoes_keywords_pt(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_keywords_pt(df)
         assert result["keywords_pt"].iloc[0] == "[PT] action, drama"
 
     def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
         df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, drama"]})
-        with patch("src.utils.traduzir_texto") as mock_translate:
-            result = u._adicionar_traducoes_keywords_pt(df)
+        with patch("src.utils.translate_text") as mock_translate:
+            result = u._add_translations_keywords_pt(df)
         mock_translate.assert_not_called()
         assert pd.isna(result["keywords_pt"].iloc[0])
 
     def test_nao_traduz_quando_keywords_vazias(self):
         df = pd.DataFrame({"original_language": ["en"], "keywords": [None]})
-        result = u._adicionar_traducoes_keywords_pt(df)
+        result = u._add_translations_keywords_pt(df)
         assert pd.isna(result["keywords_pt"].iloc[0])
 
 
-class TestAdicionarTraducoesTaglinePt:
+class TestAddTranslationsTaglinePt:
     def test_prioriza_tmdb_pt_br(self):
         df = pd.DataFrame({
             "original_language": ["en"],
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": ["Um grande filme"],
         })
-        result = u._adicionar_traducoes_tagline_pt(df)
+        result = u._add_translations_tagline_pt(df)
         assert result["tagline_pt"].iloc[0] == "Um grande filme"
 
     def test_fallback_para_google_translator(self):
@@ -401,8 +401,8 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": [None],
         })
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._adicionar_traducoes_tagline_pt(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_tagline_pt(df)
         assert result["tagline_pt"].iloc[0] == "[PT] A great movie"
 
     def test_nao_traduz_quando_tudo_vazio(self):
@@ -411,7 +411,7 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": [None, ""],
             "tagline_pt_tmdb": [None, None],
         })
-        result = u._adicionar_traducoes_tagline_pt(df)
+        result = u._add_translations_tagline_pt(df)
         assert result["tagline_pt"].isna().all()
 
     def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
@@ -420,8 +420,8 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["Já em português"],
             "tagline_pt_tmdb": [None],
         })
-        with patch("src.utils.traduzir_texto") as mock_translate:
-            result = u._adicionar_traducoes_tagline_pt(df)
+        with patch("src.utils.translate_text") as mock_translate:
+            result = u._add_translations_tagline_pt(df)
         mock_translate.assert_not_called()
         assert pd.isna(result["tagline_pt"].iloc[0])
 
@@ -433,199 +433,199 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["Same text"],
             "tagline_pt_tmdb": ["Same text"],
         })
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._adicionar_traducoes_tagline_pt(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_tagline_pt(df)
         assert result["tagline_pt"].iloc[0] == "[PT] Same text"
 
 
-class TestExtrairPaisesProducaoIso:
+class TestExtractProductionCountriesIso:
     def test_extrai_codigos_iso(self):
         countries = [
             {"iso_3166_1": "US", "name": "United States"},
             {"iso_3166_1": "GB", "name": "United Kingdom"},
         ]
-        assert u._extrair_paises_producao_iso(countries) == ["US", "GB"]
+        assert u._extract_production_countries_iso(countries) == ["US", "GB"]
 
     def test_vazio(self):
-        assert u._extrair_paises_producao_iso([]) is None
+        assert u._extract_production_countries_iso([]) is None
 
     def test_none(self):
-        assert u._extrair_paises_producao_iso(None) is None
+        assert u._extract_production_countries_iso(None) is None
 
 
-class TestExtrairProdutores:
+class TestExtractProducers:
     def test_produtor_unico(self):
         creditos = {"crew": [
             {"name": "Kevin Feige", "job": "Producer"},
             {"name": "Diretor X", "job": "Director"},
         ]}
-        assert u._extrair_produtores(creditos) == "Kevin Feige"
+        assert u._extract_producers(creditos) == "Kevin Feige"
 
     def test_produtor_e_executivo(self):
         creditos = {"crew": [
             {"name": "Kevin Feige", "job": "Producer"},
             {"name": "Victoria Alonso", "job": "Executive Producer"},
         ]}
-        assert u._extrair_produtores(creditos) == "Kevin Feige, Victoria Alonso"
+        assert u._extract_producers(creditos) == "Kevin Feige, Victoria Alonso"
 
     def test_deduplica_mesmo_nome(self):
         creditos = {"crew": [
             {"name": "Kevin Feige", "job": "Producer"},
             {"name": "Kevin Feige", "job": "Executive Producer"},
         ]}
-        assert u._extrair_produtores(creditos) == "Kevin Feige"
+        assert u._extract_producers(creditos) == "Kevin Feige"
 
     def test_limite_top_3(self):
         creditos = {"crew": [
             {"name": f"Produtor {i}", "job": "Producer"} for i in range(5)
         ]}
-        assert u._extrair_produtores(creditos) == "Produtor 0, Produtor 1, Produtor 2"
+        assert u._extract_producers(creditos) == "Produtor 0, Produtor 1, Produtor 2"
 
     def test_sem_produtor(self):
         creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
-        assert u._extrair_produtores(creditos) is None
+        assert u._extract_producers(creditos) is None
 
     def test_crew_vazio(self):
-        assert u._extrair_produtores({"crew": []}) is None
+        assert u._extract_producers({"crew": []}) is None
 
 
-class TestExtrairCinematografo:
+class TestExtractCinematographer:
     def test_cinematografo_unico(self):
         creditos = {"crew": [
             {"name": "Roger Deakins", "job": "Director of Photography"},
             {"name": "Diretor X", "job": "Director"},
         ]}
-        assert u._extrair_cinematografo(creditos) == "Roger Deakins"
+        assert u._extract_cinematographer(creditos) == "Roger Deakins"
 
     def test_multiplos_cinematografos(self):
         creditos = {"crew": [
             {"name": "Roger Deakins", "job": "Director of Photography"},
             {"name": "Emmanuel Lubezki", "job": "Director of Photography"},
         ]}
-        assert u._extrair_cinematografo(creditos) == "Roger Deakins, Emmanuel Lubezki"
+        assert u._extract_cinematographer(creditos) == "Roger Deakins, Emmanuel Lubezki"
 
     def test_sem_cinematografo(self):
         creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
-        assert u._extrair_cinematografo(creditos) is None
+        assert u._extract_cinematographer(creditos) is None
 
     def test_crew_vazio(self):
-        assert u._extrair_cinematografo({"crew": []}) is None
+        assert u._extract_cinematographer({"crew": []}) is None
 
 
-class TestExtrairMontador:
+class TestExtractEditor:
     def test_montador_unico(self):
         creditos = {"crew": [
             {"name": "Thelma Schoonmaker", "job": "Editor"},
             {"name": "Diretor X", "job": "Director"},
         ]}
-        assert u._extrair_montador(creditos) == "Thelma Schoonmaker"
+        assert u._extract_editor(creditos) == "Thelma Schoonmaker"
 
     def test_multiplos_montadores(self):
         creditos = {"crew": [
             {"name": "Thelma Schoonmaker", "job": "Editor"},
             {"name": "Lee Smith", "job": "Editor"},
         ]}
-        assert u._extrair_montador(creditos) == "Thelma Schoonmaker, Lee Smith"
+        assert u._extract_editor(creditos) == "Thelma Schoonmaker, Lee Smith"
 
     def test_sem_montador(self):
         creditos = {"crew": [{"name": "Diretor", "job": "Director"}]}
-        assert u._extrair_montador(creditos) is None
+        assert u._extract_editor(creditos) is None
 
     def test_crew_vazio(self):
-        assert u._extrair_montador({"crew": []}) is None
+        assert u._extract_editor({"crew": []}) is None
 
 
-class TestExtrairPaisesProducao:
+class TestExtractProductionCountries:
     def test_paises(self):
         countries = [{"iso_3166_1": "US", "name": "United States"}, {"iso_3166_1": "NZ", "name": "New Zealand"}]
-        assert u._extrair_paises_producao(countries) == "United States, New Zealand"
+        assert u._extract_production_countries(countries) == "United States, New Zealand"
 
     def test_vazio(self):
-        assert u._extrair_paises_producao([]) is None
+        assert u._extract_production_countries([]) is None
 
     def test_none(self):
-        assert u._extrair_paises_producao(None) is None
+        assert u._extract_production_countries(None) is None
 
 
-class TestExtrairTitulosRecomendados:
+class TestExtractRecommendedTitles:
     def test_movie(self):
         recs = {"results": [{"title": "Interstellar"}, {"title": "The Prestige"}]}
-        assert u._extrair_titulos_recomendados(recs, "movie") == "Interstellar, The Prestige"
+        assert u._extract_recommended_titles(recs, "movie") == "Interstellar, The Prestige"
 
     def test_tv(self):
         recs = {"results": [{"name": "Breaking Bad"}, {"name": "Better Call Saul"}]}
-        assert u._extrair_titulos_recomendados(recs, "tv") == "Breaking Bad, Better Call Saul"
+        assert u._extract_recommended_titles(recs, "tv") == "Breaking Bad, Better Call Saul"
 
     def test_limite(self):
         recs = {"results": [{"title": f"Movie {i}"} for i in range(15)]}
-        result = u._extrair_titulos_recomendados(recs, "movie", limite=3)
+        result = u._extract_recommended_titles(recs, "movie", limit=3)
         assert result == "Movie 0, Movie 1, Movie 2"
 
     def test_vazio(self):
-        assert u._extrair_titulos_recomendados({}, "movie") is None
+        assert u._extract_recommended_titles({}, "movie") is None
 
     def test_results_vazio(self):
-        assert u._extrair_titulos_recomendados({"results": []}, "movie") is None
+        assert u._extract_recommended_titles({"results": []}, "movie") is None
 
 
-class TestExtrairTitulosSimilares:
+class TestExtractSimilarTitles:
     def test_movie(self):
         sim = {"results": [{"title": "Inception"}, {"title": "Tenet"}]}
-        assert u._extrair_titulos_similares(sim, "movie") == "Inception, Tenet"
+        assert u._extract_similar_titles(sim, "movie") == "Inception, Tenet"
 
     def test_tv(self):
         sim = {"results": [{"name": "The Wire"}, {"name": "The Sopranos"}]}
-        assert u._extrair_titulos_similares(sim, "tv") == "The Wire, The Sopranos"
+        assert u._extract_similar_titles(sim, "tv") == "The Wire, The Sopranos"
 
     def test_vazio(self):
-        assert u._extrair_titulos_similares({}, "tv") is None
+        assert u._extract_similar_titles({}, "tv") is None
 
 
-class TestExtrairIdsRecomendados:
+class TestExtractRecommendedIds:
     def test_extrai_ids(self):
         recs = {"results": [{"id": 101, "title": "A"}, {"id": 202, "title": "B"}]}
-        assert u._extrair_ids_recomendados(recs) == "101, 202"
+        assert u._extract_recommended_ids(recs) == "101, 202"
 
     def test_limite(self):
         recs = {"results": [{"id": i, "title": f"M{i}"} for i in range(15)]}
-        result = u._extrair_ids_recomendados(recs, limite=3)
+        result = u._extract_recommended_ids(recs, limit=3)
         assert result == "0, 1, 2"
 
     def test_vazio(self):
-        assert u._extrair_ids_recomendados({}) is None
+        assert u._extract_recommended_ids({}) is None
 
     def test_results_vazio(self):
-        assert u._extrair_ids_recomendados({"results": []}) is None
+        assert u._extract_recommended_ids({"results": []}) is None
 
     def test_sem_id(self):
         recs = {"results": [{"title": "Sem ID"}]}
-        assert u._extrair_ids_recomendados(recs) is None
+        assert u._extract_recommended_ids(recs) is None
 
 
-class TestExtrairIdsSimilares:
+class TestExtractSimilarIds:
     def test_extrai_ids(self):
         sim = {"results": [{"id": 301, "name": "X"}, {"id": 402, "name": "Y"}]}
-        assert u._extrair_ids_similares(sim) == "301, 402"
+        assert u._extract_similar_ids(sim) == "301, 402"
 
     def test_vazio(self):
-        assert u._extrair_ids_similares({}) is None
+        assert u._extract_similar_ids({}) is None
 
     def test_sem_id(self):
         sim = {"results": [{"name": "Sem ID"}]}
-        assert u._extrair_ids_similares(sim) is None
+        assert u._extract_similar_ids(sim) is None
 
 
-class TestExtrairTitulosAlternativos:
+class TestExtractAlternativeTitles:
     def test_movie(self):
         alt = {"titles": [{"title": "Seven"}, {"title": "Se7en"}]}
-        assert u._extrair_titulos_alternativos(alt, "movie") == "Seven, Se7en"
+        assert u._extract_alternative_titles(alt, "movie") == "Seven, Se7en"
 
     def test_tv(self):
         alt = {"results": [{"title": "La Casa de Papel"}, {"title": "Money Heist"}]}
-        assert u._extrair_titulos_alternativos(alt, "tv") == "La Casa de Papel, Money Heist"
+        assert u._extract_alternative_titles(alt, "tv") == "La Casa de Papel, Money Heist"
 
     def test_vazio(self):
-        assert u._extrair_titulos_alternativos({}, "movie") is None
+        assert u._extract_alternative_titles({}, "movie") is None
 
 
 # ---------------------------------------------------------------------------
@@ -807,8 +807,8 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -823,7 +823,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[GT] {t}"),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[GT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -838,8 +838,8 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={86311: "Os Vingadores"}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils._fetch_collections_pt_br", return_value={86311: "Os Vingadores"}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -888,7 +888,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -941,7 +941,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=side_effect),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -969,7 +969,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
@@ -980,8 +980,8 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", side_effect=responses),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1000,8 +1000,8 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1022,8 +1022,8 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1039,8 +1039,8 @@ class TestCollectAndWriteDetails:
         """Se read_parquet falhar, a funcao grava apenas os novos registros sem erro."""
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", side_effect=Exception("S3 error")),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1061,7 +1061,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
-            patch("src.utils.traduzir_texto") as mock_traduzir,
+            patch("src.utils.translate_text") as mock_traduzir,
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1085,7 +1085,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[GT] {t}"),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[GT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1108,8 +1108,8 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
@@ -1123,8 +1123,8 @@ class TestCollectAndWriteDetails:
         cache de tradução quanto para o merge final, sem ler a mesma partição duas vezes."""
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: t),
-            patch("src.utils._buscar_colecoes_pt_br", return_value={}),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()) as mock_read,
             patch("src.utils.wr.s3.to_parquet"),
         ):
