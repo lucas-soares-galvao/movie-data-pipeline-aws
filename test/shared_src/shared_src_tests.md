@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`) e `traduzir_texto`/`traduzir_em_paralelo`/`traduzir_coluna_pendente`/`criar_traduzir_fn_com_aws_translate`/`_traduzir_aws_translate`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`), `traduzir_texto` (`traducao_google.py`), `traduzir_texto_aws` (`traducao_aws.py`) e `resolver_traduzir_fn`/`traduzir_em_paralelo`/`traduzir_coluna_pendente`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`, a fachada que reexporta as duas funções de serviço). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -13,7 +13,9 @@ test/shared_src/
 ├── requirements_tests.txt  # Dependências de teste
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configurar_logging_glue
-├── test_traducao.py        # Testes de traduzir_texto, traduzir_em_paralelo, traduzir_coluna_pendente e das máscaras elegivel_*
+├── test_traducao_google.py # Testes de traduzir_texto (Google Translate)
+├── test_traducao_aws.py    # Testes de traduzir_texto_aws (AWS Translate)
+├── test_traducao.py        # Testes de resolver_traduzir_fn, traduzir_em_paralelo, traduzir_coluna_pendente e das máscaras elegivel_*
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -76,7 +78,7 @@ test/shared_src/
 | `test_configura_nivel_info` | Nível do logger raiz é configurado como `INFO` |
 | `test_handler_escreve_em_stdout` | Existe um handler cujo stream é `sys.stdout` |
 
-## Casos de teste — `test_traducao.py`
+## Casos de teste — `test_traducao_google.py`
 
 ### `TestTraduzirTexto`
 
@@ -100,6 +102,37 @@ o que traduzir, e não de falha transitória).
 | `test_log_warning_em_caso_de_excecao` | Mensagem `"Falha ao traduzir"` aparece no log de warning quando a tradução falha |
 | `test_contexto_aparece_no_log` | O parâmetro `contexto` aparece na mensagem de log de warning |
 | `test_cria_translator_com_idiomas_corretos` | `GoogleTranslator` é instanciado com `source="auto", target="pt"` (detecção automática do idioma de origem) |
+
+## Casos de teste — `test_traducao_aws.py`
+
+### `TestTraduzirTextoAws`
+
+Testa `traduzir_texto_aws` via `boto3.client("translate")` mockado.
+
+| Teste | O que verifica |
+|---|---|
+| `test_traduz_com_sucesso` | Chama `translate_text(Text=..., SourceLanguageCode="auto", TargetLanguageCode="pt")` e retorna `TranslatedText` |
+| `test_retorna_original_em_caso_de_excecao` | Exceção (ex.: `boto3.client` falhando) retorna o texto original, sem propagar |
+| `test_retorna_original_quando_resposta_vazia` | `TranslatedText` vazio retorna o texto original |
+| `test_usa_region_default_us_east_1` | Sem `region` informado, usa `us-east-1` (default do parâmetro) — AWS Translate não está disponível em `sa-east-1`, região principal do pipeline |
+
+## Casos de teste — `test_traducao.py`
+
+### `TestResolverTraduzirFn`
+
+Resolve `"google"`/`"aws"` para a função de tradução correspondente — a escolha de
+serviço por execução usada por `glue_details`/`glue_etl` (default `"aws"`) e pelos
+backfills manuais (default `"google"`). `traduzir_google`/`traduzir_aws` são parâmetros
+opcionais (default `traduzir_texto`/`traduzir_texto_aws`) para que um chamador que faça
+patch da própria referência local (ex.: `patch("src.utils.traduzir_texto", ...)`)
+continue funcionando.
+
+| Teste | O que verifica |
+|---|---|
+| `test_resolve_google` | `provider="google"` devolve `traduzir_texto` (default) |
+| `test_resolve_aws` | `provider="aws"` devolve `traduzir_texto_aws` (default) |
+| `test_provider_invalido_levanta_value_error` | Qualquer valor fora de `"google"`/`"aws"` levanta `ValueError` |
+| `test_usa_referencias_locais_informadas_pelo_chamador` | Passando `traduzir_google`/`traduzir_aws` explícitos, a função devolve exatamente essas referências (não as do módulo) |
 
 ### `TestTraduzirEmParalelo`
 
@@ -165,31 +198,6 @@ origem está preenchido. `overview_pt` ainda depende de `overview_en` estar pree
 | `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestElegivelOverviewPt`) | `overview_en` vazio/`None` não é elegível mesmo com idioma diferente de `pt` |
 | `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestElegivelTaglinePt`) | `tagline` vazia/`None` não é elegível |
 | `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestElegivelKeywordsPt`) | `keywords` vazia/`None` não é elegível |
-
-### `TestTraduzirAwsTranslate`
-
-Testa `_traduzir_aws_translate` (função privada) via `boto3.client("translate")` mockado.
-
-| Teste | O que verifica |
-|---|---|
-| `test_traduz_com_sucesso` | Chama `translate_text(Text=..., SourceLanguageCode="auto", TargetLanguageCode="pt")` e retorna `TranslatedText` |
-| `test_retorna_original_em_caso_de_excecao` | Exceção (ex.: `boto3.client` falhando) retorna o texto original, sem propagar |
-| `test_retorna_original_quando_resposta_vazia` | `TranslatedText` vazio retorna o texto original |
-
-### `TestCriarTraduzirFnComAwsTranslate`
-
-Testa a composição de uma função de tradução primária (ex.: `traduzir_texto`) com fallback
-via AWS Translate, limitado a `max_chamadas` por execução — a 3ª camada de tradução.
-
-| Teste | O que verifica |
-|---|---|
-| `test_nao_chama_aws_translate_quando_traducao_primaria_tem_sucesso` | AWS Translate não é chamado quando a função primária já traduz com sucesso |
-| `test_chama_aws_translate_quando_traducao_primaria_falha` | AWS Translate é chamado quando a função primária devolve o texto original (mesmo contrato de `traduzir_texto`) |
-| `test_nao_chama_nada_para_texto_vazio` | Texto vazio não chama nem a função primária de verdade útil nem AWS Translate |
-| `test_max_chamadas_zero_desliga_fallback` | `max_chamadas=0` nunca aciona o AWS Translate — comportamento de `traduzir_fn_primario` puro |
-| `test_para_de_chamar_aws_translate_apos_cap_esgotado` | Após `max_chamadas` chamadas, resultados adicionais mantêm o texto da função primária (não chama mais AWS Translate) |
-| `test_usa_region_informada` | O parâmetro `region` é repassado a `_traduzir_aws_translate` |
-| `test_thread_safety_nao_ultrapassa_cap_sob_concorrencia` | Com 20 chamadas concorrentes (`ThreadPoolExecutor`) e `max_chamadas=5`, o AWS Translate é chamado exatamente 5 vezes — o lock protege o contador |
 
 ## Como executar
 

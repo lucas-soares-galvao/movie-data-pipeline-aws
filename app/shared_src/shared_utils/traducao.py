@@ -1,80 +1,69 @@
-"""traducao.py — Função compartilhada de tradução para português com detecção automática de idioma."""
+"""traducao.py — Orquestração de tradução para português: elegibilidade, cache,
+paralelismo e escolha do serviço (Google Translate ou AWS Translate)."""
 
 from __future__ import annotations
 
 import logging
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List, Optional
 
-import boto3
 import pandas as pd
-from deep_translator import GoogleTranslator
+
+from shared_utils.traducao_aws import traduzir_texto_aws
+from shared_utils.traducao_google import traduzir_texto
+
+__all__ = [
+    "traduzir_texto",
+    "traduzir_texto_aws",
+    "resolver_traduzir_fn",
+    "traduzir_em_paralelo",
+    "traduzir_coluna_pendente",
+    "reaproveitar_traducao_existente",
+    "elegivel_overview_pt",
+    "elegivel_tagline_pt",
+    "elegivel_keywords_pt",
+]
 
 logger = logging.getLogger()
 
-_MAX_TENTATIVAS = 5
-_MAX_TENTATIVAS_SEM_ERRO = 2
 
-
-def traduzir_texto(texto: str, contexto: str = "") -> str:
+def resolver_traduzir_fn(
+    provider: str,
+    traduzir_google: Callable[[str], str] = traduzir_texto,
+    traduzir_aws: Callable[[str], str] = traduzir_texto_aws,
+) -> Callable[[str], str]:
     """
-    Traduz texto para português via Google Translate, detectando automaticamente
-    o idioma de origem (source="auto").
+    Resolve o provedor de tradução (`"google"` ou `"aws"`) para a função correspondente.
 
-    Faz até _MAX_TENTATIVAS tentativas com backoff entre elas, já que o
-    endpoint não-oficial do Google Translate falha esporadicamente sob alto
-    volume de chamadas paralelas. Duas formas de falha contam como tentativa
-    malsucedida:
-      - a chamada lançar exceção — tende a ser transitório (rede, rate limit),
-        por isso usa o orçamento completo de _MAX_TENTATIVAS;
-      - retornar normalmente um texto idêntico ao original — na maioria das
-        vezes indica que não há o que traduzir (nome próprio, termo
-        emprestado como "anime"/"hotel"), não bloqueio transitório, por isso
-        desiste mais cedo (_MAX_TENTATIVAS_SEM_ERRO).
-    Retorna o texto original se todas as tentativas aplicáveis se esgotarem,
-    para não interromper o job.
+    Cada caminho do pipeline escolhe um único serviço por execução — sem composição
+    de primário+fallback: `glue_details`/`glue_etl` (caminho automático via
+    EventBridge) usam `"aws"` por padrão; os backfills manuais (`scripts/`) usam
+    `"google"` por padrão, mas podem apontar para `"aws"` para testes pontuais.
+
+    `traduzir_google`/`traduzir_aws` são recebidos como parâmetro (em vez de resolvidos
+    aqui dentro) pelo mesmo motivo de `traduzir_em_paralelo`: os chamadores passam suas
+    próprias referências locais de `traduzir_texto`/`traduzir_texto_aws` — as mesmas que
+    seus testes fazem mock (ex.: `patch("src.utils.traduzir_texto", ...)`). Resolver via
+    referência direta ao módulo quebraria esse patch.
 
     Args:
-        texto:    Texto a ser traduzido (idioma de origem detectado automaticamente).
-        contexto: Descrição opcional do item traduzido (usada no log).
+        provider:        `"google"` (deep_translator, grátis) ou `"aws"` (AWS Translate,
+                          pago por caractere).
+        traduzir_google: Função a devolver quando `provider="google"`.
+        traduzir_aws:    Função a devolver quando `provider="aws"`.
 
     Returns:
-        Texto traduzido para português, ou o texto original se a tradução falhar.
+        `traduzir_google` ou `traduzir_aws`, conforme `provider`.
+
+    Raises:
+        ValueError: se `provider` não for `"google"` nem `"aws"`.
     """
-    if not texto:
-        return ""
-    prefixo = f"{contexto} " if contexto else ""
-    tentativas_sem_erro = 0
-    for tentativa in range(1, _MAX_TENTATIVAS + 1):
-        try:
-            resultado = GoogleTranslator(source="auto", target="pt").translate(texto)
-        except Exception as exc:
-            logger.debug(f"Tentativa {tentativa} de traduzir {prefixo}'{texto}' falhou: {exc}")
-        else:
-            if resultado and resultado != texto:
-                return resultado
-            tentativas_sem_erro += 1
-            logger.debug(
-                f"Tentativa {tentativa} de traduzir {prefixo}'{texto:.80}' não lançou erro, mas "
-                "devolveu texto idêntico ao original (possível bloqueio/rate-limit silencioso "
-                "do Google Translate, ou simplesmente não há o que traduzir)."
-            )
-            if tentativas_sem_erro >= _MAX_TENTATIVAS_SEM_ERRO:
-                logger.debug(
-                    f"'{prefixo}{texto:.80}' não mudou em {tentativas_sem_erro} tentativa(s) sem "
-                    "erro; provavelmente não há tradução a fazer (nome próprio, termo emprestado). "
-                    "Mantendo original."
-                )
-                return texto
-        if tentativa < _MAX_TENTATIVAS:
-            time.sleep(tentativa * 2)
-    logger.warning(
-        f"Falha ao traduzir {prefixo}'{texto:.80}' após {_MAX_TENTATIVAS} tentativas "
-        "com erro. Mantendo original."
-    )
-    return texto
+    try:
+        return {"google": traduzir_google, "aws": traduzir_aws}[provider]
+    except KeyError:
+        raise ValueError(
+            f"TRANSLATE_PROVIDER inválido: {provider!r} (esperado 'google' ou 'aws')"
+        ) from None
 
 
 def traduzir_em_paralelo(
@@ -114,8 +103,8 @@ def traduzir_coluna_pendente(
     coluna_destino está preenchida e é diferente de coluna_fonte — cobre tanto
     tradução nativa do TMDB (glue_details) quanto sucesso em um run anterior
     (backfill). Registros sem coluna_destino, ou cuja coluna_destino ficou
-    igual à coluna_fonte (fallback de uma tradução que falhou — ver
-    traduzir_texto), continuam pendentes e são (re)tentados.
+    igual à coluna_fonte (tradução que falhou — ver traduzir_texto/traduzir_texto_aws),
+    continuam pendentes e são (re)tentados.
 
     traduzir_fn é recebido como parâmetro (em vez de chamar traduzir_texto
     diretamente) para que os chamadores continuem passando sua própria
@@ -152,86 +141,6 @@ def traduzir_coluna_pendente(
     df.loc[mask, coluna_destino] = traduzidos
 
     return sum(1 for original, traduzido in zip(valores, traduzidos) if original and traduzido != original)
-
-
-def _traduzir_aws_translate(texto: str, region: str) -> str:
-    """
-    Traduz texto para português via AWS Translate (detecção automática de idioma),
-    usada como fallback quando o Google Translate falha.
-
-    Diferente de traduzir_texto, não implementa retry manual: o AWS Translate é uma
-    API oficial (sem o comportamento de bloqueio silencioso do endpoint não-oficial
-    do Google Translate) e o cliente boto3 já reaplica retry em erros transitórios
-    por padrão. Nunca lança exceção — devolve o texto original em caso de erro, para
-    não interromper o job.
-
-    Args:
-        texto:  Texto a ser traduzido (idioma de origem detectado automaticamente).
-        region: Região AWS do cliente do Translate. AWS Translate não está disponível
-                em sa-east-1 (região principal do pipeline) — ver default em
-                criar_traduzir_fn_com_aws_translate.
-
-    Returns:
-        Texto traduzido para português, ou o texto original se a tradução falhar.
-    """
-    try:
-        cliente = boto3.client("translate", region_name=region)
-        resposta = cliente.translate_text(
-            Text=texto, SourceLanguageCode="auto", TargetLanguageCode="pt",
-        )
-        traduzido = resposta.get("TranslatedText", "").strip()
-        if traduzido:
-            return traduzido
-    except Exception as exc:
-        logger.warning(f"Falha ao traduzir via AWS Translate '{texto:.80}': {exc}")
-    return texto
-
-
-def criar_traduzir_fn_com_aws_translate(
-    traduzir_fn_primario: Callable[[str], str], max_chamadas: int, region: str = "us-east-1"
-) -> Callable[[str], str]:
-    """
-    Compõe uma função de tradução primária (ex.: traduzir_texto, Google Translate)
-    com um fallback via AWS Translate, limitado a max_chamadas chamadas nesta
-    execução — o AWS Translate é pago por caractere, diferente do Google Translate.
-
-    traduzir_fn_primario é recebido como parâmetro (em vez de chamar traduzir_texto
-    diretamente) pelo mesmo motivo de traduzir_em_paralelo: o chamador passa sua
-    própria referência local de traduzir_texto — a mesma que seus testes fazem mock.
-
-    O AWS Translate só é chamado quando traduzir_fn_primario falha (resultado igual
-    ao texto original). Com max_chamadas=0, a função devolvida se comporta como
-    traduzir_fn_primario puro (fallback desligado). Thread-safe: o contador de
-    chamadas é protegido por lock, já que a função é usada dentro de
-    ThreadPoolExecutor via traduzir_em_paralelo.
-
-    Args:
-        traduzir_fn_primario: Função de tradução tentada primeiro (ex.: traduzir_texto).
-        max_chamadas:         Limite de chamadas ao AWS Translate nesta execução.
-        region:                Região AWS do cliente do Translate. Default us-east-1
-                                (não sa-east-1, região principal do pipeline — AWS
-                                Translate não está disponível em São Paulo). A chamada
-                                à API é stateless (não precisa de localidade com os
-                                outros recursos), então usar outra região é seguro.
-
-    Returns:
-        Função de tradução (texto) -> texto traduzido, pronta para ser passada como
-        traduzir_fn a traduzir_coluna_pendente/traduzir_em_paralelo.
-    """
-    chamadas_restantes = [max_chamadas]
-    lock = threading.Lock()
-
-    def _traduzir_fn(texto: str) -> str:
-        resultado = traduzir_fn_primario(texto)
-        if not texto or resultado != texto:
-            return resultado
-        with lock:
-            if chamadas_restantes[0] <= 0:
-                return resultado
-            chamadas_restantes[0] -= 1
-        return _traduzir_aws_translate(texto, region)
-
-    return _traduzir_fn
 
 
 def reaproveitar_traducao_existente(

@@ -100,9 +100,15 @@ def invoke_lambda_sync(client: Any, function_name: str, payload: dict[str, Any])
 def build_base_payloads() -> tuple[dict[str, Any], dict[str, Any]]:
     """Monta os payloads base de movie/tv enviados à Lambda API.
 
-    Espelha exatamente o que o EventBridge envia (eventbridge_lambda_api.tf).
+    Espelha exatamente o que o EventBridge envia (eventbridge_lambda_api.tf), com um
+    campo a mais: "translate_provider" (opcional via env TRANSLATE_PROVIDER, default
+    "google") — o EventBridge nunca define esse campo (cai no default "aws" do Glue
+    ETL/Details), mas esses backfills manuais processam volume alto o suficiente para
+    justificar o default gratuito. Ver shared_utils.traducao.resolver_traduzir_fn.
     Usado por backfill_referencias.py e backfill_historico.py.
     """
+    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
+
     base_movie = {
         "type":                            "movie",
         "database":                        require_env("GLUE_DATABASE_MOVIE"),
@@ -111,6 +117,7 @@ def build_base_payloads() -> tuple[dict[str, Any], dict[str, Any]]:
         "table_genre_movie":               require_env("TABLE_GENRE_MOVIE"),
         "table_configuration_languages":   require_env("TABLE_CONFIGURATION_LANGUAGES"),
         "table_watch_providers_ref_movie": require_env("TABLE_WATCH_PROVIDERS_REF_MOVIE"),
+        "translate_provider":              translate_provider,
     }
 
     base_tv = {
@@ -121,6 +128,7 @@ def build_base_payloads() -> tuple[dict[str, Any], dict[str, Any]]:
         "table_genre_tv":                require_env("TABLE_GENRE_TV"),
         "table_configuration_countries": require_env("TABLE_CONFIGURATION_COUNTRIES"),
         "table_watch_providers_ref_tv":  require_env("TABLE_WATCH_PROVIDERS_REF_TV"),
+        "translate_provider":            translate_provider,
     }
 
     return base_movie, base_tv

@@ -67,9 +67,10 @@ Usa a constante `_BASE` (dict com args comuns: buckets, nomes de jobs, databases
 
 | Teste | O que verifica |
 |---|---|
-| `test_details_triggered_for_movie_discover` | Details acionado com `media_type="movie"`, `year` e `end_year` corretos |
-| `test_details_triggered_for_tv_discover` | Details acionado com `media_type="tv"` e databases corretos |
+| `test_details_triggered_for_movie_discover` | Details acionado com `media_type="movie"`, `year`, `end_year` e `TRANSLATE_PROVIDER="aws"` (default) corretos |
+| `test_details_triggered_for_tv_discover` | Details acionado com `media_type="tv"`, databases e `TRANSLATE_PROVIDER="aws"` (default) corretos |
 | `test_details_not_triggered_for_genre_tv` | Details **não** é acionado para `TABLE_TYPE="genre"` |
+| `test_translate_provider_repassado_ao_details` | `TRANSLATE_PROVIDER` informado explicitamente (ex.: backfill manual com `"google"`) é repassado ao Details, não apenas o default `"aws"` |
 | `test_details_triggered_exactly_once_per_discover_run` | Details acionado exatamente uma vez por execução de discover |
 
 ## Casos de teste — `test_utils.py`
@@ -87,7 +88,7 @@ Testa individualmente as funções utilitárias: leitura do SOR por `table_type`
 - **`TestReadFromSorNowPlaying`** (3 testes): path S3 `tmdb/now_playing/movie/`; deduplica por `id`; retorna DataFrame
 - **`TestWriteParquetToSot`** (4 testes): `awswrangler.s3.to_parquet` chamado com `partition_cols`, `mode` e `path` (`s3://{bucket}/tmdb/{table_name}/`) corretos; `mode` customizado repassado
 - **`TestDeriveCanonicalName`** (12 testes): remoção de sufixos ("Standard with Ads", "Premium", "Plus Premium", "Amazon Channel"); overrides manuais ("Paramount Plus" → "Paramount+", "Claro video" → "Claro Video"); composição ("Paramount Plus Premium" → "Paramount+", "MGM Plus Amazon Channel" → "MGM+")
-- **`TestGetParametersGlue`** (5 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar); `AWS_TRANSLATE_MAX_PER_RUN` tem default `"0"` quando ausente e é lido corretamente quando fornecido (opcional, mesmo padrão de `YEAR`/`END_YEAR` — `getResolvedOptions` levanta `SystemExit` para argumento ausente)
+- **`TestGetParametersGlue`** (5 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar); `TRANSLATE_PROVIDER` tem default `"aws"` quando ausente e é lido corretamente quando fornecido (opcional, mesmo padrão de `YEAR`/`END_YEAR` — `getResolvedOptions` levanta `SystemExit` para argumento ausente)
 
 ## Como executar
 
