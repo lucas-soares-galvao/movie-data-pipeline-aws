@@ -51,11 +51,22 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
+### Entrada alternativa — Transcrição de áudio (Whisper via litellm)
+Além de digitar, o usuário pode gravar a preferência em áudio pelo widget nativo `st.audio_input`. O áudio é transcrito por `transcribe_preference()` (`agent.py`) usando Whisper via `litellm` — modelo configurável por `TRANSCRIPTION_MODEL` (padrão: Groq Whisper Large v3 Turbo, rápido e barato), com `language="pt"` fixo. O texto resultante pré-popula o `st.text_area` de preferência, permanecendo totalmente editável antes de clicar em "Recomendar".
+
+- **Limite de duração:** áudios com mais de 20 segundos (`_MAX_AUDIO_SECONDS`) são rejeitados **antes** de chamar a API de transcrição — a duração é calculada com o módulo padrão `wave` (sem dependência nova), já que `st.audio_input` sempre entrega WAV.
+- **Sem fallback automático de modelo** (diferente da Etapa 1 de interpretação): qualquer falha na transcrição (provedor indisponível, sem API key configurada, áudio sem fala detectada, áudio muito longo) degrada graciosamente — o campo de texto nunca fica bloqueado, a pessoa sempre pode digitar manualmente.
+- **Rate limiting próprio:** 30 transcrições por hora por IP (`_MAX_TRANSCRIPTIONS_PER_HOUR`), mais generoso que o limite de recomendações porque o custo de Whisper é bem menor que o fluxo LLM+Athena. Usa um histórico de IPs independente (`_audio_ip_history`) do fluxo de recomendação.
+- **Execução assíncrona:** mesmo padrão de `ThreadPoolExecutor` + `Future` + polling (500ms) já usado no botão "Recomendar", com chaves de `session_state` próprias (`transcribing`/`transcription_future`) para não colidir com o fluxo de busca.
+- **Limite de caracteres:** transcrições acima de 300 caracteres (`_MAX_PREFERENCE_CHARS`) são cortadas nesse limite antes de preencher o campo de texto, com aviso "⚠️ Transcrição excedeu 300 caracteres e foi cortada." — necessário porque o `st.text_area` de destino também tem `max_chars=300` e rejeitaria um valor de `session_state` maior que isso.
+- **AWS Transcribe foi avaliado e descartado** como alternativa: embora fosse barato de plugar (reaproveitaria o bucket temporário do Athena e a IAM já existentes, sem precisar de secret novo), jobs batch do Transcribe tipicamente levam 15-60+ segundos até completar mesmo para áudios curtos — muito mais lento que os ~1-3s do Whisper via Groq, prejudicando a experiência de "gravar uma frase curta e ver o texto aparecer".
+
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
 - **Rate limiting por IP:** máximo de 20 consultas por hora (janela deslizante). O contador é exibido abaixo do campo de texto; ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS (JavaScript client-side via `st.components.v1.html`) mostra quanto tempo falta em tempo real, decrementando a cada segundo. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
+- **Limite de caracteres:** o `st.text_area` da preferência tem `max_chars=300` (`_MAX_PREFERENCE_CHARS`), aplicado tanto à digitação manual (o Streamlit trava a digitação e mostra o contador nativo "X/300") quanto ao texto vindo da transcrição de áudio (truncado antes de preencher o campo — ver seção de transcrição acima)
 - Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Cada card exibe:
@@ -90,14 +101,17 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 | `agent.py` | `_call_llm_step1(preference)` | Chama o LLM primário (`LLM_MODEL`); se falhar por erro de infraestrutura e `LLM_MODEL_FALLBACK` estiver configurada, tenta uma vez o modelo de fallback (via credenciais AWS/IAM, sem API key) |
 | `agent.py` | `_log_token_usage(step, response, model=None)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `model` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens"). `model` identifica qual modelo respondeu (primário ou fallback); default `None` loga `LLM_MODEL` |
 | `agent.py` | `_log_llm_fallback(preference, error)` | Registra em `logging.warning` o acionamento do fallback (preferência, modelo primário, modelo de fallback, erro) — logado antes da chamada de fallback, para ficar visível mesmo se ela também falhar |
+| `agent.py` | `transcribe_preference(audio_bytes)` | Transcreve áudio (WAV) para texto via Whisper (`litellm.transcription`, modelo `TRANSCRIPTION_MODEL`). Rejeita áudios acima de 20s (`AudioMuitoLongoError`) antes de chamar a API. Sem fallback automático de modelo |
+| `agent.py` | `_audio_duration_seconds(audio_bytes)` | Calcula a duração de um áudio WAV via módulo padrão `wave` |
+| `agent.py` | `_load_transcription_api_key()` | Busca `transcription_api_key` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou `TRANSCRIPTION_API_KEY` do `.env` em desenvolvimento; retorna `None` (não quebra o app) se ausente |
 | `formatacao.py` | `format_record(record)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
 | `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_theater_end_date()`, `_format_rating()` | Funções puras de formatação de campos individuais |
 | `app.py` | `_load_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
-| `app.py` | `_create_ip_history()` | Factory `@st.cache_resource` que cria o dict compartilhado `_ip_history`, garantindo que o histórico de rate limiting sobreviva a reruns e reset apenas no restart do processo |
+| `app.py` | `_create_ip_history()`, `_create_audio_ip_history()` | Factories `@st.cache_resource` que criam os dicts compartilhados `_ip_history` (recomendações) e `_audio_ip_history` (transcrições), garantindo que os históricos de rate limiting sobrevivam a reruns e resetem apenas no restart do processo |
 | `app.py` | `_get_client_ip()` | Obtém o IP do cliente via header `X-Forwarded-For` (repassado pelo Caddy) |
-| `app.py` | `_queries_in_last_hour(ip)` | Conta consultas na última hora (janela deslizante) para o IP fornecido e limpa registros expirados |
-| `app.py` | `_seconds_until_available(ip)` | Calcula quantos segundos faltam até a consulta mais antiga expirar |
-| `app.py` | Interface Streamlit | Orquestra a UI: autenticação, rate limiting, busca assíncrona e exibição de resultados |
+| `app.py` | `_queries_in_last_hour(history, ip)` | Conta consultas na última hora (janela deslizante) para o IP no histórico informado e limpa registros expirados. Reusada para recomendações (`_ip_history`) e transcrições (`_audio_ip_history`) |
+| `app.py` | `_seconds_until_available(history, ip)` | Calcula quantos segundos faltam até a consulta mais antiga do IP expirar, no histórico informado |
+| `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `render_card()`, `render_grid()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
@@ -134,8 +148,10 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 | Variável | Uso |
 |---|---|
-| `FILMBOT_SECRET_ARN` | ARN do segredo unificado no Secrets Manager (contém `llm_api_key`, `tmdb_api_key`, `filmbot_password`). Em produção, o app busca LLM_API_KEY e FILMBOT_PASSWORD desse secret em runtime |
+| `FILMBOT_SECRET_ARN` | ARN do segredo unificado no Secrets Manager (contém `llm_api_key`, `tmdb_api_key`, `filmbot_password` e, opcionalmente, `transcription_api_key`). Em produção, o app busca esses valores do secret em runtime |
 | `LLM_API_KEY` | Fallback para desenvolvimento local (usado quando `FILMBOT_SECRET_ARN` não está definida) |
+| `TRANSCRIPTION_API_KEY` | *(Opcional)* Fallback para desenvolvimento local da chave de transcrição (usado quando `FILMBOT_SECRET_ARN` não está definida). Indefinida = transcrição de áudio indisponível, sem afetar o restante do app |
+| `TRANSCRIPTION_MODEL` | *(Opcional)* Modelo de transcrição via litellm (padrão: `groq/whisper-large-v3-turbo`) |
 | `LLM_MODEL` | Modelo LLM a usar (padrão: `deepseek/deepseek-v4-flash`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
 | `LLM_MODEL_FALLBACK` | *(Opcional)* Modelo usado quando a chamada ao `LLM_MODEL` falhar por erro de infraestrutura. Indefinida = fallback desativado. Ex: `bedrock/openai.gpt-oss-20b` |
 | `AWS_REGION_BEDROCK` | *(Opcional)* Região AWS usada na chamada de fallback (padrão: `us-east-1`). Não reaproveita `AWS_REGION`, que fica fixa em `sa-east-1` para Athena/Glue/Secrets Manager |

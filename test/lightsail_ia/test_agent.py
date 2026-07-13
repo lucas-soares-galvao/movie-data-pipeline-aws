@@ -6,15 +6,29 @@
 # o LLM uma vez para extrair filtros como JSON (salva em cache).
 # Se houver cache hit, a chamada é pulada.
 
+import io
 import json
 import logging
 import time
+import wave
 
 import openai
 import pytest
 from unittest.mock import MagicMock, patch
 
 import agent
+
+
+def _make_wav_bytes(duration_seconds: float, framerate: int = 16000) -> bytes:
+    """Gera bytes de um WAV mono de 16 bits (silêncio) com a duração informada."""
+    n_frames = int(duration_seconds * framerate)
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(framerate)
+        wav_file.writeframes(b"\x00\x00" * n_frames)
+    return buffer.getvalue()
 
 
 FAKE_TITLE = {
@@ -605,3 +619,74 @@ class TestLogLlmFallback:
         assert extra["primary_model"] == agent._LLM_MODEL
         assert extra["fallback_model"] == "bedrock/test-model"
         assert "APIConnectionError" in extra["error"]
+
+
+class TestTranscribePreference:
+    """transcribe_preference(): sem fallback automático de modelo (diferente de
+    _call_llm_step1) — qualquer falha degrada para digitação manual em app.py."""
+
+    def test_transcreve_audio_com_sucesso(self):
+        audio_bytes = _make_wav_bytes(2)
+        with patch("agent.litellm.transcription") as mock_transcription:
+            mock_transcription.return_value = MagicMock(text="filmes de terror")
+            result = agent.transcribe_preference(audio_bytes)
+
+        assert result == "filmes de terror"
+
+    def test_remove_espacos_da_transcricao(self):
+        audio_bytes = _make_wav_bytes(2)
+        with patch("agent.litellm.transcription") as mock_transcription:
+            mock_transcription.return_value = MagicMock(text="  filmes de terror  ")
+            result = agent.transcribe_preference(audio_bytes)
+
+        assert result == "filmes de terror"
+
+    def test_retorna_string_vazia_sem_fala_detectada(self):
+        audio_bytes = _make_wav_bytes(2)
+        with patch("agent.litellm.transcription") as mock_transcription:
+            mock_transcription.return_value = MagicMock(text="")
+            result = agent.transcribe_preference(audio_bytes)
+
+        assert result == ""
+
+    def test_usa_modelo_e_idioma_configurados(self):
+        audio_bytes = _make_wav_bytes(2)
+        with (
+            patch("agent.litellm.transcription") as mock_transcription,
+            patch.object(agent, "_TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo"),
+        ):
+            mock_transcription.return_value = MagicMock(text="ok")
+            agent.transcribe_preference(audio_bytes)
+
+        call_kwargs = mock_transcription.call_args.kwargs
+        assert call_kwargs["model"] == "groq/whisper-large-v3-turbo"
+        assert call_kwargs["language"] == "pt"
+
+    def test_propaga_erro_do_provedor(self):
+        audio_bytes = _make_wav_bytes(2)
+        error = openai.APIConnectionError(message="timeout", request=None)
+        with patch("agent.litellm.transcription", side_effect=error):
+            with pytest.raises(openai.APIConnectionError):
+                agent.transcribe_preference(audio_bytes)
+
+    def test_levanta_erro_sem_api_key_configurada(self):
+        audio_bytes = _make_wav_bytes(2)
+        with patch.object(agent, "_TRANSCRIPTION_API_KEY", None):
+            with pytest.raises(ValueError, match="TRANSCRIPTION_API_KEY"):
+                agent.transcribe_preference(audio_bytes)
+
+    def test_audio_dentro_do_limite_nao_levanta_erro(self):
+        audio_bytes = _make_wav_bytes(agent._MAX_AUDIO_SECONDS - 1)
+        with patch("agent.litellm.transcription") as mock_transcription:
+            mock_transcription.return_value = MagicMock(text="ok")
+            agent.transcribe_preference(audio_bytes)
+
+        mock_transcription.assert_called_once()
+
+    def test_audio_muito_longo_levanta_erro_sem_chamar_api(self):
+        audio_bytes = _make_wav_bytes(agent._MAX_AUDIO_SECONDS + 1)
+        with patch("agent.litellm.transcription") as mock_transcription:
+            with pytest.raises(agent.AudioMuitoLongoError):
+                agent.transcribe_preference(audio_bytes)
+
+        mock_transcription.assert_not_called()

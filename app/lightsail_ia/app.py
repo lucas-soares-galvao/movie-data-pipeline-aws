@@ -1,5 +1,6 @@
 """app.py — Interface web do FilmBot (aplicativo Streamlit)."""
 
+import hashlib
 import json
 import logging
 import math
@@ -12,7 +13,7 @@ import boto3
 import streamlit as st
 import streamlit.components.v1 as components
 import watchtower
-from agent import recommend
+from agent import AudioMuitoLongoError, recommend, transcribe_preference
 from componentes import (
     load_login_css,
     load_main_css,
@@ -56,6 +57,8 @@ if _log_group:
 
 _executor = ThreadPoolExecutor(max_workers=2)
 _MAX_QUERIES_PER_HOUR = 20
+_MAX_TRANSCRIPTIONS_PER_HOUR = 30  # Whisper é bem mais barato que o fluxo LLM+Athena
+_MAX_PREFERENCE_CHARS = 300
 
 
 @st.cache_resource
@@ -67,26 +70,35 @@ def _create_ip_history() -> dict[str, list[float]]:
 _ip_history = _create_ip_history()
 
 
+@st.cache_resource
+def _create_audio_ip_history() -> dict[str, list[float]]:
+    """Cria dict compartilhado para rastrear timestamps de transcrições de áudio por IP."""
+    return {}
+
+
+_audio_ip_history = _create_audio_ip_history()
+
+
 def _get_client_ip() -> str:
     """Extrai o IP do cliente a partir do header X-Forwarded-For repassado pelo Caddy."""
     forwarded = st.context.headers.get("X-Forwarded-For", "")
     return forwarded.split(",")[0].strip() if forwarded else "local"
 
 
-def _queries_in_last_hour(ip: str) -> int:
-    """Conta consultas na última hora para o IP e limpa registros expirados."""
+def _queries_in_last_hour(history: dict[str, list[float]], ip: str) -> int:
+    """Conta consultas na última hora para o IP no histórico informado e limpa registros expirados."""
     now = time.time()
-    history = [t for t in _ip_history.get(ip, []) if t > now - 3600]
-    _ip_history[ip] = history
-    return len(history)
+    filtered = [t for t in history.get(ip, []) if t > now - 3600]
+    history[ip] = filtered
+    return len(filtered)
 
 
-def _seconds_until_available(ip: str) -> int:
+def _seconds_until_available(history: dict[str, list[float]], ip: str) -> int:
     """Calcula quantos segundos faltam até a consulta mais antiga do IP expirar."""
-    history = _ip_history.get(ip, [])
-    if not history:
+    entries = history.get(ip, [])
+    if not entries:
         return 0
-    return max(0, math.ceil(history[0] + 3600 - time.time()))
+    return max(0, math.ceil(entries[0] + 3600 - time.time()))
 
 
 st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
@@ -140,18 +152,93 @@ with logout_col:
         st.session_state["authenticated"] = False
         st.rerun()
 
+_client_ip = _get_client_ip()
+
+# ------------------------------------------------------------------
+# CAPTURA DE ÁUDIO E TRANSCRIÇÃO (precisa rodar ANTES do text_area abaixo:
+# o Streamlit proíbe setar session_state["preference_text"] depois que o
+# widget com essa key já rodou no mesmo script run)
+# ------------------------------------------------------------------
+st.caption("🎤 Ou grave o que você quer assistir")
+audio_value = st.audio_input(
+    "Gravar preferência em áudio", label_visibility="collapsed", key="audio_input"
+)
+
+_audio_queries_made = _queries_in_last_hour(_audio_ip_history, _client_ip)
+_audio_remaining = _MAX_TRANSCRIPTIONS_PER_HOUR - _audio_queries_made
+
+if audio_value is not None and not st.session_state.get("transcribing"):
+    audio_bytes = audio_value.getvalue()
+    audio_hash = hashlib.md5(audio_bytes).hexdigest()
+    if audio_hash != st.session_state.get("audio_last_hash"):
+        st.session_state["audio_last_hash"] = audio_hash
+        st.session_state["transcription_error"] = False
+        st.session_state["transcription_empty"] = False
+        st.session_state["transcription_too_long"] = False
+        st.session_state["transcription_rate_limited"] = False
+        st.session_state["transcription_truncated"] = False
+        if _audio_remaining <= 0:
+            st.session_state["transcription_rate_limited"] = True
+        else:
+            _audio_ip_history.setdefault(_client_ip, []).append(time.time())
+            st.session_state["transcribing"] = True
+            st.session_state["transcription_future"] = _executor.submit(
+                transcribe_preference, audio_bytes
+            )
+        st.rerun()
+
+if st.session_state.get("transcribing"):
+    transcription_future: Future = st.session_state.get("transcription_future")
+    if transcription_future and transcription_future.done():
+        st.session_state["transcribing"] = False
+        try:
+            text = transcription_future.result()
+        except AudioMuitoLongoError:
+            st.session_state["transcription_too_long"] = True
+        except Exception:
+            logging.exception("Erro ao transcrever áudio")
+            st.session_state["transcription_error"] = True
+        else:
+            if text:
+                if len(text) > _MAX_PREFERENCE_CHARS:
+                    text = text[:_MAX_PREFERENCE_CHARS]
+                    st.session_state["transcription_truncated"] = True
+                st.session_state["preference_text"] = text
+            else:
+                st.session_state["transcription_empty"] = True
+        st.rerun()
+    else:
+        st.caption("🎤 Transcrevendo áudio...")
+        time.sleep(0.5)
+        st.rerun()
+
+if st.session_state.get("transcription_rate_limited"):
+    st.caption(
+        f"⚠️ Limite de {_MAX_TRANSCRIPTIONS_PER_HOUR} transcrições por hora atingido. "
+        "Digite sua preferência manualmente."
+    )
+if st.session_state.get("transcription_too_long"):
+    st.caption("⚠️ Áudio muito longo — grave até 20 segundos ou digite sua preferência.")
+if st.session_state.get("transcription_error"):
+    st.caption("❌ Não conseguimos transcrever o áudio. Digite sua preferência manualmente.")
+if st.session_state.get("transcription_empty"):
+    st.caption("⚠️ Não detectamos fala no áudio. Tente gravar novamente ou digite sua preferência.")
+if st.session_state.get("transcription_truncated"):
+    st.caption(f"⚠️ Transcrição excedeu {_MAX_PREFERENCE_CHARS} caracteres e foi cortada.")
+
 preference = st.text_area(
     "O que você quer assistir?",
     placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com O Senhor dos Anéis...",
     height=68,
+    max_chars=_MAX_PREFERENCE_CHARS,
+    key="preference_text",
 )
 
-_client_ip = _get_client_ip()
-_queries_made = _queries_in_last_hour(_client_ip)
+_queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made
 
 if _remaining <= 0:
-    _seconds = _seconds_until_available(_client_ip)
+    _seconds = _seconds_until_available(_ip_history, _client_ip)
     components.html(f"""
     <style>
       body {{ margin: 0; padding: 0; background: transparent; font-family: 'Source Sans Pro', sans-serif; }}
