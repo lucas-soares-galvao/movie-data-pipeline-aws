@@ -39,7 +39,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # "aws" é o default do caminho automático via EventBridge: o payload configurado em
     # eventbridge.tf nunca define translate_provider, então cai aqui. Backfills manuais
     # (scripts/backfill_historico.py, backfill_referencias.py) podem sobrescrever para
-    # "google" — ver shared_utils.traducao.resolver_traduzir_fn no Glue ETL/Details.
+    # "google" — ver shared_utils.traducao.resolve_translate_fn no Glue ETL/Details.
     translate_provider = event.get("translate_provider", "aws")
 
     glue_base_args = {

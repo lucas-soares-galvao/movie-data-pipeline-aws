@@ -2,7 +2,7 @@ import logging
 import sys
 from unittest.mock import MagicMock, patch
 
-from shared_utils.glue_helpers import configurar_logging_glue, get_resolved_option
+from shared_utils.glue_helpers import configure_glue_logging, get_resolved_option
 
 
 class TestGetResolvedOption:
@@ -31,18 +31,18 @@ class TestGetResolvedOption:
                 raise AssertionError("SystemExit não foi propagada")
 
 
-class TestConfigurarLoggingGlue:
+class TestConfigureGlueLogging:
     def test_retorna_logger(self):
-        logger = configurar_logging_glue()
+        logger = configure_glue_logging()
         assert isinstance(logger, logging.Logger)
 
     def test_configura_nivel_info(self):
-        configurar_logging_glue()
+        configure_glue_logging()
         root = logging.getLogger()
         assert root.level == logging.INFO
 
     def test_handler_escreve_em_stdout(self):
-        configurar_logging_glue()
+        configure_glue_logging()
         root = logging.getLogger()
         handlers = root.handlers
         assert any(

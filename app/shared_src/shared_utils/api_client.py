@@ -19,7 +19,7 @@ logger = logging.getLogger()
 _TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
 
 
-def _calcular_espera(attempt: int, response=None) -> float:
+def _calculate_wait(attempt: int, response=None) -> float:
     """Backoff exponencial com jitter. Respeita Retry-After em 429."""
     # Para 429, o servidor pode informar no header "Retry-After" quanto tempo esperar.
     # Para os demais erros, usa backoff exponencial (1s → 2s → 4s).
@@ -47,7 +47,7 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
         ConnectionError / Timeout: Se não conseguir conectar após max_retries tentativas.
     """
     for attempt in range(max_retries):
-        eh_ultima_tentativa = attempt == max_retries - 1
+        is_last_attempt = attempt == max_retries - 1
         wait: float
         try:
             # timeout=30 evita que o job fique preso esperando por uma resposta
@@ -60,24 +60,24 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
                 response.raise_for_status()
                 return response.json()
 
-            if eh_ultima_tentativa:
+            if is_last_attempt:
                 logger.error(
                     f"HTTP {response.status_code} após {max_retries} tentativas. "
                     f"Todas as tentativas esgotadas para {url}."
                 )
                 response.raise_for_status()
 
-            wait = _calcular_espera(attempt, response)
+            wait = _calculate_wait(attempt, response)
 
         except (ConnectionError, Timeout) as e:
             # Erros de rede (sem conexão, timeout) também merecem retry.
-            if eh_ultima_tentativa:
+            if is_last_attempt:
                 logger.error(
                     f"Erro de conexão após {max_retries} tentativas: {e}. "
                     f"Todas as tentativas esgotadas para {url}."
                 )
                 raise
-            wait = _calcular_espera(attempt)
+            wait = _calculate_wait(attempt)
 
         logger.warning(
             f"Tentativa {attempt + 1}/{max_retries} falhou. Aguardando {wait:.1f}s..."

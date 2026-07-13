@@ -1,7 +1,7 @@
 import formatacao
 
 
-TITULO_FAKE = {
+FAKE_TITLE = {
     "title": "O Iluminado",
     "media_type": "movie",
     "year": "1980",
@@ -21,137 +21,137 @@ TITULO_FAKE = {
 }
 
 
-class TestFormatarTipo:
+class TestFormatType:
     def test_movie_para_filme(self):
-        assert formatacao._formatar_tipo("movie") == "filme"
+        assert formatacao._format_type("movie") == "filme"
 
     def test_tv_para_serie(self):
-        assert formatacao._formatar_tipo("tv") == "série"
+        assert formatacao._format_type("tv") == "série"
 
     def test_valor_desconhecido(self):
-        assert formatacao._formatar_tipo("outro") == "outro"
+        assert formatacao._format_type("outro") == "outro"
 
 
-class TestFormatarGeneros:
+class TestFormatGenres:
     def test_separa_por_virgula(self):
-        assert formatacao._formatar_generos("Terror, Drama") == ["Terror", "Drama"]
+        assert formatacao._format_genres("Terror, Drama") == ["Terror", "Drama"]
 
     def test_retorna_lista_vazia_para_none(self):
-        assert formatacao._formatar_generos(None) == []
+        assert formatacao._format_genres(None) == []
 
     def test_retorna_lista_vazia_para_string_vazia(self):
-        assert formatacao._formatar_generos("") == []
+        assert formatacao._format_genres("") == []
 
 
-class TestFormatarDuracaoTitulo:
+class TestFormatTitleDuration:
     def test_filme_com_duracao(self):
-        reg = {"media_type": "movie", "runtime_minutes": 146}
-        assert formatacao._formatar_duracao_titulo(reg) == "2h 26min"
+        record = {"media_type": "movie", "runtime_minutes": 146}
+        assert formatacao._format_title_duration(record) == "2h 26min"
 
     def test_filme_sem_duracao(self):
-        reg = {"media_type": "movie", "runtime_minutes": None}
-        assert formatacao._formatar_duracao_titulo(reg) is None
+        record = {"media_type": "movie", "runtime_minutes": None}
+        assert formatacao._format_title_duration(record) is None
 
     def test_filme_menos_de_uma_hora(self):
-        reg = {"media_type": "movie", "runtime_minutes": 45}
-        assert formatacao._formatar_duracao_titulo(reg) == "45min"
+        record = {"media_type": "movie", "runtime_minutes": 45}
+        assert formatacao._format_title_duration(record) == "45min"
 
     def test_serie_completa(self):
-        reg = {
+        record = {
             "media_type": "tv",
             "number_of_seasons": 3,
             "number_of_episodes": 36,
             "episode_runtime_minutes": 45,
         }
-        assert formatacao._formatar_duracao_titulo(reg) == "3 temporadas · 36 eps · ~45 min/ep"
+        assert formatacao._format_title_duration(record) == "3 temporadas · 36 eps · ~45 min/ep"
 
     def test_serie_sem_episode_runtime(self):
-        reg = {
+        record = {
             "media_type": "tv",
             "number_of_seasons": 2,
             "number_of_episodes": 20,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._formatar_duracao_titulo(reg) == "2 temporadas · 20 eps"
+        assert formatacao._format_title_duration(record) == "2 temporadas · 20 eps"
 
     def test_serie_uma_temporada(self):
-        reg = {
+        record = {
             "media_type": "tv",
             "number_of_seasons": 1,
             "number_of_episodes": 10,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._formatar_duracao_titulo(reg) == "1 temporada · 10 eps"
+        assert formatacao._format_title_duration(record) == "1 temporada · 10 eps"
 
     def test_serie_sem_dados(self):
-        reg = {
+        record = {
             "media_type": "tv",
             "number_of_seasons": None,
             "number_of_episodes": None,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._formatar_duracao_titulo(reg) is None
+        assert formatacao._format_title_duration(record) is None
 
 
-class TestFormatarDataLancamento:
+class TestFormatReleaseDate:
     def test_data_valida(self):
-        assert formatacao._formatar_data_lancamento("1980-05-23") == "Maio de 1980"
+        assert formatacao._format_release_date("1980-05-23") == "Maio de 1980"
 
     def test_data_none(self):
-        assert formatacao._formatar_data_lancamento(None) is None
+        assert formatacao._format_release_date(None) is None
 
     def test_data_vazia(self):
-        assert formatacao._formatar_data_lancamento("") is None
+        assert formatacao._format_release_date("") is None
 
     def test_data_curta(self):
-        assert formatacao._formatar_data_lancamento("1980") is None
+        assert formatacao._format_release_date("1980") is None
 
 
-class TestFormatarTheaterEndDate:
+class TestFormatTheaterEndDate:
     def test_em_cartaz_com_data(self):
-        assert formatacao._formatar_theater_end_date("2025-07-15", True) == "15/07/2025"
+        assert formatacao._format_theater_end_date("2025-07-15", True) == "15/07/2025"
 
     def test_fora_de_cartaz(self):
-        assert formatacao._formatar_theater_end_date("2025-07-15", False) is None
+        assert formatacao._format_theater_end_date("2025-07-15", False) is None
 
     def test_em_cartaz_sem_data(self):
-        assert formatacao._formatar_theater_end_date(None, True) is None
+        assert formatacao._format_theater_end_date(None, True) is None
 
 
-class TestFormatarNota:
+class TestFormatRating:
     def test_float_valido(self):
-        assert formatacao._formatar_nota(8.4) == 8.4
+        assert formatacao._format_rating(8.4) == 8.4
 
     def test_string_valida(self):
-        assert formatacao._formatar_nota("7.5") == 7.5
+        assert formatacao._format_rating("7.5") == 7.5
 
     def test_none(self):
-        assert formatacao._formatar_nota(None) is None
+        assert formatacao._format_rating(None) is None
 
     def test_string_vazia(self):
-        assert formatacao._formatar_nota("") is None
+        assert formatacao._format_rating("") is None
 
 
-class TestFormatarRegistro:
+class TestFormatRecord:
     def test_registro_completo_filme(self):
-        resultado = formatacao.formatar_registro(TITULO_FAKE)
-        assert resultado["titulo"] == "O Iluminado"
-        assert resultado["tipo"] == "filme"
-        assert resultado["ano"] == 1980
-        assert resultado["generos"] == ["Terror", "Drama"]
-        assert resultado["sinopse"] == "Um escritor enlouquece num hotel isolado."
-        assert resultado["nota"] == 8.4
-        assert resultado["poster_url"] == "https://example.com/poster.jpg"
-        assert resultado["backdrop_url"] is None
-        assert resultado["duracao"] == "2h 26min"
-        assert resultado["data_lancamento"] == "Maio de 1980"
-        assert resultado["streaming_providers"] == "Netflix"
-        assert resultado["in_theaters"] is False
-        assert resultado["theater_end_date"] is None
+        result = formatacao.format_record(FAKE_TITLE)
+        assert result["title"] == "O Iluminado"
+        assert result["type"] == "filme"
+        assert result["year"] == 1980
+        assert result["genres"] == ["Terror", "Drama"]
+        assert result["overview"] == "Um escritor enlouquece num hotel isolado."
+        assert result["rating"] == 8.4
+        assert result["poster_url"] == "https://example.com/poster.jpg"
+        assert result["backdrop_url"] is None
+        assert result["duration"] == "2h 26min"
+        assert result["release_date"] == "Maio de 1980"
+        assert result["streaming_providers"] == "Netflix"
+        assert result["in_theaters"] is False
+        assert result["theater_end_date"] is None
 
     def test_novos_campos_filme(self):
-        registro = {
-            **TITULO_FAKE,
+        record = {
+            **FAKE_TITLE,
             "tagline": "Uma frase marcante",
             "actor_names": "Jack Nicholson, Shelley Duvall",
             "director": "Stanley Kubrick",
@@ -165,23 +165,23 @@ class TestFormatarRegistro:
             "networks": None,
             "created_by": None,
         }
-        resultado = formatacao.formatar_registro(registro)
-        assert resultado["tagline"] == "Uma frase marcante"
-        assert resultado["elenco"] == "Jack Nicholson, Shelley Duvall"
-        assert resultado["diretor"] == "Stanley Kubrick"
-        assert resultado["roteiristas"] == "Stephen King, Stanley Kubrick"
-        assert resultado["compositor"] == "Wendy Carlos"
-        assert resultado["keywords"] == "hotel, terror psicológico"
-        assert resultado["certificacao"] == "16"
-        assert resultado["trailer_url"] == "https://youtube.com/watch?v=abc"
-        assert resultado["colecao"] is None
-        assert resultado["produtoras"] == "Warner Bros."
-        assert resultado["redes_tv"] is None
-        assert resultado["criadores"] is None
+        result = formatacao.format_record(record)
+        assert result["tagline"] == "Uma frase marcante"
+        assert result["cast"] == "Jack Nicholson, Shelley Duvall"
+        assert result["director"] == "Stanley Kubrick"
+        assert result["writers"] == "Stephen King, Stanley Kubrick"
+        assert result["composer"] == "Wendy Carlos"
+        assert result["keywords"] == "hotel, terror psicológico"
+        assert result["certification"] == "16"
+        assert result["trailer_url"] == "https://youtube.com/watch?v=abc"
+        assert result["collection"] is None
+        assert result["production_companies"] == "Warner Bros."
+        assert result["networks"] is None
+        assert result["creators"] is None
 
     def test_novos_campos_crew_e_extras(self):
-        registro = {
-            **TITULO_FAKE,
+        record = {
+            **FAKE_TITLE,
             "producer": "Kevin Feige",
             "cinematographer": "Roger Deakins",
             "editor": "Thelma Schoonmaker",
@@ -191,34 +191,34 @@ class TestFormatarRegistro:
             "similar_titles": "Inception, Tenet",
             "alternative_titles": "Seven, Se7en",
         }
-        resultado = formatacao.formatar_registro(registro)
-        assert resultado["produtor"] == "Kevin Feige"
-        assert resultado["cinematografo"] == "Roger Deakins"
-        assert resultado["montador"] == "Thelma Schoonmaker"
-        assert resultado["paises_producao"] == "United States, New Zealand"
-        assert resultado["aluguel_compra"] == "Apple TV, Google Play"
-        assert resultado["recomendados"] == "Interstellar, The Prestige"
-        assert resultado["similares"] == "Inception, Tenet"
-        assert resultado["titulos_alternativos"] == "Seven, Se7en"
+        result = formatacao.format_record(record)
+        assert result["producer"] == "Kevin Feige"
+        assert result["cinematographer"] == "Roger Deakins"
+        assert result["editor"] == "Thelma Schoonmaker"
+        assert result["production_countries"] == "United States, New Zealand"
+        assert result["rent_buy_providers"] == "Apple TV, Google Play"
+        assert result["recommended"] == "Interstellar, The Prestige"
+        assert result["similar"] == "Inception, Tenet"
+        assert result["alternative_titles"] == "Seven, Se7en"
 
     def test_novos_campos_nulos(self):
-        resultado = formatacao.formatar_registro(TITULO_FAKE)
-        assert resultado["tagline"] is None
-        assert resultado["elenco"] is None
-        assert resultado["diretor"] is None
-        assert resultado["roteiristas"] is None
-        assert resultado["compositor"] is None
-        assert resultado["produtor"] is None
-        assert resultado["cinematografo"] is None
-        assert resultado["montador"] is None
-        assert resultado["paises_producao"] is None
-        assert resultado["aluguel_compra"] is None
-        assert resultado["recomendados"] is None
-        assert resultado["similares"] is None
-        assert resultado["titulos_alternativos"] is None
+        result = formatacao.format_record(FAKE_TITLE)
+        assert result["tagline"] is None
+        assert result["cast"] is None
+        assert result["director"] is None
+        assert result["writers"] is None
+        assert result["composer"] is None
+        assert result["producer"] is None
+        assert result["cinematographer"] is None
+        assert result["editor"] is None
+        assert result["production_countries"] is None
+        assert result["rent_buy_providers"] is None
+        assert result["recommended"] is None
+        assert result["similar"] is None
+        assert result["alternative_titles"] is None
 
     def test_registro_serie(self):
-        serie = {
+        tv_show = {
             "title": "Stranger Things",
             "media_type": "tv",
             "year": "2016",
@@ -236,6 +236,6 @@ class TestFormatarRegistro:
             "in_theaters": "false",
             "theater_end_date": None,
         }
-        resultado = formatacao.formatar_registro(serie)
-        assert resultado["tipo"] == "série"
-        assert resultado["duracao"] == "4 temporadas · 34 eps · ~50 min/ep"
+        result = formatacao.format_record(tv_show)
+        assert result["type"] == "série"
+        assert result["duration"] == "4 temporadas · 34 eps · ~50 min/ep"

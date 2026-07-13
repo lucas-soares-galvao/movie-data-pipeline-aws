@@ -456,7 +456,7 @@ recommended_resolved AS (
         d.media_type,
         array_join(
             array_agg(
-                COALESCE(NULLIF(TRIM(u_rec.title), ''), t_en.titulo_en)
+                COALESCE(NULLIF(TRIM(u_rec.title), ''), t_en.title_en)
                 ORDER BY t_id.ord
             ),
             ', '
@@ -467,7 +467,7 @@ recommended_resolved AS (
     ) WITH ORDINALITY AS t_id(rec_id_str, ord)
     CROSS JOIN UNNEST(
         split(d.recommended_titles, ', ')
-    ) WITH ORDINALITY AS t_en(titulo_en, ord_en)
+    ) WITH ORDINALITY AS t_en(title_en, ord_en)
     LEFT JOIN unified u_rec
         ON u_rec.id = CAST(t_id.rec_id_str AS BIGINT)
         AND u_rec.media_type = d.media_type
@@ -483,7 +483,7 @@ similar_resolved AS (
         d.media_type,
         array_join(
             array_agg(
-                COALESCE(NULLIF(TRIM(u_sim.title), ''), t_en.titulo_en)
+                COALESCE(NULLIF(TRIM(u_sim.title), ''), t_en.title_en)
                 ORDER BY t_id.ord
             ),
             ', '
@@ -494,7 +494,7 @@ similar_resolved AS (
     ) WITH ORDINALITY AS t_id(sim_id_str, ord)
     CROSS JOIN UNNEST(
         split(d.similar_titles, ', ')
-    ) WITH ORDINALITY AS t_en(titulo_en, ord_en)
+    ) WITH ORDINALITY AS t_en(title_en, ord_en)
     LEFT JOIN unified u_sim
         ON u_sim.id = CAST(t_id.sim_id_str AS BIGINT)
         AND u_sim.media_type = d.media_type

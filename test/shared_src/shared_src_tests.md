@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configurar_logging_glue` (`glue_helpers.py`), `traduzir_texto` (`traducao_google.py`), `traduzir_texto_aws` (`traducao_aws.py`) e `resolver_traduzir_fn`/`traduzir_em_paralelo`/`traduzir_coluna_pendente`/`elegivel_overview_pt`/`elegivel_tagline_pt`/`elegivel_keywords_pt` (`traducao.py`, a fachada que reexporta as duas funções de serviço). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`) e `resolve_translate_fn`/`translate_in_parallel`/`translate_pending_column`/`eligible_overview_pt`/`eligible_tagline_pt`/`eligible_keywords_pt` (`traducao.py`, a fachada que reexporta as duas funções de serviço). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -12,10 +12,10 @@ test/shared_src/
 ├── conftest.py             # sys.path + stub do módulo awsglue
 ├── requirements_tests.txt  # Dependências de teste
 ├── test_api_client.py      # Testes de api_get e get_api_secret
-├── test_glue_helpers.py    # Testes de get_resolved_option e configurar_logging_glue
-├── test_traducao_google.py # Testes de traduzir_texto (Google Translate)
-├── test_traducao_aws.py    # Testes de traduzir_texto_aws (AWS Translate)
-├── test_traducao.py        # Testes de resolver_traduzir_fn, traduzir_em_paralelo, traduzir_coluna_pendente e das máscaras elegivel_*
+├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
+├── test_traducao_google.py # Testes de translate_text (Google Translate)
+├── test_traducao_aws.py    # Testes de translate_text_aws (AWS Translate)
+├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, translate_pending_column e das máscaras elegivel_*
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -70,7 +70,7 @@ test/shared_src/
 | `test_repassa_lista_vazia` | Lista de argumentos vazia é repassada sem erro |
 | `test_propaga_excecao_de_argumento_ausente` | `SystemExit` levantado por `getResolvedOptions` (argumento obrigatório ausente) é propagado |
 
-### `TestConfigurarLoggingGlue`
+### `TestConfigureGlueLogging`
 
 | Teste | O que verifica |
 |---|---|
@@ -80,11 +80,11 @@ test/shared_src/
 
 ## Casos de teste — `test_traducao_google.py`
 
-### `TestTraduzirTexto`
+### `TestTranslateText`
 
-`traduzir_texto` sempre usa `GoogleTranslator(source="auto", target="pt")` — detecção
-automática do idioma de origem — com até `_MAX_TENTATIVAS = 5` tentativas e backoff
-(`time.sleep(tentativa * 2)`), mas desiste mais cedo (`_MAX_TENTATIVAS_SEM_ERRO = 2`)
+`translate_text` sempre usa `GoogleTranslator(source="auto", target="pt")` — detecção
+automática do idioma de origem — com até `_MAX_ATTEMPTS = 5` tentativas e backoff
+(`time.sleep(attempt * 2)`), mas desiste mais cedo (`_MAX_ATTEMPTS_NO_ERROR = 2`)
 quando o resultado vem idêntico ao original sem lançar exceção (indício de que não há
 o que traduzir, e não de falha transitória).
 
@@ -93,21 +93,21 @@ o que traduzir, e não de falha transitória).
 | `test_retorna_string_vazia_para_entrada_vazia` | Texto `""` retorna `""` sem chamar o tradutor |
 | `test_retorna_string_vazia_para_none` | Texto `None` retorna `""` sem chamar o tradutor |
 | `test_traduz_texto_com_sucesso` | Tradução bem-sucedida retorna o texto traduzido e chama `translate` com o texto original |
-| `test_retorna_original_apos_esgotar_tentativas` | Exceção em todas as `_MAX_TENTATIVAS` (5) tentativas faz a função retornar o texto original |
+| `test_retorna_original_apos_esgotar_tentativas` | Exceção em todas as `_MAX_ATTEMPTS` (5) tentativas faz a função retornar o texto original |
 | `test_tenta_novamente_apos_excecao_e_depois_sucede` | Uma exceção seguida de sucesso: 2 chamadas ao tradutor, `time.sleep(2)` entre elas, retorna o texto traduzido |
 | `test_tenta_novamente_quando_resultado_identico_ao_original` | Sem exceção, mas resultado igual ao original conta como tentativa falha e tenta de novo |
-| `test_desiste_cedo_quando_sempre_identico_sem_excecao` | Resultado sempre idêntico ao original, sem exceção: desiste em `_MAX_TENTATIVAS_SEM_ERRO` (2) tentativas, não nas 5 completas |
+| `test_desiste_cedo_quando_sempre_identico_sem_excecao` | Resultado sempre idêntico ao original, sem exceção: desiste em `_MAX_ATTEMPTS_NO_ERROR` (2) tentativas, não nas 5 completas |
 | `test_log_debug_quando_desiste_cedo_por_resultado_identico` | Esse desfecho (comum para nomes próprios/termos emprestados) loga em `DEBUG`, não `INFO` — não deve poluir o log padrão do workflow |
 | `test_contador_de_resultado_identico_nao_precisa_ser_consecutivo` | O contador de tentativas "sem erro e resultado idêntico" soma o total mesmo com uma exceção intercalada, não exige consecutividade |
 | `test_log_warning_em_caso_de_excecao` | Mensagem `"Falha ao traduzir"` aparece no log de warning quando a tradução falha |
-| `test_contexto_aparece_no_log` | O parâmetro `contexto` aparece na mensagem de log de warning |
+| `test_contexto_aparece_no_log` | O parâmetro `context` aparece na mensagem de log de warning |
 | `test_cria_translator_com_idiomas_corretos` | `GoogleTranslator` é instanciado com `source="auto", target="pt"` (detecção automática do idioma de origem) |
 
 ## Casos de teste — `test_traducao_aws.py`
 
-### `TestTraduzirTextoAws`
+### `TestTranslateTextAws`
 
-Testa `traduzir_texto_aws` via `boto3.client("translate")` mockado.
+Testa `translate_text_aws` via `boto3.client("translate")` mockado.
 
 | Teste | O que verifica |
 |---|---|
@@ -118,72 +118,72 @@ Testa `traduzir_texto_aws` via `boto3.client("translate")` mockado.
 
 ## Casos de teste — `test_traducao.py`
 
-### `TestResolverTraduzirFn`
+### `TestResolveTranslateFn`
 
 Resolve `"google"`/`"aws"` para a função de tradução correspondente — a escolha de
 serviço por execução usada por `glue_details`/`glue_etl` (default `"aws"`) e pelos
-backfills manuais (default `"google"`). `traduzir_google`/`traduzir_aws` são parâmetros
-opcionais (default `traduzir_texto`/`traduzir_texto_aws`) para que um chamador que faça
-patch da própria referência local (ex.: `patch("src.utils.traduzir_texto", ...)`)
+backfills manuais (default `"google"`). `translate_google`/`translate_aws` são parâmetros
+opcionais (default `translate_text`/`translate_text_aws`) para que um chamador que faça
+patch da própria referência local (ex.: `patch("src.utils.translate_text", ...)`)
 continue funcionando.
 
 | Teste | O que verifica |
 |---|---|
-| `test_resolve_google` | `provider="google"` devolve `traduzir_texto` (default) |
-| `test_resolve_aws` | `provider="aws"` devolve `traduzir_texto_aws` (default) |
+| `test_resolve_google` | `provider="google"` devolve `translate_text` (default) |
+| `test_resolve_aws` | `provider="aws"` devolve `translate_text_aws` (default) |
 | `test_provider_invalido_levanta_value_error` | Qualquer valor fora de `"google"`/`"aws"` levanta `ValueError` |
-| `test_usa_referencias_locais_informadas_pelo_chamador` | Passando `traduzir_google`/`traduzir_aws` explícitos, a função devolve exatamente essas referências (não as do módulo) |
+| `test_usa_referencias_locais_informadas_pelo_chamador` | Passando `translate_google`/`translate_aws` explícitos, a função devolve exatamente essas referências (não as do módulo) |
 
-### `TestTraduzirEmParalelo`
+### `TestTranslateInParallel`
 
 | Teste | O que verifica |
 |---|---|
-| `test_traduz_cada_valor_e_preserva_a_ordem` | Aplica `traduzir_fn` a cada valor via `ThreadPoolExecutor`, preservando a ordem de entrada |
-| `test_lista_vazia_nao_chama_traduzir_fn` | Lista vazia retorna `[]` sem chamar `traduzir_fn` |
+| `test_traduz_cada_valor_e_preserva_a_ordem` | Aplica `translate_fn` a cada valor via `ThreadPoolExecutor`, preservando a ordem de entrada |
+| `test_lista_vazia_nao_chama_traduzir_fn` | Lista vazia retorna `[]` sem chamar `translate_fn` |
 | `test_usa_max_workers_informado` | `max_workers` é repassado ao `ThreadPoolExecutor`, não hardcoded |
 
-### `TestTraduzirColunaPendente`
+### `TestTranslatePendingColumn`
 
 Orquestra a tradução de uma coluna: um registro é pulado quando a coluna de destino já
 está preenchida e diferente da coluna fonte (já traduzido — nativo do TMDB ou run
 anterior do backfill), e retentado quando destino ficou igual à fonte (fallback de uma
-tradução que falhou — ver `traduzir_texto`). Usada por `glue_details` e
+tradução que falhou — ver `translate_text`). Usada por `glue_details` e
 `scripts/backfill_traducao.py` em vez de cada um manter sua própria cópia da orquestração.
 
 | Teste | O que verifica |
 |---|---|
 | `test_traduz_registros_elegiveis_pendentes` | Traduz todos os registros elegíveis, gravando na coluna de destino |
 | `test_cria_coluna_destino_se_nao_existir` | Cria a coluna de destino como `None` quando ainda não existe no DataFrame |
-| `test_pula_registro_ja_traduzido_com_sucesso` | Destino preenchido e diferente da fonte: não chama `traduzir_fn` |
+| `test_pula_registro_ja_traduzido_com_sucesso` | Destino preenchido e diferente da fonte: não chama `translate_fn` |
 | `test_retenta_quando_destino_igual_a_fonte` | Destino igual à fonte (fallback de falha anterior): é retentado |
 | `test_nao_elegivel_nao_e_traduzido` | Registros fora da máscara de elegibilidade não são traduzidos |
-| `test_mask_vazia_nao_chama_traduzir_fn` | Máscara vazia retorna `0` sem chamar `traduzir_fn` |
-| `test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original` | Resultado igual ao original (falha de `traduzir_fn`) não conta como sucesso |
-| `test_usa_max_workers_informado` | `max_workers` é repassado a `traduzir_em_paralelo`, não hardcoded |
+| `test_mask_vazia_nao_chama_traduzir_fn` | Máscara vazia retorna `0` sem chamar `translate_fn` |
+| `test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original` | Resultado igual ao original (falha de `translate_fn`) não conta como sucesso |
+| `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
 
-### `TestReaproveitarTraducaoExistente`
+### `TestReuseExistingTranslation`
 
-Pré-preenche a coluna de destino com a tradução já persistida (`df_anterior`) quando a
-coluna fonte não mudou para o mesmo `coluna_chave` (default `"id"`) — evita retraduzir
+Pré-preenche a coluna de destino com a tradução já persistida (`previous_df`) quando a
+coluna fonte não mudou para o mesmo `key_column` (default `"id"`) — evita retraduzir
 texto idêntico ao da última execução. Não sobrescreve valor já preenchido no `df` novo
 (preserva prioridade da tradução nativa do TMDB). Usada por `glue_details`
-(`coluna_chave="id"`) e `glue_etl` (`coluna_chave="iso_3166_1"`/`"iso_639_1"`, tabela
+(`key_column="id"`) e `glue_etl` (`key_column="iso_3166_1"`/`"iso_639_1"`, tabela
 `configuration`).
 
 | Teste | O que verifica |
 |---|---|
-| `test_reaproveita_quando_fonte_identica` | Reaproveita a coluna de destino de `df_anterior` quando a fonte é idêntica para a mesma chave |
-| `test_nao_reaproveita_quando_fonte_mudou` | Não reaproveita quando a fonte mudou em relação a `df_anterior` |
-| `test_nao_reaproveita_id_novo_sem_historico` | Não reaproveita quando a chave não existe em `df_anterior` |
-| `test_df_anterior_none_nao_quebra` | `df_anterior=None` não lança exceção e não altera `df` |
-| `test_df_anterior_vazio_nao_quebra` | `df_anterior` vazio não lança exceção e não altera `df` |
+| `test_reaproveita_quando_fonte_identica` | Reaproveita a coluna de destino de `previous_df` quando a fonte é idêntica para a mesma chave |
+| `test_nao_reaproveita_quando_fonte_mudou` | Não reaproveita quando a fonte mudou em relação a `previous_df` |
+| `test_nao_reaproveita_id_novo_sem_historico` | Não reaproveita quando a chave não existe em `previous_df` |
+| `test_df_anterior_none_nao_quebra` | `previous_df=None` não lança exceção e não altera `df` |
+| `test_df_anterior_vazio_nao_quebra` | `previous_df` vazio não lança exceção e não altera `df` |
 | `test_nao_sobrescreve_destino_ja_preenchido` | Não sobrescreve a coluna de destino já preenchida no `df` novo |
-| `test_ignora_schema_antigo_sem_coluna` | `df_anterior` sem a coluna de destino (schema antigo) não lança exceção e não reaproveita |
-| `test_ids_duplicados_no_df_anterior_usa_ultimo` | Com chaves duplicadas em `df_anterior`, usa o último valor |
-| `test_coluna_chave_customizada` | Funciona com `coluna_chave="iso_3166_1"` (caso de uso do `glue_etl`) |
-| `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `df_anterior` não reaproveita |
+| `test_ignora_schema_antigo_sem_coluna` | `previous_df` sem a coluna de destino (schema antigo) não lança exceção e não reaproveita |
+| `test_ids_duplicados_no_df_anterior_usa_ultimo` | Com chaves duplicadas em `previous_df`, usa o último valor |
+| `test_coluna_chave_customizada` | Funciona com `key_column="iso_3166_1"` (caso de uso do `glue_etl`) |
+| `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `previous_df` não reaproveita |
 
-### `TestElegivelOverviewPt` / `TestElegivelTaglinePt` / `TestElegivelKeywordsPt`
+### `TestEligibleOverviewPt` / `TestEligibleTaglinePt` / `TestEligibleKeywordsPt`
 
 As três máscaras (candidatos à tradução de `overview_pt`, `tagline_pt` e `keywords_pt`)
 compartilham a mesma regra: elegível quando `original_language != "pt"` e o campo de
@@ -192,12 +192,12 @@ origem está preenchido. `overview_pt` ainda depende de `overview_en` estar pree
 
 | Teste | O que verifica |
 |---|---|
-| `test_elegivel_quando_en_e_overview_preenchido` (`TestElegivelOverviewPt`) | Idioma `en` com `overview_en` preenchido é elegível |
+| `test_elegivel_quando_en_e_overview_preenchido` (`TestEligibleOverviewPt`) | Idioma `en` com `overview_en` preenchido é elegível |
 | `test_elegivel_para_qualquer_idioma_diferente_de_pt` (nas três classes) | Idiomas como `fr`, `ja`, `es` são elegíveis — não é mais uma lista restrita a `en` |
 | `test_nao_elegivel_quando_idioma_e_pt` (nas três classes) | `original_language == "pt"` nunca é elegível, mesmo com o campo preenchido — evita reenviar ao Google Translate texto que já está em português |
-| `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestElegivelOverviewPt`) | `overview_en` vazio/`None` não é elegível mesmo com idioma diferente de `pt` |
-| `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestElegivelTaglinePt`) | `tagline` vazia/`None` não é elegível |
-| `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestElegivelKeywordsPt`) | `keywords` vazia/`None` não é elegível |
+| `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestEligibleOverviewPt`) | `overview_en` vazio/`None` não é elegível mesmo com idioma diferente de `pt` |
+| `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestEligibleTaglinePt`) | `tagline` vazia/`None` não é elegível |
+| `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestEligibleKeywordsPt`) | `keywords` vazia/`None` não é elegível |
 
 ## Como executar
 

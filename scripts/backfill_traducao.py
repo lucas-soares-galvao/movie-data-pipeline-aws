@@ -71,13 +71,13 @@ from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
 from shared_utils.traducao import (  # noqa: E402
-    elegivel_keywords_pt,
-    elegivel_overview_pt,
-    elegivel_tagline_pt,
-    resolver_traduzir_fn,
-    traduzir_coluna_pendente,
-    traduzir_texto,
-    traduzir_texto_aws,  # noqa: F401 — reexportado para os testes verificarem identidade
+    eligible_keywords_pt,
+    eligible_overview_pt,
+    eligible_tagline_pt,
+    resolve_translate_fn,
+    translate_pending_column,
+    translate_text,
+    translate_text_aws,  # noqa: F401 — reexportado para os testes verificarem identidade
 )
 
 import backfill_shared as shared
@@ -95,13 +95,13 @@ def _traduzir_pendentes(
     traduzir_fn: Callable[[str], str],
 ) -> int:
     """Traduz coluna_fonte → coluna_pt para os registros elegíveis ainda pendentes
-    (ver traduzir_coluna_pendente em shared_utils/traducao.py para a regra de
+    (ver translate_pending_column em shared_utils/traducao.py para a regra de
     "já traduzido" — pulado — e o retry entre execuções do backfill)."""
     logger.info(
         "  Traduzindo até %d registros para %s (%d workers)...",
         mask_elegivel.sum(), coluna_pt, _TRANSLATE_MAX_WORKERS,
     )
-    sucesso = traduzir_coluna_pendente(
+    sucesso = translate_pending_column(
         df, coluna_fonte, coluna_pt, mask_elegivel, traduzir_fn, max_workers=_TRANSLATE_MAX_WORKERS
     )
     logger.info("  %d traduzidos com sucesso (%s).", sucesso, coluna_pt)
@@ -113,13 +113,13 @@ def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[st
     overview_en preenchido, ainda pendentes (registros com overview_en vazio não
     têm o que traduzir e distorceriam a contagem de sucesso)."""
     # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
-    # patch("backfill_traducao.traduzir_texto", ...) nos testes continue funcionando
+    # patch("backfill_traducao.translate_text", ...) nos testes continue funcionando
     # quando o chamador não passa um traduzir_fn explícito.
-    traduzir_fn = traduzir_fn or traduzir_texto
+    traduzir_fn = traduzir_fn or translate_text
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
 
-    mask_elegivel = elegivel_overview_pt(df)
+    mask_elegivel = eligible_overview_pt(df)
     if not mask_elegivel.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel, traduzir_fn)
@@ -129,10 +129,10 @@ def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[st
 def _adicionar_traducoes_tagline_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
     """Adiciona tagline_pt aos registros com tagline preenchida e idioma original
     diferente de pt (espelha glue_details)."""
-    traduzir_fn = traduzir_fn or traduzir_texto
+    traduzir_fn = traduzir_fn or translate_text
     if "tagline" not in df.columns:
         return df, 0
-    mask_elegivel = elegivel_tagline_pt(df)
+    mask_elegivel = eligible_tagline_pt(df)
     if not mask_elegivel.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel, traduzir_fn)
@@ -142,10 +142,10 @@ def _adicionar_traducoes_tagline_pt(df: pd.DataFrame, traduzir_fn: Optional[Call
 def _adicionar_traducoes_keywords_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
     """Adiciona keywords_pt aos registros com keywords preenchidas e idioma original
     diferente de pt (TMDB sempre devolve keywords em inglês para os demais idiomas)."""
-    traduzir_fn = traduzir_fn or traduzir_texto
+    traduzir_fn = traduzir_fn or translate_text
     if "keywords" not in df.columns:
         return df, 0
-    mask_elegivel = elegivel_keywords_pt(df)
+    mask_elegivel = eligible_keywords_pt(df)
     if not mask_elegivel.any():
         return df, 0
     sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel, traduzir_fn)
@@ -180,7 +180,7 @@ def _backfill_year(
     Returns:
         Tupla (escreveu, quantidade traduzida com sucesso).
     """
-    traduzir_fn = traduzir_fn or traduzir_texto
+    traduzir_fn = traduzir_fn or translate_text
     s3_details_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/year={year}/"
 
     try:
@@ -255,7 +255,7 @@ def main() -> None:
     )
     # Um único traduzir_fn para toda a execução (não por partição) — mesmo serviço de
     # tradução para todas as partições ano+tipo do run.
-    traduzir_fn = resolver_traduzir_fn(translate_provider, traduzir_texto, traduzir_texto_aws)
+    traduzir_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
 
     s3_client = boto3.client("s3", region_name=region)
 
