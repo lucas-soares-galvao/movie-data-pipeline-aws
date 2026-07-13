@@ -13,7 +13,7 @@ import boto3
 import streamlit as st
 import streamlit.components.v1 as components
 import watchtower
-from agent import AudioMuitoLongoError, recommend, transcribe_preference
+from agent import AudioMuitoLongoError, _MAX_AUDIO_SECONDS, recommend, transcribe_preference
 from componentes import (
     load_login_css,
     load_main_css,
@@ -159,7 +159,7 @@ _client_ip = _get_client_ip()
 # o Streamlit proíbe setar session_state["preference_text"] depois que o
 # widget com essa key já rodou no mesmo script run)
 # ------------------------------------------------------------------
-st.caption("🎤 Ou grave o que você quer assistir")
+st.caption(f"🎤 Ou grave o que você quer assistir (máx. {_MAX_AUDIO_SECONDS}s)")
 audio_value = st.audio_input(
     "Gravar preferência em áudio", label_visibility="collapsed", key="audio_input"
 )
@@ -218,7 +218,7 @@ if st.session_state.get("transcription_rate_limited"):
         "Digite sua preferência manualmente."
     )
 if st.session_state.get("transcription_too_long"):
-    st.caption("⚠️ Áudio muito longo — grave até 20 segundos ou digite sua preferência.")
+    st.caption(f"⚠️ Áudio muito longo — grave até {_MAX_AUDIO_SECONDS} segundos ou digite sua preferência.")
 if st.session_state.get("transcription_error"):
     st.caption("❌ Não conseguimos transcrever o áudio. Digite sua preferência manualmente.")
 if st.session_state.get("transcription_empty"):
@@ -233,6 +233,7 @@ preference = st.text_area(
     max_chars=_MAX_PREFERENCE_CHARS,
     key="preference_text",
 )
+st.caption(f"{len(preference or '')} / {_MAX_PREFERENCE_CHARS} caracteres")
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made
