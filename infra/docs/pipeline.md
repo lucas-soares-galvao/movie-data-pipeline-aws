@@ -10,7 +10,7 @@
 | `lambda_api_tv_weekly` | Semanal (dom) | 06:05 BRT (09:05 UTC) | `only_weekly_tables=true` — séries novas |
 | `lambda_api_movie_monthly` | Dia 1 do mês | 06:30 BRT (09:30 UTC) | `only_monthly_tables=true` — referências + discover do ano anterior |
 | `lambda_api_tv_monthly` | Dia 1 do mês | 06:35 BRT (09:35 UTC) | `only_monthly_tables=true` — referências + discover do ano anterior |
-| `sfn_backfill_annual` | 1 de jan (anual) | 07:00 BRT (10:00 UTC) | Inicia o Step Function de backfill histórico com `{"start_year": 2000}` |
+| `sfn_backfill_annual` | 1 de jan (anual) | 07:00 BRT (10:00 UTC) | **DISABLED** — inicia o Step Function de backfill histórico com `{"start_year": 2000}`, mas o disparo automático está desativado (reprocessar desde 2000 todo ano era gasto desnecessário); start apenas manual |
 
 **Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.
 
@@ -18,7 +18,7 @@
 
 State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a ano, contornando o limite de 15 minutos da Lambda.
 
-**Acionamento:** regra EventBridge `sfn_backfill_annual` no dia 1º de janeiro às 10:00 UTC, com input `{"start_year": 2000}`.
+**Acionamento:** manual apenas. A regra EventBridge `sfn_backfill_annual` (1º de janeiro às 10:00 UTC, input `{"start_year": 2000}`) existe mas está `DISABLED` — cada execução reprocessa o backfill inteiro desde 2000, o que se mostrou desnecessário/custoso rodar automaticamente todo ano. Para rodar sob demanda: Step Functions → `tmdb-sfn-backfill-{env}` → Start Execution.
 
 **Logging:** habilitado com nível `ALL` e `include_execution_data = true`, enviando logs para o CloudWatch Log Group `/aws/vendedlogs/states/tmdb-sfn-backfill-{env}`.
 
@@ -33,7 +33,7 @@ State machine `tmdb-sfn-backfill-{env}` para coleta histórica de dados ano a an
    - **InvokeLambdaTV** — invoca a Lambda com payload de séries para o batch (Retry: 2 tentativas, intervalo de 30s, backoff 2.0)
    - **WaitBeforeNextBatch** — aguarda 5 min antes do próximo batch
 
-> Além deste backfill anual automático, existe também um backfill manual sob demanda via workflow `05_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality, sem passar pela state machine — usado para correções pontuais fora do ciclo anual. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
+> Hoje o backfill é sempre manual: via console/CLI da state machine (backfill completo desde um `start_year`) ou via workflow `05_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality, sem passar pela state machine — usado para correções pontuais em um grupo específico de tabelas. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
 
 ## Notificações — SNS (`sns_topics.tf`)
 

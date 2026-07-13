@@ -195,16 +195,17 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_monthly" {
 # =============================================================================
 # REGRA ANUAL — Backfill Histórico via Step Functions (1º de Janeiro)
 # =============================================================================
-# Roda o backfill completo uma vez por ano para incorporar o novo ano e
-# manter a base histórica atualizada.
-# Mesmo estado das demais regras (DISABLED em dev).
+# DESABILITADA permanentemente (em todos os ambientes, não segue
+# local.eventbridge_schedule_state): cada execução reprocessa o backfill
+# inteiro desde 2000, o que é gasto desnecessário rodar automaticamente
+# todo ano. A state machine continua disponível para start manual.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "sfn_backfill_annual" {
   name                = "${local.tmdb_prefix}-sfn-backfill-annual-${var.env}"
   description         = "Dispara o backfill histórico TMDB todo dia 1 de janeiro"
   schedule_expression = "cron(00 10 1 1 ? *)" # 1º de janeiro às 10:00 UTC / 07:00 BRT
-  state               = local.eventbridge_schedule_state
+  state               = "DISABLED"            # Desativado: cada execução reprocessa desde 2000, gasto desnecessário. Backfill segue disponível via start manual (ver step_functions.tf).
   tags                = local.component_tags.sfn_backfill
 }
 
