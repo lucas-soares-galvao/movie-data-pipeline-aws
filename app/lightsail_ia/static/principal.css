@@ -12,8 +12,9 @@ button[data-testid="stBaseButton-secondary"] {
   min-width: 0 !important;
 }
 
-/* Caixa de texto ocupa 50% no desktop */
-[data-testid="stTextArea"] {
+/* Caixa de texto e gravador de áudio ocupam a mesma largura no desktop */
+[data-testid="stTextArea"],
+[data-testid="stAudioInput"] {
   max-width: 75%;
 }
 
@@ -24,7 +25,8 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 @media (max-width: 1024px) {
-  [data-testid="stTextArea"] { max-width: 100%; }
+  [data-testid="stTextArea"],
+  [data-testid="stAudioInput"] { max-width: 100%; }
 }
 
 /* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam */
