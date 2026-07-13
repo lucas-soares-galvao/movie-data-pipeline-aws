@@ -22,6 +22,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | Variável | Valor de teste |
 |---|---|
 | `LLM_API_KEY` | `"test-llm-key"` (fallback — `FILMBOT_SECRET_ARN` não é definida em testes) |
+| `TRANSCRIPTION_API_KEY` | `"test-transcription-key"` (fallback — `FILMBOT_SECRET_ARN` não é definida em testes) |
 | `AWS_REGION` | `"sa-east-1"` |
 | `GLUE_DATABASE` | `"db_tmdb_unified_prod"` |
 | `SPEC_TABLE` | `"tb_tmdb_discover_unified_prod"` |
@@ -122,6 +123,21 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | Teste | O que verifica |
 |---|---|
 | `test_loga_fallback_em_warning` | `_log_llm_fallback()` chama `logger.warning` uma vez com `preference`, `primary_model`, `fallback_model` e o erro no `extra` |
+
+### `TestTranscribePreference` — Transcrição de áudio (Whisper via litellm)
+
+Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que gera um WAV de teste (silêncio) com a duração informada via módulo padrão `wave`. Sem fallback automático de modelo (diferente de `_call_llm_step1`) — qualquer falha é tratada pelo chamador (`app.py`).
+
+| Teste | O que verifica |
+|---|---|
+| `test_transcreve_audio_com_sucesso` | Retorna o texto transcrito pelo mock de `litellm.transcription` |
+| `test_remove_espacos_da_transcricao` | Remove espaços nas pontas do texto transcrito |
+| `test_retorna_string_vazia_sem_fala_detectada` | Retorna `""` quando o provedor não detecta fala, sem levantar erro |
+| `test_usa_modelo_e_idioma_configurados` | Chama `litellm.transcription` com `model=_TRANSCRIPTION_MODEL` e `language="pt"` |
+| `test_propaga_erro_do_provedor` | Propaga `openai.APIError` (ou subclasse) quando a chamada ao provedor falha |
+| `test_levanta_erro_sem_api_key_configurada` | Levanta `ValueError` quando `_TRANSCRIPTION_API_KEY` é `None` |
+| `test_audio_dentro_do_limite_nao_levanta_erro` | Áudio com duração abaixo de `_MAX_AUDIO_SECONDS` chama `litellm.transcription` normalmente |
+| `test_audio_muito_longo_levanta_erro_sem_chamar_api` | Áudio acima de `_MAX_AUDIO_SECONDS` levanta `AudioMuitoLongoError` **sem** chamar `litellm.transcription` (`assert_not_called()`), evitando gastar crédito à toa |
 
 ## Casos de teste — `test_componentes.py`
 
