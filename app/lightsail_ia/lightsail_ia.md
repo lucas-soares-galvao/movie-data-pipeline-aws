@@ -16,8 +16,8 @@ O processo de recomendação é dividido em duas etapas encadeadas:
 O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Function Calling*, gera a cláusula WHERE do SQL livremente, combinando qualquer coluna disponível:
 ```json
 {
-  "filtro_where": "media_type = 'movie' AND original_language = 'ko' AND lower(genre_names) LIKE '%terror%' AND vote_average >= 7.0",
-  "limite": 10
+  "where_clause": "media_type = 'movie' AND original_language = 'ko' AND lower(genre_names) LIKE '%terror%' AND vote_average >= 7.0",
+  "limit": 10
 }
 ```
 Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz, diretor, elenco). O limite máximo de resultados é 10.
@@ -26,36 +26,36 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit.
 
-**Fallback automático de LLM (opcional):** se `LLM_MODEL_FALLBACK` estiver configurada, `_chamar_llm_passo1()` tenta um modelo secundário (tipicamente um modelo AWS Bedrock, autenticado via IAM em vez de API key) quando a chamada ao `LLM_MODEL` primário falhar por erro de infraestrutura (timeout, 5xx, rate limit, autenticação — `openai.APIError` e subclasses, a classe-base real usada pelo litellm para erros de provedor; `litellm.exceptions.APIError` **não** é essa base, apesar do nome parecido). Não é acionado quando o LLM responde normalmente sem `tool_calls` (resultado vazio legítimo) nem por erros de parsing dos argumentos da tool — só por falha real na chamada ao provedor. Indefinida por padrão = sem fallback (comportamento original). Candidato sugerido para `LLM_MODEL_FALLBACK`: GPT OSS 20B na Bedrock (`bedrock/openai.gpt-oss-20b`) — escolhido por custo/capacidade dentre um shortlist (GLM 4.7 Flash, Nemotron Nano 9B v2, MiniMax M2 como alternativas), mas a escolha final depende de um teste de qualidade das cláusulas WHERE geradas por cada candidato, ainda não realizado.
+**Fallback automático de LLM (opcional):** se `LLM_MODEL_FALLBACK` estiver configurada, `_call_llm_step1()` tenta um modelo secundário (tipicamente um modelo AWS Bedrock, autenticado via IAM em vez de API key) quando a chamada ao `LLM_MODEL` primário falhar por erro de infraestrutura (timeout, 5xx, rate limit, autenticação — `openai.APIError` e subclasses, a classe-base real usada pelo litellm para erros de provedor; `litellm.exceptions.APIError` **não** é essa base, apesar do nome parecido). Não é acionado quando o LLM responde normalmente sem `tool_calls` (resultado vazio legítimo) nem por erros de parsing dos argumentos da tool — só por falha real na chamada ao provedor. Indefinida por padrão = sem fallback (comportamento original). Candidato sugerido para `LLM_MODEL_FALLBACK`: GPT OSS 20B na Bedrock (`bedrock/openai.gpt-oss-20b`) — escolhido por custo/capacidade dentre um shortlist (GLM 4.7 Flash, Nemotron Nano 9B v2, MiniMax M2 como alternativas), mas a escolha final depende de um teste de qualidade das cláusulas WHERE geradas por cada candidato, ainda não realizado.
 
 ### Etapa 2 — Consulta ao Athena
-A cláusula WHERE gerada pelo LLM é validada (`_validar_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
+A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
 
 ### Etapa 2.5 — Formatação determinística (formatacao.py)
-Após o Athena retornar os resultados brutos, funções puras em `formatacao.py` (`formatar_registro()`) convertem cada registro em campos prontos para o card da interface, sem usar LLM:
-- `titulo` (cópia de `title`), `tipo` (`"movie"` → `"filme"`, `"tv"` → `"série"`)
-- `ano` (inteiro), `generos` (lista de strings a partir de `genre_names`)
-- `sinopse` (cópia de `overview` — já vem em pt-BR do pipeline via `COALESCE(overview, overview_pt, overview_en)`)
-- `nota` (float), `poster_url`, `backdrop_url`
-- `duracao` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temporadas · 36 eps · ~45 min/ep"`)
-- `data_lancamento` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
+Após o Athena retornar os resultados brutos, funções puras em `formatacao.py` (`format_record()`) convertem cada registro em campos prontos para o card da interface, sem usar LLM:
+- `title` (cópia de `title`), `type` (`"movie"` → `"filme"`, `"tv"` → `"série"`)
+- `year` (inteiro), `genres` (lista de strings a partir de `genre_names`)
+- `overview` (cópia de `overview` — já vem em pt-BR do pipeline via `COALESCE(overview, overview_pt, overview_en)`)
+- `rating` (float), `poster_url`, `backdrop_url`
+- `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temporadas · 36 eps · ~45 min/ep"`)
+- `release_date` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
-- `tagline`, `elenco` (top 5 atores), `diretor` (filmes e séries) — campos formatados mas atualmente não renderizados por `renderizar_card()` (`componentes.py`), junto com `colecao`, `criadores`, `redes_tv`, `produtor`, `cinematografo`, `montador`
-- `roteiristas` (escritores/roteiristas), `compositor` (compositor da trilha sonora)
-- `produtor` (produtores/produtores executivos), `cinematografo` (diretor de fotografia), `montador` (editor/montador)
-- `keywords` (tags temáticas em português), `certificacao` (classificação indicativa BR: L/10/12/14/16/18)
-- `trailer_url` (link do YouTube), `colecao` (saga/franquia, apenas filmes)
-- `produtoras` (estúdios), `paises_producao` (países de produção, diferente de país de origem)
-- `redes_tv` (redes originais, apenas séries), `criadores` (apenas séries)
-- `aluguel_compra` (plataformas de aluguel/compra no Brasil)
-- `recomendados` (títulos recomendados pelo TMDB), `similares` (títulos similares), `titulos_alternativos` (nomes regionais)
+- `tagline`, `cast` (top 5 atores), `director` (filmes e séries) — campos formatados mas atualmente não renderizados por `render_card()` (`componentes.py`), junto com `collection`, `creators`, `networks`, `producer`, `cinematographer`, `editor`
+- `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora)
+- `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia), `editor` (editor/montador)
+- `keywords` (tags temáticas em português), `certification` (classificação indicativa BR: L/10/12/14/16/18)
+- `trailer_url` (link do YouTube), `collection` (saga/franquia, apenas filmes)
+- `production_companies` (estúdios), `production_countries` (países de produção, diferente de país de origem)
+- `networks` (redes originais, apenas séries), `creators` (apenas séries)
+- `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
+- `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
-- **Rate limiting por IP:** máximo de 20 consultas por hora (janela deslizante). O contador é exibido abaixo do campo de texto; ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS (JavaScript client-side via `st.components.v1.html`) mostra quanto tempo falta em tempo real, decrementando a cada segundo. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_historico_por_ip`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
+- **Rate limiting por IP:** máximo de 20 consultas por hora (janela deslizante). O contador é exibido abaixo do campo de texto; ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS (JavaScript client-side via `st.components.v1.html`) mostra quanto tempo falta em tempo real, decrementando a cada segundo. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
 - Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Cada card exibe:
@@ -80,25 +80,25 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 
 | Arquivo | Função | Responsabilidade |
 |---|---|---|
-| `agent.py` | `recomendar(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) |
-| `agent.py` | `buscar_titulos_spec(filtro_where, limite)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 10) |
-| `agent.py` | `_validar_where(filtro_where)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries, UPDATE, ALTER, CREATE, GRANT, TRUNCATE, EXEC, MERGE, REPLACE, CALL) |
-| `agent.py` | `_carregar_llm_api_key()` | Busca `LLM_API_KEY` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou usa `.env` como fallback em desenvolvimento |
-| `agent.py` | `_chave_cache(preferencia)` | Calcula o hash MD5 da preferência normalizada (lowercase + strip), usado como chave do cache de WHERE clauses |
-| `agent.py` | `_buscar_cache_where(preferencia)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
-| `agent.py` | `_salvar_cache_where(preferencia, args)` | Salva cláusula WHERE no cache em memória com timestamp |
-| `agent.py` | `_chamar_llm_passo1(preferencia)` | Chama o LLM primário (`LLM_MODEL`); se falhar por erro de infraestrutura e `LLM_MODEL_FALLBACK` estiver configurada, tenta uma vez o modelo de fallback (via credenciais AWS/IAM, sem API key) |
-| `agent.py` | `_logar_uso_tokens(etapa, resposta, modelo=None)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `modelo` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens"). `modelo` identifica qual modelo respondeu (primário ou fallback); default `None` loga `LLM_MODEL` |
-| `agent.py` | `_logar_fallback_llm(preferencia, erro)` | Registra em `logging.warning` o acionamento do fallback (preferência, modelo primário, modelo de fallback, erro) — logado antes da chamada de fallback, para ficar visível mesmo se ela também falhar |
-| `formatacao.py` | `formatar_registro(registro)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
-| `formatacao.py` | `_formatar_tipo()`, `_formatar_generos()`, `_formatar_duracao_titulo()`, `_formatar_data_lancamento()`, `_formatar_theater_end_date()`, `_formatar_nota()` | Funções puras de formatação de campos individuais |
-| `app.py` | `_carregar_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
-| `app.py` | `_criar_historico_por_ip()` | Factory `@st.cache_resource` que cria o dict compartilhado `_historico_por_ip`, garantindo que o histórico de rate limiting sobreviva a reruns e reset apenas no restart do processo |
-| `app.py` | `_obter_ip_cliente()` | Obtém o IP do cliente via header `X-Forwarded-For` (repassado pelo Caddy) |
-| `app.py` | `_consultas_na_ultima_hora(ip)` | Conta consultas na última hora (janela deslizante) para o IP fornecido e limpa registros expirados |
-| `app.py` | `_segundos_para_liberar(ip)` | Calcula quantos segundos faltam até a consulta mais antiga expirar |
+| `agent.py` | `recommend(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) |
+| `agent.py` | `search_titles_spec(where_clause, limit)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 10) |
+| `agent.py` | `_validate_where(where_clause)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries, UPDATE, ALTER, CREATE, GRANT, TRUNCATE, EXEC, MERGE, REPLACE, CALL) |
+| `agent.py` | `_load_llm_api_key()` | Busca `LLM_API_KEY` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou usa `.env` como fallback em desenvolvimento |
+| `agent.py` | `_cache_key(preference)` | Calcula o hash MD5 da preferência normalizada (lowercase + strip), usado como chave do cache de WHERE clauses |
+| `agent.py` | `_get_cached_where(preference)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
+| `agent.py` | `_save_cached_where(preference, args)` | Salva cláusula WHERE no cache em memória com timestamp |
+| `agent.py` | `_call_llm_step1(preference)` | Chama o LLM primário (`LLM_MODEL`); se falhar por erro de infraestrutura e `LLM_MODEL_FALLBACK` estiver configurada, tenta uma vez o modelo de fallback (via credenciais AWS/IAM, sem API key) |
+| `agent.py` | `_log_token_usage(step, response, model=None)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `model` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens"). `model` identifica qual modelo respondeu (primário ou fallback); default `None` loga `LLM_MODEL` |
+| `agent.py` | `_log_llm_fallback(preference, error)` | Registra em `logging.warning` o acionamento do fallback (preferência, modelo primário, modelo de fallback, erro) — logado antes da chamada de fallback, para ficar visível mesmo se ela também falhar |
+| `formatacao.py` | `format_record(record)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
+| `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_theater_end_date()`, `_format_rating()` | Funções puras de formatação de campos individuais |
+| `app.py` | `_load_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
+| `app.py` | `_create_ip_history()` | Factory `@st.cache_resource` que cria o dict compartilhado `_ip_history`, garantindo que o histórico de rate limiting sobreviva a reruns e reset apenas no restart do processo |
+| `app.py` | `_get_client_ip()` | Obtém o IP do cliente via header `X-Forwarded-For` (repassado pelo Caddy) |
+| `app.py` | `_queries_in_last_hour(ip)` | Conta consultas na última hora (janela deslizante) para o IP fornecido e limpa registros expirados |
+| `app.py` | `_seconds_until_available(ip)` | Calcula quantos segundos faltam até a consulta mais antiga expirar |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, rate limiting, busca assíncrona e exibição de resultados |
-| `componentes.py` | `carregar_css_login()`, `carregar_css_principal()`, `renderizar_card()`, `renderizar_grid()`, `renderizar_rodape()`, `renderizar_rodape_login()` | Helpers de renderização HTML com escape contra XSS |
+| `componentes.py` | `load_login_css()`, `load_main_css()`, `render_card()`, `render_grid()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 
@@ -159,8 +159,8 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 ## Observabilidade de tokens
 
-Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `modelo` e `etapa` (`_logar_uso_tokens()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
+Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `model` e `step` (`_log_token_usage()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
 
-Uso do fallback é identificável nos logs de duas formas: `etapa="passo_1_where_fallback"` no log de `_logar_uso_tokens` (em vez de `"passo_1_where"`), e uma mensagem WARNING dedicada "Fallback de LLM acionado" (`_logar_fallback_llm()`), emitida antes da chamada de fallback — fica registrada mesmo que a chamada de fallback também falhe.
+Uso do fallback é identificável nos logs de duas formas: `step="step1_where_fallback"` no log de `_log_token_usage` (em vez de `"step1_where"`), e uma mensagem WARNING dedicada "Fallback de LLM acionado" (`_log_llm_fallback()`), emitida antes da chamada de fallback — fica registrada mesmo que a chamada de fallback também falhe.
 
-`app.py` eleva o root logger para `ERROR` quando o CloudWatch está configurado (`logging.root.setLevel(logging.ERROR)`), para silenciar bibliotecas ruidosas. Como isso suprimiria por herança os `logger.info(...)` de `_logar_uso_tokens()`, `agent.py` define explicitamente `logger.setLevel(logging.INFO)` no seu próprio logger — garantindo que os logs de tokens continuem passando pelo handler do root independentemente do nível herdado.
+`app.py` eleva o root logger para `ERROR` quando o CloudWatch está configurado (`logging.root.setLevel(logging.ERROR)`), para silenciar bibliotecas ruidosas. Como isso suprimiria por herança os `logger.info(...)` de `_log_token_usage()`, `agent.py` define explicitamente `logger.setLevel(logging.INFO)` no seu próprio logger — garantindo que os logs de tokens continuem passando pelo handler do root independentemente do nível herdado.

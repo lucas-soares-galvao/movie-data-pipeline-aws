@@ -1,5 +1,5 @@
 """
-Testa scripts/backfill_traducao.py com awswrangler, traduzir_texto e boto3
+Testa scripts/backfill_traducao.py com awswrangler, translate_text e boto3
 mockados (nenhuma chamada real à AWS ou ao Google Translate).
 
 Foco: as funções puras (_adicionar_traducoes_pt, _backfill_year,
@@ -48,7 +48,7 @@ def _s3_client_sem_checkpoint() -> MagicMock:
 class TestAdicionarTraducoesPt:
     def test_sem_registros_elegiveis_nao_chama_traducao(self):
         df = pd.DataFrame({"original_language": ["pt", "pt"], "overview_en": ["c", "d"]})
-        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+        with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
         mock_translate.assert_not_called()
         assert resultado["overview_pt"].isna().all()
@@ -59,7 +59,7 @@ class TestAdicionarTraducoesPt:
             "original_language": ["en", "es", "pt"],
             "overview_en": ["Overview", "Resumen", "Sinopse"],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"):
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT"):
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
 
         assert resultado.loc[0, "overview_pt"] == "Overview_PT"
@@ -68,13 +68,13 @@ class TestAdicionarTraducoesPt:
         assert sucesso == 2
 
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self):
-        """traduzir_texto devolve o texto original quando falha após todas as tentativas."""
+        """translate_text devolve o texto original quando falha após todas as tentativas."""
         df = pd.DataFrame({
             "original_language": ["en", "en"],
             "overview_en": ["Overview", "Falhou"],
         })
         with patch(
-            "backfill_traducao.traduzir_texto",
+            "backfill_traducao.translate_text",
             side_effect=lambda t: "Overview_PT" if t == "Overview" else t,
         ):
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
@@ -90,7 +90,7 @@ class TestAdicionarTraducoesPt:
             "overview_en": ["Já traduzido antes", "Ainda pendente"],
             "overview_pt": ["Already translated before", None],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
 
         mock_translate.assert_called_once_with("Ainda pendente")
@@ -105,7 +105,7 @@ class TestAdicionarTraducoesPt:
             "overview_en": ["Falhou antes"],
             "overview_pt": ["Falhou antes"],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
 
         mock_translate.assert_called_once_with("Falhou antes")
@@ -119,7 +119,7 @@ class TestAdicionarTraducoesPt:
             "original_language": ["en", "en", "en"],
             "overview_en": ["Overview", "", None],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
 
         mock_translate.assert_called_once_with("Overview")
@@ -131,7 +131,7 @@ class TestAdicionarTraducoesPt:
             "overview_en": ["A", "B"],
             "overview_pt": ["A_PT", "B_PT"],
         })
-        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+        with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_pt(df)
 
         mock_translate.assert_not_called()
@@ -143,7 +143,7 @@ class TestAdicionarTraducoesPt:
 class TestAdicionarTraducoesTaglinePt:
     def test_sem_tagline_nao_chama_traducao(self):
         df = pd.DataFrame({"original_language": ["en", "en"], "tagline": [None, ""]})
-        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+        with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
         mock_translate.assert_not_called()
         assert sucesso == 0
@@ -153,7 +153,7 @@ class TestAdicionarTraducoesTaglinePt:
             "original_language": ["en", "es"],
             "tagline": ["A phrase.", "Otra frase."],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
 
         assert mock_translate.call_count == 2
@@ -164,7 +164,7 @@ class TestAdicionarTraducoesTaglinePt:
         """Sem nenhum registro elegível, tagline_pt nem chega a ser criada (mesma
         semântica do caso "sem tagline preenchida")."""
         df = pd.DataFrame({"original_language": ["pt"], "tagline": ["Uma frase."]})
-        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+        with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
 
         mock_translate.assert_not_called()
@@ -177,7 +177,7 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["Já traduzida", "Pendente"],
             "tagline_pt": ["Already translated", None],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
 
         mock_translate.assert_called_once_with("Pendente")
@@ -191,7 +191,7 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["Falhou antes"],
             "tagline_pt": ["Falhou antes"],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df)
 
         mock_translate.assert_called_once_with("Falhou antes")
@@ -202,7 +202,7 @@ class TestAdicionarTraducoesTaglinePt:
 class TestAdicionarTraducoesKeywordsPt:
     def test_sem_keywords_nao_chama_traducao(self):
         df = pd.DataFrame({"original_language": ["en", "en"], "keywords": [None, ""]})
-        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+        with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df)
         mock_translate.assert_not_called()
         assert sucesso == 0
@@ -213,7 +213,7 @@ class TestAdicionarTraducoesKeywordsPt:
             "original_language": ["en"],
             "keywords": ["space, alien"],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df)
 
         mock_translate.assert_called_once_with("space, alien")
@@ -224,7 +224,7 @@ class TestAdicionarTraducoesKeywordsPt:
         """Sem nenhum registro elegível, keywords_pt nem chega a ser criada (mesma
         semântica do caso "sem keywords preenchidas")."""
         df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, alienígena"]})
-        with patch("backfill_traducao.traduzir_texto") as mock_translate:
+        with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df)
 
         mock_translate.assert_not_called()
@@ -237,7 +237,7 @@ class TestAdicionarTraducoesKeywordsPt:
             "keywords": ["já traduzida", "pendente"],
             "keywords_pt": ["already translated", None],
         })
-        with patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT") as mock_translate:
+        with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df)
 
         mock_translate.assert_called_once_with("pendente")
@@ -320,7 +320,7 @@ class TestBackfillYear:
 
         with (
             patch("backfill_traducao.wr") as mock_wr,
-            patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"),
+            patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT"),
         ):
             mock_wr.s3.read_parquet.return_value = details_df
             mock_wr.s3.to_parquet.side_effect = ClientError(
@@ -340,7 +340,7 @@ class TestBackfillYear:
 
         with (
             patch("backfill_traducao.wr") as mock_wr,
-            patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"),
+            patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT"),
         ):
             mock_wr.s3.read_parquet.return_value = details_df
             resultado, traduzidos = bt._backfill_year("db_movie", "details_movie", discover_map, "2020", "bucket-sot-test")
@@ -368,7 +368,7 @@ class TestBackfillYear:
 
         with (
             patch("backfill_traducao.wr") as mock_wr,
-            patch("backfill_traducao.traduzir_texto", side_effect=lambda t: f"{t}_PT"),
+            patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT"),
         ):
             mock_wr.s3.read_parquet.return_value = details_df
             resultado, traduzidos = bt._backfill_year("db_movie", "details_movie", discover_map, "2020", "bucket-sot-test")
@@ -420,7 +420,7 @@ class TestMain:
         """Sem TRANSLATE_PROVIDER definido, usa Google (volume alto do backfill
         histórico não deve gerar custo por caractere por padrão)."""
         _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.traduzir_texto
+        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.translate_text
 
     def test_translate_provider_aws_explicito(self, monkeypatch):
         """TRANSLATE_PROVIDER=aws permite testar em janelas pequenas via
@@ -428,7 +428,7 @@ class TestMain:
         _, mock_backfill, _, _ = _run_main(
             monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
         )
-        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.traduzir_texto_aws
+        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.translate_text_aws
 
     def test_translate_provider_invalido_levanta_erro(self, monkeypatch):
         _set_env(monkeypatch, {"TRANSLATE_PROVIDER": "deepl"})

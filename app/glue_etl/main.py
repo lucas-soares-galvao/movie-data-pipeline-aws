@@ -5,18 +5,18 @@ Glue ETL — transforma JSON do SOR em Parquet no SOT e dispara jobs downstream.
 um único ano; os demais tipos usam overwrite simples.
 """
 
-from shared_utils.glue_helpers import configurar_logging_glue
+from shared_utils.glue_helpers import configure_glue_logging
 from src.utils import (
     get_parameters_glue,
     read_from_sor,
-    resolver_traduzir_fn,
-    traduzir_texto,
-    traduzir_texto_aws,
+    resolve_translate_fn,
+    translate_text,
+    translate_text_aws,
     trigger_glue_job,
     write_parquet_to_sot,
 )
 
-logger = configurar_logging_glue()
+logger = configure_glue_logging()
 
 # Configuração de escrita por tipo de tabela.
 # partition_cols: coluna(s) de partição no S3/Catalog, ou None para tabelas sem partição.
@@ -58,9 +58,9 @@ def main() -> None:
         f"Processando table_type={table_type} | media_type={media_type} | year={year}"
     )
 
-    traduzir_fn = resolver_traduzir_fn(translate_provider, traduzir_texto, traduzir_texto_aws)
+    translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
     df = read_from_sor(
-        s3_bucket_sor, media_type, table_type, year, traduzir_fn,
+        s3_bucket_sor, media_type, table_type, year, translate_fn,
         s3_bucket_sot=s3_bucket_sot, table_name=table_name,
     )
 

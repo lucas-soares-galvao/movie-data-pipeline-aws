@@ -34,7 +34,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   min-width: 0 !important;
 }
 
-.grid-filmes {
+.grid-titles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
@@ -49,7 +49,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 @media (max-width: 1024px) {
-  .grid-filmes {
+  .grid-titles {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 12px;
   }
@@ -64,14 +64,14 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   }
 
   /* Mensagens de erro/aviso ocupam 100% no mobile */
-  .msg-feedback, .msg-erro, .msg-aviso { max-width: 100% !important; }
+  .msg-feedback, .msg-error, .msg-warning { max-width: 100% !important; }
 }
 
 @media (max-width: 480px) {
-  .grid-filmes {
+  .grid-titles {
     grid-template-columns: 1fr;
   }
-  .grid-filmes img { aspect-ratio: 16 / 9; }
+  .grid-titles img { aspect-ratio: 16 / 9; }
 }
 
 .card, article.card {
@@ -95,7 +95,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   font-size: 12px;
 }
 
-.generos-container {
+.genres-container {
   margin: 6px 0;
 }
 
@@ -106,7 +106,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   flex: 1;
 }
 
-.genero {
+.genre {
   background: rgba(249,115,22,0.13);
   color: #fb923c;
   border-radius: 99px;
@@ -117,7 +117,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   border: 1px solid rgba(249,115,22,0.2);
 }
 
-.certificacao-badge {
+.certification-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -132,12 +132,12 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   vertical-align: middle;
   cursor: default;
 }
-.certificacao-badge[data-rating="L"]  { background: #00a651; }
-.certificacao-badge[data-rating="10"] { background: #0091d4; }
-.certificacao-badge[data-rating="12"] { background: #f8c709; }
-.certificacao-badge[data-rating="14"] { background: #ee7a1a; }
-.certificacao-badge[data-rating="16"] { background: #d21920; }
-.certificacao-badge[data-rating="18"] { background: #1d1815; }
+.certification-badge[data-rating="L"]  { background: #00a651; }
+.certification-badge[data-rating="10"] { background: #0091d4; }
+.certification-badge[data-rating="12"] { background: #f8c709; }
+.certification-badge[data-rating="14"] { background: #ee7a1a; }
+.certification-badge[data-rating="16"] { background: #d21920; }
+.certification-badge[data-rating="18"] { background: #1d1815; }
 
 .meta-row {
   display: flex;
@@ -154,10 +154,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   text-align: center;
 }
 
-.nota { color: #f97316; font-weight: bold; font-size: 16px; }
-.duracao { color: #a3a3a3; font-size: 14px; }
-.data-lancamento { color: #a3a3a3; font-size: 14px; }
-.sinopse { color: #d4d4d4; font-size: 14px; margin-top: 6px; line-height: 1.5; flex: 1; }
+.rating { color: #f97316; font-weight: bold; font-size: 16px; }
+.duration { color: #a3a3a3; font-size: 14px; }
+.release-date { color: #a3a3a3; font-size: 14px; }
+.overview { color: #d4d4d4; font-size: 14px; margin-top: 6px; line-height: 1.5; flex: 1; }
 
 
 .provider {
@@ -225,7 +225,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 /* Mensagens de feedback */
-.msg-erro {
+.msg-error {
   background: rgba(239,68,68,0.1);
   border: 1px solid rgba(239,68,68,0.3);
   border-radius: 10px;
@@ -236,7 +236,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin-bottom: 12px;
 }
 
-.msg-aviso {
+.msg-warning {
   background: rgba(250,204,21,0.1);
   border: 1px solid rgba(250,204,21,0.3);
   border-radius: 10px;
@@ -247,11 +247,11 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 @media (max-width: 1024px) {
-  .msg-erro, .msg-aviso { max-width: 100%; }
+  .msg-error, .msg-warning { max-width: 100%; }
 }
 
 /* Rodape */
-.rodape {
+.footer {
   text-align: center;
   padding: 16px 0 8px;
   color: #6b7280;
@@ -261,7 +261,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin-top: 32px;
 }
 
-.rodape a {
+.footer a {
   color: #6b7280;
   text-decoration: underline;
 }

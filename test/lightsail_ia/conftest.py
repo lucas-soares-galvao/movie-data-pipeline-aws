@@ -25,4 +25,4 @@ os.environ.setdefault("ATHENA_S3_OUTPUT", "s3://test-bucket-temp/athena-results/
 @pytest.fixture(autouse=True)
 def _limpar_cache_where():
     import agent
-    agent._CACHE_WHERE.clear()
+    agent._WHERE_CACHE.clear()

@@ -159,14 +159,14 @@ def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> 
     logger.info("Coletando filmes em cartaz: /movie/now_playing")
     url = "https://api.themoviedb.org/3/movie/now_playing"
 
-    paginas_salvas = 0
-    paginas_com_erro = 0
+    saved_pages = 0
+    failed_pages = 0
 
     for page in range(1, MAX_PAGES + 1):
         try:
             data = tmdb_get(url, {"api_key": api_key, "language": "pt-BR", "region": "BR", "page": page})
         except HTTPError as e:
-            paginas_com_erro += 1
+            failed_pages += 1
             logger.warning(f"Página {page} de now_playing falhou: {e}. Continuando...")
             continue
 
@@ -184,18 +184,18 @@ def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> 
             result["theater_end_date"] = dates.get("maximum")
 
         save_to_s3(s3_client, bucket, data["results"], f"tmdb/now_playing/movie/pagina_{page:03d}.json")
-        paginas_salvas += 1
+        saved_pages += 1
 
-    if paginas_com_erro > 0:
+    if failed_pages > 0:
         logger.warning(
-            f"now_playing: {paginas_salvas} página(s) salva(s), "
-            f"{paginas_com_erro} página(s) com erro."
+            f"now_playing: {saved_pages} página(s) salva(s), "
+            f"{failed_pages} página(s) com erro."
         )
 
-    if paginas_salvas == 0:
+    if saved_pages == 0:
         raise RuntimeError(
             f"Nenhuma página coletada para now_playing. "
-            f"Todas as {paginas_com_erro} tentativas falharam."
+            f"Todas as {failed_pages} tentativas falharam."
         )
 
 
@@ -217,14 +217,14 @@ def collect_discover_data(
     """
     logger.info(f"Coletando {folder} do ano {year}...")
 
-    paginas_salvas = 0
-    paginas_com_erro = 0
+    saved_pages = 0
+    failed_pages = 0
 
     for page in range(1, MAX_PAGES + 1):
         try:
             data = fetch_tmdb_data(api_key, content_type, year, page)
         except HTTPError as e:
-            paginas_com_erro += 1
+            failed_pages += 1
             logger.warning(f"Página {page} de {folder}/ano={year} falhou: {e}. Continuando...")
             continue
 
@@ -237,16 +237,16 @@ def collect_discover_data(
 
         s3_key = f"{folder}/ano={year}/pagina_{page:03d}.json"
         save_to_s3(s3_client, bucket, data["results"], s3_key)
-        paginas_salvas += 1
+        saved_pages += 1
 
-    if paginas_com_erro > 0:
+    if failed_pages > 0:
         logger.warning(
-            f"{folder}/ano={year}: {paginas_salvas} página(s) salva(s), "
-            f"{paginas_com_erro} página(s) com erro."
+            f"{folder}/ano={year}: {saved_pages} página(s) salva(s), "
+            f"{failed_pages} página(s) com erro."
         )
 
-    if paginas_salvas == 0:
+    if saved_pages == 0:
         raise RuntimeError(
             f"Nenhuma página coletada para {folder}/ano={year}. "
-            f"Todas as {paginas_com_erro} tentativas falharam."
+            f"Todas as {failed_pages} tentativas falharam."
         )

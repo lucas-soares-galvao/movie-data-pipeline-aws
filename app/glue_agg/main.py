@@ -3,7 +3,7 @@ Glue AGG — une filmes e séries do SOT em uma tabela SPEC unificada.
 Acionado pelo Glue Details no último run do ciclo (tv + end_year).
 """
 
-from shared_utils.glue_helpers import configurar_logging_glue
+from shared_utils.glue_helpers import configure_glue_logging
 from src.utils import (
     get_parameters_glue,
     run_athena_query,
@@ -11,7 +11,7 @@ from src.utils import (
     write_parquet_to_spec,
 )
 
-logger = configurar_logging_glue()
+logger = configure_glue_logging()
 
 
 def main() -> None:

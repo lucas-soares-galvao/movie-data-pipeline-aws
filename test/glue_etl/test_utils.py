@@ -4,11 +4,11 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from src.utils import (
-    _adicionar_name_pt_countries,
-    _adicionar_name_pt_languages,
+    _add_name_pt_countries,
+    _add_name_pt_languages,
     derive_canonical_name,
     get_parameters_glue,
-    ler_configuration_existente,
+    read_existing_configuration,
     read_from_sor,
     write_parquet_to_sot,
 )
@@ -189,7 +189,7 @@ class TestReadFromSorConfiguration:
         ])
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
         ):
             result = read_from_sor("my-sor", "tv", "configuration")
             assert "name_pt" in result.columns
@@ -206,7 +206,7 @@ class TestReadFromSorConfiguration:
         ])
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.traduzir_texto") as mock_traduzir,
+            patch("src.utils.translate_text") as mock_traduzir,
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
         ):
             result = read_from_sor(
@@ -224,7 +224,7 @@ class TestReadFromSorConfiguration:
         ])
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
         ):
             result = read_from_sor(
@@ -233,89 +233,89 @@ class TestReadFromSorConfiguration:
             assert result["name_pt"].iloc[0] == "[PT] Brazil"
 
 
-class TestAdicionarNamePtCountries:
+class TestAddNamePtCountries:
     def test_traduz_english_name(self):
         df = pd.DataFrame({"english_name": ["Japan", "France"], "native_name": ["日本", "France"]})
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = _adicionar_name_pt_countries(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_countries(df)
         assert result["name_pt"].iloc[0] == "[PT] Japan"
         assert result["name_pt"].iloc[1] == "[PT] France"
 
     def test_sem_english_name(self):
         df = pd.DataFrame({"iso_3166_1": ["BR"], "native_name": ["Brasil"]})
-        result = _adicionar_name_pt_countries(df)
+        result = _add_name_pt_countries(df)
         assert "name_pt" not in result.columns or result.equals(df)
 
     def test_english_name_vazio(self):
         df = pd.DataFrame({"english_name": [None, ""]})
-        result = _adicionar_name_pt_countries(df)
+        result = _add_name_pt_countries(df)
         assert result["name_pt"].isna().all()
 
     def test_reaproveita_cache_quando_fonte_identica(self):
         df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
-        df_anterior = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": ["Brasil"]})
-        with patch("src.utils.traduzir_texto") as mock_traduzir:
-            result = _adicionar_name_pt_countries(df, df_anterior=df_anterior)
+        previous_df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": ["Brasil"]})
+        with patch("src.utils.translate_text") as mock_traduzir:
+            result = _add_name_pt_countries(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "Brasil"
         mock_traduzir.assert_not_called()
 
     def test_nao_reaproveita_cache_quando_fonte_mudou(self):
         df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
-        df_anterior = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Nome antigo"], "name_pt": ["Brasil"]})
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = _adicionar_name_pt_countries(df, df_anterior=df_anterior)
+        previous_df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Nome antigo"], "name_pt": ["Brasil"]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_countries(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "[PT] Brazil"
 
 
 # ---------------------------------------------------------------------------
-# _adicionar_name_pt_languages
+# _add_name_pt_languages
 # ---------------------------------------------------------------------------
 
 
-class TestAdicionarNamePtLanguages:
+class TestAddNamePtLanguages:
     def test_traduz_english_name(self):
         df = pd.DataFrame({"english_name": ["English", "French"], "name": ["English", "Français"]})
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = _adicionar_name_pt_languages(df)
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_languages(df)
         assert result["name_pt"].iloc[0] == "[PT] English"
         assert result["name_pt"].iloc[1] == "[PT] French"
 
     def test_sem_english_name(self):
         df = pd.DataFrame({"iso_639_1": ["pt"], "name": ["Português"]})
-        result = _adicionar_name_pt_languages(df)
+        result = _add_name_pt_languages(df)
         assert "name_pt" not in result.columns or result.equals(df)
 
     def test_english_name_vazio(self):
         df = pd.DataFrame({"english_name": [None, ""]})
-        result = _adicionar_name_pt_languages(df)
+        result = _add_name_pt_languages(df)
         assert result["name_pt"].isna().all()
 
     def test_reaproveita_cache_quando_fonte_identica(self):
         df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
-        df_anterior = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"], "name_pt": ["Inglês"]})
-        with patch("src.utils.traduzir_texto") as mock_traduzir:
-            result = _adicionar_name_pt_languages(df, df_anterior=df_anterior)
+        previous_df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"], "name_pt": ["Inglês"]})
+        with patch("src.utils.translate_text") as mock_traduzir:
+            result = _add_name_pt_languages(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "Inglês"
         mock_traduzir.assert_not_called()
 
     def test_nao_reaproveita_cache_quando_fonte_mudou(self):
         df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
-        df_anterior = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["Nome antigo"], "name_pt": ["Inglês"]})
-        with patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = _adicionar_name_pt_languages(df, df_anterior=df_anterior)
+        previous_df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["Nome antigo"], "name_pt": ["Inglês"]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_languages(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "[PT] English"
 
 
 # ---------------------------------------------------------------------------
-# ler_configuration_existente
+# read_existing_configuration
 # ---------------------------------------------------------------------------
 
 
-class TestLerConfigurationExistente:
+class TestReadExistingConfiguration:
     def test_retorna_dataframe_lido(self):
         df_mock = pd.DataFrame([{"iso_3166_1": "BR", "english_name": "Brazil", "name_pt": "Brasil"}])
         with patch("src.utils.wr.s3.read_parquet", return_value=df_mock) as mock_read:
-            result = ler_configuration_existente("my-sot", "tb_configuration_countries")
+            result = read_existing_configuration("my-sot", "tb_configuration_countries")
             mock_read.assert_called_once_with(
                 path="s3://my-sot/tmdb/tb_configuration_countries/", dataset=True
             )
@@ -323,7 +323,7 @@ class TestLerConfigurationExistente:
 
     def test_retorna_vazio_quando_tabela_nao_existe(self):
         with patch("src.utils.wr.s3.read_parquet", side_effect=Exception("tabela não encontrada")):
-            result = ler_configuration_existente("my-sot", "tb_configuration_countries")
+            result = read_existing_configuration("my-sot", "tb_configuration_countries")
             assert result.empty
 
 
@@ -333,7 +333,7 @@ class TestReadFromSorConfigurationLanguages:
         s3_mock = _make_s3_mock(payload)
         with (
             patch("src.utils.boto3.client", return_value=s3_mock),
-            patch("src.utils.traduzir_texto", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
         ):
             df = read_from_sor("my-sor", "movie", "configuration")
         assert "name_pt" in df.columns

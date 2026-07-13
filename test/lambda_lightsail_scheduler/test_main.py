@@ -39,10 +39,10 @@ class TestLambdaHandler:
 
     def test_sem_instance_name_levanta_key_error(self):
         """Se LIGHTSAIL_INSTANCE_NAME nao estiver definida, deve lancar KeyError."""
-        env_sem_nome = {k: v for k, v in os.environ.items() if k != "LIGHTSAIL_INSTANCE_NAME"}
+        env_without_name = {k: v for k, v in os.environ.items() if k != "LIGHTSAIL_INSTANCE_NAME"}
         with (
             patch("lambda_lightsail_scheduler_main.boto3"),
-            patch.dict(os.environ, env_sem_nome, clear=True),
+            patch.dict(os.environ, env_without_name, clear=True),
         ):
             with pytest.raises(KeyError):
                 main.lambda_handler({"action": "stop"}, None)
