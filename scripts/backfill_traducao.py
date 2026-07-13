@@ -3,8 +3,9 @@ backfill_traducao.py — Adiciona overview_pt, tagline_pt e keywords_pt aos
 detalhes históricos.
 
 Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano e traduz para
-português, via Google Translate, os campos ainda pendentes (espelhando o que
-o Glue Details faz para dados novos). As três colunas usam a mesma regra de
+português, via Google Translate ou AWS Translate (TRANSLATE_PROVIDER — ver
+abaixo), os campos ainda pendentes (espelhando o que o Glue Details faz para
+dados novos). As três colunas usam a mesma regra de
 elegibilidade: qualquer idioma original diferente de pt (evita reenviar à
 API conteúdo que já está em português):
   - overview_pt:  original_language != 'pt' e overview_en preenchido
@@ -39,12 +40,13 @@ Variáveis de ambiente obrigatórias:
     TABLE_DISCOVER_TV
 
 Variáveis opcionais:
-    BACKFILL_START_YEAR       (padrão: 2000)
-    BACKFILL_END_YEAR         (padrão: ano atual)
-    BACKFILL_WAIT_SECONDS     (padrão: 300 — pausa entre partições para não saturar Google Translate)
-    AWS_TRANSLATE_MAX_PER_RUN (padrão: 0 — desligado; limite de chamadas ao AWS Translate
-                                nesta execução inteira, usado como 3ª camada quando o
-                                Google Translate falha)
+    BACKFILL_START_YEAR   (padrão: 2000)
+    BACKFILL_END_YEAR     (padrão: ano atual)
+    BACKFILL_WAIT_SECONDS (padrão: 300 — pausa entre partições para não saturar Google Translate)
+    TRANSLATE_PROVIDER    (padrão: "google" — grátis, mas instável sob alto volume;
+                            "aws" usa AWS Translate, API oficial paga por caractere,
+                            útil para testar um período menor via BACKFILL_START_YEAR/
+                            BACKFILL_END_YEAR)
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -69,12 +71,13 @@ from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
 from shared_utils.traducao import (  # noqa: E402
-    criar_traduzir_fn_com_aws_translate,
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
+    resolver_traduzir_fn,
     traduzir_coluna_pendente,
     traduzir_texto,
+    traduzir_texto_aws,  # noqa: F401 — reexportado para os testes verificarem identidade
 )
 
 import backfill_shared as shared
@@ -241,22 +244,18 @@ def main() -> None:
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 300))
-    aws_translate_max_calls = int(os.environ.get("AWS_TRANSLATE_MAX_PER_RUN", 0))
+    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
     logger.info(
         "Backfill de tradução: %d até %d | %d partições (movie + tv) | pausa=%ds entre partições "
-        "| limite AWS Translate=%d chamadas na execução inteira",
-        start_year, end_year, total, wait_seconds, aws_translate_max_calls,
+        "| serviço de tradução=%s",
+        start_year, end_year, total, wait_seconds, translate_provider,
     )
-    # Um único traduzir_fn para toda a execução (não por partição) — o limite de
-    # chamadas ao AWS Translate vale para o backfill inteiro, evitando gasto
-    # descontrolado num run que varre start_year→end_year de uma vez.
-    # Não usa `region` (AWS_REGION = sa-east-1, região do pipeline): AWS Translate
-    # não está disponível em sa-east-1, então criar_traduzir_fn_com_aws_translate usa
-    # seu próprio default (us-east-1) — chamada stateless, não precisa de localidade.
-    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
+    # Um único traduzir_fn para toda a execução (não por partição) — mesmo serviço de
+    # tradução para todas as partições ano+tipo do run.
+    traduzir_fn = resolver_traduzir_fn(translate_provider, traduzir_texto, traduzir_texto_aws)
 
     s3_client = boto3.client("s3", region_name=region)
 

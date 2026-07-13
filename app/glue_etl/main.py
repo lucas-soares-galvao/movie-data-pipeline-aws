@@ -7,10 +7,11 @@ um único ano; os demais tipos usam overwrite simples.
 
 from shared_utils.glue_helpers import configurar_logging_glue
 from src.utils import (
-    criar_traduzir_fn_com_aws_translate,
     get_parameters_glue,
     read_from_sor,
+    resolver_traduzir_fn,
     traduzir_texto,
+    traduzir_texto_aws,
     trigger_glue_job,
     write_parquet_to_sot,
 )
@@ -48,7 +49,7 @@ def main() -> None:
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year             = args.get("YEAR")
     end_year         = args.get("END_YEAR")
-    aws_translate_max_calls = int(args.get("AWS_TRANSLATE_MAX_PER_RUN", 0))
+    translate_provider = args.get("TRANSLATE_PROVIDER", "aws")
 
     partition_cols = _TABLE_CONFIG[table_type]["partition_cols"]
     mode = _TABLE_CONFIG[table_type]["mode"]
@@ -57,7 +58,7 @@ def main() -> None:
         f"Processando table_type={table_type} | media_type={media_type} | year={year}"
     )
 
-    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
+    traduzir_fn = resolver_traduzir_fn(translate_provider, traduzir_texto, traduzir_texto_aws)
     df = read_from_sor(
         s3_bucket_sor, media_type, table_type, year, traduzir_fn,
         s3_bucket_sot=s3_bucket_sot, table_name=table_name,
@@ -81,6 +82,7 @@ def main() -> None:
             YEAR=year,
             END_YEAR=end_year,
             DATABASE=database,
+            TRANSLATE_PROVIDER=translate_provider,
         )
 
     logger.info("Job Glue ETL finalizado com sucesso!")

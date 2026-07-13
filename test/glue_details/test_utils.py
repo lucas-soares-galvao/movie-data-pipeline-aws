@@ -827,7 +827,7 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db")
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db", translate_provider="google")
             df = mock_write.call_args.kwargs["df"]
             assert df["overview_pt"].iloc[0] == "[GT] Sinopse A"
             assert df["tagline_pt"].iloc[0] == "[GT] Tagline serie"
@@ -1089,7 +1089,9 @@ class TestCollectAndWriteDetails:
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db")
+            u.collect_and_write_details(
+                "key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db", translate_provider="google"
+            )
             df_written = mock_write.call_args.kwargs["df"]
 
             assert df_written["overview_pt"].iloc[0] == "[GT] Sinopse A"

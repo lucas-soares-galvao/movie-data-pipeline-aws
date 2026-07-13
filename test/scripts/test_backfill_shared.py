@@ -229,6 +229,28 @@ class TestBuildBasePayloads:
         assert base_tv["database"] == "db_tv"
         assert base_tv["table_genre_tv"] == "genre_tv"
 
+    def test_translate_provider_default_google_quando_ausente(self, monkeypatch):
+        """Backfills manuais (volume alto) usam Google por default — diferente do
+        caminho automático via EventBridge, que usa "aws" (ver lambda_api/main.py)."""
+        for key, value in self.ENV.items():
+            monkeypatch.setenv(key, value)
+        monkeypatch.delenv("TRANSLATE_PROVIDER", raising=False)
+
+        base_movie, base_tv = bs.build_base_payloads()
+
+        assert base_movie["translate_provider"] == "google"
+        assert base_tv["translate_provider"] == "google"
+
+    def test_translate_provider_sobrescrito_via_env(self, monkeypatch):
+        for key, value in self.ENV.items():
+            monkeypatch.setenv(key, value)
+        monkeypatch.setenv("TRANSLATE_PROVIDER", "aws")
+
+        base_movie, base_tv = bs.build_base_payloads()
+
+        assert base_movie["translate_provider"] == "aws"
+        assert base_tv["translate_provider"] == "aws"
+
     def test_variavel_ausente_lanca_erro(self, monkeypatch):
         for key, value in self.ENV.items():
             monkeypatch.setenv(key, value)

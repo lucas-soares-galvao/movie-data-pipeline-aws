@@ -219,9 +219,13 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 }
 
 # =============================================================================
-# POLICY 5 — AWS Translate (backfill_traducao.py). Fallback de tradução (3ª
-# camada, só quando o Google Translate falha) — translate:TranslateText não tem
-# restrição por recurso na AWS (Resource = "*").
+# POLICY 5 — AWS Translate. Usado quando TRANSLATE_PROVIDER=aws é escolhido em
+# qualquer backfill manual (backfill_traducao.py, backfill_historico.py,
+# backfill_referencias.py, backfill_enriquecimento.py) — default é "google"
+# (grátis); "aws" existe para testar um período menor sob demanda. Mantido o
+# Sid histórico "TranslateFallback" para não gerar diff de Terraform sem
+# necessidade. translate:TranslateText não tem restrição por recurso na AWS
+# (Resource = "*").
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_translate" {
   name = "${local.tmdb_prefix}-backfill-translate-${var.env}"

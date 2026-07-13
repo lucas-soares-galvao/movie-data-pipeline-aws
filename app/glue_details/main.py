@@ -43,7 +43,7 @@ def main() -> None:
     year           = args["YEAR"]
     end_year       = args["END_YEAR"]
     force_refetch  = args["FORCE_REFETCH"]
-    aws_translate_max_calls = args["AWS_TRANSLATE_MAX_PER_RUN"]
+    translate_provider = args["TRANSLATE_PROVIDER"]
 
     table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
     table_details         = table_details_movie         if media_type == "movie" else table_details_tv
@@ -85,7 +85,7 @@ def main() -> None:
             s3_bucket_sot=s3_bucket_sot,
             table_name=table_details,
             database=database,
-            aws_translate_max_calls=aws_translate_max_calls,
+            translate_provider=translate_provider,
         )
 
     # ── WATCH PROVIDERS ───────────────────────────────────────────────────────

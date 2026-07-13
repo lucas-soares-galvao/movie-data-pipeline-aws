@@ -18,7 +18,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`only_monthly_tables=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
    - **`skip_weekly=True`** (modo legado — referências apenas): pula o loop de discover.
    - Sem flags: coleta tudo.
-4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL.
+4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL. Todo acionamento do Glue ETL repassa `TRANSLATE_PROVIDER` (lido de `event.get("translate_provider", "aws")`) — `"aws"` é o default deste caminho automático via EventBridge, já que o payload configurado em `eventbridge.tf` nunca define esse campo; os backfills manuais (`scripts/backfill_historico.py`/`backfill_referencias.py`) sobrescrevem para `"google"`.
 5. Para dados de discover: itera por cada ano no intervalo `[start_year, loop_end_year]` (`start_year` padrão = ano atual; `end_year` padrão = ano atual, se não fornecidos no evento; `loop_end_year` padrão = `end_year`, mas pode ser passado separadamente no evento para desacoplar o limite real do loop do `end_year` usado como marcador de "último ano do ciclo" repassado ao Glue), faz requisições paginadas à API (até `MAX_PAGES = 100` páginas por ano — TMDB permite até 500, mas o limite evita estourar o timeout da Lambda), salva um arquivo JSON por página no S3 SOR (`pagina_001.json`, `pagina_002.json`, ...) e aciona o Glue ETL para aquele ano.
 6. Para filmes (`content_type="movie"`), após o loop de discover, coleta também os filmes em cartaz nos cinemas via `collect_now_playing_data()`: pagina o endpoint `/movie/now_playing`, extrai as datas da janela teatral (`theater_start_date`, `theater_end_date`) e salva os resultados no S3 SOR, depois aciona o Glue ETL com `table_type="now_playing"`. Esse passo é condicional: só ocorre se `table_now_playing` estiver presente no evento **e** `only_monthly_tables` for `False` (execuções mensais nunca coletam now_playing, mesmo com a tabela presente no evento).
 
@@ -31,7 +31,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 
 | | Descrição |
 |---|---|
-| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `skip_weekly`) |
+| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `skip_weekly`, `translate_provider`) |
 | **Leitura** | API TMDB (HTTP), Secrets Manager (chave de API) |
 | **Escrita** | S3 SOR — `tmdb/discover/{movie|tv}/year={ano}/`, `tmdb/{genre|configuration|watch_providers_ref}/{movie|tv}/` e `tmdb/now_playing/movie/pagina_NNN.json` |
 | **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes) |
@@ -52,7 +52,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 |---|---|---|
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
-| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona o job Glue ETL, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, etc.) |
+| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona o job Glue ETL, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, `--TRANSLATE_PROVIDER`, etc.) |
 
 ## Tecnologias
 

@@ -1,146 +1,40 @@
-from concurrent.futures import ThreadPoolExecutor
+import pytest
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-import shared_utils.traducao as traducao
 from shared_utils.traducao import (
-    criar_traduzir_fn_com_aws_translate,
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
     reaproveitar_traducao_existente,
+    resolver_traduzir_fn,
     traduzir_coluna_pendente,
     traduzir_em_paralelo,
     traduzir_texto,
+    traduzir_texto_aws,
 )
 
 
-class TestTraduzirTexto:
-    def test_retorna_string_vazia_para_entrada_vazia(self):
-        assert traduzir_texto("") == ""
+class TestResolverTraduzirFn:
+    def test_resolve_google(self):
+        assert resolver_traduzir_fn("google") is traduzir_texto
 
-    def test_retorna_string_vazia_para_none(self):
-        assert traduzir_texto(None) == ""
+    def test_resolve_aws(self):
+        assert resolver_traduzir_fn("aws") is traduzir_texto_aws
 
-    def test_traduz_texto_com_sucesso(self):
-        mock_translator = MagicMock()
-        mock_translator.translate.return_value = "Olá"
-        with patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator):
-            result = traduzir_texto("Hello")
-        assert result == "Olá"
-        mock_translator.translate.assert_called_once_with("Hello")
+    def test_provider_invalido_levanta_value_error(self):
+        with pytest.raises(ValueError, match="TRANSLATE_PROVIDER inválido"):
+            resolver_traduzir_fn("deepl")
 
-    def test_retorna_original_apos_esgotar_tentativas(self):
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = Exception("rate limit")
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep"),
-        ):
-            result = traduzir_texto("Hello")
-        assert result == "Hello"
-        assert mock_translator.translate.call_count == 5
-
-    def test_tenta_novamente_apos_excecao_e_depois_sucede(self):
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = [Exception("timeout"), "Olá"]
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep") as mock_sleep,
-        ):
-            result = traduzir_texto("Hello")
-        assert result == "Olá"
-        assert mock_translator.translate.call_count == 2
-        mock_sleep.assert_called_once_with(2)
-
-    def test_tenta_novamente_quando_resultado_identico_ao_original(self):
-        """Sem exceção, mas resultado igual ao original: conta como tentativa falha."""
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = ["Hello", "Olá"]
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep") as mock_sleep,
-        ):
-            result = traduzir_texto("Hello")
-        assert result == "Olá"
-        assert mock_translator.translate.call_count == 2
-        mock_sleep.assert_called_once_with(2)
-
-    def test_desiste_cedo_quando_sempre_identico_sem_excecao(self):
-        """Nenhuma exceção é lançada em nenhuma tentativa, mas o texto nunca muda —
-        isso costuma indicar que não há o que traduzir (nome próprio, termo
-        emprestado), não bloqueio transitório, então desiste em
-        _MAX_TENTATIVAS_SEM_ERRO tentativas (2), não nas 5 completas."""
-        mock_translator = MagicMock()
-        mock_translator.translate.return_value = "Hello"
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep"),
-        ):
-            result = traduzir_texto("Hello")
-        assert result == "Hello"
-        assert mock_translator.translate.call_count == 2
-
-    def test_log_debug_quando_desiste_cedo_por_resultado_identico(self, caplog):
-        """Nível DEBUG (não INFO): esse desfecho é comum (nomes próprios, termos
-        emprestados) e não deve poluir o log padrão do workflow com uma linha por
-        registro — só o resumo por coluna aparece em INFO."""
-        import logging
-        mock_translator = MagicMock()
-        mock_translator.translate.return_value = "Hello"
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep"),
-        ):
-            with caplog.at_level(logging.DEBUG):
-                traduzir_texto("Hello")
-        assert "não há tradução a fazer" in caplog.text
-
-    def test_contador_de_resultado_identico_nao_precisa_ser_consecutivo(self):
-        """O limite de _MAX_TENTATIVAS_SEM_ERRO soma tentativas sem erro e resultado
-        idêntico ao total (mesmo com uma exceção intercalada), não exige que sejam
-        consecutivas."""
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = ["Hello", Exception("timeout"), "Hello"]
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep"),
-        ):
-            result = traduzir_texto("Hello")
-        assert result == "Hello"
-        assert mock_translator.translate.call_count == 3
-
-    def test_log_warning_em_caso_de_excecao(self, caplog):
-        import logging
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = Exception("timeout")
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep"),
-        ):
-            with caplog.at_level(logging.WARNING):
-                traduzir_texto("Hello")
-        assert "Falha ao traduzir" in caplog.text
-
-    def test_contexto_aparece_no_log(self, caplog):
-        import logging
-        mock_translator = MagicMock()
-        mock_translator.translate.side_effect = Exception("err")
-        with (
-            patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator),
-            patch("shared_utils.traducao.time.sleep"),
-        ):
-            with caplog.at_level(logging.WARNING):
-                traduzir_texto("Hello", contexto="países")
-        assert "países" in caplog.text
-
-    def test_cria_translator_com_idiomas_corretos(self):
-        mock_translator = MagicMock()
-        mock_translator.translate.return_value = "ok"
-        with patch("shared_utils.traducao.GoogleTranslator", return_value=mock_translator) as mock_cls:
-            traduzir_texto("test")
-        mock_cls.assert_called_once_with(source="auto", target="pt")
+    def test_usa_referencias_locais_informadas_pelo_chamador(self):
+        """traduzir_google/traduzir_aws são parâmetros (não resolvidos via módulo)
+        para que um chamador que faça patch da própria referência local (ex.:
+        patch("src.utils.traduzir_texto", ...)) continue funcionando."""
+        fn_google = MagicMock()
+        fn_aws = MagicMock()
+        assert resolver_traduzir_fn("google", fn_google, fn_aws) is fn_google
+        assert resolver_traduzir_fn("aws", fn_google, fn_aws) is fn_aws
 
 
 class TestTraduzirEmParalelo:
@@ -194,8 +88,8 @@ class TestTraduzirColunaPendente:
         traduzir_fn.assert_not_called()
 
     def test_retenta_quando_destino_igual_a_fonte(self):
-        """destino == fonte indica fallback de uma tradução que falhou em um run
-        anterior (ver traduzir_texto) — deve ser retentado, não pulado."""
+        """destino == fonte indica uma tradução que falhou em um run
+        anterior (ver traduzir_texto/traduzir_texto_aws) — deve ser retentado, não pulado."""
         df = pd.DataFrame({"fonte": ["Hello"], "destino": ["Hello"]})
         traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
 
@@ -239,92 +133,6 @@ class TestTraduzirColunaPendente:
             df = pd.DataFrame({"fonte": ["Hello"], "destino": [None]})
             traduzir_coluna_pendente(df, "fonte", "destino", pd.Series([True]), MagicMock(), max_workers=3)
         assert mock_paralelo.call_args.kwargs["max_workers"] == 3
-
-
-class TestTraduzirAwsTranslate:
-    def test_traduz_com_sucesso(self):
-        mock_client = MagicMock()
-        mock_client.translate_text.return_value = {"TranslatedText": "Olá"}
-        with patch("shared_utils.traducao.boto3.client", return_value=mock_client) as mock_boto:
-            result = traducao._traduzir_aws_translate("Hello", region="sa-east-1")
-        assert result == "Olá"
-        mock_boto.assert_called_once_with("translate", region_name="sa-east-1")
-        mock_client.translate_text.assert_called_once_with(
-            Text="Hello", SourceLanguageCode="auto", TargetLanguageCode="pt",
-        )
-
-    def test_retorna_original_em_caso_de_excecao(self):
-        with patch("shared_utils.traducao.boto3.client", side_effect=Exception("boom")):
-            result = traducao._traduzir_aws_translate("Hello", region="sa-east-1")
-        assert result == "Hello"
-
-    def test_retorna_original_quando_resposta_vazia(self):
-        mock_client = MagicMock()
-        mock_client.translate_text.return_value = {"TranslatedText": ""}
-        with patch("shared_utils.traducao.boto3.client", return_value=mock_client):
-            result = traducao._traduzir_aws_translate("Hello", region="sa-east-1")
-        assert result == "Hello"
-
-
-class TestCriarTraduzirFnComAwsTranslate:
-    def test_nao_chama_aws_translate_quando_traducao_primaria_tem_sucesso(self):
-        traduzir_fn_primario = MagicMock(return_value="Olá")
-        with patch("shared_utils.traducao._traduzir_aws_translate") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
-            result = fn("Hello")
-        assert result == "Olá"
-        mock_aws.assert_not_called()
-
-    def test_chama_aws_translate_quando_traducao_primaria_falha(self):
-        """traduzir_fn_primario devolve o texto original quando falha (mesmo contrato
-        de traduzir_texto) — é esse sinal que aciona o fallback."""
-        traduzir_fn_primario = MagicMock(return_value="Hello")
-        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="Olá via AWS") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
-            result = fn("Hello")
-        assert result == "Olá via AWS"
-        mock_aws.assert_called_once_with("Hello", "us-east-1")
-
-    def test_nao_chama_nada_para_texto_vazio(self):
-        traduzir_fn_primario = MagicMock(return_value="")
-        with patch("shared_utils.traducao._traduzir_aws_translate") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
-            result = fn("")
-        assert result == ""
-        mock_aws.assert_not_called()
-
-    def test_max_chamadas_zero_desliga_fallback(self):
-        traduzir_fn_primario = MagicMock(return_value="Hello")
-        with patch("shared_utils.traducao._traduzir_aws_translate") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=0)
-            result = fn("Hello")
-        assert result == "Hello"
-        mock_aws.assert_not_called()
-
-    def test_para_de_chamar_aws_translate_apos_cap_esgotado(self):
-        traduzir_fn_primario = MagicMock(side_effect=lambda t: t)
-        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="traduzido") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=1)
-            r1 = fn("A")
-            r2 = fn("B")
-        assert r1 == "traduzido"
-        assert r2 == "B"
-        assert mock_aws.call_count == 1
-
-    def test_usa_region_informada(self):
-        traduzir_fn_primario = MagicMock(return_value="Hello")
-        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="ok") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=1, region="us-east-1")
-            fn("Hello")
-        mock_aws.assert_called_once_with("Hello", "us-east-1")
-
-    def test_thread_safety_nao_ultrapassa_cap_sob_concorrencia(self):
-        traduzir_fn_primario = MagicMock(side_effect=lambda t: t)
-        with patch("shared_utils.traducao._traduzir_aws_translate", return_value="traduzido") as mock_aws:
-            fn = criar_traduzir_fn_com_aws_translate(traduzir_fn_primario, max_chamadas=5)
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                list(executor.map(fn, [f"texto{i}" for i in range(20)]))
-        assert mock_aws.call_count == 5
 
 
 class TestReaproveitarTraducaoExistente:

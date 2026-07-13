@@ -527,7 +527,7 @@ class TestGetParametersGlue:
 
     def test_omits_year_when_not_provided(self):
         def _side_effect(args):
-            if "YEAR" in args or "AWS_TRANSLATE_MAX_PER_RUN" in args:
+            if "YEAR" in args or "TRANSLATE_PROVIDER" in args:
                 raise SystemExit(1)
             return self._required()
 
@@ -535,15 +535,15 @@ class TestGetParametersGlue:
             result = get_parameters_glue()
         assert "YEAR" not in result
 
-    def test_defaults_aws_translate_max_per_run_to_zero_when_not_provided(self):
+    def test_defaults_translate_provider_to_aws_when_not_provided(self):
         with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
             result = get_parameters_glue()
-        assert result["AWS_TRANSLATE_MAX_PER_RUN"] == "0"
+        assert result["TRANSLATE_PROVIDER"] == "aws"
 
-    def test_includes_aws_translate_max_per_run_when_provided(self):
+    def test_includes_translate_provider_when_provided(self):
         with patch(
             "src.utils.get_resolved_option",
-            side_effect=[self._required(), SystemExit(1), {"AWS_TRANSLATE_MAX_PER_RUN": "50"}],
+            side_effect=[self._required(), SystemExit(1), {"TRANSLATE_PROVIDER": "google"}],
         ):
             result = get_parameters_glue()
-        assert result["AWS_TRANSLATE_MAX_PER_RUN"] == "50"
+        assert result["TRANSLATE_PROVIDER"] == "google"

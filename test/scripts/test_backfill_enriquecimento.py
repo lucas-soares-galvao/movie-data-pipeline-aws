@@ -47,7 +47,10 @@ class TestStartGlueJob:
 
         assert run_id == "run-1"
         args = client.start_job_run.call_args.kwargs["Arguments"]
-        assert args == {"--MEDIA_TYPE": "movie", "--YEAR": "2020", "--END_YEAR": "2025", "--DATABASE": "db_movie"}
+        assert args == {
+            "--MEDIA_TYPE": "movie", "--YEAR": "2020", "--END_YEAR": "2025", "--DATABASE": "db_movie",
+            "--TRANSLATE_PROVIDER": "google",
+        }
 
     def test_inclui_force_refetch_quando_true(self):
         client = MagicMock()
@@ -57,6 +60,24 @@ class TestStartGlueJob:
 
         args = client.start_job_run.call_args.kwargs["Arguments"]
         assert args["--FORCE_REFETCH"] == "true"
+
+    def test_translate_provider_default_google(self):
+        client = MagicMock()
+        client.start_job_run.return_value = {"JobRunId": "run-3"}
+
+        be._start_glue_job(client, "job", "movie", 2020, 2025, "db_movie")
+
+        args = client.start_job_run.call_args.kwargs["Arguments"]
+        assert args["--TRANSLATE_PROVIDER"] == "google"
+
+    def test_translate_provider_aws_explicito(self):
+        client = MagicMock()
+        client.start_job_run.return_value = {"JobRunId": "run-4"}
+
+        be._start_glue_job(client, "job", "movie", 2020, 2025, "db_movie", translate_provider="aws")
+
+        args = client.start_job_run.call_args.kwargs["Arguments"]
+        assert args["--TRANSLATE_PROVIDER"] == "aws"
 
     @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
     def test_expired_token_no_start_job_run_loga_e_repropaga(self, caplog, codigo):
@@ -201,6 +222,18 @@ class TestLoopPrincipal:
             _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         resumo = [r.message for r in caplog.records if "precisam ser re-executados" in r.message]
         assert resumo == []
+
+    def test_translate_provider_default_google_propagado_ao_glue(self, monkeypatch):
+        mock_client, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        args = mock_client.start_job_run.call_args_list[0].kwargs["Arguments"]
+        assert args["--TRANSLATE_PROVIDER"] == "google"
+
+    def test_translate_provider_aws_propagado_ao_glue(self, monkeypatch):
+        mock_client, _, _, _ = _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
+        )
+        args = mock_client.start_job_run.call_args_list[0].kwargs["Arguments"]
+        assert args["--TRANSLATE_PROVIDER"] == "aws"
 
 
 class TestForceRefetch:
