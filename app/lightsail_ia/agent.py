@@ -49,15 +49,6 @@ VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
   SPEC_TABLE         → tabela SPEC (padrão: "tb_tmdb_discover_unified_prod")
   ATHENA_S3_OUTPUT   → caminho S3 para resultados temporários do Athena
 
-VARIÁVEIS OPCIONAIS — fallback automático de LLM:
-  LLM_MODEL_FALLBACK → modelo Bedrock usado quando a chamada ao LLM_MODEL falhar
-                        por erro de infraestrutura (timeout, 5xx, rate limit,
-                        autenticação). Indefinida por padrão = fallback desativado
-                        (comportamento atual). Ex: "bedrock/openai.gpt-oss-20b"
-  AWS_REGION_BEDROCK → região AWS usada na chamada de fallback (padrão: "us-east-1").
-                        Não reaproveita AWS_REGION porque essa fica fixa em
-                        "sa-east-1" para Athena/Glue/Secrets Manager.
-
 VARIÁVEIS OPCIONAIS — transcrição de áudio (entrada alternativa por voz):
   TRANSCRIPTION_API_KEY → fallback para dev local (usado quando FILMBOT_SECRET_ARN não
                         está definida; em produção, vem do campo transcription_api_key
@@ -78,7 +69,6 @@ import logging
 import hashlib
 import boto3
 import litellm
-import openai
 from dotenv import load_dotenv
 from formatacao import format_record
 
@@ -88,8 +78,6 @@ from formatacao import format_record
 load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
-_LLM_MODEL_FALLBACK = os.getenv("LLM_MODEL_FALLBACK")
-_AWS_REGION_BEDROCK = os.getenv("AWS_REGION_BEDROCK", "us-east-1")
 _TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
 _MAX_AUDIO_SECONDS = 20
 
@@ -167,13 +155,8 @@ def _save_cached_where(preference: str, args: dict) -> None:
     _WHERE_CACHE[key] = (time.time(), args)
 
 
-def _log_token_usage(step: str, response: object, model: str | None = None) -> None:
-    """Registra no log o consumo de tokens (prompt, completion, total) de uma chamada LLM.
-
-    Args:
-        model: modelo que efetivamente respondeu. Default None loga _LLM_MODEL
-                (chamada primária); a chamada de fallback passa o modelo real usado.
-    """
+def _log_token_usage(step: str, response: object) -> None:
+    """Registra no log o consumo de tokens (prompt, completion, total) de uma chamada LLM."""
     usage = getattr(response, "usage", None)
     if not usage:
         return
@@ -181,27 +164,10 @@ def _log_token_usage(step: str, response: object, model: str | None = None) -> N
         "LLM token usage",
         extra={
             "step": step,
-            "model": model or _LLM_MODEL,
+            "model": _LLM_MODEL,
             "prompt_tokens": usage.prompt_tokens,
             "completion_tokens": usage.completion_tokens,
             "total_tokens": usage.total_tokens,
-        },
-    )
-
-
-def _log_llm_fallback(preference: str, error: Exception) -> None:
-    """Registra em WARNING que o fallback de LLM foi acionado (chamada primária falhou).
-
-    Log dedicado (além de _log_token_usage com step="step1_where_fallback") para que
-    o acionamento do fallback fique visível mesmo se a chamada de fallback também falhar.
-    """
-    logger.warning(
-        "Fallback de LLM acionado",
-        extra={
-            "preference": preference,
-            "primary_model": _LLM_MODEL,
-            "fallback_model": _LLM_MODEL_FALLBACK,
-            "error": f"{type(error).__name__}: {error}",
         },
     )
 
@@ -437,9 +403,9 @@ def transcribe_preference(audio_bytes: bytes) -> str:
     via litellm (modelo definido por TRANSCRIPTION_MODEL, padrão Groq Whisper Large v3
     Turbo — rápido e barato, com boa qualidade em pt-BR para preferências curtas).
 
-    Diferente de _call_llm_step1(), não tem fallback automático de modelo: uma falha
-    aqui é tratada pelo chamador (app.py), que deixa o usuário digitar manualmente —
-    a transcrição é uma conveniência opcional, nunca um bloqueio para usar o FilmBot.
+    Uma falha aqui é tratada pelo chamador (app.py), que deixa o usuário digitar
+    manualmente — a transcrição é uma conveniência opcional, nunca um bloqueio para
+    usar o FilmBot.
 
     Args:
         audio_bytes: conteúdo binário do áudio gravado (WAV, entregue pelo
@@ -485,46 +451,19 @@ def transcribe_preference(audio_bytes: bytes) -> str:
 
 
 def _call_llm_step1(preference: str) -> object:
-    """Chama o LLM do Passo 1. Se a chamada primária (_LLM_MODEL) falhar por erro de
-    infraestrutura (timeout, 5xx, rate limit, autenticação — openai.APIError e
-    subclasses, que é a classe-base real usada pelo litellm para erros de provedor;
-    litellm.exceptions.APIError NÃO é essa base, apesar do nome parecido) e
-    LLM_MODEL_FALLBACK estiver configurada, tenta uma vez com o modelo de fallback
-    (ex: um modelo Bedrock, autenticado via credenciais AWS do IAM user do agente).
-
-    NÃO intercepta ValueError/json.JSONDecodeError — essas ocorrem depois desta função
-    retornar (parsing dos tool_calls, em recommend()), então uma resposta primária
-    malformada continua se comportando como hoje (propaga o erro), sem acionar fallback.
-
-    Raises:
-        openai.APIError (ou subclasse): se a chamada primária falhar sem fallback
-            configurado, ou se a chamada de fallback também falhar.
-    """
+    """Chama o LLM do Passo 1 (_LLM_MODEL) para gerar a cláusula WHERE via function calling."""
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": preference},
     ]
-    try:
-        response = litellm.completion(
-            model=_LLM_MODEL,
-            api_key=_LLM_API_KEY,
-            messages=messages,
-            tools=[TOOL],
-        )
-        _log_token_usage("step1_where", response, _LLM_MODEL)
-        return response
-    except openai.APIError as error:
-        if not _LLM_MODEL_FALLBACK:
-            raise
-        _log_llm_fallback(preference, error)
-        response = litellm.completion(
-            model=_LLM_MODEL_FALLBACK,
-            messages=messages,
-            tools=[TOOL],
-            aws_region_name=_AWS_REGION_BEDROCK,
-        )
-        _log_token_usage("step1_where_fallback", response, _LLM_MODEL_FALLBACK)
-        return response
+    response = litellm.completion(
+        model=_LLM_MODEL,
+        api_key=_LLM_API_KEY,
+        messages=messages,
+        tools=[TOOL],
+    )
+    _log_token_usage("step1_where", response)
+    return response
 
 
 # ==============================================================================

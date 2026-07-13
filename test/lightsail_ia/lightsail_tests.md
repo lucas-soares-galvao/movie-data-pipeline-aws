@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, cache, fallback automático de LLM e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -94,20 +94,6 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_cache_expirado_retorna_none` | Retorna `None` e remove entrada quando TTL expira |
 | `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` não é chamado (0 vezes) |
 
-### `TestFallbackLlm` — Fallback automático de LLM
-
-Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses — a classe-base real usada pelo litellm para erros de provedor; `litellm.exceptions.APIError` **não** é essa base, apesar do nome parecido), nunca em resposta sem `tool_calls` ou em erro de parsing dos argumentos da tool.
-
-| Teste | O que verifica |
-|---|---|
-| `test_fallback_acionado_quando_llm_primario_falha` | Com `LLM_MODEL_FALLBACK` configurada, uma `openai.APIConnectionError` na 1ª chamada aciona uma 2ª chamada ao modelo de fallback (`model` e `aws_region_name` corretos); recomendação retorna normalmente |
-| `test_sem_fallback_configurado_propaga_erro_primario` | Sem `LLM_MODEL_FALLBACK` configurada, o erro da chamada primária propaga e só há 1 chamada |
-| `test_fallback_tambem_falha_propaga_erro` | Se a chamada de fallback também falhar, o erro dela propaga (2 chamadas no total) |
-| `test_resposta_sem_tool_calls_nao_aciona_fallback` | Resposta primária bem-sucedida sem `tool_calls` (resultado vazio legítimo) não aciona fallback — só 1 chamada, `recommend()` retorna `[]` |
-| `test_json_invalido_no_tool_call_nao_aciona_fallback` | `tool_calls[0].function.arguments` com JSON inválido propaga `json.JSONDecodeError` sem acionar fallback — só 1 chamada |
-| `test_fallback_usa_regiao_bedrock_configurada` | A chamada de fallback usa `_AWS_REGION_BEDROCK` (não uma região fixa) |
-| `test_fallback_nao_envia_api_key_deepseek` | A chamada de fallback não inclui `api_key` (a chave DeepSeek não é enviada para o Bedrock, que autentica via IAM) |
-
 ### `TestLogTokenUsage` — Logging de uso de tokens
 
 | Teste | O que verifica |
@@ -115,18 +101,10 @@ Dispara só em falha real da chamada ao provedor (`openai.APIError` e subclasses
 | `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `step` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
 | `test_logger_tem_nivel_info_explicito` | `agent.logger.level` é `logging.INFO`, garantindo que os logs de tokens não sejam suprimidos quando `app.py` eleva o root logger para `ERROR` |
-| `test_loga_modelo_explicito_quando_fornecido` | Parâmetro `model` explícito é logado em `extra["model"]` (usado na chamada de fallback) |
-| `test_logar_uso_tokens_usa_llm_model_por_padrao` | Chamada sem `model` (estilo original, 2 argumentos) continua logando `_LLM_MODEL` — regressão de compatibilidade |
-
-### `TestLogLlmFallback` — Logging do acionamento do fallback
-
-| Teste | O que verifica |
-|---|---|
-| `test_loga_fallback_em_warning` | `_log_llm_fallback()` chama `logger.warning` uma vez com `preference`, `primary_model`, `fallback_model` e o erro no `extra` |
 
 ### `TestTranscribePreference` — Transcrição de áudio (Whisper via litellm)
 
-Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que gera um WAV de teste (silêncio) com a duração informada via módulo padrão `wave`. Sem fallback automático de modelo (diferente de `_call_llm_step1`) — qualquer falha é tratada pelo chamador (`app.py`).
+Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que gera um WAV de teste (silêncio) com a duração informada via módulo padrão `wave`. Qualquer falha é tratada pelo chamador (`app.py`).
 
 | Teste | O que verifica |
 |---|---|

@@ -26,8 +26,6 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit.
 
-**Fallback automático de LLM (opcional):** se `LLM_MODEL_FALLBACK` estiver configurada, `_call_llm_step1()` tenta um modelo secundário (tipicamente um modelo AWS Bedrock, autenticado via IAM em vez de API key) quando a chamada ao `LLM_MODEL` primário falhar por erro de infraestrutura (timeout, 5xx, rate limit, autenticação — `openai.APIError` e subclasses, a classe-base real usada pelo litellm para erros de provedor; `litellm.exceptions.APIError` **não** é essa base, apesar do nome parecido). Não é acionado quando o LLM responde normalmente sem `tool_calls` (resultado vazio legítimo) nem por erros de parsing dos argumentos da tool — só por falha real na chamada ao provedor. Indefinida por padrão = sem fallback (comportamento original). Candidato sugerido para `LLM_MODEL_FALLBACK`: GPT OSS 20B na Bedrock (`bedrock/openai.gpt-oss-20b`) — escolhido por custo/capacidade dentre um shortlist (GLM 4.7 Flash, Nemotron Nano 9B v2, MiniMax M2 como alternativas), mas a escolha final depende de um teste de qualidade das cláusulas WHERE geradas por cada candidato, ainda não realizado.
-
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
 
@@ -54,8 +52,8 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 ### Entrada alternativa — Transcrição de áudio (Whisper via litellm)
 Além de digitar, o usuário pode gravar a preferência em áudio pelo widget nativo `st.audio_input`. O áudio é transcrito por `transcribe_preference()` (`agent.py`) usando Whisper via `litellm` — modelo configurável por `TRANSCRIPTION_MODEL` (padrão: Groq Whisper Large v3 Turbo, rápido e barato), com `language="pt"` fixo. O texto resultante pré-popula o `st.text_area` de preferência, permanecendo totalmente editável antes de clicar em "Recomendar".
 
-- **Limite de duração:** áudios com mais de 20 segundos (`_MAX_AUDIO_SECONDS`) são rejeitados **antes** de chamar a API de transcrição — a duração é calculada com o módulo padrão `wave` (sem dependência nova), já que `st.audio_input` sempre entrega WAV.
-- **Sem fallback automático de modelo** (diferente da Etapa 1 de interpretação): qualquer falha na transcrição (provedor indisponível, sem API key configurada, áudio sem fala detectada, áudio muito longo) degrada graciosamente — o campo de texto nunca fica bloqueado, a pessoa sempre pode digitar manualmente.
+- **Limite de duração:** áudios com mais de 20 segundos (`_MAX_AUDIO_SECONDS`) são rejeitados **antes** de chamar a API de transcrição — a duração é calculada com o módulo padrão `wave` (sem dependência nova), já que `st.audio_input` sempre entrega WAV. O limite é exibido para o usuário na legenda acima do gravador ("máx. 20s"), além do aviso "⚠️ Áudio muito longo" exibido caso a gravação exceda o limite.
+- **Degradação graciosa:** qualquer falha na transcrição (provedor indisponível, sem API key configurada, áudio sem fala detectada, áudio muito longo) nunca bloqueia o campo de texto — a pessoa sempre pode digitar manualmente.
 - **Rate limiting próprio:** 30 transcrições por hora por IP (`_MAX_TRANSCRIPTIONS_PER_HOUR`), mais generoso que o limite de recomendações porque o custo de Whisper é bem menor que o fluxo LLM+Athena. Usa um histórico de IPs independente (`_audio_ip_history`) do fluxo de recomendação.
 - **Execução assíncrona:** mesmo padrão de `ThreadPoolExecutor` + `Future` + polling (500ms) já usado no botão "Recomendar", com chaves de `session_state` próprias (`transcribing`/`transcription_future`) para não colidir com o fluxo de busca.
 - **Limite de caracteres:** transcrições acima de 300 caracteres (`_MAX_PREFERENCE_CHARS`) são cortadas nesse limite antes de preencher o campo de texto, com aviso "⚠️ Transcrição excedeu 300 caracteres e foi cortada." — necessário porque o `st.text_area` de destino também tem `max_chars=300` e rejeitaria um valor de `session_state` maior que isso.
@@ -66,7 +64,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
 - **Rate limiting por IP:** máximo de 20 consultas por hora (janela deslizante). O contador é exibido abaixo do campo de texto; ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS (JavaScript client-side via `st.components.v1.html`) mostra quanto tempo falta em tempo real, decrementando a cada segundo. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
-- **Limite de caracteres:** o `st.text_area` da preferência tem `max_chars=300` (`_MAX_PREFERENCE_CHARS`), aplicado tanto à digitação manual (o Streamlit trava a digitação e mostra o contador nativo "X/300") quanto ao texto vindo da transcrição de áudio (truncado antes de preencher o campo — ver seção de transcrição acima)
+- **Limite de caracteres:** o `st.text_area` da preferência tem `max_chars=300` (`_MAX_PREFERENCE_CHARS`), aplicado tanto à digitação manual (o Streamlit trava a digitação ao atingir o limite) quanto ao texto vindo da transcrição de áudio (truncado antes de preencher o campo — ver seção de transcrição acima). Um contador "N / 300 caracteres" é exibido abaixo da caixa via `st.caption()` (mesmo padrão do contador "Consultas restantes"), atualizando a cada rerun do app (perda de foco ou Ctrl+Enter) — o contador nativo do Streamlit não é usado porque seu texto de dica vem em inglês, inconsistente com a UI 100% em português
 - Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Cada card exibe:
@@ -98,9 +96,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `agent.py` | `_cache_key(preference)` | Calcula o hash MD5 da preferência normalizada (lowercase + strip), usado como chave do cache de WHERE clauses |
 | `agent.py` | `_get_cached_where(preference)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
 | `agent.py` | `_save_cached_where(preference, args)` | Salva cláusula WHERE no cache em memória com timestamp |
-| `agent.py` | `_call_llm_step1(preference)` | Chama o LLM primário (`LLM_MODEL`); se falhar por erro de infraestrutura e `LLM_MODEL_FALLBACK` estiver configurada, tenta uma vez o modelo de fallback (via credenciais AWS/IAM, sem API key) |
-| `agent.py` | `_log_token_usage(step, response, model=None)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `model` da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens"). `model` identifica qual modelo respondeu (primário ou fallback); default `None` loga `LLM_MODEL` |
-| `agent.py` | `_log_llm_fallback(preference, error)` | Registra em `logging.warning` o acionamento do fallback (preferência, modelo primário, modelo de fallback, erro) — logado antes da chamada de fallback, para ficar visível mesmo se ela também falhar |
+| `agent.py` | `_call_llm_step1(preference)` | Chama o LLM (`LLM_MODEL`) para gerar a cláusula WHERE via function calling |
+| `agent.py` | `_log_token_usage(step, response)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `model` (`LLM_MODEL`) da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens") |
 | `agent.py` | `transcribe_preference(audio_bytes)` | Transcreve áudio (WAV) para texto via Whisper (`litellm.transcription`, modelo `TRANSCRIPTION_MODEL`). Rejeita áudios acima de 20s (`AudioMuitoLongoError`) antes de chamar a API. Sem fallback automático de modelo |
 | `agent.py` | `_audio_duration_seconds(audio_bytes)` | Calcula a duração de um áudio WAV via módulo padrão `wave` |
 | `agent.py` | `_load_transcription_api_key()` | Busca `transcription_api_key` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou `TRANSCRIPTION_API_KEY` do `.env` em desenvolvimento; retorna `None` (não quebra o app) se ausente |
@@ -153,8 +150,6 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 | `TRANSCRIPTION_API_KEY` | *(Opcional)* Fallback para desenvolvimento local da chave de transcrição (usado quando `FILMBOT_SECRET_ARN` não está definida). Indefinida = transcrição de áudio indisponível, sem afetar o restante do app |
 | `TRANSCRIPTION_MODEL` | *(Opcional)* Modelo de transcrição via litellm (padrão: `groq/whisper-large-v3-turbo`) |
 | `LLM_MODEL` | Modelo LLM a usar (padrão: `deepseek/deepseek-v4-flash`). Ex: `deepseek/deepseek-chat`, `claude-opus-4-8` |
-| `LLM_MODEL_FALLBACK` | *(Opcional)* Modelo usado quando a chamada ao `LLM_MODEL` falhar por erro de infraestrutura. Indefinida = fallback desativado. Ex: `bedrock/openai.gpt-oss-20b` |
-| `AWS_REGION_BEDROCK` | *(Opcional)* Região AWS usada na chamada de fallback (padrão: `us-east-1`). Não reaproveita `AWS_REGION`, que fica fixa em `sa-east-1` para Athena/Glue/Secrets Manager |
 | `AWS_REGION` | Região AWS para consultas Athena (ex: `sa-east-1`) |
 | `AWS_ACCESS_KEY_ID` | Credencial do IAM user `filmbot-agent-{env}` |
 | `AWS_SECRET_ACCESS_KEY` | Credencial do IAM user `filmbot-agent-{env}` |
@@ -167,7 +162,6 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 - **Streamlit** — framework de interface web em Python
 - **litellm** — abstração de chamadas LLM (suporta OpenAI, DeepSeek, Claude, etc.)
-- **openai** — dependência direta usada apenas para capturar `openai.APIError` (classe-base real dos erros de provedor no litellm) na lógica de fallback de LLM
 - **LLM configurável via `LLM_MODEL`** — padrão `deepseek/deepseek-v4-flash`; suporta qualquer modelo compatível com litellm (DeepSeek, OpenAI, Claude, etc.)
 - **boto3** — cliente AWS para consultas Athena (API nativa: start_query_execution / get_paginator)
 - **watchtower** — handler de logging que envia logs Python diretamente ao CloudWatch Logs via boto3
@@ -176,7 +170,5 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 ## Observabilidade de tokens
 
 Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `model` e `step` (`_log_token_usage()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
-
-Uso do fallback é identificável nos logs de duas formas: `step="step1_where_fallback"` no log de `_log_token_usage` (em vez de `"step1_where"`), e uma mensagem WARNING dedicada "Fallback de LLM acionado" (`_log_llm_fallback()`), emitida antes da chamada de fallback — fica registrada mesmo que a chamada de fallback também falhe.
 
 `app.py` eleva o root logger para `ERROR` quando o CloudWatch está configurado (`logging.root.setLevel(logging.ERROR)`), para silenciar bibliotecas ruidosas. Como isso suprimiria por herança os `logger.info(...)` de `_log_token_usage()`, `agent.py` define explicitamente `logger.setLevel(logging.INFO)` no seu próprio logger — garantindo que os logs de tokens continuem passando pelo handler do root independentemente do nível herdado.

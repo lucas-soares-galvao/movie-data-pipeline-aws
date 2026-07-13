@@ -1060,29 +1060,6 @@ resource "aws_iam_user_policy" "filmbot_secrets_manager" {
   })
 }
 
-# Raciocinio: permite que o agente IA (Lightsail) invoke o modelo Bedrock usado como
-# fallback quando o LLM primário (DeepSeek) falhar. Candidato definido via LLM_MODEL_FALLBACK
-# (indefinida por padrão = fallback desativado): GPT OSS 20B, model ID confirmado no console
-# Bedrock como invocação on-demand serverless (sem endpoint dedicado). ARNs de foundation-model
-# do Bedrock não têm account id (dois-pontos duplos é proposital, não é erro de digitação).
-# Se um teste de qualidade das cláusulas WHERE geradas trocar o candidato final para outro do
-# shortlist (GLM 4.7 Flash, Nemotron Nano 9B v2, MiniMax M2), atualizar o Resource abaixo para
-# o Model ID correspondente.
-resource "aws_iam_user_policy" "filmbot_bedrock_fallback" {
-  name = "${local.tmdb_prefix}-filmbot-bedrock-fallback-${var.env}"
-  user = aws_iam_user.lightsail_agent.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "BedrockInvokeModelFallback"
-      Effect   = "Allow"
-      Action   = ["bedrock:InvokeModel"]
-      Resource = "arn:aws:bedrock:*::foundation-model/openai.gpt-oss-20b"
-    }]
-  })
-}
-
 resource "aws_iam_role_policy" "eventbridge_start_sfn" {
   name = "${local.tmdb_prefix}-eventbridge-start-sfn-${var.env}"
   role = aws_iam_role.eventbridge_sfn_role.id
