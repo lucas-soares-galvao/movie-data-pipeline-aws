@@ -57,13 +57,23 @@ VARIÁVEIS OPCIONAIS — fallback automático de LLM:
   AWS_REGION_BEDROCK → região AWS usada na chamada de fallback (padrão: "us-east-1").
                         Não reaproveita AWS_REGION porque essa fica fixa em
                         "sa-east-1" para Athena/Glue/Secrets Manager.
+
+VARIÁVEIS OPCIONAIS — transcrição de áudio (entrada alternativa por voz):
+  TRANSCRIPTION_API_KEY → fallback para dev local (usado quando FILMBOT_SECRET_ARN não
+                        está definida; em produção, vem do campo transcription_api_key
+                        no secret). Indefinida = transcrição de áudio indisponível
+                        (o campo de texto continua funcionando normalmente).
+  TRANSCRIPTION_MODEL → modelo de transcrição a usar via litellm
+                        (padrão: "groq/whisper-large-v3-turbo")
 """
 
 import gc
+import io
 import os
 import re
 import json
 import time
+import wave
 import logging
 import hashlib
 import boto3
@@ -80,6 +90,8 @@ load_dotenv()
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
 _LLM_MODEL_FALLBACK = os.getenv("LLM_MODEL_FALLBACK")
 _AWS_REGION_BEDROCK = os.getenv("AWS_REGION_BEDROCK", "us-east-1")
+_TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
+_MAX_AUDIO_SECONDS = 20
 
 
 def _load_llm_api_key() -> str | None:
@@ -93,7 +105,30 @@ def _load_llm_api_key() -> str | None:
     return os.getenv("LLM_API_KEY")
 
 
+def _load_transcription_api_key() -> str | None:
+    """Busca a TRANSCRIPTION_API_KEY do Secrets Manager (produção) ou do .env (desenvolvimento).
+
+    Diferente de _load_llm_api_key(), usa secret.get() em vez de indexação direta:
+    transcription_api_key é um campo opcional, adicionado ao secret depois que ele já
+    existia em produção. Retornar None em vez de KeyError permite que o app suba
+    normalmente antes do operador popular o campo — a transcrição fica apenas
+    indisponível (ver transcribe_preference()), sem derrubar o app.
+    """
+    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
+    if secret_arn:
+        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
+        response = client.get_secret_value(SecretId=secret_arn)
+        secret = json.loads(response["SecretString"])
+        return secret.get("transcription_api_key")
+    return os.getenv("TRANSCRIPTION_API_KEY")
+
+
 _LLM_API_KEY = _load_llm_api_key()
+_TRANSCRIPTION_API_KEY = _load_transcription_api_key()
+
+
+class AudioMuitoLongoError(Exception):
+    """Levantado quando o áudio gravado excede _MAX_AUDIO_SECONDS."""
 
 logger = logging.getLogger(__name__)
 # Nível explícito: app.py eleva o root logger para ERROR quando o CloudWatch
@@ -384,6 +419,69 @@ def search_titles_spec(where_clause: str, limit: int = 10) -> list[dict]:
     # Libera memória dos objetos de resposta do boto3 antes de passar ao LLM
     gc.collect()
     return records
+
+
+def _audio_duration_seconds(audio_bytes: bytes) -> float:
+    """Calcula a duração (em segundos) de um áudio WAV a partir dos bytes brutos.
+
+    O st.audio_input do Streamlit sempre entrega áudio em WAV, então não é
+    preciso detectar/converter formato — só ler os frames com o módulo padrão wave.
+    """
+    with wave.open(io.BytesIO(audio_bytes)) as wav_file:
+        return wav_file.getnframes() / float(wav_file.getframerate())
+
+
+def transcribe_preference(audio_bytes: bytes) -> str:
+    """
+    Transcreve um áudio gravado pelo usuário para texto em português, usando Whisper
+    via litellm (modelo definido por TRANSCRIPTION_MODEL, padrão Groq Whisper Large v3
+    Turbo — rápido e barato, com boa qualidade em pt-BR para preferências curtas).
+
+    Diferente de _call_llm_step1(), não tem fallback automático de modelo: uma falha
+    aqui é tratada pelo chamador (app.py), que deixa o usuário digitar manualmente —
+    a transcrição é uma conveniência opcional, nunca um bloqueio para usar o FilmBot.
+
+    Args:
+        audio_bytes: conteúdo binário do áudio gravado (WAV, entregue pelo
+                     st.audio_input do Streamlit).
+
+    Returns:
+        Texto transcrito e sem espaços nas pontas. String vazia se nenhuma fala foi
+        detectada (áudio silencioso/ruído) — o chamador deve distinguir esse caso
+        (retorno "") de uma exceção (falha real na chamada ao provedor).
+
+    Raises:
+        AudioMuitoLongoError: se o áudio exceder _MAX_AUDIO_SECONDS — levantado antes
+            de qualquer chamada à API, para não gastar crédito de transcrição à toa.
+        ValueError: se TRANSCRIPTION_API_KEY/transcription_api_key não estiver configurada.
+        openai.APIError (ou subclasse): se a chamada ao provedor de transcrição falhar
+            (indisponibilidade, timeout, autenticação, formato de áudio inválido, etc.).
+    """
+    duration = _audio_duration_seconds(audio_bytes)
+    if duration > _MAX_AUDIO_SECONDS:
+        raise AudioMuitoLongoError(
+            f"Áudio de {duration:.0f}s excede o limite de {_MAX_AUDIO_SECONDS}s."
+        )
+
+    if not _TRANSCRIPTION_API_KEY:
+        raise ValueError(
+            "TRANSCRIPTION_API_KEY não configurada — transcrição de áudio indisponível."
+        )
+
+    audio_file = io.BytesIO(audio_bytes)
+    audio_file.name = "preferencia.wav"  # litellm/OpenAI usam o nome para inferir o formato
+
+    response = litellm.transcription(
+        model=_TRANSCRIPTION_MODEL,
+        file=audio_file,
+        api_key=_TRANSCRIPTION_API_KEY,
+        language="pt",
+    )
+    logger.info(
+        "Transcrição de áudio concluída",
+        extra={"model": _TRANSCRIPTION_MODEL, "audio_bytes": len(audio_bytes)},
+    )
+    return (getattr(response, "text", "") or "").strip()
 
 
 def _call_llm_step1(preference: str) -> object:

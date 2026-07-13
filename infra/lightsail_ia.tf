@@ -189,7 +189,7 @@ output "lightsail_cloudwatch_log_group" {
 }
 
 output "lightsail_filmbot_secret_arn" {
-  description = "ARN do segredo no Secrets Manager com llm_api_key e filmbot_password"
+  description = "ARN do segredo no Secrets Manager com llm_api_key, tmdb_api_key, filmbot_password e transcription_api_key (opcional)"
   value       = var.filmbot_secret_arn
 }
 
