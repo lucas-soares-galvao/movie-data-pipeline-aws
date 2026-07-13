@@ -12,11 +12,11 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
-| `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda | Lambda | — |
-| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano | Lambda | — |
-| `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords) | Glue Details | — |
+| `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda — cada invocação aciona Glue ETL → Glue Details, que traduzem via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
+| `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); dispara o Glue Details diretamente, que traduz via `TRANSLATE_PROVIDER` (default `google`) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
-| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate, com AWS Translate como 3ª camada opcional (não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
+| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
 por todos os 5 scripts acima: leitura de variável de ambiente obrigatória,
@@ -70,11 +70,18 @@ Os 4 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimen
 `backfill_traducao.py` exige adicionalmente `S3_BUCKET_SOT`, usado para ler e
 escrever os parquets reais de `tb_discover_movie/tv_tmdb` e
 `tb_details_movie/tv_tmdb` — separado do checkpoint, que fica no bucket TEMP
-como os demais. Aceita opcionalmente `AWS_TRANSLATE_MAX_PER_RUN` (default `0`
-— desligado): limite de chamadas ao AWS Translate (3ª camada de tradução,
-usada só quando o Google Translate falha) para **a execução inteira** (todas
-as partições ano+tipo do run), não por partição — exposto no workflow como o
-input `aws_translate_max_per_run`.
+como os demais.
+
+Todos os backfills que traduzem (`backfill_historico.py` e
+`backfill_referencias.py`, via `backfill_shared.build_base_payloads()`;
+`backfill_enriquecimento.py` e `backfill_traducao.py`, via env var própria)
+aceitam opcionalmente `TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
+instável sob alto volume; `"aws"` usa AWS Translate, pago por caractere, útil
+para testar um período menor via `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) —
+exposto no workflow como o input `translate_provider`. Diferente do caminho
+automático via EventBridge (`lambda_api` → `glue_etl` → `glue_details`, que
+usa `"aws"` por padrão), o default aqui é `"google"` porque esses backfills
+processam o catálogo histórico inteiro.
 
 Cada script possui variáveis adicionais documentadas em sua docstring.
 

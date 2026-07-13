@@ -10,9 +10,10 @@ import pandas as pd
 
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
 from shared_utils.traducao import (  # noqa: F401
-    criar_traduzir_fn_com_aws_translate,
     reaproveitar_traducao_existente,
+    resolver_traduzir_fn,
     traduzir_texto,
+    traduzir_texto_aws,
 )
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
@@ -113,13 +114,13 @@ def get_parameters_glue() -> Dict[str, Any]:
     except SystemExit:
         pass
 
-    # Opcional: limite de chamadas ao AWS Translate nesta execução (fallback quando
-    # o Google Translate falha ao traduzir name_pt de países/idiomas). Ausente = "0"
-    # (desligado) — mesmo padrão de opcional usado acima para YEAR/END_YEAR.
+    # Opcional: qual serviço de tradução usar para name_pt de países/idiomas
+    # ("google" ou "aws"). Ausente = "aws" (caminho automático via EventBridge não
+    # passa esse argumento) — mesmo padrão de opcional usado acima para YEAR/END_YEAR.
     try:
-        args.update(get_resolved_option(["AWS_TRANSLATE_MAX_PER_RUN"]))
+        args.update(get_resolved_option(["TRANSLATE_PROVIDER"]))
     except SystemExit:
-        args["AWS_TRANSLATE_MAX_PER_RUN"] = "0"
+        args["TRANSLATE_PROVIDER"] = "aws"
 
     return args
 
@@ -145,9 +146,8 @@ def _adicionar_traducao(
         coluna_chave: Coluna usada para casar registros antigos e novos no cache
                       de tradução (ex: "iso_3166_1" para países, "iso_639_1" para idiomas).
         traduzir_fn:  Função de tradução (texto) -> texto traduzido. Por padrão usa
-                      traduzir_texto puro (Google Translate); passe o resultado de
-                      criar_traduzir_fn_com_aws_translate para habilitar o fallback
-                      via AWS Translate.
+                      traduzir_texto puro (Google Translate); os chamadores em produção
+                      passam o resultado de resolver_traduzir_fn (google ou aws).
         df_anterior:  Tabela configuration já gravada na SOT (ver ler_configuration_existente),
                       usada como cache de tradução, ou None se não há histórico.
 

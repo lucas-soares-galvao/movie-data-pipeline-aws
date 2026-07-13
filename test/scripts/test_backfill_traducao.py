@@ -416,6 +416,25 @@ class TestMain:
         _, mock_backfill, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_sleep.call_count == mock_backfill.call_count - 1
 
+    def test_translate_provider_default_google(self, monkeypatch):
+        """Sem TRANSLATE_PROVIDER definido, usa Google (volume alto do backfill
+        histórico não deve gerar custo por caractere por padrão)."""
+        _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.traduzir_texto
+
+    def test_translate_provider_aws_explicito(self, monkeypatch):
+        """TRANSLATE_PROVIDER=aws permite testar em janelas pequenas via
+        BACKFILL_START_YEAR/BACKFILL_END_YEAR."""
+        _, mock_backfill, _, _ = _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
+        )
+        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.traduzir_texto_aws
+
+    def test_translate_provider_invalido_levanta_erro(self, monkeypatch):
+        _set_env(monkeypatch, {"TRANSLATE_PROVIDER": "deepl"})
+        with pytest.raises(ValueError, match="TRANSLATE_PROVIDER inválido"):
+            bt.main()
+
     def test_loga_total_de_traduzidos_com_sucesso_acumulado(self, monkeypatch, caplog):
         """O total no log final soma os traduzidos com sucesso de cada partição, não a quantidade de partições."""
         with (

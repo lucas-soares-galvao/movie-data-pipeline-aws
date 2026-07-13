@@ -29,6 +29,9 @@ Variáveis opcionais:
                            Glue Data Quality em fire-and-forget, então o intervalo evita saturar o
                            max_concurrent_runs do Data Quality, compartilhado com o restante do pipeline)
     FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
+    TRANSLATE_PROVIDER    (padrão: "google" — grátis; volume alto por re-enriquecer o histórico
+                           inteiro. "aws" usa AWS Translate, útil para testar um período menor
+                           via BACKFILL_START_YEAR/BACKFILL_END_YEAR)
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -54,7 +57,8 @@ logger = shared.setup_logging()
 
 
 def _start_glue_job(
-    client: Any, job_name: str, media_type: str, year: int, end_year: int, database: str, force_refetch: bool = False,
+    client: Any, job_name: str, media_type: str, year: int, end_year: int, database: str,
+    force_refetch: bool = False, translate_provider: str = "google",
 ) -> str:
     """Inicia o Glue Details job e retorna o RunId."""
     arguments = {
@@ -62,6 +66,7 @@ def _start_glue_job(
         "--YEAR": str(year),
         "--END_YEAR": str(end_year),
         "--DATABASE": database,
+        "--TRANSLATE_PROVIDER": translate_provider,
     }
     if force_refetch:
         arguments["--FORCE_REFETCH"] = "true"
@@ -114,6 +119,7 @@ def main() -> None:
     start_year, end_year = shared.read_year_range()
     wait_seconds  = int(os.environ.get("WAIT_SECONDS", 300))
     force_refetch = os.environ.get("FORCE_REFETCH", "true").lower() == "true"
+    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
 
     client    = boto3.client("glue", region_name=region)
     s3_client = boto3.client("s3", region_name=region)
@@ -142,7 +148,7 @@ def main() -> None:
             i, len(pendentes), media_type, year,
         )
 
-        run_id = _start_glue_job(client, job_name, media_type, year, end_year, database, force_refetch)
+        run_id = _start_glue_job(client, job_name, media_type, year, end_year, database, force_refetch, translate_provider)
         state = _wait_for_job(client, job_name, run_id)
         if state != "SUCCEEDED":
             logger.error(

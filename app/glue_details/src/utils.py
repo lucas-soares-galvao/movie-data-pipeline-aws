@@ -16,13 +16,14 @@ import requests
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
 from shared_utils.traducao import (
-    criar_traduzir_fn_com_aws_translate,
     elegivel_keywords_pt,
     elegivel_overview_pt,
     elegivel_tagline_pt,
     reaproveitar_traducao_existente,
+    resolver_traduzir_fn,
     traduzir_coluna_pendente,
     traduzir_texto,
+    traduzir_texto_aws,
 )
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
@@ -67,12 +68,13 @@ def get_parameters_glue() -> Dict[str, Any]:
             params["FORCE_REFETCH"] = sys.argv[i + 1].lower() == "true"
             break
 
-    # Opcional: limite de chamadas ao AWS Translate nesta execução (3ª camada de
-    # tradução, usada só quando o Google Translate falha). 0 (padrão) desliga essa camada.
-    params["AWS_TRANSLATE_MAX_PER_RUN"] = 0
+    # Opcional: qual serviço de tradução usar ("google" ou "aws"). "aws" (padrão) é o
+    # comportamento do caminho automático via EventBridge — não passado nesse caminho,
+    # então cai no default. Backfills manuais (scripts/) sobrescrevem para "google".
+    params["TRANSLATE_PROVIDER"] = "aws"
     for i, arg in enumerate(sys.argv):
-        if arg == "--AWS_TRANSLATE_MAX_PER_RUN" and i + 1 < len(sys.argv):
-            params["AWS_TRANSLATE_MAX_PER_RUN"] = int(sys.argv[i + 1])
+        if arg == "--TRANSLATE_PROVIDER" and i + 1 < len(sys.argv):
+            params["TRANSLATE_PROVIDER"] = sys.argv[i + 1]
             break
 
     return params
@@ -762,7 +764,7 @@ def collect_and_write_details(
     s3_bucket_sot: str,
     table_name: str,
     database: str,
-    aws_translate_max_calls: int = 0,
+    translate_provider: str = "aws",
 ) -> None:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -772,15 +774,14 @@ def collect_and_write_details(
     o DataFrame por completo, a função não grava nada.
 
     Args:
-        api_key:                  Chave de API do TMDB.
-        ids:                      Lista de IDs a consultar.
-        content_type:             "movie" ou "tv".
-        s3_bucket_sot:            Nome do bucket SOT de destino.
-        table_name:               Nome da tabela no Glue Catalog.
-        database:                 Nome do banco de dados no Glue Catalog.
-        aws_translate_max_calls:  Limite de chamadas ao AWS Translate nesta execução,
-                                   usado como 3ª camada quando o Google Translate falha.
-                                   0 (padrão) desliga essa camada.
+        api_key:            Chave de API do TMDB.
+        ids:                Lista de IDs a consultar.
+        content_type:       "movie" ou "tv".
+        s3_bucket_sot:      Nome do bucket SOT de destino.
+        table_name:         Nome da tabela no Glue Catalog.
+        database:           Nome do banco de dados no Glue Catalog.
+        translate_provider: "google" ou "aws" — ver resolver_traduzir_fn. Default "aws"
+                             (caminho automático via EventBridge).
     """
     registros = []
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
@@ -840,7 +841,7 @@ def collect_and_write_details(
         except Exception as exc:
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
-    traduzir_fn = criar_traduzir_fn_com_aws_translate(traduzir_texto, aws_translate_max_calls)
+    traduzir_fn = resolver_traduzir_fn(translate_provider, traduzir_texto, traduzir_texto_aws)
     df = _adicionar_traducoes_pt(df, traduzir_fn, df_anterior=df_existing_delta)
     df = _adicionar_traducoes_keywords_pt(df, traduzir_fn, df_anterior=df_existing_delta)
     df = _adicionar_traducoes_tagline_pt(df, traduzir_fn, df_anterior=df_existing_delta)

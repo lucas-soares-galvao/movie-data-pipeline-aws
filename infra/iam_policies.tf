@@ -242,8 +242,10 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
   })
 }
 
-# Fallback de tradução via AWS Translate (3ª camada, só quando o Google Translate
-# falha) — translate:TranslateText não tem restrição por recurso na AWS (Resource = "*").
+# Tradução via AWS Translate — tradutor do caminho automático via EventBridge
+# (TRANSLATE_PROVIDER default "aws" quando o job não recebe esse argumento; ver
+# shared_utils.traducao.resolver_traduzir_fn). translate:TranslateText não tem
+# restrição por recurso na AWS (Resource = "*").
 resource "aws_iam_role_policy" "glue_etl_translate" {
   name = "${local.tmdb_prefix}-glue-etl-translate-${var.env}"
   role = aws_iam_role.glue_etl_role.name
@@ -941,8 +943,10 @@ resource "aws_iam_role_policy" "glue_details_secrets" {
   })
 }
 
-# Fallback de tradução via AWS Translate (3ª camada, só quando o Google Translate
-# falha) — translate:TranslateText não tem restrição por recurso na AWS (Resource = "*").
+# Tradução via AWS Translate — tradutor do caminho automático via EventBridge
+# (TRANSLATE_PROVIDER default "aws" quando o job não recebe esse argumento; ver
+# shared_utils.traducao.resolver_traduzir_fn). translate:TranslateText não tem
+# restrição por recurso na AWS (Resource = "*").
 resource "aws_iam_role_policy" "glue_details_translate" {
   name = "${local.tmdb_prefix}-glue-details-translate-${var.env}"
   role = aws_iam_role.glue_details_role.name

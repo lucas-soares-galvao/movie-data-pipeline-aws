@@ -48,6 +48,8 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_glue_acionado_para_genre_e_configuration_sem_year` | Glue de genre/configuration não recebe argumento `year` |
 | `test_glue_no_loop_recebe_year_e_table_type_corretos` | Glue de discover recebe `year` e `table_type="discover"` para cada ano |
 | `test_glue_discover_recebe_end_year` | Todas as chamadas de discover repassam `end_year` |
+| `test_translate_provider_default_aws_quando_ausente_do_evento` | Sem `translate_provider` no evento (payload real do EventBridge), todas as chamadas ao Glue recebem `TRANSLATE_PROVIDER="aws"` |
+| `test_translate_provider_repassado_quando_informado_no_evento` | `translate_provider` no evento (backfills manuais) é repassado como `TRANSLATE_PROVIDER` a todas as chamadas ao Glue |
 
 ### `TestSkipWeekly` — flag `skip_weekly=True`
 

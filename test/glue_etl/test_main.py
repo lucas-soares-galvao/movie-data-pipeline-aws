@@ -308,6 +308,7 @@ class TestTriggerDetails:
                 YEAR="2023",
                 END_YEAR="2026",
                 DATABASE="db_tmdb_movie_dev",
+                TRANSLATE_PROVIDER="aws",
             )
             assert details_call in mock_trigger.call_args_list
 
@@ -327,6 +328,7 @@ class TestTriggerDetails:
                 YEAR="2023",
                 END_YEAR="2026",
                 DATABASE="db_tmdb_tv_dev",
+                TRANSLATE_PROVIDER="aws",
             )
             assert details_call in mock_trigger.call_args_list
 
@@ -351,6 +353,28 @@ class TestTriggerDetails:
                 if c.args[0] == "details-job"
             ]
             assert details_calls == []
+
+    def test_translate_provider_repassado_ao_details(self):
+        """TRANSLATE_PROVIDER informado explicitamente (ex.: backfill manual) é
+        repassado ao Glue Details, não apenas o default "aws" do caminho automático."""
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        args = self._discover_args(TRANSLATE_PROVIDER="google")
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
+        ):
+            m.main()
+            details_call = call(
+                "details-job",
+                MEDIA_TYPE="movie",
+                YEAR="2023",
+                END_YEAR="2026",
+                DATABASE="db_tmdb_movie_dev",
+                TRANSLATE_PROVIDER="google",
+            )
+            assert details_call in mock_trigger.call_args_list
 
     def test_details_triggered_exactly_once_per_discover_run(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
