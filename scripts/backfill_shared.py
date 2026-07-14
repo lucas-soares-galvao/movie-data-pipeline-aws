@@ -32,7 +32,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from botocore.exceptions import ClientError
 
@@ -97,17 +97,59 @@ def invoke_lambda_sync(client: Any, function_name: str, payload: dict[str, Any])
     logger.info("Lambda OK: %s", body.get("body", body))
 
 
-def build_base_payloads() -> tuple[dict[str, Any], dict[str, Any]]:
+def apply_translate_cost_guard(translate_provider: str, start_year: int, end_year: int) -> str:
+    """Rebaixa "aws" para "google" quando o intervalo pedido cobre mais de 1 ano.
+
+    Proteção contra custo alto do AWS Translate (pago por caractere) para o caso de o
+    operador escolher "aws" para testar um período curto e esquecer de voltar para
+    "google" antes de disparar um backfill do catálogo histórico inteiro. AWS Translate
+    continua disponível como fallback capado por caracteres via
+    shared_utils.traducao.resolve_translate_fn, mesmo quando rebaixado aqui — só deixa
+    de ser o serviço primário.
+
+    Args:
+        translate_provider: Valor pedido ("google" ou "aws").
+        start_year:         Ano inicial do backfill.
+        end_year:           Ano final do backfill.
+
+    Returns:
+        "google" se translate_provider="aws" e end_year > start_year; caso contrário,
+        translate_provider sem alteração.
+    """
+    if translate_provider == "aws" and end_year > start_year:
+        logger.warning(
+            "TRANSLATE_PROVIDER='aws' pedido para %d-%d (mais de 1 ano) — rebaixando "
+            "para 'google' automaticamente para evitar custo alto. AWS Translate "
+            "continua disponível como fallback (capado) em resolve_translate_fn.",
+            start_year, end_year,
+        )
+        return "google"
+    return translate_provider
+
+
+def build_base_payloads(
+    start_year: Optional[int] = None, end_year: Optional[int] = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Monta os payloads base de movie/tv enviados à Lambda API.
 
     Espelha exatamente o que o EventBridge envia (eventbridge_lambda_api.tf), com um
     campo a mais: "translate_provider" (opcional via env TRANSLATE_PROVIDER, default
-    "google") — o EventBridge nunca define esse campo (cai no default "aws" do Glue
-    ETL/Details), mas esses backfills manuais processam volume alto o suficiente para
-    justificar o default gratuito. Ver shared_utils.traducao.resolve_translate_fn.
-    Usado por backfill_referencias.py e backfill_historico.py.
+    "google" — mesmo default do caminho automático via EventBridge desde que o Glue
+    ETL/Details passou a usar Google como primário e AWS Translate como fallback
+    automático). Ver shared_utils.traducao.resolve_translate_fn.
+
+    Se start_year/end_year forem informados, aplica apply_translate_cost_guard antes
+    de montar os payloads — usado por backfill_historico.py, que itera por ano.
+    backfill_referencias.py não informa esses parâmetros (não depende de ano, então o
+    guard não se aplica).
+
+    Args:
+        start_year: Ano inicial do backfill, ou None se não depender de ano.
+        end_year:   Ano final do backfill, ou None se não depender de ano.
     """
     translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
+    if start_year is not None and end_year is not None:
+        translate_provider = apply_translate_cost_guard(translate_provider, start_year, end_year)
 
     base_movie = {
         "type":                            "movie",

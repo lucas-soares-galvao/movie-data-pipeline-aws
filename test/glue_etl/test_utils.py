@@ -535,10 +535,10 @@ class TestGetParametersGlue:
             result = get_parameters_glue()
         assert "YEAR" not in result
 
-    def test_defaults_translate_provider_to_aws_when_not_provided(self):
+    def test_defaults_translate_provider_to_google_when_not_provided(self):
         with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
             result = get_parameters_glue()
-        assert result["TRANSLATE_PROVIDER"] == "aws"
+        assert result["TRANSLATE_PROVIDER"] == "google"
 
     def test_includes_translate_provider_when_provided(self):
         with patch(

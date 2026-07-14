@@ -49,7 +49,7 @@ def main() -> None:
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year             = args.get("YEAR")
     end_year         = args.get("END_YEAR")
-    translate_provider = args.get("TRANSLATE_PROVIDER", "aws")
+    translate_provider = args.get("TRANSLATE_PROVIDER", "google")
 
     partition_cols = _TABLE_CONFIG[table_type]["partition_cols"]
     mode = _TABLE_CONFIG[table_type]["mode"]

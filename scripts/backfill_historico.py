@@ -69,7 +69,7 @@ def main() -> None:
 
     start_year, end_year = shared.read_year_range()
 
-    base_movie, base_tv = shared.build_base_payloads()
+    base_movie, base_tv = shared.build_base_payloads(start_year, end_year)
 
     client    = boto3.client("lambda", region_name=region)
     s3_client = boto3.client("s3", region_name=region)

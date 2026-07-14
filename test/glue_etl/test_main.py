@@ -308,7 +308,7 @@ class TestTriggerDetails:
                 YEAR="2023",
                 END_YEAR="2026",
                 DATABASE="db_tmdb_movie_dev",
-                TRANSLATE_PROVIDER="aws",
+                TRANSLATE_PROVIDER="google",
             )
             assert details_call in mock_trigger.call_args_list
 
@@ -328,7 +328,7 @@ class TestTriggerDetails:
                 YEAR="2023",
                 END_YEAR="2026",
                 DATABASE="db_tmdb_tv_dev",
-                TRANSLATE_PROVIDER="aws",
+                TRANSLATE_PROVIDER="google",
             )
             assert details_call in mock_trigger.call_args_list
 
