@@ -29,6 +29,54 @@ button[data-testid="stBaseButton-secondary"] {
   [data-testid="stAudioInput"] { max-width: 100%; }
 }
 
+/* Composer estilo chat moderno (WhatsApp/ChatGPT/Claude): pill único com o
+   botão de gravação embutido no canto do text_area via position:absolute.
+   Depende dos data-testid internos do widget nativo st.audio_input
+   (stAudioInputActionButton/stAudioInputWaveSurfer/stAudioInputWaveformTimeCode)
+   — não documentados publicamente, podem quebrar em upgrades do Streamlit
+   (mesmo risco já registrado para static/contador_caracteres.js). */
+.st-key-composer {
+  position: relative;
+}
+
+.st-key-composer [data-testid="stTextArea"] textarea {
+  background: #1a1a1a !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 24px !important;
+  padding: 14px 56px 14px 20px !important;
+  color: #f5f5f5 !important;
+}
+.st-key-composer [data-testid="stTextArea"] textarea:focus {
+  border-color: rgba(249,115,22,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
+}
+
+/* Retira o gravador do fluxo normal e o ancora no canto inferior direito do
+   textarea; como fica fora do fluxo, sua posição no DOM não importa. */
+.st-key-composer [data-testid="stAudioInput"] {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: auto !important;
+  max-width: none !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  z-index: 2;
+}
+
+/* Esconde a forma de onda e o timer, mantendo só o botão (mic/stop) visível
+   — a caixa de waveform completa não cabe no espaço do ícone embutido. */
+.st-key-composer [data-testid="stAudioInputWaveSurfer"],
+.st-key-composer [data-testid="stAudioInputWaveformTimeCode"] {
+  display: none !important;
+}
+
+.st-key-composer [data-testid="stAudioInputActionButton"] {
+  border-radius: 50% !important;
+}
+
 /* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam */
 div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   flex: 0 0 auto !important;
