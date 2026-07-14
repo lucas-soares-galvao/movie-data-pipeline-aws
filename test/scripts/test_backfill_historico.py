@@ -123,6 +123,28 @@ class TestLoopDeAnos:
         assert mock_client.invoke.call_count == 2
 
 
+class TestTranslateProviderGuard:
+    """build_base_payloads recebe start_year/end_year aqui (diferente de
+    backfill_referencias.py) — proteção de custo do AWS Translate por intervalo
+    de anos (ver backfill_shared.apply_translate_cost_guard)."""
+
+    def test_mantem_aws_para_intervalo_de_1_ano(self, monkeypatch):
+        mock_client, _, _ = _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"},
+        )
+        for payload in _payloads(mock_client):
+            assert payload["translate_provider"] == "aws"
+
+    def test_rebaixa_aws_para_google_em_intervalo_maior_que_1_ano(self, monkeypatch):
+        mock_client, _, _ = _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "TRANSLATE_PROVIDER": "aws"},
+        )
+        for payload in _payloads(mock_client):
+            assert payload["translate_provider"] == "google"
+
+
 class TestPausaEntreInvocacoes:
     def test_nao_pausa_apos_ultima_invocacao(self, monkeypatch):
         mock_client, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})

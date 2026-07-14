@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -11,17 +13,17 @@ from shared_utils.traducao import (
     resolve_translate_fn,
     translate_pending_column,
     translate_in_parallel,
-    translate_text,
-    translate_text_aws,
 )
 
 
 class TestResolveTranslateFn:
-    def test_resolve_google(self):
-        assert resolve_translate_fn("google") is translate_text
+    def test_resolve_google_usa_google_como_primario(self):
+        fn = resolve_translate_fn("google", lambda t: f"[G]{t}", lambda t: f"[A]{t}")
+        assert fn("Hello") == "[G]Hello"
 
-    def test_resolve_aws(self):
-        assert resolve_translate_fn("aws") is translate_text_aws
+    def test_resolve_aws_usa_aws_como_primario(self):
+        fn = resolve_translate_fn("aws", lambda t: f"[G]{t}", lambda t: f"[A]{t}")
+        assert fn("Hello") == "[A]Hello"
 
     def test_provider_invalido_levanta_value_error(self):
         with pytest.raises(ValueError, match="TRANSLATE_PROVIDER inválido"):
@@ -31,10 +33,87 @@ class TestResolveTranslateFn:
         """translate_google/translate_aws são parâmetros (não resolvidos via módulo)
         para que um chamador que faça patch da própria referência local (ex.:
         patch("src.utils.translate_text", ...)) continue funcionando."""
-        fn_google = MagicMock()
-        fn_aws = MagicMock()
-        assert resolve_translate_fn("google", fn_google, fn_aws) is fn_google
-        assert resolve_translate_fn("aws", fn_google, fn_aws) is fn_aws
+        fn_google = MagicMock(side_effect=lambda t: f"[G]{t}")
+        fn_aws = MagicMock(side_effect=lambda t: f"[A]{t}")
+
+        resolve_translate_fn("google", fn_google, fn_aws)("Hello")
+        fn_google.assert_called_once_with("Hello")
+
+        resolve_translate_fn("aws", fn_google, fn_aws)("Hello")
+        fn_aws.assert_called_once_with("Hello")
+
+    def test_fallback_disparado_quando_primario_falha(self):
+        """Primário devolve o próprio texto (sinal de falha) — cai para o fallback."""
+        primario = MagicMock(side_effect=lambda t: t)
+        fallback = MagicMock(side_effect=lambda t: f"[fallback]{t}")
+
+        fn = resolve_translate_fn("aws", translate_google=fallback, translate_aws=primario)
+
+        assert fn("Hello") == "[fallback]Hello"
+        fallback.assert_called_once_with("Hello")
+
+    def test_fallback_nao_disparado_quando_primario_funciona(self):
+        primario = MagicMock(side_effect=lambda t: f"[ok]{t}")
+        fallback = MagicMock()
+
+        fn = resolve_translate_fn("aws", translate_google=fallback, translate_aws=primario)
+
+        assert fn("Hello") == "[ok]Hello"
+        fallback.assert_not_called()
+
+    def test_texto_vazio_nao_dispara_fallback(self):
+        primario = MagicMock(side_effect=lambda t: t)
+        fallback = MagicMock()
+
+        fn = resolve_translate_fn("aws", translate_google=fallback, translate_aws=primario)
+
+        assert fn("") == ""
+        fallback.assert_not_called()
+
+    def test_cap_por_caracteres_bloqueia_excedente(self):
+        """provider="google": AWS é o fallback pago — limitado por aws_fallback_max_chars."""
+        primario_google = MagicMock(side_effect=lambda t: t)
+        fallback_aws = MagicMock(side_effect=lambda t: f"[aws]{t}")
+
+        fn = resolve_translate_fn(
+            "google", translate_google=primario_google, translate_aws=fallback_aws,
+            aws_fallback_max_chars=5,
+        )
+
+        assert fn("Hello") == "[aws]Hello"  # consome os 5 caracteres do orçamento
+        assert fn("Hi") == "Hi"  # orçamento esgotado — devolve o texto original sem chamar o fallback
+        fallback_aws.assert_called_once_with("Hello")
+
+    def test_cap_nao_se_aplica_quando_aws_e_primario(self):
+        """provider="aws": Google é o fallback (grátis) — sem limite de caracteres."""
+        primario_aws = MagicMock(side_effect=lambda t: t)  # sempre "falha"
+        fallback_google = MagicMock(side_effect=lambda t: f"[google]{t}")
+
+        fn = resolve_translate_fn(
+            "aws", translate_google=fallback_google, translate_aws=primario_aws,
+            aws_fallback_max_chars=1,  # cap minúsculo — não deve importar, pois aws é o primário
+        )
+
+        for texto in ("Hello", "World", "Another long text"):
+            assert fn(texto) == f"[google]{texto}"
+        assert fallback_google.call_count == 3
+
+    def test_cap_thread_safe_sob_concorrencia(self):
+        """O orçamento de caracteres nunca é ultrapassado mesmo com chamadas concorrentes."""
+        primario_google = MagicMock(side_effect=lambda t: t)
+        fallback_aws = MagicMock(side_effect=lambda t: f"[aws]{t}")
+
+        fn = resolve_translate_fn(
+            "google", translate_google=primario_google, translate_aws=fallback_aws,
+            aws_fallback_max_chars=10,
+        )
+        textos = ["ab"] * 20  # 20 x 2 caracteres = 40 caracteres pedidos, orçamento de 10
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            list(executor.map(fn, textos))
+
+        # orçamento de 10 caracteres / textos de 2 caracteres cada = no máximo 5 chamadas ao fallback
+        assert fallback_aws.call_count <= 5
 
 
 class TestTranslateInParallel:

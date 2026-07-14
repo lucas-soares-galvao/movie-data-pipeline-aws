@@ -46,7 +46,12 @@ Variáveis opcionais:
     TRANSLATE_PROVIDER    (padrão: "google" — grátis, mas instável sob alto volume;
                             "aws" usa AWS Translate, API oficial paga por caractere,
                             útil para testar um período menor via BACKFILL_START_YEAR/
-                            BACKFILL_END_YEAR)
+                            BACKFILL_END_YEAR. Se o intervalo pedido cobrir mais de 1
+                            ano, "aws" é rebaixado automaticamente para "google" —
+                            proteção de custo, ver backfill_shared.apply_translate_cost_guard.
+                            Em qualquer um dos dois casos, o serviço não escolhido é
+                            usado como fallback automático, capado por caracteres
+                            quando é o AWS — ver shared_utils.traducao.resolve_translate_fn)
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -244,7 +249,13 @@ def main() -> None:
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 300))
-    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
+    translate_provider = shared.apply_translate_cost_guard(
+        os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
+    )
+    # Valida translate_provider cedo (fail-fast) antes de qualquer I/O — resolve_translate_fn
+    # é recriado por partição dentro do loop abaixo, mas um provider inválido deve
+    # interromper o backfill antes de carregar discover ou tocar o S3.
+    resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
@@ -253,10 +264,6 @@ def main() -> None:
         "| serviço de tradução=%s",
         start_year, end_year, total, wait_seconds, translate_provider,
     )
-    # Um único traduzir_fn para toda a execução (não por partição) — mesmo serviço de
-    # tradução para todas as partições ano+tipo do run.
-    traduzir_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
-
     s3_client = boto3.client("s3", region_name=region)
 
     logger.info("Carregando tabelas discover do S3...")
@@ -280,6 +287,11 @@ def main() -> None:
     total_traduzidos = 0
     for i, (tipo, year, database, table_details, discover_map) in enumerate(pendentes, start=1):
         logger.info("[%d/%d] %s | year=%d", i, len(pendentes), tipo, year)
+        # traduzir_fn recriado a cada partição — cada ano+tipo tem seu próprio orçamento
+        # de fallback ao AWS Translate, em vez de compartilhar um único orçamento de
+        # 6.000 caracteres com todas as partições do run (que a primeira partição
+        # processada poderia esgotar sozinha, deixando as demais sem fallback).
+        traduzir_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
         _, traduzidos = _backfill_year(
             database=database,
             table_details=table_details,

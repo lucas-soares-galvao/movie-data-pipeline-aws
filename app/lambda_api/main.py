@@ -36,11 +36,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     content_type = event["type"]
 
-    # "aws" é o default do caminho automático via EventBridge: o payload configurado em
-    # eventbridge.tf nunca define translate_provider, então cai aqui. Backfills manuais
-    # (scripts/backfill_historico.py, backfill_referencias.py) podem sobrescrever para
-    # "google" — ver shared_utils.traducao.resolve_translate_fn no Glue ETL/Details.
-    translate_provider = event.get("translate_provider", "aws")
+    # "google" é o default do caminho automático via EventBridge: o payload configurado em
+    # eventbridge.tf nunca define translate_provider, então cai aqui — é grátis, e o AWS
+    # Translate continua disponível como fallback automático (capado por caracteres) via
+    # shared_utils.traducao.resolve_translate_fn. Backfills manuais podem sobrescrever
+    # para "aws" para testar tradução real da AWS num período curto.
+    translate_provider = event.get("translate_provider", "google")
 
     glue_base_args = {
         "MEDIA_TYPE": content_type,

@@ -199,19 +199,20 @@ class TestLambdaHandler:
         for chamada in mocks["mock_trigger"].call_args_list[3:]:
             assert chamada[1].get("END_YEAR") == 2026
 
-    def test_translate_provider_default_aws_quando_ausente_do_evento(self):
+    def test_translate_provider_default_google_quando_ausente_do_evento(self):
         """Payload do EventBridge nunca define translate_provider — cai no default
-        "aws" (caminho automático), repassado a todas as chamadas do Glue ETL."""
+        "google" (caminho automático, grátis; AWS Translate fica disponível como
+        fallback automático), repassado a todas as chamadas do Glue ETL."""
         mocks = _run(EVENTO_MOVIE, year=2025)
         for chamada in mocks["mock_trigger"].call_args_list:
-            assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"
+            assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
 
     def test_translate_provider_repassado_quando_informado_no_evento(self):
-        """Backfills manuais (backfill_historico.py/backfill_referencias.py) podem
-        sobrescrever translate_provider para "google"."""
-        mocks = _run({**EVENTO_MOVIE, "translate_provider": "google"}, year=2025)
+        """Backfills manuais podem sobrescrever translate_provider para "aws"
+        (testar tradução real da AWS)."""
+        mocks = _run({**EVENTO_MOVIE, "translate_provider": "aws"}, year=2025)
         for chamada in mocks["mock_trigger"].call_args_list:
-            assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
+            assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"
 
 
 class TestSkipWeekly:

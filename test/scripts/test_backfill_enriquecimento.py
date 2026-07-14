@@ -235,6 +235,15 @@ class TestLoopPrincipal:
         args = mock_client.start_job_run.call_args_list[0].kwargs["Arguments"]
         assert args["--TRANSLATE_PROVIDER"] == "aws"
 
+    def test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano(self, monkeypatch):
+        """Proteção de custo: aws só é aceito para um intervalo de 1 ano — ver
+        backfill_shared.apply_translate_cost_guard."""
+        mock_client, _, _, _ = _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "TRANSLATE_PROVIDER": "aws"}
+        )
+        for call in mock_client.start_job_run.call_args_list:
+            assert call.kwargs["Arguments"]["--TRANSLATE_PROVIDER"] == "google"
+
 
 class TestForceRefetch:
     def test_default_e_true(self, monkeypatch):

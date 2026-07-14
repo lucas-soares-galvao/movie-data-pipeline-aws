@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 _CERTIFICATION_DESCRIPTIONS = {
     "L": "Livre para todas as idades",
@@ -36,6 +37,13 @@ def load_login_css() -> None:
 def load_main_css() -> None:
     """Injeta os estilos da página principal."""
     _inject_css("principal.css")
+
+
+def load_preference_counter_script(max_chars: int) -> None:
+    """Injeta o script do contador dinâmico de caracteres do campo de preferência."""
+    path = Path(__file__).parent / "static" / "contador_caracteres.js"
+    script = path.read_text(encoding="utf-8").replace("__MAX_CHARS__", str(max_chars))
+    components.html(f"<script>{script}</script>", height=0)
 
 
 def render_card(title: dict) -> str:

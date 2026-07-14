@@ -36,7 +36,7 @@ O job recebe argumentos dinâmicos injetados pela Lambda no momento do disparo (
 
 **Fluxo para tabelas estáticas (genre, configuration, watch_providers_ref):**
 1–4 iguais ao discover, sem step 5.
-Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via `resolve_translate_fn(TRANSLATE_PROVIDER)` — `"aws"` (default deste job) ou `"google"` — e grava como coluna `name_pt` na SOT (~250 países).
+Para `configuration` de TV (países): após ler o JSON, traduz `english_name` para português via `resolve_translate_fn(TRANSLATE_PROVIDER)` — `"google"` (default deste job) ou `"aws"` — e grava como coluna `name_pt` na SOT (~250 países). O serviço não escolhido é usado automaticamente como fallback caso o primário falhe.
 Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_name` dos idiomas para português pelo mesmo serviço e grava como coluna `name_pt` na SOT (~190 idiomas).
 **Cache de tradução:** como `configuration` é regravada por completo a cada execução (`mode="overwrite"`, sem partição) e a Lambda aciona esse job mensalmente, `read_from_sor` lê a tabela `configuration` já gravada na SOT (`read_existing_configuration`) antes de traduzir e reaproveita `name_pt` para os registros cujo `english_name` não mudou desde a última execução — evita retraduzir países/idiomas cujo nome em inglês é idêntico ao já processado (ver `reuse_existing_translation` em `shared_utils.traducao`). Registros novos (chave ausente no histórico) ou com `english_name` alterado são traduzidos normalmente.
 
@@ -47,7 +47,7 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos do Glue job: `MEDIA_TYPE`, `TABLE_TYPE`, `TABLE_NAME`, `DATABASE`, `YEAR` (apenas discover), `END_YEAR`, nomes dos buckets e jobs, `TRANSLATE_PROVIDER` (opcional, default `"aws"` — serviço de tradução usado em `configuration`; ver `resolve_translate_fn` em `shared_utils.traducao`) |
+| **Entrada** | Argumentos do Glue job: `MEDIA_TYPE`, `TABLE_TYPE`, `TABLE_NAME`, `DATABASE`, `YEAR` (apenas discover), `END_YEAR`, nomes dos buckets e jobs, `TRANSLATE_PROVIDER` (opcional, default `"google"` — serviço de tradução primário usado em `configuration`; o outro é usado automaticamente como fallback — ver `resolve_translate_fn` em `shared_utils.traducao`) |
 | **Leitura** | S3 SOR — JSON bruto por tipo de tabela e ano |
 | **Escrita** | S3 SOT — Parquet particionado (ou não) + registro no Glue Catalog |
 | **Aciona** | Glue Data Quality (sempre) + Glue Details (apenas para `TABLE_TYPE=discover`, repassando `TRANSLATE_PROVIDER`) |
@@ -74,8 +74,8 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 | `get_resolved_option(args)` | `shared_utils.glue_helpers` | Resolve argumentos do job Glue (`getResolvedOptions`), usada por `get_parameters_glue()` |
 | `configure_glue_logging()` | `shared_utils.glue_helpers` | Configura e retorna o `logger` padrão dos jobs Glue |
 | `translate_text(texto, contexto)` | `shared_utils.traducao_google` (reexportada em `shared_utils.traducao`) | Traduz texto via Google Translate; default do parâmetro `translate_fn` de `_add_translation` quando não informado |
-| `translate_text_aws(texto, region)` | `shared_utils.traducao_aws` (reexportada em `shared_utils.traducao`) | Traduz texto via AWS Translate; serviço default deste job (`TRANSLATE_PROVIDER="aws"`) |
-| `resolve_translate_fn(provider, translate_google=translate_text, translate_aws=translate_text_aws)` | `shared_utils.traducao` | Resolve `TRANSLATE_PROVIDER` para a função a usar; montada uma vez em `main()` e passada a `read_from_sor`, e repassada ao acionar `glue_details` |
+| `translate_text_aws(texto, region)` | `shared_utils.traducao_aws` (reexportada em `shared_utils.traducao`) | Traduz texto via AWS Translate; usado automaticamente como fallback capado por caracteres do serviço default deste job (`TRANSLATE_PROVIDER="google"`) |
+| `resolve_translate_fn(provider, translate_google=translate_text, translate_aws=translate_text_aws, aws_fallback_max_chars=6_000)` | `shared_utils.traducao` | Resolve `TRANSLATE_PROVIDER` para uma função composta primário+fallback; montada uma vez em `main()` e passada a `read_from_sor`, e repassada ao acionar `glue_details` |
 | `reuse_existing_translation(df, previous_df, source_column, target_column, key_column)` | `shared_utils.traducao` | Pré-preenche `name_pt` com o valor já persistido na SOT quando `english_name` não mudou para o mesmo `iso_3166_1`/`iso_639_1` — evita retraduzir países/idiomas sem mudança. Compartilhada com `glue_details` (que usa `key_column="id"`, default) |
 
 ## Tecnologias

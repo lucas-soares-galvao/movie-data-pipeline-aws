@@ -68,10 +68,13 @@ def get_parameters_glue() -> Dict[str, Any]:
             params["FORCE_REFETCH"] = sys.argv[i + 1].lower() == "true"
             break
 
-    # Opcional: qual serviço de tradução usar ("google" ou "aws"). "aws" (padrão) é o
+    # Opcional: qual serviço de tradução usar ("google" ou "aws"). "google" (padrão) é o
     # comportamento do caminho automático via EventBridge — não passado nesse caminho,
-    # então cai no default. Backfills manuais (scripts/) sobrescrevem para "google".
-    params["TRANSLATE_PROVIDER"] = "aws"
+    # então cai no default; é grátis, com AWS Translate como fallback automático
+    # (capado por caracteres — ver shared_utils.traducao.resolve_translate_fn).
+    # Backfills manuais (scripts/) podem sobrescrever para "aws" para testar tradução
+    # real da AWS num período curto.
+    params["TRANSLATE_PROVIDER"] = "google"
     for i, arg in enumerate(sys.argv):
         if arg == "--TRANSLATE_PROVIDER" and i + 1 < len(sys.argv):
             params["TRANSLATE_PROVIDER"] = sys.argv[i + 1]
@@ -764,7 +767,7 @@ def collect_and_write_details(
     s3_bucket_sot: str,
     table_name: str,
     database: str,
-    translate_provider: str = "aws",
+    translate_provider: str = "google",
 ) -> None:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -780,8 +783,9 @@ def collect_and_write_details(
         s3_bucket_sot:      Nome do bucket SOT de destino.
         table_name:         Nome da tabela no Glue Catalog.
         database:           Nome do banco de dados no Glue Catalog.
-        translate_provider: "google" ou "aws" — ver resolve_translate_fn. Default "aws"
-                             (caminho automático via EventBridge).
+        translate_provider: "google" ou "aws" — ver resolve_translate_fn. Default "google"
+                             (caminho automático via EventBridge); o serviço não
+                             escolhido é usado automaticamente como fallback.
     """
     records = []
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads

@@ -230,8 +230,9 @@ class TestBuildBasePayloads:
         assert base_tv["table_genre_tv"] == "genre_tv"
 
     def test_translate_provider_default_google_quando_ausente(self, monkeypatch):
-        """Backfills manuais (volume alto) usam Google por default — diferente do
-        caminho automático via EventBridge, que usa "aws" (ver lambda_api/main.py)."""
+        """Google é o default em todo lugar (backfills manuais e caminho automático
+        via EventBridge, ver lambda_api/main.py) — grátis, com AWS Translate como
+        fallback automático capado (ver shared_utils.traducao.resolve_translate_fn)."""
         for key, value in self.ENV.items():
             monkeypatch.setenv(key, value)
         monkeypatch.delenv("TRANSLATE_PROVIDER", raising=False)
@@ -251,6 +252,38 @@ class TestBuildBasePayloads:
         assert base_movie["translate_provider"] == "aws"
         assert base_tv["translate_provider"] == "aws"
 
+    def test_guard_nao_se_aplica_sem_start_end_year(self, monkeypatch):
+        """backfill_referencias.py chama sem start_year/end_year (não depende de ano) —
+        o guard de custo por intervalo não deve se aplicar nesse caso."""
+        for key, value in self.ENV.items():
+            monkeypatch.setenv(key, value)
+        monkeypatch.setenv("TRANSLATE_PROVIDER", "aws")
+
+        base_movie, base_tv = bs.build_base_payloads()
+
+        assert base_movie["translate_provider"] == "aws"
+        assert base_tv["translate_provider"] == "aws"
+
+    def test_guard_mantem_aws_para_intervalo_de_1_ano(self, monkeypatch):
+        for key, value in self.ENV.items():
+            monkeypatch.setenv(key, value)
+        monkeypatch.setenv("TRANSLATE_PROVIDER", "aws")
+
+        base_movie, base_tv = bs.build_base_payloads(2020, 2020)
+
+        assert base_movie["translate_provider"] == "aws"
+        assert base_tv["translate_provider"] == "aws"
+
+    def test_guard_rebaixa_aws_para_google_em_intervalo_maior_que_1_ano(self, monkeypatch):
+        for key, value in self.ENV.items():
+            monkeypatch.setenv(key, value)
+        monkeypatch.setenv("TRANSLATE_PROVIDER", "aws")
+
+        base_movie, base_tv = bs.build_base_payloads(2020, 2021)
+
+        assert base_movie["translate_provider"] == "google"
+        assert base_tv["translate_provider"] == "google"
+
     def test_variavel_ausente_lanca_erro(self, monkeypatch):
         for key, value in self.ENV.items():
             monkeypatch.setenv(key, value)
@@ -258,6 +291,23 @@ class TestBuildBasePayloads:
 
         with pytest.raises(EnvironmentError):
             bs.build_base_payloads()
+
+
+class TestApplyTranslateCostGuard:
+    def test_mantem_aws_para_intervalo_de_1_ano(self):
+        assert bs.apply_translate_cost_guard("aws", 2020, 2020) == "aws"
+
+    def test_rebaixa_aws_para_google_em_intervalo_maior_que_1_ano(self):
+        assert bs.apply_translate_cost_guard("aws", 2020, 2021) == "google"
+
+    def test_nao_mexe_quando_ja_e_google(self):
+        assert bs.apply_translate_cost_guard("google", 2000, 2025) == "google"
+
+    def test_loga_aviso_quando_rebaixa(self, caplog):
+        with caplog.at_level("WARNING", logger="backfill_shared"):
+            bs.apply_translate_cost_guard("aws", 2020, 2025)
+
+        assert any("rebaixando" in r.message for r in caplog.records)
 
 
 class TestReadYearRange:

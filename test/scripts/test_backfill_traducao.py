@@ -417,18 +417,60 @@ class TestMain:
         assert mock_sleep.call_count == mock_backfill.call_count - 1
 
     def test_translate_provider_default_google(self, monkeypatch):
-        """Sem TRANSLATE_PROVIDER definido, usa Google (volume alto do backfill
-        histórico não deve gerar custo por caractere por padrão)."""
-        _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.translate_text
+        """Sem TRANSLATE_PROVIDER definido, usa Google como primário (volume alto do
+        backfill histórico não deve gerar custo por caractere por padrão). AWS Translate
+        fica disponível como fallback automático, capado por caracteres."""
+        with (
+            patch("backfill_traducao.translate_text", side_effect=lambda t: f"[G]{t}"),
+            patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
+        ):
+            _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        traduzir_fn = mock_backfill.call_args_list[0].kwargs["traduzir_fn"]
+        assert traduzir_fn("Hello") == "[G]Hello"
 
-    def test_translate_provider_aws_explicito(self, monkeypatch):
-        """TRANSLATE_PROVIDER=aws permite testar em janelas pequenas via
-        BACKFILL_START_YEAR/BACKFILL_END_YEAR."""
-        _, mock_backfill, _, _ = _run_main(
-            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
-        )
-        assert mock_backfill.call_args_list[0].kwargs["traduzir_fn"] is bt.translate_text_aws
+    def test_translate_provider_aws_explicito_janela_de_1_ano(self, monkeypatch):
+        """TRANSLATE_PROVIDER=aws permite testar em janelas pequenas (1 ano) via
+        BACKFILL_START_YEAR/BACKFILL_END_YEAR — sem o rebaixamento de segurança."""
+        with (
+            patch("backfill_traducao.translate_text", side_effect=lambda t: f"[G]{t}"),
+            patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
+        ):
+            _, mock_backfill, _, _ = _run_main(
+                monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
+            )
+        traduzir_fn = mock_backfill.call_args_list[0].kwargs["traduzir_fn"]
+        assert traduzir_fn("Hello") == "[A]Hello"
+
+    def test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano(self, monkeypatch):
+        """Proteção de custo: aws só é aceito como primário para um intervalo de 1 ano —
+        um intervalo maior (mesmo escolhendo aws) rebaixa para google automaticamente
+        (ver backfill_shared.apply_translate_cost_guard). AWS continua disponível como
+        fallback capado."""
+        with (
+            patch("backfill_traducao.translate_text", side_effect=lambda t: f"[G]{t}"),
+            patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
+        ):
+            _, mock_backfill, _, _ = _run_main(
+                monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "TRANSLATE_PROVIDER": "aws"}
+            )
+        traduzir_fn = mock_backfill.call_args_list[0].kwargs["traduzir_fn"]
+        assert traduzir_fn("Hello") == "[G]Hello"
+
+    def test_traduzir_fn_tem_orcamento_independente_por_particao(self, monkeypatch):
+        """Cada partição (ano+tipo) recebe seu próprio traduzir_fn, com orçamento de
+        fallback ao AWS Translate independente — evita que a primeira partição
+        processada esgote sozinha o orçamento de toda a execução."""
+        texto = "x" * 6000  # consome o orçamento padrão de aws_fallback_max_chars inteiro
+        with (
+            patch("backfill_traducao.translate_text", side_effect=lambda t: t),  # google sempre "falha"
+            patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
+        ):
+            _, mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            traduzir_fn_movie = mock_backfill.call_args_list[0].kwargs["traduzir_fn"]
+            traduzir_fn_tv = mock_backfill.call_args_list[1].kwargs["traduzir_fn"]
+
+            assert traduzir_fn_movie(texto) == f"[A]{texto}"
+            assert traduzir_fn_tv(texto) == f"[A]{texto}"  # orçamento próprio, não esgotado pela partição anterior
 
     def test_translate_provider_invalido_levanta_erro(self, monkeypatch):
         _set_env(monkeypatch, {"TRANSLATE_PROVIDER": "deepl"})

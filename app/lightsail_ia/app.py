@@ -17,6 +17,7 @@ from agent import AudioMuitoLongoError, _MAX_AUDIO_SECONDS, recommend, transcrib
 from componentes import (
     load_login_css,
     load_main_css,
+    load_preference_counter_script,
     render_grid,
     render_footer,
     render_login_footer,
@@ -233,7 +234,7 @@ preference = st.text_area(
     max_chars=_MAX_PREFERENCE_CHARS,
     key="preference_text",
 )
-st.caption(f"{len(preference or '')} / {_MAX_PREFERENCE_CHARS} caracteres")
+load_preference_counter_script(_MAX_PREFERENCE_CHARS)
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made

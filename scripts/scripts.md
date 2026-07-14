@@ -21,9 +21,11 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
 por todos os 5 scripts acima: leitura de variável de ambiente obrigatória,
 setup de logging, invocação síncrona da Lambda API, payloads base de
-movie/tv, leitura do range de anos, wrapper de retry do exit code 75 e, para
-os 4 scripts que iteram por ano (todos exceto `backfill_referencias.py`), o
-checkpoint de retomada automática (ver seção "Retomada automática" abaixo).
+movie/tv, leitura do range de anos, proteção de custo do AWS Translate por
+intervalo de anos (`apply_translate_cost_guard`), wrapper de retry do exit
+code 75 e, para os 4 scripts que iteram por ano (todos exceto
+`backfill_referencias.py`), o checkpoint de retomada automática (ver seção
+"Retomada automática" abaixo).
 
 ## Pré-requisitos
 
@@ -78,10 +80,29 @@ Todos os backfills que traduzem (`backfill_historico.py` e
 aceitam opcionalmente `TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
 instável sob alto volume; `"aws"` usa AWS Translate, pago por caractere, útil
 para testar um período menor via `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) —
-exposto no workflow como o input `translate_provider`. Diferente do caminho
-automático via EventBridge (`lambda_api` → `glue_etl` → `glue_details`, que
-usa `"aws"` por padrão), o default aqui é `"google"` porque esses backfills
-processam o catálogo histórico inteiro.
+exposto no workflow como o input `translate_provider`. `"google"` também é o
+default do caminho automático via EventBridge (`lambda_api` → `glue_etl` →
+`glue_details`) — em ambos os casos o serviço não escolhido é usado
+automaticamente como fallback caso o primário falhe (ver `resolve_translate_fn`
+em `shared_utils.traducao`), com o fallback ao AWS Translate limitado por um
+orçamento de caracteres (é pago por caractere). Em `backfill_historico.py`/
+`backfill_referencias.py` (via Lambda) e `backfill_enriquecimento.py` (via Glue),
+cada partição ano+tipo é uma invocação separada, então "por execução" já
+equivale a "por partição". Em `backfill_traducao.py` — o único que itera todas
+as partições dentro de um mesmo processo Python — o orçamento é recriado a cada
+partição ano+tipo, para que a primeira partição processada não esgote sozinha o
+fallback de todo o backfill.
+
+**Proteção de custo por intervalo de anos:** nos 3 backfills que iteram por
+ano e dependem disso (`backfill_historico.py`, `backfill_enriquecimento.py`,
+`backfill_traducao.py`), se `TRANSLATE_PROVIDER=aws` for escolhido mas o
+intervalo (`BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) cobrir mais de 1 ano, o
+provider é rebaixado automaticamente para `"google"` (com um aviso no log) —
+ver `backfill_shared.apply_translate_cost_guard()`. Protege contra o cenário
+de escolher `"aws"` para testar um período curto e esquecer de voltar para
+`"google"` antes de disparar um backfill do catálogo histórico inteiro.
+`backfill_referencias.py` fica fora dessa proteção por não depender de ano
+(volume sempre pequeno, ~250 itens).
 
 Cada script possui variáveis adicionais documentadas em sua docstring.
 
