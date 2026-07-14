@@ -115,12 +115,12 @@ def get_parameters_glue() -> Dict[str, Any]:
         pass
 
     # Opcional: qual serviço de tradução usar para name_pt de países/idiomas
-    # ("google" ou "aws"). Ausente = "aws" (caminho automático via EventBridge não
+    # ("google" ou "aws"). Ausente = "google" (caminho automático via EventBridge não
     # passa esse argumento) — mesmo padrão de opcional usado acima para YEAR/END_YEAR.
     try:
         args.update(get_resolved_option(["TRANSLATE_PROVIDER"]))
     except SystemExit:
-        args["TRANSLATE_PROVIDER"] = "aws"
+        args["TRANSLATE_PROVIDER"] = "google"
 
     return args
 

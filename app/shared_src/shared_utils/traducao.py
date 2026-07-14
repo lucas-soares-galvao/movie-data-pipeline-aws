@@ -4,6 +4,7 @@ paralelismo e escolha do serviço (Google Translate ou AWS Translate)."""
 from __future__ import annotations
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List, Optional
 
@@ -26,19 +27,64 @@ __all__ = [
 
 logger = logging.getLogger()
 
+# Orçamento de caracteres por execução para o fallback ao AWS Translate (pago por
+# caractere) quando ele não é o serviço escolhido — ver resolve_translate_fn. Medido
+# em caracteres (não em número de chamadas) porque é isso que a AWS cobra: uma sinopse
+# longa pesa muito mais que uma keyword curta. 6_000 dimensionado para manter o gasto
+# do caminho automático (~11 execuções/mês do Glue Details via EventBridge — semanal +
+# mensal, ver infra/eventbridge.tf) abaixo de US$1/mês mesmo no pior caso (cap
+# totalmente consumido em toda execução), a US$15/milhão de caracteres do AWS Translate.
+_AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
+
+
+def _make_capped_fallback(fallback_fn: Callable[[str], str], max_chars: int) -> Callable[[str], str]:
+    """
+    Envolve fallback_fn com um orçamento de caracteres thread-safe: enquanto restar
+    orçamento, cada chamada consome len(text) caracteres e delega a fallback_fn; textos
+    que excederiam o restante são pulados (devolve o próprio texto, sem chamar
+    fallback_fn) e não consomem o que sobrou — um texto menor que chegue depois ainda
+    pode caber.
+
+    Usado só para limitar o custo do AWS Translate quando ele é o fallback (ver
+    resolve_translate_fn) — nunca quando é o serviço escolhido explicitamente, caso em
+    que o padrão de custo já foi aceito por quem chamou.
+
+    Thread-safe via threading.Lock + contador mutável de 1 elemento (lista), já que a
+    função composta roda dentro de ThreadPoolExecutor (translate_in_parallel/
+    translate_pending_column, até 10 workers).
+    """
+    remaining = [max_chars]
+    lock = threading.Lock()
+
+    def _capped(text: str) -> str:
+        length = len(text)
+        with lock:
+            if length > remaining[0]:
+                return text
+            remaining[0] -= length
+        return fallback_fn(text)
+
+    return _capped
+
 
 def resolve_translate_fn(
     provider: str,
     translate_google: Callable[[str], str] = translate_text,
     translate_aws: Callable[[str], str] = translate_text_aws,
+    aws_fallback_max_chars: int = _AWS_FALLBACK_MAX_CHARS_DEFAULT,
 ) -> Callable[[str], str]:
     """
-    Resolve o provedor de tradução (`"google"` ou `"aws"`) para a função correspondente.
+    Resolve o provedor de tradução (`"google"` ou `"aws"`) para uma função composta
+    primário+fallback: o provider escolhido é tentado primeiro; se falhar (resultado
+    igual ao texto original, texto não-vazio — mesmo sinal de falha usado em
+    translate_pending_column), o outro serviço é tentado automaticamente antes de
+    desistir.
 
-    Cada caminho do pipeline escolhe um único serviço por execução — sem composição
-    de primário+fallback: `glue_details`/`glue_etl` (caminho automático via
-    EventBridge) usam `"aws"` por padrão; os backfills manuais (`scripts/`) usam
-    `"google"` por padrão, mas podem apontar para `"aws"` para testes pontuais.
+    `provider="google"` → primário=Google (grátis), fallback=AWS Translate — pago por
+    caractere, por isso limitado a aws_fallback_max_chars caracteres nesta execução
+    (rede de segurança de custo; ver _make_capped_fallback).
+    `provider="aws"` → primário=AWS Translate, fallback=Google (grátis) — sem limite,
+    já que quem escolheu "aws" explicitamente já aceitou o custo do primário.
 
     `translate_google`/`translate_aws` são recebidos como parâmetro (em vez de resolvidos
     aqui dentro) pelo mesmo motivo de `translate_in_parallel`: os chamadores passam suas
@@ -47,23 +93,43 @@ def resolve_translate_fn(
     referência direta ao módulo quebraria esse patch.
 
     Args:
-        provider:         `"google"` (deep_translator, grátis) ou `"aws"` (AWS Translate,
-                          pago por caractere).
-        translate_google: Função a devolver quando `provider="google"`.
-        translate_aws:    Função a devolver quando `provider="aws"`.
+        provider:               `"google"` (deep_translator, grátis) ou `"aws"` (AWS
+                                Translate, pago por caractere).
+        translate_google:       Função de tradução via Google.
+        translate_aws:          Função de tradução via AWS.
+        aws_fallback_max_chars: Orçamento de caracteres para o fallback ao AWS
+                                Translate nesta execução, aplicado somente quando
+                                `provider="google"` (AWS é o fallback). Ignorado quando
+                                `provider="aws"` (AWS já é o primário escolhido
+                                explicitamente).
 
     Returns:
-        `translate_google` ou `translate_aws`, conforme `provider`.
+        Função (texto) -> texto traduzido que tenta o primário e cai para o fallback
+        automaticamente em caso de falha.
 
     Raises:
         ValueError: se `provider` não for `"google"` nem `"aws"`.
     """
     try:
-        return {"google": translate_google, "aws": translate_aws}[provider]
+        primary, fallback = {
+            "google": (translate_google, translate_aws),
+            "aws": (translate_aws, translate_google),
+        }[provider]
     except KeyError:
         raise ValueError(
             f"TRANSLATE_PROVIDER inválido: {provider!r} (esperado 'google' ou 'aws')"
         ) from None
+
+    if provider == "google":
+        fallback = _make_capped_fallback(fallback, aws_fallback_max_chars)
+
+    def _translate_with_fallback(text: str) -> str:
+        result = primary(text)
+        if not text or result != text:
+            return result
+        return fallback(text)
+
+    return _translate_with_fallback
 
 
 def translate_in_parallel(

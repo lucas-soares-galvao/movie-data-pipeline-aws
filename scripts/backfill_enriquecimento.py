@@ -31,7 +31,11 @@ Variáveis opcionais:
     FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
     TRANSLATE_PROVIDER    (padrão: "google" — grátis; volume alto por re-enriquecer o histórico
                            inteiro. "aws" usa AWS Translate, útil para testar um período menor
-                           via BACKFILL_START_YEAR/BACKFILL_END_YEAR)
+                           via BACKFILL_START_YEAR/BACKFILL_END_YEAR — se o intervalo cobrir
+                           mais de 1 ano, é rebaixado automaticamente para "google" (proteção
+                           de custo, ver backfill_shared.apply_translate_cost_guard). O serviço
+                           não escolhido é usado como fallback automático, capado por
+                           caracteres quando é o AWS — ver shared_utils.traducao.resolve_translate_fn)
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -119,7 +123,9 @@ def main() -> None:
     start_year, end_year = shared.read_year_range()
     wait_seconds  = int(os.environ.get("WAIT_SECONDS", 300))
     force_refetch = os.environ.get("FORCE_REFETCH", "true").lower() == "true"
-    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
+    translate_provider = shared.apply_translate_cost_guard(
+        os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
+    )
 
     client    = boto3.client("glue", region_name=region)
     s3_client = boto3.client("s3", region_name=region)

@@ -120,19 +120,29 @@ Testa `translate_text_aws` via `boto3.client("translate")` mockado.
 
 ### `TestResolveTranslateFn`
 
-Resolve `"google"`/`"aws"` para a função de tradução correspondente — a escolha de
-serviço por execução usada por `glue_details`/`glue_etl` (default `"aws"`) e pelos
-backfills manuais (default `"google"`). `translate_google`/`translate_aws` são parâmetros
-opcionais (default `translate_text`/`translate_text_aws`) para que um chamador que faça
-patch da própria referência local (ex.: `patch("src.utils.translate_text", ...)`)
-continue funcionando.
+Resolve `"google"`/`"aws"` para uma função **composta primário+fallback** — o provider
+escolhido (default `"google"` em todo o pipeline, `glue_details`/`glue_etl` via
+EventBridge e os backfills manuais) é tentado primeiro; se falhar (resultado igual ao
+texto original), o outro serviço é tentado automaticamente. Quando AWS Translate é o
+fallback (`provider="google"`), as chamadas são limitadas por `aws_fallback_max_chars`
+caracteres nesta execução (pago por caractere); quando é o primário (`provider="aws"`),
+o fallback para Google não tem limite (grátis). `translate_google`/`translate_aws` são
+parâmetros opcionais (default `translate_text`/`translate_text_aws`) para que um
+chamador que faça patch da própria referência local (ex.:
+`patch("src.utils.translate_text", ...)`) continue funcionando.
 
 | Teste | O que verifica |
 |---|---|
-| `test_resolve_google` | `provider="google"` devolve `translate_text` (default) |
-| `test_resolve_aws` | `provider="aws"` devolve `translate_text_aws` (default) |
+| `test_resolve_google_usa_google_como_primario` | `provider="google"` chama primeiro `translate_google` |
+| `test_resolve_aws_usa_aws_como_primario` | `provider="aws"` chama primeiro `translate_aws` |
 | `test_provider_invalido_levanta_value_error` | Qualquer valor fora de `"google"`/`"aws"` levanta `ValueError` |
-| `test_usa_referencias_locais_informadas_pelo_chamador` | Passando `translate_google`/`translate_aws` explícitos, a função devolve exatamente essas referências (não as do módulo) |
+| `test_usa_referencias_locais_informadas_pelo_chamador` | Passando `translate_google`/`translate_aws` explícitos, são exatamente essas referências (não as do módulo) que são chamadas |
+| `test_fallback_disparado_quando_primario_falha` | Primário devolve o próprio texto (sinal de falha) — o fallback é chamado e seu resultado é devolvido |
+| `test_fallback_nao_disparado_quando_primario_funciona` | Primário traduz com sucesso — fallback nunca é chamado |
+| `test_texto_vazio_nao_dispara_fallback` | Texto vazio nunca aciona o fallback |
+| `test_cap_por_caracteres_bloqueia_excedente` | `provider="google"`: o orçamento de caracteres do fallback (AWS) é consumido por chamada; texto que excederia o restante é pulado (devolve original) sem chamar o fallback |
+| `test_cap_nao_se_aplica_quando_aws_e_primario` | `provider="aws"`: o fallback (Google) é chamado sem limite, mesmo com `aws_fallback_max_chars` pequeno |
+| `test_cap_thread_safe_sob_concorrencia` | Disparado via `ThreadPoolExecutor`, o total de caracteres passados ao fallback nunca ultrapassa o orçamento (valida o lock) |
 
 ### `TestTranslateInParallel`
 
