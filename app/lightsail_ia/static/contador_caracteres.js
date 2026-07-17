@@ -14,7 +14,7 @@
         if (!counter) {
             counter = doc.createElement("div");
             counter.id = "pref-char-counter";
-            counter.style.cssText = "font-size:0.8rem;opacity:0.6;margin-top:-8px;";
+            counter.style.cssText = "font-size:0.8rem;opacity:0.6;margin-top:4px;";
             textarea.closest('[data-testid="stTextArea"]').insertAdjacentElement("afterend", counter);
         }
 
