@@ -156,103 +156,85 @@ with logout_col:
 _client_ip = _get_client_ip()
 
 # ------------------------------------------------------------------
-# COMPOSER: pill único (estilo chat moderno) com o botão de áudio embutido no
-# canto do text_area via CSS position:absolute (ver ".st-key-composer" em
-# static/principal.css). Placeholders reservam a posição visual (texto
-# primeiro, status da transcrição depois) sem depender da ordem de execução
-# em Python: o áudio precisa ser processado ANTES do text_area, pois o
-# Streamlit proíbe setar session_state["preference_text"] depois que o
-# widget com essa key já rodou no mesmo script run — só o destino de
-# renderização muda. O st.audio_input em si não precisa de placeholder: como
-# fica posicionado via CSS absoluto, sua posição no DOM é irrelevante.
+# CAPTURA DE ÁUDIO E TRANSCRIÇÃO (precisa rodar ANTES do text_area abaixo:
+# o Streamlit proíbe setar session_state["preference_text"] depois que o
+# widget com essa key já rodou no mesmo script run)
 # ------------------------------------------------------------------
-with st.container(key="composer"):
-    text_area_slot = st.empty()
-    status_slot = st.empty()
+st.caption(f"🎤 Ou grave o que você quer assistir (máx. {_MAX_AUDIO_SECONDS}s)")
+audio_value = st.audio_input(
+    "Gravar preferência em áudio", label_visibility="collapsed", key="audio_input"
+)
 
-    audio_value = st.audio_input(
-        f"Gravar preferência em áudio (máx. {_MAX_AUDIO_SECONDS}s)",
-        label_visibility="collapsed",
-        key="audio_input",
-    )
+_audio_queries_made = _queries_in_last_hour(_audio_ip_history, _client_ip)
+_audio_remaining = _MAX_TRANSCRIPTIONS_PER_HOUR - _audio_queries_made
 
-    _audio_queries_made = _queries_in_last_hour(_audio_ip_history, _client_ip)
-    _audio_remaining = _MAX_TRANSCRIPTIONS_PER_HOUR - _audio_queries_made
-
-    if audio_value is not None and not st.session_state.get("transcribing"):
-        audio_bytes = audio_value.getvalue()
-        audio_hash = hashlib.md5(audio_bytes).hexdigest()
-        if audio_hash != st.session_state.get("audio_last_hash"):
-            st.session_state["audio_last_hash"] = audio_hash
-            st.session_state["transcription_error"] = False
-            st.session_state["transcription_empty"] = False
-            st.session_state["transcription_too_long"] = False
-            st.session_state["transcription_rate_limited"] = False
-            st.session_state["transcription_truncated"] = False
-            if _audio_remaining <= 0:
-                st.session_state["transcription_rate_limited"] = True
-            else:
-                _audio_ip_history.setdefault(_client_ip, []).append(time.time())
-                st.session_state["transcribing"] = True
-                st.session_state["transcription_future"] = _executor.submit(
-                    transcribe_preference, audio_bytes
-                )
-            st.rerun()
-
-    _still_transcribing = False
-    if st.session_state.get("transcribing"):
-        transcription_future: Future = st.session_state.get("transcription_future")
-        if transcription_future and transcription_future.done():
-            st.session_state["transcribing"] = False
-            try:
-                text = transcription_future.result()
-            except AudioMuitoLongoError:
-                st.session_state["transcription_too_long"] = True
-            except Exception:
-                logging.exception("Erro ao transcrever áudio")
-                st.session_state["transcription_error"] = True
-            else:
-                if text:
-                    if len(text) > _MAX_PREFERENCE_CHARS:
-                        text = text[:_MAX_PREFERENCE_CHARS]
-                        st.session_state["transcription_truncated"] = True
-                    st.session_state["preference_text"] = text
-                else:
-                    st.session_state["transcription_empty"] = True
-            st.rerun()
+if audio_value is not None and not st.session_state.get("transcribing"):
+    audio_bytes = audio_value.getvalue()
+    audio_hash = hashlib.md5(audio_bytes).hexdigest()
+    if audio_hash != st.session_state.get("audio_last_hash"):
+        st.session_state["audio_last_hash"] = audio_hash
+        st.session_state["transcription_error"] = False
+        st.session_state["transcription_empty"] = False
+        st.session_state["transcription_too_long"] = False
+        st.session_state["transcription_rate_limited"] = False
+        st.session_state["transcription_truncated"] = False
+        if _audio_remaining <= 0:
+            st.session_state["transcription_rate_limited"] = True
         else:
-            _still_transcribing = True
-
-    with status_slot.container():
-        if _still_transcribing:
-            st.caption("🎤 Transcrevendo áudio...")
-        if st.session_state.get("transcription_rate_limited"):
-            st.caption(
-                f"⚠️ Limite de {_MAX_TRANSCRIPTIONS_PER_HOUR} transcrições por hora atingido. "
-                "Digite sua preferência manualmente."
+            _audio_ip_history.setdefault(_client_ip, []).append(time.time())
+            st.session_state["transcribing"] = True
+            st.session_state["transcription_future"] = _executor.submit(
+                transcribe_preference, audio_bytes
             )
-        if st.session_state.get("transcription_too_long"):
-            st.caption(f"⚠️ Áudio muito longo — grave até {_MAX_AUDIO_SECONDS} segundos ou digite sua preferência.")
-        if st.session_state.get("transcription_error"):
-            st.caption("❌ Não conseguimos transcrever o áudio. Digite sua preferência manualmente.")
-        if st.session_state.get("transcription_empty"):
-            st.caption("⚠️ Não detectamos fala no áudio. Tente gravar novamente ou digite sua preferência.")
-        if st.session_state.get("transcription_truncated"):
-            st.caption(f"⚠️ Transcrição excedeu {_MAX_PREFERENCE_CHARS} caracteres e foi cortada.")
+        st.rerun()
 
-    with text_area_slot.container():
-        preference = st.text_area(
-            "O que você quer assistir?",
-            placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com O Senhor dos Anéis...",
-            height=68,
-            max_chars=_MAX_PREFERENCE_CHARS,
-            key="preference_text",
-        )
-        load_preference_counter_script(_MAX_PREFERENCE_CHARS)
-
-    if _still_transcribing:
+if st.session_state.get("transcribing"):
+    transcription_future: Future = st.session_state.get("transcription_future")
+    if transcription_future and transcription_future.done():
+        st.session_state["transcribing"] = False
+        try:
+            text = transcription_future.result()
+        except AudioMuitoLongoError:
+            st.session_state["transcription_too_long"] = True
+        except Exception:
+            logging.exception("Erro ao transcrever áudio")
+            st.session_state["transcription_error"] = True
+        else:
+            if text:
+                if len(text) > _MAX_PREFERENCE_CHARS:
+                    text = text[:_MAX_PREFERENCE_CHARS]
+                    st.session_state["transcription_truncated"] = True
+                st.session_state["preference_text"] = text
+            else:
+                st.session_state["transcription_empty"] = True
+        st.rerun()
+    else:
+        st.caption("🎤 Transcrevendo áudio...")
         time.sleep(0.5)
         st.rerun()
+
+if st.session_state.get("transcription_rate_limited"):
+    st.caption(
+        f"⚠️ Limite de {_MAX_TRANSCRIPTIONS_PER_HOUR} transcrições por hora atingido. "
+        "Digite sua preferência manualmente."
+    )
+if st.session_state.get("transcription_too_long"):
+    st.caption(f"⚠️ Áudio muito longo — grave até {_MAX_AUDIO_SECONDS} segundos ou digite sua preferência.")
+if st.session_state.get("transcription_error"):
+    st.caption("❌ Não conseguimos transcrever o áudio. Digite sua preferência manualmente.")
+if st.session_state.get("transcription_empty"):
+    st.caption("⚠️ Não detectamos fala no áudio. Tente gravar novamente ou digite sua preferência.")
+if st.session_state.get("transcription_truncated"):
+    st.caption(f"⚠️ Transcrição excedeu {_MAX_PREFERENCE_CHARS} caracteres e foi cortada.")
+
+preference = st.text_area(
+    "O que você quer assistir?",
+    placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com O Senhor dos Anéis...",
+    height=68,
+    max_chars=_MAX_PREFERENCE_CHARS,
+    key="preference_text",
+)
+load_preference_counter_script(_MAX_PREFERENCE_CHARS)
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made
