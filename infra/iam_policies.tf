@@ -242,10 +242,15 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
   })
 }
 
-# Tradução via AWS Translate — tradutor do caminho automático via EventBridge
-# (TRANSLATE_PROVIDER default "aws" quando o job não recebe esse argumento; ver
-# shared_utils.traducao.resolver_traduzir_fn). translate:TranslateText não tem
-# restrição por recurso na AWS (Resource = "*").
+# Tradução via AWS Translate — tradutor do caminho automático via EventBridge.
+# TRANSLATE_PROVIDER default é "google" quando o job não recebe esse argumento
+# (ver app/glue_etl/src/utils.py), mas o AWS Translate também é acionado como
+# fallback automático sempre que o Google falha ou devolve o texto sem
+# alteração (resolve_translate_fn em shared_utils.traducao). translate_text_aws
+# sempre chama TranslateText com SourceLanguageCode="auto", que aciona o
+# Comprehend internamente para detectar o idioma de origem — por isso
+# comprehend:DetectDominantLanguage também é necessário. Nenhuma das duas
+# actions suporta restrição por recurso na AWS (Resource = "*").
 resource "aws_iam_role_policy" "glue_etl_translate" {
   name = "${local.tmdb_prefix}-glue-etl-translate-${var.env}"
   role = aws_iam_role.glue_etl_role.name
@@ -254,7 +259,7 @@ resource "aws_iam_role_policy" "glue_etl_translate" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["translate:TranslateText"]
+      Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
       Resource = "*"
     }]
   })
@@ -943,10 +948,15 @@ resource "aws_iam_role_policy" "glue_details_secrets" {
   })
 }
 
-# Tradução via AWS Translate — tradutor do caminho automático via EventBridge
-# (TRANSLATE_PROVIDER default "aws" quando o job não recebe esse argumento; ver
-# shared_utils.traducao.resolver_traduzir_fn). translate:TranslateText não tem
-# restrição por recurso na AWS (Resource = "*").
+# Tradução via AWS Translate — tradutor do caminho automático via EventBridge.
+# TRANSLATE_PROVIDER default é "google" quando o job não recebe esse argumento
+# (ver app/glue_details/src/utils.py), mas o AWS Translate também é acionado
+# como fallback automático sempre que o Google falha ou devolve o texto sem
+# alteração (resolve_translate_fn em shared_utils.traducao). translate_text_aws
+# sempre chama TranslateText com SourceLanguageCode="auto", que aciona o
+# Comprehend internamente para detectar o idioma de origem — por isso
+# comprehend:DetectDominantLanguage também é necessário. Nenhuma das duas
+# actions suporta restrição por recurso na AWS (Resource = "*").
 resource "aws_iam_role_policy" "glue_details_translate" {
   name = "${local.tmdb_prefix}-glue-details-translate-${var.env}"
   role = aws_iam_role.glue_details_role.name
@@ -955,7 +965,7 @@ resource "aws_iam_role_policy" "glue_details_translate" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["translate:TranslateText"]
+      Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
       Resource = "*"
     }]
   })
