@@ -222,10 +222,15 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 # POLICY 5 — AWS Translate. Usado quando TRANSLATE_PROVIDER=aws é escolhido em
 # qualquer backfill manual (backfill_traducao.py, backfill_historico.py,
 # backfill_referencias.py, backfill_enriquecimento.py) — default é "google"
-# (grátis); "aws" existe para testar um período menor sob demanda. Mantido o
-# Sid histórico "TranslateFallback" para não gerar diff de Terraform sem
-# necessidade. translate:TranslateText não tem restrição por recurso na AWS
-# (Resource = "*").
+# (grátis); "aws" existe para testar um período menor sob demanda. Mesmo com
+# default "google", o AWS Translate também é acionado como fallback automático
+# quando o Google falha ou devolve o texto sem alteração (resolve_translate_fn
+# em shared_utils.traducao). Mantido o Sid histórico "TranslateFallback" para
+# não gerar diff de Terraform sem necessidade. translate:TranslateText não tem
+# restrição por recurso na AWS (Resource = "*"). comprehend:DetectDominantLanguage
+# é obrigatório porque translate_text_aws sempre chama TranslateText com
+# SourceLanguageCode="auto", que aciona o Comprehend internamente para detectar
+# o idioma de origem; também não suporta restrição por recurso.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_translate" {
   name = "${local.tmdb_prefix}-backfill-translate-${var.env}"
@@ -236,7 +241,7 @@ resource "aws_iam_role_policy" "backfill_translate" {
     Statement = [{
       Sid      = "TranslateFallback"
       Effect   = "Allow"
-      Action   = ["translate:TranslateText"]
+      Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
       Resource = "*"
     }]
   })
