@@ -9,6 +9,7 @@ from shared_utils.traducao import (
     eligible_keywords_pt,
     eligible_overview_pt,
     eligible_tagline_pt,
+    is_translated_mask,
     reuse_existing_translation,
     resolve_translate_fn,
     translate_pending_column,
@@ -285,52 +286,118 @@ class TestReuseExistingTranslation:
 
 
 class TestEligibleOverviewPt:
-    def test_elegivel_quando_en_e_overview_preenchido(self):
-        df = pd.DataFrame({"original_language": ["en"], "overview_en": ["Hello"]})
-        assert eligible_overview_pt(df).tolist() == [True]
-
-    def test_elegivel_para_qualquer_idioma_diferente_de_pt(self):
-        df = pd.DataFrame({
-            "original_language": ["fr", "ja", "es"],
-            "overview_en": ["Bonjour", "Konnichiwa", "Hola"],
-        })
+    def test_elegivel_quando_overview_en_preenchido(self):
+        df = pd.DataFrame({"overview_en": ["Hello", "Bonjour", "Hola"]})
         assert eligible_overview_pt(df).tolist() == [True, True, True]
 
-    def test_nao_elegivel_quando_idioma_e_pt(self):
-        df = pd.DataFrame({"original_language": ["pt"], "overview_en": ["Olá"]})
-        assert eligible_overview_pt(df).tolist() == [False]
+    def test_elegivel_mesmo_com_original_language_pt(self):
+        """original_language não é critério de elegibilidade: é o idioma de
+        produção original do título, não o idioma do texto retornado pela API —
+        não há garantia de que overview_en já esteja em português quando
+        original_language == 'pt' (ver docstring de eligible_overview_pt)."""
+        df = pd.DataFrame({"original_language": ["pt"], "overview_en": ["Overview em inglês"]})
+        assert eligible_overview_pt(df).tolist() == [True]
 
     def test_nao_elegivel_quando_overview_en_vazio_ou_nulo(self):
-        df = pd.DataFrame({"original_language": ["en", "en"], "overview_en": ["", None]})
+        df = pd.DataFrame({"overview_en": ["", None]})
         assert eligible_overview_pt(df).tolist() == [False, False]
+
+    def test_nao_elegivel_quando_idioma_detectado_ja_e_pt(self):
+        """overview_idioma_detectado == 'pt' exclui o registro do lote de tradução —
+        evita reenviar ao Google/AWS um texto já confirmado em português (otimização
+        contra retradução infinita, ver shared_utils.idioma)."""
+        df = pd.DataFrame({
+            "overview_en": ["Já em português", "Ainda em inglês"],
+            "overview_idioma_detectado": ["pt", "en"],
+        })
+        assert eligible_overview_pt(df).tolist() == [False, True]
+
+    def test_elegivel_quando_coluna_idioma_detectado_nao_existe(self):
+        """Compatibilidade: chamadores/testes que não pré-computam a detecção de
+        idioma continuam funcionando como antes (nada é excluído)."""
+        df = pd.DataFrame({"overview_en": ["Hello"]})
+        assert "overview_idioma_detectado" not in df.columns
+        assert eligible_overview_pt(df).tolist() == [True]
 
 
 class TestEligibleTaglinePt:
-    def test_elegivel_para_qualquer_idioma_diferente_de_pt(self):
-        df = pd.DataFrame({
-            "original_language": ["en", "fr"],
-            "tagline": ["Slogan A", "Slogan B"],
-        })
+    def test_elegivel_quando_tagline_preenchida(self):
+        df = pd.DataFrame({"tagline": ["Slogan A", "Slogan B"]})
         assert eligible_tagline_pt(df).tolist() == [True, True]
 
-    def test_nao_elegivel_quando_idioma_e_pt(self):
-        df = pd.DataFrame({"original_language": ["pt"], "tagline": ["Já em português"]})
-        assert eligible_tagline_pt(df).tolist() == [False]
+    def test_elegivel_mesmo_com_original_language_pt(self):
+        df = pd.DataFrame({"original_language": ["pt"], "tagline": ["Tagline em inglês"]})
+        assert eligible_tagline_pt(df).tolist() == [True]
 
     def test_nao_elegivel_quando_tagline_vazia_ou_nula(self):
-        df = pd.DataFrame({"original_language": ["en", "en"], "tagline": ["", None]})
+        df = pd.DataFrame({"tagline": ["", None]})
         assert eligible_tagline_pt(df).tolist() == [False, False]
+
+    def test_nao_elegivel_quando_idioma_detectado_ja_e_pt(self):
+        df = pd.DataFrame({
+            "tagline": ["Já em português", "Ainda em inglês"],
+            "tagline_idioma_detectado": ["pt", "en"],
+        })
+        assert eligible_tagline_pt(df).tolist() == [False, True]
 
 
 class TestEligibleKeywordsPt:
-    def test_elegivel_para_qualquer_idioma_diferente_de_pt(self):
-        df = pd.DataFrame({"original_language": ["en", "fr"], "keywords": ["action, drama", "espion"]})
+    def test_elegivel_quando_keywords_preenchidas(self):
+        df = pd.DataFrame({"keywords": ["action, drama", "espion"]})
         assert eligible_keywords_pt(df).tolist() == [True, True]
 
-    def test_nao_elegivel_quando_idioma_e_pt(self):
-        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, drama"]})
-        assert eligible_keywords_pt(df).tolist() == [False]
+    def test_elegivel_mesmo_com_original_language_pt(self):
+        """Keywords não são localizadas pela API do TMDB — continuam em inglês
+        mesmo para títulos com original_language == 'pt'."""
+        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["action, drama"]})
+        assert eligible_keywords_pt(df).tolist() == [True]
 
     def test_nao_elegivel_quando_keywords_vazias_ou_nulas(self):
-        df = pd.DataFrame({"original_language": ["en", "en"], "keywords": ["", None]})
+        df = pd.DataFrame({"keywords": ["", None]})
         assert eligible_keywords_pt(df).tolist() == [False, False]
+
+    def test_nao_elegivel_quando_idioma_detectado_ja_e_pt(self):
+        df = pd.DataFrame({
+            "keywords": ["ação, suspense", "action, drama"],
+            "keywords_idioma_detectado": ["pt", "en"],
+        })
+        assert eligible_keywords_pt(df).tolist() == [False, True]
+
+
+class TestIsTranslatedMask:
+    def test_true_quando_preenchido_e_diferente_da_fonte(self):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Olá"]})
+        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [True]
+
+    def test_false_quando_destino_vazio_ou_nulo(self):
+        df = pd.DataFrame({"overview_en": ["Hello", "Hi"], "overview_pt": ["", None]})
+        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [False, False]
+
+    def test_false_quando_destino_igual_a_fonte(self):
+        """Destino igual à fonte indica tradução que falhou (ver
+        translate_text/translate_text_aws) — continua pendente."""
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Hello"]})
+        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [False]
+
+    def test_false_quando_coluna_destino_nao_existe(self):
+        df = pd.DataFrame({"overview_en": ["Hello"]})
+        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [False]
+
+    def test_already_native_mask_true_conta_como_traduzido_mesmo_igual_a_fonte(self):
+        """Cobre o caso 'fonte já era pt-BR, copiada direto' — target == source, mas
+        o registro deve contar como traduzido porque a fonte já estava correta."""
+        df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": ["Já em português"]})
+        already_native = pd.Series([True])
+        assert is_translated_mask(df, "overview_en", "overview_pt", already_native_mask=already_native).tolist() == [True]
+
+    def test_already_native_mask_false_nao_conta_quando_igual_a_fonte(self):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Hello"]})
+        already_native = pd.Series([False])
+        assert is_translated_mask(df, "overview_en", "overview_pt", already_native_mask=already_native).tolist() == [False]
+
+    def test_already_native_mask_nao_afeta_quando_destino_vazio(self):
+        """already_native_mask não faz um registro sem tradução nenhuma contar como
+        traduzido — target ainda precisa estar preenchido."""
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        already_native = pd.Series([True])
+        assert is_translated_mask(df, "overview_en", "overview_pt", already_native_mask=already_native).tolist() == [False]

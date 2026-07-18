@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, TypeVar
 
 import pandas as pd
 
@@ -23,7 +23,11 @@ __all__ = [
     "eligible_overview_pt",
     "eligible_tagline_pt",
     "eligible_keywords_pt",
+    "is_translated_mask",
+    "make_capped_fallback",
 ]
+
+T = TypeVar("T")
 
 logger = logging.getLogger()
 
@@ -37,30 +41,45 @@ logger = logging.getLogger()
 _AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
 
 
-def _make_capped_fallback(fallback_fn: Callable[[str], str], max_chars: int) -> Callable[[str], str]:
+def make_capped_fallback(
+    fallback_fn: Callable[[str], T], max_chars: int, on_over_budget: Callable[[str], T]
+) -> Callable[[str], T]:
     """
     Envolve fallback_fn com um orçamento de caracteres thread-safe: enquanto restar
     orçamento, cada chamada consome len(text) caracteres e delega a fallback_fn; textos
-    que excederiam o restante são pulados (devolve o próprio texto, sem chamar
+    que excederiam o restante são pulados (devolve on_over_budget(text), sem chamar
     fallback_fn) e não consomem o que sobrou — um texto menor que chegue depois ainda
     pode caber.
 
-    Usado só para limitar o custo do AWS Translate quando ele é o fallback (ver
-    resolve_translate_fn) — nunca quando é o serviço escolhido explicitamente, caso em
-    que o padrão de custo já foi aceito por quem chamou.
+    Compartilhada entre resolve_translate_fn (fallback de tradução via AWS Translate,
+    pago por caractere) e shared_utils.idioma.resolve_detect_language_fn (fallback de
+    detecção de idioma via AWS Comprehend, também pago por caractere) — mesmo mecanismo
+    de orçamento, resultados diferentes por chamador: tradução devolve o próprio texto
+    quando o orçamento acaba (on_over_budget=lambda text: text), detecção devolve None
+    (on_over_budget=lambda text: None).
 
     Thread-safe via threading.Lock + contador mutável de 1 elemento (lista), já que a
     função composta roda dentro de ThreadPoolExecutor (translate_in_parallel/
     translate_pending_column, até 10 workers).
+
+    Args:
+        fallback_fn:     Função chamada enquanto houver orçamento restante.
+        max_chars:       Orçamento total de caracteres para esta instância.
+        on_over_budget:  Função chamada com o texto original quando o orçamento já
+                         se esgotou, no lugar de fallback_fn.
+
+    Returns:
+        Função (texto) -> resultado que aplica fallback_fn ou on_over_budget conforme
+        o orçamento restante.
     """
     remaining = [max_chars]
     lock = threading.Lock()
 
-    def _capped(text: str) -> str:
+    def _capped(text: str) -> T:
         length = len(text)
         with lock:
             if length > remaining[0]:
-                return text
+                return on_over_budget(text)
             remaining[0] -= length
         return fallback_fn(text)
 
@@ -82,7 +101,7 @@ def resolve_translate_fn(
 
     `provider="google"` → primário=Google (grátis), fallback=AWS Translate — pago por
     caractere, por isso limitado a aws_fallback_max_chars caracteres nesta execução
-    (rede de segurança de custo; ver _make_capped_fallback).
+    (rede de segurança de custo; ver make_capped_fallback).
     `provider="aws"` → primário=AWS Translate, fallback=Google (grátis) — sem limite,
     já que quem escolheu "aws" explicitamente já aceitou o custo do primário.
 
@@ -121,7 +140,7 @@ def resolve_translate_fn(
         ) from None
 
     if provider == "google":
-        fallback = _make_capped_fallback(fallback, aws_fallback_max_chars)
+        fallback = make_capped_fallback(fallback, aws_fallback_max_chars, on_over_budget=lambda text: text)
 
     def _translate_with_fallback(text: str) -> str:
         result = primary(text)
@@ -154,6 +173,48 @@ def translate_in_parallel(
         return list(executor.map(translate_fn, values))
 
 
+def is_translated_mask(
+    df: pd.DataFrame,
+    source_column: str,
+    target_column: str,
+    already_native_mask: Optional["pd.Series[bool]"] = None,
+) -> "pd.Series[bool]":
+    """
+    Máscara de registros considerados "já traduzidos" em target_column.
+
+    Um registro conta como traduzido quando target_column está preenchida e é
+    diferente de source_column — cobre tanto tradução nativa do TMDB (glue_details)
+    quanto sucesso em um run anterior (backfill) ou tradução automática bem-sucedida.
+    Registros sem target_column, ou cuja target_column ficou igual à source_column
+    (tradução que falhou — ver translate_text/translate_text_aws), não contam.
+
+    already_native_mask cobre o caso em que a própria fonte já estava no idioma-alvo
+    (ex.: overview_en detectado como "pt" — ver shared_utils.idioma) e foi copiada
+    diretamente para target_column sem chamar tradução: nesse caso target == source,
+    mas o registro deve contar como traduzido mesmo assim.
+
+    Args:
+        df:                   DataFrame com as colunas source_column e target_column.
+        source_column:        Nome da coluna com o texto de origem.
+        target_column:        Nome da coluna de tradução. Se ausente em df, nenhum
+                              registro conta como traduzido.
+        already_native_mask:  Máscara adicional de registros cuja fonte já estava no
+                              idioma-alvo. Quando None, o comportamento é idêntico ao
+                              predicado original (sem essa exceção).
+
+    Returns:
+        Máscara booleana de registros considerados traduzidos.
+    """
+    if target_column not in df.columns:
+        return pd.Series(False, index=df.index)
+
+    filled = df[target_column].notna() & (df[target_column] != "")
+    differs = df[target_column] != df[source_column]
+    if already_native_mask is not None:
+        differs = differs | already_native_mask
+    return filled & differs
+
+
 def translate_pending_column(
     df: pd.DataFrame,
     source_column: str,
@@ -168,9 +229,9 @@ def translate_pending_column(
     Um registro é considerado "já traduzido" (e não é retraduzido) quando
     target_column está preenchida e é diferente de source_column — cobre tanto
     tradução nativa do TMDB (glue_details) quanto sucesso em um run anterior
-    (backfill). Registros sem target_column, ou cuja target_column ficou
-    igual à source_column (tradução que falhou — ver translate_text/translate_text_aws),
-    continuam pendentes e são (re)tentados.
+    (backfill) — ver is_translated_mask. Registros sem target_column, ou cuja
+    target_column ficou igual à source_column (tradução que falhou — ver
+    translate_text/translate_text_aws), continuam pendentes e são (re)tentados.
 
     translate_fn é recebido como parâmetro (em vez de chamar translate_text
     diretamente) para que os chamadores continuem passando sua própria
@@ -193,11 +254,7 @@ def translate_pending_column(
     if target_column not in df.columns:
         df[target_column] = None
 
-    already_translated = (
-        df[target_column].notna()
-        & (df[target_column] != "")
-        & (df[target_column] != df[source_column])
-    )
+    already_translated = is_translated_mask(df, source_column, target_column)
     mask = eligible_mask & ~already_translated
     if not mask.any():
         return 0
@@ -276,29 +333,46 @@ def reuse_existing_translation(
     return df
 
 
+def _already_detected_as_pt(df: pd.DataFrame, idioma_column: str) -> "pd.Series[bool]":
+    """Máscara de registros cuja coluna de idioma detectado já é 'pt'. False para
+    todos os registros quando idioma_column ainda não existe em df (compatibilidade
+    com chamadores/testes que não pré-computam a detecção de idioma)."""
+    if idioma_column not in df.columns:
+        return pd.Series(False, index=df.index)
+    return df[idioma_column] == "pt"
+
+
 def eligible_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de overview: idioma original diferente de pt, com overview_en preenchido."""
-    return (
-        (df["original_language"] != "pt")
-        & df["overview_en"].notna()
-        & (df["overview_en"] != "")
-    )
+    """Candidatos à tradução de overview: overview_en preenchido e ainda não
+    confirmado como pt-BR pela detecção de idioma (overview_idioma_detectado).
+
+    original_language não é usado como critério: é o idioma original de produção
+    do título, não o idioma do texto retornado pela API — não há garantia de que
+    overview_en já esteja em português quando original_language == 'pt' (ver
+    discussão em traducao_aws.py). A exclusão por overview_idioma_detectado == 'pt'
+    evita reenviar ao Google/AWS um texto que a detecção de idioma (shared_utils.idioma)
+    já confirmou estar em português — ver otimização de "cópia direta" no chamador
+    (glue_details._add_translations_pt/scripts.backfill_traducao). Registros já
+    traduzidos (TMDB nativo ou run anterior) são filtrados depois, em
+    translate_pending_column.
+    """
+    has_source = df["overview_en"].notna() & (df["overview_en"] != "")
+    return has_source & ~_already_detected_as_pt(df, "overview_idioma_detectado")
 
 
 def eligible_tagline_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de tagline: campo preenchido e idioma original diferente de pt."""
-    return (
-        df["tagline"].notna()
-        & (df["tagline"] != "")
-        & (df["original_language"] != "pt")
-    )
+    """Candidatos à tradução de tagline: campo preenchido e ainda não confirmado
+    como pt-BR pela detecção de idioma (tagline_idioma_detectado — ver
+    eligible_overview_pt sobre por que original_language não entra no critério, e
+    sobre a exclusão por idioma já detectado como 'pt')."""
+    has_source = df["tagline"].notna() & (df["tagline"] != "")
+    return has_source & ~_already_detected_as_pt(df, "tagline_idioma_detectado")
 
 
 def eligible_keywords_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de keywords: campo preenchido e idioma original diferente de pt
-    (evita reenviar ao Google Translate keywords que já podem estar em português)."""
-    return (
-        df["keywords"].notna()
-        & (df["keywords"] != "")
-        & (df["original_language"] != "pt")
-    )
+    """Candidatos à tradução de keywords: campo preenchido e ainda não confirmado
+    como pt-BR pela detecção de idioma (keywords_idioma_detectado — ver
+    eligible_overview_pt sobre por que original_language não entra no critério, e
+    sobre a exclusão por idioma já detectado como 'pt')."""
+    has_source = df["keywords"].notna() & (df["keywords"] != "")
+    return has_source & ~_already_detected_as_pt(df, "keywords_idioma_detectado")
