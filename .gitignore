@@ -68,3 +68,6 @@ build/
 .DS_Store
 Thumbs.db
 CLAUDE.md
+
+# --- Design (protótipos/assets locais) ---
+app/lightsail_ia/design/
