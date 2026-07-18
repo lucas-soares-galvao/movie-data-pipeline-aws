@@ -25,6 +25,7 @@ movies_ranked AS (
         title,
         original_title,
         overview,
+        overview_idioma_detectado,
         release_date                 AS air_date,
         original_language,
         CAST(adult AS BOOLEAN)       AS adult,
@@ -56,6 +57,7 @@ tv_shows_ranked AS (
         name                   AS title,
         original_name          AS original_title,
         overview,
+        overview_idioma_detectado,
         first_air_date         AS air_date,
         original_language,
         CAST(NULL AS BOOLEAN)  AS adult,
@@ -111,7 +113,8 @@ genre_names AS (
 ),
 
 -- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
--- overview_pt é a tradução EN→PT gravada pelo Glue Details (only for original_language='en').
+-- overview_pt é a tradução pt-BR gravada pelo Glue Details (nativa do TMDB, cache do S3 ou
+-- Google/AWS Translate — qualquer original_language, ver shared_utils/traducao.py).
 -- ROW_NUMBER() deduplica IDs que aparecem mais de uma vez (cada refresh mensal insere novas linhas
 -- via append); ORDER BY dt_processamento DESC mantém o registro mais recente.
 movie_details_ranked AS (
@@ -514,7 +517,17 @@ spec_raw AS (
         -- original_title como fallback para o caso raro de title estar vazio.
         COALESCE(NULLIF(TRIM(u.title), ''), u.original_title)                                             AS title,
         u.original_title,
-        COALESCE(NULLIF(TRIM(u.overview), ''), d.overview_pt, d.overview_en)                AS overview,
+        -- overview_idioma_detectado (glue_etl) confirma se o overview em pt-BR do discover
+        -- é genuinamente português antes de confiar nele — o TMDB às vezes devolve o
+        -- overview em outro idioma silenciosamente mesmo com language=pt-BR pedido.
+        -- Só quando confirmado "pt" o overview do discover é usado; caso contrário
+        -- (idioma diferente ou detecção nula), cai para overview_pt/overview_en do
+        -- glue_details (mesma cadeia de fallback de sempre).
+        COALESCE(
+            CASE WHEN u.overview_idioma_detectado = 'pt' THEN NULLIF(TRIM(u.overview), '') END,
+            d.overview_pt,
+            d.overview_en
+        )                                                                           AS overview,
         u.air_date,
         u.original_language,
         COALESCE(lang.name_pt, lang.english_name, lang.name)                      AS language_name,

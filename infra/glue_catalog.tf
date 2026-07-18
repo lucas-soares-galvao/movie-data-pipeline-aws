@@ -75,6 +75,11 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
+      name = "overview_idioma_detectado"
+      type = "string"
+    }
+
+    columns {
       name = "backdrop_path"
       type = "string"
     }
@@ -181,6 +186,10 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
     }
     columns {
       name = "overview"
+      type = "string"
+    }
+    columns {
+      name = "overview_idioma_detectado"
       type = "string"
     }
     columns {
@@ -352,6 +361,14 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       name = "name_pt"
       type = "string"
     }
+    columns {
+      name = "name_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "name_traduzido_pt_br"
+      type = "boolean"
+    }
   }
 }
 
@@ -390,6 +407,14 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
     columns {
       name = "name_pt"
       type = "string"
+    }
+    columns {
+      name = "name_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "name_traduzido_pt_br"
+      type = "boolean"
     }
   }
 }
@@ -564,6 +589,30 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
     columns {
       name = "alternative_titles"
       type = "string"
+    }
+    columns {
+      name = "overview_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "overview_traduzido_pt_br"
+      type = "boolean"
+    }
+    columns {
+      name = "tagline_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "tagline_traduzido_pt_br"
+      type = "boolean"
+    }
+    columns {
+      name = "keywords_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "keywords_traduzido_pt_br"
+      type = "boolean"
     }
     columns {
       name = "dt_processamento"
@@ -748,6 +797,30 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     columns {
       name = "alternative_titles"
       type = "string"
+    }
+    columns {
+      name = "overview_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "overview_traduzido_pt_br"
+      type = "boolean"
+    }
+    columns {
+      name = "tagline_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "tagline_traduzido_pt_br"
+      type = "boolean"
+    }
+    columns {
+      name = "keywords_idioma_detectado"
+      type = "string"
+    }
+    columns {
+      name = "keywords_traduzido_pt_br"
+      type = "boolean"
     }
     columns {
       name = "dt_processamento"

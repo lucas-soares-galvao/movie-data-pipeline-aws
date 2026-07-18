@@ -298,56 +298,55 @@ class TestExtractPtBrTranslation:
 class TestAddTranslationsOverviewPt:
     def test_prioriza_tmdb_pt_br(self):
         df = pd.DataFrame({
-            "original_language": ["en"],
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
-        result = u._add_translations_pt(df)
+        result = u._add_translations_pt(df, detect_fn=lambda t: "en")
         assert result["overview_pt"].iloc[0] == "Um grande filme"
 
     def test_fallback_para_google_translator(self):
         df = pd.DataFrame({
-            "original_language": ["en"],
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": [None],
         })
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_pt(df)
+            result = u._add_translations_pt(df, detect_fn=lambda t: "en")
         assert result["overview_pt"].iloc[0] == "[PT] A great movie"
 
-    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+    def test_traduz_mesmo_com_idioma_original_pt(self):
+        """original_language não é critério de elegibilidade (ver eligible_overview_pt):
+        sem tradução nativa do TMDB nem cache, e com o idioma detectado do TEXTO
+        diferente de 'pt' (aqui forçado via detect_fn), overview_en é traduzido
+        normalmente mesmo quando original_language == 'pt'."""
         df = pd.DataFrame({
             "original_language": ["pt"],
             "overview_en": ["Já em português"],
             "overview_pt_tmdb": [None],
         })
-        with patch("src.utils.translate_text") as mock_translate:
-            result = u._add_translations_pt(df)
-        mock_translate.assert_not_called()
-        assert pd.isna(result["overview_pt"].iloc[0])
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_pt(df, detect_fn=lambda t: "en")
+        assert result["overview_pt"].iloc[0] == "[PT] Já em português"
 
     def test_loga_resumo_de_sucesso(self, caplog):
         df = pd.DataFrame({
-            "original_language": ["en"],
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": [None],
         })
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             with caplog.at_level("INFO"):
-                u._add_translations_pt(df)
+                u._add_translations_pt(df, detect_fn=lambda t: "en")
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
         assert resumo == ["1 registros traduzidos com sucesso (overview_pt)."]
 
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self, caplog):
         """translate_text devolve o texto original quando falha após todas as tentativas."""
         df = pd.DataFrame({
-            "original_language": ["en"],
             "overview_en": ["Falhou"],
             "overview_pt_tmdb": [None],
         })
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
             with caplog.at_level("INFO"):
-                result = u._add_translations_pt(df)
+                result = u._add_translations_pt(df, detect_fn=lambda t: "en")
         assert result["overview_pt"].iloc[0] == "Falhou"
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
         assert resumo == ["0 registros traduzidos com sucesso (overview_pt)."]
@@ -356,86 +355,169 @@ class TestAddTranslationsOverviewPt:
         """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
         reenviada ao Google Translate (mesma regra de retry usada no backfill)."""
         df = pd.DataFrame({
-            "original_language": ["en"],
             "overview_en": ["Same text"],
             "overview_pt_tmdb": ["Same text"],
         })
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_pt(df)
+            result = u._add_translations_pt(df, detect_fn=lambda t: "en")
         assert result["overview_pt"].iloc[0] == "[PT] Same text"
+
+    def test_idioma_detectado_calculado_a_partir_da_fonte(self):
+        """overview_idioma_detectado usa detect_fn sobre overview_en (a fonte),
+        nunca sobre overview_pt."""
+        df = pd.DataFrame({
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": ["Um grande filme"],
+        })
+        detect_fn = MagicMock(return_value="en")
+        result = u._add_translations_pt(df, detect_fn=lambda t: detect_fn(t))
+        assert result["overview_idioma_detectado"].iloc[0] == "en"
+        detect_fn.assert_called_once_with("A great movie")
+
+    def test_idioma_detectado_none_quando_fonte_vazia(self):
+        df = pd.DataFrame({"overview_en": [None], "overview_pt_tmdb": [None]})
+        result = u._add_translations_pt(df, detect_fn=lambda t: "en" if t else None)
+        assert pd.isna(result["overview_idioma_detectado"].iloc[0])
+
+    def test_traduzido_pt_br_true_para_nativo_tmdb(self):
+        df = pd.DataFrame({
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": ["Um grande filme"],
+        })
+        result = u._add_translations_pt(df, detect_fn=lambda t: "en")
+        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is True
+
+    def test_traduzido_pt_br_true_para_sucesso_google(self):
+        df = pd.DataFrame({"overview_en": ["A great movie"], "overview_pt_tmdb": [None]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_pt(df, detect_fn=lambda t: "en")
+        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is True
+
+    def test_traduzido_pt_br_false_quando_traducao_falha(self):
+        df = pd.DataFrame({"overview_en": ["Falhou"], "overview_pt_tmdb": [None]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
+            result = u._add_translations_pt(df, detect_fn=lambda t: "en")
+        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is False
+
+    def test_traduzido_pt_br_false_quando_fonte_vazia(self):
+        df = pd.DataFrame({"overview_en": [None], "overview_pt_tmdb": [None]})
+        result = u._add_translations_pt(df, detect_fn=lambda t: None)
+        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is False
+
+    def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
+        """Otimização: se overview_en já está em português (idioma detectado 'pt') e
+        não há tradução nativa/cache, copia direto para overview_pt sem chamar
+        Google/AWS — evita retradução infinita de texto já correto."""
+        df = pd.DataFrame({
+            "overview_en": ["Já em português"],
+            "overview_pt_tmdb": [None],
+        })
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_pt(df, detect_fn=lambda t: "pt")
+        assert result["overview_pt"].iloc[0] == "Já em português"
+        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is True
+        translate_fn.assert_not_called()
 
 
 class TestAddTranslationsKeywordsPt:
     def test_traduz_keywords(self):
-        df = pd.DataFrame({"original_language": ["en"], "keywords": ["action, drama"]})
+        df = pd.DataFrame({"keywords": ["action, drama"]})
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_keywords_pt(df)
+            result = u._add_translations_keywords_pt(df, detect_fn=lambda t: "en")
         assert result["keywords_pt"].iloc[0] == "[PT] action, drama"
 
-    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
-        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["ação, drama"]})
-        with patch("src.utils.translate_text") as mock_translate:
-            result = u._add_translations_keywords_pt(df)
-        mock_translate.assert_not_called()
-        assert pd.isna(result["keywords_pt"].iloc[0])
+    def test_traduz_mesmo_com_idioma_original_pt(self):
+        """Keywords não são localizadas pela API do TMDB — continuam em inglês
+        mesmo para títulos com original_language == 'pt', então original_language
+        não é critério de elegibilidade (ver eligible_keywords_pt)."""
+        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["action, drama"]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_keywords_pt(df, detect_fn=lambda t: "en")
+        assert result["keywords_pt"].iloc[0] == "[PT] action, drama"
 
     def test_nao_traduz_quando_keywords_vazias(self):
-        df = pd.DataFrame({"original_language": ["en"], "keywords": [None]})
-        result = u._add_translations_keywords_pt(df)
+        df = pd.DataFrame({"keywords": [None]})
+        result = u._add_translations_keywords_pt(df, detect_fn=lambda t: None)
         assert pd.isna(result["keywords_pt"].iloc[0])
+        assert bool(result["keywords_traduzido_pt_br"].iloc[0]) is False
+
+    def test_idioma_detectado_calculado_a_partir_da_fonte(self):
+        df = pd.DataFrame({"keywords": ["ação, suspense"]})
+        detect_fn = MagicMock(return_value="pt")
+        result = u._add_translations_keywords_pt(df, detect_fn=lambda t: detect_fn(t))
+        assert result["keywords_idioma_detectado"].iloc[0] == "pt"
+        detect_fn.assert_called_once_with("ação, suspense")
+
+    def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
+        df = pd.DataFrame({"keywords": ["ação, suspense"]})
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_keywords_pt(df, detect_fn=lambda t: "pt")
+        assert result["keywords_pt"].iloc[0] == "ação, suspense"
+        assert bool(result["keywords_traduzido_pt_br"].iloc[0]) is True
+        translate_fn.assert_not_called()
 
 
 class TestAddTranslationsTaglinePt:
     def test_prioriza_tmdb_pt_br(self):
         df = pd.DataFrame({
-            "original_language": ["en"],
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": ["Um grande filme"],
         })
-        result = u._add_translations_tagline_pt(df)
+        result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en")
         assert result["tagline_pt"].iloc[0] == "Um grande filme"
 
     def test_fallback_para_google_translator(self):
         df = pd.DataFrame({
-            "original_language": ["en"],
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": [None],
         })
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_tagline_pt(df)
+            result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en")
         assert result["tagline_pt"].iloc[0] == "[PT] A great movie"
 
     def test_nao_traduz_quando_tudo_vazio(self):
         df = pd.DataFrame({
-            "original_language": ["en", "en"],
             "tagline": [None, ""],
             "tagline_pt_tmdb": [None, None],
         })
-        result = u._add_translations_tagline_pt(df)
+        result = u._add_translations_tagline_pt(df, detect_fn=lambda t: None)
         assert result["tagline_pt"].isna().all()
+        assert (result["tagline_traduzido_pt_br"] == False).all()  # noqa: E712
 
-    def test_nao_traduz_quando_idioma_original_ja_e_pt(self):
+    def test_traduz_mesmo_com_idioma_original_pt(self):
         df = pd.DataFrame({
             "original_language": ["pt"],
             "tagline": ["Já em português"],
             "tagline_pt_tmdb": [None],
         })
-        with patch("src.utils.translate_text") as mock_translate:
-            result = u._add_translations_tagline_pt(df)
-        mock_translate.assert_not_called()
-        assert pd.isna(result["tagline_pt"].iloc[0])
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en")
+        assert result["tagline_pt"].iloc[0] == "[PT] Já em português"
 
     def test_retenta_quando_tagline_pt_tmdb_igual_a_tagline(self):
         """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
         reenviada ao Google Translate (mesma regra de retry usada no backfill)."""
         df = pd.DataFrame({
-            "original_language": ["en"],
             "tagline": ["Same text"],
             "tagline_pt_tmdb": ["Same text"],
         })
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_tagline_pt(df)
+            result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en")
         assert result["tagline_pt"].iloc[0] == "[PT] Same text"
+
+    def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
+        df = pd.DataFrame({
+            "tagline": ["Já em português"],
+            "tagline_pt_tmdb": [None],
+        })
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "pt")
+        assert result["tagline_pt"].iloc[0] == "Já em português"
+        assert bool(result["tagline_traduzido_pt_br"].iloc[0]) is True
+        translate_fn.assert_not_called()
 
 
 class TestExtractProductionCountriesIso:
@@ -876,6 +958,12 @@ class TestCollectAndWriteDetails:
             assert "editor" in df_written.columns
             assert "production_countries" in df_written.columns
             assert "production_countries_iso" in df_written.columns
+            assert "overview_idioma_detectado" in df_written.columns
+            assert "overview_traduzido_pt_br" in df_written.columns
+            assert "tagline_idioma_detectado" in df_written.columns
+            assert "tagline_traduzido_pt_br" in df_written.columns
+            assert "keywords_idioma_detectado" in df_written.columns
+            assert "keywords_traduzido_pt_br" in df_written.columns
             assert df_written["collection_name_pt"].iloc[0] == "Os Vingadores"
             assert df_written["production_countries_iso"].iloc[0] == ["US"]
             assert df_written["recommended_ids"].iloc[0] == "901"
@@ -926,6 +1014,12 @@ class TestCollectAndWriteDetails:
             assert "similar_titles" in df_written.columns
             assert "similar_ids" in df_written.columns
             assert "alternative_titles" in df_written.columns
+            assert "overview_idioma_detectado" in df_written.columns
+            assert "overview_traduzido_pt_br" in df_written.columns
+            assert "tagline_idioma_detectado" in df_written.columns
+            assert "tagline_traduzido_pt_br" in df_written.columns
+            assert "keywords_idioma_detectado" in df_written.columns
+            assert "keywords_traduzido_pt_br" in df_written.columns
             assert df_written["recommended_ids"].iloc[0] == "903"
             assert df_written["similar_ids"].iloc[0] == "904"
 

@@ -7,8 +7,11 @@ um único ano; os demais tipos usam overwrite simples.
 
 from shared_utils.glue_helpers import configure_glue_logging
 from src.utils import (
+    detect_language_aws,
+    detect_language_langdetect,
     get_parameters_glue,
     read_from_sor,
+    resolve_detect_language_fn,
     resolve_translate_fn,
     translate_text,
     translate_text_aws,
@@ -59,9 +62,10 @@ def main() -> None:
     )
 
     translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
+    detect_fn = resolve_detect_language_fn(detect_language_langdetect, detect_language_aws)
     df = read_from_sor(
         s3_bucket_sor, media_type, table_type, year, translate_fn,
-        s3_bucket_sot=s3_bucket_sot, table_name=table_name,
+        s3_bucket_sot=s3_bucket_sot, table_name=table_name, detect_fn=detect_fn,
     )
 
     write_parquet_to_sot(
