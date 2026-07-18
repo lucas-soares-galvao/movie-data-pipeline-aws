@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`) e `resolve_translate_fn`/`translate_in_parallel`/`translate_pending_column`/`eligible_overview_pt`/`eligible_tagline_pt`/`eligible_keywords_pt` (`traducao.py`, a fachada que reexporta as duas funções de serviço). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`) são substituídas por **mocks**, mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`), `resolve_translate_fn`/`translate_in_parallel`/`translate_pending_column`/`is_translated_mask`/`make_capped_fallback`/`eligible_overview_pt`/`eligible_tagline_pt`/`eligible_keywords_pt` (`traducao.py`, a fachada que reexporta as duas funções de serviço), `detect_language_langdetect` (`idioma_langdetect.py`), `detect_language_aws` (`idioma_aws.py`) e `resolve_detect_language_fn`/`add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`, `langdetect`) são substituídas por **mocks** (exceto em testes-smoke pontuais de detecção real de idioma), mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -10,12 +10,15 @@ Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shar
 test/shared_src/
 ├── __init__.py
 ├── conftest.py             # sys.path + stub do módulo awsglue
-├── requirements_tests.txt  # Dependências de teste
+├── requirements_tests.txt  # Dependências de teste (inclui langdetect)
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_traducao_google.py # Testes de translate_text (Google Translate)
 ├── test_traducao_aws.py    # Testes de translate_text_aws (AWS Translate)
-├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, translate_pending_column e das máscaras elegivel_*
+├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, translate_pending_column, is_translated_mask e das máscaras elegivel_*
+├── test_idioma_langdetect.py # Testes de detect_language_langdetect (langdetect, local)
+├── test_idioma_aws.py      # Testes de detect_language_aws (AWS Comprehend)
+├── test_idioma.py          # Testes de resolve_detect_language_fn e add_detected_language_column
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -154,8 +157,8 @@ chamador que faça patch da própria referência local (ex.:
 
 ### `TestTranslatePendingColumn`
 
-Orquestra a tradução de uma coluna: um registro é pulado quando a coluna de destino já
-está preenchida e diferente da coluna fonte (já traduzido — nativo do TMDB ou run
+Orquestra a tradução de uma coluna: um registro é pulado quando `is_translated_mask`
+considera já traduzido (destino preenchido e diferente da fonte — nativo do TMDB ou run
 anterior do backfill), e retentado quando destino ficou igual à fonte (fallback de uma
 tradução que falhou — ver `translate_text`). Usada por `glue_details` e
 `scripts/backfill_traducao.py` em vez de cada um manter sua própria cópia da orquestração.
@@ -196,18 +199,100 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 ### `TestEligibleOverviewPt` / `TestEligibleTaglinePt` / `TestEligibleKeywordsPt`
 
 As três máscaras (candidatos à tradução de `overview_pt`, `tagline_pt` e `keywords_pt`)
-compartilham a mesma regra: elegível quando `original_language != "pt"` e o campo de
-origem está preenchido. `overview_pt` ainda depende de `overview_en` estar preenchido
-(campos vazios não são reenviados ao tradutor).
+compartilham a mesma regra: elegível quando o campo de origem está preenchido **e**
+`<campo>_idioma_detectado` (quando a coluna existir) é diferente de `"pt"` — a exclusão
+por idioma detectado evita reenviar ao Google/AWS um texto já confirmado em português
+(previne a retradução infinita de fontes sem tradução nativa do TMDB). `original_language`
+não é critério — é o idioma de produção original do título, não o idioma do texto
+retornado pela API, e não garante que o campo já esteja em português (ver docstring de
+`eligible_overview_pt` em `traducao.py`).
 
 | Teste | O que verifica |
 |---|---|
-| `test_elegivel_quando_en_e_overview_preenchido` (`TestEligibleOverviewPt`) | Idioma `en` com `overview_en` preenchido é elegível |
-| `test_elegivel_para_qualquer_idioma_diferente_de_pt` (nas três classes) | Idiomas como `fr`, `ja`, `es` são elegíveis — não é mais uma lista restrita a `en` |
-| `test_nao_elegivel_quando_idioma_e_pt` (nas três classes) | `original_language == "pt"` nunca é elegível, mesmo com o campo preenchido — evita reenviar ao Google Translate texto que já está em português |
-| `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestEligibleOverviewPt`) | `overview_en` vazio/`None` não é elegível mesmo com idioma diferente de `pt` |
+| `test_elegivel_quando_overview_en_preenchido` (`TestEligibleOverviewPt`) | `overview_en` preenchido é elegível, para múltiplos registros |
+| `test_elegivel_mesmo_com_original_language_pt` (nas três classes) | `original_language == "pt"` continua elegível quando o campo de origem está preenchido — `original_language` não é critério |
+| `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestEligibleOverviewPt`) | `overview_en` vazio/`None` não é elegível |
 | `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestEligibleTaglinePt`) | `tagline` vazia/`None` não é elegível |
 | `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestEligibleKeywordsPt`) | `keywords` vazia/`None` não é elegível |
+| `test_nao_elegivel_quando_idioma_detectado_ja_e_pt` (nas três classes) | `<campo>_idioma_detectado == "pt"` exclui o registro do lote de tradução |
+| `test_elegivel_quando_coluna_idioma_detectado_nao_existe` (`TestEligibleOverviewPt`) | Compatibilidade: sem a coluna de idioma pré-computada, nada é excluído (comportamento igual ao anterior à detecção de idioma) |
+
+### `TestIsTranslatedMask`
+
+Extrai o predicado "já traduzido" usado internamente por `translate_pending_column`:
+`target_column` preenchida e diferente de `source_column`. Com `already_native_mask`
+informado, também conta como traduzido quando `target == source` mas a máscara é `True`
+— cobre o caso "fonte já era pt-BR, copiada direto sem chamar tradução" (ver
+`shared_utils.idioma`).
+
+| Teste | O que verifica |
+|---|---|
+| `test_true_quando_preenchido_e_diferente_da_fonte` | Destino preenchido e diferente da fonte conta como traduzido |
+| `test_false_quando_destino_vazio_ou_nulo` | Destino vazio/nulo não conta |
+| `test_false_quando_destino_igual_a_fonte` | Destino igual à fonte (falha de tradução) não conta |
+| `test_false_quando_coluna_destino_nao_existe` | Coluna de destino ausente no DataFrame não conta (sem levantar `KeyError`) |
+| `test_already_native_mask_true_conta_como_traduzido_mesmo_igual_a_fonte` | `already_native_mask=True` conta como traduzido mesmo com `target == source` |
+| `test_already_native_mask_false_nao_conta_quando_igual_a_fonte` | `already_native_mask=False` não altera o resultado (comportamento padrão) |
+| `test_already_native_mask_nao_afeta_quando_destino_vazio` | `already_native_mask=True` não faz um registro sem nenhuma tradução contar — destino ainda precisa estar preenchido |
+
+## Casos de teste — `test_idioma_langdetect.py`
+
+### `TestDetectLanguageLangdetect`
+
+`detect_language_langdetect` detecta o idioma (ISO 639-1) via `langdetect`, com
+`DetectorFactory.seed = 0` fixado no import do módulo (sem isso, a amostragem
+probabilística de n-gramas do `langdetect` pode devolver idiomas diferentes entre
+execuções para o mesmo texto).
+
+| Teste | O que verifica |
+|---|---|
+| `test_detecta_ingles` / `test_detecta_portugues` | Detecção correta para texto inequívoco (smoke test com `langdetect` real, sem mock) |
+| `test_resultado_estavel_entre_chamadas_repetidas` | Regressão do seed fixo: o mesmo texto devolve sempre o mesmo idioma em chamadas repetidas |
+| `test_texto_vazio_devolve_none_sem_chamar_detect` | Texto vazio devolve `None` sem invocar `detect` |
+| `test_texto_so_espaco_devolve_none` | Texto só com espaços devolve `None` |
+| `test_lang_detect_exception_capturada` | `LangDetectException` (comum em texto sem sinal linguístico, ex.: números) capturada, devolve `None` |
+| `test_excecao_generica_capturada` | Qualquer outra exceção capturada, devolve `None` sem propagar |
+
+## Casos de teste — `test_idioma_aws.py`
+
+### `TestDetectLanguageAws`
+
+`detect_language_aws` chama `boto3.client("comprehend").detect_dominant_language`,
+devolvendo o `LanguageCode` de maior `Score`. Mesmo padrão defensivo de
+`translate_text_aws` — nunca lança exceção.
+
+| Teste | O que verifica |
+|---|---|
+| `test_detecta_com_sucesso_idioma_de_maior_score` | Entre múltiplos idiomas na resposta, devolve o de maior `Score` |
+| `test_usa_region_default_us_east_1` | Sem `region` informado, usa `us-east-1` — Comprehend não está em `sa-east-1` |
+| `test_lista_de_idiomas_vazia_devolve_none` | Resposta sem `Languages` devolve `None` |
+| `test_excecao_capturada_devolve_none` | Exceção (ex.: `boto3.client` falhando) devolve `None`, sem propagar |
+| `test_texto_vazio_devolve_none_sem_chamar_boto3` / `test_texto_so_espaco_devolve_none` | Texto vazio/só espaço devolve `None` sem sequer chamar `boto3.client` |
+
+## Casos de teste — `test_idioma.py`
+
+### `TestResolveDetectLanguageFn`
+
+Compõe detecção local (`langdetect`) primeiro; se devolver `None`, cai para AWS
+Comprehend, capado por `aws_fallback_max_chars` caracteres via `make_capped_fallback`
+(mesmo mecanismo de orçamento do fallback de tradução).
+
+| Teste | O que verifica |
+|---|---|
+| `test_usa_local_quando_local_detecta` | Detecção local com sucesso não aciona o AWS |
+| `test_cai_para_aws_quando_local_devolve_none` | Local devolve `None` → cai para AWS |
+| `test_aws_nao_e_chamado_quando_local_detecta` | Confirma que a função AWS nunca é invocada quando o local já resolve |
+| `test_orcamento_esgotado_devolve_none_sem_chamar_aws` | Orçamento de caracteres esgotado devolve `None` sem chamar o AWS |
+| `test_orcamento_suficiente_permite_fallback_aws` | Orçamento suficiente permite o fallback normalmente |
+
+### `TestAddDetectedLanguageColumn`
+
+| Teste | O que verifica |
+|---|---|
+| `test_aplica_detect_fn_a_cada_linha` | Aplica `detect_fn` a cada valor da coluna fonte, gravando na coluna de destino |
+| `test_nan_tratado_como_string_vazia` | `NaN`/`None` na coluna fonte é tratado como string vazia antes de chamar `detect_fn` |
+| `test_default_detect_fn_usado_quando_nao_informado` | Sem `detect_fn` explícito, usa `resolve_detect_language_fn()` (langdetect real) |
+| `test_modifica_df_in_place_e_retorna_mesma_referencia` | Modifica o DataFrame in-place e retorna a mesma referência |
 
 ## Como executar
 

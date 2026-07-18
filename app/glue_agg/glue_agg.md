@@ -31,7 +31,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
    - Usa `COALESCE(lang.name_pt, lang.english_name, lang.name)` para `language_name`, priorizando tradução em pt-BR
    - Usa `ctry.name_pt` (nome traduzido em pt-BR) em vez de `ctry.native_name` para `origin_country_name`
    - Aplica deduplicação final via `spec_deduped` — garante um único registro por `(id, media_type)` na saída mesmo que restem duplicatas cross-year
-3. Seleciona `title` e `overview` do discover (pt-BR nativo do TMDB) como primeira prioridade; `overview_pt` traduzido pelo Glue Details entra como fallback quando o discover retornou vazio, seguido por `overview_en` como último recurso
+3. Seleciona `title` do discover (pt-BR nativo do TMDB) como primeira prioridade. Para `overview`, só confia no valor do discover quando `overview_idioma_detectado` (gravado pelo Glue ETL via `langdetect`/AWS Comprehend — ver `glue_etl.md`) confirma que o texto é genuinamente `"pt"` — o TMDB às vezes devolve o campo em outro idioma silenciosamente mesmo com `language=pt-BR` pedido, então "não-vazio" sozinho não bastava como critério de confiança. Quando não confirmado (idioma diferente ou detecção nula), cai para `overview_pt` traduzido pelo Glue Details, com `overview_en` como último recurso
 4. Grava o DataFrame final como Parquet com `mode="overwrite"` particionado por `(media_type, year)` na camada SPEC
 5. O AWS Wrangler registra automaticamente a tabela no Glue Catalog (`db_tmdb_unified_{env}`)
 6. Aciona o Glue Data Quality para validar a tabela unificada completa (sem filtro de ano)
@@ -65,7 +65,10 @@ providers AS (
   SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
 )
 SELECT
-  COALESCE(NULLIF(TRIM(u.overview), ''), d.overview_pt, d.overview_en) AS overview,
+  COALESCE(
+    CASE WHEN u.overview_idioma_detectado = 'pt' THEN NULLIF(TRIM(u.overview), '') END,
+    d.overview_pt, d.overview_en
+  ) AS overview,
   d.runtime AS runtime_minutes, d.number_of_seasons, d.number_of_episodes,
   p.streaming_providers,
   CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,

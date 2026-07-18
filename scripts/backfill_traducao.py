@@ -1,25 +1,35 @@
 """
-backfill_traducao.py — Adiciona overview_pt, tagline_pt e keywords_pt aos
-detalhes históricos.
+backfill_traducao.py — Adiciona overview_pt, tagline_pt e keywords_pt (e as
+colunas de diagnóstico *_idioma_detectado/*_traduzido_pt_br) aos detalhes
+históricos.
 
 Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano e traduz para
 português, via Google Translate ou AWS Translate (TRANSLATE_PROVIDER — ver
 abaixo), os campos ainda pendentes (espelhando o que o Glue Details faz para
-dados novos). As três colunas usam a mesma regra de
-elegibilidade: qualquer idioma original diferente de pt (evita reenviar à
-API conteúdo que já está em português):
-  - overview_pt:  original_language != 'pt' e overview_en preenchido
-  - tagline_pt:   original_language != 'pt' e tagline preenchida
-  - keywords_pt:  original_language != 'pt' e keywords preenchidas (a API do
-                   TMDB sempre devolve keywords em inglês para os demais
-                   idiomas)
-Um campo é considerado "já traduzido" (e não é retraduzido) quando a coluna
-_pt está preenchida e é diferente da coluna de origem. Campos sem tradução,
-ou cuja coluna _pt ficou igual à de origem (fallback de uma tradução que
-falhou em um run anterior — ver shared_utils/traducao.py), continuam
-pendentes e são (re)tentados. Não é gerado collection_name_pt — diferente
-dos demais, ele vem de uma chamada à API do TMDB (não do Google Translate) e
-foi deixado fora deste script. Não re-chama a API do TMDB para os campos acima.
+dados novos). As três colunas usam a mesma regra de elegibilidade: o campo de
+origem preenchido e ainda não confirmado como pt-BR pela detecção de idioma
+(langdetect com fallback AWS Comprehend — ver shared_utils/idioma.py) —
+original_language não entra no critério (é o idioma de produção original do
+título, não o idioma do texto retornado pela API; não garante que
+overview_en/tagline/keywords já estejam em português — ver
+shared_utils/traducao.py):
+  - overview_pt:  overview_en preenchido, idioma detectado != "pt"
+  - tagline_pt:   tagline preenchida, idioma detectado != "pt"
+  - keywords_pt:  keywords preenchidas, idioma detectado != "pt"
+Quando o idioma detectado da fonte já é "pt", o texto é copiado diretamente
+para a coluna _pt sem chamar tradução — evita reenviar ao Google/AWS um texto
+que já está em português (e evita retradução infinita: sem essa checagem, um
+texto genuinamente em português sem tradução nativa do TMDB ficaria
+"pendente" para sempre, já que a tradução seria um no-op e o predicado de
+"já traduzido" compara texto igual à fonte). Um campo é considerado "já
+traduzido" (e não é retraduzido) quando a coluna _pt está preenchida e
+(é diferente da coluna de origem OU o idioma detectado da fonte já é "pt").
+Campos sem tradução, ou cuja coluna _pt ficou igual à de origem sem o idioma
+detectado ser "pt" (fallback de uma tradução que falhou em um run anterior —
+ver shared_utils/traducao.py), continuam pendentes e são (re)tentados. Não é
+gerado collection_name_pt — diferente dos demais, ele vem de uma chamada à
+API do TMDB (não do Google Translate) e foi deixado fora deste script. Não
+re-chama a API do TMDB para os campos acima.
 
 Leitura feita diretamente do S3 (parquet) — sem Athena/CTAS — para evitar
 necessidade de athena:GetWorkGroup e glue:DeleteTable no usuário prod_temp.
@@ -30,14 +40,12 @@ Uso:
 Variáveis de ambiente obrigatórias:
     AWS_REGION
     TABLE_GROUP            (identifica o checkpoint; valor "traducao" neste script)
-    S3_BUCKET_SOT          (parquets reais de tb_details_movie/tv_tmdb e tb_discover_movie/tv_tmdb)
+    S3_BUCKET_SOT          (parquets reais de tb_details_movie/tv_tmdb)
     S3_BUCKET_TEMP         (onde o checkpoint de retomada é armazenado)
     GLUE_DATABASE_MOVIE
     GLUE_DATABASE_TV
     TABLE_DETAILS_MOVIE
     TABLE_DETAILS_TV
-    TABLE_DISCOVER_MOVIE
-    TABLE_DISCOVER_TV
 
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
@@ -75,10 +83,17 @@ import pandas as pd
 from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
+from shared_utils.idioma import (  # noqa: E402
+    add_detected_language_column,
+    detect_language_aws,
+    detect_language_langdetect,
+    resolve_detect_language_fn,
+)
 from shared_utils.traducao import (  # noqa: E402
     eligible_keywords_pt,
     eligible_overview_pt,
     eligible_tagline_pt,
+    is_translated_mask,
     resolve_translate_fn,
     translate_pending_column,
     translate_text,
@@ -113,69 +128,107 @@ def _traduzir_pendentes(
     return sucesso
 
 
-def _adicionar_traducoes_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
-    """Adiciona overview_pt aos registros com idioma original diferente de pt e
-    overview_en preenchido, ainda pendentes (registros com overview_en vazio não
-    têm o que traduzir e distorceriam a contagem de sucesso)."""
+def _adicionar_traducoes_pt(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
+) -> tuple[pd.DataFrame, int]:
+    """Adiciona overview_idioma_detectado, overview_pt e overview_traduzido_pt_br aos
+    registros com overview_en preenchido (registros com overview_en vazio não têm o
+    que traduzir e distorceriam a contagem de sucesso). Idioma detectado antes de
+    qualquer tradução; fontes já detectadas como "pt" são copiadas direto para
+    overview_pt, sem chamar tradução (ver docstring do módulo)."""
     # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("backfill_traducao.translate_text", ...) nos testes continue funcionando
     # quando o chamador não passa um traduzir_fn explícito.
     traduzir_fn = traduzir_fn or translate_text
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
+    df = add_detected_language_column(df, "overview_en", "overview_idioma_detectado", detectar_fn)
 
+    already_pt_mask = (df["overview_pt"].isna() | (df["overview_pt"] == "")) & (
+        df["overview_idioma_detectado"] == "pt"
+    )
+    df.loc[already_pt_mask, "overview_pt"] = df.loc[already_pt_mask, "overview_en"]
+
+    sucesso = 0
     mask_elegivel = eligible_overview_pt(df)
-    if not mask_elegivel.any():
-        return df, 0
-    sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel, traduzir_fn)
+    if mask_elegivel.any():
+        sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel, traduzir_fn)
+
+    df["overview_traduzido_pt_br"] = is_translated_mask(
+        df, "overview_en", "overview_pt", already_native_mask=(df["overview_idioma_detectado"] == "pt")
+    )
     return df, sucesso
 
 
-def _adicionar_traducoes_tagline_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
-    """Adiciona tagline_pt aos registros com tagline preenchida e idioma original
-    diferente de pt (espelha glue_details)."""
+def _adicionar_traducoes_tagline_pt(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
+) -> tuple[pd.DataFrame, int]:
+    """Adiciona tagline_idioma_detectado, tagline_pt e tagline_traduzido_pt_br aos
+    registros com tagline preenchida (espelha glue_details)."""
     traduzir_fn = traduzir_fn or translate_text
     if "tagline" not in df.columns:
         return df, 0
+    if "tagline_pt" not in df.columns:
+        df["tagline_pt"] = None
+    df = add_detected_language_column(df, "tagline", "tagline_idioma_detectado", detectar_fn)
+
+    already_pt_mask = (df["tagline_pt"].isna() | (df["tagline_pt"] == "")) & (
+        df["tagline_idioma_detectado"] == "pt"
+    )
+    df.loc[already_pt_mask, "tagline_pt"] = df.loc[already_pt_mask, "tagline"]
+
+    sucesso = 0
     mask_elegivel = eligible_tagline_pt(df)
-    if not mask_elegivel.any():
-        return df, 0
-    sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel, traduzir_fn)
+    if mask_elegivel.any():
+        sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel, traduzir_fn)
+
+    df["tagline_traduzido_pt_br"] = is_translated_mask(
+        df, "tagline", "tagline_pt", already_native_mask=(df["tagline_idioma_detectado"] == "pt")
+    )
     return df, sucesso
 
 
-def _adicionar_traducoes_keywords_pt(df: pd.DataFrame, traduzir_fn: Optional[Callable[[str], str]] = None) -> tuple[pd.DataFrame, int]:
-    """Adiciona keywords_pt aos registros com keywords preenchidas e idioma original
-    diferente de pt (TMDB sempre devolve keywords em inglês para os demais idiomas)."""
+def _adicionar_traducoes_keywords_pt(
+    df: pd.DataFrame,
+    traduzir_fn: Optional[Callable[[str], str]] = None,
+    detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
+) -> tuple[pd.DataFrame, int]:
+    """Adiciona keywords_idioma_detectado, keywords_pt e keywords_traduzido_pt_br
+    aos registros com keywords preenchidas."""
     traduzir_fn = traduzir_fn or translate_text
     if "keywords" not in df.columns:
         return df, 0
+    if "keywords_pt" not in df.columns:
+        df["keywords_pt"] = None
+    df = add_detected_language_column(df, "keywords", "keywords_idioma_detectado", detectar_fn)
+
+    already_pt_mask = (df["keywords_pt"].isna() | (df["keywords_pt"] == "")) & (
+        df["keywords_idioma_detectado"] == "pt"
+    )
+    df.loc[already_pt_mask, "keywords_pt"] = df.loc[already_pt_mask, "keywords"]
+
+    sucesso = 0
     mask_elegivel = eligible_keywords_pt(df)
-    if not mask_elegivel.any():
-        return df, 0
-    sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel, traduzir_fn)
+    if mask_elegivel.any():
+        sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel, traduzir_fn)
+
+    df["keywords_traduzido_pt_br"] = is_translated_mask(
+        df, "keywords", "keywords_pt", already_native_mask=(df["keywords_idioma_detectado"] == "pt")
+    )
     return df, sucesso
-
-
-def _load_discover_map(table_discover: str, s3_bucket_sot: str) -> pd.DataFrame:
-    """Lê toda a tabela discover do S3 e retorna DataFrame id→original_language único."""
-    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_discover}/"
-    logger.info("  Carregando discover de %s...", s3_path)
-    try:
-        df = wr.s3.read_parquet(path=s3_path, columns=["id", "original_language"])
-    except ClientError as exc:
-        shared.log_expired_token(exc, f"leitura de {s3_path}")
-        raise
-    return df.drop_duplicates(subset=["id"])[["id", "original_language"]].reset_index(drop=True)
 
 
 def _backfill_year(
     database: str,
     table_details: str,
-    discover_map: pd.DataFrame,
     year: str,
     s3_bucket_sot: str,
     traduzir_fn: Optional[Callable[[str], str]] = None,
+    detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> tuple[bool, int]:
     """
     Lê uma partição de year em tb_details_* diretamente do S3, adiciona
@@ -186,6 +239,7 @@ def _backfill_year(
         Tupla (escreveu, quantidade traduzida com sucesso).
     """
     traduzir_fn = traduzir_fn or translate_text
+    detectar_fn = detectar_fn or resolve_detect_language_fn()
     s3_details_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/year={year}/"
 
     try:
@@ -205,14 +259,10 @@ def _backfill_year(
 
     logger.info("  %d registros lidos.", len(df))
 
-    df = df.merge(discover_map, on="id", how="left")
-    df["original_language"] = df["original_language"].fillna("und")
-
-    df, sucesso_overview = _adicionar_traducoes_pt(df, traduzir_fn)
-    df, sucesso_tagline = _adicionar_traducoes_tagline_pt(df, traduzir_fn)
-    df, sucesso_keywords = _adicionar_traducoes_keywords_pt(df, traduzir_fn)
+    df, sucesso_overview = _adicionar_traducoes_pt(df, traduzir_fn, detectar_fn)
+    df, sucesso_tagline = _adicionar_traducoes_tagline_pt(df, traduzir_fn, detectar_fn)
+    df, sucesso_keywords = _adicionar_traducoes_keywords_pt(df, traduzir_fn, detectar_fn)
     traduzidos = sucesso_overview + sucesso_tagline + sucesso_keywords
-    df = df.drop(columns=["original_language"])
     df["year"] = year
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/"
@@ -244,8 +294,6 @@ def main() -> None:
     db_tv                 = shared.require_env("GLUE_DATABASE_TV")
     table_details_movie   = shared.require_env("TABLE_DETAILS_MOVIE")
     table_details_tv      = shared.require_env("TABLE_DETAILS_TV")
-    table_discover_movie  = shared.require_env("TABLE_DISCOVER_MOVIE")
-    table_discover_tv     = shared.require_env("TABLE_DISCOVER_TV")
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 300))
@@ -254,7 +302,7 @@ def main() -> None:
     )
     # Valida translate_provider cedo (fail-fast) antes de qualquer I/O — resolve_translate_fn
     # é recriado por partição dentro do loop abaixo, mas um provider inválido deve
-    # interromper o backfill antes de carregar discover ou tocar o S3.
+    # interromper o backfill antes de tocar o S3.
     resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
 
     years = list(range(start_year, end_year + 1))
@@ -266,39 +314,33 @@ def main() -> None:
     )
     s3_client = boto3.client("s3", region_name=region)
 
-    logger.info("Carregando tabelas discover do S3...")
-    discover_map_movie = _load_discover_map(table_discover_movie, s3_bucket_sot)
-    discover_map_tv    = _load_discover_map(table_discover_tv, s3_bucket_sot)
-    logger.info(
-        "  movie: %d ids únicos | tv: %d ids únicos",
-        len(discover_map_movie), len(discover_map_tv),
-    )
-
     completed = shared.load_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year)
 
     unidades = []
     for year in years:
-        unidades.append(("movie", year, db_movie, table_details_movie, discover_map_movie))
-        unidades.append(("tv", year, db_tv, table_details_tv, discover_map_tv))
+        unidades.append(("movie", year, db_movie, table_details_movie))
+        unidades.append(("tv", year, db_tv, table_details_tv))
 
     pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]
     shared.log_resume_progress(logger, "partições já concluídas", len(unidades), len(pendentes))
 
     total_traduzidos = 0
-    for i, (tipo, year, database, table_details, discover_map) in enumerate(pendentes, start=1):
+    for i, (tipo, year, database, table_details) in enumerate(pendentes, start=1):
         logger.info("[%d/%d] %s | year=%d", i, len(pendentes), tipo, year)
-        # traduzir_fn recriado a cada partição — cada ano+tipo tem seu próprio orçamento
-        # de fallback ao AWS Translate, em vez de compartilhar um único orçamento de
-        # 6.000 caracteres com todas as partições do run (que a primeira partição
-        # processada poderia esgotar sozinha, deixando as demais sem fallback).
+        # traduzir_fn/detectar_fn recriados a cada partição — cada ano+tipo tem seu
+        # próprio orçamento de fallback ao AWS Translate/Comprehend, em vez de
+        # compartilhar um único orçamento com todas as partições do run (que a
+        # primeira partição processada poderia esgotar sozinha, deixando as demais
+        # sem fallback).
         traduzir_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
+        detectar_fn = resolve_detect_language_fn(detect_language_langdetect, detect_language_aws)
         _, traduzidos = _backfill_year(
             database=database,
             table_details=table_details,
-            discover_map=discover_map,
             year=str(year),
             s3_bucket_sot=s3_bucket_sot,
             traduzir_fn=traduzir_fn,
+            detectar_fn=detectar_fn,
         )
         total_traduzidos += traduzidos
         completed.add(f"{tipo}:{year}")

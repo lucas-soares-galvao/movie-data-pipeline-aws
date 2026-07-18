@@ -3,3 +3,4 @@
 awswrangler
 requests
 deep-translator
+langdetect

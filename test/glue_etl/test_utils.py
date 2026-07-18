@@ -67,6 +67,32 @@ class TestReadFromSorDiscover:
                 orient="records",
             )
 
+    def test_overview_idioma_detectado_calculado_a_partir_do_overview(self):
+        """overview_idioma_detectado é só diagnóstico (não há tradução no discover —
+        o overview já vem pt-BR nativo do TMDB via lambda_api, ver read_from_sor)."""
+        df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
+        detect_fn = MagicMock(return_value="pt")
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor(
+                "my-sor", "movie", "discover", year="2023", detect_fn=lambda t: detect_fn(t)
+            )
+        assert result["overview_idioma_detectado"].iloc[0] == "pt"
+        detect_fn.assert_called_once_with("Sinopse")
+
+    def test_sem_overview_traduzido_pt_br_pois_nao_ha_traducao_no_discover(self):
+        df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "discover", year="2023", detect_fn=lambda t: "pt")
+        assert "overview_traduzido_pt_br" not in result.columns
+
+    def test_sem_overview_nao_cria_coluna_de_idioma(self):
+        """Guard de schema: se a coluna overview não existir (fixture mínima/legado),
+        overview_idioma_detectado não é criada."""
+        df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}])
+        with patch("awswrangler.s3.read_json", return_value=df_mock):
+            result = read_from_sor("my-sor", "movie", "discover", year="2023")
+        assert "overview_idioma_detectado" not in result.columns
+
 
 # ---------------------------------------------------------------------------
 # read_from_sor — table_type="genre"
@@ -266,6 +292,36 @@ class TestAddNamePtCountries:
             result = _add_name_pt_countries(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "[PT] Brazil"
 
+    def test_idioma_detectado_calculado_a_partir_de_english_name(self):
+        df = pd.DataFrame({"english_name": ["Japan"]})
+        detect_fn = MagicMock(return_value="en")
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_countries(df, detect_fn=lambda t: detect_fn(t))
+        assert result["name_idioma_detectado"].iloc[0] == "en"
+        detect_fn.assert_called_once_with("Japan")
+
+    def test_traduzido_pt_br_true_para_sucesso(self):
+        df = pd.DataFrame({"english_name": ["Japan"]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_countries(df, detect_fn=lambda t: "en")
+        assert bool(result["name_traduzido_pt_br"].iloc[0]) is True
+
+    def test_traduzido_pt_br_false_quando_fonte_ausente(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "native_name": ["Brasil"]})
+        result = _add_name_pt_countries(df)
+        assert "name_traduzido_pt_br" not in result.columns
+
+    def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
+        """Impacto prático baixo (english_name é sempre nome próprio em inglês), mas
+        evita o mesmo tipo de desperdício de retradução infinita do glue_details."""
+        df = pd.DataFrame({"english_name": ["Nome já em português"]})
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = _add_name_pt_countries(df, detect_fn=lambda t: "pt")
+        assert result["name_pt"].iloc[0] == "Nome já em português"
+        assert bool(result["name_traduzido_pt_br"].iloc[0]) is True
+        translate_fn.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _add_name_pt_languages
@@ -304,6 +360,23 @@ class TestAddNamePtLanguages:
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_languages(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "[PT] English"
+
+    def test_idioma_detectado_calculado_a_partir_de_english_name(self):
+        df = pd.DataFrame({"english_name": ["English"]})
+        detect_fn = MagicMock(return_value="en")
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = _add_name_pt_languages(df, detect_fn=lambda t: detect_fn(t))
+        assert result["name_idioma_detectado"].iloc[0] == "en"
+        detect_fn.assert_called_once_with("English")
+
+    def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
+        df = pd.DataFrame({"english_name": ["Nome já em português"]})
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = _add_name_pt_languages(df, detect_fn=lambda t: "pt")
+        assert result["name_pt"].iloc[0] == "Nome já em português"
+        assert bool(result["name_traduzido_pt_br"].iloc[0]) is True
+        translate_fn.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
