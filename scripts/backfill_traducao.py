@@ -54,7 +54,9 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
-    BACKFILL_WAIT_SECONDS (padrão: 300 — pausa entre partições para não saturar Google Translate)
+    BACKFILL_WAIT_SECONDS (padrão: 30 — pausa entre partições para não saturar Google Translate;
+                            só aplicada quando a partição efetivamente traduziu algo — partições
+                            vazias ou já 100% traduzidas seguem direto para a próxima, sem espera)
     TRANSLATE_PROVIDER    (padrão: "google" — grátis, mas instável sob alto volume;
                             "aws" usa AWS Translate, API oficial paga por caractere,
                             útil para testar um período menor via BACKFILL_START_YEAR/
@@ -270,7 +272,7 @@ def main() -> None:
     table_details_tv      = shared.require_env("TABLE_DETAILS_TV")
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
-    wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 300))
+    wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 30))
     translate_provider = shared.apply_translate_cost_guard(
         os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
     )
@@ -319,7 +321,7 @@ def main() -> None:
         total_translated += translated_count
         completed.add(f"{content_type}:{year}")
         shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year, completed)
-        if i < len(pending):
+        if i < len(pending) and translated_count > 0:
             logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
             time.sleep(wait_seconds)
 

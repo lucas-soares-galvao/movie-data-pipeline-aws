@@ -432,7 +432,7 @@ def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mo
         patch("backfill_traducao.time.sleep") as mock_sleep,
         patch("backfill_traducao.boto3") as mock_boto3,
     ):
-        mock_backfill.return_value = (True, 0)
+        mock_backfill.return_value = (True, 1)  # translated_count > 0: comportamento padrão de pausa entre partições
         mock_boto3.client.return_value = mock_s3
         bt.main()
     return mock_backfill, mock_sleep, mock_s3
@@ -451,6 +451,38 @@ class TestMain:
     def test_nao_pausa_apos_ultima_chamada(self, monkeypatch):
         mock_backfill, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_sleep.call_count == mock_backfill.call_count - 1
+
+    def test_nao_pausa_quando_particao_nao_traduziu_nada(self, monkeypatch):
+        """Partição vazia/já 100% traduzida (translated_count == 0) não tem chamada de
+        API alguma para "esfriar" — pausar mesmo assim só desperdiça tempo de wall-clock
+        num backfill de anos antigos ou de range grande."""
+        with (
+            patch("backfill_traducao._backfill_year") as mock_backfill,
+            patch("backfill_traducao.time.sleep") as mock_sleep,
+            patch("backfill_traducao.boto3") as mock_boto3,
+        ):
+            _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            mock_backfill.return_value = (False, 0)
+            mock_boto3.client.return_value = _s3_client_sem_checkpoint()
+            bt.main()
+
+        mock_sleep.assert_not_called()
+
+    def test_pausa_apenas_apos_particoes_que_traduziram_algo(self, monkeypatch):
+        """Mistura de partições com e sem tradução: só pausa depois das que traduziram
+        (e nunca depois da última, independente de ter traduzido ou não)."""
+        with (
+            patch("backfill_traducao._backfill_year") as mock_backfill,
+            patch("backfill_traducao.time.sleep") as mock_sleep,
+            patch("backfill_traducao.boto3") as mock_boto3,
+        ):
+            _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+            # movie:2020 traduz, tv:2020 vazio, movie:2021 traduz, tv:2021 (última) traduz
+            mock_backfill.side_effect = [(True, 3), (False, 0), (True, 2), (True, 1)]
+            mock_boto3.client.return_value = _s3_client_sem_checkpoint()
+            bt.main()
+
+        assert mock_sleep.call_count == 2  # após movie:2020 e após movie:2021 — não após tv:2020 nem após a última
 
     def test_translate_provider_default_google(self, monkeypatch):
         """Sem TRANSLATE_PROVIDER definido, usa Google como primário (volume alto do
