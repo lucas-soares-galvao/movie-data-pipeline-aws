@@ -44,13 +44,18 @@ _AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
 # para sempre.
 _MAX_TRANSLATION_ATTEMPTS_DEFAULT = 3
 
-# Nomes de coluna do schema antigo (nomenclatura em português, pré-padronização para
+# Nomes de coluna de schemas antigos (nomenclatura em português, pré-padronização para
 # inglês — ver CLAUDE.md) para overview/tagline/keywords. Registros gravados antes do
 # rename ainda carregam essas colunas no Parquet; como resolve_pt_translation só
 # ADICIONA as colunas novas (nunca remove as antigas) e o awswrangler sincroniza o
 # schema do Glue Catalog com as colunas do DataFrame gravado, deixar essas colunas
 # passarem adiante reintroduz o schema antigo (com dados stale em pt-BR) na tabela.
-# Chamadores que leem partições/registros pré-existentes (collect_and_write_details em
+# Duas gerações confirmadas em produção (tb_details_movie_tmdb, ver histórico do
+# rename): a mais recente, com idioma da fonte/resultado separados e teto de
+# tentativas (*_idioma_detectado_en/pt, *_tentativas_traducao, *_precisa_traducao); e
+# uma anterior a essa, no mesmo padrão simples ainda usado por tb_discover_movie/tv
+# (*_idioma_detectado, sem separar fonte/resultado, e *_traduzido_pt_br). Chamadores
+# que leem partições/registros pré-existentes (collect_and_write_details em
 # glue_details, _backfill_year em scripts/backfill_traducao.py) devem descartar essas
 # colunas do DataFrame final antes de escrever.
 LEGACY_TRANSLATION_COLUMNS = [
@@ -60,6 +65,9 @@ LEGACY_TRANSLATION_COLUMNS = [
     "tagline_tentativas_traducao", "tagline_precisa_traducao",
     "keywords_idioma_detectado_en", "keywords_idioma_detectado_pt",
     "keywords_tentativas_traducao", "keywords_precisa_traducao",
+    "overview_idioma_detectado", "overview_traduzido_pt_br",
+    "tagline_idioma_detectado", "tagline_traduzido_pt_br",
+    "keywords_idioma_detectado", "keywords_traduzido_pt_br",
 ]
 
 

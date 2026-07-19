@@ -407,10 +407,14 @@ class TestBackfillYear:
         details_df = pd.DataFrame({
             "id": [1],
             "overview_en": ["a"],
+            # Geração intermediária (idioma da fonte/resultado separados + teto de tentativas)
             "overview_idioma_detectado_en": ["en"],
             "overview_idioma_detectado_pt": ["en"],
             "overview_tentativas_traducao": [1],
             "overview_precisa_traducao": [True],
+            # Geração mais antiga (mesmo padrão simples ainda usado por tb_discover_movie/tv)
+            "overview_idioma_detectado": ["en"],
+            "overview_traduzido_pt_br": [False],
         })
 
         with (
@@ -425,6 +429,8 @@ class TestBackfillYear:
         assert "overview_idioma_detectado_pt" not in df_written.columns
         assert "overview_tentativas_traducao" not in df_written.columns
         assert "overview_precisa_traducao" not in df_written.columns
+        assert "overview_idioma_detectado" not in df_written.columns
+        assert "overview_traduzido_pt_br" not in df_written.columns
         assert "overview_detected_language_en" in df_written.columns
 
     def test_soma_traduzidos_de_overview_tagline_e_keywords(self):
