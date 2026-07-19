@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa os 6 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
+Testa os 7 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
 
 O foco principal é o **contrato do payload/argumentos** enviado a cada serviço (Lambda ou Glue), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 80% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
 
@@ -24,6 +24,7 @@ test/scripts/
 ├── test_backfill_enriquecimento.py
 ├── test_backfill_data_quality.py
 ├── test_backfill_traducao.py
+├── test_backfill_rename_colunas.py
 └── test_backfill_shared.py
 ```
 
@@ -279,6 +280,54 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_marca_completo_mesmo_quando_backfill_year_retorna_false` | Partição sem dados (`_backfill_year` retorna `False`) ainda conta como concluída — não é falha |
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
 | `test_checkpoint_reflete_progresso_parcial_quando_interrompido` | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
+
+## Casos de teste — `test_backfill_rename_colunas.py`
+
+Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para
+`processed_date`/`updated_date` nos parquets de details/watch_providers já
+gravados no S3, sem chamar a API do TMDB — ver docstring de
+`scripts/backfill_rename_colunas.py` para o motivo de o pipeline normal
+(`backfill_enriquecimento.py`) não bastar sozinho para migrar 100% do
+histórico (IDs que saíram do discover atual nunca mais entram no delta
+reprocessado).
+
+### `TestRenamePartitionColumn`
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_arquivos_retorna_false_e_nao_escreve` / `test_df_vazio_retorna_false_e_nao_escreve` | `_rename_partition_column` pula partições ausentes/vazias sem escrever |
+| `test_particao_ja_migrada_sem_coluna_antiga_retorna_false_e_nao_escreve` | Guard central: partição sem a coluna antiga no schema físico (já migrada) não é regravada de novo |
+| `test_outras_excecoes_sao_repropagadas` | Exceções que não são `NoFilesFound` são relançadas |
+| `test_expired_token_na_leitura_loga_e_repropaga` / `test_expired_token_na_escrita_loga_e_repropaga` (parametrizados: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura ou na escrita loga aviso de credenciais e repropaga |
+| `test_particao_totalmente_nao_migrada_preenche_coluna_nova_e_descarta_antiga` | Partição nunca tocada pelo pipeline desde o rename (só tem a coluna antiga) — todo registro ganha a coluna nova, coluna antiga é descartada |
+| `test_particao_mista_preserva_coluna_nova_e_usa_antiga_so_para_os_nulos` | Caso dos IDs que saíram do discover atual: registros já reprocessados (coluna nova preenchida) não são sobrescritos pelo coalesce; só os ainda nulos usam o valor da coluna antiga |
+| `test_escreve_com_particao_e_modo_overwrite_partitions` | `wr.s3.to_parquet` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
+
+### `TestMain`
+
+| Teste | O que verifica |
+|---|---|
+| `test_chama_rename_para_cada_tabela_e_ano` | Total de chamadas = anos × 4 tabelas (details movie/tv, watch_providers movie/tv) |
+| `test_percorre_as_quatro_tabelas_com_as_colunas_corretas_dentro_de_cada_ano` | Cada tabela é chamada com o par (coluna antiga, coluna nova) correto — `dt_processamento`/`processed_date` para details, `dt_atualizacao`/`updated_date` para watch_providers |
+| `test_usa_ano_atual_como_default_de_end_year` | `BACKFILL_END_YEAR` ausente usa o ano atual |
+| `test_loga_total_de_particoes_regravadas` | O log final soma quantas partições foram efetivamente regravadas (`_rename_partition_column` retorna `True`), não o total de partições verificadas |
+
+### `TestErros`
+
+| Teste | O que verifica |
+|---|---|
+| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
+| `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
+
+### `TestCheckpoint`
+
+| Teste | O que verifica |
+|---|---|
+| `test_pula_particoes_ja_concluidas` | Partições (`tabela:ano`) já no checkpoint não chamam `_rename_partition_column` de novo |
+| `test_salva_checkpoint_apos_cada_particao` | `put_object` chamado a cada uma das 4 tabelas processadas |
+| `test_marca_completo_mesmo_quando_rename_retorna_false` | Partição já migrada (`_rename_partition_column` retorna `False`) ainda conta como concluída — não é falha |
+| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
+| `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado) | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
 
 ## Casos de teste — `test_backfill_shared.py`
 

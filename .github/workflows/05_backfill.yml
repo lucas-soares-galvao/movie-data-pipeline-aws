@@ -16,6 +16,9 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - detalhes_e_providers  — re-enriquece details + watch_providers via Glue Details
 #   - data_quality          — re-executa DQ via Glue
 #   - traducao              — adiciona overview_pt nos details (sem API TMDB)
+#   - rename_colunas        — migra dt_processamento/dt_atualizacao para
+#                             processed_date/updated_date nos parquets já gravados
+#                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
 #
 # translate_provider escolhe o serviço de tradução usado por qualquer um dos grupos
 # acima que traduz (discover, referencias, detalhes_e_providers, traducao) — "google"
@@ -39,6 +42,7 @@ on:
           - detalhes_e_providers
           - data_quality
           - traducao
+          - rename_colunas
       start_year:
         description: "Ano inicial (ignorado para referencias)"
         required: true
@@ -110,7 +114,7 @@ jobs:
       - name: Instalar dependências
         run: |
           pip install boto3
-          if [ "${{ inputs.table_group }}" = "traducao" ]; then
+          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -166,6 +170,7 @@ jobs:
               detalhes_e_providers) python scripts/backfill_enriquecimento.py ;;
               data_quality)         python scripts/backfill_data_quality.py ;;
               traducao)             python scripts/backfill_traducao.py ;;
+              rename_colunas)       python scripts/backfill_rename_colunas.py ;;
             esac
           }
 
@@ -189,6 +194,8 @@ jobs:
 
           # Nota: backfill_referencias.py não itera por ano, não grava checkpoint e nunca
           # sai com código 75 — para ele, este loop roda uma única vez e sai normalmente.
+          # backfill_rename_colunas.py itera por tabela x ano (não por media_type) e usa
+          # o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
           # se o timeout mudar, ajustar aqui também.
           max_tentativas=6
