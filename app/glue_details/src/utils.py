@@ -21,7 +21,6 @@ from shared_utils.idioma import (
     resolve_detect_language_fn,
 )
 from shared_utils.traducao import (
-    LEGACY_TRANSLATION_COLUMNS,
     resolve_pt_translation,
     reuse_existing_translation,
     resolve_translate_fn,
@@ -880,13 +879,6 @@ def collect_and_write_details(
     if not df_existing_keep.empty:
         df = pd.concat([df_existing_keep, df], ignore_index=True)
     df = df.drop_duplicates(subset=["id"], keep="last")
-
-    # Colunas do schema antigo (pt-BR, pré-padronização para inglês) podem vir de
-    # df_existing_keep — registros preservados de partições gravadas antes do rename.
-    # Descartadas aqui para não reintroduzir o schema antigo (com dados stale) no
-    # Glue Catalog via sincronização automática do awswrangler (ver
-    # shared_utils.traducao.LEGACY_TRANSLATION_COLUMNS).
-    df = df.drop(columns=[c for c in LEGACY_TRANSLATION_COLUMNS if c in df.columns])
 
     # Grava de volta — overwrite_partitions substitui apenas as partições afetadas,
     # preservando o histórico de anos anteriores intacto.

@@ -250,7 +250,6 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_expired_token_na_leitura_loga_e_repropaga` / `test_expired_token_na_escrita_loga_e_repropaga` (parametrizados: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura ou na escrita loga aviso de credenciais e repropaga |
 | `test_escreve_com_particao_e_modo_overwrite_partitions` | `wr.s3.to_parquet` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
 | `test_soma_traduzidos_de_overview_tagline_e_keywords` | `traduzidos` retornado por `_backfill_year` soma os três campos (`overview_pt` + `tagline_pt` + `keywords_pt`), não só `overview_pt` |
-| `test_descarta_colunas_legadas_da_particao_lida` | Colunas do schema pt-BR pré-rename (`overview_idioma_detectado_en/pt`, `overview_tentativas_traducao`, `overview_precisa_traducao`) presentes na partição lida do S3 não aparecem no DataFrame escrito — evita reintroduzir o schema antigo no Glue Catalog |
 
 ### `TestMain`
 
