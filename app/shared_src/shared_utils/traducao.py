@@ -21,7 +21,6 @@ __all__ = [
     "reuse_existing_translation",
     "resolve_pt_translation",
     "make_capped_fallback",
-    "LEGACY_TRANSLATION_COLUMNS",
 ]
 
 T = TypeVar("T")
@@ -43,24 +42,6 @@ _AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
 # detected_language_pt_column == "pt" e seria reenviado ao Google/AWS a cada execução,
 # para sempre.
 _MAX_TRANSLATION_ATTEMPTS_DEFAULT = 3
-
-# Nomes de coluna do schema antigo (nomenclatura em português, pré-padronização para
-# inglês — ver CLAUDE.md) para overview/tagline/keywords. Registros gravados antes do
-# rename ainda carregam essas colunas no Parquet; como resolve_pt_translation só
-# ADICIONA as colunas novas (nunca remove as antigas) e o awswrangler sincroniza o
-# schema do Glue Catalog com as colunas do DataFrame gravado, deixar essas colunas
-# passarem adiante reintroduz o schema antigo (com dados stale em pt-BR) na tabela.
-# Chamadores que leem partições/registros pré-existentes (collect_and_write_details em
-# glue_details, _backfill_year em scripts/backfill_traducao.py) devem descartar essas
-# colunas do DataFrame final antes de escrever.
-LEGACY_TRANSLATION_COLUMNS = [
-    "overview_idioma_detectado_en", "overview_idioma_detectado_pt",
-    "overview_tentativas_traducao", "overview_precisa_traducao",
-    "tagline_idioma_detectado_en", "tagline_idioma_detectado_pt",
-    "tagline_tentativas_traducao", "tagline_precisa_traducao",
-    "keywords_idioma_detectado_en", "keywords_idioma_detectado_pt",
-    "keywords_tentativas_traducao", "keywords_precisa_traducao",
-]
 
 
 def make_capped_fallback(

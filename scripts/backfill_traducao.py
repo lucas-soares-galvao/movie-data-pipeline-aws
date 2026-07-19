@@ -35,13 +35,6 @@ esgotado o número de tentativas automáticas. Não é gerado collection_name_pt
 Translate) e foi deixado fora deste script. Não re-chama a API do TMDB para
 os campos acima.
 
-Como este script lê a partição inteira (sem filtro de delta), partições
-gravadas antes da padronização de nomenclatura para inglês (ver CLAUDE.md)
-ainda carregam o schema antigo (pt-BR: *_idioma_detectado_en/pt,
-*_tentativas_traducao, *_precisa_traducao) — descartado antes de escrever
-(ver shared_utils.traducao.LEGACY_TRANSLATION_COLUMNS), senão o awswrangler
-reintroduziria essas colunas no Glue Catalog a partir do DataFrame gravado.
-
 Leitura feita diretamente do S3 (parquet) — sem Athena/CTAS — para evitar
 necessidade de athena:GetWorkGroup e glue:DeleteTable no usuário prod_temp.
 
@@ -100,7 +93,6 @@ from shared_utils.idioma import (  # noqa: E402
     resolve_detect_language_fn,
 )
 from shared_utils.traducao import (  # noqa: E402
-    LEGACY_TRANSLATION_COLUMNS,
     resolve_pt_translation,
     resolve_translate_fn,
     translate_text,
@@ -246,13 +238,6 @@ def _backfill_year(
     df, success_keywords = _add_translations_keywords_pt(df, translate_fn, detect_fn)
     translated_count = success_overview + success_tagline + success_keywords
     df["year"] = year
-
-    # Partições gravadas antes do rename para inglês ainda carregam o schema antigo
-    # (pt-BR) — como este script lê a partição inteira e só adiciona as colunas novas,
-    # sem isso as antigas seriam reescritas de volta e reintroduzidas no Glue Catalog
-    # via sincronização automática do awswrangler (ver
-    # shared_utils.traducao.LEGACY_TRANSLATION_COLUMNS).
-    df = df.drop(columns=[c for c in LEGACY_TRANSLATION_COLUMNS if c in df.columns])
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/"
     try:
