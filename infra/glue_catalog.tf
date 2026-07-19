@@ -80,6 +80,11 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
+      name = "overview_traduzido_pt_br"
+      type = "boolean"
+    }
+
+    columns {
       name = "backdrop_path"
       type = "string"
     }
@@ -191,6 +196,10 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
     columns {
       name = "overview_idioma_detectado"
       type = "string"
+    }
+    columns {
+      name = "overview_traduzido_pt_br"
+      type = "boolean"
     }
     columns {
       name = "popularity"
@@ -362,12 +371,16 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       type = "string"
     }
     columns {
-      name = "name_idioma_detectado"
+      name = "name_idioma_detectado_en"
       type = "string"
     }
     columns {
-      name = "name_traduzido_pt_br"
-      type = "boolean"
+      name = "name_idioma_detectado_pt"
+      type = "string"
+    }
+    columns {
+      name = "name_tentativas_traducao"
+      type = "int"
     }
   }
 }
@@ -409,12 +422,16 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
       type = "string"
     }
     columns {
-      name = "name_idioma_detectado"
+      name = "name_idioma_detectado_en"
       type = "string"
     }
     columns {
-      name = "name_traduzido_pt_br"
-      type = "boolean"
+      name = "name_idioma_detectado_pt"
+      type = "string"
+    }
+    columns {
+      name = "name_tentativas_traducao"
+      type = "int"
     }
   }
 }
@@ -591,28 +608,40 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "overview_idioma_detectado"
+      name = "overview_idioma_detectado_en"
       type = "string"
     }
     columns {
-      name = "overview_traduzido_pt_br"
-      type = "boolean"
-    }
-    columns {
-      name = "tagline_idioma_detectado"
+      name = "overview_idioma_detectado_pt"
       type = "string"
     }
     columns {
-      name = "tagline_traduzido_pt_br"
-      type = "boolean"
+      name = "overview_tentativas_traducao"
+      type = "int"
     }
     columns {
-      name = "keywords_idioma_detectado"
+      name = "tagline_idioma_detectado_en"
       type = "string"
     }
     columns {
-      name = "keywords_traduzido_pt_br"
-      type = "boolean"
+      name = "tagline_idioma_detectado_pt"
+      type = "string"
+    }
+    columns {
+      name = "tagline_tentativas_traducao"
+      type = "int"
+    }
+    columns {
+      name = "keywords_idioma_detectado_en"
+      type = "string"
+    }
+    columns {
+      name = "keywords_idioma_detectado_pt"
+      type = "string"
+    }
+    columns {
+      name = "keywords_tentativas_traducao"
+      type = "int"
     }
     columns {
       name = "dt_processamento"
@@ -799,28 +828,40 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "overview_idioma_detectado"
+      name = "overview_idioma_detectado_en"
       type = "string"
     }
     columns {
-      name = "overview_traduzido_pt_br"
-      type = "boolean"
-    }
-    columns {
-      name = "tagline_idioma_detectado"
+      name = "overview_idioma_detectado_pt"
       type = "string"
     }
     columns {
-      name = "tagline_traduzido_pt_br"
-      type = "boolean"
+      name = "overview_tentativas_traducao"
+      type = "int"
     }
     columns {
-      name = "keywords_idioma_detectado"
+      name = "tagline_idioma_detectado_en"
       type = "string"
     }
     columns {
-      name = "keywords_traduzido_pt_br"
-      type = "boolean"
+      name = "tagline_idioma_detectado_pt"
+      type = "string"
+    }
+    columns {
+      name = "tagline_tentativas_traducao"
+      type = "int"
+    }
+    columns {
+      name = "keywords_idioma_detectado_en"
+      type = "string"
+    }
+    columns {
+      name = "keywords_idioma_detectado_pt"
+      type = "string"
+    }
+    columns {
+      name = "keywords_tentativas_traducao"
+      type = "int"
     }
     columns {
       name = "dt_processamento"

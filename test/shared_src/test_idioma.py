@@ -62,3 +62,21 @@ class TestAddDetectedLanguageColumn:
         result = add_detected_language_column(df, "texto", "idioma_detectado", lambda t: "en")
         assert result is df
         assert "idioma_detectado" in df.columns
+
+    def test_only_missing_false_recalcula_todas_as_linhas(self):
+        df = pd.DataFrame({"texto": ["Hello", "Olá"], "idioma_detectado": ["antigo", "antigo"]})
+        result = add_detected_language_column(df, "texto", "idioma_detectado", lambda t: "novo", only_missing=False)
+        assert result["idioma_detectado"].tolist() == ["novo", "novo"]
+
+    def test_only_missing_true_preserva_linhas_ja_preenchidas(self):
+        df = pd.DataFrame({"texto": ["Hello", "Olá"], "idioma_detectado": ["en", None]})
+        chamados = []
+        detect_fn = lambda t: chamados.append(t) or "pt"  # noqa: E731
+        result = add_detected_language_column(df, "texto", "idioma_detectado", detect_fn, only_missing=True)
+        assert result["idioma_detectado"].tolist() == ["en", "pt"]
+        assert chamados == ["Olá"]
+
+    def test_only_missing_true_cria_coluna_ausente_e_detecta_tudo(self):
+        df = pd.DataFrame({"texto": ["Hello"]})
+        result = add_detected_language_column(df, "texto", "idioma_detectado", lambda t: "en", only_missing=True)
+        assert result["idioma_detectado"].tolist() == ["en"]

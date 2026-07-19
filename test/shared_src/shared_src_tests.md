@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`), `resolve_translate_fn`/`translate_in_parallel`/`translate_pending_column`/`is_translated_mask`/`make_capped_fallback`/`eligible_overview_pt`/`eligible_tagline_pt`/`eligible_keywords_pt` (`traducao.py`, a fachada que reexporta as duas funções de serviço), `detect_language_langdetect` (`idioma_langdetect.py`), `detect_language_aws` (`idioma_aws.py`) e `resolve_detect_language_fn`/`add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`, `langdetect`) são substituídas por **mocks** (exceto em testes-smoke pontuais de detecção real de idioma), mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`), `resolve_translate_fn`/`translate_in_parallel`/`resolve_pt_translation`/`make_capped_fallback` (`traducao.py`, a fachada que reexporta as duas funções de serviço), `detect_language_langdetect` (`idioma_langdetect.py`), `detect_language_aws` (`idioma_aws.py`) e `resolve_detect_language_fn`/`add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`, `langdetect`) são substituídas por **mocks** (exceto em testes-smoke pontuais de detecção real de idioma), mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -15,7 +15,7 @@ test/shared_src/
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_traducao_google.py # Testes de translate_text (Google Translate)
 ├── test_traducao_aws.py    # Testes de translate_text_aws (AWS Translate)
-├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, translate_pending_column, is_translated_mask e das máscaras elegivel_*
+├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, resolve_pt_translation e reuse_existing_translation
 ├── test_idioma_langdetect.py # Testes de detect_language_langdetect (langdetect, local)
 ├── test_idioma_aws.py      # Testes de detect_language_aws (AWS Comprehend)
 ├── test_idioma.py          # Testes de resolve_detect_language_fn e add_detected_language_column
@@ -155,23 +155,32 @@ chamador que faça patch da própria referência local (ex.:
 | `test_lista_vazia_nao_chama_traduzir_fn` | Lista vazia retorna `[]` sem chamar `translate_fn` |
 | `test_usa_max_workers_informado` | `max_workers` é repassado ao `ThreadPoolExecutor`, não hardcoded |
 
-### `TestTranslatePendingColumn`
+### `TestResolvePtTranslation`
 
-Orquestra a tradução de uma coluna: um registro é pulado quando `is_translated_mask`
-considera já traduzido (destino preenchido e diferente da fonte — nativo do TMDB ou run
-anterior do backfill), e retentado quando destino ficou igual à fonte (fallback de uma
-tradução que falhou — ver `translate_text`). Usada por `glue_details` e
-`scripts/backfill_traducao.py` em vez de cada um manter sua própria cópia da orquestração.
+Sincroniza a coluna de tradução (`target_column`, já inicializada pelo chamador) com a
+fonte: detecta o idioma da fonte e do resultado (só onde ainda vazio), copia a fonte
+direto quando ela já é `"pt"` (sem chamar tradutor), traduz as linhas elegíveis (fonte
+preenchida, idioma do resultado ainda diferente de `"pt"`, tentativas abaixo do teto),
+incrementa o contador de tentativas e redetecta o idioma do resultado só nas linhas
+recém-traduzidas. Basear a elegibilidade no idioma real do resultado — em vez da antiga
+heurística de string-diff — evita tanto retraduzir o que já está correto quanto deixar
+uma mistradução silenciosa (resultado diferente da fonte, mas em outro idioma que não
+`"pt"`) marcada como concluída para sempre. Usada por `glue_details`,
+`scripts/backfill_traducao.py` e `glue_etl` (`name_pt` de países/idiomas) em vez de cada
+um manter sua própria cópia da orquestração.
 
 | Teste | O que verifica |
 |---|---|
 | `test_traduz_registros_elegiveis_pendentes` | Traduz todos os registros elegíveis, gravando na coluna de destino |
-| `test_cria_coluna_destino_se_nao_existir` | Cria a coluna de destino como `None` quando ainda não existe no DataFrame |
-| `test_pula_registro_ja_traduzido_com_sucesso` | Destino preenchido e diferente da fonte: não chama `translate_fn` |
-| `test_retenta_quando_destino_igual_a_fonte` | Destino igual à fonte (fallback de falha anterior): é retentado |
-| `test_nao_elegivel_nao_e_traduzido` | Registros fora da máscara de elegibilidade não são traduzidos |
-| `test_mask_vazia_nao_chama_traduzir_fn` | Máscara vazia retorna `0` sem chamar `translate_fn` |
-| `test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original` | Resultado igual ao original (falha de `translate_fn`) não conta como sucesso |
+| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_tradutor` | Fonte já detectada como `"pt"` é copiada direto para o destino, sem chamar `translate_fn`, e o idioma do resultado é marcado `"pt"` diretamente |
+| `test_elegibilidade_usa_idioma_do_destino_nao_diff_de_string` | Um destino que difere da fonte mas cujo idioma detectado não é `"pt"` (mistradução silenciosa) continua elegível — diferente da antiga heurística de string-diff |
+| `test_nao_retraduz_quando_idioma_pt_ja_confirmado` | Destino cujo idioma já é `"pt"` não é reenviado ao tradutor |
+| `test_redetecta_idioma_pt_so_nas_linhas_recem_traduzidas` | A detecção do idioma do destino feita antes da tradução (sobre o valor antigo/vazio) é substituída só nas linhas efetivamente traduzidas nesta execução |
+| `test_incrementa_tentativas_para_linhas_elegiveis` | O contador de tentativas sobe 1 a cada execução para linhas elegíveis, mesmo quando a tradução falha |
+| `test_copia_direta_nao_incrementa_tentativas` | A cópia direta (fonte já `"pt"`) não conta como tentativa |
+| `test_esgota_tentativas_e_para_de_reenviar_ao_tradutor` | Ao atingir `max_tentativas`, a linha deixa de ser elegível mesmo com idioma do destino diferente de `"pt"` — protege contra retry infinito de conteúdo genuinamente não traduzível |
+| `test_cria_coluna_tentativas_como_zero_quando_ausente` | Cria a coluna de tentativas como `0` quando ainda não existe no DataFrame |
+| `test_only_missing_nao_recalcula_idioma_en_ja_preenchido` | Não redetecta o idioma da fonte quando a coluna já está preenchida (evita recomputar à toa em reruns) |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
 
 ### `TestReuseExistingTranslation`
@@ -195,45 +204,6 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_ids_duplicados_no_df_anterior_usa_ultimo` | Com chaves duplicadas em `previous_df`, usa o último valor |
 | `test_coluna_chave_customizada` | Funciona com `key_column="iso_3166_1"` (caso de uso do `glue_etl`) |
 | `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `previous_df` não reaproveita |
-
-### `TestEligibleOverviewPt` / `TestEligibleTaglinePt` / `TestEligibleKeywordsPt`
-
-As três máscaras (candidatos à tradução de `overview_pt`, `tagline_pt` e `keywords_pt`)
-compartilham a mesma regra: elegível quando o campo de origem está preenchido **e**
-`<campo>_idioma_detectado` (quando a coluna existir) é diferente de `"pt"` — a exclusão
-por idioma detectado evita reenviar ao Google/AWS um texto já confirmado em português
-(previne a retradução infinita de fontes sem tradução nativa do TMDB). `original_language`
-não é critério — é o idioma de produção original do título, não o idioma do texto
-retornado pela API, e não garante que o campo já esteja em português (ver docstring de
-`eligible_overview_pt` em `traducao.py`).
-
-| Teste | O que verifica |
-|---|---|
-| `test_elegivel_quando_overview_en_preenchido` (`TestEligibleOverviewPt`) | `overview_en` preenchido é elegível, para múltiplos registros |
-| `test_elegivel_mesmo_com_original_language_pt` (nas três classes) | `original_language == "pt"` continua elegível quando o campo de origem está preenchido — `original_language` não é critério |
-| `test_nao_elegivel_quando_overview_en_vazio_ou_nulo` (`TestEligibleOverviewPt`) | `overview_en` vazio/`None` não é elegível |
-| `test_nao_elegivel_quando_tagline_vazia_ou_nula` (`TestEligibleTaglinePt`) | `tagline` vazia/`None` não é elegível |
-| `test_nao_elegivel_quando_keywords_vazias_ou_nulas` (`TestEligibleKeywordsPt`) | `keywords` vazia/`None` não é elegível |
-| `test_nao_elegivel_quando_idioma_detectado_ja_e_pt` (nas três classes) | `<campo>_idioma_detectado == "pt"` exclui o registro do lote de tradução |
-| `test_elegivel_quando_coluna_idioma_detectado_nao_existe` (`TestEligibleOverviewPt`) | Compatibilidade: sem a coluna de idioma pré-computada, nada é excluído (comportamento igual ao anterior à detecção de idioma) |
-
-### `TestIsTranslatedMask`
-
-Extrai o predicado "já traduzido" usado internamente por `translate_pending_column`:
-`target_column` preenchida e diferente de `source_column`. Com `already_native_mask`
-informado, também conta como traduzido quando `target == source` mas a máscara é `True`
-— cobre o caso "fonte já era pt-BR, copiada direto sem chamar tradução" (ver
-`shared_utils.idioma`).
-
-| Teste | O que verifica |
-|---|---|
-| `test_true_quando_preenchido_e_diferente_da_fonte` | Destino preenchido e diferente da fonte conta como traduzido |
-| `test_false_quando_destino_vazio_ou_nulo` | Destino vazio/nulo não conta |
-| `test_false_quando_destino_igual_a_fonte` | Destino igual à fonte (falha de tradução) não conta |
-| `test_false_quando_coluna_destino_nao_existe` | Coluna de destino ausente no DataFrame não conta (sem levantar `KeyError`) |
-| `test_already_native_mask_true_conta_como_traduzido_mesmo_igual_a_fonte` | `already_native_mask=True` conta como traduzido mesmo com `target == source` |
-| `test_already_native_mask_false_nao_conta_quando_igual_a_fonte` | `already_native_mask=False` não altera o resultado (comportamento padrão) |
-| `test_already_native_mask_nao_afeta_quando_destino_vazio` | `already_native_mask=True` não faz um registro sem nenhuma tradução contar — destino ainda precisa estar preenchido |
 
 ## Casos de teste — `test_idioma_langdetect.py`
 
@@ -293,6 +263,9 @@ Comprehend, capado por `aws_fallback_max_chars` caracteres via `make_capped_fall
 | `test_nan_tratado_como_string_vazia` | `NaN`/`None` na coluna fonte é tratado como string vazia antes de chamar `detect_fn` |
 | `test_default_detect_fn_usado_quando_nao_informado` | Sem `detect_fn` explícito, usa `resolve_detect_language_fn()` (langdetect real) |
 | `test_modifica_df_in_place_e_retorna_mesma_referencia` | Modifica o DataFrame in-place e retorna a mesma referência |
+| `test_only_missing_false_recalcula_todas_as_linhas` | `only_missing=False` (default) recalcula todas as linhas, mesmo já preenchidas — comportamento idêntico ao anterior |
+| `test_only_missing_true_preserva_linhas_ja_preenchidas` | `only_missing=True` só detecta onde a coluna de destino ainda está vazia/nula |
+| `test_only_missing_true_cria_coluna_ausente_e_detecta_tudo` | `only_missing=True` com a coluna de destino ainda ausente detecta todas as linhas normalmente |
 
 ## Como executar
 

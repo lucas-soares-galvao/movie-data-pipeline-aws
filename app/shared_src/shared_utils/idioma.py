@@ -73,19 +73,20 @@ def add_detected_language_column(
     source_column: str,
     target_column: str,
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    only_missing: bool = False,
 ) -> pd.DataFrame:
     """
     Adiciona target_column ao DataFrame com o idioma detectado de source_column.
 
     Aplica detect_fn (default: resolve_detect_language_fn(), langdetect com fallback
     AWS Comprehend) a cada valor de source_column, tratando nulo/NaN como string
-    vazia (mesmo tratamento já usado em translate_pending_column). Sem
+    vazia (mesmo tratamento já usado em resolve_pt_translation). Sem
     ThreadPoolExecutor: a maioria das chamadas é local/CPU-bound (langdetect); o
     fallback AWS é raro o bastante (só quando o local falha) para não justificar
     paralelismo.
 
     detect_fn é recebido como parâmetro (em vez de resolvido aqui dentro) pelo mesmo
-    motivo de translate_pending_column: os chamadores continuam passando sua própria
+    motivo de resolve_pt_translation: os chamadores continuam passando sua própria
     referência local — a mesma que seus testes fazem mock.
 
     Args:
@@ -94,10 +95,23 @@ def add_detected_language_column(
         target_column: Nome da coluna a preencher com o código de idioma detectado.
         detect_fn:     Função (texto) -> idioma detectado (ou None). Por padrão usa
                        resolve_detect_language_fn().
+        only_missing:  Quando True, só detecta para linhas onde target_column ainda
+                       está vazia/nula, preservando valores já calculados em execuções
+                       anteriores (evita recomputar à toa, e reenviar caracteres ao
+                       fallback pago do AWS Comprehend, para o que já foi detectado).
 
     Returns:
         df com target_column adicionada (também modificado in-place).
     """
-    fn = detect_fn or resolve_detect_language_fn()
-    df[target_column] = df[source_column].fillna("").apply(fn)
+    if target_column not in df.columns:
+        df[target_column] = None
+
+    if only_missing:
+        pending_mask = df[target_column].isna() | (df[target_column] == "")
+    else:
+        pending_mask = pd.Series(True, index=df.index)
+
+    if pending_mask.any():
+        fn = detect_fn or resolve_detect_language_fn()
+        df.loc[pending_mask, target_column] = df.loc[pending_mask, source_column].fillna("").apply(fn)
     return df
