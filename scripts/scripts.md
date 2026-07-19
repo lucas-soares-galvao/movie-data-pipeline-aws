@@ -17,13 +17,14 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); dispara o Glue Details diretamente, que traduz via `TRANSLATE_PROVIDER` (default `google`) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
+| `backfill_rename_colunas.py` | Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para `processed_date`/`updated_date` nos parquets de details/watch_providers já gravados no S3 — sem chamar a API do TMDB, cobre inclusive IDs que já saíram do discover atual | S3 (direto) | awswrangler, pandas |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
-por todos os 5 scripts acima: leitura de variável de ambiente obrigatória,
+por todos os 6 scripts acima: leitura de variável de ambiente obrigatória,
 setup de logging, invocação síncrona da Lambda API, payloads base de
 movie/tv, leitura do range de anos, proteção de custo do AWS Translate por
 intervalo de anos (`apply_translate_cost_guard`), wrapper de retry do exit
-code 75 e, para os 4 scripts que iteram por ano (todos exceto
+code 75 e, para os 5 scripts que iteram por ano (todos exceto
 `backfill_referencias.py`), o checkpoint de retomada automática (ver seção
 "Retomada automática" abaixo).
 
@@ -61,18 +62,22 @@ Todos os scripts aceitam, **exceto `backfill_referencias.py`** (que não depende
 | `BACKFILL_START_YEAR` | `2000` | Ano inicial do backfill |
 | `BACKFILL_END_YEAR` | ano atual | Ano final do backfill |
 
-Os 4 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimento.py`,
-`backfill_data_quality.py`, `backfill_traducao.py`) também exigem:
+Os 5 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimento.py`,
+`backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`) também exigem:
 
 | Variável | Descrição |
 |---|---|
-| `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`) |
+| `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas`) |
 | `S3_BUCKET_TEMP` | Bucket onde o checkpoint é armazenado (dados temporários, não os dados reais do pipeline) |
 
 `backfill_traducao.py` exige adicionalmente `S3_BUCKET_SOT`, usado para ler e
 escrever os parquets reais de `tb_discover_movie/tv_tmdb` e
 `tb_details_movie/tv_tmdb` — separado do checkpoint, que fica no bucket TEMP
 como os demais.
+
+`backfill_rename_colunas.py` também exige `S3_BUCKET_SOT` (mesmo motivo) e,
+adicionalmente, `TABLE_WATCH_PROVIDERS_MOVIE`/`TABLE_WATCH_PROVIDERS_TV` (além
+de `TABLE_DETAILS_MOVIE`/`TABLE_DETAILS_TV`, já usadas por `backfill_traducao.py`).
 
 Todos os backfills que traduzem (`backfill_historico.py` e
 `backfill_referencias.py`, via `backfill_shared.build_base_payloads()`;
@@ -108,7 +113,7 @@ Cada script possui variáveis adicionais documentadas em sua docstring.
 
 ## Retomada automática (token expirado)
 
-Os 4 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou
+Os 5 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou
 tabela+ano), um checkpoint em
 `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (ver
 `scripts/backfill_shared.py`). Se a credencial AWS expirar no meio do
