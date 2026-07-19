@@ -2,14 +2,14 @@
 backfill_enriquecimento.py — Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords, etc.)
 
 Dispara o Glue Details para cada ano/media_type, aproveitando que o delta mensal
-(dt_processamento >= date_trunc('month', current_date)) considera IDs de meses
+(processed_date >= date_trunc('month', current_date)) considera IDs de meses
 anteriores como stale — portanto todos os IDs serão re-buscados com os novos campos
 do append_to_response (credits, keywords, release_dates, videos, external_ids).
 
 Pré-requisitos:
   1. Terraform apply já executado com os novos schemas no Glue Catalog
   2. Código do Glue Details atualizado no S3 (deploy via CI ou manual)
-  3. Rodar preferencialmente no início do mês (quando NENHUM ID tem dt_processamento no mês atual)
+  3. Rodar preferencialmente no início do mês (quando NENHUM ID tem processed_date no mês atual)
 
 Uso:
     python scripts/backfill_enriquecimento.py

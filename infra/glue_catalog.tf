@@ -656,7 +656,7 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "boolean"
     }
     columns {
-      name = "dt_processamento"
+      name = "processed_date"
       type = "date"
     }
   }
@@ -888,7 +888,7 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "boolean"
     }
     columns {
-      name = "dt_processamento"
+      name = "processed_date"
       type = "date"
     }
   }
@@ -940,7 +940,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "dt_atualizacao"
+      name = "updated_date"
       type = "date"
     }
   }
@@ -988,7 +988,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "dt_atualizacao"
+      name = "updated_date"
       type = "date"
     }
   }

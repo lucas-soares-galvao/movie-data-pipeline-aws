@@ -89,8 +89,8 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `collect_and_write_watch_providers(ids, ...)` | Faz chamadas paralelas e grava tabela de watch providers |
 | `_repair_partition_duplicates(...)` | Implementação compartilhada pelos três `repair_*` abaixo: lê a partição `year` via S3, aplica `drop_duplicates` com a chave/critério de desempate recebidos como parâmetro e regrava apenas se houver mudanças |
 | `repair_discover_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro de maior `popularity` e regrava apenas se houver mudanças |
-| `repair_watch_providers_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id, provider_type, provider_id)` mantendo o `dt_atualizacao` mais recente e regrava apenas se houver mudanças |
-| `repair_details_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro com `dt_processamento` mais recente e regrava apenas se houver mudanças |
+| `repair_watch_providers_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id, provider_type, provider_id)` mantendo o `updated_date` mais recente e regrava apenas se houver mudanças |
+| `repair_details_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro com `processed_date` mais recente e regrava apenas se houver mudanças |
 
 ## Funções compartilhadas (`shared_utils/`)
 
