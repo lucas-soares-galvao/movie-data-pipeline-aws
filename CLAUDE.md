@@ -4,7 +4,9 @@ Pipeline de engenharia de dados serverless na AWS que coleta, transforma, valida
 
 ## Idioma
 
-Projeto inteiramente em **português**: código, comentários, commits, documentação e nomes de variáveis descritivas.
+Prosa em **português**: comentários, docstrings, commits e documentação (`.md`).
+
+Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis, funções e parâmetros — ficam em **inglês**. Exceção: nomes de método de teste (`test_*`) continuam descritivos em português, no mesmo estilo de toda a suíte — funcionam como especificação do comportamento testado, não como identificador técnico.
 
 ## Convenções de Desenvolvimento
 

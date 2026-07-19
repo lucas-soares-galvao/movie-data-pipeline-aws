@@ -39,8 +39,9 @@ _AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
 # Teto de tentativas de tradução por linha antes de desistir dela (ver
 # resolve_pt_translation). Sem esse teto, conteúdo genuinamente não traduzível (nomes
 # próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
-# idioma_pt_column == "pt" e seria reenviado ao Google/AWS a cada execução, para sempre.
-_MAX_TENTATIVAS_TRADUCAO_DEFAULT = 3
+# detected_language_pt_column == "pt" e seria reenviado ao Google/AWS a cada execução,
+# para sempre.
+_MAX_TRANSLATION_ATTEMPTS_DEFAULT = 3
 
 
 def make_capped_fallback(
@@ -178,22 +179,22 @@ def translate_in_parallel(
 def _detect_missing(
     df: pd.DataFrame,
     text_column: str,
-    idioma_column: str,
+    language_column: str,
     detect_fn: Callable[[str], Optional[str]],
 ) -> pd.DataFrame:
-    """Detecta o idioma de text_column em idioma_column, só para linhas onde
-    idioma_column ainda está vazia/nula — evita redetectar (e reenviar caracteres ao
+    """Detecta o idioma de text_column em language_column, só para linhas onde
+    language_column ainda está vazia/nula — evita redetectar (e reenviar caracteres ao
     fallback pago do AWS Comprehend) o que já foi calculado numa execução anterior.
 
     Equivalente a shared_utils.idioma.add_detected_language_column(only_missing=True),
     duplicado aqui (em vez de importado) para não criar import circular: idioma.py já
     importa make_capped_fallback deste módulo.
     """
-    if idioma_column not in df.columns:
-        df[idioma_column] = None
-    pending = df[idioma_column].isna() | (df[idioma_column] == "")
+    if language_column not in df.columns:
+        df[language_column] = None
+    pending = df[language_column].isna() | (df[language_column] == "")
     if pending.any():
-        df.loc[pending, idioma_column] = df.loc[pending, text_column].fillna("").apply(detect_fn)
+        df.loc[pending, language_column] = df.loc[pending, text_column].fillna("").apply(detect_fn)
     return df
 
 
@@ -201,87 +202,105 @@ def resolve_pt_translation(
     df: pd.DataFrame,
     source_column: str,
     target_column: str,
-    idioma_en_column: str,
-    idioma_pt_column: str,
-    tentativas_column: str,
+    detected_language_en_column: str,
+    detected_language_pt_column: str,
+    translation_attempts_column: str,
     detect_fn: Callable[[str], Optional[str]],
     translate_fn: Callable[[str], str],
     max_workers: int = 10,
-    max_tentativas: int = _MAX_TENTATIVAS_TRADUCAO_DEFAULT,
+    max_attempts: int = _MAX_TRANSLATION_ATTEMPTS_DEFAULT,
+    needs_translation_column: Optional[str] = None,
 ) -> "tuple[pd.DataFrame, int]":
     """
     Sincroniza target_column (já inicializada pelo chamador — nativo do TMDB, cache
-    reaproveitado ou vazia) com source_column, mantendo idioma_en_column/
-    idioma_pt_column como o idioma real detectado da fonte e do resultado,
+    reaproveitado ou vazia) com source_column, mantendo detected_language_en_column/
+    detected_language_pt_column como o idioma real detectado da fonte e do resultado,
     respectivamente — em vez da antiga heurística de string-diff, que não
     distinguia "não precisava traduzir" de "tradução falhou silenciosamente".
 
-    Passos: (1) detecta idioma_en_column a partir de source_column, só onde ainda
-    vazia; (2) detecta idioma_pt_column a partir do valor atual de target_column, só
-    onde ainda vazia — cobre tradução nativa/cache já presentes antes desta chamada;
-    (3) atalho de cópia direta: fonte já detectada como "pt" e target_column ainda
-    vazia → copia sem chamar tradutor e marca idioma_pt_column="pt" direto; (4)
-    elegível para o tradutor = fonte preenchida E idioma_pt_column != "pt" E
-    tentativas_column < max_tentativas; (5) traduz as linhas elegíveis; (6)
-    incrementa tentativas_column para as linhas elegíveis desta execução; (7)
-    redetecta idioma_pt_column só nas linhas recém-traduzidas (a detecção do passo 2,
-    nelas, ficou obsoleta).
+    Passos: (1) detecta detected_language_en_column a partir de source_column, só onde
+    ainda vazia; (2) detecta detected_language_pt_column a partir do valor atual de
+    target_column, só onde ainda vazia — cobre tradução nativa/cache já presentes antes
+    desta chamada; (3) atalho de cópia direta: fonte já detectada como "pt" e
+    target_column ainda vazia → copia sem chamar tradutor e marca
+    detected_language_pt_column="pt" direto; (4) elegível para o tradutor = fonte
+    preenchida E detected_language_pt_column != "pt" E translation_attempts_column <
+    max_attempts; (5) traduz as linhas elegíveis; (6) incrementa
+    translation_attempts_column para as linhas elegíveis desta execução; (7) redetecta
+    detected_language_pt_column só nas linhas recém-traduzidas (a detecção do passo 2,
+    nelas, ficou obsoleta); (8) se needs_translation_column for informado, grava nela
+    fonte preenchida E detected_language_pt_column != "pt" — ao contrário da
+    elegibilidade do passo 4, propositalmente SEM o teto de tentativas: reflete se o
+    dado, como está agora, ainda não está em português, mesmo que o pipeline já tenha
+    desistido de retentar essa linha.
 
-    tentativas_column existe porque conteúdo genuinamente não traduzível (nomes
-    próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
-    idioma_pt_column == "pt" e seria retentado para sempre sem um teto.
+    translation_attempts_column existe porque conteúdo genuinamente não traduzível
+    (nomes próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
+    detected_language_pt_column == "pt" e seria retentado para sempre sem um teto.
 
     Args:
         df:                Dataframe a atualizar (modificado in-place).
         source_column:     Coluna de texto original (ex.: "overview_en").
         target_column:     Coluna de tradução, já inicializada pelo chamador.
-        idioma_en_column:  Coluna com o idioma detectado de source_column.
-        idioma_pt_column:  Coluna com o idioma detectado de target_column.
-        tentativas_column: Contador de tentativas de tradução por linha; criado
-                           como 0 se ausente em df.
+        detected_language_en_column: Coluna com o idioma detectado de source_column.
+        detected_language_pt_column: Coluna com o idioma detectado de target_column.
+        translation_attempts_column: Contador de tentativas de tradução por linha;
+                           criado como 0 se ausente em df.
         detect_fn:         Função (texto) -> idioma detectado (ou None).
         translate_fn:      Função (texto) -> texto traduzido.
         max_workers:       Threads concorrentes usadas na tradução.
-        max_tentativas:    Teto de tentativas antes de desistir de uma linha.
+        max_attempts:      Teto de tentativas antes de desistir de uma linha.
+        needs_translation_column: Se informado, nome da coluna booleana a gravar com
+                           "fonte preenchida E detected_language_pt_column != 'pt'"
+                           (estado atual do dado, sem considerar o teto de tentativas).
+                           Se None (default), nenhuma coluna é criada — usado pelos
+                           chamadores que não precisam desse sinal (ex.: tabela
+                           configuration).
 
     Returns:
         Tupla (df, quantidade traduzida com sucesso nesta chamada).
     """
-    if tentativas_column not in df.columns:
-        df[tentativas_column] = 0
+    if translation_attempts_column not in df.columns:
+        df[translation_attempts_column] = 0
 
-    df = _detect_missing(df, source_column, idioma_en_column, detect_fn)
-    df = _detect_missing(df, target_column, idioma_pt_column, detect_fn)
+    df = _detect_missing(df, source_column, detected_language_en_column, detect_fn)
+    df = _detect_missing(df, target_column, detected_language_pt_column, detect_fn)
 
     target_empty = df[target_column].isna() | (df[target_column] == "")
-    direct_copy_mask = target_empty & (df[idioma_en_column] == "pt")
+    direct_copy_mask = target_empty & (df[detected_language_en_column] == "pt")
     df.loc[direct_copy_mask, target_column] = df.loc[direct_copy_mask, source_column]
-    df.loc[direct_copy_mask, idioma_pt_column] = "pt"
+    df.loc[direct_copy_mask, detected_language_pt_column] = "pt"
 
     has_source = df[source_column].notna() & (df[source_column] != "")
-    already_pt = df[idioma_pt_column] == "pt"
-    esgotado = df[tentativas_column] >= max_tentativas
-    eligible_mask = has_source & ~already_pt & ~esgotado
+    already_pt = df[detected_language_pt_column] == "pt"
+    attempts_exhausted = df[translation_attempts_column] >= max_attempts
+    eligible_mask = has_source & ~already_pt & ~attempts_exhausted
 
     logger.info(
         f"Traduzindo até {eligible_mask.sum()} registros para '{target_column}' "
         f"({max_workers} workers)..."
     )
     if not eligible_mask.any():
+        if needs_translation_column:
+            df[needs_translation_column] = has_source & (df[detected_language_pt_column] != "pt")
         return df, 0
 
     values = df.loc[eligible_mask, source_column].fillna("").tolist()
     translated = translate_in_parallel(values, translate_fn, max_workers=max_workers)
     df.loc[eligible_mask, target_column] = translated
-    df.loc[eligible_mask, tentativas_column] = df.loc[eligible_mask, tentativas_column] + 1
+    df.loc[eligible_mask, translation_attempts_column] = df.loc[eligible_mask, translation_attempts_column] + 1
 
-    sucesso = sum(1 for original, result in zip(values, translated) if original and result != original)
-    logger.info(f"{sucesso} registros traduzidos com sucesso ({target_column}).")
+    success_count = sum(1 for original, result in zip(values, translated) if original and result != original)
+    logger.info(f"{success_count} registros traduzidos com sucesso ({target_column}).")
 
-    df.loc[eligible_mask, idioma_pt_column] = (
+    df.loc[eligible_mask, detected_language_pt_column] = (
         df.loc[eligible_mask, target_column].fillna("").apply(detect_fn)
     )
-    return df, sucesso
+
+    if needs_translation_column:
+        df[needs_translation_column] = has_source & (df[detected_language_pt_column] != "pt")
+
+    return df, success_count
 
 
 def reuse_existing_translation(

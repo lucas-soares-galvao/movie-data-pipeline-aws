@@ -180,18 +180,18 @@ Translate por intervalo de anos (ver `backfill_shared.apply_translate_cost_guard
 
 ## Casos de teste — `test_backfill_traducao.py`
 
-Retry/backoff da tradução em si (`translate_text`, 5 tentativas com backoff) é coberto em `test/shared_src/test_traducao_google.py` — o script apenas importa e usa a função do módulo compartilhado, sem lógica própria de retry. O mesmo vale para a escolha de serviço via `TRANSLATE_PROVIDER` (`resolve_translate_fn`, default `"google"`, testado em `test/shared_src/test_traducao.py`) — `_adicionar_traducoes_*` e `_backfill_year` só recebem e repassam o `traduzir_fn` já resolvido por `main()`.
+Retry/backoff da tradução em si (`translate_text`, 5 tentativas com backoff) é coberto em `test/shared_src/test_traducao_google.py` — o script apenas importa e usa a função do módulo compartilhado, sem lógica própria de retry. O mesmo vale para a escolha de serviço via `TRANSLATE_PROVIDER` (`resolve_translate_fn`, default `"google"`, testado em `test/shared_src/test_traducao.py`) — `_add_translations_*` e `_backfill_year` só recebem e repassam o `translate_fn` já resolvido por `main()`.
 
 Detecção de idioma (`langdetect` com fallback AWS Comprehend — ver
 `shared_utils.idioma`) é aplicada, via `shared_utils.traducao.resolve_pt_translation`,
-antes de qualquer tradução nas três colunas: grava `<campo>_idioma_detectado_en` a
-partir da fonte e `<campo>_idioma_detectado_pt` a partir do resultado final em
+antes de qualquer tradução nas três colunas: grava `<campo>_detected_language_en` a
+partir da fonte e `<campo>_detected_language_pt` a partir do resultado final em
 `<campo>_pt`. Quando a fonte já é detectada como `"pt"`, copia direto para
 `<campo>_pt` sem chamar `translate_text`. A elegibilidade para tradução usa o idioma
 detectado do **resultado** (não uma comparação de string com a fonte): fonte
-preenchida, `<campo>_idioma_detectado_pt != "pt"` e `<campo>_tentativas_traducao`
+preenchida, `<campo>_detected_language_pt != "pt"` e `<campo>_translation_attempts`
 abaixo do teto (protege contra retry infinito de conteúdo genuinamente não
-traduzível). A maioria dos testes abaixo fixa `detectar_fn` explicitamente (às vezes
+traduzível). A maioria dos testes abaixo fixa `detect_fn` explicitamente (às vezes
 como um mapa de texto→idioma) para isolar do comportamento real do `langdetect`
 (textos curtos como "Falhou" ou "Ja traduzido antes" podem ser detectados de forma
 pouco confiável).
@@ -204,15 +204,17 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 
 | Teste | O que verifica |
 |---|---|
-| `test_todos_overview_en_vazios_nao_chama_traducao` | `_adicionar_traducoes_pt` não chama `translate_text` quando `overview_en` está vazio/nulo em todos os registros; `overview_idioma_detectado_pt` fica nulo |
+| `test_todos_overview_en_vazios_nao_chama_traducao` | `_add_translations_pt` não chama `translate_text` quando `overview_en` está vazio/nulo em todos os registros; `overview_detected_language_pt` fica nulo |
 | `test_traduz_independente_do_idioma_original` | Traduz todo registro com `overview_en` preenchido, inclusive `original_language == "pt"` |
-| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | Contagem de sucesso ignora registros em que `translate_text` devolveu o texto original (fallback de falha); `overview_idioma_detectado_pt` reflete `"pt"`/diferente por registro |
+| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | Contagem de sucesso ignora registros em que `translate_text` devolveu o texto original (fallback de falha); `overview_detected_language_pt` reflete `"pt"`/diferente por registro |
 | `test_pula_registros_ja_traduzidos_com_sucesso` | Registro com `overview_pt` já preenchido e cujo idioma detectado já é `"pt"` não é retraduzido; valor existente é preservado |
 | `test_retenta_registro_cujo_overview_pt_ficou_igual_ao_original` | `overview_pt == overview_en` (fallback de falha de um run anterior, idioma detectado não é `"pt"`) é tratado como pendente e re-tentado |
 | `test_ignora_registros_com_overview_en_vazio` | Registros com `overview_en` vazio/`None` não entram na contagem de elegíveis |
 | `test_todos_ja_traduzidos_nao_chama_traducao` | Quando todos os registros já têm `overview_pt` cujo idioma detectado é `"pt"`, `translate_text` não é chamado |
-| `test_idioma_detectado_en_calculado_a_partir_da_fonte` | `overview_idioma_detectado_en` chama `detectar_fn` com `overview_en` |
-| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `overview_pt`, sem chamar `translate_text`; `overview_idioma_detectado_pt` fica `"pt"` |
+| `test_idioma_detectado_en_calculado_a_partir_da_fonte` | `overview_detected_language_en` chama `detect_fn` com `overview_en` |
+| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `overview_pt`, sem chamar `translate_text`; `overview_detected_language_pt` fica `"pt"` |
+| `test_overview_precisa_traducao_true_quando_traducao_falha` | `overview_needs_translation` é `True` quando a tradução falha (resultado igual ao original) |
+| `test_overview_precisa_traducao_false_quando_ja_em_portugues` | `overview_needs_translation` é `False` quando a fonte já é detectada como `"pt"` (cópia direta) |
 
 ### `TestAdicionarTraducoesTaglinePt`
 
@@ -222,8 +224,10 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_traduz_independente_do_idioma_original` | Traduz todo registro com `tagline` preenchida, inclusive `original_language == "pt"` |
 | `test_pula_registros_ja_traduzidos` | `tagline_pt` já preenchido e cujo idioma detectado já é `"pt"` não é retraduzido |
 | `test_retenta_registro_cujo_tagline_pt_ficou_igual_ao_original` | `tagline_pt == tagline` (fallback de falha anterior, idioma detectado não é `"pt"`) é tratado como pendente |
-| `test_guard_de_schema_legado_nao_cria_colunas_novas` | Partição sem a coluna `tagline` (schema antigo) não ganha `tagline_idioma_detectado_en`/`_pt`/`tagline_tentativas_traducao` — mesmo guard já existente (`return df, 0` antecipado) |
+| `test_guard_de_schema_legado_nao_cria_colunas_novas` | Partição sem a coluna `tagline` (schema antigo) não ganha `tagline_detected_language_en`/`_pt`/`tagline_translation_attempts`/`tagline_needs_translation` — mesmo guard já existente (`return df, 0` antecipado) |
 | `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `tagline_pt`, sem chamar `translate_text` |
+| `test_tagline_precisa_traducao_true_quando_traducao_falha` | `tagline_needs_translation` é `True` quando a tradução falha |
+| `test_tagline_precisa_traducao_false_quando_ja_em_portugues` | `tagline_needs_translation` é `False` quando a fonte já é detectada como `"pt"` (cópia direta) |
 
 ### `TestAdicionarTraducoesKeywordsPt`
 
@@ -232,8 +236,10 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_sem_keywords_nao_chama_traducao` | Não traduz quando `keywords` é nula/vazia |
 | `test_traduz_independente_do_idioma_original` | Traduz todo registro com `keywords` preenchida, inclusive `original_language == "pt"` — TMDB não localiza keywords por idioma |
 | `test_pula_registros_ja_traduzidos` | `keywords_pt` já preenchido e cujo idioma detectado já é `"pt"` não é retraduzido |
-| `test_guard_de_schema_legado_nao_cria_colunas_novas` | Partição sem a coluna `keywords` não ganha `keywords_idioma_detectado_en`/`_pt`/`keywords_tentativas_traducao` |
+| `test_guard_de_schema_legado_nao_cria_colunas_novas` | Partição sem a coluna `keywords` não ganha `keywords_detected_language_en`/`_pt`/`keywords_translation_attempts`/`keywords_needs_translation` |
 | `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `keywords_pt`, sem chamar `translate_text` |
+| `test_keywords_precisa_traducao_true_quando_traducao_falha` | `keywords_needs_translation` é `True` quando a tradução falha |
+| `test_keywords_precisa_traducao_false_quando_ja_em_portugues` | `keywords_needs_translation` é `False` quando a fonte já é detectada como `"pt"` (cópia direta) |
 
 ### `TestBackfillYear`
 
@@ -251,10 +257,10 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 |---|---|
 | `test_backfill_year_chamado_para_cada_ano_e_tipo` / `test_alterna_movie_e_tv_por_ano` / `test_nao_pausa_apos_ultima_chamada` | Orquestração de `main()` (via mock de `_backfill_year`) |
 | `test_loga_total_de_traduzidos_com_sucesso_acumulado` | O log final soma os traduzidos com sucesso de cada partição (`_backfill_year` retorna `(escreveu, traduzidos)`), não a quantidade de partições |
-| `test_translate_provider_default_google` | `traduzir_fn` repassado a `_backfill_year` usa Google como primário (default) |
-| `test_translate_provider_aws_explicito_janela_de_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo de 1 ano: `traduzir_fn` usa AWS como primário |
+| `test_translate_provider_default_google` | `translate_fn` repassado a `_backfill_year` usa Google como primário (default) |
+| `test_translate_provider_aws_explicito_janela_de_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo de 1 ano: `translate_fn` usa AWS como primário |
 | `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo maior que 1 ano: rebaixado para Google como primário (`backfill_shared.apply_translate_cost_guard`) |
-| `test_traduzir_fn_tem_orcamento_independente_por_particao` | `traduzir_fn` é recriado a cada partição (ano+tipo) — o orçamento de fallback ao AWS Translate de uma partição não é consumido pela anterior |
+| `test_traduzir_fn_tem_orcamento_independente_por_particao` | `translate_fn` é recriado a cada partição (ano+tipo) — o orçamento de fallback ao AWS Translate de uma partição não é consumido pela anterior |
 | `test_translate_provider_invalido_levanta_erro` | `TRANSLATE_PROVIDER` fora de `"google"`/`"aws"` propaga o `ValueError` de `resolve_translate_fn` |
 
 ### `TestErros`
