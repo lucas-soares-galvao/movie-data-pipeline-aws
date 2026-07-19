@@ -1173,14 +1173,10 @@ class TestCollectAndWriteDetails:
             "overview_en": "", "overview_pt": "",
             "poster_path_en": "", "backdrop_path_en": "",
             "dt_processamento": "2023-01-01",
-            # Geração intermediária (idioma da fonte/resultado separados + teto de tentativas)
             "overview_idioma_detectado_en": "en",
             "overview_idioma_detectado_pt": "en",
             "overview_tentativas_traducao": 1,
             "overview_precisa_traducao": True,
-            # Geração mais antiga (mesmo padrão simples ainda usado por tb_discover_movie/tv)
-            "tagline_idioma_detectado": "en",
-            "tagline_traduzido_pt_br": False,
         }])
 
         with (
@@ -1197,8 +1193,6 @@ class TestCollectAndWriteDetails:
             assert "overview_idioma_detectado_pt" not in df_written.columns
             assert "overview_tentativas_traducao" not in df_written.columns
             assert "overview_precisa_traducao" not in df_written.columns
-            assert "tagline_idioma_detectado" not in df_written.columns
-            assert "tagline_traduzido_pt_br" not in df_written.columns
             # ID 99 (preservado) continua na escrita, só perde as colunas legadas
             assert set(df_written["id"].tolist()) == {1, 99}
 
