@@ -1163,6 +1163,39 @@ class TestCollectAndWriteDetails:
             # ID 99 (existente, nao no batch) deve ser preservado junto com o novo ID 1
             assert set(df_written["id"].tolist()) == {1, 99}
 
+    def test_descarta_colunas_legadas_de_registros_preservados(self):
+        """Registros preservados (fora do delta) de partições gravadas antes do
+        rename para inglês ainda podem carregar o schema antigo (pt-BR) — essas
+        colunas não devem sobreviver ao merge, senão o awswrangler as reintroduz
+        no Glue Catalog (ver shared_utils.traducao.LEGACY_TRANSLATION_COLUMNS)."""
+        existing_df = pd.DataFrame([{
+            "id": 99, "runtime": 120, "year": "2023",
+            "overview_en": "", "overview_pt": "",
+            "poster_path_en": "", "backdrop_path_en": "",
+            "dt_processamento": "2023-01-01",
+            "overview_idioma_detectado_en": "en",
+            "overview_idioma_detectado_pt": "en",
+            "overview_tentativas_traducao": 1,
+            "overview_precisa_traducao": True,
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_movie_response(1)),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+            df_written = mock_write.call_args.kwargs["df"]
+
+            assert "overview_idioma_detectado_en" not in df_written.columns
+            assert "overview_idioma_detectado_pt" not in df_written.columns
+            assert "overview_tentativas_traducao" not in df_written.columns
+            assert "overview_precisa_traducao" not in df_written.columns
+            # ID 99 (preservado) continua na escrita, só perde as colunas legadas
+            assert set(df_written["id"].tolist()) == {1, 99}
+
     def test_overwrites_id_already_in_batch(self):
         """Se um ID existente esta sendo re-escrito, o registro antigo e substituido."""
         existing_df = pd.DataFrame([{
