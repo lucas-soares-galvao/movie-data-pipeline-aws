@@ -364,18 +364,18 @@ class TestAddTranslationsOverviewPt:
         assert result["overview_pt"].iloc[0] == "[PT] Same text"
 
     def test_idioma_detectado_en_calculado_a_partir_da_fonte(self):
-        """overview_idioma_detectado_en usa detect_fn sobre overview_en (a fonte)."""
+        """overview_detected_language_en usa detect_fn sobre overview_en (a fonte)."""
         df = pd.DataFrame({
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
         detect_fn = MagicMock(side_effect=lambda t: {"A great movie": "en", "Um grande filme": "pt"}.get(t))
         result = u._add_translations_pt(df, detect_fn=lambda t: detect_fn(t))
-        assert result["overview_idioma_detectado_en"].iloc[0] == "en"
+        assert result["overview_detected_language_en"].iloc[0] == "en"
         detect_fn.assert_any_call("A great movie")
 
     def test_idioma_detectado_pt_calculado_a_partir_do_resultado(self):
-        """overview_idioma_detectado_pt usa detect_fn sobre o valor final de
+        """overview_detected_language_pt usa detect_fn sobre o valor final de
         overview_pt (nativo do TMDB neste caso), não sobre overview_en."""
         df = pd.DataFrame({
             "overview_en": ["A great movie"],
@@ -383,30 +383,30 @@ class TestAddTranslationsOverviewPt:
         })
         detect_fn = lambda t: {"A great movie": "en", "Um grande filme": "pt"}.get(t)  # noqa: E731
         result = u._add_translations_pt(df, detect_fn=detect_fn)
-        assert result["overview_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
 
     def test_idioma_detectado_en_none_quando_fonte_vazia(self):
         df = pd.DataFrame({"overview_en": [None], "overview_pt_tmdb": [None]})
         result = u._add_translations_pt(df, detect_fn=lambda t: "en" if t else None)
-        assert pd.isna(result["overview_idioma_detectado_en"].iloc[0])
+        assert pd.isna(result["overview_detected_language_en"].iloc[0])
 
     def test_idioma_detectado_pt_none_quando_destino_vazio(self):
         df = pd.DataFrame({"overview_en": [None], "overview_pt_tmdb": [None]})
         result = u._add_translations_pt(df, detect_fn=lambda t: "en" if t else None)
-        assert pd.isna(result["overview_idioma_detectado_pt"].iloc[0])
+        assert pd.isna(result["overview_detected_language_pt"].iloc[0])
 
     def test_idioma_detectado_pt_e_pt_apos_sucesso_google(self):
         df = pd.DataFrame({"overview_en": ["A great movie"], "overview_pt_tmdb": [None]})
         detect_fn = lambda t: "pt" if t.startswith("[PT]") else ("en" if t else None)  # noqa: E731
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = u._add_translations_pt(df, detect_fn=detect_fn)
-        assert result["overview_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
 
     def test_idioma_detectado_pt_nao_e_pt_quando_traducao_falha(self):
         df = pd.DataFrame({"overview_en": ["Falhou"], "overview_pt_tmdb": [None]})
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
             result = u._add_translations_pt(df, detect_fn=lambda t: "en" if t else None)
-        assert result["overview_idioma_detectado_pt"].iloc[0] != "pt"
+        assert result["overview_detected_language_pt"].iloc[0] != "pt"
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
         """Otimização: se overview_en já está em português (idioma detectado 'pt') e
@@ -420,8 +420,23 @@ class TestAddTranslationsOverviewPt:
         with patch("src.utils.translate_text", translate_fn):
             result = u._add_translations_pt(df, detect_fn=lambda t: "pt")
         assert result["overview_pt"].iloc[0] == "Já em português"
-        assert result["overview_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
+
+    def test_overview_precisa_traducao_true_quando_traducao_falha(self):
+        df = pd.DataFrame({"overview_en": ["Falhou"], "overview_pt_tmdb": [None]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
+            result = u._add_translations_pt(df, detect_fn=lambda t: "en" if t else None)
+        assert bool(result["overview_needs_translation"].iloc[0]) is True
+
+    def test_overview_precisa_traducao_false_quando_ja_em_portugues(self):
+        df = pd.DataFrame({
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": ["Um grande filme"],
+        })
+        detect_fn = lambda t: "pt" if t == "Um grande filme" else "en"  # noqa: E731
+        result = u._add_translations_pt(df, detect_fn=detect_fn)
+        assert bool(result["overview_needs_translation"].iloc[0]) is False
 
 
 class TestAddTranslationsKeywordsPt:
@@ -444,13 +459,13 @@ class TestAddTranslationsKeywordsPt:
         df = pd.DataFrame({"keywords": [None]})
         result = u._add_translations_keywords_pt(df, detect_fn=lambda t: None)
         assert pd.isna(result["keywords_pt"].iloc[0])
-        assert pd.isna(result["keywords_idioma_detectado_pt"].iloc[0])
+        assert pd.isna(result["keywords_detected_language_pt"].iloc[0])
 
     def test_idioma_detectado_en_calculado_a_partir_da_fonte(self):
         df = pd.DataFrame({"keywords": ["ação, suspense"]})
         detect_fn = MagicMock(side_effect=lambda t: "pt" if t == "ação, suspense" else None)
         result = u._add_translations_keywords_pt(df, detect_fn=lambda t: detect_fn(t))
-        assert result["keywords_idioma_detectado_en"].iloc[0] == "pt"
+        assert result["keywords_detected_language_en"].iloc[0] == "pt"
         detect_fn.assert_any_call("ação, suspense")
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
@@ -459,8 +474,19 @@ class TestAddTranslationsKeywordsPt:
         with patch("src.utils.translate_text", translate_fn):
             result = u._add_translations_keywords_pt(df, detect_fn=lambda t: "pt")
         assert result["keywords_pt"].iloc[0] == "ação, suspense"
-        assert result["keywords_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["keywords_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
+
+    def test_keywords_precisa_traducao_true_quando_traducao_falha(self):
+        df = pd.DataFrame({"keywords": ["action, drama"]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
+            result = u._add_translations_keywords_pt(df, detect_fn=lambda t: "en")
+        assert bool(result["keywords_needs_translation"].iloc[0]) is True
+
+    def test_keywords_precisa_traducao_false_quando_vazias(self):
+        df = pd.DataFrame({"keywords": [None]})
+        result = u._add_translations_keywords_pt(df, detect_fn=lambda t: None)
+        assert bool(result["keywords_needs_translation"].iloc[0]) is False
 
 
 class TestAddTranslationsTaglinePt:
@@ -489,7 +515,7 @@ class TestAddTranslationsTaglinePt:
         })
         result = u._add_translations_tagline_pt(df, detect_fn=lambda t: None)
         assert result["tagline_pt"].isna().all()
-        assert result["tagline_idioma_detectado_pt"].isna().all()
+        assert result["tagline_detected_language_pt"].isna().all()
 
     def test_traduz_mesmo_com_idioma_original_pt(self):
         df = pd.DataFrame({
@@ -521,8 +547,23 @@ class TestAddTranslationsTaglinePt:
         with patch("src.utils.translate_text", translate_fn):
             result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "pt")
         assert result["tagline_pt"].iloc[0] == "Já em português"
-        assert result["tagline_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["tagline_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
+
+    def test_tagline_precisa_traducao_true_quando_traducao_falha(self):
+        df = pd.DataFrame({"tagline": ["Failed"], "tagline_pt_tmdb": [None]})
+        with patch("src.utils.translate_text", side_effect=lambda t, **kw: t):
+            result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en" if t else None)
+        assert bool(result["tagline_needs_translation"].iloc[0]) is True
+
+    def test_tagline_precisa_traducao_false_quando_ja_em_portugues(self):
+        df = pd.DataFrame({
+            "tagline": ["A great movie"],
+            "tagline_pt_tmdb": ["Um grande filme"],
+        })
+        detect_fn = lambda t: "pt" if t == "Um grande filme" else "en"  # noqa: E731
+        result = u._add_translations_tagline_pt(df, detect_fn=detect_fn)
+        assert bool(result["tagline_needs_translation"].iloc[0]) is False
 
 
 class TestExtractProductionCountriesIso:
@@ -963,18 +1004,18 @@ class TestCollectAndWriteDetails:
             assert "editor" in df_written.columns
             assert "production_countries" in df_written.columns
             assert "production_countries_iso" in df_written.columns
-            assert "overview_idioma_detectado_en" in df_written.columns
-            assert "overview_idioma_detectado_pt" in df_written.columns
-            assert "overview_tentativas_traducao" in df_written.columns
-            assert "tagline_idioma_detectado_en" in df_written.columns
-            assert "tagline_idioma_detectado_pt" in df_written.columns
-            assert "tagline_tentativas_traducao" in df_written.columns
-            assert "keywords_idioma_detectado_en" in df_written.columns
-            assert "keywords_idioma_detectado_pt" in df_written.columns
-            assert "keywords_tentativas_traducao" in df_written.columns
-            assert "overview_traduzido_pt_br" not in df_written.columns
-            assert "tagline_traduzido_pt_br" not in df_written.columns
-            assert "keywords_traduzido_pt_br" not in df_written.columns
+            assert "overview_detected_language_en" in df_written.columns
+            assert "overview_detected_language_pt" in df_written.columns
+            assert "overview_translation_attempts" in df_written.columns
+            assert "tagline_detected_language_en" in df_written.columns
+            assert "tagline_detected_language_pt" in df_written.columns
+            assert "tagline_translation_attempts" in df_written.columns
+            assert "keywords_detected_language_en" in df_written.columns
+            assert "keywords_detected_language_pt" in df_written.columns
+            assert "keywords_translation_attempts" in df_written.columns
+            assert "overview_translated_pt_br" not in df_written.columns
+            assert "tagline_translated_pt_br" not in df_written.columns
+            assert "keywords_translated_pt_br" not in df_written.columns
             assert df_written["collection_name_pt"].iloc[0] == "Os Vingadores"
             assert df_written["production_countries_iso"].iloc[0] == ["US"]
             assert df_written["recommended_ids"].iloc[0] == "901"
@@ -1025,18 +1066,18 @@ class TestCollectAndWriteDetails:
             assert "similar_titles" in df_written.columns
             assert "similar_ids" in df_written.columns
             assert "alternative_titles" in df_written.columns
-            assert "overview_idioma_detectado_en" in df_written.columns
-            assert "overview_idioma_detectado_pt" in df_written.columns
-            assert "overview_tentativas_traducao" in df_written.columns
-            assert "tagline_idioma_detectado_en" in df_written.columns
-            assert "tagline_idioma_detectado_pt" in df_written.columns
-            assert "tagline_tentativas_traducao" in df_written.columns
-            assert "keywords_idioma_detectado_en" in df_written.columns
-            assert "keywords_idioma_detectado_pt" in df_written.columns
-            assert "keywords_tentativas_traducao" in df_written.columns
-            assert "overview_traduzido_pt_br" not in df_written.columns
-            assert "tagline_traduzido_pt_br" not in df_written.columns
-            assert "keywords_traduzido_pt_br" not in df_written.columns
+            assert "overview_detected_language_en" in df_written.columns
+            assert "overview_detected_language_pt" in df_written.columns
+            assert "overview_translation_attempts" in df_written.columns
+            assert "tagline_detected_language_en" in df_written.columns
+            assert "tagline_detected_language_pt" in df_written.columns
+            assert "tagline_translation_attempts" in df_written.columns
+            assert "keywords_detected_language_en" in df_written.columns
+            assert "keywords_detected_language_pt" in df_written.columns
+            assert "keywords_translation_attempts" in df_written.columns
+            assert "overview_translated_pt_br" not in df_written.columns
+            assert "tagline_translated_pt_br" not in df_written.columns
+            assert "keywords_translated_pt_br" not in df_written.columns
             assert df_written["recommended_ids"].iloc[0] == "903"
             assert df_written["similar_ids"].iloc[0] == "904"
 

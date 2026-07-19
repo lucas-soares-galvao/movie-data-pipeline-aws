@@ -165,7 +165,10 @@ incrementa o contador de tentativas e redetecta o idioma do resultado só nas li
 recém-traduzidas. Basear a elegibilidade no idioma real do resultado — em vez da antiga
 heurística de string-diff — evita tanto retraduzir o que já está correto quanto deixar
 uma mistradução silenciosa (resultado diferente da fonte, mas em outro idioma que não
-`"pt"`) marcada como concluída para sempre. Usada por `glue_details`,
+`"pt"`) marcada como concluída para sempre. Se `needs_translation_column` for informado,
+grava também um booleano com "fonte preenchida E idioma do resultado != `pt`" — mesmo
+critério da elegibilidade, mas sem o teto de tentativas, refletindo o estado atual do
+dado mesmo quando o pipeline já desistiu de retentar. Usada por `glue_details`,
 `scripts/backfill_traducao.py` e `glue_etl` (`name_pt` de países/idiomas) em vez de cada
 um manter sua própria cópia da orquestração.
 
@@ -178,10 +181,15 @@ um manter sua própria cópia da orquestração.
 | `test_redetecta_idioma_pt_so_nas_linhas_recem_traduzidas` | A detecção do idioma do destino feita antes da tradução (sobre o valor antigo/vazio) é substituída só nas linhas efetivamente traduzidas nesta execução |
 | `test_incrementa_tentativas_para_linhas_elegiveis` | O contador de tentativas sobe 1 a cada execução para linhas elegíveis, mesmo quando a tradução falha |
 | `test_copia_direta_nao_incrementa_tentativas` | A cópia direta (fonte já `"pt"`) não conta como tentativa |
-| `test_esgota_tentativas_e_para_de_reenviar_ao_tradutor` | Ao atingir `max_tentativas`, a linha deixa de ser elegível mesmo com idioma do destino diferente de `"pt"` — protege contra retry infinito de conteúdo genuinamente não traduzível |
+| `test_esgota_tentativas_e_para_de_reenviar_ao_tradutor` | Ao atingir `max_attempts`, a linha deixa de ser elegível mesmo com idioma do destino diferente de `"pt"` — protege contra retry infinito de conteúdo genuinamente não traduzível |
 | `test_cria_coluna_tentativas_como_zero_quando_ausente` | Cria a coluna de tentativas como `0` quando ainda não existe no DataFrame |
 | `test_only_missing_nao_recalcula_idioma_en_ja_preenchido` | Não redetecta o idioma da fonte quando a coluna já está preenchida (evita recomputar à toa em reruns) |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
+| `test_precisa_traducao_column_none_nao_cria_coluna` | Parâmetro `needs_translation_column` omitido (`None`, default) não cria coluna nova no DataFrame |
+| `test_precisa_traducao_true_quando_resultado_ainda_nao_e_pt` | Fonte preenchida e idioma do resultado ainda diferente de `"pt"` após a tentativa de tradução → `True` |
+| `test_precisa_traducao_false_quando_resultado_ja_e_pt` | Fonte já detectada como `"pt"` (cópia direta) → `False` |
+| `test_precisa_traducao_false_quando_fonte_vazia` | Fonte vazia/nula → `False` (nada a traduzir) |
+| `test_precisa_traducao_continua_true_mesmo_com_tentativas_esgotadas` | Diferente da elegibilidade, continua `True` mesmo após `translation_attempts_column` atingir `max_attempts` — reflete o estado atual do dado, não se o pipeline ainda vai retentar |
 
 ### `TestReuseExistingTranslation`
 

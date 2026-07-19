@@ -68,7 +68,7 @@ class TestReadFromSorDiscover:
             )
 
     def test_overview_idioma_detectado_calculado_a_partir_do_overview(self):
-        """overview_idioma_detectado é só diagnóstico (não há tradução no discover —
+        """overview_detected_language é só diagnóstico (não há tradução no discover —
         o overview já vem pt-BR nativo do TMDB via lambda_api, ver read_from_sor)."""
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
         detect_fn = MagicMock(return_value="pt")
@@ -76,32 +76,32 @@ class TestReadFromSorDiscover:
             result = read_from_sor(
                 "my-sor", "movie", "discover", year="2023", detect_fn=lambda t: detect_fn(t)
             )
-        assert result["overview_idioma_detectado"].iloc[0] == "pt"
+        assert result["overview_detected_language"].iloc[0] == "pt"
         detect_fn.assert_called_once_with("Sinopse")
 
     def test_overview_traduzido_pt_br_derivado_do_idioma_detectado(self):
-        """overview_traduzido_pt_br é um booleano puramente derivado de
-        overview_idioma_detectado — não há tradução nem chamada de API extra
+        """overview_translated_pt_br é um booleano puramente derivado de
+        overview_detected_language — não há tradução nem chamada de API extra
         no discover (ver read_from_sor)."""
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
         with patch("awswrangler.s3.read_json", return_value=df_mock):
             result = read_from_sor("my-sor", "movie", "discover", year="2023", detect_fn=lambda t: "pt")
-        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is True
+        assert bool(result["overview_translated_pt_br"].iloc[0]) is True
 
     def test_overview_traduzido_pt_br_false_quando_idioma_nao_e_pt(self):
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
         with patch("awswrangler.s3.read_json", return_value=df_mock):
             result = read_from_sor("my-sor", "movie", "discover", year="2023", detect_fn=lambda t: "en")
-        assert bool(result["overview_traduzido_pt_br"].iloc[0]) is False
+        assert bool(result["overview_translated_pt_br"].iloc[0]) is False
 
     def test_sem_overview_nao_cria_coluna_de_idioma(self):
         """Guard de schema: se a coluna overview não existir (fixture mínima/legado),
-        overview_idioma_detectado e overview_traduzido_pt_br não são criadas."""
+        overview_detected_language e overview_translated_pt_br não são criadas."""
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}])
         with patch("awswrangler.s3.read_json", return_value=df_mock):
             result = read_from_sor("my-sor", "movie", "discover", year="2023")
-        assert "overview_idioma_detectado" not in result.columns
-        assert "overview_traduzido_pt_br" not in result.columns
+        assert "overview_detected_language" not in result.columns
+        assert "overview_translated_pt_br" not in result.columns
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ class TestAddNamePtCountries:
         detect_fn = MagicMock(side_effect=lambda t: "en" if t == "Japan" else "pt")
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df, detect_fn=lambda t: detect_fn(t))
-        assert result["name_idioma_detectado_en"].iloc[0] == "en"
+        assert result["name_detected_language_en"].iloc[0] == "en"
         detect_fn.assert_any_call("Japan")
 
     def test_idioma_detectado_pt_e_pt_apos_sucesso(self):
@@ -320,13 +320,13 @@ class TestAddNamePtCountries:
         detect_fn = lambda t: "pt" if t.startswith("[PT]") else "en"  # noqa: E731
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df, detect_fn=detect_fn)
-        assert result["name_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["name_detected_language_pt"].iloc[0] == "pt"
 
     def test_idioma_detectado_pt_ausente_quando_fonte_ausente(self):
         df = pd.DataFrame({"iso_3166_1": ["BR"], "native_name": ["Brasil"]})
         result = _add_name_pt_countries(df)
-        assert "name_idioma_detectado_pt" not in result.columns
-        assert "name_tentativas_traducao" not in result.columns
+        assert "name_detected_language_pt" not in result.columns
+        assert "name_translation_attempts" not in result.columns
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
         """Impacto prático baixo (english_name é sempre nome próprio em inglês), mas
@@ -336,7 +336,7 @@ class TestAddNamePtCountries:
         with patch("src.utils.translate_text", translate_fn):
             result = _add_name_pt_countries(df, detect_fn=lambda t: "pt")
         assert result["name_pt"].iloc[0] == "Nome já em português"
-        assert result["name_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["name_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
 
 
@@ -387,7 +387,7 @@ class TestAddNamePtLanguages:
         detect_fn = MagicMock(side_effect=lambda t: "en" if t == "English" else "pt")
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_languages(df, detect_fn=lambda t: detect_fn(t))
-        assert result["name_idioma_detectado_en"].iloc[0] == "en"
+        assert result["name_detected_language_en"].iloc[0] == "en"
         detect_fn.assert_any_call("English")
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
@@ -396,7 +396,7 @@ class TestAddNamePtLanguages:
         with patch("src.utils.translate_text", translate_fn):
             result = _add_name_pt_languages(df, detect_fn=lambda t: "pt")
         assert result["name_pt"].iloc[0] == "Nome já em português"
-        assert result["name_idioma_detectado_pt"].iloc[0] == "pt"
+        assert result["name_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
 
 
