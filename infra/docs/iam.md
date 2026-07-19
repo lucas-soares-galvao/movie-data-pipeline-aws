@@ -50,8 +50,8 @@ O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava,
 |---|---|
 | `tmdb-backfill-invoke-lambda-{env}` | `lambda:InvokeFunction` restrito à Lambda API (`backfill_historico.py`, `backfill_referencias.py`) |
 | `tmdb-backfill-glue-jobs-{env}` | `glue:StartJobRun`/`GetJobRun` restrito aos jobs Details e Data Quality (`backfill_enriquecimento.py`, `backfill_data_quality.py`) |
-| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `tmdb/backfill_checkpoints/*` no bucket TEMP (todos os scripts, exceto `backfill_referencias.py`) e às tabelas discover/details movie/tv no bucket SOT (`backfill_traducao.py`) |
-| `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas details movie/tv — usado implicitamente pelo `awswrangler` em `backfill_traducao.py` |
+| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `tmdb/backfill_checkpoints/*` no bucket TEMP (todos os scripts, exceto `backfill_referencias.py`) e às tabelas discover/details movie/tv (`backfill_traducao.py`) e details/watch_providers movie/tv (`backfill_rename_colunas.py`) no bucket SOT |
+| `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas details e watch_providers movie/tv — usado implicitamente pelo `awswrangler` em `backfill_traducao.py` e `backfill_rename_colunas.py` |
 
 Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token OIDC também por branch (`ref:refs/heads/develop` em dev, `ref:refs/heads/main` em prod, casando com a resolução de ambiente feita pelo próprio `05_backfill.yml`), não só por repositório — reforço de segurança possível porque é uma role nova, sem histórico de uso a preservar.
 
