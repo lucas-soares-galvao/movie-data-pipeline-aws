@@ -150,7 +150,7 @@ def fetch_existing_ids_from_details(
     # IDs de meses anteriores são stale e voltam para re-fetch no dia 1.
     query = (
         f"SELECT DISTINCT id FROM {database}.{table_details} "
-        f"WHERE dt_processamento >= date_trunc('month', current_date)"
+        f"WHERE processed_date >= date_trunc('month', current_date)"
     )
 
     logger.info(f"Verificando IDs já processados em '{table_details}' (mês atual, todas as partições year)...")
@@ -182,7 +182,7 @@ def fetch_ids_stale_watch_providers(
     """
     Retorna IDs do discover que precisam de atualização de watch providers.
 
-    Inclui: sem registro, com dt_atualizacao nulo (migração) ou desatualizado antes do mês atual.
+    Inclui: sem registro, com updated_date nulo (migração) ou desatualizado antes do mês atual.
 
     Args:
         database:              Nome do banco de dados no Glue Catalog.
@@ -203,8 +203,8 @@ def fetch_ids_stale_watch_providers(
         WHERE d.year = '{year}'
           AND (
               wp.id IS NULL
-              OR wp.dt_atualizacao IS NULL
-              OR wp.dt_atualizacao < date_trunc('month', current_date)
+              OR wp.updated_date IS NULL
+              OR wp.updated_date < date_trunc('month', current_date)
           )
     """
 
@@ -551,7 +551,7 @@ def _common_fields(detail: dict, content_type: str) -> dict:
         "alternative_titles":       _extract_alternative_titles(detail.get("alternative_titles", {}), content_type),
         "overview_pt_tmdb":         pt_br_translation["overview_pt_tmdb"],
         "tagline_pt_tmdb":          pt_br_translation["tagline_pt_tmdb"],
-        "dt_processamento":         date.today(),
+        "processed_date":           date.today(),
     }
 
 
@@ -981,7 +981,7 @@ def repair_details_duplicates(
     Remove IDs duplicados da partição year atual da tabela de detalhes.
 
     Lê diretamente a partição do ano corrente, aplica drop_duplicates pelo id mais recente
-    (dt_processamento DESC) e grava de volta apenas se houver mudanças.
+    (processed_date DESC) e grava de volta apenas se houver mudanças.
     Deve ser chamado no final do ciclo (year == end_year) para cada media_type.
 
     Args:
@@ -992,7 +992,7 @@ def repair_details_duplicates(
         year:           Ano da partição a reparar.
     """
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/"
-    _repair_partition_duplicates(s3_path, database, table_details, year, "dt_processamento", ["id"])
+    _repair_partition_duplicates(s3_path, database, table_details, year, "processed_date", ["id"])
 
 
 def repair_discover_duplicates(
@@ -1029,7 +1029,7 @@ def repair_watch_providers_duplicates(
 
     Duplicatas são definidas pela chave (id, provider_type, provider_id) — provider_id
     é o identificador canônico estável do TMDB e não muda com rebranding de provedores.
-    Mantém o registro com dt_atualizacao mais recente.
+    Mantém o registro com updated_date mais recente.
     Deve ser chamado no final do ciclo (year == end_year) para cada media_type.
 
     Args:
@@ -1041,7 +1041,7 @@ def repair_watch_providers_duplicates(
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_watch_providers}/"
     _repair_partition_duplicates(
         s3_path, database, table_watch_providers, year,
-        "dt_atualizacao", ["id", "provider_type", "provider_id"],
+        "updated_date", ["id", "provider_type", "provider_id"],
     )
 
 
@@ -1077,7 +1077,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
         year:    Ano de partição.
 
     Returns:
-        Lista de registros com: id, provider_type, provider_id, provider_name, dt_atualizacao, year.
+        Lista de registros com: id, provider_type, provider_id, provider_name, updated_date, year.
     """
     records = []
     for provider_type in ("flatrate", "rent", "buy"):
@@ -1090,7 +1090,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
                 "provider_type":  provider_type,
                 "provider_id":    p.get("provider_id"),
                 "provider_name":  name,
-                "dt_atualizacao": date.today(),
+                "updated_date":   date.today(),
                 "year":           year,
             })
     return records

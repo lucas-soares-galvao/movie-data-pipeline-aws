@@ -116,7 +116,7 @@ genre_names AS (
 -- overview_pt é a tradução pt-BR gravada pelo Glue Details (nativa do TMDB, cache do S3 ou
 -- Google/AWS Translate — qualquer original_language, ver shared_utils/traducao.py).
 -- ROW_NUMBER() deduplica IDs que aparecem mais de uma vez (cada refresh mensal insere novas linhas
--- via append); ORDER BY dt_processamento DESC mantém o registro mais recente.
+-- via append); ORDER BY processed_date DESC mantém o registro mais recente.
 movie_details_ranked AS (
     SELECT id, runtime, overview_en, overview_pt, poster_path_en, backdrop_path_en,
         tagline, tagline_pt, status, collection_id, collection_name, collection_name_pt,
@@ -128,7 +128,7 @@ movie_details_ranked AS (
         keywords, keywords_pt, certification,
         trailer_url, imdb_id, origin_country,
         recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
-        ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
+        ROW_NUMBER() OVER (PARTITION BY id ORDER BY processed_date DESC) AS rn
     FROM {db_movie}.{tb_details_movie}
 ),
 
@@ -150,7 +150,7 @@ movie_details AS (
 -- Quantidade de temporadas, episódios e duração média por episódio das séries.
 -- element_at(episode_run_time, 1) pega o primeiro valor do array retornado pelo TMDB
 -- (a API geralmente retorna um único elemento com a duração padrão do episódio).
--- Mesmo padrão de deduplicação por dt_processamento DESC que movie_details_ranked acima.
+-- Mesmo padrão de deduplicação por processed_date DESC que movie_details_ranked acima.
 tv_details_ranked AS (
     SELECT
         id,
@@ -166,7 +166,7 @@ tv_details_ranked AS (
         producer, cinematographer, editor,
         keywords, keywords_pt, certification, trailer_url, imdb_id,
         recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
-        ROW_NUMBER() OVER (PARTITION BY id ORDER BY dt_processamento DESC) AS rn
+        ROW_NUMBER() OVER (PARTITION BY id ORDER BY processed_date DESC) AS rn
     FROM {db_tv}.{tb_details_tv}
 ),
 
