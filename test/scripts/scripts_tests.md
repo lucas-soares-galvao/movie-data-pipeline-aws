@@ -257,6 +257,8 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | Teste | O que verifica |
 |---|---|
 | `test_backfill_year_chamado_para_cada_ano_e_tipo` / `test_alterna_movie_e_tv_por_ano` / `test_nao_pausa_apos_ultima_chamada` | Orquestração de `main()` (via mock de `_backfill_year`) |
+| `test_nao_pausa_quando_particao_nao_traduziu_nada` | `translated_count == 0` (partição vazia/já 100% traduzida, sem chamada de API) não paga a pausa de `BACKFILL_WAIT_SECONDS` — evita desperdiçar tempo num backfill de anos antigos ou de range grande |
+| `test_pausa_apenas_apos_particoes_que_traduziram_algo` | Mistura de partições com e sem tradução: pausa só depois das que traduziram algo, nunca depois da última |
 | `test_loga_total_de_traduzidos_com_sucesso_acumulado` | O log final soma os traduzidos com sucesso de cada partição (`_backfill_year` retorna `(escreveu, traduzidos)`), não a quantidade de partições |
 | `test_translate_provider_default_google` | `translate_fn` repassado a `_backfill_year` usa Google como primário (default) |
 | `test_translate_provider_aws_explicito_janela_de_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo de 1 ano: `translate_fn` usa AWS como primário |
