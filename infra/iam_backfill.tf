@@ -106,8 +106,10 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
 
 # =============================================================================
 # POLICY 3 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
-# backfill_referencias.py) e tabelas discover/details movie/tv no bucket SOT
-# (backfill_traducao.py, via awswrangler)
+# backfill_referencias.py), tabelas discover/details movie/tv no bucket SOT
+# (backfill_traducao.py, via awswrangler) e tabelas details/watch_providers
+# movie/tv no bucket SOT (backfill_rename_colunas.py, via awswrangler —
+# details já coberto pela mesma resource de backfill_traducao.py acima)
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_s3" {
   name = "${local.tmdb_prefix}-backfill-s3-${var.env}"
@@ -131,6 +133,8 @@ resource "aws_iam_role_policy" "backfill_s3" {
               "tmdb/${aws_glue_catalog_table.tb_tv_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_details_movie_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_details_tv_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}/*",
             ]
           }
         }
@@ -180,15 +184,29 @@ resource "aws_iam_role_policy" "backfill_s3" {
           "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_details_tv_tmdb.name}/*",
         ]
       },
+      {
+        Sid    = "ReadWriteWatchProvidersForRenameColunas"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = [
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}/*",
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}/*",
+        ]
+      },
     ]
   })
 }
 
 # =============================================================================
-# POLICY 4 — Glue Data Catalog (só backfill_traducao.py, via chamadas
-# implícitas do awswrangler: GetTable/GetPartitions ao ler,
+# POLICY 4 — Glue Data Catalog (backfill_traducao.py e backfill_rename_colunas.py,
+# via chamadas implícitas do awswrangler: GetTable/GetPartitions ao ler,
 # BatchCreatePartition/BatchDeletePartition/UpdateTable ao escrever com
-# mode="overwrite_partitions"). Restrito às 2 tabelas de details.
+# mode="overwrite_partitions"). Restrito às tabelas de details e watch_providers
+# — mesmas databases (movie/tv), por isso sem ARNs de database adicionais.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_glue_catalog" {
   name = "${local.tmdb_prefix}-backfill-glue-catalog-${var.env}"
@@ -213,6 +231,8 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
         "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}",
         "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_details_movie_tmdb.name}",
         "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_details_tv_tmdb.name}",
+        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}",
+        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}",
       ]
     }]
   })
