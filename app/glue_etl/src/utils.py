@@ -142,8 +142,8 @@ def _add_translation(
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt,
-    junto com name_idioma_detectado_en, name_idioma_detectado_pt e
-    name_tentativas_traducao.
+    junto com name_detected_language_en, name_detected_language_pt e
+    name_translation_attempts.
 
     Antes de traduzir, reaproveita name_pt já existente em previous_df quando
     english_name não mudou desde a última execução (ver reuse_existing_translation em
@@ -167,8 +167,8 @@ def _add_translation(
                       None). Por padrão usa resolve_detect_language_fn().
 
     Returns:
-        DataFrame com as colunas name_idioma_detectado_en, name_idioma_detectado_pt,
-        name_pt e name_tentativas_traducao adicionadas.
+        DataFrame com as colunas name_detected_language_en, name_detected_language_pt,
+        name_pt e name_translation_attempts adicionadas.
     """
     if "english_name" not in df.columns:
         return df
@@ -191,9 +191,9 @@ def _add_translation(
         df,
         source_column="english_name",
         target_column="name_pt",
-        idioma_en_column="name_idioma_detectado_en",
-        idioma_pt_column="name_idioma_detectado_pt",
-        tentativas_column="name_tentativas_traducao",
+        detected_language_en_column="name_detected_language_en",
+        detected_language_pt_column="name_detected_language_pt",
+        translation_attempts_column="name_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=fn,
         max_workers=1,
@@ -264,11 +264,11 @@ def read_from_sor(
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
 
     discover: lê pasta inteira com wr.s3.read_json, adiciona coluna year, remove
-        duplicatas por id, e adiciona overview_idioma_detectado e
-        overview_traduzido_pt_br (diagnóstico — o overview já vem em pt-BR nativo
+        duplicatas por id, e adiciona overview_detected_language e
+        overview_translated_pt_br (diagnóstico — o overview já vem em pt-BR nativo
         do TMDB via lambda_api, sem etapa de tradução; as colunas só sinalizam se
-        o TMDB de fato devolveu o texto em português; overview_idioma_detectado é
-        usada como gate em glue_agg, overview_traduzido_pt_br é só um booleano
+        o TMDB de fato devolveu o texto em português; overview_detected_language é
+        usada como gate em glue_agg, overview_translated_pt_br é só um booleano
         derivado dela, sem chamada de tradução).
     watch_providers_ref: lê arquivo único, deriva canonical_name.
     genre: lê arquivo único diretamente.
@@ -286,8 +286,8 @@ def read_from_sor(
                        relevante para table_type="configuration". Se omitido, a
                        tradução roda sem cache (comportamento anterior).
         table_name:    Nome da tabela configuration no Glue Catalog; ver s3_bucket_sot.
-        detect_fn:     Função de detecção de idioma usada em name_idioma_detectado_en/
-                       name_idioma_detectado_pt (configuration) e overview_idioma_detectado
+        detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
+                       name_detected_language_pt (configuration) e overview_detected_language
                        (discover). Por padrão usa resolve_detect_language_fn().
 
     Returns:
@@ -301,8 +301,8 @@ def read_from_sor(
         df["year"] = year
         df = df.drop_duplicates(subset=["id"])
         if "overview" in df.columns:
-            df = add_detected_language_column(df, "overview", "overview_idioma_detectado", detect_fn)
-            df["overview_traduzido_pt_br"] = df["overview_idioma_detectado"] == "pt"
+            df = add_detected_language_column(df, "overview", "overview_detected_language", detect_fn)
+            df["overview_translated_pt_br"] = df["overview_detected_language"] == "pt"
 
     elif table_type == "now_playing":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")

@@ -330,7 +330,7 @@ class TestResolvePtTranslation:
 
         df, sucesso = resolve_pt_translation(
             df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
-            "overview_tentativas", lambda t: "en", traduzir_fn, max_tentativas=3,
+            "overview_tentativas", lambda t: "en", traduzir_fn, max_attempts=3,
         )
 
         assert sucesso == 0
@@ -375,3 +375,72 @@ class TestResolvePtTranslation:
                 "overview_tentativas", lambda t: "en", MagicMock(), max_workers=3,
             )
         assert mock_paralelo.call_args.kwargs["max_workers"] == 3
+
+    def test_precisa_traducao_column_none_nao_cria_coluna(self):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en", traduzir_fn,
+        )
+
+        assert "overview_needs_translation" not in df.columns
+
+    def test_precisa_traducao_true_quando_resultado_ainda_nao_e_pt(self):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        traduzir_fn = MagicMock(side_effect=lambda t: t)  # tradução "falha" (devolve igual)
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en", traduzir_fn,
+            needs_translation_column="overview_needs_translation",
+        )
+
+        assert df["overview_needs_translation"].tolist() == [True]
+
+    def test_precisa_traducao_false_quando_resultado_ja_e_pt(self):
+        df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": [None]})
+        traduzir_fn = MagicMock()
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "pt", traduzir_fn,
+            needs_translation_column="overview_needs_translation",
+        )
+
+        assert df["overview_needs_translation"].tolist() == [False]
+
+    def test_precisa_traducao_false_quando_fonte_vazia(self):
+        df = pd.DataFrame({"overview_en": [None], "overview_pt": [None]})
+        traduzir_fn = MagicMock()
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: None, traduzir_fn,
+            needs_translation_column="overview_needs_translation",
+        )
+
+        assert df["overview_needs_translation"].tolist() == [False]
+
+    def test_precisa_traducao_continua_true_mesmo_com_tentativas_esgotadas(self):
+        """Diferente da elegibilidade (que para de tentar), a coluna de estado
+        continua True: o campo ainda não está em português, mesmo que o pipeline
+        já tenha desistido de reenviar essa linha ao tradutor."""
+        df = pd.DataFrame({
+            "overview_en": ["Iron Man"],
+            "overview_pt": ["Iron Man"],
+            "overview_idioma_pt": ["en"],
+            "overview_tentativas": [3],
+        })
+        traduzir_fn = MagicMock()
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en", traduzir_fn, max_attempts=3,
+            needs_translation_column="overview_needs_translation",
+        )
+
+        assert sucesso == 0
+        traduzir_fn.assert_not_called()
+        assert df["overview_needs_translation"].tolist() == [True]

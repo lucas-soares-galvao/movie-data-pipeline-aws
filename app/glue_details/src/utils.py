@@ -668,15 +668,17 @@ def _add_translations_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> pd.DataFrame:
     """
-    Adiciona as colunas overview_idioma_detectado_en, overview_idioma_detectado_pt,
-    overview_pt e overview_tentativas_traducao ao DataFrame de detalhes.
+    Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
+    overview_pt, overview_translation_attempts e overview_needs_translation ao
+    DataFrame de detalhes.
 
     Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb) e, em seguida, reaproveita
     a tradução já existente no S3 quando overview_en não mudou desde o último
     processamento (ver reuse_existing_translation) — ambas atribuídas a overview_pt
     antes de resolve_pt_translation assumir o resto do fluxo (detecção de idioma,
-    cópia direta quando a fonte já é pt, tradução via Google/AWS e teto de tentativas
-    — ver docstring de resolve_pt_translation em shared_utils.traducao).
+    cópia direta quando a fonte já é pt, tradução via Google/AWS, teto de tentativas
+    e a coluna overview_needs_translation — ver docstring de resolve_pt_translation em
+    shared_utils.traducao).
     """
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("src.utils.translate_text", ...) nos testes continue funcionando quando
@@ -691,12 +693,13 @@ def _add_translations_pt(
         df,
         source_column="overview_en",
         target_column="overview_pt",
-        idioma_en_column="overview_idioma_detectado_en",
-        idioma_pt_column="overview_idioma_detectado_pt",
-        tentativas_column="overview_tentativas_traducao",
+        detected_language_en_column="overview_detected_language_en",
+        detected_language_pt_column="overview_detected_language_pt",
+        translation_attempts_column="overview_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=translate_fn,
         max_workers=_TRANSLATE_MAX_WORKERS,
+        needs_translation_column="overview_needs_translation",
     )
     return df
 
@@ -708,8 +711,9 @@ def _add_translations_keywords_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> pd.DataFrame:
     """
-    Adiciona as colunas keywords_idioma_detectado_en, keywords_idioma_detectado_pt,
-    keywords_pt e keywords_tentativas_traducao ao DataFrame de detalhes.
+    Adiciona as colunas keywords_detected_language_en, keywords_detected_language_pt,
+    keywords_pt, keywords_translation_attempts e keywords_needs_translation ao
+    DataFrame de detalhes.
 
     Sem tradução nativa do TMDB para keywords (diferente de overview/tagline) — o
     valor inicial vem só do cache (reuse_existing_translation) antes de
@@ -725,12 +729,13 @@ def _add_translations_keywords_pt(
         df,
         source_column="keywords",
         target_column="keywords_pt",
-        idioma_en_column="keywords_idioma_detectado_en",
-        idioma_pt_column="keywords_idioma_detectado_pt",
-        tentativas_column="keywords_tentativas_traducao",
+        detected_language_en_column="keywords_detected_language_en",
+        detected_language_pt_column="keywords_detected_language_pt",
+        translation_attempts_column="keywords_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=translate_fn,
         max_workers=_TRANSLATE_MAX_WORKERS,
+        needs_translation_column="keywords_needs_translation",
     )
     return df
 
@@ -742,8 +747,9 @@ def _add_translations_tagline_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> pd.DataFrame:
     """
-    Adiciona as colunas tagline_idioma_detectado_en, tagline_idioma_detectado_pt,
-    tagline_pt e tagline_tentativas_traducao ao DataFrame de detalhes.
+    Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
+    tagline_pt, tagline_translation_attempts e tagline_needs_translation ao DataFrame
+    de detalhes.
 
     Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb) e, em seguida, reaproveita
     a tradução já existente no S3 (ver _add_translations_pt sobre a mesma ordem para
@@ -759,12 +765,13 @@ def _add_translations_tagline_pt(
         df,
         source_column="tagline",
         target_column="tagline_pt",
-        idioma_en_column="tagline_idioma_detectado_en",
-        idioma_pt_column="tagline_idioma_detectado_pt",
-        tentativas_column="tagline_tentativas_traducao",
+        detected_language_en_column="tagline_detected_language_en",
+        detected_language_pt_column="tagline_detected_language_pt",
+        translation_attempts_column="tagline_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=translate_fn,
         max_workers=_TRANSLATE_MAX_WORKERS,
+        needs_translation_column="tagline_needs_translation",
     )
     return df
 
