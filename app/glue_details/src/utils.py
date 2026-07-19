@@ -16,19 +16,14 @@ import requests
 from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
 from shared_utils.idioma import (
-    add_detected_language_column,
     detect_language_aws,
     detect_language_langdetect,
     resolve_detect_language_fn,
 )
 from shared_utils.traducao import (
-    eligible_keywords_pt,
-    eligible_overview_pt,
-    eligible_tagline_pt,
-    is_translated_mask,
+    resolve_pt_translation,
     reuse_existing_translation,
     resolve_translate_fn,
-    translate_pending_column,
     translate_text,
     translate_text_aws,
 )
@@ -673,50 +668,35 @@ def _add_translations_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> pd.DataFrame:
     """
-    Adiciona as colunas overview_idioma_detectado, overview_pt e
-    overview_traduzido_pt_br ao DataFrame de detalhes.
+    Adiciona as colunas overview_idioma_detectado_en, overview_idioma_detectado_pt,
+    overview_pt e overview_tentativas_traducao ao DataFrame de detalhes.
 
-    Detecta o idioma de overview_en (langdetect com fallback AWS Comprehend — ver
-    shared_utils.idioma) antes de qualquer tentativa de tradução. Prioriza tradução
-    pt-BR vinda do TMDB (overview_pt_tmdb). Em seguida, reaproveita a tradução já
-    existente no S3 quando overview_en não mudou desde o último processamento (ver
-    reuse_existing_translation). Para registros ainda sem overview_pt cujo idioma
-    detectado já é "pt", copia overview_en diretamente — sem chamar tradução, evitando
-    reenviar ao Google/AWS um texto que já está em português (ver eligible_overview_pt,
-    que exclui esses registros do lote de tradução). Para o que sobrar, com
-    overview_en não-vazio, traduz via Google/AWS. Para registros já em pt ou sem
-    overview_en, overview_pt fica nulo — o glue_agg usará overview_en nesses casos.
-    overview_traduzido_pt_br fecha o estado final: True quando overview_pt está
-    preenchida (tradução nativa TMDB, cópia direta ou tradução automática
-    bem-sucedida).
+    Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb) e, em seguida, reaproveita
+    a tradução já existente no S3 quando overview_en não mudou desde o último
+    processamento (ver reuse_existing_translation) — ambas atribuídas a overview_pt
+    antes de resolve_pt_translation assumir o resto do fluxo (detecção de idioma,
+    cópia direta quando a fonte já é pt, tradução via Google/AWS e teto de tentativas
+    — ver docstring de resolve_pt_translation em shared_utils.traducao).
     """
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("src.utils.translate_text", ...) nos testes continue funcionando quando
     # o chamador não passa um translate_fn explícito.
     translate_fn = translate_fn or translate_text
-    df = add_detected_language_column(df, "overview_en", "overview_idioma_detectado", detect_fn)
+    detect_fn = detect_fn or resolve_detect_language_fn()
 
     df["overview_pt"] = df["overview_pt_tmdb"]
     df = reuse_existing_translation(df, previous_df, "overview_en", "overview_pt")
 
-    already_pt_mask = (df["overview_pt"].isna() | (df["overview_pt"] == "")) & (
-        df["overview_idioma_detectado"] == "pt"
-    )
-    df.loc[already_pt_mask, "overview_pt"] = df.loc[already_pt_mask, "overview_en"]
-
-    eligible_mask = eligible_overview_pt(df)
-    if eligible_mask.any():
-        logger.info(
-            f"Traduzindo overview de até {eligible_mask.sum()} registros sem tradução TMDB pt-BR "
-            f"({_TRANSLATE_MAX_WORKERS} workers)."
-        )
-        success_count = translate_pending_column(
-            df, "overview_en", "overview_pt", eligible_mask, translate_fn, max_workers=_TRANSLATE_MAX_WORKERS
-        )
-        logger.info(f"{success_count} registros traduzidos com sucesso (overview_pt).")
-
-    df["overview_traduzido_pt_br"] = is_translated_mask(
-        df, "overview_en", "overview_pt", already_native_mask=(df["overview_idioma_detectado"] == "pt")
+    df, _ = resolve_pt_translation(
+        df,
+        source_column="overview_en",
+        target_column="overview_pt",
+        idioma_en_column="overview_idioma_detectado_en",
+        idioma_pt_column="overview_idioma_detectado_pt",
+        tentativas_column="overview_tentativas_traducao",
+        detect_fn=detect_fn,
+        translate_fn=translate_fn,
+        max_workers=_TRANSLATE_MAX_WORKERS,
     )
     return df
 
@@ -728,41 +708,29 @@ def _add_translations_keywords_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> pd.DataFrame:
     """
-    Adiciona as colunas keywords_idioma_detectado, keywords_pt e
-    keywords_traduzido_pt_br ao DataFrame de detalhes.
+    Adiciona as colunas keywords_idioma_detectado_en, keywords_idioma_detectado_pt,
+    keywords_pt e keywords_tentativas_traducao ao DataFrame de detalhes.
 
-    Detecta o idioma de keywords (langdetect com fallback AWS Comprehend) antes de
-    qualquer tentativa de tradução. Reaproveita a tradução já existente no S3 quando
-    keywords não mudou desde o último processamento (ver reuse_existing_translation).
-    Para registros ainda sem keywords_pt cujo idioma detectado já é "pt", copia
-    keywords diretamente — sem chamar tradução. Para o que sobrar, traduz para
-    português via Google/AWS (a TMDB devolve keywords em inglês para a maioria dos
-    idiomas; a checagem de idioma evita reenviar à API keywords que já estejam em
-    português). keywords_traduzido_pt_br fecha o estado final: True quando
-    keywords_pt está preenchida (cópia direta ou tradução automática bem-sucedida —
-    não há tradução nativa do TMDB para keywords).
+    Sem tradução nativa do TMDB para keywords (diferente de overview/tagline) — o
+    valor inicial vem só do cache (reuse_existing_translation) antes de
+    resolve_pt_translation assumir o resto do fluxo.
     """
     translate_fn = translate_fn or translate_text
-    df = add_detected_language_column(df, "keywords", "keywords_idioma_detectado", detect_fn)
+    detect_fn = detect_fn or resolve_detect_language_fn()
 
     df["keywords_pt"] = None
     df = reuse_existing_translation(df, previous_df, "keywords", "keywords_pt")
 
-    already_pt_mask = (df["keywords_pt"].isna() | (df["keywords_pt"] == "")) & (
-        df["keywords_idioma_detectado"] == "pt"
-    )
-    df.loc[already_pt_mask, "keywords_pt"] = df.loc[already_pt_mask, "keywords"]
-
-    eligible_mask = eligible_keywords_pt(df)
-    if eligible_mask.any():
-        logger.info(f"Traduzindo keywords de até {eligible_mask.sum()} registros ({_TRANSLATE_MAX_WORKERS} workers).")
-        success_count = translate_pending_column(
-            df, "keywords", "keywords_pt", eligible_mask, translate_fn, max_workers=_TRANSLATE_MAX_WORKERS
-        )
-        logger.info(f"{success_count} registros traduzidos com sucesso (keywords_pt).")
-
-    df["keywords_traduzido_pt_br"] = is_translated_mask(
-        df, "keywords", "keywords_pt", already_native_mask=(df["keywords_idioma_detectado"] == "pt")
+    df, _ = resolve_pt_translation(
+        df,
+        source_column="keywords",
+        target_column="keywords_pt",
+        idioma_en_column="keywords_idioma_detectado_en",
+        idioma_pt_column="keywords_idioma_detectado_pt",
+        tentativas_column="keywords_tentativas_traducao",
+        detect_fn=detect_fn,
+        translate_fn=translate_fn,
+        max_workers=_TRANSLATE_MAX_WORKERS,
     )
     return df
 
@@ -774,43 +742,29 @@ def _add_translations_tagline_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> pd.DataFrame:
     """
-    Adiciona as colunas tagline_idioma_detectado, tagline_pt e
-    tagline_traduzido_pt_br ao DataFrame de detalhes.
+    Adiciona as colunas tagline_idioma_detectado_en, tagline_idioma_detectado_pt,
+    tagline_pt e tagline_tentativas_traducao ao DataFrame de detalhes.
 
-    Detecta o idioma de tagline (langdetect com fallback AWS Comprehend) antes de
-    qualquer tentativa de tradução. Prioriza tradução pt-BR vinda do TMDB
-    (tagline_pt_tmdb). Em seguida, reaproveita a tradução já existente no S3 quando
-    tagline não mudou desde o último processamento (ver reuse_existing_translation).
-    Para registros ainda sem tagline_pt cujo idioma detectado já é "pt", copia
-    tagline diretamente — sem chamar tradução. Para o que sobrar, com tagline
-    não-nula, traduz via Google/AWS. tagline_traduzido_pt_br fecha o estado final:
-    True quando tagline_pt está preenchida (tradução nativa TMDB, cópia direta ou
-    tradução automática bem-sucedida).
+    Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb) e, em seguida, reaproveita
+    a tradução já existente no S3 (ver _add_translations_pt sobre a mesma ordem para
+    overview) antes de resolve_pt_translation assumir o resto do fluxo.
     """
     translate_fn = translate_fn or translate_text
-    df = add_detected_language_column(df, "tagline", "tagline_idioma_detectado", detect_fn)
+    detect_fn = detect_fn or resolve_detect_language_fn()
 
     df["tagline_pt"] = df["tagline_pt_tmdb"]
     df = reuse_existing_translation(df, previous_df, "tagline", "tagline_pt")
 
-    already_pt_mask = (df["tagline_pt"].isna() | (df["tagline_pt"] == "")) & (
-        df["tagline_idioma_detectado"] == "pt"
-    )
-    df.loc[already_pt_mask, "tagline_pt"] = df.loc[already_pt_mask, "tagline"]
-
-    eligible_mask = eligible_tagline_pt(df)
-    if eligible_mask.any():
-        logger.info(
-            f"Traduzindo tagline de até {eligible_mask.sum()} registros sem tradução TMDB pt-BR "
-            f"({_TRANSLATE_MAX_WORKERS} workers)."
-        )
-        success_count = translate_pending_column(
-            df, "tagline", "tagline_pt", eligible_mask, translate_fn, max_workers=_TRANSLATE_MAX_WORKERS
-        )
-        logger.info(f"{success_count} registros traduzidos com sucesso (tagline_pt).")
-
-    df["tagline_traduzido_pt_br"] = is_translated_mask(
-        df, "tagline", "tagline_pt", already_native_mask=(df["tagline_idioma_detectado"] == "pt")
+    df, _ = resolve_pt_translation(
+        df,
+        source_column="tagline",
+        target_column="tagline_pt",
+        idioma_en_column="tagline_idioma_detectado_en",
+        idioma_pt_column="tagline_idioma_detectado_pt",
+        tentativas_column="tagline_tentativas_traducao",
+        detect_fn=detect_fn,
+        translate_fn=translate_fn,
+        max_workers=_TRANSLATE_MAX_WORKERS,
     )
     return df
 

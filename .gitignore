@@ -2,7 +2,9 @@
 infra/is-a-dev/
 
 # --- IDEs e Editores ---
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/commands/
 .vscode/
 .idea/
 *.swp
@@ -67,7 +69,6 @@ build/
 # --- Sistema ---
 .DS_Store
 Thumbs.db
-CLAUDE.md
 
 # --- Design (protótipos/assets locais) ---
 app/lightsail_ia/design/

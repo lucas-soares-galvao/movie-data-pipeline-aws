@@ -1,35 +1,35 @@
 """
 backfill_traducao.py — Adiciona overview_pt, tagline_pt e keywords_pt (e as
-colunas de diagnóstico *_idioma_detectado/*_traduzido_pt_br) aos detalhes
-históricos.
+colunas de diagnóstico *_idioma_detectado_en/*_idioma_detectado_pt/
+*_tentativas_traducao) aos detalhes históricos.
 
 Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano e traduz para
 português, via Google Translate ou AWS Translate (TRANSLATE_PROVIDER — ver
 abaixo), os campos ainda pendentes (espelhando o que o Glue Details faz para
-dados novos). As três colunas usam a mesma regra de elegibilidade: o campo de
-origem preenchido e ainda não confirmado como pt-BR pela detecção de idioma
-(langdetect com fallback AWS Comprehend — ver shared_utils/idioma.py) —
-original_language não entra no critério (é o idioma de produção original do
-título, não o idioma do texto retornado pela API; não garante que
-overview_en/tagline/keywords já estejam em português — ver
-shared_utils/traducao.py):
-  - overview_pt:  overview_en preenchido, idioma detectado != "pt"
-  - tagline_pt:   tagline preenchida, idioma detectado != "pt"
-  - keywords_pt:  keywords preenchidas, idioma detectado != "pt"
-Quando o idioma detectado da fonte já é "pt", o texto é copiado diretamente
-para a coluna _pt sem chamar tradução — evita reenviar ao Google/AWS um texto
-que já está em português (e evita retradução infinita: sem essa checagem, um
-texto genuinamente em português sem tradução nativa do TMDB ficaria
-"pendente" para sempre, já que a tradução seria um no-op e o predicado de
-"já traduzido" compara texto igual à fonte). Um campo é considerado "já
-traduzido" (e não é retraduzido) quando a coluna _pt está preenchida e
-(é diferente da coluna de origem OU o idioma detectado da fonte já é "pt").
-Campos sem tradução, ou cuja coluna _pt ficou igual à de origem sem o idioma
-detectado ser "pt" (fallback de uma tradução que falhou em um run anterior —
-ver shared_utils/traducao.py), continuam pendentes e são (re)tentados. Não é
-gerado collection_name_pt — diferente dos demais, ele vem de uma chamada à
-API do TMDB (não do Google Translate) e foi deixado fora deste script. Não
-re-chama a API do TMDB para os campos acima.
+dados novos). As três colunas usam a mesma regra de elegibilidade, resolvida
+por shared_utils.traducao.resolve_pt_translation: o campo de origem
+preenchido e o idioma detectado do RESULTADO (*_idioma_detectado_pt, e não da
+fonte) ainda diferente de "pt" — original_language não entra no critério (é o
+idioma de produção original do título, não o idioma do texto retornado pela
+API; não garante que overview_en/tagline/keywords já estejam em português —
+ver shared_utils/traducao.py):
+  - overview_pt:  overview_en preenchido, overview_idioma_detectado_pt != "pt"
+  - tagline_pt:   tagline preenchida, tagline_idioma_detectado_pt != "pt"
+  - keywords_pt:  keywords preenchidas, keywords_idioma_detectado_pt != "pt"
+Quando o idioma detectado da fonte (*_idioma_detectado_en) já é "pt", o texto
+é copiado diretamente para a coluna _pt sem chamar tradução — evita reenviar
+ao Google/AWS um texto que já está em português. Basear a elegibilidade no
+idioma detectado do RESULTADO (em vez de comparar string com a fonte, como
+antes) evita tanto retraduzir o que já está correto quanto deixar uma
+mistradução silenciosa (resultado diferente da fonte, mas em outro idioma que
+não pt) permanentemente marcada como concluída. *_tentativas_traducao limita
+quantas vezes uma linha é reenviada ao tradutor — sem esse teto, conteúdo
+genuinamente não traduzível (nomes próprios, termos curtos que o tradutor
+devolve sem alterar) seria retentado para sempre, já que seu idioma detectado
+nunca vira "pt" (ver docstring de resolve_pt_translation). Não é gerado
+collection_name_pt — diferente dos demais, ele vem de uma chamada à API do
+TMDB (não do Google Translate) e foi deixado fora deste script. Não re-chama
+a API do TMDB para os campos acima.
 
 Leitura feita diretamente do S3 (parquet) — sem Athena/CTAS — para evitar
 necessidade de athena:GetWorkGroup e glue:DeleteTable no usuário prod_temp.
@@ -84,18 +84,13 @@ from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
 from shared_utils.idioma import (  # noqa: E402
-    add_detected_language_column,
     detect_language_aws,
     detect_language_langdetect,
     resolve_detect_language_fn,
 )
 from shared_utils.traducao import (  # noqa: E402
-    eligible_keywords_pt,
-    eligible_overview_pt,
-    eligible_tagline_pt,
-    is_translated_mask,
+    resolve_pt_translation,
     resolve_translate_fn,
-    translate_pending_column,
     translate_text,
     translate_text_aws,  # noqa: F401 — reexportado para os testes verificarem identidade
 )
@@ -107,59 +102,34 @@ logger = shared.setup_logging()
 _TRANSLATE_MAX_WORKERS = 10
 
 
-def _traduzir_pendentes(
-    df: pd.DataFrame,
-    coluna_fonte: str,
-    coluna_pt: str,
-    mask_elegivel: "pd.Series[bool]",
-    traduzir_fn: Callable[[str], str],
-) -> int:
-    """Traduz coluna_fonte → coluna_pt para os registros elegíveis ainda pendentes
-    (ver translate_pending_column em shared_utils/traducao.py para a regra de
-    "já traduzido" — pulado — e o retry entre execuções do backfill)."""
-    logger.info(
-        "  Traduzindo até %d registros para %s (%d workers)...",
-        mask_elegivel.sum(), coluna_pt, _TRANSLATE_MAX_WORKERS,
-    )
-    sucesso = translate_pending_column(
-        df, coluna_fonte, coluna_pt, mask_elegivel, traduzir_fn, max_workers=_TRANSLATE_MAX_WORKERS
-    )
-    logger.info("  %d traduzidos com sucesso (%s).", sucesso, coluna_pt)
-    return sucesso
-
-
 def _adicionar_traducoes_pt(
     df: pd.DataFrame,
     traduzir_fn: Optional[Callable[[str], str]] = None,
     detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> tuple[pd.DataFrame, int]:
-    """Adiciona overview_idioma_detectado, overview_pt e overview_traduzido_pt_br aos
-    registros com overview_en preenchido (registros com overview_en vazio não têm o
-    que traduzir e distorceriam a contagem de sucesso). Idioma detectado antes de
-    qualquer tradução; fontes já detectadas como "pt" são copiadas direto para
-    overview_pt, sem chamar tradução (ver docstring do módulo)."""
+    """Adiciona overview_idioma_detectado_en, overview_idioma_detectado_pt,
+    overview_pt e overview_tentativas_traducao aos registros com overview_en
+    preenchido — ver resolve_pt_translation em shared_utils/traducao.py para a
+    regra de elegibilidade e o teto de tentativas."""
     # traduzir_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("backfill_traducao.translate_text", ...) nos testes continue funcionando
     # quando o chamador não passa um traduzir_fn explícito.
     traduzir_fn = traduzir_fn or translate_text
+    detectar_fn = detectar_fn or resolve_detect_language_fn()
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
-    df = add_detected_language_column(df, "overview_en", "overview_idioma_detectado", detectar_fn)
 
-    already_pt_mask = (df["overview_pt"].isna() | (df["overview_pt"] == "")) & (
-        df["overview_idioma_detectado"] == "pt"
+    return resolve_pt_translation(
+        df,
+        source_column="overview_en",
+        target_column="overview_pt",
+        idioma_en_column="overview_idioma_detectado_en",
+        idioma_pt_column="overview_idioma_detectado_pt",
+        tentativas_column="overview_tentativas_traducao",
+        detect_fn=detectar_fn,
+        translate_fn=traduzir_fn,
+        max_workers=_TRANSLATE_MAX_WORKERS,
     )
-    df.loc[already_pt_mask, "overview_pt"] = df.loc[already_pt_mask, "overview_en"]
-
-    sucesso = 0
-    mask_elegivel = eligible_overview_pt(df)
-    if mask_elegivel.any():
-        sucesso = _traduzir_pendentes(df, "overview_en", "overview_pt", mask_elegivel, traduzir_fn)
-
-    df["overview_traduzido_pt_br"] = is_translated_mask(
-        df, "overview_en", "overview_pt", already_native_mask=(df["overview_idioma_detectado"] == "pt")
-    )
-    return df, sucesso
 
 
 def _adicionar_traducoes_tagline_pt(
@@ -167,29 +137,27 @@ def _adicionar_traducoes_tagline_pt(
     traduzir_fn: Optional[Callable[[str], str]] = None,
     detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> tuple[pd.DataFrame, int]:
-    """Adiciona tagline_idioma_detectado, tagline_pt e tagline_traduzido_pt_br aos
-    registros com tagline preenchida (espelha glue_details)."""
+    """Adiciona tagline_idioma_detectado_en, tagline_idioma_detectado_pt,
+    tagline_pt e tagline_tentativas_traducao aos registros com tagline
+    preenchida (espelha glue_details)."""
     traduzir_fn = traduzir_fn or translate_text
+    detectar_fn = detectar_fn or resolve_detect_language_fn()
     if "tagline" not in df.columns:
         return df, 0
     if "tagline_pt" not in df.columns:
         df["tagline_pt"] = None
-    df = add_detected_language_column(df, "tagline", "tagline_idioma_detectado", detectar_fn)
 
-    already_pt_mask = (df["tagline_pt"].isna() | (df["tagline_pt"] == "")) & (
-        df["tagline_idioma_detectado"] == "pt"
+    return resolve_pt_translation(
+        df,
+        source_column="tagline",
+        target_column="tagline_pt",
+        idioma_en_column="tagline_idioma_detectado_en",
+        idioma_pt_column="tagline_idioma_detectado_pt",
+        tentativas_column="tagline_tentativas_traducao",
+        detect_fn=detectar_fn,
+        translate_fn=traduzir_fn,
+        max_workers=_TRANSLATE_MAX_WORKERS,
     )
-    df.loc[already_pt_mask, "tagline_pt"] = df.loc[already_pt_mask, "tagline"]
-
-    sucesso = 0
-    mask_elegivel = eligible_tagline_pt(df)
-    if mask_elegivel.any():
-        sucesso = _traduzir_pendentes(df, "tagline", "tagline_pt", mask_elegivel, traduzir_fn)
-
-    df["tagline_traduzido_pt_br"] = is_translated_mask(
-        df, "tagline", "tagline_pt", already_native_mask=(df["tagline_idioma_detectado"] == "pt")
-    )
-    return df, sucesso
 
 
 def _adicionar_traducoes_keywords_pt(
@@ -197,29 +165,27 @@ def _adicionar_traducoes_keywords_pt(
     traduzir_fn: Optional[Callable[[str], str]] = None,
     detectar_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> tuple[pd.DataFrame, int]:
-    """Adiciona keywords_idioma_detectado, keywords_pt e keywords_traduzido_pt_br
-    aos registros com keywords preenchidas."""
+    """Adiciona keywords_idioma_detectado_en, keywords_idioma_detectado_pt,
+    keywords_pt e keywords_tentativas_traducao aos registros com keywords
+    preenchidas."""
     traduzir_fn = traduzir_fn or translate_text
+    detectar_fn = detectar_fn or resolve_detect_language_fn()
     if "keywords" not in df.columns:
         return df, 0
     if "keywords_pt" not in df.columns:
         df["keywords_pt"] = None
-    df = add_detected_language_column(df, "keywords", "keywords_idioma_detectado", detectar_fn)
 
-    already_pt_mask = (df["keywords_pt"].isna() | (df["keywords_pt"] == "")) & (
-        df["keywords_idioma_detectado"] == "pt"
+    return resolve_pt_translation(
+        df,
+        source_column="keywords",
+        target_column="keywords_pt",
+        idioma_en_column="keywords_idioma_detectado_en",
+        idioma_pt_column="keywords_idioma_detectado_pt",
+        tentativas_column="keywords_tentativas_traducao",
+        detect_fn=detectar_fn,
+        translate_fn=traduzir_fn,
+        max_workers=_TRANSLATE_MAX_WORKERS,
     )
-    df.loc[already_pt_mask, "keywords_pt"] = df.loc[already_pt_mask, "keywords"]
-
-    sucesso = 0
-    mask_elegivel = eligible_keywords_pt(df)
-    if mask_elegivel.any():
-        sucesso = _traduzir_pendentes(df, "keywords", "keywords_pt", mask_elegivel, traduzir_fn)
-
-    df["keywords_traduzido_pt_br"] = is_translated_mask(
-        df, "keywords", "keywords_pt", already_native_mask=(df["keywords_idioma_detectado"] == "pt")
-    )
-    return df, sucesso
 
 
 def _backfill_year(

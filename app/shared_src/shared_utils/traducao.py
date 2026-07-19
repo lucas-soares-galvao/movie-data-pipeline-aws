@@ -18,12 +18,8 @@ __all__ = [
     "translate_text_aws",
     "resolve_translate_fn",
     "translate_in_parallel",
-    "translate_pending_column",
     "reuse_existing_translation",
-    "eligible_overview_pt",
-    "eligible_tagline_pt",
-    "eligible_keywords_pt",
-    "is_translated_mask",
+    "resolve_pt_translation",
     "make_capped_fallback",
 ]
 
@@ -39,6 +35,12 @@ logger = logging.getLogger()
 # mensal, ver infra/eventbridge.tf) abaixo de US$1/mês mesmo no pior caso (cap
 # totalmente consumido em toda execução), a US$15/milhão de caracteres do AWS Translate.
 _AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
+
+# Teto de tentativas de tradução por linha antes de desistir dela (ver
+# resolve_pt_translation). Sem esse teto, conteúdo genuinamente não traduzível (nomes
+# próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
+# idioma_pt_column == "pt" e seria reenviado ao Google/AWS a cada execução, para sempre.
+_MAX_TENTATIVAS_TRADUCAO_DEFAULT = 3
 
 
 def make_capped_fallback(
@@ -60,7 +62,7 @@ def make_capped_fallback(
 
     Thread-safe via threading.Lock + contador mutável de 1 elemento (lista), já que a
     função composta roda dentro de ThreadPoolExecutor (translate_in_parallel/
-    translate_pending_column, até 10 workers).
+    resolve_pt_translation, até 10 workers).
 
     Args:
         fallback_fn:     Função chamada enquanto houver orçamento restante.
@@ -96,7 +98,7 @@ def resolve_translate_fn(
     Resolve o provedor de tradução (`"google"` ou `"aws"`) para uma função composta
     primário+fallback: o provider escolhido é tentado primeiro; se falhar (resultado
     igual ao texto original, texto não-vazio — mesmo sinal de falha usado em
-    translate_pending_column), o outro serviço é tentado automaticamente antes de
+    resolve_pt_translation), o outro serviço é tentado automaticamente antes de
     desistir.
 
     `provider="google"` → primário=Google (grátis), fallback=AWS Translate — pago por
@@ -173,97 +175,113 @@ def translate_in_parallel(
         return list(executor.map(translate_fn, values))
 
 
-def is_translated_mask(
+def _detect_missing(
+    df: pd.DataFrame,
+    text_column: str,
+    idioma_column: str,
+    detect_fn: Callable[[str], Optional[str]],
+) -> pd.DataFrame:
+    """Detecta o idioma de text_column em idioma_column, só para linhas onde
+    idioma_column ainda está vazia/nula — evita redetectar (e reenviar caracteres ao
+    fallback pago do AWS Comprehend) o que já foi calculado numa execução anterior.
+
+    Equivalente a shared_utils.idioma.add_detected_language_column(only_missing=True),
+    duplicado aqui (em vez de importado) para não criar import circular: idioma.py já
+    importa make_capped_fallback deste módulo.
+    """
+    if idioma_column not in df.columns:
+        df[idioma_column] = None
+    pending = df[idioma_column].isna() | (df[idioma_column] == "")
+    if pending.any():
+        df.loc[pending, idioma_column] = df.loc[pending, text_column].fillna("").apply(detect_fn)
+    return df
+
+
+def resolve_pt_translation(
     df: pd.DataFrame,
     source_column: str,
     target_column: str,
-    already_native_mask: Optional["pd.Series[bool]"] = None,
-) -> "pd.Series[bool]":
-    """
-    Máscara de registros considerados "já traduzidos" em target_column.
-
-    Um registro conta como traduzido quando target_column está preenchida e é
-    diferente de source_column — cobre tanto tradução nativa do TMDB (glue_details)
-    quanto sucesso em um run anterior (backfill) ou tradução automática bem-sucedida.
-    Registros sem target_column, ou cuja target_column ficou igual à source_column
-    (tradução que falhou — ver translate_text/translate_text_aws), não contam.
-
-    already_native_mask cobre o caso em que a própria fonte já estava no idioma-alvo
-    (ex.: overview_en detectado como "pt" — ver shared_utils.idioma) e foi copiada
-    diretamente para target_column sem chamar tradução: nesse caso target == source,
-    mas o registro deve contar como traduzido mesmo assim.
-
-    Args:
-        df:                   DataFrame com as colunas source_column e target_column.
-        source_column:        Nome da coluna com o texto de origem.
-        target_column:        Nome da coluna de tradução. Se ausente em df, nenhum
-                              registro conta como traduzido.
-        already_native_mask:  Máscara adicional de registros cuja fonte já estava no
-                              idioma-alvo. Quando None, o comportamento é idêntico ao
-                              predicado original (sem essa exceção).
-
-    Returns:
-        Máscara booleana de registros considerados traduzidos.
-    """
-    if target_column not in df.columns:
-        return pd.Series(False, index=df.index)
-
-    filled = df[target_column].notna() & (df[target_column] != "")
-    differs = df[target_column] != df[source_column]
-    if already_native_mask is not None:
-        differs = differs | already_native_mask
-    return filled & differs
-
-
-def translate_pending_column(
-    df: pd.DataFrame,
-    source_column: str,
-    target_column: str,
-    eligible_mask: "pd.Series[bool]",
+    idioma_en_column: str,
+    idioma_pt_column: str,
+    tentativas_column: str,
+    detect_fn: Callable[[str], Optional[str]],
     translate_fn: Callable[[str], str],
     max_workers: int = 10,
-) -> int:
+    max_tentativas: int = _MAX_TENTATIVAS_TRADUCAO_DEFAULT,
+) -> "tuple[pd.DataFrame, int]":
     """
-    Traduz source_column → target_column para os registros elegíveis ainda pendentes.
+    Sincroniza target_column (já inicializada pelo chamador — nativo do TMDB, cache
+    reaproveitado ou vazia) com source_column, mantendo idioma_en_column/
+    idioma_pt_column como o idioma real detectado da fonte e do resultado,
+    respectivamente — em vez da antiga heurística de string-diff, que não
+    distinguia "não precisava traduzir" de "tradução falhou silenciosamente".
 
-    Um registro é considerado "já traduzido" (e não é retraduzido) quando
-    target_column está preenchida e é diferente de source_column — cobre tanto
-    tradução nativa do TMDB (glue_details) quanto sucesso em um run anterior
-    (backfill) — ver is_translated_mask. Registros sem target_column, ou cuja
-    target_column ficou igual à source_column (tradução que falhou — ver
-    translate_text/translate_text_aws), continuam pendentes e são (re)tentados.
+    Passos: (1) detecta idioma_en_column a partir de source_column, só onde ainda
+    vazia; (2) detecta idioma_pt_column a partir do valor atual de target_column, só
+    onde ainda vazia — cobre tradução nativa/cache já presentes antes desta chamada;
+    (3) atalho de cópia direta: fonte já detectada como "pt" e target_column ainda
+    vazia → copia sem chamar tradutor e marca idioma_pt_column="pt" direto; (4)
+    elegível para o tradutor = fonte preenchida E idioma_pt_column != "pt" E
+    tentativas_column < max_tentativas; (5) traduz as linhas elegíveis; (6)
+    incrementa tentativas_column para as linhas elegíveis desta execução; (7)
+    redetecta idioma_pt_column só nas linhas recém-traduzidas (a detecção do passo 2,
+    nelas, ficou obsoleta).
 
-    translate_fn é recebido como parâmetro (em vez de chamar translate_text
-    diretamente) para que os chamadores continuem passando sua própria
-    referência local — a mesma que seus testes fazem mock.
+    tentativas_column existe porque conteúdo genuinamente não traduzível (nomes
+    próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
+    idioma_pt_column == "pt" e seria retentado para sempre sem um teto.
 
     Args:
-        df:            DataFrame a atualizar (modificado in-place em target_column).
-        source_column: Nome da coluna com o texto de origem.
-        target_column: Nome da coluna a preencher com o texto traduzido.
-        eligible_mask: Máscara booleana dos registros candidatos à tradução.
-        translate_fn:  Função chamada para cada texto (ex.: translate_text).
-        max_workers:   Número de threads concorrentes.
+        df:                Dataframe a atualizar (modificado in-place).
+        source_column:     Coluna de texto original (ex.: "overview_en").
+        target_column:     Coluna de tradução, já inicializada pelo chamador.
+        idioma_en_column:  Coluna com o idioma detectado de source_column.
+        idioma_pt_column:  Coluna com o idioma detectado de target_column.
+        tentativas_column: Contador de tentativas de tradução por linha; criado
+                           como 0 se ausente em df.
+        detect_fn:         Função (texto) -> idioma detectado (ou None).
+        translate_fn:      Função (texto) -> texto traduzido.
+        max_workers:       Threads concorrentes usadas na tradução.
+        max_tentativas:    Teto de tentativas antes de desistir de uma linha.
 
     Returns:
-        Quantidade traduzida com sucesso nesta chamada. Sucesso é contado
-        comparando cada resultado com o texto original, já que translate_fn
-        devolve o próprio texto original quando a tradução falha após todas
-        as tentativas.
+        Tupla (df, quantidade traduzida com sucesso nesta chamada).
     """
-    if target_column not in df.columns:
-        df[target_column] = None
+    if tentativas_column not in df.columns:
+        df[tentativas_column] = 0
 
-    already_translated = is_translated_mask(df, source_column, target_column)
-    mask = eligible_mask & ~already_translated
-    if not mask.any():
-        return 0
+    df = _detect_missing(df, source_column, idioma_en_column, detect_fn)
+    df = _detect_missing(df, target_column, idioma_pt_column, detect_fn)
 
-    values = df.loc[mask, source_column].fillna("").tolist()
+    target_empty = df[target_column].isna() | (df[target_column] == "")
+    direct_copy_mask = target_empty & (df[idioma_en_column] == "pt")
+    df.loc[direct_copy_mask, target_column] = df.loc[direct_copy_mask, source_column]
+    df.loc[direct_copy_mask, idioma_pt_column] = "pt"
+
+    has_source = df[source_column].notna() & (df[source_column] != "")
+    already_pt = df[idioma_pt_column] == "pt"
+    esgotado = df[tentativas_column] >= max_tentativas
+    eligible_mask = has_source & ~already_pt & ~esgotado
+
+    logger.info(
+        f"Traduzindo até {eligible_mask.sum()} registros para '{target_column}' "
+        f"({max_workers} workers)..."
+    )
+    if not eligible_mask.any():
+        return df, 0
+
+    values = df.loc[eligible_mask, source_column].fillna("").tolist()
     translated = translate_in_parallel(values, translate_fn, max_workers=max_workers)
-    df.loc[mask, target_column] = translated
+    df.loc[eligible_mask, target_column] = translated
+    df.loc[eligible_mask, tentativas_column] = df.loc[eligible_mask, tentativas_column] + 1
 
-    return sum(1 for original, result in zip(values, translated) if original and result != original)
+    sucesso = sum(1 for original, result in zip(values, translated) if original and result != original)
+    logger.info(f"{sucesso} registros traduzidos com sucesso ({target_column}).")
+
+    df.loc[eligible_mask, idioma_pt_column] = (
+        df.loc[eligible_mask, target_column].fillna("").apply(detect_fn)
+    )
+    return df, sucesso
 
 
 def reuse_existing_translation(
@@ -281,10 +299,10 @@ def reuse_existing_translation(
     Não sobrescreve valores já preenchidos em target_column neste run (ex.:
     tradução nativa do TMDB, atribuída antes desta chamada) — essa prioridade é
     preservada. A checagem final de "já traduzido" continua em
-    translate_pending_column ou na máscara de elegibilidade do chamador; esta
-    função só fornece o valor de cache para essas checagens localizarem. Se o
-    valor reaproveitado for igual à fonte (falha de tradução de um run
-    anterior), o chamador vai marcá-lo como pendente e retentar sozinho.
+    resolve_pt_translation; esta função só fornece o valor de cache para essa
+    checagem localizar. Se o valor reaproveitado for igual à fonte (falha de
+    tradução de um run anterior), o chamador vai marcá-lo como pendente e
+    retentar sozinho.
 
     Compartilhada entre glue_details (key_column="id", default) e glue_etl
     (key_column="iso_3166_1"/"iso_639_1" para a tabela configuration).
@@ -331,48 +349,3 @@ def reuse_existing_translation(
             f"para '{target_column}' (fonte '{source_column}' inalterada)."
         )
     return df
-
-
-def _already_detected_as_pt(df: pd.DataFrame, idioma_column: str) -> "pd.Series[bool]":
-    """Máscara de registros cuja coluna de idioma detectado já é 'pt'. False para
-    todos os registros quando idioma_column ainda não existe em df (compatibilidade
-    com chamadores/testes que não pré-computam a detecção de idioma)."""
-    if idioma_column not in df.columns:
-        return pd.Series(False, index=df.index)
-    return df[idioma_column] == "pt"
-
-
-def eligible_overview_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de overview: overview_en preenchido e ainda não
-    confirmado como pt-BR pela detecção de idioma (overview_idioma_detectado).
-
-    original_language não é usado como critério: é o idioma original de produção
-    do título, não o idioma do texto retornado pela API — não há garantia de que
-    overview_en já esteja em português quando original_language == 'pt' (ver
-    discussão em traducao_aws.py). A exclusão por overview_idioma_detectado == 'pt'
-    evita reenviar ao Google/AWS um texto que a detecção de idioma (shared_utils.idioma)
-    já confirmou estar em português — ver otimização de "cópia direta" no chamador
-    (glue_details._add_translations_pt/scripts.backfill_traducao). Registros já
-    traduzidos (TMDB nativo ou run anterior) são filtrados depois, em
-    translate_pending_column.
-    """
-    has_source = df["overview_en"].notna() & (df["overview_en"] != "")
-    return has_source & ~_already_detected_as_pt(df, "overview_idioma_detectado")
-
-
-def eligible_tagline_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de tagline: campo preenchido e ainda não confirmado
-    como pt-BR pela detecção de idioma (tagline_idioma_detectado — ver
-    eligible_overview_pt sobre por que original_language não entra no critério, e
-    sobre a exclusão por idioma já detectado como 'pt')."""
-    has_source = df["tagline"].notna() & (df["tagline"] != "")
-    return has_source & ~_already_detected_as_pt(df, "tagline_idioma_detectado")
-
-
-def eligible_keywords_pt(df: pd.DataFrame) -> "pd.Series[bool]":
-    """Candidatos à tradução de keywords: campo preenchido e ainda não confirmado
-    como pt-BR pela detecção de idioma (keywords_idioma_detectado — ver
-    eligible_overview_pt sobre por que original_language não entra no critério, e
-    sobre a exclusão por idioma já detectado como 'pt')."""
-    has_source = df["keywords"].notna() & (df["keywords"] != "")
-    return has_source & ~_already_detected_as_pt(df, "keywords_idioma_detectado")
