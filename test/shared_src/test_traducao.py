@@ -6,13 +6,9 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from shared_utils.traducao import (
-    eligible_keywords_pt,
-    eligible_overview_pt,
-    eligible_tagline_pt,
-    is_translated_mask,
+    resolve_pt_translation,
     reuse_existing_translation,
     resolve_translate_fn,
-    translate_pending_column,
     translate_in_parallel,
 )
 
@@ -137,84 +133,6 @@ class TestTranslateInParallel:
         mock_executor_cls.assert_called_once_with(max_workers=3)
 
 
-class TestTranslatePendingColumn:
-    def test_traduz_registros_elegiveis_pendentes(self):
-        df = pd.DataFrame({"fonte": ["Hello", "World"], "destino": [None, None]})
-        traduzir_fn = MagicMock(side_effect=lambda t: f"[PT] {t}")
-        mask = pd.Series([True, True])
-
-        sucesso = translate_pending_column(df, "fonte", "destino", mask, traduzir_fn)
-
-        assert sucesso == 2
-        assert df["destino"].tolist() == ["[PT] Hello", "[PT] World"]
-
-    def test_cria_coluna_destino_se_nao_existir(self):
-        df = pd.DataFrame({"fonte": ["Hello"]})
-        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
-
-        translate_pending_column(df, "fonte", "destino", pd.Series([True]), traduzir_fn)
-
-        assert df["destino"].tolist() == ["Olá"]
-
-    def test_pula_registro_ja_traduzido_com_sucesso(self):
-        """destino preenchido e diferente da fonte: não é retraduzido."""
-        df = pd.DataFrame({"fonte": ["Hello"], "destino": ["Olá"]})
-        traduzir_fn = MagicMock()
-
-        sucesso = translate_pending_column(df, "fonte", "destino", pd.Series([True]), traduzir_fn)
-
-        assert sucesso == 0
-        assert df["destino"].tolist() == ["Olá"]
-        traduzir_fn.assert_not_called()
-
-    def test_retenta_quando_destino_igual_a_fonte(self):
-        """destino == fonte indica uma tradução que falhou em um run
-        anterior (ver translate_text/translate_text_aws) — deve ser retentado, não pulado."""
-        df = pd.DataFrame({"fonte": ["Hello"], "destino": ["Hello"]})
-        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
-
-        sucesso = translate_pending_column(df, "fonte", "destino", pd.Series([True]), traduzir_fn)
-
-        assert sucesso == 1
-        assert df["destino"].tolist() == ["Olá"]
-
-    def test_nao_elegivel_nao_e_traduzido(self):
-        df = pd.DataFrame({"fonte": ["Hello"], "destino": [None]})
-        traduzir_fn = MagicMock()
-
-        sucesso = translate_pending_column(df, "fonte", "destino", pd.Series([False]), traduzir_fn)
-
-        assert sucesso == 0
-        traduzir_fn.assert_not_called()
-
-    def test_mask_vazia_nao_chama_traduzir_fn(self):
-        df = pd.DataFrame({"fonte": [], "destino": []})
-        traduzir_fn = MagicMock()
-
-        sucesso = translate_pending_column(df, "fonte", "destino", pd.Series([], dtype=bool), traduzir_fn)
-
-        assert sucesso == 0
-        traduzir_fn.assert_not_called()
-
-    def test_sucesso_nao_conta_quando_traducao_falha_e_mantem_original(self):
-        """traduzir_fn pode devolver o próprio texto original em caso de falha
-        (ver translate_text); esses casos não contam como sucesso."""
-        df = pd.DataFrame({"fonte": ["Hello", "World"], "destino": [None, None]})
-        traduzir_fn = MagicMock(side_effect=lambda t: t if t == "Hello" else f"[PT] {t}")
-
-        sucesso = translate_pending_column(df, "fonte", "destino", pd.Series([True, True]), traduzir_fn)
-
-        assert sucesso == 1
-        assert df["destino"].tolist() == ["Hello", "[PT] World"]
-
-    def test_usa_max_workers_informado(self):
-        with patch("shared_utils.traducao.translate_in_parallel") as mock_paralelo:
-            mock_paralelo.return_value = ["Olá"]
-            df = pd.DataFrame({"fonte": ["Hello"], "destino": [None]})
-            translate_pending_column(df, "fonte", "destino", pd.Series([True]), MagicMock(), max_workers=3)
-        assert mock_paralelo.call_args.kwargs["max_workers"] == 3
-
-
 class TestReuseExistingTranslation:
     def test_reaproveita_quando_fonte_identica(self):
         df = pd.DataFrame({"id": [1], "overview_en": ["Sinopse"], "overview_pt": [None]})
@@ -285,119 +203,175 @@ class TestReuseExistingTranslation:
         assert pd.isna(result["name_pt"].iloc[0])
 
 
-class TestEligibleOverviewPt:
-    def test_elegivel_quando_overview_en_preenchido(self):
-        df = pd.DataFrame({"overview_en": ["Hello", "Bonjour", "Hola"]})
-        assert eligible_overview_pt(df).tolist() == [True, True, True]
+class TestResolvePtTranslation:
+    def _detect_fn(self, mapping):
+        return lambda t: mapping.get(t)
 
-    def test_elegivel_mesmo_com_original_language_pt(self):
-        """original_language não é critério de elegibilidade: é o idioma de
-        produção original do título, não o idioma do texto retornado pela API —
-        não há garantia de que overview_en já esteja em português quando
-        original_language == 'pt' (ver docstring de eligible_overview_pt)."""
-        df = pd.DataFrame({"original_language": ["pt"], "overview_en": ["Overview em inglês"]})
-        assert eligible_overview_pt(df).tolist() == [True]
+    def test_traduz_registros_elegiveis_pendentes(self):
+        df = pd.DataFrame({"overview_en": ["Hello", "World"], "overview_pt": [None, None]})
+        detect_fn = lambda t: "en"  # noqa: E731 — sempre "não-pt" para forçar elegibilidade
+        traduzir_fn = MagicMock(side_effect=lambda t: f"[PT] {t}")
 
-    def test_nao_elegivel_quando_overview_en_vazio_ou_nulo(self):
-        df = pd.DataFrame({"overview_en": ["", None]})
-        assert eligible_overview_pt(df).tolist() == [False, False]
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
 
-    def test_nao_elegivel_quando_idioma_detectado_ja_e_pt(self):
-        """overview_idioma_detectado == 'pt' exclui o registro do lote de tradução —
-        evita reenviar ao Google/AWS um texto já confirmado em português (otimização
-        contra retradução infinita, ver shared_utils.idioma)."""
+        assert sucesso == 2
+        assert df["overview_pt"].tolist() == ["[PT] Hello", "[PT] World"]
+
+    def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_tradutor(self):
+        df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": [None]})
+        detect_fn = lambda t: "pt"  # noqa: E731
+        traduzir_fn = MagicMock()
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
+
+        assert sucesso == 0
+        assert df["overview_pt"].iloc[0] == "Já em português"
+        assert df["overview_idioma_pt"].iloc[0] == "pt"
+        assert df["overview_tentativas"].iloc[0] == 0
+        traduzir_fn.assert_not_called()
+
+    def test_elegibilidade_usa_idioma_do_destino_nao_diff_de_string(self):
+        """Um destino que difere da fonte mas cujo idioma detectado não é 'pt'
+        (ex.: mistradução silenciosa) continua elegível — diferente da antiga
+        heurística de string-diff, que consideraria isso 'já traduzido'."""
         df = pd.DataFrame({
-            "overview_en": ["Já em português", "Ainda em inglês"],
-            "overview_idioma_detectado": ["pt", "en"],
+            "overview_en": ["Hello"],
+            "overview_pt": ["Bonjour"],  # traduziu errado, pra francês
+            "overview_idioma_en": ["en"],
         })
-        assert eligible_overview_pt(df).tolist() == [False, True]
+        detect_fn = self._detect_fn({"Hello": "en", "Bonjour": "fr", "Olá": "pt"})
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
 
-    def test_elegivel_quando_coluna_idioma_detectado_nao_existe(self):
-        """Compatibilidade: chamadores/testes que não pré-computam a detecção de
-        idioma continuam funcionando como antes (nada é excluído)."""
-        df = pd.DataFrame({"overview_en": ["Hello"]})
-        assert "overview_idioma_detectado" not in df.columns
-        assert eligible_overview_pt(df).tolist() == [True]
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
 
+        assert sucesso == 1
+        assert df["overview_pt"].iloc[0] == "Olá"
+        assert df["overview_idioma_pt"].iloc[0] == "pt"
 
-class TestEligibleTaglinePt:
-    def test_elegivel_quando_tagline_preenchida(self):
-        df = pd.DataFrame({"tagline": ["Slogan A", "Slogan B"]})
-        assert eligible_tagline_pt(df).tolist() == [True, True]
-
-    def test_elegivel_mesmo_com_original_language_pt(self):
-        df = pd.DataFrame({"original_language": ["pt"], "tagline": ["Tagline em inglês"]})
-        assert eligible_tagline_pt(df).tolist() == [True]
-
-    def test_nao_elegivel_quando_tagline_vazia_ou_nula(self):
-        df = pd.DataFrame({"tagline": ["", None]})
-        assert eligible_tagline_pt(df).tolist() == [False, False]
-
-    def test_nao_elegivel_quando_idioma_detectado_ja_e_pt(self):
+    def test_nao_retraduz_quando_idioma_pt_ja_confirmado(self):
         df = pd.DataFrame({
-            "tagline": ["Já em português", "Ainda em inglês"],
-            "tagline_idioma_detectado": ["pt", "en"],
+            "overview_en": ["Hello"],
+            "overview_pt": ["Olá"],
+            "overview_idioma_pt": ["pt"],
         })
-        assert eligible_tagline_pt(df).tolist() == [False, True]
+        traduzir_fn = MagicMock()
 
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en", traduzir_fn,
+        )
 
-class TestEligibleKeywordsPt:
-    def test_elegivel_quando_keywords_preenchidas(self):
-        df = pd.DataFrame({"keywords": ["action, drama", "espion"]})
-        assert eligible_keywords_pt(df).tolist() == [True, True]
+        assert sucesso == 0
+        traduzir_fn.assert_not_called()
 
-    def test_elegivel_mesmo_com_original_language_pt(self):
-        """Keywords não são localizadas pela API do TMDB — continuam em inglês
-        mesmo para títulos com original_language == 'pt'."""
-        df = pd.DataFrame({"original_language": ["pt"], "keywords": ["action, drama"]})
-        assert eligible_keywords_pt(df).tolist() == [True]
-
-    def test_nao_elegivel_quando_keywords_vazias_ou_nulas(self):
-        df = pd.DataFrame({"keywords": ["", None]})
-        assert eligible_keywords_pt(df).tolist() == [False, False]
-
-    def test_nao_elegivel_quando_idioma_detectado_ja_e_pt(self):
+    def test_redetecta_idioma_pt_so_nas_linhas_recem_traduzidas(self):
+        """A detecção feita antes da tradução (sobre o valor antigo/vazio de
+        overview_pt) fica obsoleta para as linhas traduzidas nesta execução — só
+        essas devem ser redetectadas a partir do novo valor."""
         df = pd.DataFrame({
-            "keywords": ["ação, suspense", "action, drama"],
-            "keywords_idioma_detectado": ["pt", "en"],
+            "overview_en": ["Hello", "World"],
+            "overview_pt": [None, None],
+            "overview_idioma_pt": [None, "en"],  # linha 2: já detectado antes (não-pt)
         })
-        assert eligible_keywords_pt(df).tolist() == [False, True]
+        detect_fn = self._detect_fn({"Hello": "en", "World": "en", "Olá": "pt", "Mundo": "pt"})
+        traduzir_fn = MagicMock(side_effect=lambda t: {"Hello": "Olá", "World": "Mundo"}[t])
 
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
 
-class TestIsTranslatedMask:
-    def test_true_quando_preenchido_e_diferente_da_fonte(self):
-        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Olá"]})
-        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [True]
+        assert sucesso == 2
+        assert df["overview_idioma_pt"].tolist() == ["pt", "pt"]
 
-    def test_false_quando_destino_vazio_ou_nulo(self):
-        df = pd.DataFrame({"overview_en": ["Hello", "Hi"], "overview_pt": ["", None]})
-        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [False, False]
-
-    def test_false_quando_destino_igual_a_fonte(self):
-        """Destino igual à fonte indica tradução que falhou (ver
-        translate_text/translate_text_aws) — continua pendente."""
-        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Hello"]})
-        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [False]
-
-    def test_false_quando_coluna_destino_nao_existe(self):
-        df = pd.DataFrame({"overview_en": ["Hello"]})
-        assert is_translated_mask(df, "overview_en", "overview_pt").tolist() == [False]
-
-    def test_already_native_mask_true_conta_como_traduzido_mesmo_igual_a_fonte(self):
-        """Cobre o caso 'fonte já era pt-BR, copiada direto' — target == source, mas
-        o registro deve contar como traduzido porque a fonte já estava correta."""
-        df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": ["Já em português"]})
-        already_native = pd.Series([True])
-        assert is_translated_mask(df, "overview_en", "overview_pt", already_native_mask=already_native).tolist() == [True]
-
-    def test_already_native_mask_false_nao_conta_quando_igual_a_fonte(self):
-        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Hello"]})
-        already_native = pd.Series([False])
-        assert is_translated_mask(df, "overview_en", "overview_pt", already_native_mask=already_native).tolist() == [False]
-
-    def test_already_native_mask_nao_afeta_quando_destino_vazio(self):
-        """already_native_mask não faz um registro sem tradução nenhuma contar como
-        traduzido — target ainda precisa estar preenchido."""
+    def test_incrementa_tentativas_para_linhas_elegiveis(self):
         df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
-        already_native = pd.Series([True])
-        assert is_translated_mask(df, "overview_en", "overview_pt", already_native_mask=already_native).tolist() == [False]
+        detect_fn = lambda t: "en"  # noqa: E731 — nunca confirma pt
+        traduzir_fn = MagicMock(side_effect=lambda t: t)  # tradução "falha" (devolve igual)
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
+
+        assert df["overview_tentativas"].iloc[0] == 1
+
+    def test_copia_direta_nao_incrementa_tentativas(self):
+        df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": [None]})
+        detect_fn = lambda t: "pt"  # noqa: E731
+        traduzir_fn = MagicMock()
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
+
+        assert df["overview_tentativas"].iloc[0] == 0
+
+    def test_esgota_tentativas_e_para_de_reenviar_ao_tradutor(self):
+        """Conteúdo genuinamente não traduzível (nome próprio, termo curto) nunca
+        teria idioma_pt == 'pt' — sem o teto, seria retentado para sempre."""
+        df = pd.DataFrame({
+            "overview_en": ["Iron Man"],
+            "overview_pt": ["Iron Man"],
+            "overview_idioma_pt": ["en"],
+            "overview_tentativas": [3],
+        })
+        traduzir_fn = MagicMock()
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en", traduzir_fn, max_tentativas=3,
+        )
+
+        assert sucesso == 0
+        traduzir_fn.assert_not_called()
+        assert df["overview_tentativas"].iloc[0] == 3
+
+    def test_cria_coluna_tentativas_como_zero_quando_ausente(self):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        detect_fn = lambda t: "en"  # noqa: E731
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
+
+        assert "overview_tentativas" in df.columns
+
+    def test_only_missing_nao_recalcula_idioma_en_ja_preenchido(self):
+        df = pd.DataFrame({
+            "overview_en": ["Hello"],
+            "overview_pt": ["Olá"],
+            "overview_idioma_en": ["antigo"],
+            "overview_idioma_pt": ["pt"],
+        })
+        detect_fn = MagicMock()
+
+        resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, MagicMock(),
+        )
+
+        assert df["overview_idioma_en"].iloc[0] == "antigo"
+        detect_fn.assert_not_called()
+
+    def test_usa_max_workers_informado(self):
+        with patch("shared_utils.traducao.translate_in_parallel") as mock_paralelo:
+            mock_paralelo.return_value = ["Olá"]
+            df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "en", MagicMock(), max_workers=3,
+            )
+        assert mock_paralelo.call_args.kwargs["max_workers"] == 3

@@ -16,7 +16,7 @@ from shared_utils.idioma import (  # noqa: F401
     resolve_detect_language_fn,
 )
 from shared_utils.traducao import (  # noqa: F401
-    is_translated_mask,
+    resolve_pt_translation,
     reuse_existing_translation,
     resolve_translate_fn,
     translate_text,
@@ -142,18 +142,16 @@ def _add_translation(
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt,
-    junto com name_idioma_detectado e name_traduzido_pt_br.
+    junto com name_idioma_detectado_en, name_idioma_detectado_pt e
+    name_tentativas_traducao.
 
-    Detecta o idioma de english_name (langdetect com fallback AWS Comprehend — ver
-    shared_utils.idioma) antes de qualquer tradução. Antes de traduzir, reaproveita
-    name_pt já existente em previous_df quando english_name não mudou desde a última
-    execução (ver reuse_existing_translation em shared_utils.traducao) — evita chamar
-    a API de tradução para países/idiomas cujo nome em inglês é idêntico ao já
-    processado. Para registros ainda sem name_pt cujo idioma detectado já é "pt",
-    copia english_name diretamente — sem chamar tradução (impacto prático baixo aqui,
-    já que english_name é sempre nome próprio em inglês, mas evita o mesmo tipo de
-    desperdício de retradução infinita do glue_details no caso raro em que aconteça).
-    name_traduzido_pt_br fecha o estado final: True quando name_pt está preenchida.
+    Antes de traduzir, reaproveita name_pt já existente em previous_df quando
+    english_name não mudou desde a última execução (ver reuse_existing_translation em
+    shared_utils.traducao) — evita chamar a API de tradução para países/idiomas cujo
+    nome em inglês é idêntico ao já processado. O resto do fluxo (detecção de idioma,
+    cópia direta quando a fonte já é pt, tradução via Google/AWS e teto de tentativas)
+    é responsabilidade de resolve_pt_translation — ver sua docstring em
+    shared_utils.traducao.
 
     Args:
         df:           DataFrame com coluna english_name.
@@ -169,43 +167,36 @@ def _add_translation(
                       None). Por padrão usa resolve_detect_language_fn().
 
     Returns:
-        DataFrame com as colunas name_idioma_detectado, name_pt e
-        name_traduzido_pt_br adicionadas.
+        DataFrame com as colunas name_idioma_detectado_en, name_idioma_detectado_pt,
+        name_pt e name_tentativas_traducao adicionadas.
     """
     if "english_name" not in df.columns:
         return df
 
+    # translate_fn resolvido em runtime (não como default de parâmetro) para que
+    # patch("src.utils.translate_text", ...) nos testes continue funcionando quando
+    # o chamador não passa um translate_fn explícito.
+    fn = translate_fn or (lambda t: translate_text(t, context=description))
+    detect_fn = detect_fn or resolve_detect_language_fn()
+
     df["name_pt"] = None
-    df = add_detected_language_column(df, "english_name", "name_idioma_detectado", detect_fn)
     df = reuse_existing_translation(
         df, previous_df, "english_name", "name_pt", key_column=key_column
     )
 
-    already_pt_mask = (df["name_pt"].isna() | (df["name_pt"] == "")) & (
-        df["name_idioma_detectado"] == "pt"
-    )
-    df.loc[already_pt_mask, "name_pt"] = df.loc[already_pt_mask, "english_name"]
-
-    mask = (
-        df["english_name"].notna() & (df["english_name"] != "")
-        & (df["name_pt"].isna() | (df["name_pt"] == ""))
-        & (df["name_idioma_detectado"] != "pt")
-    )
-    if mask.any():
-        logger.info(f"Traduzindo {mask.sum()} nomes de {description} para pt-BR...")
-
-        # translate_fn resolvido em runtime (não como default de parâmetro) para que
-        # patch("src.utils.translate_text", ...) nos testes continue funcionando quando
-        # o chamador não passa um translate_fn explícito.
-        fn = translate_fn or (lambda t: translate_text(t, context=description))
-
-        # Loop sequencial (não paralelo): genre e configuration têm no máximo ~250 itens.
-        # Para volumes pequenos, o overhead do ThreadPoolExecutor supera o ganho de paralelismo.
-        # O glue_details usa ThreadPoolExecutor porque processa milhares de IDs por execução.
-        df.loc[mask, "name_pt"] = df.loc[mask, "english_name"].map(fn)
-
-    df["name_traduzido_pt_br"] = is_translated_mask(
-        df, "english_name", "name_pt", already_native_mask=(df["name_idioma_detectado"] == "pt")
+    # Loop sequencial (max_workers=1): genre e configuration têm no máximo ~250 itens.
+    # Para volumes pequenos, o overhead do ThreadPoolExecutor supera o ganho de paralelismo.
+    # O glue_details usa mais workers porque processa milhares de IDs por execução.
+    df, _ = resolve_pt_translation(
+        df,
+        source_column="english_name",
+        target_column="name_pt",
+        idioma_en_column="name_idioma_detectado_en",
+        idioma_pt_column="name_idioma_detectado_pt",
+        tentativas_column="name_tentativas_traducao",
+        detect_fn=detect_fn,
+        translate_fn=fn,
+        max_workers=1,
     )
     return df
 
@@ -273,10 +264,12 @@ def read_from_sor(
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
 
     discover: lê pasta inteira com wr.s3.read_json, adiciona coluna year, remove
-        duplicatas por id, e adiciona overview_idioma_detectado (diagnóstico — o
-        overview já vem em pt-BR nativo do TMDB via lambda_api, sem etapa de
-        tradução; a coluna só sinaliza se o TMDB de fato devolveu o texto em
-        português, usada como gate em glue_agg).
+        duplicatas por id, e adiciona overview_idioma_detectado e
+        overview_traduzido_pt_br (diagnóstico — o overview já vem em pt-BR nativo
+        do TMDB via lambda_api, sem etapa de tradução; as colunas só sinalizam se
+        o TMDB de fato devolveu o texto em português; overview_idioma_detectado é
+        usada como gate em glue_agg, overview_traduzido_pt_br é só um booleano
+        derivado dela, sem chamada de tradução).
     watch_providers_ref: lê arquivo único, deriva canonical_name.
     genre: lê arquivo único diretamente.
     configuration: lê arquivo único; tv adiciona name_pt (países), movie adiciona name_pt (idiomas).
@@ -293,9 +286,9 @@ def read_from_sor(
                        relevante para table_type="configuration". Se omitido, a
                        tradução roda sem cache (comportamento anterior).
         table_name:    Nome da tabela configuration no Glue Catalog; ver s3_bucket_sot.
-        detect_fn:     Função de detecção de idioma usada em name_idioma_detectado
-                       (configuration) e overview_idioma_detectado (discover). Por
-                       padrão usa resolve_detect_language_fn().
+        detect_fn:     Função de detecção de idioma usada em name_idioma_detectado_en/
+                       name_idioma_detectado_pt (configuration) e overview_idioma_detectado
+                       (discover). Por padrão usa resolve_detect_language_fn().
 
     Returns:
         DataFrame com os dados lidos e prontos para gravação no SOT
@@ -309,6 +302,7 @@ def read_from_sor(
         df = df.drop_duplicates(subset=["id"])
         if "overview" in df.columns:
             df = add_detected_language_column(df, "overview", "overview_idioma_detectado", detect_fn)
+            df["overview_traduzido_pt_br"] = df["overview_idioma_detectado"] == "pt"
 
     elif table_type == "now_playing":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")

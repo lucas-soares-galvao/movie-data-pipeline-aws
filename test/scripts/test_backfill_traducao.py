@@ -51,11 +51,11 @@ class TestAdicionarTraducoesPt:
         mock_translate.assert_not_called()
         assert resultado["overview_pt"].isna().all()
         assert sucesso == 0
-        assert (resultado["overview_traduzido_pt_br"] == False).all()  # noqa: E712
+        assert resultado["overview_idioma_detectado_pt"].isna().all()
 
     def test_traduz_independente_do_idioma_original(self):
         """original_language não é critério de elegibilidade (ver
-        shared_utils.traducao.eligible_overview_pt) — todo registro com
+        shared_utils.traducao.resolve_pt_translation) — todo registro com
         overview_en preenchido é traduzido, inclusive quando original_language == 'pt'."""
         df = pd.DataFrame({
             "original_language": ["en", "es", "pt"],
@@ -72,26 +72,28 @@ class TestAdicionarTraducoesPt:
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self):
         """translate_text devolve o texto original quando falha após todas as tentativas."""
         df = pd.DataFrame({"overview_en": ["Overview", "Falhou"]})
+        detectar_fn = lambda t: "pt" if t.endswith("_PT") else "en"  # noqa: E731
         with patch(
             "backfill_traducao.translate_text",
             side_effect=lambda t: "Overview_PT" if t == "Overview" else t,
         ):
-            resultado, sucesso = bt._adicionar_traducoes_pt(df, detectar_fn=lambda t: "en")
+            resultado, sucesso = bt._adicionar_traducoes_pt(df, detectar_fn=detectar_fn)
 
         assert resultado.loc[0, "overview_pt"] == "Overview_PT"
         assert resultado.loc[1, "overview_pt"] == "Falhou"
         assert sucesso == 1
-        assert bool(resultado.loc[0, "overview_traduzido_pt_br"]) is True
-        assert bool(resultado.loc[1, "overview_traduzido_pt_br"]) is False
+        assert resultado.loc[0, "overview_idioma_detectado_pt"] == "pt"
+        assert resultado.loc[1, "overview_idioma_detectado_pt"] != "pt"
 
     def test_pula_registros_ja_traduzidos_com_sucesso(self):
-        """overview_pt já preenchido e diferente do original não é retraduzido."""
+        """overview_pt já preenchido e cujo idioma detectado já é pt não é retraduzido."""
         df = pd.DataFrame({
             "overview_en": ["Já traduzido antes", "Ainda pendente"],
             "overview_pt": ["Already translated before", None],
         })
+        detectar_fn = lambda t: "pt" if t == "Already translated before" else "en"  # noqa: E731
         with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
-            resultado, sucesso = bt._adicionar_traducoes_pt(df, detectar_fn=lambda t: "en")
+            resultado, sucesso = bt._adicionar_traducoes_pt(df, detectar_fn=detectar_fn)
 
         mock_translate.assert_called_once_with("Ainda pendente")
         assert resultado.loc[0, "overview_pt"] == "Already translated before"
@@ -126,20 +128,21 @@ class TestAdicionarTraducoesPt:
             "overview_en": ["A", "B"],
             "overview_pt": ["A_PT", "B_PT"],
         })
+        detectar_fn = lambda t: "pt" if t.endswith("_PT") else "en"  # noqa: E731
         with patch("backfill_traducao.translate_text") as mock_translate:
-            resultado, sucesso = bt._adicionar_traducoes_pt(df, detectar_fn=lambda t: "en")
+            resultado, sucesso = bt._adicionar_traducoes_pt(df, detectar_fn=detectar_fn)
 
         mock_translate.assert_not_called()
         assert resultado.loc[0, "overview_pt"] == "A_PT"
         assert resultado.loc[1, "overview_pt"] == "B_PT"
         assert sucesso == 0
 
-    def test_idioma_detectado_calculado_a_partir_da_fonte(self):
+    def test_idioma_detectado_en_calculado_a_partir_da_fonte(self):
         df = pd.DataFrame({"overview_en": ["Overview"]})
-        detectar_fn = MagicMock(return_value="en")
+        detectar_fn = MagicMock(side_effect=lambda t: "en" if t == "Overview" else None)
         resultado, _ = bt._adicionar_traducoes_pt(df, detectar_fn=lambda t: detectar_fn(t))
-        assert resultado["overview_idioma_detectado"].iloc[0] == "en"
-        detectar_fn.assert_called_once_with("Overview")
+        assert resultado["overview_idioma_detectado_en"].iloc[0] == "en"
+        detectar_fn.assert_any_call("Overview")
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
         """Otimização: fonte já detectada como pt-BR é copiada direto, sem chamar
@@ -150,7 +153,7 @@ class TestAdicionarTraducoesPt:
         mock_translate.assert_not_called()
         assert resultado["overview_pt"].iloc[0] == "Já em português"
         assert sucesso == 0
-        assert bool(resultado["overview_traduzido_pt_br"].iloc[0]) is True
+        assert resultado["overview_idioma_detectado_pt"].iloc[0] == "pt"
 
 
 class TestAdicionarTraducoesTaglinePt:
@@ -179,8 +182,9 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["Já traduzida", "Pendente"],
             "tagline_pt": ["Already translated", None],
         })
+        detectar_fn = lambda t: "pt" if t == "Already translated" else "en"  # noqa: E731
         with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
-            resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df, detectar_fn=lambda t: "en")
+            resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df, detectar_fn=detectar_fn)
 
         mock_translate.assert_called_once_with("Pendente")
         assert resultado.loc[0, "tagline_pt"] == "Already translated"
@@ -205,8 +209,9 @@ class TestAdicionarTraducoesTaglinePt:
         existente (return df, 0 antecipado)."""
         df = pd.DataFrame({"overview_en": ["Overview"]})
         resultado, sucesso = bt._adicionar_traducoes_tagline_pt(df, detectar_fn=lambda t: "en")
-        assert "tagline_idioma_detectado" not in resultado.columns
-        assert "tagline_traduzido_pt_br" not in resultado.columns
+        assert "tagline_idioma_detectado_en" not in resultado.columns
+        assert "tagline_idioma_detectado_pt" not in resultado.columns
+        assert "tagline_tentativas_traducao" not in resultado.columns
         assert sucesso == 0
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
@@ -216,7 +221,7 @@ class TestAdicionarTraducoesTaglinePt:
         mock_translate.assert_not_called()
         assert resultado["tagline_pt"].iloc[0] == "Já em português"
         assert sucesso == 0
-        assert bool(resultado["tagline_traduzido_pt_br"].iloc[0]) is True
+        assert resultado["tagline_idioma_detectado_pt"].iloc[0] == "pt"
 
 
 class TestAdicionarTraducoesKeywordsPt:
@@ -230,7 +235,7 @@ class TestAdicionarTraducoesKeywordsPt:
     def test_traduz_independente_do_idioma_original(self):
         """Keywords não são localizadas pela API do TMDB — continuam em inglês
         mesmo quando original_language == 'pt', por isso original_language não
-        é critério de elegibilidade (ver shared_utils.traducao.eligible_keywords_pt)."""
+        é critério de elegibilidade (ver shared_utils.traducao.resolve_pt_translation)."""
         df = pd.DataFrame({
             "original_language": ["en", "pt"],
             "keywords": ["space, alien", "action, drama"],
@@ -248,8 +253,9 @@ class TestAdicionarTraducoesKeywordsPt:
             "keywords": ["já traduzida", "pendente"],
             "keywords_pt": ["already translated", None],
         })
+        detectar_fn = lambda t: "pt" if t == "already translated" else "en"  # noqa: E731
         with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
-            resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df, detectar_fn=lambda t: "en")
+            resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df, detectar_fn=detectar_fn)
 
         mock_translate.assert_called_once_with("pendente")
         assert resultado.loc[0, "keywords_pt"] == "already translated"
@@ -259,8 +265,9 @@ class TestAdicionarTraducoesKeywordsPt:
     def test_guard_de_schema_legado_nao_cria_colunas_novas(self):
         df = pd.DataFrame({"overview_en": ["Overview"]})
         resultado, sucesso = bt._adicionar_traducoes_keywords_pt(df, detectar_fn=lambda t: "en")
-        assert "keywords_idioma_detectado" not in resultado.columns
-        assert "keywords_traduzido_pt_br" not in resultado.columns
+        assert "keywords_idioma_detectado_en" not in resultado.columns
+        assert "keywords_idioma_detectado_pt" not in resultado.columns
+        assert "keywords_tentativas_traducao" not in resultado.columns
         assert sucesso == 0
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
@@ -270,7 +277,7 @@ class TestAdicionarTraducoesKeywordsPt:
         mock_translate.assert_not_called()
         assert resultado["keywords_pt"].iloc[0] == "ação, suspense"
         assert sucesso == 0
-        assert bool(resultado["keywords_traduzido_pt_br"].iloc[0]) is True
+        assert resultado["keywords_idioma_detectado_pt"].iloc[0] == "pt"
 
 
 class TestBackfillYear:
