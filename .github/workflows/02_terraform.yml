@@ -332,36 +332,39 @@ jobs:
             -out="${{ inputs.environment }}.plan"
           echo "✅ Terraform plan concluído com sucesso (${{ inputs.environment }})"
 
-      - name: Setup Infracost
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        uses: infracost/actions/setup@v3
-        with:
-          api-key: ${{ secrets.infracost-api-key }}
+      # Desabilitado temporariamente — infracost/actions/setup@v3 falhando com
+      # "HttpError: No server is currently available to service your request"
+      # (erro do lado do servidor da Infracost, não do workflow).
+      # - name: Setup Infracost
+      #   if: steps.read-destroy-config.outputs.destroy != 'true'
+      #   uses: infracost/actions/setup@v3
+      #   with:
+      #     api-key: ${{ secrets.infracost-api-key }}
 
-      - name: Generate Terraform Plan JSON
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        run: cd infra && terraform show -json ${{ inputs.environment }}.plan > /tmp/plan.json
+      # - name: Generate Terraform Plan JSON
+      #   if: steps.read-destroy-config.outputs.destroy != 'true'
+      #   run: cd infra && terraform show -json ${{ inputs.environment }}.plan > /tmp/plan.json
 
-      - name: Infracost Breakdown
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        run: |
-          infracost breakdown \
-            --path /tmp/plan.json \
-            --format json \
-            --out-file /tmp/infracost.json
+      # - name: Infracost Breakdown
+      #   if: steps.read-destroy-config.outputs.destroy != 'true'
+      #   run: |
+      #     infracost breakdown \
+      #       --path /tmp/plan.json \
+      #       --format json \
+      #       --out-file /tmp/infracost.json
+      #
+      #     echo "## Estimativa de Custo (Infracost) — ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+      #     infracost output --path /tmp/infracost.json --format table >> $GITHUB_STEP_SUMMARY
 
-          echo "## Estimativa de Custo (Infracost) — ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          infracost output --path /tmp/infracost.json --format table >> $GITHUB_STEP_SUMMARY
-
-      - name: Infracost PR Comment
-        if: steps.read-destroy-config.outputs.destroy != 'true' && github.event_name == 'pull_request'
-        run: |
-          infracost comment github \
-            --path /tmp/infracost.json \
-            --repo ${{ github.repository }} \
-            --github-token ${{ github.token }} \
-            --pull-request ${{ github.event.pull_request.number }} \
-            --behavior update
+      # - name: Infracost PR Comment
+      #   if: steps.read-destroy-config.outputs.destroy != 'true' && github.event_name == 'pull_request'
+      #   run: |
+      #     infracost comment github \
+      #       --path /tmp/infracost.json \
+      #       --repo ${{ github.repository }} \
+      #       --github-token ${{ github.token }} \
+      #       --pull-request ${{ github.event.pull_request.number }} \
+      #       --behavior update
 
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
