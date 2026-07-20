@@ -257,7 +257,7 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
 
 
 _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
-_TRANSLATE_MAX_WORKERS = 10  # traduções EN→PT paralelas via Google Translate
+_TRANSLATE_MAX_WORKERS = 5  # traduções EN→PT paralelas via Google Translate
 
 
 def _run_parallel(func: Any, items: list, max_workers: int = _TMDB_MAX_WORKERS) -> None:
