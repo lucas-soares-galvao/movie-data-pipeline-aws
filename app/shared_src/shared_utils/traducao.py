@@ -63,7 +63,8 @@ def make_capped_fallback(
 
     Thread-safe via threading.Lock + contador mutável de 1 elemento (lista), já que a
     função composta roda dentro de ThreadPoolExecutor (translate_in_parallel/
-    resolve_pt_translation, até 10 workers).
+    resolve_pt_translation, até 5 workers nos chamadores atuais — glue_details e
+    backfill_traducao.py).
 
     Args:
         fallback_fn:     Função chamada enquanto houver orçamento restante.
@@ -155,7 +156,7 @@ def resolve_translate_fn(
 
 
 def translate_in_parallel(
-    values: List[str], translate_fn: Callable[[str], str], max_workers: int = 10
+    values: List[str], translate_fn: Callable[[str], str], max_workers: int = 5
 ) -> List[str]:
     """
     Aplica translate_fn a cada item de values em paralelo via ThreadPoolExecutor.
@@ -207,7 +208,7 @@ def resolve_pt_translation(
     translation_attempts_column: str,
     detect_fn: Callable[[str], Optional[str]],
     translate_fn: Callable[[str], str],
-    max_workers: int = 10,
+    max_workers: int = 5,
     max_attempts: int = _MAX_TRANSLATION_ATTEMPTS_DEFAULT,
     needs_translation_column: Optional[str] = None,
 ) -> "tuple[pd.DataFrame, int]":
