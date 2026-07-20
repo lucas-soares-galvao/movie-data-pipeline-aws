@@ -105,7 +105,7 @@ import backfill_shared as shared
 
 logger = shared.setup_logging()
 
-_TRANSLATE_MAX_WORKERS = 10
+_TRANSLATE_MAX_WORKERS = 5
 
 
 def _add_translations_pt(
