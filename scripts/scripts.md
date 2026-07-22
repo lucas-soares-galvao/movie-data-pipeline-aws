@@ -90,7 +90,11 @@ default do caminho automático via EventBridge (`lambda_api` → `glue_etl` →
 `glue_details`) — em ambos os casos o serviço não escolhido é usado
 automaticamente como fallback caso o primário falhe (ver `resolve_translate_fn`
 em `shared_utils.traducao`), com o fallback ao AWS Translate limitado por um
-orçamento de caracteres (é pago por caractere). Em `backfill_historico.py`/
+orçamento de caracteres (é pago por caractere). `TRANSLATE_PROVIDER` também
+determina o detector de idioma primário (`resolve_detect_language_fn` em
+`shared_utils.idioma`): `"google"` usa `langdetect` primeiro com Comprehend como
+fallback capado por caracteres; `"aws"` usa Comprehend primeiro (sem cap) com
+`langdetect` como fallback. Em `backfill_historico.py`/
 `backfill_referencias.py` (via Lambda) e `backfill_enriquecimento.py` (via Glue),
 cada partição ano+tipo é uma invocação separada, então "por execução" já
 equivale a "por partição". Em `backfill_traducao.py` — o único que itera todas

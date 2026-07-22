@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from shared_utils.idioma import add_detected_language_column, resolve_detect_language_fn
 
@@ -30,6 +31,32 @@ class TestResolveDetectLanguageFn:
     def test_orcamento_suficiente_permite_fallback_aws(self):
         fn = resolve_detect_language_fn(lambda t: None, lambda t: "en", aws_fallback_max_chars=100)
         assert fn("curto") == "en"
+
+    def test_provider_google_default_mantem_comportamento_anterior(self):
+        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: "en")
+        assert fn("qualquer texto") == "pt"
+
+    def test_provider_aws_usa_comprehend_como_primario(self):
+        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: "en", provider="aws")
+        assert fn("qualquer texto") == "en"
+
+    def test_provider_aws_cai_para_local_quando_aws_devolve_none(self):
+        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: None, provider="aws")
+        assert fn("qualquer texto") == "pt"
+
+    def test_provider_aws_nao_capa_fallback_local(self):
+        """provider="aws": langdetect é o fallback (local/grátis) — sem limite de caracteres."""
+        calls = []
+        fn = resolve_detect_language_fn(
+            lambda t: calls.append(t) or "pt", lambda t: None,
+            aws_fallback_max_chars=1, provider="aws",
+        )
+        assert fn("texto bem mais longo que o orcamento minusculo") == "pt"
+        assert calls
+
+    def test_provider_invalido_levanta_value_error(self):
+        with pytest.raises(ValueError, match="provider de detecção inválido"):
+            resolve_detect_language_fn(provider="deepl")
 
 
 class TestAddDetectedLanguageColumn:

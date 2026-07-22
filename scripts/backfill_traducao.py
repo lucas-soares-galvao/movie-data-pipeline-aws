@@ -65,7 +65,12 @@ Variáveis opcionais:
                             proteção de custo, ver backfill_shared.apply_translate_cost_guard.
                             Em qualquer um dos dois casos, o serviço não escolhido é
                             usado como fallback automático, capado por caracteres
-                            quando é o AWS — ver shared_utils.traducao.resolve_translate_fn)
+                            quando é o AWS — ver shared_utils.traducao.resolve_translate_fn.
+                            A mesma escolha também determina o detector de idioma
+                            primário: "google" usa langdetect primeiro com Comprehend
+                            como fallback capado; "aws" usa Comprehend primeiro (sem
+                            cap) com langdetect como fallback — ver
+                            shared_utils.idioma.resolve_detect_language_fn)
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -309,7 +314,9 @@ def main() -> None:
         # primeira partição processada poderia esgotar sozinha, deixando as demais
         # sem fallback).
         translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
-        detect_fn = resolve_detect_language_fn(detect_language_langdetect, detect_language_aws)
+        detect_fn = resolve_detect_language_fn(
+            detect_language_langdetect, detect_language_aws, provider=translate_provider,
+        )
         _, translated_count = _backfill_year(
             database=database,
             table_details=table_details,
