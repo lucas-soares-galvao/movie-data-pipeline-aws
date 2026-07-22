@@ -862,7 +862,9 @@ def collect_and_write_details(
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
     translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
-    detect_fn = resolve_detect_language_fn(detect_language_langdetect, detect_language_aws)
+    detect_fn = resolve_detect_language_fn(
+        detect_language_langdetect, detect_language_aws, provider=translate_provider,
+    )
     df = _add_translations_pt(df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn)
     df = _add_translations_keywords_pt(df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn)
     df = _add_translations_tagline_pt(df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn)
