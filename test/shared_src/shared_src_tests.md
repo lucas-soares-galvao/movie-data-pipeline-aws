@@ -251,9 +251,11 @@ devolvendo o `LanguageCode` de maior `Score`. Mesmo padrão defensivo de
 
 ### `TestResolveDetectLanguageFn`
 
-Compõe detecção local (`langdetect`) primeiro; se devolver `None`, cai para AWS
-Comprehend, capado por `aws_fallback_max_chars` caracteres via `make_capped_fallback`
-(mesmo mecanismo de orçamento do fallback de tradução).
+Com `provider="google"` (default), compõe detecção local (`langdetect`) primeiro;
+se devolver `None`, cai para AWS Comprehend, capado por `aws_fallback_max_chars`
+caracteres via `make_capped_fallback` (mesmo mecanismo de orçamento do fallback de
+tradução). Com `provider="aws"`, a ordem se inverte: Comprehend primeiro (sem cap),
+`langdetect` como fallback — espelhando `TestResolveTranslateFn` em `test_traducao.py`.
 
 | Teste | O que verifica |
 |---|---|
@@ -262,6 +264,11 @@ Comprehend, capado por `aws_fallback_max_chars` caracteres via `make_capped_fall
 | `test_aws_nao_e_chamado_quando_local_detecta` | Confirma que a função AWS nunca é invocada quando o local já resolve |
 | `test_orcamento_esgotado_devolve_none_sem_chamar_aws` | Orçamento de caracteres esgotado devolve `None` sem chamar o AWS |
 | `test_orcamento_suficiente_permite_fallback_aws` | Orçamento suficiente permite o fallback normalmente |
+| `test_provider_google_default_mantem_comportamento_anterior` | `provider="google"` (default) reproduz o comportamento anterior a este parâmetro |
+| `test_provider_aws_usa_comprehend_como_primario` | `provider="aws"` inverte a ordem: Comprehend é tentado primeiro |
+| `test_provider_aws_cai_para_local_quando_aws_devolve_none` | `provider="aws"`: Comprehend devolve `None` → cai para `langdetect` |
+| `test_provider_aws_nao_capa_fallback_local` | `provider="aws"`: o fallback (`langdetect`, local/grátis) não é afetado por `aws_fallback_max_chars` |
+| `test_provider_invalido_levanta_value_error` | `provider` fora de `"google"`/`"aws"` levanta `ValueError` |
 
 ### `TestAddDetectedLanguageColumn`
 

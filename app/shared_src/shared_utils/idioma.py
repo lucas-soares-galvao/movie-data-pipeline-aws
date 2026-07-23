@@ -35,13 +35,21 @@ def resolve_detect_language_fn(
     detect_local: Callable[[str], Optional[str]] = detect_language_langdetect,
     detect_aws: Callable[[str], Optional[str]] = detect_language_aws,
     aws_fallback_max_chars: int = _AWS_FALLBACK_MAX_CHARS_DEFAULT,
+    provider: str = "google",
 ) -> Callable[[str], Optional[str]]:
     """
-    Resolve a função de detecção de idioma composta: langdetect (local, grátis)
-    primeiro; se falhar (devolver None), cai para AWS Comprehend, capado por
-    aws_fallback_max_chars caracteres nesta execução (rede de segurança de custo,
-    já que o Comprehend cobra por caractere processado — ver make_capped_fallback
-    em shared_utils.traducao).
+    Resolve a função de detecção de idioma composta, espelhando `provider` de
+    `resolve_translate_fn` (`shared_utils.traducao`): o serviço escolhido vira
+    primário, o outro vira fallback automático se o primário falhar (devolver
+    None).
+
+    `provider="google"` (default) → primário=langdetect (local, grátis),
+    fallback=AWS Comprehend, capado por aws_fallback_max_chars caracteres nesta
+    execução (rede de segurança de custo, já que o Comprehend cobra por caractere
+    processado — ver make_capped_fallback em shared_utils.traducao).
+    `provider="aws"` → primário=AWS Comprehend — sem cap, já que quem escolheu
+    "aws" explicitamente já aceitou o custo do primário —, fallback=langdetect
+    (local, grátis, sem necessidade de cap).
 
     `detect_local`/`detect_aws` são recebidos como parâmetro (em vez de resolvidos
     aqui dentro) pelo mesmo motivo de `resolve_translate_fn`: os chamadores passam
@@ -51,19 +59,40 @@ def resolve_detect_language_fn(
         detect_local:           Função de detecção local (langdetect).
         detect_aws:             Função de detecção via AWS Comprehend.
         aws_fallback_max_chars: Orçamento de caracteres para o fallback ao Comprehend
-                                nesta execução.
+                                nesta execução, aplicado somente quando
+                                `provider="google"` (Comprehend é o fallback).
+                                Ignorado quando `provider="aws"` (Comprehend já é
+                                o primário escolhido explicitamente).
+        provider:               `"google"` (langdetect primário) ou `"aws"`
+                                (Comprehend primário). Default `"google"`
+                                preserva o comportamento anterior a este parâmetro.
 
     Returns:
-        Função (texto) -> código de idioma detectado (ou None) que tenta o detector
-        local e cai para o AWS Comprehend automaticamente se o local falhar.
+        Função (texto) -> código de idioma detectado (ou None) que tenta o
+        detector primário e cai para o fallback automaticamente se o primário
+        devolver None.
+
+    Raises:
+        ValueError: se `provider` não for `"google"` nem `"aws"`.
     """
-    capped_aws = make_capped_fallback(detect_aws, aws_fallback_max_chars, on_over_budget=lambda text: None)
+    try:
+        primary, fallback = {
+            "google": (detect_local, detect_aws),
+            "aws": (detect_aws, detect_local),
+        }[provider]
+    except KeyError:
+        raise ValueError(
+            f"provider de detecção inválido: {provider!r} (esperado 'google' ou 'aws')"
+        ) from None
+
+    if provider == "google":
+        fallback = make_capped_fallback(fallback, aws_fallback_max_chars, on_over_budget=lambda text: None)
 
     def _detect_with_fallback(text: str) -> Optional[str]:
-        result = detect_local(text)
+        result = primary(text)
         if result is not None:
             return result
-        return capped_aws(text)
+        return fallback(text)
 
     return _detect_with_fallback
 
