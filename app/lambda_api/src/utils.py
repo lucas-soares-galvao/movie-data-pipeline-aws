@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import date, timedelta
 from typing import Any, Optional
 
 from requests.exceptions import HTTPError
@@ -250,3 +251,109 @@ def collect_discover_data(
             f"Nenhuma página coletada para {folder}/ano={year}. "
             f"Todas as {failed_pages} tentativas falharam."
         )
+
+
+# ── Modo changes (TMDB Changes API) ──────────────────────────────────────────
+# Detecta staleness em todo o catálogo histórico (não só no ano atual/anterior):
+# /movie/changes e /tv/changes retornam os IDs que mudaram numa janela de data,
+# independente do ano de lançamento. A lista de IDs é gravada no bucket TEMP e
+# consumida pelo Glue Details (CHANGES_S3_PATH), que já sabe re-enriquecer IDs
+# existentes — ver app/glue_details/src/utils.py.
+
+
+def fetch_changed_ids(
+    api_key: str, content_type: str, start_date: str, end_date: str, max_pages: int = MAX_PAGES
+) -> list[int]:
+    """
+    Pagina /movie/changes ou /tv/changes numa janela de data e retorna IDs únicos.
+
+    A janela [start_date, end_date] deve ter no máximo 14 dias — limite da Changes API.
+
+    Args:
+        api_key:      Chave de autenticação da API TMDB.
+        content_type: "movie" ou "tv".
+        start_date:   Início da janela (formato "YYYY-MM-DD").
+        end_date:     Fim da janela (formato "YYYY-MM-DD").
+        max_pages:    Máximo de páginas a coletar (proteção contra volume atípico).
+
+    Returns:
+        Lista de IDs inteiros únicos que mudaram na janela.
+    """
+    url = f"https://api.themoviedb.org/3/{content_type}/changes"
+
+    ids: set[int] = set()
+    fetched_pages = 0
+    failed_pages = 0
+
+    for page in range(1, max_pages + 1):
+        try:
+            data = tmdb_get(
+                url,
+                {"api_key": api_key, "start_date": start_date, "end_date": end_date, "page": page},
+            )
+        except HTTPError as e:
+            failed_pages += 1
+            logger.warning(f"Página {page} de changes/{content_type} falhou: {e}. Continuando...")
+            continue
+
+        total_pages = data.get("total_pages", 0)
+        if page > total_pages:
+            logger.info(
+                f"changes/{content_type}: {total_pages} página(s) disponível(is). "
+                f"Encerrando na página {page - 1}."
+            )
+            break
+
+        for result in data.get("results", []):
+            item_id = result.get("id")
+            if item_id is not None:
+                ids.add(item_id)
+        fetched_pages += 1
+
+    if failed_pages > 0:
+        logger.warning(
+            f"changes/{content_type}: {fetched_pages} página(s) processada(s), "
+            f"{failed_pages} página(s) com erro."
+        )
+
+    logger.info(f"changes/{content_type}: {len(ids)} IDs únicos na janela {start_date}..{end_date}.")
+    return list(ids)
+
+
+def collect_changes_data(
+    api_key: str, s3_client: S3Client, bucket: str, content_type: str, lookback_days: int = 9
+) -> str:
+    """
+    Busca IDs mudados na janela [hoje - lookback_days, hoje] e grava a lista no S3.
+
+    Cadência semanal (não diária) para economizar custo do Glue Details, que é
+    acionado a cada execução. lookback_days=9 (não 7) cobre uma semana cheia mais
+    2 dias de folga caso uma execução falhe/pule uma semana, sem depender de retry
+    manual — ainda dentro do limite de 14 dias por chamada da Changes API.
+    Reprocessar um ID já visto na semana anterior é idempotente.
+
+    Args:
+        api_key:       Chave de API TMDB.
+        s3_client:     Cliente boto3 S3.
+        bucket:        Nome do bucket TEMP de destino (handoff efêmero, não SOR).
+        content_type:  "movie" ou "tv".
+        lookback_days: Tamanho da janela de busca, em dias.
+
+    Returns:
+        A s3_key onde a lista de IDs foi gravada.
+    """
+    end_date = date.today()
+    start_date = end_date - timedelta(days=lookback_days)
+
+    logger.info(f"Coletando changes de '{content_type}' de {start_date} a {end_date}...")
+    ids = fetch_changed_ids(api_key, content_type, start_date.isoformat(), end_date.isoformat())
+
+    s3_key = f"tmdb/changes/{content_type}/{end_date.isoformat()}.json"
+    payload = {
+        "content_type": content_type,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "ids": ids,
+    }
+    save_to_s3(s3_client, bucket, payload, s3_key)
+    return s3_key

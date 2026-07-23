@@ -1,5 +1,8 @@
-import pandas as pd
+import json
+import sys
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 import src.utils as u
 
@@ -1451,6 +1454,216 @@ class TestGetParametersGlue:
         assert result["MEDIA_TYPE"] == "movie"
         assert result["YEAR"] == "2024"
         assert result["TMDB_SECRET_ARN"] == "arn:aws:secretsmanager:us-east-1:1:secret:tmdb"
+
+    def test_year_end_year_default_none_quando_ausentes(self):
+        """Modo changes não passa YEAR/END_YEAR — CHANGES_S3_PATH assume esse papel."""
+        required_sem_ano = {k: v for k, v in self._required().items() if k not in ("YEAR", "END_YEAR")}
+        with (
+            patch("src.utils.get_resolved_option", return_value=required_sem_ano),
+            patch.object(sys, "argv", ["main.py"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["YEAR"] is None
+        assert result["END_YEAR"] is None
+
+    def test_year_lido_do_sys_argv_quando_ausente_do_resolved_option(self):
+        required_sem_ano = {k: v for k, v in self._required().items() if k not in ("YEAR", "END_YEAR")}
+        with (
+            patch("src.utils.get_resolved_option", return_value=required_sem_ano),
+            patch.object(sys, "argv", ["main.py", "--YEAR", "2025", "--END_YEAR", "2025"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["YEAR"] == "2025"
+        assert result["END_YEAR"] == "2025"
+
+    def test_changes_s3_path_default_none(self):
+        with (
+            patch("src.utils.get_resolved_option", return_value=self._required()),
+            patch.object(sys, "argv", ["main.py"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["CHANGES_S3_PATH"] is None
+
+    def test_changes_s3_path_lido_do_sys_argv(self):
+        with (
+            patch("src.utils.get_resolved_option", return_value=self._required()),
+            patch.object(sys, "argv", ["main.py", "--CHANGES_S3_PATH", "s3://bucket/key.json"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["CHANGES_S3_PATH"] == "s3://bucket/key.json"
+
+
+# ---------------------------------------------------------------------------
+# Modo changes (TMDB Changes API)
+# ---------------------------------------------------------------------------
+
+
+class TestWriteJsonToS3:
+    def test_grava_json_no_s3_com_parametros_corretos(self):
+        mock_s3 = MagicMock()
+        with patch("src.utils.boto3.client", return_value=mock_s3):
+            u._write_json_to_s3("meu-bucket", "tmdb/changes/movie/discarded_2026-07-08.json", {"discarded_ids": [1, 2]})
+
+        mock_s3.put_object.assert_called_once()
+        kwargs = mock_s3.put_object.call_args.kwargs
+        assert kwargs["Bucket"] == "meu-bucket"
+        assert kwargs["Key"] == "tmdb/changes/movie/discarded_2026-07-08.json"
+        assert kwargs["ContentType"] == "application/json"
+        assert json.loads(kwargs["Body"].decode("utf-8")) == {"discarded_ids": [1, 2]}
+
+
+class TestFetchIdsFromChangesFile:
+    def _mock_s3_with_body(self, payload: dict) -> MagicMock:
+        body = json.dumps(payload).encode("utf-8")
+        mock_body = MagicMock()
+        mock_body.read.return_value = body
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {"Body": mock_body}
+        return mock_s3
+
+    def test_le_ids_do_arquivo_json(self):
+        mock_s3 = self._mock_s3_with_body({"content_type": "movie", "ids": [1, 2, 3]})
+        with patch("src.utils.boto3.client", return_value=mock_s3):
+            resultado = u.fetch_ids_from_changes_file("s3://meu-bucket/tmdb/changes/movie/2026-07-08.json")
+
+        assert resultado == [1, 2, 3]
+        mock_s3.get_object.assert_called_once_with(
+            Bucket="meu-bucket", Key="tmdb/changes/movie/2026-07-08.json"
+        )
+
+    def test_retorna_lista_vazia_se_chave_ids_ausente(self):
+        mock_s3 = self._mock_s3_with_body({"content_type": "movie"})
+        with patch("src.utils.boto3.client", return_value=mock_s3):
+            resultado = u.fetch_ids_from_changes_file("s3://meu-bucket/tmdb/changes/movie/2026-07-08.json")
+
+        assert resultado == []
+
+
+class TestResolveYearsForChangedIds:
+    def test_retorna_dict_vazio_para_lista_vazia(self):
+        resultado = u.resolve_years_for_changed_ids("db", "tb_discover", [], "tmp-bucket", "movie")
+        assert resultado == {}
+
+    def test_resolve_years_dos_ids_encontrados(self):
+        df = pd.DataFrame({"id": [1, 2], "year": ["2020", "2021"]})
+        with patch("src.utils.wr.athena.read_sql_query", return_value=df):
+            resultado = u.resolve_years_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
+        assert resultado == {1: "2020", 2: "2021"}
+
+    def test_descarta_ids_nao_encontrados_e_grava_no_s3(self):
+        df = pd.DataFrame({"id": [1], "year": ["2020"]})
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df),
+            patch("src.utils._write_json_to_s3") as mock_write,
+        ):
+            resultado = u.resolve_years_for_changed_ids("db", "tb_discover", [1, 2, 3], "tmp-bucket", "movie")
+
+        assert resultado == {1: "2020"}
+        mock_write.assert_called_once()
+        bucket_arg, key_arg, data_arg = mock_write.call_args[0]
+        assert bucket_arg == "tmp-bucket"
+        assert "discarded_" in key_arg
+        assert sorted(data_arg["discarded_ids"]) == [2, 3]
+
+    def test_nao_grava_arquivo_de_descartados_quando_todos_encontrados(self):
+        df = pd.DataFrame({"id": [1, 2], "year": ["2020", "2020"]})
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df),
+            patch("src.utils._write_json_to_s3") as mock_write,
+        ):
+            u.resolve_years_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
+
+        mock_write.assert_not_called()
+
+    def test_faz_chunking_da_clausula_in(self):
+        df_vazio = pd.DataFrame({"id": [], "year": []})
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df_vazio) as mock_athena,
+            patch("src.utils._write_json_to_s3"),
+        ):
+            u.resolve_years_for_changed_ids(
+                "db", "tb_discover", list(range(5)), "tmp-bucket", "movie", chunk_size=2
+            )
+
+        assert mock_athena.call_count == 3  # 5 ids em lotes de 2 -> 3 chamadas
+
+
+class TestProcessChangedIds:
+    def _kwargs(self, **overrides):
+        base = dict(
+            api_key="key",
+            database="db",
+            table_discover="td",
+            table_details="tdet",
+            table_watch_providers="twp",
+            content_type="movie",
+            changed_ids=[1, 2],
+            s3_bucket_sot="sot",
+            s3_bucket_temp="tmp",
+        )
+        base.update(overrides)
+        return base
+
+    def test_retorna_lista_vazia_se_nenhum_id_encontrado(self):
+        with patch("src.utils.resolve_years_for_changed_ids", return_value={}):
+            resultado = u.process_changed_ids(**self._kwargs())
+        assert resultado == []
+
+    def test_chama_collect_and_write_details_com_todos_os_ids_resolvidos(self):
+        with (
+            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020", 2: "2021"}),
+            patch("src.utils.collect_and_write_details") as mock_details,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            u.process_changed_ids(**self._kwargs())
+
+        mock_details.assert_called_once()
+        ids_passados = mock_details.call_args.kwargs["ids"]
+        assert sorted(ids_passados) == [1, 2]
+        assert "year" not in mock_details.call_args.kwargs
+
+    def test_agrupa_watch_providers_por_year(self):
+        with (
+            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020", 2: "2021", 3: "2020"}),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            u.process_changed_ids(**self._kwargs(changed_ids=[1, 2, 3]))
+
+        assert mock_wp.call_count == 2
+        anos_chamados = sorted(c.kwargs["year"] for c in mock_wp.call_args_list)
+        assert anos_chamados == ["2020", "2021"]
+
+    def test_repara_duplicatas_por_ano_afetado_e_retorna_anos(self):
+        with (
+            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020", 2: "2021"}),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.repair_details_duplicates") as mock_repair_details,
+            patch("src.utils.repair_watch_providers_duplicates") as mock_repair_wp,
+        ):
+            resultado = u.process_changed_ids(**self._kwargs())
+
+        assert resultado == ["2020", "2021"]
+        assert mock_repair_details.call_count == 2
+        assert mock_repair_wp.call_count == 2
+
+    def test_nao_chama_repair_discover_duplicates(self):
+        with (
+            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020"}),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+            patch("src.utils.repair_discover_duplicates") as mock_repair_discover,
+        ):
+            u.process_changed_ids(**self._kwargs(changed_ids=[1]))
+
+        mock_repair_discover.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

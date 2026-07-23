@@ -99,7 +99,7 @@ proj-eng-dados-filmes-aws/
 │   ├── glue_catalog.tf             # Database e tabelas no Glue Catalog
 │   ├── lightsail_ia.tf             # Instância Lightsail + IAM user filmbot-agent
 │   ├── lightsail_scheduler.tf      # Lambda + EventBridge para ligar/desligar o Lightsail (custo)
-│   ├── eventbridge.tf              # Regras EventBridge (semanal, mensal, anual)
+│   ├── eventbridge.tf              # Regras EventBridge (semanal, semanal de changes, mensal, anual)
 │   ├── sns_topics.tf               # Tópicos SNS + subscrições de e-mail
 │   ├── cloudwatch_alarms.tf        # Alarmes Lambda e EventBridge
 │   ├── cloudwatch_glue_alarms.tf   # Alarmes Glue ETL e Data Quality
@@ -332,7 +332,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
 | `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
 | `lightsail_scheduler.tf` | Lambda + EventBridge para ligar/desligar o Lightsail (custo) |
-| `eventbridge.tf` | Regras de schedule EventBridge (semanal, mensal, anual) → Lambda e Step Functions |
+| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, mensal, anual) → Lambda e Step Functions |
 | `step_functions.tf` | State Machine de backfill histórico anual |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |

@@ -16,11 +16,11 @@ test/lambda_api/
 
 ## Setup
 
-As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME` e `S3_BUCKET_SOR` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
+As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME`, `GLUE_DETAILS_JOB_NAME`, `S3_BUCKET_SOR` e `S3_BUCKET_TEMP` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
 
 ### Helper `_run()` (`test_main.py`)
 
-Função auxiliar no nível do módulo que encapsula os 9 `patch()` comuns a praticamente todos os testes do handler. Recebe o evento e um `year` opcional, executa `main.lambda_handler()` e retorna um dict com o resultado e todos os mocks para inspeção:
+Função auxiliar no nível do módulo que encapsula os `patch()` comuns a praticamente todos os testes do handler. Recebe o evento e um `year` opcional, executa `main.lambda_handler()` e retorna um dict com o resultado e todos os mocks para inspeção:
 
 ```python
 mocks = _run(EVENTO_MOVIE, year=2027)
@@ -28,7 +28,7 @@ assert mocks["result"]["statusCode"] == 200
 assert mocks["mock_discover"].call_count == 2
 ```
 
-Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_dt`.
+Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`.
 
 ## Casos de teste — `test_main.py`
 
@@ -97,6 +97,19 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_collect_now_playing_chamado_quando_tabela_presente` | `collect_now_playing_data` é chamado quando `table_now_playing_movie` está no evento |
 | `test_collect_now_playing_nao_chamado_sem_tabela` | `collect_now_playing_data` **não** é chamado quando `table_now_playing_movie` está ausente |
 | `test_glue_acionado_com_table_type_now_playing` | Glue ETL é acionado com `table_type="now_playing"` e `table_name` correto após a coleta |
+
+### `TestOnlyChangesTables` — flag `only_changes_tables=True`
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_status_200` | Handler retorna `{"statusCode": 200}` no modo changes |
+| `test_chama_collect_changes_data_com_content_type_correto` | `collect_changes_data` é chamado com o `content_type` do evento |
+| `test_nao_coleta_referencia_nem_discover` | `collect_genre_data`, `collect_configuration_data`, `collect_watch_providers_ref`, `collect_discover_data` e `collect_now_playing_data` **não** são chamados |
+| `test_aciona_glue_details_uma_unica_vez` | `trigger_glue_job` é chamado exatamente uma vez |
+| `test_glue_details_recebe_changes_s3_path` | O job acionado é `GLUE_DETAILS_JOB_NAME`, com `CHANGES_S3_PATH`, `MEDIA_TYPE` e `DATABASE` corretos |
+| `test_glue_details_nao_recebe_year_nem_end_year` | A chamada ao Glue Details não inclui `YEAR`/`END_YEAR` |
+| `test_translate_provider_default_google` | Sem `translate_provider` no evento, `TRANSLATE_PROVIDER="google"` |
+| `test_translate_provider_repassado_quando_informado` | `translate_provider` do evento é repassado ao Glue Details |
 
 ## Casos de teste — `test_utils.py`
 
@@ -171,6 +184,28 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salva
 | `test_multiplas_paginas_salva_cada_uma` | Número de arquivos salvos no S3 corresponde ao número de páginas retornadas |
 | `test_para_quando_page_maior_que_total_pages` | Paginação para quando `page > total_pages` retornado pela API |
 | `test_s3_key_tem_formato_correto` | Chave S3 segue o padrão `tmdb/now_playing/movie/pagina_001.json` |
+
+### `TestFetchChangedIds`
+
+| Teste | O que verifica |
+|---|---|
+| `test_busca_endpoint_correto_movie` | URL é `https://api.themoviedb.org/3/movie/changes` |
+| `test_busca_endpoint_correto_tv` | URL é `https://api.themoviedb.org/3/tv/changes` |
+| `test_envia_janela_de_data_nos_params` | Params incluem `start_date`/`end_date` corretos |
+| `test_pagina_todas_as_paginas_disponiveis` | Itera por todas as páginas e agrega os IDs |
+| `test_deduplica_ids_repetidos_entre_paginas` | IDs repetidos entre páginas aparecem uma única vez no resultado |
+| `test_respeita_max_pages` | Não ultrapassa o limite de `max_pages` |
+| `test_para_quando_so_ha_uma_pagina` | Para corretamente quando `total_pages=1` |
+| `test_continua_apos_pagina_com_erro_http` | Uma página com `HTTPError` é ignorada, sem interromper as demais |
+| `test_ignora_resultados_sem_id` | Resultados sem campo `id` são descartados |
+
+### `TestCollectChangesData`
+
+| Teste | O que verifica |
+|---|---|
+| `test_grava_no_s3_com_chave_esperada` | Chave S3 segue o padrão `tmdb/changes/{content_type}/{data}.json` |
+| `test_payload_contem_ids_e_janela_de_data` | Payload salvo inclui `content_type`, `ids`, `start_date` e `end_date`, e a janela repassada a `fetch_changed_ids` bate com a gravada |
+| `test_retorna_a_s3_key` | Retorna a s3_key usada na gravação |
 
 ## Como executar
 

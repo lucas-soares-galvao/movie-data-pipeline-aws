@@ -45,11 +45,13 @@ resource "aws_lambda_function" "simple_lambda" {
 
   environment {
     variables = {
-      TMDB_SECRET_ARN   = var.filmbot_secret_arn
-      GLUE_ETL_JOB_NAME = local.envs.glue_etl_job_name
-      S3_BUCKET_SOR     = local.envs.s3_bucket_sor
-      S3_BUCKET_AUX     = local.envs.s3_bucket_aux
-      ENVIRONMENT       = var.env
+      TMDB_SECRET_ARN       = var.filmbot_secret_arn
+      GLUE_ETL_JOB_NAME     = local.envs.glue_etl_job_name
+      GLUE_DETAILS_JOB_NAME = local.envs.glue_details_job_name
+      S3_BUCKET_SOR         = local.envs.s3_bucket_sor
+      S3_BUCKET_AUX         = local.envs.s3_bucket_aux
+      S3_BUCKET_TEMP        = local.envs.s3_bucket_temp
+      ENVIRONMENT           = var.env
     }
   }
 

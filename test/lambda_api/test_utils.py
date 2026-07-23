@@ -2,11 +2,13 @@ import json
 from unittest.mock import MagicMock, patch
 
 from src.utils import (
+    collect_changes_data,
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
     collect_now_playing_data,
     collect_watch_providers_ref,
+    fetch_changed_ids,
     fetch_tmdb_data,
     fetch_tmdb_reference,
     save_to_s3,
@@ -443,3 +445,159 @@ class TestCollectWatchProvidersRef:
 
         dados_salvos = mock_save.call_args[0][2]
         assert dados_salvos[0]["display_priority_br"] is None
+
+
+# ---------------------------------------------------------------------------
+# fetch_changed_ids
+# ---------------------------------------------------------------------------
+
+
+class TestFetchChangedIds:
+    def test_busca_endpoint_correto_movie(self):
+        dados = {"page": 1, "results": [], "total_pages": 1}
+        with patch("src.utils.tmdb_get", return_value=dados) as mock_tmdb_get:
+            fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        url_chamada = mock_tmdb_get.call_args[0][0]
+        assert url_chamada == "https://api.themoviedb.org/3/movie/changes"
+
+    def test_busca_endpoint_correto_tv(self):
+        dados = {"page": 1, "results": [], "total_pages": 1}
+        with patch("src.utils.tmdb_get", return_value=dados) as mock_tmdb_get:
+            fetch_changed_ids("key", "tv", "2026-07-01", "2026-07-08")
+
+        url_chamada = mock_tmdb_get.call_args[0][0]
+        assert url_chamada == "https://api.themoviedb.org/3/tv/changes"
+
+    def test_envia_janela_de_data_nos_params(self):
+        dados = {"page": 1, "results": [], "total_pages": 1}
+        with patch("src.utils.tmdb_get", return_value=dados) as mock_tmdb_get:
+            fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        params = mock_tmdb_get.call_args[0][1]
+        assert params["start_date"] == "2026-07-01"
+        assert params["end_date"] == "2026-07-08"
+
+    def test_pagina_todas_as_paginas_disponiveis(self):
+        # A última chamada (page=3) só serve para confirmar page > total_pages e
+        # encerrar o loop — mesmo padrão de "chamada de sondagem" já usado em
+        # collect_discover_data/collect_now_playing_data.
+        with patch("src.utils.tmdb_get") as mock_get:
+            mock_get.side_effect = [
+                {"page": 1, "results": [{"id": 1}, {"id": 2}], "total_pages": 2},
+                {"page": 2, "results": [{"id": 3}], "total_pages": 2},
+                {"page": 3, "results": [], "total_pages": 2},
+            ]
+            resultado = fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        assert mock_get.call_count == 3
+        assert sorted(resultado) == [1, 2, 3]
+
+    def test_deduplica_ids_repetidos_entre_paginas(self):
+        with patch("src.utils.tmdb_get") as mock_get:
+            mock_get.side_effect = [
+                {"page": 1, "results": [{"id": 1}, {"id": 2}], "total_pages": 2},
+                {"page": 2, "results": [{"id": 2}, {"id": 3}], "total_pages": 2},
+                {"page": 3, "results": [], "total_pages": 2},
+            ]
+            resultado = fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        assert sorted(resultado) == [1, 2, 3]
+
+    def test_respeita_max_pages(self):
+        with patch("src.utils.tmdb_get") as mock_get:
+            mock_get.side_effect = [
+                {"page": 1, "results": [{"id": 1}], "total_pages": 100},
+                {"page": 2, "results": [{"id": 2}], "total_pages": 100},
+            ]
+            resultado = fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08", max_pages=2)
+
+        assert mock_get.call_count == 2
+        assert sorted(resultado) == [1, 2]
+
+    def test_para_quando_so_ha_uma_pagina(self):
+        with patch("src.utils.tmdb_get") as mock_get:
+            mock_get.side_effect = [
+                {"page": 1, "results": [{"id": 1}], "total_pages": 1},
+                {"page": 2, "results": [{"id": 99}], "total_pages": 1},
+            ]
+            resultado = fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        # page=2 é a chamada de sondagem: total_pages=1 faz 2 > 1 e encerra o loop
+        # antes de processar os resultados dessa página (id 99 nunca entra).
+        assert mock_get.call_count == 2
+        assert resultado == [1]
+
+    def test_continua_apos_pagina_com_erro_http(self):
+        from requests.exceptions import HTTPError
+
+        with patch("src.utils.tmdb_get") as mock_get:
+            mock_get.side_effect = [
+                HTTPError("erro na pagina 1"),
+                {"page": 2, "results": [{"id": 5}], "total_pages": 2},
+                {"page": 3, "results": [], "total_pages": 2},
+            ]
+            resultado = fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        assert resultado == [5]
+
+    def test_ignora_resultados_sem_id(self):
+        dados = {"page": 1, "results": [{"adult": False}, {"id": 7}], "total_pages": 1}
+        with patch("src.utils.tmdb_get", return_value=dados):
+            resultado = fetch_changed_ids("key", "movie", "2026-07-01", "2026-07-08")
+
+        assert resultado == [7]
+
+
+# ---------------------------------------------------------------------------
+# collect_changes_data
+# ---------------------------------------------------------------------------
+
+
+class TestCollectChangesData:
+    def test_grava_no_s3_com_chave_esperada(self):
+        from datetime import date as real_date
+
+        mock_s3 = MagicMock()
+        hoje = real_date(2026, 7, 8)
+        with (
+            patch("src.utils.fetch_changed_ids", return_value=[1, 2, 3]),
+            patch("src.utils.save_to_s3") as mock_save,
+            patch("src.utils.date") as mock_date,
+        ):
+            mock_date.today.return_value = hoje
+
+            s3_key = collect_changes_data("key", mock_s3, "meu-bucket-temp", "movie")
+
+        assert s3_key == "tmdb/changes/movie/2026-07-08.json"
+        mock_save.assert_called_once()
+        assert mock_save.call_args[0][1] == "meu-bucket-temp"
+        assert mock_save.call_args[0][3] == "tmdb/changes/movie/2026-07-08.json"
+
+    def test_payload_contem_ids_e_janela_de_data(self):
+        mock_s3 = MagicMock()
+        with (
+            patch("src.utils.fetch_changed_ids", return_value=[10, 20]) as mock_fetch,
+            patch("src.utils.save_to_s3") as mock_save,
+        ):
+            collect_changes_data("key", mock_s3, "meu-bucket-temp", "tv", lookback_days=9)
+
+        payload = mock_save.call_args[0][2]
+        assert payload["content_type"] == "tv"
+        assert payload["ids"] == [10, 20]
+        assert "start_date" in payload and "end_date" in payload
+
+        start_date, end_date = mock_fetch.call_args[0][2], mock_fetch.call_args[0][3]
+        assert start_date == payload["start_date"]
+        assert end_date == payload["end_date"]
+
+    def test_retorna_a_s3_key(self):
+        mock_s3 = MagicMock()
+        with (
+            patch("src.utils.fetch_changed_ids", return_value=[]),
+            patch("src.utils.save_to_s3"),
+        ):
+            s3_key = collect_changes_data("key", mock_s3, "meu-bucket-temp", "movie")
+
+        assert s3_key.startswith("tmdb/changes/movie/")
+        assert s3_key.endswith(".json")
