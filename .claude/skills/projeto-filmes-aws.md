@@ -193,7 +193,9 @@ test/
 --TABLE_DETAILS_MOVIE, --TABLE_DETAILS_TV
 --TABLE_WATCH_PROVIDERS_MOVIE, --TABLE_WATCH_PROVIDERS_TV
 --TMDB_SECRET_ARN, --GLUE_AGG_JOB_NAME, --GLUE_DATA_QUALITY_JOB_NAME
---MEDIA_TYPE, --YEAR, --END_YEAR
+--MEDIA_TYPE, --YEAR, --END_YEAR  (YEAR/END_YEAR opcionais — ausentes no modo changes)
+--FORCE_REFETCH (opcional), --TRANSLATE_PROVIDER (opcional)
+--CHANGES_S3_PATH (opcional — presente só no modo changes, ver abaixo)
 ```
 
 ### Glue AGG
@@ -221,7 +223,19 @@ O evento JSON recebido pela Lambda deve conter (exemplo para filmes, semanal):
   "table_now_playing_movie": "tb_tmdb_now_playing_movie_{env}"
 }
 ```
-O EventBridge dispara a Lambda automaticamente no horário configurado. Para séries (`type: "tv"`), as chaves mudam para `table_discover_tv`, `table_genre_tv`, `table_configuration_countries`, `table_watch_providers_ref_tv`. Os flags opcionais de controle são: `only_weekly_tables` (semanal), `only_annual_tables` (backfill anual), `only_monthly_tables` (mensal), `skip_weekly` (apenas referências).
+O EventBridge dispara a Lambda automaticamente no horário configurado. Para séries (`type: "tv"`), as chaves mudam para `table_discover_tv`, `table_genre_tv`, `table_configuration_countries`, `table_watch_providers_ref_tv`. Os flags opcionais de controle são: `only_weekly_tables` (semanal), `only_annual_tables` (backfill anual), `only_monthly_tables` (mensal), `skip_weekly` (apenas referências), `only_changes_tables` (semanal de changes — ver abaixo).
+
+### Modo changes (`only_changes_tables=True`)
+
+Payload enxuto — sem nomes de tabela de discover/genre/etc, já que este modo não os usa:
+```json
+{
+  "type": "movie",
+  "only_changes_tables": true,
+  "database": "db_tmdb_movie_{env}"
+}
+```
+Sai cedo, antes de qualquer coleta de referência/discover: busca IDs mudados via `/movie/changes` (ou `/tv/changes`) numa janela `[hoje - 9 dias, hoje]`, grava a lista no bucket TEMP e aciona o **Glue Details** diretamente com `CHANGES_S3_PATH` — não passa pelo Glue ETL. Fecha o gap de staleness em títulos com `year < ano_atual - 1`, que os modos semanal/mensal nunca re-tocam. Regras EventBridge: `lambda_api_movie_changes_weekly`/`..._tv_changes_weekly`, sábados 09:00/09:05 UTC (mesmo horário do discover de domingo, um dia antes).
 
 ---
 

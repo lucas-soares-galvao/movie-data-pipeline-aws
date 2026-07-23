@@ -4,7 +4,7 @@
 
 | Role | Usada por | Permissões principais |
 |---|---|---|
-| `tmdb-lambda-api-{env}` | Lambda API | S3 (SOR, AUX), Glue (StartJobRun + GetJobRun — ETL e AGG), Secrets Manager |
+| `tmdb-lambda-api-{env}` | Lambda API | S3 (SOR, AUX, TEMP restrito a `tmdb/changes/*`), Glue (StartJobRun + GetJobRun — ETL, AGG e Details), Secrets Manager |
 | `tmdb-glue-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details) |
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, StartJobRun (DQ) |

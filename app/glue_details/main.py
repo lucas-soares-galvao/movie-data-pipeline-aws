@@ -8,10 +8,12 @@ from src.utils import (
     collect_and_write_details,
     collect_and_write_watch_providers,
     fetch_existing_ids_from_details,
+    fetch_ids_from_changes_file,
     fetch_ids_from_sot,
     fetch_ids_stale_watch_providers,
     get_parameters_glue,
     get_api_secret,
+    process_changed_ids,
     repair_details_duplicates,
     repair_discover_duplicates,
     repair_watch_providers_duplicates,
@@ -22,7 +24,8 @@ logger = configure_glue_logging()
 
 
 def main() -> None:
-    """Coleta detalhes da API TMDB para um media_type/ano e grava no SOT."""
+    """Coleta detalhes da API TMDB para um media_type/ano (ou uma lista de IDs
+    mudados via Changes API, no modo changes) e grava no SOT."""
     args = get_parameters_glue()
 
     s3_bucket_sot  = args["S3_BUCKET_SOT"]
@@ -44,6 +47,7 @@ def main() -> None:
     end_year       = args["END_YEAR"]
     force_refetch  = args["FORCE_REFETCH"]
     translate_provider = args["TRANSLATE_PROVIDER"]
+    changes_s3_path = args["CHANGES_S3_PATH"]
 
     table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
     table_details         = table_details_movie         if media_type == "movie" else table_details_tv
@@ -52,6 +56,31 @@ def main() -> None:
     # Busca a chave uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_api_secret(secret_arn, "tmdb_api_key")
+
+    # ── MODO CHANGES (Changes API do TMDB) ───────────────────────────────────
+    # Acionado pela lambda_api (only_changes_tables) — não passa YEAR/END_YEAR,
+    # passa CHANGES_S3_PATH com a lista de IDs mudados. Não escreve na tabela
+    # discover (nunca expande o catálogo) nem aciona o Glue AGG (já roda no
+    # ciclo normal semanal/mensal/anual).
+    if changes_s3_path:
+        changed_ids = fetch_ids_from_changes_file(changes_s3_path)
+        affected_years = process_changed_ids(
+            api_key=api_key,
+            database=database,
+            table_discover=table_discover,
+            table_details=table_details,
+            table_watch_providers=table_watch_providers,
+            content_type=media_type,
+            changed_ids=changed_ids,
+            s3_bucket_sot=s3_bucket_sot,
+            s3_bucket_temp=s3_bucket_temp,
+            translate_provider=translate_provider,
+        )
+        for affected_year in affected_years:
+            trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=affected_year)
+            trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=affected_year)
+        logger.info("Job Glue Details (modo changes) finalizado com sucesso!")
+        return
 
     # ── DETAILS ───────────────────────────────────────────────────────────────
     # Usa o SOT (não o SOR) porque os IDs já foram deduplicados pelo Glue ETL.

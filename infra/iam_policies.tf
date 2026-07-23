@@ -2,8 +2,10 @@
 # LAMBDA — Políticas da função Lambda
 # =============================================================================
 
-# Permite que a Lambda dispare e monitore os jobs Glue ETL e AGG.
+# Permite que a Lambda dispare e monitore os jobs Glue ETL, AGG e Details.
 # Resource restrito aos ARNs dos jobs especificos para limitar o escopo de acesso.
+# Glue Details é usado pelo modo changes (only_changes_tables) — aciona o job
+# diretamente, sem passar pelo Glue ETL (ver app/lambda_api/main.py).
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
   name = "${local.tmdb_prefix}-lambda-api-start-glue-jobs-${var.env}"
   role = aws_iam_role.lambda_function.id
@@ -14,7 +16,8 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
       Action = ["glue:StartJobRun", "glue:GetJobRun"]
       Resource = [
         "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_etl_job_name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_agg_job_name}"
+        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_agg_job_name}",
+        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_details_job_name}"
       ]
     }]
   })
@@ -30,7 +33,8 @@ resource "aws_iam_role_policy" "lambda_s3_policy" {
       Action = ["s3:PutObject", "s3:GetObject"]
       Resource = [
         "arn:aws:s3:::${local.envs.s3_bucket_sor}/*",
-        "arn:aws:s3:::${local.envs.s3_bucket_aux}/lambda_api/erro/*"
+        "arn:aws:s3:::${local.envs.s3_bucket_aux}/lambda_api/erro/*",
+        "arn:aws:s3:::${local.envs.s3_bucket_temp}/tmdb/changes/*"
       ]
     }]
   })

@@ -104,6 +104,85 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
 }
 
 # =============================================================================
+# REGRAS SEMANAIS — Changes API do TMDB (Refresh de Títulos Já Catalogados)
+# =============================================================================
+# Fecha o gap de staleness em títulos de qualquer ano (não só ano atual/anterior):
+# /movie/changes e /tv/changes retornam IDs que mudaram numa janela de data,
+# independente do ano de lançamento. Só refresca títulos já existentes no
+# catálogo (nunca expande via discover) — ver app/glue_details/src/utils.py.
+#
+# Cadência semanal (não diária) para economizar custo do Glue Details, que é
+# acionado a cada execução. Mesmo horário do discover semanal (09:00/09:05 UTC),
+# um dia antes (sábado) — um dia inteiro de folga evita que os dois ciclos de
+# Glue Details concorram pelo rate limit do TMDB, sem precisar coordenar
+# horários finos.
+# =============================================================================
+
+resource "aws_cloudwatch_event_rule" "lambda_api_movie_changes_weekly" {
+  name                = "${local.tmdb_prefix}-lambda-api-movie-changes-weekly-${var.env}"
+  description         = "Dispara a Lambda em modo changes para filmes (semanal, sábados)"
+  schedule_expression = "cron(00 09 ? * SAT *)" # Sábados às 09:00 UTC / 06:00 BRT
+  state               = local.eventbridge_schedule_state
+  tags                = local.component_tags.eventbridge
+}
+
+resource "aws_cloudwatch_event_rule" "lambda_api_tv_changes_weekly" {
+  name                = "${local.tmdb_prefix}-lambda-api-tv-changes-weekly-${var.env}"
+  description         = "Dispara a Lambda em modo changes para séries (semanal, sábados)"
+  schedule_expression = "cron(05 09 ? * SAT *)" # Sábados às 09:05 UTC / 06:05 BRT
+  state               = local.eventbridge_schedule_state
+  tags                = local.component_tags.eventbridge
+}
+
+resource "aws_cloudwatch_event_target" "lambda_api_movie_changes_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_movie_changes_weekly.name
+  target_id = "lambda-api-movie-changes"
+  arn       = aws_lambda_function.simple_lambda.arn
+
+  input = jsonencode({
+    type                = "movie",
+    only_changes_tables = true,
+    database            = local.envs.glue_catalog_db_movie
+  })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
+}
+
+resource "aws_cloudwatch_event_target" "lambda_api_tv_changes_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_tv_changes_weekly.name
+  target_id = "lambda-api-tv-changes"
+  arn       = aws_lambda_function.simple_lambda.arn
+
+  input = jsonencode({
+    type                = "tv",
+    only_changes_tables = true,
+    database            = local.envs.glue_catalog_db_tv
+  })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_movie_changes_weekly" {
+  statement_id  = "AllowEventBridgeMovieChangesExecution"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.simple_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_changes_weekly.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_tv_changes_weekly" {
+  statement_id  = "AllowEventBridgeTvChangesExecution"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.simple_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_changes_weekly.arn
+}
+
+# =============================================================================
 # REGRAS MENSAIS — Referência + Discover do Ano Anterior
 # =============================================================================
 # Atualiza tabelas de referência que mudam raramente:
