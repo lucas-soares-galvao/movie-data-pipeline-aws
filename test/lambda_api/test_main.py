@@ -5,7 +5,9 @@ os.environ.setdefault(
     "TMDB_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123:secret:tmdb-test"
 )
 os.environ.setdefault("GLUE_ETL_JOB_NAME", "test-glue-etl-job")
+os.environ.setdefault("GLUE_DETAILS_JOB_NAME", "test-glue-details-job")
 os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
+os.environ.setdefault("S3_BUCKET_TEMP", "test-bucket-temp")
 
 import main  # noqa: E402
 
@@ -58,6 +60,7 @@ def _run(event: dict, *, year: int = 2025) -> dict:
         patch("main.collect_watch_providers_ref") as mock_watch_ref,
         patch("main.collect_configuration_data") as mock_config,
         patch("main.collect_genre_data") as mock_genre,
+        patch("main.collect_changes_data", return_value="tmdb/changes/movie/2026-07-08.json") as mock_changes,
         patch("main.get_api_secret", return_value="api-key-teste"),
         patch("main.boto3"),
         patch("main.datetime") as mock_dt,
@@ -73,6 +76,7 @@ def _run(event: dict, *, year: int = 2025) -> dict:
         "mock_config": mock_config,
         "mock_watch_ref": mock_watch_ref,
         "mock_now_playing": mock_now_playing,
+        "mock_changes": mock_changes,
         "mock_dt": mock_dt,
     }
 
@@ -367,3 +371,64 @@ class TestNowPlaying:
         assert "now_playing" in table_types
         chamada_now = next(c for c in mocks["mock_trigger"].call_args_list if c[1].get("TABLE_TYPE") == "now_playing")
         assert chamada_now[1].get("TABLE_NAME") == "now_playing_movie"
+
+
+class TestOnlyChangesTables:
+    """
+    Testa o flag only_changes_tables (refresh semanal via Changes API do TMDB).
+
+    QUANDO USAR only_changes_tables:
+      O EventBridge semanal de changes (sábados) usa only_changes_tables=True. Sai
+      cedo, antes de qualquer coleta de referência/discover: busca IDs mudados via
+      collect_changes_data e aciona o Glue Details diretamente com CHANGES_S3_PATH.
+    """
+
+    EVENTO_CHANGES_MOVIE = {"type": "movie", "database": "tmdb_db", "only_changes_tables": True}
+    EVENTO_CHANGES_TV = {"type": "tv", "database": "tmdb_db", "only_changes_tables": True}
+
+    def test_retorna_status_200(self):
+        mocks = _run(self.EVENTO_CHANGES_MOVIE)
+        assert mocks["result"]["statusCode"] == 200
+        assert "movie" in mocks["result"]["body"]
+
+    def test_chama_collect_changes_data_com_content_type_correto(self):
+        mocks = _run(self.EVENTO_CHANGES_TV)
+        mocks["mock_changes"].assert_called_once()
+        content_type = mocks["mock_changes"].call_args[0][3]
+        assert content_type == "tv"
+
+    def test_nao_coleta_referencia_nem_discover(self):
+        mocks = _run(self.EVENTO_CHANGES_MOVIE)
+        mocks["mock_genre"].assert_not_called()
+        mocks["mock_config"].assert_not_called()
+        mocks["mock_watch_ref"].assert_not_called()
+        mocks["mock_discover"].assert_not_called()
+        mocks["mock_now_playing"].assert_not_called()
+
+    def test_aciona_glue_details_uma_unica_vez(self):
+        mocks = _run(self.EVENTO_CHANGES_MOVIE)
+        mocks["mock_trigger"].assert_called_once()
+
+    def test_glue_details_recebe_changes_s3_path(self):
+        mocks = _run(self.EVENTO_CHANGES_MOVIE)
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[0][0] == main.GLUE_DETAILS_JOB_NAME
+        assert chamada[1].get("CHANGES_S3_PATH") == "s3://test-bucket-temp/tmdb/changes/movie/2026-07-08.json"
+        assert chamada[1].get("MEDIA_TYPE") == "movie"
+        assert chamada[1].get("DATABASE") == "tmdb_db"
+
+    def test_glue_details_nao_recebe_year_nem_end_year(self):
+        mocks = _run(self.EVENTO_CHANGES_MOVIE)
+        chamada = mocks["mock_trigger"].call_args
+        assert "YEAR" not in chamada[1]
+        assert "END_YEAR" not in chamada[1]
+
+    def test_translate_provider_default_google(self):
+        mocks = _run(self.EVENTO_CHANGES_MOVIE)
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
+
+    def test_translate_provider_repassado_quando_informado(self):
+        mocks = _run({**self.EVENTO_CHANGES_MOVIE, "translate_provider": "aws"})
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"

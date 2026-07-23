@@ -1,5 +1,6 @@
 """utils.py — Funções auxiliares do job Glue Details."""
 
+import json
 import logging
 import sys
 import threading
@@ -8,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
 import awswrangler as wr
+import boto3
 import pandas as pd
 import requests
 
@@ -55,10 +57,31 @@ def get_parameters_glue() -> Dict[str, Any]:
         "GLUE_AGG_JOB_NAME",
         "GLUE_DATA_QUALITY_JOB_NAME",
         "MEDIA_TYPE",
-        "YEAR",
-        "END_YEAR",
     ]
     params = get_resolved_option(required_args)
+
+    # Opcional: YEAR/END_YEAR não são passados no modo changes (lambda_api aciona o job
+    # sem ano — CHANGES_S3_PATH assume esse papel). O fluxo normal (discover por ano)
+    # sempre os passa via glue_etl. Saíram de required_args pelo mesmo motivo de
+    # FORCE_REFETCH logo abaixo: getResolvedOptions falha para argumento ausente, sem
+    # suporte a valor padrão. setdefault preserva o valor se já vier resolvido (ex: em
+    # testes que mockam get_resolved_option com o dicionário completo).
+    params.setdefault("YEAR", None)
+    params.setdefault("END_YEAR", None)
+    for i, arg in enumerate(sys.argv):
+        if arg == "--YEAR" and i + 1 < len(sys.argv):
+            params["YEAR"] = sys.argv[i + 1]
+        elif arg == "--END_YEAR" and i + 1 < len(sys.argv):
+            params["END_YEAR"] = sys.argv[i + 1]
+
+    # Opcional: caminho s3://bucket/key com a lista de IDs sinalizados pela Changes API
+    # do TMDB (gravado pela lambda_api). Presente apenas nas execuções semanais de
+    # changes — ausente no fluxo normal YEAR/END_YEAR.
+    params["CHANGES_S3_PATH"] = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--CHANGES_S3_PATH" and i + 1 < len(sys.argv):
+            params["CHANGES_S3_PATH"] = sys.argv[i + 1]
+            break
 
     # Opcional: quando True, ignora o delta mensal e re-busca todos os IDs na API.
     # FORCE_REFETCH não pode estar em required_args porque getResolvedOptions falha para qualquer
@@ -1178,3 +1201,202 @@ def collect_and_write_watch_providers(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
+
+
+# ── Modo changes (TMDB Changes API) ──────────────────────────────────────────
+# As três funções abaixo atendem o fluxo semanal de refresh via Changes API: a
+# lambda_api grava uma lista de IDs mudados no bucket TEMP e aciona este job com
+# CHANGES_S3_PATH. Diferente do fluxo YEAR/END_YEAR (que descobre IDs a partir do
+# discover de um ano), aqui os IDs já vêm prontos — falta só descobrir o year de
+# cada um (via Athena na tabela discover) e reaproveitar collect_and_write_details/
+# collect_and_write_watch_providers, as mesmas funções do fluxo normal.
+
+
+def _write_json_to_s3(bucket: str, key: str, data: dict) -> None:
+    """Serializa um dicionário Python para JSON e grava no S3."""
+    s3_client = boto3.client("s3")
+    body = json.dumps(data, ensure_ascii=False)
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body.encode("utf-8"),
+        ContentType="application/json",
+    )
+    logger.info(f"Arquivo salvo: s3://{bucket}/{key}")
+
+
+def fetch_ids_from_changes_file(s3_path: str) -> List[int]:
+    """
+    Lê a lista de IDs mudados gravada pela lambda_api no bucket TEMP.
+
+    Args:
+        s3_path: Caminho completo (s3://bucket/key) do arquivo JSON de changes.
+
+    Returns:
+        Lista de IDs inteiros sinalizados pela Changes API do TMDB.
+    """
+    bucket, key = s3_path.replace("s3://", "", 1).split("/", 1)
+    s3_client = boto3.client("s3")
+    obj = s3_client.get_object(Bucket=bucket, Key=key)
+    data = json.loads(obj["Body"].read())
+    ids = data.get("ids", [])
+    logger.info(f"Changes: {len(ids)} IDs lidos de {s3_path}.")
+    return ids
+
+
+def resolve_years_for_changed_ids(
+    database: str,
+    table_discover: str,
+    ids: List[int],
+    s3_bucket_temp: str,
+    content_type: str,
+    chunk_size: int = 500,
+) -> Dict[int, str]:
+    """
+    Cruza IDs mudados com a tabela discover via Athena para descobrir o year de cada um.
+
+    A tabela discover é a "base existente" do catálogo: IDs que não constam nela nunca
+    cruzaram a régua de popularidade do /discover e são descartados (preserva a
+    curadoria — este fluxo nunca expande o catálogo). A lista completa de descartados
+    é gravada em S3 (não só a contagem) para permitir investigação manual futura de
+    padrões de exclusão.
+
+    Args:
+        database:       Nome do banco de dados no Glue Catalog.
+        table_discover: Nome da tabela de discover (movie ou tv).
+        ids:            IDs mudados retornados pela Changes API.
+        s3_bucket_temp: Bucket S3 para resultados temporários do Athena e para o log
+                        de IDs descartados.
+        content_type:   "movie" ou "tv" — usado no path do arquivo de descartados.
+        chunk_size:     Tamanho do lote na cláusula IN do Athena (evita estourar o
+                        limite de tamanho de query).
+
+    Returns:
+        Dicionário {id: year} apenas para os IDs encontrados na tabela discover.
+    """
+    if not ids:
+        return {}
+
+    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
+    resolved: Dict[int, str] = {}
+
+    for i in range(0, len(ids), chunk_size):
+        chunk = ids[i : i + chunk_size]
+        id_list = ",".join(str(item_id) for item_id in chunk)
+        query = f"SELECT id, year FROM {database}.{table_discover} WHERE id IN ({id_list})"
+        df = wr.athena.read_sql_query(
+            sql=query,
+            database=database,
+            s3_output=s3_output,
+            ctas_approach=False,
+        )
+        for _, row in df.iterrows():
+            resolved[int(row["id"])] = str(row["year"])
+
+    discarded = sorted(set(ids) - set(resolved.keys()))
+    logger.info(
+        f"Changes ({content_type}): {len(resolved)}/{len(ids)} IDs encontrados na tabela "
+        f"discover; {len(discarded)} descartados (nunca ingeridos via discover)."
+    )
+    if discarded:
+        discarded_key = f"tmdb/changes/{content_type}/discarded_{date.today().isoformat()}.json"
+        _write_json_to_s3(
+            s3_bucket_temp,
+            discarded_key,
+            {"content_type": content_type, "discarded_ids": discarded},
+        )
+
+    return resolved
+
+
+def process_changed_ids(
+    api_key: str,
+    database: str,
+    table_discover: str,
+    table_details: str,
+    table_watch_providers: str,
+    content_type: str,
+    changed_ids: List[int],
+    s3_bucket_sot: str,
+    s3_bucket_temp: str,
+    translate_provider: str = "google",
+) -> List[str]:
+    """
+    Orquestra o enriquecimento dos IDs sinalizados pela Changes API do TMDB.
+
+    Resolve o year de cada ID via resolve_years_for_changed_ids (descartando IDs fora
+    do catálogo), e reaproveita collect_and_write_details/collect_and_write_watch_providers
+    — as mesmas funções do fluxo normal de enriquecimento — para atualizar os registros
+    já existentes. Repara duplicatas por ano afetado ao final, mesma proteção contra
+    corrida de escrita já usada no fluxo normal quando year == end_year.
+
+    Args:
+        api_key:                Chave de API do TMDB.
+        database:               Nome do banco de dados no Glue Catalog.
+        table_discover:         Nome da tabela de discover (movie ou tv).
+        table_details:          Nome da tabela de detalhes (movie ou tv).
+        table_watch_providers:  Nome da tabela de watch providers (movie ou tv).
+        content_type:           "movie" ou "tv".
+        changed_ids:            IDs mudados retornados pela Changes API.
+        s3_bucket_sot:          Nome do bucket SOT de destino.
+        s3_bucket_temp:         Bucket S3 para resultados temporários do Athena.
+        translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
+
+    Returns:
+        Lista de anos afetados (para acionar o Glue Data Quality por partição).
+    """
+    id_to_year = resolve_years_for_changed_ids(
+        database=database,
+        table_discover=table_discover,
+        ids=changed_ids,
+        s3_bucket_temp=s3_bucket_temp,
+        content_type=content_type,
+    )
+    if not id_to_year:
+        logger.info("Changes: nenhum ID encontrado na tabela discover. Nada a processar.")
+        return []
+
+    matched_ids = list(id_to_year.keys())
+    logger.info(f"Changes: enriquecendo {len(matched_ids)} IDs ({content_type})...")
+    collect_and_write_details(
+        api_key=api_key,
+        ids=matched_ids,
+        content_type=content_type,
+        s3_bucket_sot=s3_bucket_sot,
+        table_name=table_details,
+        database=database,
+        translate_provider=translate_provider,
+    )
+
+    ids_by_year: Dict[str, List[int]] = {}
+    for item_id, year in id_to_year.items():
+        ids_by_year.setdefault(year, []).append(item_id)
+
+    for year, ids_for_year in ids_by_year.items():
+        collect_and_write_watch_providers(
+            api_key=api_key,
+            ids=ids_for_year,
+            content_type=content_type,
+            s3_bucket_sot=s3_bucket_sot,
+            table_name=table_watch_providers,
+            database=database,
+            year=year,
+        )
+
+    affected_years = sorted(ids_by_year.keys())
+    for year in affected_years:
+        repair_details_duplicates(
+            database=database,
+            table_details=table_details,
+            s3_bucket_sot=s3_bucket_sot,
+            s3_bucket_temp=s3_bucket_temp,
+            year=year,
+        )
+        repair_watch_providers_duplicates(
+            database=database,
+            table_watch_providers=table_watch_providers,
+            s3_bucket_sot=s3_bucket_sot,
+            year=year,
+        )
+
+    return affected_years

@@ -29,14 +29,27 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 
 Chamadas à API usam **retry com backoff exponencial e jitter** para lidar com rate limits do TMDB — se a API retornar erro 429 (muitas requisições), o código espera um tempo crescente entre tentativas (ex: 1s, 2s, 4s…) com uma variação aleatória (jitter) para evitar que múltiplos workers tentem ao mesmo tempo.
 
+### Modo changes (TMDB Changes API)
+
+Acionado pela `lambda_api` (modo `only_changes_tables`, semanal aos sábados) via o argumento opcional `CHANGES_S3_PATH` — um caminho `s3://bucket/key` com a lista de IDs sinalizados pelo `/movie/changes`/`/tv/changes` do TMDB como alterados numa janela de data recente, **independente do ano de lançamento**. Fecha o gap de staleness que os modos semanal/mensal não cobrem (títulos com `year < ano_atual - 1` nunca são re-tocados por eles).
+
+Quando `CHANGES_S3_PATH` está presente, o `main()` entra num ramo antecipado (mesmo padrão do argumento opcional `FORCE_REFETCH`) que substitui inteiramente o fluxo `YEAR`/`END_YEAR`:
+
+1. `fetch_ids_from_changes_file()` lê a lista de IDs do S3 (gravada pela `lambda_api`)
+2. `resolve_years_for_changed_ids()` cruza os IDs com a tabela discover via Athena para descobrir o `year` de cada um — a tabela discover é a "base existente" do catálogo: IDs que não constam nela nunca cruzaram a régua de popularidade do `/discover` e são **descartados** (este fluxo nunca expande o catálogo). A lista completa de descartados (não só a contagem) é gravada em `s3://{s3_bucket_temp}/tmdb/changes/{content_type}/discarded_{data}.json` para investigação manual futura
+3. `process_changed_ids()` orquestra o refresh: chama `collect_and_write_details()` com todos os IDs resolvidos (sem year — a função já deriva o ano do `release_date`/`first_air_date` de cada resposta), agrupa os IDs por `year` para `collect_and_write_watch_providers()` (que exige `year` explícito por partição), e roda `repair_details_duplicates`/`repair_watch_providers_duplicates` por ano afetado ao final — mesma proteção contra corrida de escrita já usada no fluxo normal quando `year == end_year`
+4. Aciona o Glue Data Quality para cada ano afetado
+
+Este modo **nunca** escreve na tabela discover (`repair_discover_duplicates` não é chamado) nem aciona o Glue AGG (já roda no ciclo normal semanal/mensal/anual — rodá-lo a cada execução de changes seria redundante).
+
 ## Entradas e saídas
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`, `END_YEAR`, `DATABASE`, nomes dos buckets e jobs, `FORCE_REFETCH` (opcional, default `false`), `TRANSLATE_PROVIDER` (opcional, default `"google"` — serviço de tradução primário; o outro é usado automaticamente como fallback — ver `resolve_translate_fn` em `shared_utils.traducao`) |
-| **Leitura** | Athena (IDs da tabela discover na SOT), Secrets Manager (chave API), API TMDB |
-| **Escrita** | S3 SOT — tabelas `tb_details_*` e `tb_watch_providers_*` como Parquet + Glue Catalog |
-| **Aciona** | Glue Data Quality (por tabela gravada) + Glue AGG (apenas na última execução de séries) |
+| **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`/`END_YEAR` (opcionais — ausentes no modo changes), `DATABASE`, nomes dos buckets e jobs, `FORCE_REFETCH` (opcional, default `false`), `TRANSLATE_PROVIDER` (opcional, default `"google"` — serviço de tradução primário; o outro é usado automaticamente como fallback — ver `resolve_translate_fn` em `shared_utils.traducao`), `CHANGES_S3_PATH` (opcional — presente apenas no modo changes, ver seção acima) |
+| **Leitura** | Athena (IDs da tabela discover na SOT), Secrets Manager (chave API), API TMDB; S3 TEMP (lista de IDs mudados, modo changes) |
+| **Escrita** | S3 SOT — tabelas `tb_details_*` e `tb_watch_providers_*` como Parquet + Glue Catalog; S3 TEMP — `tmdb/changes/{content_type}/discarded_{data}.json` (IDs descartados no modo changes) |
+| **Aciona** | Glue Data Quality (por tabela gravada) + Glue AGG (apenas na última execução de séries, fluxo normal — não no modo changes) |
 
 ## Lógica de acionamento do AGG
 
@@ -91,6 +104,9 @@ O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos o
 | `repair_discover_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro de maior `popularity` e regrava apenas se houver mudanças |
 | `repair_watch_providers_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id, provider_type, provider_id)` mantendo o `updated_date` mais recente e regrava apenas se houver mudanças |
 | `repair_details_duplicates(...)` | Lê a partição `year` via S3, aplica `drop_duplicates(id)` mantendo o registro com `processed_date` mais recente e regrava apenas se houver mudanças |
+| `fetch_ids_from_changes_file(s3_path)` | Lê o JSON de IDs mudados gravado pela `lambda_api` no bucket TEMP (modo changes) |
+| `resolve_years_for_changed_ids(database, table_discover, ids, s3_bucket_temp, content_type, chunk_size=500)` | Cruza IDs mudados com a tabela discover via Athena (em lotes) para descobrir o `year` de cada um; IDs sem match são descartados do catálogo e gravados por completo em S3 (`discarded_{data}.json`) para investigação manual |
+| `process_changed_ids(...)` | Orquestra o modo changes: resolve years, reaproveita `collect_and_write_details`/`collect_and_write_watch_providers` e os `repair_*` por ano afetado; retorna a lista de anos afetados |
 
 ## Funções compartilhadas (`shared_utils/`)
 

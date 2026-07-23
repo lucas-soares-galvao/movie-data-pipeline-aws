@@ -51,6 +51,18 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 | `test_does_not_trigger_agg_for_movie` | AGG **não** é acionado para `media_type="movie"` |
 | `test_does_not_trigger_agg_for_tv_non_last_year` | AGG **não** é acionado para séries quando `year != end_year` |
 
+### `TestChangesMode` — ramo acionado quando `CHANGES_S3_PATH` está presente
+
+| Teste | O que verifica |
+|---|---|
+| `test_entra_no_ramo_changes_e_nao_chama_fetch_ids_from_sot` | O fluxo `YEAR`/`END_YEAR` normal (`fetch_ids_from_sot`) não é executado |
+| `test_chama_fetch_ids_from_changes_file_com_o_path_correto` | `fetch_ids_from_changes_file` é chamado com o `CHANGES_S3_PATH` recebido |
+| `test_chama_process_changed_ids_com_ids_e_tabelas_corretas` | `process_changed_ids` recebe os IDs, tabelas e `translate_provider` corretos |
+| `test_aciona_dq_para_cada_ano_afetado` | Glue DQ é acionado para `TABLE_DETAILS` e `TABLE_WATCH_PROVIDERS` de cada ano retornado por `process_changed_ids` |
+| `test_nao_aciona_dq_quando_nenhum_ano_afetado` | Nenhum DQ é acionado quando `process_changed_ids` retorna lista vazia |
+| `test_nao_aciona_agg_nem_repair_discover` | Glue AGG e `repair_discover_duplicates` **não** são acionados neste modo |
+| `test_usa_tabelas_de_tv_quando_media_type_tv` | `process_changed_ids` recebe as tabelas de TV quando `MEDIA_TYPE="tv"` |
+
 ## Casos de teste — `test_utils.py`
 
 Testa as funções individuais:
@@ -318,8 +330,29 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | Teste | O que verifica |
 |---|---|
 | `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `AGG_JOB_NAME`, etc.) |
+| `test_year_end_year_default_none_quando_ausentes` | `YEAR`/`END_YEAR` ficam `None` quando ausentes (modo changes não os passa) |
+| `test_year_lido_do_sys_argv_quando_ausente_do_resolved_option` | `YEAR`/`END_YEAR` são lidos de `sys.argv` quando presentes (mesmo padrão opcional de `FORCE_REFETCH`) |
+| `test_changes_s3_path_default_none` | `CHANGES_S3_PATH` fica `None` quando ausente de `sys.argv` |
+| `test_changes_s3_path_lido_do_sys_argv` | `CHANGES_S3_PATH` é lido corretamente de `sys.argv` |
 
 > **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`), `get_api_secret` (`TestGetApiSecret`) e `reuse_existing_translation` (`TestReuseExistingTranslation`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py`, `test/shared_src/test_glue_helpers.py` e `test/shared_src/test_traducao.py` junto com a extração dessas funções para `shared_utils/`.
+
+### Modo changes (TMDB Changes API)
+
+| Teste | O que verifica |
+|---|---|
+| `TestFetchIdsFromChangesFile.test_le_ids_do_arquivo_json` | Lê a lista de IDs do JSON gravado pela `lambda_api` no S3 |
+| `TestFetchIdsFromChangesFile.test_retorna_lista_vazia_se_chave_ids_ausente` | Retorna `[]` quando o JSON não tem a chave `ids` |
+| `TestResolveYearsForChangedIds.test_retorna_dict_vazio_para_lista_vazia` | Retorna `{}` para lista de IDs vazia, sem consultar o Athena |
+| `TestResolveYearsForChangedIds.test_resolve_years_dos_ids_encontrados` | Retorna `{id: year}` para os IDs encontrados na tabela discover |
+| `TestResolveYearsForChangedIds.test_descarta_ids_nao_encontrados_e_grava_no_s3` | IDs sem match são descartados do retorno e a lista completa é gravada em `discarded_{data}.json` |
+| `TestResolveYearsForChangedIds.test_nao_grava_arquivo_de_descartados_quando_todos_encontrados` | Nenhum arquivo de descartados é gravado quando todos os IDs têm match |
+| `TestResolveYearsForChangedIds.test_faz_chunking_da_clausula_in` | A consulta Athena é feita em lotes de `chunk_size` |
+| `TestProcessChangedIds.test_retorna_lista_vazia_se_nenhum_id_encontrado` | Retorna `[]` sem chamar enriquecimento quando nenhum ID é resolvido |
+| `TestProcessChangedIds.test_chama_collect_and_write_details_com_todos_os_ids_resolvidos` | `collect_and_write_details` recebe todos os IDs resolvidos, sem `year` |
+| `TestProcessChangedIds.test_agrupa_watch_providers_por_year` | `collect_and_write_watch_providers` é chamado uma vez por ano distinto, com os IDs daquele ano |
+| `TestProcessChangedIds.test_repara_duplicatas_por_ano_afetado_e_retorna_anos` | `repair_details_duplicates`/`repair_watch_providers_duplicates` são chamados por ano afetado; retorna a lista de anos |
+| `TestProcessChangedIds.test_nao_chama_repair_discover_duplicates` | `repair_discover_duplicates` nunca é chamado neste fluxo |
 
 ## Como executar
 

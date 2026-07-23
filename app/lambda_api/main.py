@@ -14,6 +14,7 @@ from requests.exceptions import HTTPError
 from shared_utils.api_client import get_api_secret
 from shared_utils.triggers import trigger_glue_job
 from src.utils import (
+    collect_changes_data,
     collect_configuration_data,
     collect_discover_data,
     collect_genre_data,
@@ -27,7 +28,9 @@ logger.setLevel(logging.INFO)
 # Variáveis de ambiente injetadas pelo Terraform (lambda_api.tf, bloco environment da aws_lambda_function).
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
+GLUE_DETAILS_JOB_NAME = os.environ["GLUE_DETAILS_JOB_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
+S3_BUCKET_TEMP = os.environ["S3_BUCKET_TEMP"]
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -35,6 +38,28 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     s3_client = boto3.client("s3")
 
     content_type = event["type"]
+
+    # Modo changes (Changes API do TMDB) — refresca títulos já existentes no catálogo,
+    # de qualquer ano, que mudaram numa janela de data recente. Estruturalmente diferente
+    # dos demais modos: não usa /discover, não escreve no SOR nem passa pelo Glue ETL —
+    # produz uma lista de IDs e aciona o Glue Details diretamente. Por isso sai cedo, antes
+    # da resolução de tabelas de referência (o payload desse modo não as inclui).
+    if event.get("only_changes_tables", False):
+        logger.info("Buscando chave de API do TMDB no Secrets Manager...")
+        api_key = get_api_secret(TMDB_SECRET_ARN, "tmdb_api_key")
+        s3_key = collect_changes_data(api_key, s3_client, S3_BUCKET_TEMP, content_type)
+        trigger_glue_job(
+            GLUE_DETAILS_JOB_NAME,
+            MEDIA_TYPE=content_type,
+            DATABASE=event["database"],
+            CHANGES_S3_PATH=f"s3://{S3_BUCKET_TEMP}/{s3_key}",
+            TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
+        )
+        logger.info(f"Coleta de changes de '{content_type}' finalizada com sucesso!")
+        return {
+            "statusCode": 200,
+            "body": f"Changes de '{content_type}' processados com sucesso.",
+        }
 
     # "google" é o default do caminho automático via EventBridge: o payload configurado em
     # eventbridge.tf nunca define translate_provider, então cai aqui — é grátis, e o AWS
@@ -72,6 +97,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Mensal         |    False    |    False    |    True      |    False    | referências + discover do ano anterior
     # Anual backfill |    False    |    True     |    False     |    False    | discover histórico (sem referências)
     # Só referências |    False    |    False    |    False     |    True     | genre + config + watch_providers_ref
+    #
+    # only_changes_tables (tratado acima, antes desta tabela) é um 5º modo à parte: não
+    # combina com as flags acima, sai cedo via Changes API do TMDB direto para o Glue Details.
     #
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
