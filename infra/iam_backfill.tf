@@ -13,10 +13,6 @@
 # ler/gravar checkpoints no bucket TEMP, ler/gravar parquet no bucket SOT, e
 # ler/gravar partições no Glue Data Catalog (usado implicitamente pelo
 # awswrangler em backfill_traducao.py).
-#
-# Não confundir com aws_iam_role.sfn_backfill_role (iam_roles.tf), que serve
-# o backfill anual automático via Step Functions — mecanismo separado,
-# assumido pelo serviço states.amazonaws.com, não por este workflow.
 # =============================================================================
 
 locals {

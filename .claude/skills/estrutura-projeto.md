@@ -78,7 +78,7 @@ proj-eng-dados-filmes-aws/
 │   ├── docs/
 │   │   ├── overview.md            # Visão geral, ambientes, CI/CD, como aplicar
 │   │   ├── recursos.md            # S3, Lambda, Glue Jobs, Glue Catalog, Lightsail
-│   │   ├── pipeline.md            # EventBridge, Step Functions, SNS, CloudWatch
+│   │   ├── pipeline.md            # EventBridge, SNS, CloudWatch
 │   │   └── iam.md                 # IAM roles/policies, IAM CI/CD
 │   ├── scripts/
 │   │   ├── build_lambda_package.py
@@ -278,15 +278,15 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 ### `05_backfill.yml` — Backfill Manual
 
-**Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolver ambiente a partir do branch").
+**Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
 **Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao), `start_year` (default 2000), `end_year` (opcional)
 
 **Mapeamento `table_group` → script:** `discover` → `backfill_historico.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`
 
-**Etapas:** Checkout → resolve ambiente pelo branch → lê `infra/config/project.json` (`project_prefix`, step "Ler configuração do projeto") → autenticação OIDC com `AWS_ASSUME_ROLE_ARN_DEV` ou `AWS_ASSUME_ROLE_ARN_PROD` conforme o ambiente resolvido (sessão padrão de 1h) → Setup Python 3.12 → instala `boto3` (+ `scripts/requirements_backfill.txt` só para `traducao`) → executa o script correspondente dentro de um loop de retry (até 10 tentativas). `timeout-minutes: 360`.
+**Etapas:** Checkout → resolve ambiente pelo branch → lê `infra/config/project.json` (`project_prefix`, step "Read project configuration") → autenticação OIDC com `AWS_ASSUME_ROLE_ARN_DEV` ou `AWS_ASSUME_ROLE_ARN_PROD` conforme o ambiente resolvido (sessão padrão de 1h) → Setup Python 3.12 → instala `boto3` (+ `scripts/requirements_backfill.txt` só para `traducao`) → executa o script correspondente dentro de um loop de retry (até 10 tentativas). `timeout-minutes: 360`.
 
-**Retomada automática (ExpiredTokenException):** os 4 scripts que iteram por ano (`discover`, `detalhes_e_providers`, `data_quality`, `traducao` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. O step "Executar backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
+**Retomada automática (ExpiredTokenException):** os 4 scripts que iteram por ano (`discover`, `detalhes_e_providers`, `data_quality`, `traducao` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. O step "Run backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
 
 Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montados dinamicamente como `<project_prefix>-...-<ambiente>` / `<prefixo>_..._<ambiente>`, usando o prefixo lido de `infra/config/project.json` e o ambiente resolvido pelo branch — nenhum nome fica hardcoded no workflow (exceto `S3_BUCKET_SOT`/`S3_BUCKET_TEMP`, que usam o prefixo de bucket `lsg`, não o prefixo do projeto).
 
@@ -332,8 +332,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
 | `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
 | `lightsail_scheduler.tf` | Lambda + EventBridge para ligar/desligar o Lightsail (custo) |
-| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, mensal, anual) → Lambda e Step Functions |
-| `step_functions.tf` | State Machine de backfill histórico anual |
+| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, mensal) → Lambda |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |
 | `sns_topics.tf` | Tópicos SNS + subscrições de e-mail para alertas |

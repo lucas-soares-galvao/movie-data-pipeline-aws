@@ -62,7 +62,7 @@ jobs:
     outputs:
       environment: ${{ steps.resolve.outputs.environment }}
     steps:
-      - name: Resolver ambiente
+      - name: Resolve environment
         id: resolve
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then

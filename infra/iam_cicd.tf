@@ -327,8 +327,6 @@ resource "aws_iam_policy" "iam_cicd" {
             "iam:PassedToService" = [
               "lambda.amazonaws.com",
               "glue.amazonaws.com",
-              "states.amazonaws.com",
-              "events.amazonaws.com",
             ]
           }
         }
@@ -345,12 +343,12 @@ resource "aws_iam_role_policy_attachment" "iam_cicd" {
 }
 
 # =============================================================================
-# POLICY 4 — COMPUTE (Lambda + Glue Jobs/Catalog + Step Functions)
+# POLICY 4 — COMPUTE (Lambda + Glue Jobs/Catalog)
 # =============================================================================
 
 resource "aws_iam_policy" "cicd_compute" {
   name        = "${local.project_config.cicd_policy_prefix}-compute-${var.env}"
-  description = "Gerenciamento de Lambda, Glue (jobs + catalog) e Step Functions"
+  description = "Gerenciamento de Lambda e Glue (jobs + catalog)"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -418,29 +416,20 @@ resource "aws_iam_policy" "cicd_compute" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/db_${local.tmdb_prefix}_*/*",
         ]
       },
+      # TODO: statement temporário só para permitir o destroy da state machine
+      # removida em b715671. Remover assim que o apply de destroy for aplicado
+      # com sucesso em dev e prod.
       {
-        Sid    = "StepFunctionsManagement"
+        Sid    = "StepFunctionsTeardown"
         Effect = "Allow"
         Action = [
-          "states:CreateStateMachine",
-          "states:DeleteStateMachine",
           "states:DescribeStateMachine",
-          "states:UpdateStateMachine",
+          "states:DeleteStateMachine",
           "states:ListStateMachineVersions",
-          "states:TagResource",
           "states:UntagResource",
           "states:ListTagsForResource",
         ]
         Resource = "arn:aws:states:sa-east-1:${data.aws_caller_identity.current.account_id}:stateMachine:${local.tmdb_prefix}-*"
-      },
-      {
-        Sid    = "StepFunctionsList"
-        Effect = "Allow"
-        Action = [
-          "states:ListStateMachines",
-          "states:ValidateStateMachineDefinition",
-        ]
-        Resource = "*"
       },
     ]
   })
@@ -662,7 +651,53 @@ resource "aws_iam_role_policy_attachment" "cicd_lightsail" {
 }
 
 # =============================================================================
-# SINCRONIZAÇÃO — Garante que as 6 policies estejam attachadas antes de criar
+# POLICY 7 — SSM (Parâmetros do rotation refresh, ver ssm.tf)
+# =============================================================================
+
+resource "aws_iam_policy" "cicd_ssm" {
+  name        = "${local.project_config.cicd_policy_prefix}-ssm-${var.env}"
+  description = "Gerenciamento dos parâmetros SSM do rotation refresh"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SSMRotationPointerManagement"
+        Effect = "Allow"
+        Action = [
+          "ssm:PutParameter",
+          "ssm:GetParameter",
+          "ssm:DeleteParameter",
+          "ssm:AddTagsToResource",
+          "ssm:RemoveTagsFromResource",
+          "ssm:ListTagsForResource",
+        ]
+        Resource = [
+          "arn:aws:ssm:sa-east-1:${data.aws_caller_identity.current.account_id}:parameter/tmdb-pipeline/rotation-year-pointer-movie",
+          "arn:aws:ssm:sa-east-1:${data.aws_caller_identity.current.account_id}:parameter/tmdb-pipeline/rotation-year-pointer-tv",
+        ]
+      },
+      {
+        # DescribeParameters não suporta restrição por resource (exige Resource "*").
+        # O provider Terraform usa essa action para ler metadata/tags do parâmetro.
+        Sid      = "SSMDescribeParameters"
+        Effect   = "Allow"
+        Action   = "ssm:DescribeParameters"
+        Resource = "*"
+      },
+    ]
+  })
+
+  tags = merge(local.default_resource_tags, local.component_tags.shared)
+}
+
+resource "aws_iam_role_policy_attachment" "cicd_ssm" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = aws_iam_policy.cicd_ssm.arn
+}
+
+# =============================================================================
+# SINCRONIZAÇÃO — Garante que as 7 policies estejam attachadas antes de criar
 # qualquer recurso de infraestrutura. Sem isso, o Terraform pode tentar criar
 # S3 buckets ou Lambda functions antes das policies propagarem no IAM.
 #
@@ -678,5 +713,6 @@ resource "terraform_data" "cicd_policies_ready" {
     aws_iam_role_policy_attachment.cicd_compute,
     aws_iam_role_policy_attachment.cicd_observability,
     aws_iam_role_policy_attachment.cicd_lightsail,
+    aws_iam_role_policy_attachment.cicd_ssm,
   ]
 }
