@@ -2,7 +2,7 @@
 
 ## Agendamento — EventBridge (`eventbridge.tf`)
 
-7 regras de schedule, separadas por tipo de mídia e frequência. Os horários são espaçados com gap de 30 min entre semanal e mensal para evitar `ConcurrentModificationException` no Glue Catalog quando dois jobs Details tocam a mesma partição:
+9 regras de schedule, separadas por tipo de mídia e frequência. Os horários são espaçados com gap de 30 min entre semanal e mensal para evitar `ConcurrentModificationException` no Glue Catalog quando dois jobs Details tocam a mesma partição:
 
 | Regra | Frequência | Horário | Comportamento |
 |---|---|---|---|
@@ -10,11 +10,15 @@
 | `lambda_api_tv_weekly` | Semanal (dom) | 06:05 BRT (09:05 UTC) | `only_weekly_tables=true` — séries novas |
 | `lambda_api_movie_changes_weekly` | Semanal (sáb) | 06:00 BRT (09:00 UTC) | `only_changes_tables=true` — refresh de filmes já catalogados (Changes API), qualquer ano |
 | `lambda_api_tv_changes_weekly` | Semanal (sáb) | 06:05 BRT (09:05 UTC) | `only_changes_tables=true` — refresh de séries já catalogadas (Changes API), qualquer ano |
+| `lambda_api_movie_rotation_weekly` | Semanal (sáb) | 06:10 BRT (09:10 UTC) | `only_rotation_refresh=true` — refresh forçado de 1 ano do catálogo antigo (filmes), ponteiro via SSM |
+| `lambda_api_tv_rotation_weekly` | Semanal (sáb) | 06:15 BRT (09:15 UTC) | `only_rotation_refresh=true` — refresh forçado de 1 ano do catálogo antigo (séries), ponteiro via SSM |
 | `lambda_api_movie_monthly` | Dia 1 do mês | 06:30 BRT (09:30 UTC) | `only_monthly_tables=true` — referências + discover do ano anterior |
 | `lambda_api_tv_monthly` | Dia 1 do mês | 06:35 BRT (09:35 UTC) | `only_monthly_tables=true` — referências + discover do ano anterior |
 | `sfn_backfill_annual` | 1 de jan (anual) | 07:00 BRT (10:00 UTC) | **DISABLED** — inicia o Step Function de backfill histórico com `{"start_year": 2000}`, mas o disparo automático está desativado (reprocessar desde 2000 todo ano era gasto desnecessário); start apenas manual |
 
 As regras de changes rodam no sábado — um dia inteiro antes do discover semanal de domingo, mesmo horário — para que os dois ciclos de Glue Details (changes e discover) nunca concorram pelo rate limit do TMDB. Diferente do modo semanal/mensal (que só cobrem o ano atual e o anterior), o modo changes usa `/movie/changes`/`/tv/changes` do TMDB para detectar títulos alterados em **qualquer** ano de lançamento — fecha o gap de staleness em todo o catálogo histórico sem re-rodar `/discover`. Ver `app/lambda_api/lambda_api.md` e `app/glue_details/glue_details.md` ("Modo changes").
+
+**Rotation refresh** cobre o gap que o changes não fecha sozinho no catálogo antigo (o `/changes` da TMDB nem sempre reporta toda alteração real): força (`FORCE_REFETCH=true`) o refresh de 1 ano do catálogo (2000 até `current_year - 3`) por semana, via um ponteiro simples em SSM Parameter Store (`infra/ssm.tf`) que dispensa checkpoint de loop e se ajusta sozinho ano a ano. Roda 10 min depois do changes do mesmo dia para não concorrer pelo rate limit do TMDB. O ano corrente e o anterior não têm um modo forçado equivalente — já são refeitos naturalmente, ~mensalmente, pelo cascade do discover semanal/mensal → Glue ETL → Glue Details (sem `FORCE_REFETCH`, mas a lógica de delta do Glue Details já refaz qualquer ID não tocado no mês calendário corrente); um refresh forçado ali seria redundante com esse mecanismo gratuito. Ver `app/lambda_api/lambda_api.md` ("Modo rotation refresh").
 
 **Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.
 

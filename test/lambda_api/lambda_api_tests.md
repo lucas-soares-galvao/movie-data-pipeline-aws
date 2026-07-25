@@ -30,6 +30,8 @@ assert mocks["mock_discover"].call_count == 2
 
 Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`.
 
+`TestOnlyRotationRefresh` não usa `_run()` — tem seu próprio helper `_run_rotation()`, porque esse modo chama `boto3.client("ssm")` (não coberto pelos mocks de `_run()`). `_run_rotation()` mocka `main.boto3` inteiro e configura `get_parameter`/`put_parameter` do cliente SSM retornado.
+
 ## Casos de teste — `test_main.py`
 
 ### `TestLambdaHandler` — comportamento base do handler
@@ -110,6 +112,18 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_glue_details_nao_recebe_year_nem_end_year` | A chamada ao Glue Details não inclui `YEAR`/`END_YEAR` |
 | `test_translate_provider_default_google` | Sem `translate_provider` no evento, `TRANSLATE_PROVIDER="google"` |
 | `test_translate_provider_repassado_quando_informado` | `translate_provider` do evento é repassado ao Glue Details |
+
+### `TestOnlyRotationRefresh` — flag `only_rotation_refresh=True`
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_status_200` | Handler retorna `{"statusCode": 200}` no modo rotation refresh |
+| `test_aciona_glue_details_uma_unica_vez` | `trigger_glue_job` é chamado exatamente uma vez |
+| `test_avanca_o_ponteiro_em_um_ano` | Com ponteiro salvo em `last_year`, a chamada usa `YEAR=END_YEAR=last_year + 1` e `FORCE_REFETCH=True` |
+| `test_reinicia_em_2000_ao_ultrapassar_o_limite` | Quando `last_year + 1 > current_year - 3`, a chamada usa `YEAR=2000` (reinicia o ciclo) |
+| `test_limite_recalculado_a_partir_do_ano_atual` | O mesmo `last_year` que reiniciaria o ciclo num `current_year` não reinicia no ano seguinte — o limite (`current_year - 3`) é recalculado a cada execução, nunca hardcoded |
+| `test_le_e_grava_parametro_ssm_por_content_type` | `get_parameter`/`put_parameter` usam o nome `/tmdb-pipeline/rotation-year-pointer-{content_type}` correto |
+| `test_translate_provider_default_google` | Sem `translate_provider` no evento, `TRANSLATE_PROVIDER="google"` |
 
 ## Casos de teste — `test_utils.py`
 

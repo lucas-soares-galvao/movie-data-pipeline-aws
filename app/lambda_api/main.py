@@ -60,6 +60,41 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "body": f"Changes de '{content_type}' processados com sucesso.",
         }
 
+    # Modo rotation refresh — percorre o catálogo antigo (2000 até current_year - 3)
+    # um ano por execução, via um ponteiro simples em SSM Parameter Store (não é
+    # checkpoint de loop — cada invocação é independente e stateless, só lê/escreve
+    # "qual foi o último ano"). O ponteiro avança 1 e reinicia em 2000 ao ultrapassar
+    # o limite; o limite é recalculado a cada execução a partir da data corrente
+    # (nunca hardcoded), então o range acompanha sozinho o catálogo envelhecendo, sem
+    # exigir ajuste manual de ano em ano. Um parâmetro por content_type evita corrida
+    # entre as execuções de movie e tv (schedules independentes no EventBridge).
+    if event.get("only_rotation_refresh", False):
+        ssm = boto3.client("ssm")
+        param_name = f"/tmdb-pipeline/rotation-year-pointer-{content_type}"
+        last_year = int(ssm.get_parameter(Name=param_name)["Parameter"]["Value"])
+
+        current_year = datetime.now(tz=timezone.utc).year
+        oldest_active_year = current_year - 3
+        next_year = last_year + 1
+        if next_year > oldest_active_year:
+            next_year = 2000
+
+        trigger_glue_job(
+            GLUE_DETAILS_JOB_NAME,
+            MEDIA_TYPE=content_type,
+            DATABASE=event["database"],
+            YEAR=next_year,
+            END_YEAR=next_year,
+            FORCE_REFETCH=True,
+            TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
+        )
+        ssm.put_parameter(Name=param_name, Value=str(next_year), Overwrite=True)
+        logger.info(f"Rotation refresh de '{content_type}' finalizado com sucesso! Ano processado: {next_year}")
+        return {
+            "statusCode": 200,
+            "body": f"Rotation refresh de '{content_type}' (ano {next_year}) processado com sucesso.",
+        }
+
     # "google" é o default do caminho automático via EventBridge: o payload configurado em
     # eventbridge.tf nunca define translate_provider, então cai aqui — é grátis, e o AWS
     # Translate continua disponível como fallback automático (capado por caracteres) via
@@ -97,9 +132,17 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Anual backfill |    False    |    True     |    False     |    False    | discover histórico (sem referências)
     # Só referências |    False    |    False    |    False     |    True     | genre + config + watch_providers_ref
     #
-    # only_changes_tables (tratado acima, antes desta tabela) é um 5º modo à parte: não
-    # combina com as flags acima, sai cedo via Changes API do TMDB direto para o Glue Details.
+    # only_changes_tables e only_rotation_refresh (tratados acima, antes desta tabela)
+    # não combinam com as flags abaixo — saem cedo, direto para o Glue Details, sem
+    # passar por /discover nem Glue ETL:
+    #   only_changes_tables   — refresh dos ids que a TMDB reportou mudados (Changes API)
+    #   only_rotation_refresh — refresh forçado de 1 ano do catálogo antigo por vez (FORCE_REFETCH)
     #
+    # O ano corrente e o anterior não têm um modo forçado equivalente: já são
+    # refeitos naturalmente pelo cascade do discover semanal/mensal -> Glue ETL ->
+    # Glue Details (sem FORCE_REFETCH, mas a lógica de delta do Glue Details já
+    # refaz qualquer id não tocado no mês calendário corrente) — ver
+    # app/glue_etl/main.py (table_type == "discover").
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
     skip_weekly = event.get("skip_weekly", False)

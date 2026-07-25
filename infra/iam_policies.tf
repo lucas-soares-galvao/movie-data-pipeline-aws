@@ -53,6 +53,24 @@ resource "aws_iam_role_policy" "lambda_secrets_manager_policy" {
   })
 }
 
+# Permite ao modo rotation refresh (only_rotation_refresh) ler/gravar o ponteiro
+# de "último ano processado" — ver app/lambda_api/main.py e ssm.tf.
+resource "aws_iam_role_policy" "lambda_ssm_rotation_pointer_policy" {
+  name = "${local.tmdb_prefix}-lambda-api-ssm-rotation-pointer-${var.env}"
+  role = aws_iam_role.lambda_function.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["ssm:GetParameter", "ssm:PutParameter"]
+      Resource = [
+        aws_ssm_parameter.rotation_year_pointer_movie.arn,
+        aws_ssm_parameter.rotation_year_pointer_tv.arn
+      ]
+    }]
+  })
+}
+
 # =============================================================================
 # GLUE COMPARTILHADO — Leitura do código no bucket AUX (todos os jobs Glue)
 # =============================================================================

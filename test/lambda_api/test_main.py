@@ -431,3 +431,79 @@ class TestOnlyChangesTables:
         mocks = _run({**self.EVENTO_CHANGES_MOVIE, "translate_provider": "aws"})
         chamada = mocks["mock_trigger"].call_args
         assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"
+
+
+class TestOnlyRotationRefresh:
+    """
+    Testa o flag only_rotation_refresh (refresh forçado do catálogo antigo, 1 ano por vez).
+
+    QUANDO USAR only_rotation_refresh:
+      O EventBridge semanal de rotação (sábados, junto do changes) usa
+      only_rotation_refresh=True. Lê o ponteiro do SSM Parameter Store
+      (/tmdb-pipeline/rotation-year-pointer-{content_type}), avança 1 ano, aciona
+      o Glue Details com FORCE_REFETCH=True para esse ano, e grava o novo ponteiro.
+      Reinicia em 2000 ao ultrapassar current_year - 3 (recalculado a cada execução).
+    """
+
+    EVENTO_ROTATION_MOVIE = {"type": "movie", "database": "tmdb_db", "only_rotation_refresh": True}
+    EVENTO_ROTATION_TV = {"type": "tv", "database": "tmdb_db", "only_rotation_refresh": True}
+
+    def _run_rotation(self, event: dict, *, year: int, last_year_no_ssm: int):
+        """Como only_rotation_refresh usa boto3.client("ssm") (não coberto pelo mock_trigger
+        do helper _run), mocka main.boto3 inteiro e configura o retorno do get_parameter."""
+        mock_context = MagicMock()
+        with (
+            patch("main.trigger_glue_job") as mock_trigger,
+            patch("main.get_api_secret", return_value="api-key-teste"),
+            patch("main.boto3") as mock_boto3,
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = year
+            mock_ssm = mock_boto3.client.return_value
+            mock_ssm.get_parameter.return_value = {"Parameter": {"Value": str(last_year_no_ssm)}}
+            result = main.lambda_handler(event, mock_context)
+
+        return {"result": result, "mock_trigger": mock_trigger, "mock_ssm": mock_ssm}
+
+    def test_retorna_status_200(self):
+        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2004)
+        assert mocks["result"]["statusCode"] == 200
+
+    def test_aciona_glue_details_uma_unica_vez(self):
+        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2004)
+        mocks["mock_trigger"].assert_called_once()
+
+    def test_avanca_o_ponteiro_em_um_ano(self):
+        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2004)
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[1].get("YEAR") == 2005
+        assert chamada[1].get("END_YEAR") == 2005
+        assert chamada[1].get("FORCE_REFETCH") is True
+
+    def test_reinicia_em_2000_ao_ultrapassar_o_limite(self):
+        """current_year=2026 -> limite=2023. last_year=2023 -> proximo seria 2024,
+        que ultrapassa o limite, entao reinicia em 2000."""
+        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2023)
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[1].get("YEAR") == 2000
+
+    def test_limite_recalculado_a_partir_do_ano_atual(self):
+        """Um ano depois (current_year=2027 -> limite=2024), o mesmo last_year=2023
+        NAO reinicia mais o ciclo -- avanca normalmente para 2024."""
+        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2027, last_year_no_ssm=2023)
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[1].get("YEAR") == 2024
+
+    def test_le_e_grava_parametro_ssm_por_content_type(self):
+        mocks = self._run_rotation(self.EVENTO_ROTATION_TV, year=2026, last_year_no_ssm=2004)
+        mocks["mock_ssm"].get_parameter.assert_called_once_with(
+            Name="/tmdb-pipeline/rotation-year-pointer-tv"
+        )
+        mocks["mock_ssm"].put_parameter.assert_called_once_with(
+            Name="/tmdb-pipeline/rotation-year-pointer-tv", Value="2005", Overwrite=True
+        )
+
+    def test_translate_provider_default_google(self):
+        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2004)
+        chamada = mocks["mock_trigger"].call_args
+        assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
