@@ -68,7 +68,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Ler configuração do projeto
+      - name: Read project configuration
         id: project
         run: |
           CONFIG=infra/config/project.json
@@ -183,7 +183,7 @@ jobs:
       # mesmo o grep tendo funcionado, caindo no "else" e tentando importar um
       # resource que já está no state ("Error: Resource already managed").
       # "state show" consulta um único resource diretamente, sem pipe.
-      - name: Import existing CI/CD role (adoção única no state)
+      - name: Import existing CI/CD role (one-time state adoption)
         run: |
           cd infra
           if terraform state show aws_iam_role.github_actions > /dev/null 2>&1; then
