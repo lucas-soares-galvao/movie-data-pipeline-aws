@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 import awswrangler as wr
 import boto3
@@ -13,13 +13,12 @@ from awsgluedq.transforms import EvaluateDataQuality
 from pyspark.sql import DataFrame as SparkDataFrame
 from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit, when
 from pyspark.sql.types import StringType
-
 from src.rulesets_dq import rulesets_dq
 
 logger = logging.getLogger()
 
 
-def get_parameters_glue() -> Dict[str, Any]:
+def get_parameters_glue() -> dict[str, Any]:
     """
     Lê os argumentos do job Glue Data Quality.
 
@@ -82,7 +81,7 @@ def read_table_from_catalog(
     glue_context: GlueContext,
     database: str,
     table_name: str,
-    year: Optional[str] = None,
+    year: str | None = None,
 ) -> DynamicFrame:
     """
     Lê uma tabela do Glue Catalog como DynamicFrame.
@@ -122,7 +121,7 @@ def _evaluate_dq(
     dynamic_frame: DynamicFrame,
     ruleset: str,
     table_name: str,
-    year: Optional[str],
+    year: str | None,
 ) -> SparkDataFrame:
     """
     Aplica filtro de year (quando presente) e executa o motor DQDL.
@@ -152,7 +151,7 @@ def _rename_and_classify_columns(
     df: SparkDataFrame,
     table_name: str,
     database: str,
-    year: Optional[str],
+    year: str | None,
 ) -> SparkDataFrame:
     """
     Renomeia colunas para snake_case, classifica a dimensão DQ e adiciona metadados de contexto.
@@ -197,7 +196,7 @@ def evaluate_data_quality(
     ruleset: str,
     table_name: str,
     database: str,
-    year: Optional[str] = None,
+    year: str | None = None,
 ) -> SparkDataFrame:
     """
     Avalia as regras DQDL contra o DynamicFrame e retorna DataFrame com resultados.
@@ -229,7 +228,7 @@ def write_results_to_s3(
     source_table_name: str,
     database: str,
     output_table: str,
-    year: Optional[str] = None,
+    year: str | None = None,
 ) -> None:
     """
     Grava os resultados DQ na tabela de Data Quality.
@@ -282,7 +281,7 @@ def notify_failed_outcomes(
     table_name: str,
     sns_topic_arn: str,
     environment: str,
-    year: Optional[str] = None,
+    year: str | None = None,
 ) -> None:
     """
     Verifica se alguma regra DQ teve outcome "Failed" e publica no SNS.

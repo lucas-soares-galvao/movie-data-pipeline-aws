@@ -4,19 +4,20 @@ import json
 import logging
 import sys
 import threading
-from datetime import date
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any
 
 import awswrangler as wr
 import boto3
 import pandas as pd
 import requests
+from shared_utils.api_client import api_get as tmdb_get
 
-# noqa: F401 = diz ao linter para ignorar "import não usado" — esses imports são
 # re-exportados para que main.py os importe diretamente de src.utils.
-from shared_utils.api_client import get_api_secret, api_get as tmdb_get  # noqa: F401
-from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
+from shared_utils.api_client import get_api_secret  # noqa: F401
+from shared_utils.glue_helpers import get_resolved_option
 from shared_utils.idioma import (
     detect_language_aws,
     detect_language_langdetect,
@@ -24,8 +25,8 @@ from shared_utils.idioma import (
 )
 from shared_utils.traducao import (
     resolve_pt_translation,
-    reuse_existing_translation,
     resolve_translate_fn,
+    reuse_existing_translation,
     translate_text,
     translate_text_aws,
 )
@@ -36,7 +37,7 @@ logger = logging.getLogger()
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 
 
-def get_parameters_glue() -> Dict[str, Any]:
+def get_parameters_glue() -> dict[str, Any]:
     """
     Lê os argumentos obrigatórios do job Glue Details.
 
@@ -113,7 +114,7 @@ def fetch_ids_from_sot(
     table_discover: str,
     s3_bucket_temp: str,
     year: str,
-) -> List[int]:
+) -> list[int]:
     """
     Busca IDs distintos da tabela de discover no SOT via Athena, filtrados pelo ano.
 
@@ -150,7 +151,7 @@ def fetch_existing_ids_from_details(
     database: str,
     table_details: str,
     s3_bucket_temp: str,
-) -> List[int]:
+) -> list[int]:
     """
     Retorna IDs já presentes na tabela de detalhes em qualquer partição year.
 
@@ -187,7 +188,7 @@ def fetch_existing_ids_from_details(
         ids = df["id"].astype(int).tolist()
         logger.info(f"IDs já em details (mês atual, todas as partições): {len(ids)}.")
         return ids
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — tabela pode não existir ainda, degrada graciosamente
         logger.warning(
             f"Não foi possível consultar '{table_details}' "
             f"(tabela pode não existir ainda): {exc}"
@@ -201,7 +202,7 @@ def fetch_ids_stale_watch_providers(
     table_watch_providers: str,
     s3_bucket_temp: str,
     year: str,
-) -> List[int]:
+) -> list[int]:
     """
     Retorna IDs do discover que precisam de atualização de watch providers.
 
@@ -245,7 +246,7 @@ def fetch_ids_stale_watch_providers(
         ids = df["id"].astype(int).tolist()
         logger.info(f"IDs para atualizar watch providers: {len(ids)}.")
         return ids
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — tabela pode não existir ainda, degrada graciosamente
         logger.warning(f"Erro ao consultar watch providers desatualizados: {exc}")
         return []
 
@@ -311,9 +312,9 @@ def _run_parallel(func: Any, items: list, max_workers: int = _TMDB_MAX_WORKERS) 
 def _extract_names_from_list(
     items: list,
     *,
-    filter_field: Optional[str] = None,
-    filter_value: Optional[str] = None,
-) -> Optional[str]:
+    filter_field: str | None = None,
+    filter_value: str | None = None,
+) -> str | None:
     """
     Extrai nomes de uma lista de dicts e os une por vírgula.
 
@@ -337,19 +338,19 @@ def _extract_names_from_list(
     return ", ".join(names) if names else None
 
 
-def _extract_cast(credits: dict, limit: int = 5) -> Optional[str]:
+def _extract_cast(credits: dict, limit: int = 5) -> str | None:
     """Top N atores por ordem de billing, separados por vírgula."""
     cast = credits.get("cast", [])
     names = [c["name"] for c in sorted(cast, key=lambda x: x.get("order", 999))[:limit]]
     return ", ".join(names) if names else None
 
 
-def _extract_director(credits: dict) -> Optional[str]:
+def _extract_director(credits: dict) -> str | None:
     """Diretor(es) do filme/série (job == 'Director' no crew)."""
     return _extract_names_from_list(credits.get("crew", []), filter_field="job", filter_value="Director")
 
 
-def _extract_writers(credits: dict) -> Optional[str]:
+def _extract_writers(credits: dict) -> str | None:
     """Roteiristas (job in Screenplay/Writer no crew), deduplicados."""
     crew = credits.get("crew", [])
     names: list[str] = []
@@ -363,19 +364,19 @@ def _extract_writers(credits: dict) -> Optional[str]:
     return ", ".join(names) if names else None
 
 
-def _extract_composer(credits: dict) -> Optional[str]:
+def _extract_composer(credits: dict) -> str | None:
     """Compositor(es) da trilha sonora (job == 'Original Music Composer')."""
     return _extract_names_from_list(credits.get("crew", []), filter_field="job", filter_value="Original Music Composer")
 
 
-def _extract_keywords(keywords_data: dict) -> Optional[str]:
+def _extract_keywords(keywords_data: dict) -> str | None:
     """Keywords como string separada por vírgula."""
     kws = keywords_data.get("keywords") or keywords_data.get("results") or []
     names = [kw["name"] for kw in kws if kw.get("name")]
     return ", ".join(names) if names else None
 
 
-def _extract_certification_br_movie(release_dates: dict) -> Optional[str]:
+def _extract_certification_br_movie(release_dates: dict) -> str | None:
     """Extrai classificação indicativa BR do endpoint release_dates (filmes)."""
     for entry in release_dates.get("results", []):
         if entry.get("iso_3166_1") == "BR":
@@ -386,7 +387,7 @@ def _extract_certification_br_movie(release_dates: dict) -> Optional[str]:
     return None
 
 
-def _extract_certification_br_tv(content_ratings: dict) -> Optional[str]:
+def _extract_certification_br_tv(content_ratings: dict) -> str | None:
     """Extrai classificação indicativa BR do endpoint content_ratings (TV)."""
     for entry in content_ratings.get("results", []):
         if entry.get("iso_3166_1") == "BR":
@@ -394,7 +395,7 @@ def _extract_certification_br_tv(content_ratings: dict) -> Optional[str]:
     return None
 
 
-def _extract_trailer_url(videos: dict) -> Optional[str]:
+def _extract_trailer_url(videos: dict) -> str | None:
     """Primeiro trailer oficial do YouTube, com fallback para não-oficial."""
     for v in videos.get("results", []):
         if (v.get("type") == "Trailer"
@@ -407,35 +408,35 @@ def _extract_trailer_url(videos: dict) -> Optional[str]:
     return None
 
 
-def _extract_production_companies(companies: list) -> Optional[str]:
+def _extract_production_companies(companies: list) -> str | None:
     """Nomes das produtoras, separados por vírgula."""
     return _extract_names_from_list(companies)
 
 
-def _extract_creators(created_by: list) -> Optional[str]:
+def _extract_creators(created_by: list) -> str | None:
     """Criadores de série, separados por vírgula."""
     return _extract_names_from_list(created_by)
 
 
-def _extract_networks(networks: list) -> Optional[str]:
+def _extract_networks(networks: list) -> str | None:
     """Redes de TV, separadas por vírgula."""
     return _extract_names_from_list(networks)
 
 
-def _extract_spoken_languages(spoken_languages: list) -> Optional[str]:
+def _extract_spoken_languages(spoken_languages: list) -> str | None:
     """Idiomas falados, separados por vírgula."""
     names = [sl.get("name") or sl.get("english_name", "") for sl in (spoken_languages or [])]
     names = [n for n in names if n]
     return ", ".join(names) if names else None
 
 
-def _extract_spoken_languages_iso(spoken_languages: list) -> Optional[List[str]]:
+def _extract_spoken_languages_iso(spoken_languages: list) -> list[str] | None:
     """Códigos ISO 639-1 dos idiomas falados como array."""
     codes = [sl["iso_639_1"] for sl in (spoken_languages or []) if sl.get("iso_639_1")]
     return codes if codes else None
 
 
-def _extract_producers(credits: dict, limit: int = 3) -> Optional[str]:
+def _extract_producers(credits: dict, limit: int = 3) -> str | None:
     """Produtor(es) e produtores executivos, deduplicados, limitados a top N."""
     crew = credits.get("crew", [])
     names: list[str] = []
@@ -451,28 +452,28 @@ def _extract_producers(credits: dict, limit: int = 3) -> Optional[str]:
     return ", ".join(names) if names else None
 
 
-def _extract_cinematographer(credits: dict) -> Optional[str]:
+def _extract_cinematographer(credits: dict) -> str | None:
     """Diretor(es) de fotografia (job == 'Director of Photography' no crew)."""
     return _extract_names_from_list(credits.get("crew", []), filter_field="job", filter_value="Director of Photography")
 
 
-def _extract_editor(credits: dict) -> Optional[str]:
+def _extract_editor(credits: dict) -> str | None:
     """Montador(es) do filme/série (job == 'Editor' no crew)."""
     return _extract_names_from_list(credits.get("crew", []), filter_field="job", filter_value="Editor")
 
 
-def _extract_production_countries(production_countries: list) -> Optional[str]:
+def _extract_production_countries(production_countries: list) -> str | None:
     """Países de produção, separados por vírgula."""
     return _extract_names_from_list(production_countries)
 
 
-def _extract_production_countries_iso(production_countries: list) -> Optional[List[str]]:
+def _extract_production_countries_iso(production_countries: list) -> list[str] | None:
     """Códigos ISO 3166-1 dos países de produção como array."""
     codes = [c["iso_3166_1"] for c in (production_countries or []) if c.get("iso_3166_1")]
     return codes if codes else None
 
 
-def _extract_recommended_titles(recommendations: dict, content_type: str, limit: int = 10) -> Optional[str]:
+def _extract_recommended_titles(recommendations: dict, content_type: str, limit: int = 10) -> str | None:
     """Top N títulos recomendados pelo TMDB, separados por vírgula."""
     results = recommendations.get("results", [])
     field = "title" if content_type == "movie" else "name"
@@ -480,7 +481,7 @@ def _extract_recommended_titles(recommendations: dict, content_type: str, limit:
     return ", ".join(names) if names else None
 
 
-def _extract_similar_titles(similar: dict, content_type: str, limit: int = 10) -> Optional[str]:
+def _extract_similar_titles(similar: dict, content_type: str, limit: int = 10) -> str | None:
     """Top N títulos similares pelo TMDB, separados por vírgula."""
     results = similar.get("results", [])
     field = "title" if content_type == "movie" else "name"
@@ -488,21 +489,21 @@ def _extract_similar_titles(similar: dict, content_type: str, limit: int = 10) -
     return ", ".join(names) if names else None
 
 
-def _extract_recommended_ids(recommendations: dict, limit: int = 10) -> Optional[str]:
+def _extract_recommended_ids(recommendations: dict, limit: int = 10) -> str | None:
     """Top N IDs recomendados pelo TMDB, separados por vírgula."""
     results = recommendations.get("results", [])
     ids = [str(r["id"]) for r in results[:limit] if r.get("id") is not None]
     return ", ".join(ids) if ids else None
 
 
-def _extract_similar_ids(similar: dict, limit: int = 10) -> Optional[str]:
+def _extract_similar_ids(similar: dict, limit: int = 10) -> str | None:
     """Top N IDs similares pelo TMDB, separados por vírgula."""
     results = similar.get("results", [])
     ids = [str(r["id"]) for r in results[:limit] if r.get("id") is not None]
     return ", ".join(ids) if ids else None
 
 
-def _extract_pt_br_translation(translations: dict) -> Dict[str, Optional[str]]:
+def _extract_pt_br_translation(translations: dict) -> dict[str, str | None]:
     """
     Extrai overview e tagline em pt-BR do array de translations da API do TMDB.
 
@@ -512,7 +513,7 @@ def _extract_pt_br_translation(translations: dict) -> Dict[str, Optional[str]]:
     Returns:
         Dicionário com chaves "overview_pt_tmdb" e "tagline_pt_tmdb" (None se pt-BR ausente).
     """
-    result: Dict[str, Optional[str]] = {"overview_pt_tmdb": None, "tagline_pt_tmdb": None}
+    result: dict[str, str | None] = {"overview_pt_tmdb": None, "tagline_pt_tmdb": None}
 
     for t in translations.get("translations", []):
         if t.get("iso_639_1") == "pt" and t.get("iso_3166_1") == "BR":
@@ -528,7 +529,7 @@ def _extract_pt_br_translation(translations: dict) -> Dict[str, Optional[str]]:
     return result
 
 
-def _extract_alternative_titles(alternative_titles: dict, content_type: str) -> Optional[str]:
+def _extract_alternative_titles(alternative_titles: dict, content_type: str) -> str | None:
     """Títulos alternativos/regionais, separados por vírgula."""
     list_field = "titles" if content_type == "movie" else "results"
     titles = alternative_titles.get(list_field, [])
@@ -574,7 +575,7 @@ def _common_fields(detail: dict, content_type: str) -> dict:
         "alternative_titles":       _extract_alternative_titles(detail.get("alternative_titles", {}), content_type),
         "overview_pt_tmdb":         pt_br_translation["overview_pt_tmdb"],
         "tagline_pt_tmdb":          pt_br_translation["tagline_pt_tmdb"],
-        "processed_date":           date.today(),
+        "processed_date":           datetime.now(tz=timezone.utc).date(),
     }
 
 
@@ -611,13 +612,13 @@ def _tv_fields(detail: dict) -> dict:
     }
 
 
-def _parse_detail(detail: dict, content_type: str) -> Optional[dict]:
+def _parse_detail(detail: dict, content_type: str) -> dict | None:
     """Extrai os campos relevantes da resposta de /movie/{id} ou /tv/{id}."""
     specific_fields = _movie_fields(detail) if content_type == "movie" else _tv_fields(detail)
     return {**_common_fields(detail, content_type), **specific_fields}
 
 
-def _fetch_collections_pt_br(api_key: str, collection_ids: List[int]) -> Dict[int, str]:
+def _fetch_collections_pt_br(api_key: str, collection_ids: list[int]) -> dict[int, str]:
     """
     Busca nomes de coleções em pt-BR na API do TMDB.
 
@@ -633,7 +634,7 @@ def _fetch_collections_pt_br(api_key: str, collection_ids: List[int]) -> Dict[in
     if not collection_ids:
         return {}
 
-    result: Dict[int, str] = {}
+    result: dict[int, str] = {}
     lock = threading.Lock()
 
     def _fetch(col_id: int) -> None:
@@ -644,7 +645,7 @@ def _fetch_collections_pt_br(api_key: str, collection_ids: List[int]) -> Dict[in
             if name and name.strip():
                 with lock:
                     result[col_id] = name.strip()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — chamada de API externa, não pode derrubar o job
             logger.warning(f"Falha ao buscar coleção {col_id} em pt-BR: {exc}")
 
     logger.info(f"Buscando {len(collection_ids)} coleções em pt-BR ({_TMDB_MAX_WORKERS} workers)...")
@@ -686,9 +687,9 @@ def _add_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFrame:
 
 def _add_translations_pt(
     df: pd.DataFrame,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    previous_df: Optional[pd.DataFrame] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    translate_fn: Callable[[str], str] | None = None,
+    previous_df: pd.DataFrame | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
@@ -729,9 +730,9 @@ def _add_translations_pt(
 
 def _add_translations_keywords_pt(
     df: pd.DataFrame,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    previous_df: Optional[pd.DataFrame] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    translate_fn: Callable[[str], str] | None = None,
+    previous_df: pd.DataFrame | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas keywords_detected_language_en, keywords_detected_language_pt,
@@ -765,9 +766,9 @@ def _add_translations_keywords_pt(
 
 def _add_translations_tagline_pt(
     df: pd.DataFrame,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    previous_df: Optional[pd.DataFrame] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    translate_fn: Callable[[str], str] | None = None,
+    previous_df: pd.DataFrame | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
@@ -801,7 +802,7 @@ def _add_translations_tagline_pt(
 
 def collect_and_write_details(
     api_key: str,
-    ids: List[int],
+    ids: list[int],
     content_type: str,
     s3_bucket_sot: str,
     table_name: str,
@@ -881,7 +882,7 @@ def collect_and_write_details(
                     f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
                     f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
     translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
@@ -935,7 +936,7 @@ def _repair_partition_duplicates(
     table_name: str,
     year: str,
     sort_by: str,
-    subset_cols: List[str],
+    subset_cols: list[str],
 ) -> None:
     """
     Lê uma partição year, remove duplicatas e regrava somente se houver mudanças.
@@ -958,7 +959,7 @@ def _repair_partition_duplicates(
             dataset=True,
             partition_filter=lambda x: x["year"] == year_str,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
         logger.warning(f"Não foi possível ler '{table_name}' year={year_str}: {exc}")
         return
 
@@ -1090,7 +1091,7 @@ def fetch_tmdb_watch_providers(api_key: str, content_type: str, item_id: int) ->
     return results.get("BR", {})
 
 
-def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> List[dict]:
+def _parse_watch_providers(br_data: dict, item_id: int, year: str | None) -> list[dict]:
     """
     Converte a seção BR de watch/providers em registros normalizados (um por provedor × tipo).
 
@@ -1115,7 +1116,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
                 "provider_type":  provider_type,
                 "provider_id":    p.get("provider_id"),
                 "provider_name":  name,
-                "updated_date":   date.today(),
+                "updated_date":   datetime.now(tz=timezone.utc).date(),
                 "year":           year,
             })
     return records
@@ -1123,7 +1124,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: Optional[str]) -> 
 
 def collect_and_write_watch_providers(
     api_key: str,
-    ids: List[int],
+    ids: list[int],
     content_type: str,
     s3_bucket_sot: str,
     table_name: str,
@@ -1142,7 +1143,7 @@ def collect_and_write_watch_providers(
         database:      Nome do banco de dados no Glue Catalog.
         year:          Ano de partição.
     """
-    records: List[dict] = []
+    records: list[dict] = []
     lock = threading.Lock()
 
     def fetch_and_parse(item_id: int) -> None:
@@ -1180,7 +1181,7 @@ def collect_and_write_watch_providers(
         if not df_read.empty:
             df_existing = df_read[~df_read["id"].isin(ids)]
             logger.info(f"Mantendo {len(df_existing)} registros não-stale de '{table_name}'.")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
         logger.info(f"Sem dados existentes para year={year} em '{table_name}': {exc}")
 
     if not df_existing.empty:
@@ -1225,7 +1226,7 @@ def _write_json_to_s3(bucket: str, key: str, data: dict) -> None:
     logger.info(f"Arquivo salvo: s3://{bucket}/{key}")
 
 
-def fetch_ids_from_changes_file(s3_path: str) -> List[int]:
+def fetch_ids_from_changes_file(s3_path: str) -> list[int]:
     """
     Lê a lista de IDs mudados gravada pela lambda_api no bucket TEMP.
 
@@ -1247,11 +1248,11 @@ def fetch_ids_from_changes_file(s3_path: str) -> List[int]:
 def resolve_years_for_changed_ids(
     database: str,
     table_discover: str,
-    ids: List[int],
+    ids: list[int],
     s3_bucket_temp: str,
     content_type: str,
     chunk_size: int = 500,
-) -> Dict[int, str]:
+) -> dict[int, str]:
     """
     Cruza IDs mudados com a tabela discover via Athena para descobrir o year de cada um.
 
@@ -1278,7 +1279,7 @@ def resolve_years_for_changed_ids(
         return {}
 
     s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
-    resolved: Dict[int, str] = {}
+    resolved: dict[int, str] = {}
 
     for i in range(0, len(ids), chunk_size):
         chunk = ids[i : i + chunk_size]
@@ -1299,7 +1300,7 @@ def resolve_years_for_changed_ids(
         f"discover; {len(discarded)} descartados (nunca ingeridos via discover)."
     )
     if discarded:
-        discarded_key = f"tmdb/changes/{content_type}/discarded_{date.today().isoformat()}.json"
+        discarded_key = f"tmdb/changes/{content_type}/discarded_{datetime.now(tz=timezone.utc).date().isoformat()}.json"
         _write_json_to_s3(
             s3_bucket_temp,
             discarded_key,
@@ -1316,11 +1317,11 @@ def process_changed_ids(
     table_details: str,
     table_watch_providers: str,
     content_type: str,
-    changed_ids: List[int],
+    changed_ids: list[int],
     s3_bucket_sot: str,
     s3_bucket_temp: str,
     translate_provider: str = "google",
-) -> List[str]:
+) -> list[str]:
     """
     Orquestra o enriquecimento dos IDs sinalizados pela Changes API do TMDB.
 
@@ -1368,7 +1369,7 @@ def process_changed_ids(
         translate_provider=translate_provider,
     )
 
-    ids_by_year: Dict[str, List[int]] = {}
+    ids_by_year: dict[str, list[int]] = {}
     for item_id, year in id_to_year.items():
         ids_by_year.setdefault(year, []).append(item_id)
 

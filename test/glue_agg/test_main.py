@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
-import pandas as pd
-
 import main as m
+import pandas as pd
 
 _BASE_ARGS = {
     "S3_BUCKET_SPEC": "my-spec",

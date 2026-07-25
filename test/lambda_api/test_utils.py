@@ -14,7 +14,6 @@ from src.utils import (
     save_to_s3,
 )
 
-
 # ---------------------------------------------------------------------------
 # fetch_tmdb_data
 # ---------------------------------------------------------------------------
@@ -556,16 +555,17 @@ class TestFetchChangedIds:
 
 class TestCollectChangesData:
     def test_grava_no_s3_com_chave_esperada(self):
-        from datetime import date as real_date
+        from datetime import datetime as real_datetime
+        from datetime import timezone as real_timezone
 
         mock_s3 = MagicMock()
-        hoje = real_date(2026, 7, 8)
+        hoje = real_datetime(2026, 7, 8, tzinfo=real_timezone.utc)
         with (
             patch("src.utils.fetch_changed_ids", return_value=[1, 2, 3]),
             patch("src.utils.save_to_s3") as mock_save,
-            patch("src.utils.date") as mock_date,
+            patch("src.utils.datetime") as mock_datetime,
         ):
-            mock_date.today.return_value = hoje
+            mock_datetime.now.return_value = hoje
 
             s3_key = collect_changes_data("key", mock_s3, "meu-bucket-temp", "movie")
 

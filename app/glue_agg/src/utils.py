@@ -1,19 +1,18 @@
 """utils.py — Funções auxiliares do job Glue AGG."""
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import awswrangler as wr
 import pandas as pd
-
-from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
+from shared_utils.glue_helpers import get_resolved_option
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 from src.queries import _DISCOVER_UNIFIED_QUERY
 
 logger = logging.getLogger()
 
 
-def get_parameters_glue() -> Dict[str, Any]:
+def get_parameters_glue() -> dict[str, Any]:
     """
     Lê os argumentos obrigatórios do job Glue AGG.
 
@@ -34,7 +33,7 @@ def get_parameters_glue() -> Dict[str, Any]:
     return get_resolved_option(required_args)
 
 
-def _table_names(env: str) -> Dict[str, str]:
+def _table_names(env: str) -> dict[str, str]:
     """
     Constrói os nomes das tabelas do Glue Catalog a partir do ambiente.
 

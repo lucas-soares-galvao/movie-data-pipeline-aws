@@ -1,14 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
-
-import pytest
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-
+import pytest
 from shared_utils.traducao import (
     resolve_pt_translation,
-    reuse_existing_translation,
     resolve_translate_fn,
+    reuse_existing_translation,
     translate_in_parallel,
 )
 
@@ -209,7 +207,8 @@ class TestResolvePtTranslation:
 
     def test_traduz_registros_elegiveis_pendentes(self):
         df = pd.DataFrame({"overview_en": ["Hello", "World"], "overview_pt": [None, None]})
-        detect_fn = lambda t: "en"  # noqa: E731 — sempre "não-pt" para forçar elegibilidade
+        def detect_fn(t):
+            return "en"
         traduzir_fn = MagicMock(side_effect=lambda t: f"[PT] {t}")
 
         df, sucesso = resolve_pt_translation(
@@ -222,7 +221,8 @@ class TestResolvePtTranslation:
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_tradutor(self):
         df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": [None]})
-        detect_fn = lambda t: "pt"  # noqa: E731
+        def detect_fn(t):
+            return "pt"
         traduzir_fn = MagicMock()
 
         df, sucesso = resolve_pt_translation(
@@ -295,7 +295,8 @@ class TestResolvePtTranslation:
 
     def test_incrementa_tentativas_para_linhas_elegiveis(self):
         df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
-        detect_fn = lambda t: "en"  # noqa: E731 — nunca confirma pt
+        def detect_fn(t):
+            return "en"
         traduzir_fn = MagicMock(side_effect=lambda t: t)  # tradução "falha" (devolve igual)
 
         df, _ = resolve_pt_translation(
@@ -307,7 +308,8 @@ class TestResolvePtTranslation:
 
     def test_copia_direta_nao_incrementa_tentativas(self):
         df = pd.DataFrame({"overview_en": ["Já em português"], "overview_pt": [None]})
-        detect_fn = lambda t: "pt"  # noqa: E731
+        def detect_fn(t):
+            return "pt"
         traduzir_fn = MagicMock()
 
         df, _ = resolve_pt_translation(
@@ -339,7 +341,8 @@ class TestResolvePtTranslation:
 
     def test_cria_coluna_tentativas_como_zero_quando_ausente(self):
         df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
-        detect_fn = lambda t: "en"  # noqa: E731
+        def detect_fn(t):
+            return "en"
         traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
 
         df, _ = resolve_pt_translation(

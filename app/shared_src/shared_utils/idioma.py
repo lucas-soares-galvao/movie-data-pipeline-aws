@@ -4,7 +4,7 @@ para AWS Comprehend, e aplicação em coluna de DataFrame."""
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import pandas as pd
 
@@ -32,11 +32,11 @@ _AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
 
 
 def resolve_detect_language_fn(
-    detect_local: Callable[[str], Optional[str]] = detect_language_langdetect,
-    detect_aws: Callable[[str], Optional[str]] = detect_language_aws,
+    detect_local: Callable[[str], str | None] = detect_language_langdetect,
+    detect_aws: Callable[[str], str | None] = detect_language_aws,
     aws_fallback_max_chars: int = _AWS_FALLBACK_MAX_CHARS_DEFAULT,
     provider: str = "google",
-) -> Callable[[str], Optional[str]]:
+) -> Callable[[str], str | None]:
     """
     Resolve a função de detecção de idioma composta, espelhando `provider` de
     `resolve_translate_fn` (`shared_utils.traducao`): o serviço escolhido vira
@@ -88,7 +88,7 @@ def resolve_detect_language_fn(
     if provider == "google":
         fallback = make_capped_fallback(fallback, aws_fallback_max_chars, on_over_budget=lambda text: None)
 
-    def _detect_with_fallback(text: str) -> Optional[str]:
+    def _detect_with_fallback(text: str) -> str | None:
         result = primary(text)
         if result is not None:
             return result
@@ -101,7 +101,7 @@ def add_detected_language_column(
     df: pd.DataFrame,
     source_column: str,
     target_column: str,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    detect_fn: Callable[[str], str | None] | None = None,
     only_missing: bool = False,
 ) -> pd.DataFrame:
     """

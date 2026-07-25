@@ -2,11 +2,10 @@
 
 import json
 import logging
-from datetime import date, timedelta
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from requests.exceptions import HTTPError
-
 from shared_utils.api_client import api_get as tmdb_get
 
 # boto3 não tem stub de tipo para S3Client; Any permite o type checker continuar sem erro.
@@ -77,7 +76,7 @@ def save_to_s3(s3_client: S3Client, bucket: str, data: dict, s3_key: str) -> Non
     logger.info(f"Arquivo salvo: s3://{bucket}/{s3_key}")
 
 
-def fetch_tmdb_reference(api_key: str, endpoint: str, params: Optional[dict] = None) -> dict:
+def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict | None = None) -> dict:
     """
     Busca um endpoint de referência do TMDB (retorna lista completa, sem paginação).
 
@@ -342,7 +341,7 @@ def collect_changes_data(
     Returns:
         A s3_key onde a lista de IDs foi gravada.
     """
-    end_date = date.today()
+    end_date = datetime.now(tz=timezone.utc).date()
     start_date = end_date - timedelta(days=lookback_days)
 
     logger.info(f"Coletando changes de '{content_type}' de {start_date} a {end_date}...")

@@ -11,12 +11,11 @@ import json
 import logging
 import time
 import wave
-
-import openai
-import pytest
 from unittest.mock import MagicMock, patch
 
 import agent
+import openai
+import pytest
 
 
 def _make_wav_bytes(duration_seconds: float, framerate: int = 16000) -> bytes:

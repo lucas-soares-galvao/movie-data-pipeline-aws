@@ -2,7 +2,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-
 from src.utils import (
     _add_name_pt_countries,
     _add_name_pt_languages,
@@ -12,7 +11,6 @@ from src.utils import (
     read_from_sor,
     write_parquet_to_sot,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers compartilhados
@@ -243,7 +241,8 @@ class TestReadFromSorConfiguration:
         # langdetect real é pouco confiável para textos curtos (ver conversa sobre
         # a instabilidade do langdetect em textos curtos) — mocka a detecção para
         # exercitar a lógica de cache isoladamente dessa limitação.
-        detect_fn = lambda t: "pt" if t == "Brasil (cache)" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Brasil (cache)" else "en"
         with (
             patch("boto3.client", return_value=s3_mock),
             patch("src.utils.translate_text") as mock_traduzir,
@@ -317,7 +316,8 @@ class TestAddNamePtCountries:
 
     def test_idioma_detectado_pt_e_pt_apos_sucesso(self):
         df = pd.DataFrame({"english_name": ["Japan"]})
-        detect_fn = lambda t: "pt" if t.startswith("[PT]") else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t.startswith("[PT]") else "en"
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df, detect_fn=detect_fn)
         assert result["name_detected_language_pt"].iloc[0] == "pt"
@@ -369,7 +369,8 @@ class TestAddNamePtLanguages:
         # langdetect real é pouco confiável para textos curtos (ver conversa sobre
         # a instabilidade do langdetect em textos curtos) — mocka a detecção para
         # exercitar a lógica de cache isoladamente dessa limitação.
-        detect_fn = lambda t: "pt" if t == "Inglês" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Inglês" else "en"
         with patch("src.utils.translate_text") as mock_traduzir:
             result = _add_name_pt_languages(df, previous_df=previous_df, detect_fn=detect_fn)
         assert result["name_pt"].iloc[0] == "Inglês"

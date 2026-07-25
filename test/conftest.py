@@ -72,7 +72,7 @@ def _set_suite_path(app_dir: Path) -> None:
     ]
 
 
-def pytest_collect_file(parent, file_path):  # noqa: ARG001
+def pytest_collect_file(parent, file_path):
     """
     Hook do pytest chamado antes de cada arquivo de teste ser importado.
 

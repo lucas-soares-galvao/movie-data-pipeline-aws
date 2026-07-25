@@ -1,8 +1,7 @@
 from unittest.mock import call, patch
 
-import pandas as pd
-
 import main as m
+import pandas as pd
 
 # Argumentos base reutilizados pelos testes (sem TABLE_TYPE nem YEAR —
 # cada classe de teste define os valores que lhe são relevantes).

@@ -9,10 +9,9 @@ backfill_historico.py, que interrompe tudo no primeiro erro.
 import json
 from unittest.mock import MagicMock, patch
 
+import backfill_enriquecimento as be
 import pytest
 from botocore.exceptions import ClientError
-
-import backfill_enriquecimento as be
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",

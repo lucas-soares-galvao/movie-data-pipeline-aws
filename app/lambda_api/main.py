@@ -5,12 +5,11 @@ Fluxo: EventBridge → busca API key → coleta referências → coleta discover
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import boto3
 from requests.exceptions import HTTPError
-
 from shared_utils.api_client import get_api_secret
 from shared_utils.triggers import trigger_glue_job
 from src.utils import (
@@ -113,7 +112,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_api_secret(TMDB_SECRET_ARN, "tmdb_api_key")
 
-    current_year   = datetime.now().year
+    current_year   = datetime.now(tz=timezone.utc).year
     start_year     = int(event.get("start_year", current_year))
     end_year       = int(event.get("end_year",   current_year))
     loop_end_year  = int(event.get("loop_end_year", end_year))
