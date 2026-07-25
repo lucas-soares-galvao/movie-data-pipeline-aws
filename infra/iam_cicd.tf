@@ -730,21 +730,28 @@ resource "null_resource" "cicd_policies_propagation" {
   provisioner "local-exec" {
     interpreter = ["bash", "-c"]
     command     = <<-EOT
-      set -euo pipefail
+      set -uo pipefail
       for i in $(seq 1 12); do
+        # A própria permissão iam:SimulatePrincipalPolicy vem da policy cicd_ssm
+        # sendo testada, então nos primeiros segundos após o attach ela também
+        # pode não ter propagado ainda — a chamada abaixo falha com AccessDenied
+        # (exit != 0), não com um EvalDecision negado. Sem o "|| DENIED=...", essa
+        # falha derrubaria o script na tentativa 1 (mesmo com set -e removido, o
+        # command substitution deixaria DENIED vazio), então tratamos explicitamente
+        # como "ainda não propagou" e deixamos o loop continuar.
         DENIED=$(aws iam simulate-principal-policy \
           --policy-source-arn "${aws_iam_role.github_actions.arn}" \
           --action-names ssm:PutParameter \
           --resource-arns "arn:aws:ssm:sa-east-1:${data.aws_caller_identity.current.account_id}:parameter/tmdb-pipeline/rotation-year-pointer-movie" \
           --query "length(EvaluationResults[?EvalDecision!=\`allowed\`])" \
-          --output text)
+          --output text 2>/dev/null) || DENIED="pending"
 
         if [ "$DENIED" = "0" ]; then
           echo "Policy cicd_ssm propagada (tentativa $i/12)."
           exit 0
         fi
 
-        echo "Aguardando propagação da policy cicd_ssm no IAM... tentativa $i/12"
+        echo "Aguardando propagação da policy cicd_ssm no IAM... tentativa $i/12 (status: $DENIED)"
         sleep 5
       done
 
