@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from langdetect import DetectorFactory, LangDetectException, detect
 
@@ -14,7 +13,7 @@ logger = logging.getLogger()
 DetectorFactory.seed = 0
 
 
-def detect_language_langdetect(text: str) -> Optional[str]:
+def detect_language_langdetect(text: str) -> str | None:
     """
     Detecta o idioma (código ISO 639-1) de um texto via langdetect.
 
@@ -36,6 +35,6 @@ def detect_language_langdetect(text: str) -> Optional[str]:
         return detect(text)
     except LangDetectException:
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — fallback de última instância, não pode derrubar o job
         logger.warning(f"Falha inesperada ao detectar idioma via langdetect de '{text[:80]}': {exc}")
         return None

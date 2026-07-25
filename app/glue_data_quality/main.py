@@ -5,7 +5,6 @@ Requer Spark/GlueContext porque o motor de DQ do Glue não está disponível em 
 
 from awsglue.context import GlueContext
 from pyspark.context import SparkContext
-
 from shared_utils.glue_helpers import configure_glue_logging
 from src.utils import (
     evaluate_data_quality,

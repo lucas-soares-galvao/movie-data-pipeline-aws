@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from src.utils import (
     evaluate_data_quality,
     get_parameters_glue,
@@ -589,7 +588,7 @@ class TestNotifyFailedOutcomes:
 
         first_row = MagicMock()
         first_row.__getitem__ = lambda self, key: {
-            "datetime_process": datetime(2026, 6, 9, 21, 30, 45),
+            "datetime_process": datetime(2026, 6, 9, 21, 30, 45),  # noqa: DTZ001 — mock de coluna naive (horário local SP)
             "source_database": "movies_db",
         }[key]
         df.select.return_value.first.return_value = first_row

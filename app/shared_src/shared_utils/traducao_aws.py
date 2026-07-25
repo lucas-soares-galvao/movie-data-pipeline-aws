@@ -37,6 +37,6 @@ def translate_text_aws(text: str, region: str = "us-east-1") -> str:
         translated = response.get("TranslatedText", "").strip()
         if translated:
             return translated
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — chamada de API externa, não pode derrubar o job
         logger.warning(f"Falha ao traduzir via AWS Translate '{text:.80}': {exc}")
     return text

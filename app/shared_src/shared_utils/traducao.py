@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Optional, TypeVar
+from typing import TypeVar
 
 import pandas as pd
 
@@ -156,8 +157,8 @@ def resolve_translate_fn(
 
 
 def translate_in_parallel(
-    values: List[str], translate_fn: Callable[[str], str], max_workers: int = 5
-) -> List[str]:
+    values: list[str], translate_fn: Callable[[str], str], max_workers: int = 5
+) -> list[str]:
     """
     Aplica translate_fn a cada item de values em paralelo via ThreadPoolExecutor.
 
@@ -181,7 +182,7 @@ def _detect_missing(
     df: pd.DataFrame,
     text_column: str,
     language_column: str,
-    detect_fn: Callable[[str], Optional[str]],
+    detect_fn: Callable[[str], str | None],
 ) -> pd.DataFrame:
     """Detecta o idioma de text_column em language_column, só para linhas onde
     language_column ainda está vazia/nula — evita redetectar (e reenviar caracteres ao
@@ -206,12 +207,12 @@ def resolve_pt_translation(
     detected_language_en_column: str,
     detected_language_pt_column: str,
     translation_attempts_column: str,
-    detect_fn: Callable[[str], Optional[str]],
+    detect_fn: Callable[[str], str | None],
     translate_fn: Callable[[str], str],
     max_workers: int = 5,
     max_attempts: int = _MAX_TRANSLATION_ATTEMPTS_DEFAULT,
-    needs_translation_column: Optional[str] = None,
-) -> "tuple[pd.DataFrame, int]":
+    needs_translation_column: str | None = None,
+) -> tuple[pd.DataFrame, int]:
     """
     Sincroniza target_column (já inicializada pelo chamador — nativo do TMDB, cache
     reaproveitado ou vazia) com source_column, mantendo detected_language_en_column/
@@ -306,7 +307,7 @@ def resolve_pt_translation(
 
 def reuse_existing_translation(
     df: pd.DataFrame,
-    previous_df: Optional[pd.DataFrame],
+    previous_df: pd.DataFrame | None,
     source_column: str,
     target_column: str,
     key_column: str = "id",

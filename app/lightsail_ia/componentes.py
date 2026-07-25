@@ -1,7 +1,7 @@
 """componentes.py — Funções auxiliares de renderização para o FilmBot."""
 
 import html
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -155,7 +155,7 @@ def render_grid(titles: list[dict]) -> str:
 
 def render_footer() -> None:
     """Renderiza o rodapé da página principal com crédito TMDB."""
-    year = date.today().year
+    year = datetime.now(tz=timezone.utc).year
     st.markdown(
         f'<div class="footer">'
         f"© {year} FilmBot · Dados fornecidos por "
@@ -169,7 +169,7 @@ def render_footer() -> None:
 
 def render_login_footer() -> None:
     """Renderiza o rodapé simplificado da tela de login."""
-    year = date.today().year
+    year = datetime.now(tz=timezone.utc).year
     st.markdown(
         f'<div class="footer-login">'
         f"© {year} FilmBot · Todos os direitos reservados"

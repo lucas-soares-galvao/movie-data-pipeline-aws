@@ -13,13 +13,18 @@ import boto3
 import streamlit as st
 import streamlit.components.v1 as components
 import watchtower
-from agent import AudioMuitoLongoError, _MAX_AUDIO_SECONDS, recommend, transcribe_preference
+from agent import (
+    _MAX_AUDIO_SECONDS,
+    AudioMuitoLongoError,
+    recommend,
+    transcribe_preference,
+)
 from componentes import (
     load_login_css,
     load_main_css,
     load_preference_counter_script,
-    render_grid,
     render_footer,
+    render_grid,
     render_login_footer,
 )
 

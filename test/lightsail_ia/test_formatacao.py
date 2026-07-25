@@ -1,6 +1,5 @@
 import formatacao
 
-
 FAKE_TITLE = {
     "title": "O Iluminado",
     "media_type": "movie",

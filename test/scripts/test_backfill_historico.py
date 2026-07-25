@@ -10,10 +10,9 @@ contra prod — daí o valor de travar esse contrato em teste.
 import json
 from unittest.mock import MagicMock, patch
 
+import backfill_historico as bh
 import pytest
 from botocore.exceptions import ClientError
-
-import backfill_historico as bh
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",

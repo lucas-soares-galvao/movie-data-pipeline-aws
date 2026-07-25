@@ -59,14 +59,15 @@ VARIÁVEIS OPCIONAIS — transcrição de áudio (entrada alternativa por voz):
 """
 
 import gc
+import hashlib
 import io
+import json
+import logging
 import os
 import re
-import json
 import time
 import wave
-import logging
-import hashlib
+
 import boto3
 import litellm
 from dotenv import load_dotenv

@@ -11,11 +11,10 @@ Retry/backoff da tradução em si é coberto em test/shared_src/test_traducao.py
 import json
 from unittest.mock import MagicMock, patch
 
+import backfill_traducao as bt
 import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
-
-import backfill_traducao as bt
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",
@@ -72,7 +71,8 @@ class TestAdicionarTraducoesPt:
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self):
         """translate_text devolve o texto original quando falha após todas as tentativas."""
         df = pd.DataFrame({"overview_en": ["Overview", "Falhou"]})
-        detect_fn = lambda t: "pt" if t.endswith("_PT") else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t.endswith("_PT") else "en"
         with patch(
             "backfill_traducao.translate_text",
             side_effect=lambda t: "Overview_PT" if t == "Overview" else t,
@@ -91,7 +91,8 @@ class TestAdicionarTraducoesPt:
             "overview_en": ["Já traduzido antes", "Ainda pendente"],
             "overview_pt": ["Already translated before", None],
         })
-        detect_fn = lambda t: "pt" if t == "Already translated before" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Already translated before" else "en"
         with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._add_translations_pt(df, detect_fn=detect_fn)
 
@@ -128,7 +129,8 @@ class TestAdicionarTraducoesPt:
             "overview_en": ["A", "B"],
             "overview_pt": ["A_PT", "B_PT"],
         })
-        detect_fn = lambda t: "pt" if t.endswith("_PT") else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t.endswith("_PT") else "en"
         with patch("backfill_traducao.translate_text") as mock_translate:
             resultado, sucesso = bt._add_translations_pt(df, detect_fn=detect_fn)
 
@@ -195,7 +197,8 @@ class TestAdicionarTraducoesTaglinePt:
             "tagline": ["Já traduzida", "Pendente"],
             "tagline_pt": ["Already translated", None],
         })
-        detect_fn = lambda t: "pt" if t == "Already translated" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Already translated" else "en"
         with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._add_translations_tagline_pt(df, detect_fn=detect_fn)
 
@@ -280,7 +283,8 @@ class TestAdicionarTraducoesKeywordsPt:
             "keywords": ["já traduzida", "pendente"],
             "keywords_pt": ["already translated", None],
         })
-        detect_fn = lambda t: "pt" if t == "already translated" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "already translated" else "en"
         with patch("backfill_traducao.translate_text", side_effect=lambda t: f"{t}_PT") as mock_translate:
             resultado, sucesso = bt._add_translations_keywords_pt(df, detect_fn=detect_fn)
 

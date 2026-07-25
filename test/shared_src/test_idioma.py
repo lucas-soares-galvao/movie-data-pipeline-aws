@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-
 from shared_utils.idioma import add_detected_language_column, resolve_detect_language_fn
 
 
@@ -62,7 +61,8 @@ class TestResolveDetectLanguageFn:
 class TestAddDetectedLanguageColumn:
     def test_aplica_detect_fn_a_cada_linha(self):
         df = pd.DataFrame({"texto": ["Hello", "Olá", None]})
-        detect_fn = lambda t: {"Hello": "en", "Olá": "pt", "": None}[t]  # noqa: E731
+        def detect_fn(t):
+            return {"Hello": "en", "Olá": "pt", "": None}[t]
         result = add_detected_language_column(df, "texto", "detected_language", detect_fn)
         assert result["detected_language"].iloc[0] == "en"
         assert result["detected_language"].iloc[1] == "pt"
@@ -98,7 +98,8 @@ class TestAddDetectedLanguageColumn:
     def test_only_missing_true_preserva_linhas_ja_preenchidas(self):
         df = pd.DataFrame({"texto": ["Hello", "Olá"], "detected_language": ["en", None]})
         chamados = []
-        detect_fn = lambda t: chamados.append(t) or "pt"  # noqa: E731
+        def detect_fn(t):
+            return chamados.append(t) or "pt"
         result = add_detected_language_column(df, "texto", "detected_language", detect_fn, only_missing=True)
         assert result["detected_language"].tolist() == ["en", "pt"]
         assert chamados == ["Olá"]

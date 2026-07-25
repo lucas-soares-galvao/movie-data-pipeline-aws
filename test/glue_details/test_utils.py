@@ -3,9 +3,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-
 import src.utils as u
-
 
 # ---------------------------------------------------------------------------
 # Funções auxiliares de extração (enriquecimento TMDB)
@@ -304,7 +302,8 @@ class TestAddTranslationsOverviewPt:
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
-        detect_fn = lambda t: "pt" if t == "Um grande filme" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Um grande filme" else "en"
         result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert result["overview_pt"].iloc[0] == "Um grande filme"
 
@@ -384,7 +383,8 @@ class TestAddTranslationsOverviewPt:
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
-        detect_fn = lambda t: {"A great movie": "en", "Um grande filme": "pt"}.get(t)  # noqa: E731
+        def detect_fn(t):
+            return {"A great movie": "en", "Um grande filme": "pt"}.get(t)
         result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert result["overview_detected_language_pt"].iloc[0] == "pt"
 
@@ -400,7 +400,8 @@ class TestAddTranslationsOverviewPt:
 
     def test_idioma_detectado_pt_e_pt_apos_sucesso_google(self):
         df = pd.DataFrame({"overview_en": ["A great movie"], "overview_pt_tmdb": [None]})
-        detect_fn = lambda t: "pt" if t.startswith("[PT]") else ("en" if t else None)  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t.startswith("[PT]") else ("en" if t else None)
         with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert result["overview_detected_language_pt"].iloc[0] == "pt"
@@ -437,7 +438,8 @@ class TestAddTranslationsOverviewPt:
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
-        detect_fn = lambda t: "pt" if t == "Um grande filme" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Um grande filme" else "en"
         result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert bool(result["overview_needs_translation"].iloc[0]) is False
 
@@ -498,7 +500,8 @@ class TestAddTranslationsTaglinePt:
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": ["Um grande filme"],
         })
-        detect_fn = lambda t: "pt" if t == "Um grande filme" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Um grande filme" else "en"
         result = u._add_translations_tagline_pt(df, detect_fn=detect_fn)
         assert result["tagline_pt"].iloc[0] == "Um grande filme"
 
@@ -564,7 +567,8 @@ class TestAddTranslationsTaglinePt:
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": ["Um grande filme"],
         })
-        detect_fn = lambda t: "pt" if t == "Um grande filme" else "en"  # noqa: E731
+        def detect_fn(t):
+            return "pt" if t == "Um grande filme" else "en"
         result = u._add_translations_tagline_pt(df, detect_fn=detect_fn)
         assert bool(result["tagline_needs_translation"].iloc[0]) is False
 

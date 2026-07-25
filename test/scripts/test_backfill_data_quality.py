@@ -9,10 +9,9 @@ espera o job terminar (não deve chamar get_job_run).
 import json
 from unittest.mock import MagicMock, patch
 
+import backfill_data_quality as bdq
 import pytest
 from botocore.exceptions import ClientError
-
-import backfill_data_quality as bdq
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",
