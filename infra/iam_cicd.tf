@@ -716,3 +716,15 @@ resource "terraform_data" "cicd_policies_ready" {
     aws_iam_role_policy_attachment.cicd_ssm,
   ]
 }
+
+# terraform_data acima só garante ORDEM (attach antes de uso), não tempo de
+# propagação — IAM é eventualmente consistente, e quando a própria role
+# lsg-github-actions-{env} cria/anexa uma policy nova a si mesma no mesmo
+# apply (ex.: cicd_ssm num ambiente novo), a permissão pode ainda não estar
+# visível nos milissegundos seguintes, causando AccessDenied mesmo com a
+# policy já anexada. Este buffer dá tempo de propagar antes de recursos que
+# dependem de policies recém-criadas serem provisionados.
+resource "time_sleep" "cicd_policies_propagation" {
+  depends_on      = [terraform_data.cicd_policies_ready]
+  create_duration = "20s"
+}

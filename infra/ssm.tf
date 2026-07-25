@@ -25,7 +25,7 @@ resource "aws_ssm_parameter" "rotation_year_pointer_movie" {
   value       = "1999"
   tags        = local.component_tags.lambda_api
 
-  depends_on = [terraform_data.cicd_policies_ready]
+  depends_on = [time_sleep.cicd_policies_propagation]
 
   lifecycle {
     ignore_changes = [value]
@@ -39,7 +39,7 @@ resource "aws_ssm_parameter" "rotation_year_pointer_tv" {
   value       = "1999"
   tags        = local.component_tags.lambda_api
 
-  depends_on = [terraform_data.cicd_policies_ready]
+  depends_on = [time_sleep.cicd_policies_propagation]
 
   lifecycle {
     ignore_changes = [value]
