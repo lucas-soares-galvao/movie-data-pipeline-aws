@@ -416,21 +416,6 @@ resource "aws_iam_policy" "cicd_compute" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/db_${local.tmdb_prefix}_*/*",
         ]
       },
-      # TODO: statement temporário só para permitir o destroy da state machine
-      # removida em b715671. Remover assim que o apply de destroy for aplicado
-      # com sucesso em dev e prod.
-      {
-        Sid    = "StepFunctionsTeardown"
-        Effect = "Allow"
-        Action = [
-          "states:DescribeStateMachine",
-          "states:DeleteStateMachine",
-          "states:ListStateMachineVersions",
-          "states:UntagResource",
-          "states:ListTagsForResource",
-        ]
-        Resource = "arn:aws:states:sa-east-1:${data.aws_caller_identity.current.account_id}:stateMachine:${local.tmdb_prefix}-*"
-      },
     ]
   })
 
@@ -685,6 +670,15 @@ resource "aws_iam_policy" "cicd_ssm" {
         Action   = "ssm:DescribeParameters"
         Resource = "*"
       },
+      {
+        # Usado pelo polling de propagação (ver null_resource.cicd_policies_propagation
+        # abaixo) para checar se esta própria policy já está visível no IAM antes de
+        # criar os parâmetros SSM que dependem dela.
+        Sid      = "IAMSimulateSelf"
+        Effect   = "Allow"
+        Action   = "iam:SimulatePrincipalPolicy"
+        Resource = aws_iam_role.github_actions.arn
+      },
     ]
   })
 
@@ -721,10 +715,48 @@ resource "terraform_data" "cicd_policies_ready" {
 # propagação — IAM é eventualmente consistente, e quando a própria role
 # lsg-github-actions-{env} cria/anexa uma policy nova a si mesma no mesmo
 # apply (ex.: cicd_ssm num ambiente novo), a permissão pode ainda não estar
-# visível nos milissegundos seguintes, causando AccessDenied mesmo com a
-# policy já anexada. Este buffer dá tempo de propagar antes de recursos que
-# dependem de policies recém-criadas serem provisionados.
-resource "time_sleep" "cicd_policies_propagation" {
-  depends_on      = [terraform_data.cicd_policies_ready]
-  create_duration = "20s"
+# visível nos segundos seguintes, causando AccessDenied mesmo com a policy
+# já anexada. Em vez de um sleep fixo, faz polling a cada 5s via
+# iam:SimulatePrincipalPolicy até a policy aparecer como "allowed" (ou até
+# 60s, quando falha com mensagem explícita em vez de um AccessDenied confuso
+# lá na frente).
+resource "null_resource" "cicd_policies_propagation" {
+  depends_on = [terraform_data.cicd_policies_ready]
+
+  triggers = {
+    ssm_policy_arn = aws_iam_policy.cicd_ssm.arn
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command     = <<-EOT
+      set -uo pipefail
+      for i in $(seq 1 12); do
+        # A própria permissão iam:SimulatePrincipalPolicy vem da policy cicd_ssm
+        # sendo testada, então nos primeiros segundos após o attach ela também
+        # pode não ter propagado ainda — a chamada abaixo falha com AccessDenied
+        # (exit != 0), não com um EvalDecision negado. Sem o "|| DENIED=...", essa
+        # falha derrubaria o script na tentativa 1 (mesmo com set -e removido, o
+        # command substitution deixaria DENIED vazio), então tratamos explicitamente
+        # como "ainda não propagou" e deixamos o loop continuar.
+        DENIED=$(aws iam simulate-principal-policy \
+          --policy-source-arn "${aws_iam_role.github_actions.arn}" \
+          --action-names ssm:PutParameter \
+          --resource-arns "arn:aws:ssm:sa-east-1:${data.aws_caller_identity.current.account_id}:parameter/tmdb-pipeline/rotation-year-pointer-movie" \
+          --query "length(EvaluationResults[?EvalDecision!=\`allowed\`])" \
+          --output text 2>/dev/null) || DENIED="pending"
+
+        if [ "$DENIED" = "0" ]; then
+          echo "Policy cicd_ssm propagada (tentativa $i/12)."
+          exit 0
+        fi
+
+        echo "Aguardando propagação da policy cicd_ssm no IAM... tentativa $i/12 (status: $DENIED)"
+        sleep 5
+      done
+
+      echo "Timeout aguardando propagação da policy cicd_ssm no IAM" >&2
+      exit 1
+    EOT
+  }
 }
