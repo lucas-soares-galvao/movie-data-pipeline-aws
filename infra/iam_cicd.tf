@@ -732,26 +732,28 @@ resource "null_resource" "cicd_policies_propagation" {
     command     = <<-EOT
       set -uo pipefail
       for i in $(seq 1 12); do
-        # A própria permissão iam:SimulatePrincipalPolicy vem da policy cicd_ssm
-        # sendo testada, então nos primeiros segundos após o attach ela também
-        # pode não ter propagado ainda — a chamada abaixo falha com AccessDenied
-        # (exit != 0), não com um EvalDecision negado. Sem o "|| DENIED=...", essa
-        # falha derrubaria o script na tentativa 1 (mesmo com set -e removido, o
-        # command substitution deixaria DENIED vazio), então tratamos explicitamente
-        # como "ainda não propagou" e deixamos o loop continuar.
-        DENIED=$(aws iam simulate-principal-policy \
+        # A permissão iam:SimulatePrincipalPolicy também vem da policy cicd_ssm
+        # sendo testada, então ela pode propagar depois da chamada abaixo já ter
+        # sido feita — nesse caso o próprio simulate-principal-policy falha com
+        # AccessDenied. Capturamos stderr em vez de descartar, para diferenciar
+        # esse caso (chamada falhou) de "chamada OK, mas ainda há ação negada".
+        if ! OUTPUT=$(aws iam simulate-principal-policy \
           --policy-source-arn "${aws_iam_role.github_actions.arn}" \
           --action-names ssm:PutParameter \
           --resource-arns "arn:aws:ssm:sa-east-1:${data.aws_caller_identity.current.account_id}:parameter/tmdb-pipeline/rotation-year-pointer-movie" \
           --query "length(EvaluationResults[?EvalDecision!=\`allowed\`])" \
-          --output text 2>/dev/null) || DENIED="pending"
+          --output text 2>&1); then
+          echo "Aguardando propagação da policy cicd_ssm no IAM... tentativa $i/12 (simulate-principal-policy ainda sem permissão: $OUTPUT)"
+          sleep 5
+          continue
+        fi
 
-        if [ "$DENIED" = "0" ]; then
+        if [ "$OUTPUT" = "0" ]; then
           echo "Policy cicd_ssm propagada (tentativa $i/12)."
           exit 0
         fi
 
-        echo "Aguardando propagação da policy cicd_ssm no IAM... tentativa $i/12 (status: $DENIED)"
+        echo "Aguardando propagação da policy cicd_ssm no IAM... tentativa $i/12 (ainda há ações negadas)"
         sleep 5
       done
 
