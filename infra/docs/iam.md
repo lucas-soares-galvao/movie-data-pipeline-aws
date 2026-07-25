@@ -4,13 +4,11 @@
 
 | Role | Usada por | Permissões principais |
 |---|---|---|
-| `tmdb-lambda-api-{env}` | Lambda API | S3 (SOR, AUX, TEMP restrito a `tmdb/changes/*`), Glue (StartJobRun + GetJobRun — ETL, AGG e Details), Secrets Manager |
+| `tmdb-lambda-api-{env}` | Lambda API | S3 (SOR, AUX, TEMP restrito a `tmdb/changes/*`), Glue (StartJobRun + GetJobRun — ETL, AGG e Details), Secrets Manager, SSM Parameter Store (GetParameter/PutParameter restrito ao ponteiro do rotation refresh — `infra/ssm.tf`) |
 | `tmdb-glue-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details) |
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, StartJobRun (DQ) |
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP restrito a `tmdb/athena/glue_details/*` e `tmdb/changes/*` — modo changes), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
-| `tmdb-sfn-backfill-{env}` | Step Functions | `lambda:InvokeFunction` sobre a Lambda API, CloudWatch Logs (logging de execução) |
-| `tmdb-eventbridge-sfn-{env}` | EventBridge (regra anual, hoje `DISABLED`) | `states:StartExecution` sobre a state machine de backfill |
 | `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |
 | `tmdb-filmbot-agent-{env}` (user) | Lightsail FilmBot | Athena, S3 (SPEC, TEMP), Glue Catalog, CloudWatch Logs, Secrets Manager |
 | `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`05_backfill.yml`) | `lambda:InvokeFunction` (Lambda API), `glue:StartJobRun`/`GetJobRun` (jobs Details e Data Quality), S3 (checkpoints + tabelas discover/details movie/tv no SOT), Glue Catalog (tabelas details movie/tv) |
@@ -34,7 +32,7 @@ A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se 
 | `cicd-terraform-backend-{env}` | DynamoDB (state lock) + STS (caller identity) |
 | `cicd-terraform-s3-{env}` | 6 buckets do projeto + bucket de state |
 | `cicd-terraform-iam-{env}` | Roles/policies/users `tmdb-*` + auto-gerenciamento `cicd-terraform-*` |
-| `cicd-terraform-compute-{env}` | Lambda, Glue (jobs + catalog), Step Functions |
+| `cicd-terraform-compute-{env}` | Lambda, Glue (jobs + catalog) |
 | `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms — inclui log groups `/lightsail/tmdb-*`), SNS, SQS (DLQ) |
 | `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1 |
 
@@ -57,4 +55,4 @@ Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token
 
 Não há problema de bootstrap circular: a policy `cicd-terraform-iam-{env}` já cobre `role/tmdb-*` (wildcard existente), então a role de CI/CD já pode criar/gerenciar `tmdb-backfill-role-{env}` num apply normal, sem `-target` nem step de bootstrap adicional.
 
-Não confundir com `tmdb-sfn-backfill-{env}` (tabela acima) — aquela serve o backfill via Step Functions (hoje sempre iniciado manualmente, já que a regra EventBridge `sfn_backfill_annual` está `DISABLED`), assumida pelo serviço `states.amazonaws.com`; esta serve o backfill **manual sob demanda** via scripts (`05_backfill.yml`), assumida via OIDC do GitHub Actions.
+Esta role serve o backfill **manual sob demanda** via scripts (`05_backfill.yml`), assumida via OIDC do GitHub Actions.
