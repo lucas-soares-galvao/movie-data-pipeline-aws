@@ -425,6 +425,7 @@ resource "aws_iam_policy" "cicd_compute" {
         Action = [
           "states:DescribeStateMachine",
           "states:DeleteStateMachine",
+          "states:ListStateMachineVersions",
           "states:UntagResource",
           "states:ListTagsForResource",
         ]
