@@ -677,6 +677,14 @@ resource "aws_iam_policy" "cicd_ssm" {
           "arn:aws:ssm:sa-east-1:${data.aws_caller_identity.current.account_id}:parameter/tmdb-pipeline/rotation-year-pointer-tv",
         ]
       },
+      {
+        # DescribeParameters não suporta restrição por resource (exige Resource "*").
+        # O provider Terraform usa essa action para ler metadata/tags do parâmetro.
+        Sid      = "SSMDescribeParameters"
+        Effect   = "Allow"
+        Action   = "ssm:DescribeParameters"
+        Resource = "*"
+      },
     ]
   })
 
