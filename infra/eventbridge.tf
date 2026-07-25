@@ -9,28 +9,31 @@
 # REGRAS SEMANAIS — Apenas Discover (Descoberta de Novos Títulos)
 # =============================================================================
 # Discover = busca na API TMDB os filmes/séries mais populares.
-# Roda semanalmente (domingos) para capturar novos lançamentos e atualizações de popularidade.
+# Roda semanalmente (sábados) para capturar novos lançamentos e atualizações de popularidade.
 #
-# Horários separados (09:00 e 09:05 UTC) para não disparar duas Lambdas
-# simultaneamente — evita concorrência desnecessária nas chamadas à API TMDB.
-# Gap de 30 min entre semanal e mensal evita ConcurrentModificationException
-# no Glue Catalog quando ambos tocam a mesma partição.
+# Mesmo dia do rotation refresh (sábado), 30 min depois (09:30/09:35 UTC) —
+# mesmo padrão de gap já usado entre semanal e mensal, evita
+# ConcurrentModificationException no Glue Catalog quando dois jobs Details
+# tocam a mesma tabela (partições/anos diferentes: rotation cobre catálogo
+# antigo, discover cobre o ano corrente — nunca colidem). Deixa domingo livre
+# só para o changes, que assim roda isolado, sem nenhum outro job Glue
+# Details no mesmo dia.
 # =============================================================================
 
-# Agenda semanal para discover de FILMES — domingos às 06:00 BRT (09:00 UTC)
+# Agenda semanal para discover de FILMES — sábados às 06:30 BRT (09:30 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-weekly-${var.env}"
-  description         = "Dispara a Lambda para filmes com payload completo (semanal, domingos)"
-  schedule_expression = "cron(00 09 ? * SUN *)" # Domingos às 09:00 UTC / 06:00 BRT
+  description         = "Dispara a Lambda para filmes com payload completo (semanal, sábados)"
+  schedule_expression = "cron(30 09 ? * SAT *)" # Sábados às 09:30 UTC / 06:30 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
-# Agenda semanal para discover de SÉRIES — domingos às 06:05 BRT (09:05 UTC)
+# Agenda semanal para discover de SÉRIES — sábados às 06:35 BRT (09:35 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-weekly-${var.env}"
-  description         = "Dispara a Lambda para séries com payload completo (semanal, domingos)"
-  schedule_expression = "cron(05 09 ? * SUN *)" # Domingos às 09:05 UTC / 06:05 BRT
+  description         = "Dispara a Lambda para séries com payload completo (semanal, sábados)"
+  schedule_expression = "cron(35 09 ? * SAT *)" # Sábados às 09:35 UTC / 06:35 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -111,25 +114,27 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
 # independente do ano de lançamento. Só refresca títulos já existentes no
 # catálogo (nunca expande via discover) — ver app/glue_details/src/utils.py.
 #
-# Cadência semanal (não diária) para economizar custo do Glue Details, que é
-# acionado a cada execução. Mesmo horário do discover semanal (09:00/09:05 UTC),
-# um dia antes (sábado) — um dia inteiro de folga evita que os dois ciclos de
-# Glue Details concorram pelo rate limit do TMDB, sem precisar coordenar
-# horários finos.
+# Roda no dia seguinte ao discover semanal (sábado → domingo), sozinho — sem
+# nenhum outro job Glue Details no mesmo dia. Um dia inteiro de folga elimina
+# de vez qualquer risco de colisão de partição (changes pode tocar o ano
+# corrente, a mesma partição que o discover escreve), além de garantir que o
+# catálogo já esteja atualizado com os títulos novos da semana antes do
+# changes rodar — um título recém-descoberto que já tenha mudança reportada
+# no mesmo ciclo é coberto.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_changes_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-changes-weekly-${var.env}"
-  description         = "Dispara a Lambda em modo changes para filmes (semanal, sábados)"
-  schedule_expression = "cron(00 09 ? * SAT *)" # Sábados às 09:00 UTC / 06:00 BRT
+  description         = "Dispara a Lambda em modo changes para filmes (semanal, domingos, um dia após o discover)"
+  schedule_expression = "cron(00 09 ? * SUN *)" # Domingos às 09:00 UTC / 06:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_changes_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-changes-weekly-${var.env}"
-  description         = "Dispara a Lambda em modo changes para séries (semanal, sábados)"
-  schedule_expression = "cron(05 09 ? * SAT *)" # Sábados às 09:05 UTC / 06:05 BRT
+  description         = "Dispara a Lambda em modo changes para séries (semanal, domingos, um dia após o discover)"
+  schedule_expression = "cron(05 09 ? * SUN *)" # Domingos às 09:05 UTC / 06:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -192,15 +197,17 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_changes_weekly" {
 # app/lambda_api/main.py) — sem checkpoint de loop, sem ajuste manual de ano
 # em ano. Ciclo completo em ~24 semanas.
 #
-# Mesmo dia do changes (sábado), 10 min depois (09:10/09:15 UTC) para não
-# concorrer pelo rate limit do TMDB nem pelo max_concurrent_runs do Glue Data
-# Quality, que ambos os fluxos acionam.
+# Roda aos sábados (09:00/09:05 UTC), 30 min antes do discover semanal
+# (09:30/09:35, mesmo dia) — só toca anos ≤ current_year - 3, uma faixa que
+# nunca colide com a partição que o discover escreve (ano corrente), mesmo
+# padrão de gap já usado entre semanal e mensal. O changes fica isolado no
+# domingo, sem tocar nenhum job deste dia.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_rotation_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-rotation-weekly-${var.env}"
   description         = "Dispara a Lambda em modo rotation refresh para filmes (semanal, sábados)"
-  schedule_expression = "cron(10 09 ? * SAT *)" # Sábados às 09:10 UTC / 06:10 BRT
+  schedule_expression = "cron(00 09 ? * SAT *)" # Sábados às 09:00 UTC / 06:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -208,7 +215,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_rotation_weekly" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_rotation_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-rotation-weekly-${var.env}"
   description         = "Dispara a Lambda em modo rotation refresh para séries (semanal, sábados)"
-  schedule_expression = "cron(15 09 ? * SAT *)" # Sábados às 09:15 UTC / 06:15 BRT
+  schedule_expression = "cron(05 09 ? * SAT *)" # Sábados às 09:05 UTC / 06:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
