@@ -78,7 +78,7 @@ proj-eng-dados-filmes-aws/
 │   ├── docs/
 │   │   ├── overview.md            # Visão geral, ambientes, CI/CD, como aplicar
 │   │   ├── recursos.md            # S3, Lambda, Glue Jobs, Glue Catalog, Lightsail
-│   │   ├── pipeline.md            # EventBridge, Step Functions, SNS, CloudWatch
+│   │   ├── pipeline.md            # EventBridge, SNS, CloudWatch
 │   │   └── iam.md                 # IAM roles/policies, IAM CI/CD
 │   ├── scripts/
 │   │   ├── build_lambda_package.py
@@ -332,8 +332,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
 | `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
 | `lightsail_scheduler.tf` | Lambda + EventBridge para ligar/desligar o Lightsail (custo) |
-| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, mensal, anual) → Lambda e Step Functions |
-| `step_functions.tf` | State Machine de backfill histórico anual |
+| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, mensal) → Lambda |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |
 | `sns_topics.tf` | Tópicos SNS + subscrições de e-mail para alertas |

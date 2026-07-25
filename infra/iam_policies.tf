@@ -801,32 +801,6 @@ resource "aws_sns_topic_policy" "glue_details_failure_topic_policy" {
   policy = data.aws_iam_policy_document.glue_details_failure_topic_policy.json
 }
 
-data "aws_iam_policy_document" "sfn_backfill_failure_topic_policy" {
-  statement {
-    sid    = "AllowEventBridgePublish"
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["events.amazonaws.com"]
-    }
-
-    actions   = ["SNS:Publish"]
-    resources = [aws_sns_topic.sfn_backfill_failure_notifications.arn]
-
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [aws_cloudwatch_event_rule.sfn_backfill_failed.arn]
-    }
-  }
-}
-
-resource "aws_sns_topic_policy" "sfn_backfill_failure_topic_policy" {
-  arn    = aws_sns_topic.sfn_backfill_failure_notifications.arn
-  policy = data.aws_iam_policy_document.sfn_backfill_failure_topic_policy.json
-}
-
 # =============================================================================
 # POLÍTICAS IAM — GLUE DETAILS
 # =============================================================================
@@ -1030,59 +1004,6 @@ resource "aws_iam_role_policy" "glue_details_start_dq" {
 }
 
 # =============================================================================
-# STEP FUNCTIONS — Políticas do backfill histórico
-# =============================================================================
-
-resource "aws_iam_role_policy" "sfn_backfill_logs" {
-  name = "${local.tmdb_prefix}-sfn-backfill-logs-${var.env}"
-  role = aws_iam_role.sfn_backfill_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "LogDeliveryManagement"
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogDelivery",
-          "logs:GetLogDelivery",
-          "logs:UpdateLogDelivery",
-          "logs:DeleteLogDelivery",
-          "logs:ListLogDeliveries",
-          "logs:PutResourcePolicy",
-          "logs:DescribeResourcePolicies",
-        ]
-        # Log Delivery v1 APIs não suportam resource-level permissions
-        Resource = "*"
-      },
-      {
-        Sid    = "DescribeTargetLogGroup"
-        Effect = "Allow"
-        Action = [
-          "logs:DescribeLogGroups",
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "sfn_invoke_lambda" {
-  name = "${local.tmdb_prefix}-sfn-backfill-invoke-lambda-${var.env}"
-  role = aws_iam_role.sfn_backfill_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "InvokeTmdbLambda"
-      Effect   = "Allow"
-      Action   = "lambda:InvokeFunction"
-      Resource = aws_lambda_function.simple_lambda.arn
-    }]
-  })
-}
-
-# =============================================================================
 # LIGHTSAIL — Acesso ao Secrets Manager para o agente IA (FilmBot)
 # =============================================================================
 
@@ -1096,21 +1017,6 @@ resource "aws_iam_user_policy" "filmbot_secrets_manager" {
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
       Resource = var.filmbot_secret_arn
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "eventbridge_start_sfn" {
-  name = "${local.tmdb_prefix}-eventbridge-start-sfn-${var.env}"
-  role = aws_iam_role.eventbridge_sfn_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "StartBackfillExecution"
-      Effect   = "Allow"
-      Action   = "states:StartExecution"
-      Resource = aws_sfn_state_machine.backfill.arn
     }]
   })
 }

@@ -284,7 +284,7 @@ class TestOnlyDiscover:
 
 class TestOnlyAnnualTables:
     """
-    Testa o flag only_annual_tables (backfill anual via Step Functions).
+    Testa o flag only_annual_tables (backfill manual de multiplos anos).
 
     Comportamento identico ao only_weekly_tables: pula coletas de referencia
     (generos, configuracoes, watch_providers_ref) e executa apenas o discover.

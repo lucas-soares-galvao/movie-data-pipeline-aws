@@ -327,8 +327,6 @@ resource "aws_iam_policy" "iam_cicd" {
             "iam:PassedToService" = [
               "lambda.amazonaws.com",
               "glue.amazonaws.com",
-              "states.amazonaws.com",
-              "events.amazonaws.com",
             ]
           }
         }
@@ -345,12 +343,12 @@ resource "aws_iam_role_policy_attachment" "iam_cicd" {
 }
 
 # =============================================================================
-# POLICY 4 — COMPUTE (Lambda + Glue Jobs/Catalog + Step Functions)
+# POLICY 4 — COMPUTE (Lambda + Glue Jobs/Catalog)
 # =============================================================================
 
 resource "aws_iam_policy" "cicd_compute" {
   name        = "${local.project_config.cicd_policy_prefix}-compute-${var.env}"
-  description = "Gerenciamento de Lambda, Glue (jobs + catalog) e Step Functions"
+  description = "Gerenciamento de Lambda e Glue (jobs + catalog)"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -417,30 +415,6 @@ resource "aws_iam_policy" "cicd_compute" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/db_${local.tmdb_prefix}_*",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/db_${local.tmdb_prefix}_*/*",
         ]
-      },
-      {
-        Sid    = "StepFunctionsManagement"
-        Effect = "Allow"
-        Action = [
-          "states:CreateStateMachine",
-          "states:DeleteStateMachine",
-          "states:DescribeStateMachine",
-          "states:UpdateStateMachine",
-          "states:ListStateMachineVersions",
-          "states:TagResource",
-          "states:UntagResource",
-          "states:ListTagsForResource",
-        ]
-        Resource = "arn:aws:states:sa-east-1:${data.aws_caller_identity.current.account_id}:stateMachine:${local.tmdb_prefix}-*"
-      },
-      {
-        Sid    = "StepFunctionsList"
-        Effect = "Allow"
-        Action = [
-          "states:ListStateMachines",
-          "states:ValidateStateMachineDefinition",
-        ]
-        Resource = "*"
       },
     ]
   })

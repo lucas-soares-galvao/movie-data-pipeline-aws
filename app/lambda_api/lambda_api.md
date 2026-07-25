@@ -2,7 +2,7 @@
 
 ## O que é
 
-A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em cinco agendamentos: semanal (discover do ano atual + now_playing), mensal (discover do ano anterior + dados de referência), anual (backfill histórico), semanal de changes (refresh de títulos já catalogados de qualquer ano, via Changes API do TMDB) e semanal de rotation refresh (refresh forçado de 1 ano do catálogo antigo por vez) — ver "Modo changes" e "Modo rotation refresh" abaixo. Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
+A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em quatro agendamentos: semanal (discover do ano atual + now_playing), mensal (discover do ano anterior + dados de referência), semanal de changes (refresh de títulos já catalogados de qualquer ano, via Changes API do TMDB) e semanal de rotation refresh (refresh forçado de 1 ano do catálogo antigo por vez) — ver "Modo changes" e "Modo rotation refresh" abaixo. Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
 
 ## Por que existe
 
@@ -14,7 +14,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
 2. A Lambda busca a chave da API do TMDB no **Secrets Manager** (cofre de senhas da AWS — armazena credenciais com segurança, evitando que a chave fique exposta no código) — uma única vez por execução, independente de quantos anos existam.
 3. Dependendo dos flags recebidos no evento:
    - **`only_weekly_tables=True`** (execução semanal): pula gêneros, idiomas, países e plataformas de referência.
-   - **`only_annual_tables=True`** (backfill anual via Step Functions): mesmo efeito do `only_weekly_tables` — pula referências e roda apenas o discover.
+   - **`only_annual_tables=True`** (backfill manual de múltiplos anos): mesmo efeito do `only_weekly_tables` — pula referências e roda apenas o discover.
    - **`only_monthly_tables=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
    - **`skip_weekly=True`** (modo legado — referências apenas): pula o loop de discover.
    - **`only_changes_tables=True`** (execução semanal de changes, ver "Modo changes" abaixo): sai antes de qualquer coleta de referência/discover.

@@ -1,8 +1,8 @@
 # =============================================================================
 # sqs.tf — Dead Letter Queue para eventos EventBridge que falharam
 # =============================================================================
-# Quando o EventBridge não consegue invocar o target (Lambda ou Step Functions),
-# o evento é enviado para esta fila SQS em vez de ser descartado silenciosamente.
+# Quando o EventBridge não consegue invocar a Lambda alvo, o evento é enviado
+# para esta fila SQS em vez de ser descartado silenciosamente.
 # Um alarme CloudWatch monitora a fila e notifica via SNS quando há mensagens.
 # =============================================================================
 

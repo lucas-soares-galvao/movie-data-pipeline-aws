@@ -219,7 +219,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {loop_end_year}..."
     )
 
-    # loop_end_year pode ser menor que end_year em backfills particionados pela Step Functions
+    # loop_end_year pode ser menor que end_year em backfills particionados por ano
     for year in range(start_year, loop_end_year + 1):
         logger.info(f"=== Ano: {year} | Tipo: {content_type} ===")
 

@@ -50,9 +50,6 @@ locals {
     lightsail_scheduler = {
       Component = "lightsail_scheduler"
     }
-    sfn_backfill = {
-      Component = "sfn_backfill"
-    }
     lightsail_ia = {
       Component = "lightsail_ia"
     }
@@ -195,10 +192,6 @@ EOT
 
   glue_details_failed_input_template = <<-EOT
 {"message":"[Pipeline Falha]\nEtapa: Glue Details\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
-EOT
-
-  sfn_backfill_failed_input_template = <<-EOT
-{"message":"[Pipeline Falha]\nEtapa: Step Functions Backfill\nState Machine: <state_machine>\nStatus: <status>\nExecução: <execution_arn>\nMotivo: <cause>\nRegião: <region>\nHorário: <event_time>"}
 EOT
 
   # ===========================================================================
