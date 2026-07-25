@@ -416,6 +416,20 @@ resource "aws_iam_policy" "cicd_compute" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/db_${local.tmdb_prefix}_*/*",
         ]
       },
+      # TODO: statement temporário só para permitir o destroy da state machine
+      # removida em b715671. Remover assim que o apply de destroy for aplicado
+      # com sucesso em dev e prod.
+      {
+        Sid    = "StepFunctionsTeardown"
+        Effect = "Allow"
+        Action = [
+          "states:DescribeStateMachine",
+          "states:DeleteStateMachine",
+          "states:UntagResource",
+          "states:ListTagsForResource",
+        ]
+        Resource = "arn:aws:states:sa-east-1:${data.aws_caller_identity.current.account_id}:stateMachine:${local.tmdb_prefix}-*"
+      },
     ]
   })
 
