@@ -25,6 +25,8 @@ resource "aws_ssm_parameter" "rotation_year_pointer_movie" {
   value       = "1999"
   tags        = local.component_tags.lambda_api
 
+  depends_on = [terraform_data.cicd_policies_ready]
+
   lifecycle {
     ignore_changes = [value]
   }
@@ -36,6 +38,8 @@ resource "aws_ssm_parameter" "rotation_year_pointer_tv" {
   type        = "String"
   value       = "1999"
   tags        = local.component_tags.lambda_api
+
+  depends_on = [terraform_data.cicd_policies_ready]
 
   lifecycle {
     ignore_changes = [value]
