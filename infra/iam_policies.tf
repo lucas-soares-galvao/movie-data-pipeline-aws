@@ -859,6 +859,14 @@ resource "aws_iam_role_policy" "glue_details_s3" {
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/${local.tmdb_prefix}/athena/glue_details/*"]
       },
       {
+        # Modo changes (CHANGES_S3_PATH): lê a lista de IDs mudados gravada pela lambda_api
+        # e grava os IDs descartados (fora do catálogo discover) para investigação manual.
+        Sid      = "ReadWriteChangesTemp"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
+        Resource = ["arn:aws:s3:::${local.envs.s3_bucket_temp}/${local.tmdb_prefix}/changes/*"]
+      },
+      {
         Sid    = "WriteDetailsSOT"
         Effect = "Allow"
         Action = ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"]
