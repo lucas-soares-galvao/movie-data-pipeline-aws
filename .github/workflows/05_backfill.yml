@@ -8,7 +8,7 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 # selecionado em "Use workflow from" ao disparar o workflow:
 #   - main    → prod
 #   - develop → dev
-#   - qualquer outro branch → falha (ver step "Resolver ambiente a partir do branch")
+#   - qualquer outro branch → falha (ver step "Resolve environment from branch")
 #
 # Grupos de tabelas disponíveis:
 #   - discover              — gaps de anos via Lambda (ETL → DQ → Details → AGG)
@@ -75,7 +75,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Resolver ambiente a partir do branch
+      - name: Resolve environment from branch
         id: env
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
@@ -88,7 +88,7 @@ jobs:
           fi
           echo "🌎 Ambiente resolvido a partir do branch '${{ github.ref_name }}'"
 
-      - name: Ler configuração do projeto
+      - name: Read project configuration
         id: project
         run: |
           echo "project_prefix=$(jq -r '.project_prefix' infra/config/project.json)" >> $GITHUB_OUTPUT
@@ -101,7 +101,7 @@ jobs:
           aws-region: sa-east-1
           # Sessão padrão de 1h (default da action). Backfills históricos podem
           # rodar por horas e a sessão expira antes do fim — em vez de esticar
-          # a duração, o step "Executar backfill" abaixo trata
+          # a duração, o step "Run backfill" abaixo trata
           # ExpiredTokenException especificamente: renova a credencial (nova
           # sessão de 1h via OIDC) e retoma o script do checkpoint em S3, sem
           # perder o progresso já feito (ver scripts/backfill_shared.py).
@@ -111,14 +111,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Instalar dependências
+      - name: Install dependencies
         run: |
           pip install boto3
           if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
-      - name: Executar backfill (${{ inputs.table_group }})
+      - name: Run backfill (${{ inputs.table_group }})
         env:
           AWS_REGION: sa-east-1
           FORCE_REFETCH: "true"
