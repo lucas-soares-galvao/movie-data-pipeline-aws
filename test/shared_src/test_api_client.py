@@ -1,11 +1,9 @@
 import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-from unittest.mock import MagicMock, patch
-
 from shared_utils.api_client import api_get, get_api_secret
-
 
 # ---------------------------------------------------------------------------
 # api_get

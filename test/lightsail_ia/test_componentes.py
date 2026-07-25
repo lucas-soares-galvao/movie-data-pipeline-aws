@@ -1,6 +1,5 @@
 import componentes
 
-
 BASE_TITLE = {
     "title": "O Iluminado",
     "type": "filme",

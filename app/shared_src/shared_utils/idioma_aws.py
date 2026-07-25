@@ -4,14 +4,13 @@ do langdetect (ver shared_utils.idioma)."""
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import boto3
 
 logger = logging.getLogger()
 
 
-def detect_language_aws(text: str, region: str = "us-east-1") -> Optional[str]:
+def detect_language_aws(text: str, region: str = "us-east-1") -> str | None:
     """
     Detecta o idioma (código ISO 639-1) de um texto via AWS Comprehend (DetectDominantLanguage).
 
@@ -42,6 +41,6 @@ def detect_language_aws(text: str, region: str = "us-east-1") -> Optional[str]:
             return None
         best = max(languages, key=lambda lang: lang.get("Score", 0))
         return best.get("LanguageCode")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — chamada de API externa, não pode derrubar o job
         logger.warning(f"Falha ao detectar idioma via AWS Comprehend de '{text[:80]}': {exc}")
         return None

@@ -2,25 +2,25 @@
 
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import awswrangler as wr
 import boto3
 import pandas as pd
-
-from shared_utils.glue_helpers import get_resolved_option  # noqa: F401
-from shared_utils.idioma import (  # noqa: F401
+from shared_utils.glue_helpers import get_resolved_option
+from shared_utils.idioma import (
     add_detected_language_column,
-    detect_language_aws,
-    detect_language_langdetect,
+    detect_language_aws,  # noqa: F401
+    detect_language_langdetect,  # noqa: F401
     resolve_detect_language_fn,
 )
-from shared_utils.traducao import (  # noqa: F401
+from shared_utils.traducao import (
     resolve_pt_translation,
+    resolve_translate_fn,  # noqa: F401
     reuse_existing_translation,
-    resolve_translate_fn,
     translate_text,
-    translate_text_aws,
+    translate_text_aws,  # noqa: F401
 )
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
@@ -93,7 +93,7 @@ def derive_canonical_name(name: str) -> str:
 logger = logging.getLogger()
 
 
-def get_parameters_glue() -> Dict[str, Any]:
+def get_parameters_glue() -> dict[str, Any]:
     """
     Lê todos os argumentos do job Glue ETL e retorna em um dicionário.
 
@@ -136,9 +136,9 @@ def _add_translation(
     df: pd.DataFrame,
     description: str,
     key_column: str,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    previous_df: Optional[pd.DataFrame] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    translate_fn: Callable[[str], str] | None = None,
+    previous_df: pd.DataFrame | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt,
@@ -203,9 +203,9 @@ def _add_translation(
 
 def _add_name_pt_countries(
     df: pd.DataFrame,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    previous_df: Optional[pd.DataFrame] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    translate_fn: Callable[[str], str] | None = None,
+    previous_df: pd.DataFrame | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """Traduz english_name dos países para português e grava como name_pt."""
     return _add_translation(df, "países", "iso_3166_1", translate_fn, previous_df, detect_fn)
@@ -213,9 +213,9 @@ def _add_name_pt_countries(
 
 def _add_name_pt_languages(
     df: pd.DataFrame,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    previous_df: Optional[pd.DataFrame] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    translate_fn: Callable[[str], str] | None = None,
+    previous_df: pd.DataFrame | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """Traduz english_name dos idiomas para português e grava como name_pt."""
     return _add_translation(df, "idiomas", "iso_639_1", translate_fn, previous_df, detect_fn)
@@ -238,7 +238,7 @@ def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataF
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     try:
         return wr.s3.read_parquet(path=s3_path, dataset=True)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
         logger.info(f"Sem dados existentes para '{table_name}' (provavelmente primeira execução): {exc}")
         return pd.DataFrame()
 
@@ -254,11 +254,11 @@ def read_from_sor(
     s3_bucket_sor: str,
     media_type: str,
     table_type: str,
-    year: Optional[str] = None,
-    translate_fn: Optional[Callable[[str], str]] = None,
-    s3_bucket_sot: Optional[str] = None,
-    table_name: Optional[str] = None,
-    detect_fn: Optional[Callable[[str], Optional[str]]] = None,
+    year: str | None = None,
+    translate_fn: Callable[[str], str] | None = None,
+    s3_bucket_sot: str | None = None,
+    table_name: str | None = None,
+    detect_fn: Callable[[str], str | None] | None = None,
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
@@ -338,7 +338,7 @@ def write_parquet_to_sot(
     s3_bucket_sot: str,
     table_name: str,
     database: str,
-    partition_cols: Optional[List[str]] = None,
+    partition_cols: list[str] | None = None,
     mode: str = "overwrite_partitions",
 ) -> None:
     """

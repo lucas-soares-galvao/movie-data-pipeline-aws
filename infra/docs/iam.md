@@ -8,7 +8,7 @@
 | `tmdb-glue-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details) |
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, StartJobRun (DQ) |
-| `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
+| `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP restrito a `tmdb/athena/glue_details/*` e `tmdb/changes/*` — modo changes), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
 | `tmdb-sfn-backfill-{env}` | Step Functions | `lambda:InvokeFunction` sobre a Lambda API, CloudWatch Logs (logging de execução) |
 | `tmdb-eventbridge-sfn-{env}` | EventBridge (regra anual, hoje `DISABLED`) | `states:StartExecution` sobre a state machine de backfill |
 | `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |

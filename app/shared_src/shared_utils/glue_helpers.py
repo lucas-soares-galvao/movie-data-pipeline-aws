@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any
 
 from awsglue.utils import getResolvedOptions
 
 logger = logging.getLogger()
 
 
-def get_resolved_option(args: list) -> Dict[str, Any]:
+def get_resolved_option(args: list) -> dict[str, Any]:
     """
     Wrapper de getResolvedOptions — converte lista de nomes em dicionário nome→valor.
 

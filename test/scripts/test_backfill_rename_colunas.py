@@ -10,11 +10,10 @@ DataFrames grandes só para testar o loop de tabelas x anos.
 import json
 from unittest.mock import MagicMock, patch
 
+import backfill_rename_colunas as brc
 import pandas as pd
 import pytest
 from botocore.exceptions import ClientError
-
-import backfill_rename_colunas as brc
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",
@@ -202,7 +201,7 @@ class TestMain:
 
     def test_usa_ano_atual_como_default_de_end_year(self, monkeypatch):
         from datetime import datetime
-        mock_rename, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": str(datetime.now().year)})
+        mock_rename, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": str(datetime.now().year)})  # noqa: DTZ005 — espelha o datetime.now() naive de scripts/backfill_shared.py
         assert mock_rename.call_count == 4  # 1 ano x 4 tabelas
 
     def test_loga_total_de_particoes_regravadas(self, monkeypatch, caplog):

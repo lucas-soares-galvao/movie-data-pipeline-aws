@@ -12,10 +12,9 @@ import json
 import logging
 from unittest.mock import MagicMock, patch
 
+import backfill_shared as bs
 import pytest
 from botocore.exceptions import ClientError
-
-import backfill_shared as bs
 
 
 def _client_error(codigo: str) -> ClientError:

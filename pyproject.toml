@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9", "F",  # defaults
+    "I001",                 # imports não ordenados
+    "UP006", "UP035", "UP045",  # sintaxe de tipagem moderna (dict/list/X | None)
+    "RUF100",                # noqa não utilizado
+    "BLE001",                 # except Exception genérico
+    "DTZ001", "DTZ005", "DTZ011",  # datetime/date sem timezone
+]

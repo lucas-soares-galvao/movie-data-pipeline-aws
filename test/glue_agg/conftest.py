@@ -1,8 +1,8 @@
 """Stubs do AWS Glue SDK (awsglue não existe fora do runtime do Glue)."""
 
 import sys
-from unittest.mock import MagicMock
 from types import ModuleType
+from unittest.mock import MagicMock
 
 awsglue_module = sys.modules.setdefault("awsglue", ModuleType("awsglue"))
 

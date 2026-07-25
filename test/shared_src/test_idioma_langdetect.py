@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 from langdetect import LangDetectException
-
 from shared_utils.idioma_langdetect import detect_language_langdetect
 
 

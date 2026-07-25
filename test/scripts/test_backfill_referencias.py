@@ -10,9 +10,8 @@ referências — daí o valor de travar esse contrato em teste.
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import backfill_referencias as br
+import pytest
 
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",

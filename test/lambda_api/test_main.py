@@ -9,8 +9,7 @@ os.environ.setdefault("GLUE_DETAILS_JOB_NAME", "test-glue-details-job")
 os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 os.environ.setdefault("S3_BUCKET_TEMP", "test-bucket-temp")
 
-import main  # noqa: E402
-
+import main
 
 EVENTO_MOVIE = {
     "type": "movie",

@@ -1,9 +1,9 @@
 """Stubs do AWS Glue SDK (awsglue não existe fora do runtime do Glue)."""
 
-import sys
 import os
-from unittest.mock import MagicMock
+import sys
 from types import ModuleType
+from unittest.mock import MagicMock
 
 # Adiciona app/glue_etl/ ao início de sys.path.
 # Isso permite que os módulos do job usem "from src.utils import ..."

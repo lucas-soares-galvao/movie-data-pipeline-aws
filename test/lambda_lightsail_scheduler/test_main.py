@@ -4,9 +4,8 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import lambda_lightsail_scheduler_main as main
+import pytest
 
 
 class TestLambdaHandler:
