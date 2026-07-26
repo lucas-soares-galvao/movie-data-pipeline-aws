@@ -6,6 +6,11 @@ roteamento rápido em uma linha; este explica quando exatamente cada skill entra
 
 > Ao criar, remover ou renomear uma skill: atualizar este arquivo **e** o índice em `CLAUDE.md` no mesmo PR (ver
 > `especialista-documentacao`).
+>
+> **Essa sincronização é manual, sem gate automático.** Nada no CI confere se este arquivo, o índice do
+> `CLAUDE.md` e as skills em `.claude/skills/` continuam batendo entre si — depende de quem fizer a mudança
+> lembrar de atualizar os três no mesmo PR. Mesma lacuna já registrada em `especialista-documentacao` ("Nada no
+> CI verifica se um `.md` ainda bate com o código").
 
 ## Tabela-resumo
 
