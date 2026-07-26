@@ -13,7 +13,8 @@ Você é o especialista que avalia toda mudança no agente de IA do FilmBot pela
 
 | O quê | Onde |
 |---|---|
-| Segurança/validação da cláusula WHERE gerada pelo LLM (`_validate_where`) | `especialista-engenharia-dados-app` |
+| Mecanismo de validação da cláusula WHERE gerada pelo LLM (`_validate_where`) | `especialista-engenharia-dados-app` |
+| Racional de segurança/anti-abuso do login, rate limit, SQL injection e limites de tamanho (aqui descritos só pela ótica de custo) | `especialista-seguranca-aplicacao` |
 | Custo de infraestrutura AWS "tradicional" (S3, Glue, Lambda, Lightsail) | `especialista-finops-aws` |
 | Fluxo completo do agente (2 passos), cache, rate limiting, transcrição | `app/lightsail_ia/lightsail_ia.md` |
 | Código do agente | `app/lightsail_ia/agent.py` |

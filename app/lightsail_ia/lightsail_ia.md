@@ -105,7 +105,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_theater_end_date()`, `_format_rating()` | Funções puras de formatação de campos individuais |
 | `app.py` | `_load_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
 | `app.py` | `_create_ip_history()`, `_create_audio_ip_history()` | Factories `@st.cache_resource` que criam os dicts compartilhados `_ip_history` (recomendações) e `_audio_ip_history` (transcrições), garantindo que os históricos de rate limiting sobrevivam a reruns e resetem apenas no restart do processo |
-| `app.py` | `_get_client_ip()` | Obtém o IP do cliente via header `X-Forwarded-For` (repassado pelo Caddy) |
+| `app.py` | `_get_client_ip()` | Obtém o IP do cliente via header `X-Forwarded-For`; confiar no primeiro valor só é seguro porque o Caddy sobrescreve o header (`header_up`) em vez de anexar — ver `deploy/Caddyfile` |
 | `app.py` | `_queries_in_last_hour(history, ip)` | Conta consultas na última hora (janela deslizante) para o IP no histórico informado e limpa registros expirados. Reusada para recomendações (`_ip_history`) e transcrições (`_audio_ip_history`) |
 | `app.py` | `_seconds_until_available(history, ip)` | Calcula quantos segundos faltam até a consulta mais antiga do IP expirar, no histórico informado |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
@@ -123,7 +123,7 @@ O app roda como serviço `systemd` (`filmbot.service`) na instância Lightsail, 
 Arquivos de deploy:
 - `deploy/filmbot.service` — serviço Streamlit (bind em `127.0.0.1`)
 - `deploy/caddy.service` — serviço Caddy (proxy reverso HTTPS)
-- `deploy/Caddyfile` — configuração do Caddy (porta 80 → `localhost:8501`)
+- `deploy/Caddyfile` — configuração do Caddy (porta 80 → `localhost:8501`); sobrescreve `X-Forwarded-For` com `header_up` para o header sempre refletir o IP real do peer TCP, impedindo que um cliente forje esse valor e burle o rate limit por IP de `app.py`
 - `deploy/setup.sh` — bootstrap da instância (Python, Caddy, serviços)
 
 ### Desenvolvimento local

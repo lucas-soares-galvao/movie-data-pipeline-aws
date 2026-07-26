@@ -87,6 +87,9 @@ _audio_ip_history = _create_audio_ip_history()
 
 def _get_client_ip() -> str:
     """Extrai o IP do cliente a partir do header X-Forwarded-For repassado pelo Caddy."""
+    # Confiar no primeiro valor só é seguro porque o Caddyfile sobrescreve X-Forwarded-For
+    # (header_up) em vez de anexar — do contrário um cliente poderia forjar esse valor e
+    # burlar o rate limit por IP abaixo.
     forwarded = st.context.headers.get("X-Forwarded-For", "")
     return forwarded.split(",")[0].strip() if forwarded else "local"
 
@@ -179,7 +182,7 @@ with st.container(key="hero-section"):
     # ------------------------------------------------------------------
     with st.container(key="recorder-card"):
         st.markdown(
-            '<div class="recorder-label">🎤 Gravar a sua pergunta '
+            '<div class="recorder-label">🎤 Grave a sua pergunta '
             f'<span>(Máx. {_MAX_AUDIO_SECONDS} segundos)</span></div>',
             unsafe_allow_html=True,
         )
@@ -392,6 +395,7 @@ if st.session_state.get("search_completed") and not titles and not st.session_st
 elif titles:
     word = "opção" if len(titles) == 1 else "opções"
     st.markdown(
+        f'<hr class="results-divider">'
         f'<p class="results-heading">Encontramos {len(titles)} {word} para você!</p>',
         unsafe_allow_html=True,
     )
