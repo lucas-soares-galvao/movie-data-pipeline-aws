@@ -15,9 +15,9 @@ Esta skill cobre o racional de observabilidade/qualidade; não duplica a descri�
 
 | O quê | Onde |
 |---|---|
-| Argumentos exatos de `aws_cloudwatch_metric_alarm`, `aws_sns_topic`, `aws_cloudwatch_log_group` | `.claude/skills/especialista-infraestrutura-terraform.md` |
-| Código Python do Glue Data Quality e demais jobs Glue | `.claude/skills/especialista-engenharia-dados-app.md` |
-| Retenção de log por ambiente como alavanca de custo | `.claude/skills/especialista-finops-aws.md` |
+| Argumentos exatos de `aws_cloudwatch_metric_alarm`, `aws_sns_topic`, `aws_cloudwatch_log_group` | `especialista-infraestrutura-terraform` |
+| Código Python do Glue Data Quality e demais jobs Glue | `especialista-engenharia-dados-app` |
+| Retenção de log por ambiente como alavanca de custo | `especialista-finops-aws` |
 | Schedules EventBridge, tópicos SNS, mecânica do DLQ | `infra/docs/pipeline.md` |
 | Fluxo funcional do Glue Data Quality | `app/glue_data_quality/glue_data_quality.md` |
 

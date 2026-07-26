@@ -15,10 +15,10 @@ Esta skill organiza o código por serviço AWS e tecnologia; não repete o que j
 
 | O quê | Onde |
 |---|---|
-| Arquitetura/fluxo completo do pipeline, camadas S3, tabelas do Glue Catalog | `.claude/skills/projeto-filmes-aws.md` |
-| Árvore de diretórios completa, CI/CD (workflows), estrutura Terraform, config de testes | `.claude/skills/estrutura-projeto.md` |
-| Checklist obrigatório pós-mudança (testes, `.md`, docstrings, type hints) | `.claude/skills/revisao-testes-documentacao.md` |
-| Design visual do FilmBot (Streamlit/CSS) | `.claude/skills/filmbot-streamlit-design-system.md` |
+| Arquitetura/fluxo completo do pipeline, camadas S3, tabelas do Glue Catalog | `projeto-filmes-aws` |
+| Árvore de diretórios completa, CI/CD (workflows), estrutura Terraform, config de testes | `estrutura-projeto` |
+| Checklist obrigatório pós-mudança (testes, `.md`, docstrings, type hints) | `revisao-testes-documentacao` |
+| Design visual do FilmBot (Streamlit/CSS) | `especialista-streamlit-filmbot` |
 | Doc funcional de cada módulo | `app/<modulo>/<modulo>.md` |
 
 ## Não há arquivos `.sql` no projeto
@@ -43,7 +43,7 @@ Três dos quatro jobs Glue usam **awswrangler** para I/O — não a API DataFram
 | Módulo | Responsabilidade | Funções-chave |
 |---|---|---|
 | `glue_etl` | JSON (SOR) → Parquet (SOT); traduz `configuration` (países/idiomas) com cache de tradução; normaliza nomes de plataformas de streaming. | `read_from_sor`, `write_parquet_to_sot`, `derive_canonical_name`, `_add_translation`/`_add_name_pt_countries`/`_add_name_pt_languages`, `read_existing_configuration` |
-| `glue_details` | Enriquece cada título com detalhes TMDB (elenco, diretor, streaming providers), traduz sinopses/keywords/tagline, repara duplicatas de partição, processa o modo changes. Maior módulo do projeto — dezenas de `_extract_*` privadas para parsing de payload TMDB. | `fetch_ids_from_sot`, `fetch_existing_ids_from_details` (lógica delta — só busca IDs novos; mecanismo completo em `especialista-design-dados.md`), `fetch_tmdb_details`, `collect_and_write_details`, `collect_and_write_watch_providers`, `repair_details_duplicates`/`repair_discover_duplicates`/`repair_watch_providers_duplicates`, `fetch_ids_from_changes_file`, `resolve_years_for_changed_ids`, `process_changed_ids` |
+| `glue_details` | Enriquece cada título com detalhes TMDB (elenco, diretor, streaming providers), traduz sinopses/keywords/tagline, repara duplicatas de partição, processa o modo changes. Maior módulo do projeto — dezenas de `_extract_*` privadas para parsing de payload TMDB. | `fetch_ids_from_sot`, `fetch_existing_ids_from_details` (lógica delta — só busca IDs novos; mecanismo completo em `especialista-design-dados`), `fetch_tmdb_details`, `collect_and_write_details`, `collect_and_write_watch_providers`, `repair_details_duplicates`/`repair_discover_duplicates`/`repair_watch_providers_duplicates`, `fetch_ids_from_changes_file`, `resolve_years_for_changed_ids`, `process_changed_ids` |
 | `glue_agg` | Estágio final: une filmes+séries via **SQL Athena** (ver seção dedicada abaixo), grava a tabela SPEC. | `run_athena_query` (executa `queries.py` com `ctas_approach=True`, obrigatório para colunas `ARRAY`), `write_parquet_to_spec`, `_table_names` |
 
 ### AWS Glue — job PySpark (`glue_data_quality`)
