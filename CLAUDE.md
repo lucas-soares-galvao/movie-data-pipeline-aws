@@ -58,6 +58,7 @@ Consulte para entender o projeto em profundidade:
 - **especialista-seguranca-segredos.md** — Prevenção de vazamento de segredos/credenciais no repositório, CI/CD e ambiente local
 - **especialista-observabilidade-qualidade-dados.md** — Alarmes CloudWatch, tópicos SNS, logs, e regras DQDL de Data Quality
 - **especialista-workflows-github.md** — Mecânica YAML dos workflows GitHub Actions (triggers, `workflow_call`, secrets, supply-chain)
+- **especialista-scripts-backfill.md** — Racional de design dos scripts de backfill manual (checkpoint S3, exit code 75, granularidade de unidade, padrões de tratamento de erro)
 - **especialista-engenharia-dados-app.md** — Código Python/SQL/PySpark/awswrangler em `app/`, por serviço AWS
 - **especialista-testes-app.md** — Testes em `test/`, por serviço AWS (mocks de boto3/awswrangler/Athena/PySpark)
 - **especialista-legibilidade-codigo.md** — Clareza e legibilidade de código Python e SQL em `app/`/`test/`
