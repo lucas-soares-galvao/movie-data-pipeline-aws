@@ -42,7 +42,9 @@ bandit -r app/
 
 As skills ficam em `.claude/skills/<nome>/SKILL.md` (formato de diretório) e por isso são descobertas
 automaticamente pelo Claude Code — carregadas por relevância ou invocadas via `/nome-da-skill`. Esta lista é um
-índice de referência rápida para humanos; ao criar, remover ou renomear uma skill, atualizar aqui no mesmo PR.
+índice de referência rápida para humanos; ao criar, remover ou renomear uma skill, atualizar aqui **e** em
+`.claude/skills/skills_doc.md` no mesmo PR. Para o uso e o cenário/gatilho detalhado de cada skill, ver
+[`.claude/skills/skills_doc.md`](.claude/skills/skills_doc.md).
 
 Consulte para entender o projeto em profundidade:
 
