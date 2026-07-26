@@ -1,5 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;600&display=swap');
 
+/* Fundo cinematografico — mesmo gradiente radial usado em login.css, para
+   as duas telas terem a mesma textura de fundo. */
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+  min-height: 100vh;
+}
+
 /* Padroniza todos os botoes */
 [data-testid="stBaseButton-primary"] button,
 [data-testid="stBaseButton-secondary"] button,
@@ -51,9 +58,13 @@ button[data-testid="stBaseButton-secondary"] {
 }
 /* .st-key-recorder-card fica dentro de um stLayoutWrapper que é o filho
    direto real de .st-key-hero-section (item flex) — o order precisa ir
-   nesse wrapper, não em .st-key-recorder-card (que é um neto). */
+   nesse wrapper, não em .st-key-recorder-card (que é um neto).
+   margin-top compensa o fato de o wrapper de markdown do "ou" (item
+   anterior) não crescer com o texto — sem isso, o espaço visual abaixo
+   do "ou" fica bem menor que o espaço acima dele. */
 .st-key-hero-section > div:has(.st-key-recorder-card) {
   order: 2;
+  margin-top: 16px;
 }
 
 /* Heading centralizado do hero */
@@ -67,10 +78,7 @@ button[data-testid="stBaseButton-secondary"] {
   margin: 0 0 12px;
 }
 .accent-gradient-text {
-  background: linear-gradient(90deg, #fb923c, #f97316, #f59e0b);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #f97316;
 }
 .hero-subtitle { color: #a3a3a3; font-size: 15px; margin: 0 0 24px; }
 
@@ -102,7 +110,13 @@ button[data-testid="stBaseButton-secondary"] {
   z-index: 2;
 }
 
-/* Divisor "ou" entre o textarea e o card de gravação */
+/* Divisor "ou" entre o textarea e o card de gravação. Sem padding aqui de
+   propósito: o wrapper interno que o st.markdown gera ao redor desta div
+   não cresce para acompanhar padding/altura adicionada nela (fica com uma
+   altura "clampada" e o conteúdo extra só vaza visualmente para baixo),
+   o que desalinha o texto em relação ao gap uniforme do flex pai. O
+   espaçamento vertical é resolvido via margin nos vizinhos reais (ver
+   textarea e .st-key-recorder-card), não aqui dentro. */
 .hero-divider {
   display: flex;
   align-items: center;
@@ -144,7 +158,7 @@ button[data-testid="stBaseButton-secondary"] {
 }
 .st-key-recorder-card [data-testid="stAudioInputActionButton"] {
   border-radius: 50% !important;
-  background: linear-gradient(135deg, #fb923c, #f97316) !important;
+  background: #f97316 !important;
   box-shadow: 0 0 16px -2px rgba(249,115,22,0.5);
   flex-shrink: 0;
 }
@@ -160,14 +174,15 @@ button[data-testid="stBaseButton-secondary"] {
 }
 .recorder-label span { color: #a3a3a3; font-weight: 400; font-size: 13px; display: block; margin-top: 2px; }
 
-/* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill
-   com gradiente laranja->âmbar. Seletor mira a key específica (e não todo
-   .st-key-hero-actions) para não afetar o botão "Recomendar" desabilitado
-   do estado de busca, que mantém o layout compacto em colunas. */
+/* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill,
+   cor sólida (sem gradiente, mesma cor usada no botão "Entrar" do login).
+   Seletor mira a key específica (e não todo .st-key-hero-actions) para não
+   afetar o botão "Recomendar" desabilitado do estado de busca, que mantém
+   o layout compacto em colunas. */
 .st-key-btn_recomendar button {
   width: 100% !important;
   border-radius: 999px !important;
-  background: linear-gradient(90deg, #f97316, #f59e0b) !important;
+  background: #f97316 !important;
   box-shadow: 0 0 24px -4px rgba(249,115,22,0.6);
   font-weight: 600 !important;
   transition: filter 0.2s ease, transform 0.2s ease;
@@ -192,6 +207,13 @@ button[data-testid="stBaseButton-secondary"] {
   font-size: 13px;
 }
 .query-counter-highlight { color: #fb923c; font-weight: 700; }
+
+/* Título "Encontramos X opções para você!" acima do grid de resultados */
+.results-heading {
+  font-weight: 700;
+  margin-top: 32px;
+  margin-bottom: 8px;
+}
 
 @media (max-width: 1024px) {
   .hero-heading { font-size: 28px; }

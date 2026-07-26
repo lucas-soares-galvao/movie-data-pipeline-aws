@@ -71,46 +71,7 @@ EventBridge (schedule)
 
 ## Estrutura de Código
 
-```
-app/
-├── lambda_api/
-│   ├── main.py              # handler Lambda: extrai, salva SOR, dispara Glue ETL
-│   └── src/utils.py         # fetch TMDB, save S3, trigger Glue ETL
-├── glue_etl/
-│   ├── main.py              # resolve args Glue e chama main()
-│   └── src/utils.py         # get_parameters_glue(), read_from_sor(), write_parquet_to_sot(), derive_canonical_name()
-├── glue_data_quality/
-│   ├── main.py              # orquestra DQ: lê catálogo, avalia, salva, notifica
-│   └── src/
-│       ├── utils.py         # get_parameters_glue, get_ruleset, read_table_from_catalog, evaluate_data_quality, write_results_to_s3, notify_failed_outcomes
-│       └── rulesets_dq.py   # dict de rulesets DQDL por nome de tabela
-├── glue_details/
-│   ├── main.py              # resolve args Glue e chama main()
-│   └── src/utils.py         # busca detalhes TMDB, traduz sinopses EN→PT, streaming providers, salva SOT
-├── glue_agg/
-│   ├── main.py              # resolve args Glue e chama main()
-│   └── src/utils.py         # get_parameters_glue(), run_athena_query(), write_parquet_to_spec()
-├── lightsail_ia/
-│   ├── agent.py             # recomendar() + buscar_titulos_spec() (2 etapas: LLM → Athena → formatação Python)
-│   └── app.py               # interface Streamlit (FilmBot)
-├── lambda_lightsail_scheduler/
-│   └── main.py               # handler Lambda: liga/desliga instância Lightsail
-└── shared_src/
-    └── shared_utils/
-        ├── api_client.py       # API client genérico com retry/backoff e Secrets Manager (compartilhado)
-        ├── glue_helpers.py     # utilitários compartilhados de jobs Glue (compartilhado)
-        ├── traducao.py         # tradução inglês → português: Google Translate + fallback AWS Translate (compartilhado)
-        └── triggers.py        # disparo genérico de Glue jobs (compartilhado)
-test/
-├── lambda_api/
-├── glue_etl/
-├── glue_data_quality/
-├── glue_details/
-├── glue_agg/
-├── lightsail_ia/
-├── lambda_lightsail_scheduler/
-└── shared_src/
-```
+Árvore completa de diretórios (`app/`, `test/`, `infra/`, `.github/`) e organização por serviço AWS: ver `.claude/skills/estrutura-projeto.md` e `.claude/skills/especialista-engenharia-dados-app.md`.
 
 ---
 
@@ -166,7 +127,11 @@ test/
 |----------|-----------|
 | `TMDB_SECRET_ARN` | ARN do Secret Manager com a chave TMDB |
 | `GLUE_ETL_JOB_NAME` | Nome do Glue job de ETL |
+| `GLUE_DETAILS_JOB_NAME` | Nome do Glue job de Details (modos changes e rotation refresh disparam direto) |
 | `S3_BUCKET_SOR` | Nome do bucket SOR |
+| `S3_BUCKET_TEMP` | Nome do bucket TEMP (grava a lista de IDs mudados no modo changes) |
+| `S3_BUCKET_AUX` | Nome do bucket AUX |
+| `ENVIRONMENT` | Ambiente (`dev`/`prod`) |
 
 ---
 
@@ -237,11 +202,23 @@ Payload enxuto — sem nomes de tabela de discover/genre/etc, já que este modo 
 ```
 Sai cedo, antes de qualquer coleta de referência/discover: busca IDs mudados via `/movie/changes` (ou `/tv/changes`) numa janela `[hoje - 9 dias, hoje]`, grava a lista no bucket TEMP e aciona o **Glue Details** diretamente com `CHANGES_S3_PATH` — não passa pelo Glue ETL. Fecha o gap de staleness em títulos com `year < ano_atual - 1`, que os modos semanal/mensal nunca re-tocam. Regras EventBridge: `lambda_api_movie_changes_weekly`/`..._tv_changes_weekly`, sábados 09:00/09:05 UTC (mesmo horário do discover de domingo, um dia antes).
 
+### Modo rotation refresh (`only_rotation_refresh=True`)
+
+Também sai cedo, direto para o **Glue Details**, sem passar por `/discover` nem pelo Glue ETL. Diferente do modo
+changes (que reage a IDs que a TMDB reportou como mudados), este modo força o re-processamento de 1 ano do catálogo
+antigo por execução, com `FORCE_REFETCH=True`, via um ponteiro simples em SSM Parameter Store
+(`/tmdb-pipeline/rotation-year-pointer-{content_type}`, um parâmetro por `content_type` para não haver corrida entre
+movie e tv): lê o último ano processado, avança 1, reinicia em 2000 ao ultrapassar `current_year - 3` (o limite é
+recalculado a cada execução a partir da data corrente, nunca hardcoded). Cobre o intervalo `[2000, current_year - 3]`
+que nenhum outro modo automático re-toca (o ano corrente e o anterior já são refeitos pelo cascade normal
+discover → ETL → Details). Regras EventBridge: `lambda_api_movie_rotation_weekly`/`..._tv_rotation_weekly`, sábados
+09:00/09:05 UTC.
+
 ---
 
 ## Segurança e Observabilidade
 
-- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 6 policies scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`); `glue_details_role`, `glue_etl_role` e a role de backfill também têm `translate:TranslateText` (fallback de tradução via AWS Translate — `Resource = "*"`, AWS não restringe esse action por recurso)
+- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 7 policies scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`); `glue_details_role`, `glue_etl_role` e a role de backfill também têm `translate:TranslateText` (fallback de tradução via AWS Translate — `Resource = "*"`, AWS não restringe esse action por recurso)
 - **Secrets Manager**: secret unificado (`filmbot_secret_arn`) com `tmdb_api_key`, `llm_api_key` (LLM do FilmBot) e `filmbot_password`; `glue_details` recebe esse ARN como `TMDB_SECRET_ARN`
 - **CloudWatch Alarms**: Alarmes configurados para cada etapa do pipeline, com notificações por e-mail via SNS
 - **Glue DQ CloudWatch Metrics**: `enableDataQualityCloudWatchMetrics: True` no job de DQ
@@ -253,15 +230,14 @@ Sai cedo, antes de qualquer coleta de referência/discover: busca IDs mudados vi
 Definidos em `app/glue_data_quality/src/rulesets_dq.py`. As 14 tabelas têm regras organizadas por dimensão:
 - **Completude**: `IsComplete` para colunas-chave (`id`, `title`, `name_pt`, `canonical_name`, etc.)
 - **Unicidade**: `IsUnique` ou `Uniqueness` (composta) para chaves primárias
-- **Validade**: `ColumnValues` para ranges (`vote_average >= 0 AND <= 10`, `popularity >= 0`, `budget >= 0`, `revenue >= 0`, `runtime >= 0`) e enums (`media_type in ["movie", "tv"]`, `provider_type in ["flatrate", "rent", "buy"]`)
+- **Validade**: `ColumnValues` para ranges (`vote_average >= 0 AND <= 10`, `popularity >= 0`, `runtime >= 0`, `number_of_seasons >= 1`, `number_of_episodes >= 1`) e enums (`media_type in ["movie", "tv"]`, `provider_type in ["flatrate", "rent", "buy"]`)
 - **Integridade**: `RowCount > 0` em todas as tabelas
 
 ---
 
 ## Convenções de Desenvolvimento
 
-- Testes em `test/` espelhando a estrutura de `app/`
-- `conftest.py` por módulo para fixtures compartilhadas
 - `awswrangler` para I/O com S3 e Glue Catalog no ETL
 - `boto3` diretamente para chamadas ao Glue, Secrets Manager e S3 na Lambda
 - Particionamento temporal: `year` e `month` extraídos das colunas `release_date` (movie) e `first_air_date` (tv)
+- Estrutura de testes (`test/` espelhando `app/`, `conftest.py` por módulo, quality gate): ver `.claude/skills/estrutura-projeto.md` e `.claude/skills/especialista-testes-app.md`

@@ -37,7 +37,7 @@ Se o módulo de teste ainda não existe, crie seguindo a estrutura espelhada com
 - [ ] **Módulo alterado** — o arquivo `app/<modulo>/<modulo>.md` reflete as mudanças? (novas funções, parâmetros, fluxos, dependências)
 - [ ] **Testes alterados** — o arquivo `test/<modulo>/<modulo>_tests.md` reflete os novos cenários, fixtures ou dependências de teste?
 - [ ] **Infraestrutura alterada** — os docs em `infra/docs/` (`overview.md`, `recursos.md`, `pipeline.md`, `iam.md`) estão atualizados?
-- [ ] **Skills** — se a mudança afeta arquitetura, estrutura de pastas, convenções ou fluxos do pipeline, atualize as skills em `.claude/skills/` (`projeto-filmes-aws.md`, `estrutura-projeto.md`)
+- [ ] **Skills** — se a mudança afeta arquitetura, estrutura de pastas, convenções ou fluxos do pipeline, atualize as skills em `.claude/skills/` (`projeto-filmes-aws.md`, `estrutura-projeto.md`); se afeta um domínio coberto por uma skill especialista (IAM, Terraform, testes, observabilidade/DQ, segurança, FinOps, etc.), atualize também essa skill — não só as duas gerais
 - [ ] **CLAUDE.md** — se a mudança introduz novo comando útil, nova convenção ou novo módulo, atualize o `CLAUDE.md` raiz
 
 ---

@@ -90,7 +90,7 @@ proj-eng-dados-filmes-aws/
 │   ├── s3.tf                       # Buckets SOR, SOT, SPEC, DQ, AUX, TEMP
 │   ├── iam_roles.tf                # Roles para Lambda e Glue
 │   ├── iam_policies.tf             # Policies com privilégio mínimo
-│   ├── iam_cicd.tf                 # 6 policies least-privilege da role GitHub Actions + sync
+│   ├── iam_cicd.tf                 # 7 policies least-privilege da role GitHub Actions + sync
 │   ├── lambda_api.tf               # Função Lambda + package zip
 │   ├── glue_etl.tf                 # Glue Job ETL + upload de scripts no S3
 │   ├── glue_details.tf             # Glue Job Details + upload de scripts no S3
@@ -99,16 +99,20 @@ proj-eng-dados-filmes-aws/
 │   ├── glue_catalog.tf             # Database e tabelas no Glue Catalog
 │   ├── lightsail_ia.tf             # Instância Lightsail + IAM user filmbot-agent
 │   ├── lightsail_scheduler.tf      # Lambda + EventBridge para ligar/desligar o Lightsail (custo)
-│   ├── eventbridge.tf              # Regras EventBridge (semanal, semanal de changes, mensal, anual)
+│   ├── eventbridge.tf              # Regras EventBridge (semanal, semanal de changes, semanal de rotation, mensal)
 │   ├── sns_topics.tf               # Tópicos SNS + subscrições de e-mail
 │   ├── cloudwatch_alarms.tf        # Alarmes Lambda e EventBridge
 │   ├── cloudwatch_glue_alarms.tf   # Alarmes Glue ETL e Data Quality
 │   └──cloudwatch_logs.tf          # Log groups de cada serviço
 ├── scripts/
-│   ├── backfill_shared.py         # Código comum aos scripts de backfill (env vars, logging, checkpoint em S3, retry)
-│   ├── backfill_traducao.py       # Adiciona title_pt/overview_pt a dados históricos no S3 SOT
-│   ├── backfill_historico.py      # Popula tabelas discover de 2000 até o ano atual via Lambda
-│   └── backfill_data_quality.py   # Aciona o Glue Data Quality para tabelas de 2000 até o ano atual
+│   ├── scripts.md                    # Documentação dos scripts de backfill
+│   ├── backfill_shared.py            # Código comum aos scripts de backfill (env vars, logging, checkpoint em S3, retry)
+│   ├── backfill_historico.py         # Popula tabelas discover de 2000 até o ano atual via Lambda
+│   ├── backfill_referencias.py       # Popula tabelas de referência (genre, configuration, watch_providers_ref)
+│   ├── backfill_enriquecimento.py    # Popula tabelas details/watch_providers via Glue Details
+│   ├── backfill_data_quality.py      # Aciona o Glue Data Quality para tabelas de 2000 até o ano atual
+│   ├── backfill_traducao.py          # Adiciona title_pt/overview_pt a dados históricos no S3 SOT
+│   └── backfill_rename_colunas.py    # Migra dt_processamento/dt_atualizacao para nomes atuais (sem API TMDB)
 └── test/
     ├── conftest.py                 # Fixtures globais
     ├── lambda_api/
@@ -159,15 +163,27 @@ proj-eng-dados-filmes-aws/
     │   ├── requirements_tests.txt
     │   ├── lambda_lightsail_scheduler_tests.md
     │   └── test_main.py
-    └── shared_src/
+    ├── shared_src/
+    │   ├── __init__.py
+    │   ├── conftest.py
+    │   ├── requirements_tests.txt
+    │   ├── shared_src_tests.md
+    │   ├── test_api_client.py
+    │   ├── test_glue_helpers.py
+    │   ├── test_traducao.py
+    │   └── test_triggers.py
+    └── scripts/                    # Espelha scripts/ — roda no CI, mas fora do gate de 80% (não entra em --cov=app)
         ├── __init__.py
         ├── conftest.py
         ├── requirements_tests.txt
-        ├── shared_src_tests.md
-        ├── test_api_client.py
-        ├── test_glue_helpers.py
-        ├── test_traducao.py
-        └── test_triggers.py
+        ├── scripts_tests.md
+        ├── test_backfill_shared.py
+        ├── test_backfill_historico.py
+        ├── test_backfill_referencias.py
+        ├── test_backfill_enriquecimento.py
+        ├── test_backfill_data_quality.py
+        ├── test_backfill_traducao.py
+        └── test_backfill_rename_colunas.py
 ```
 
 ---
@@ -234,7 +250,7 @@ Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-la
 10. **terraform fmt -check** (informativo)
 11. **Checkov** — security/compliance scan (informativo)
 12. Injeta o e-mail de notificação (`notification-email`) no `.tfvars`
-13. **Bootstrap das IAM policies do CI/CD** (se não for destroy) — `terraform apply -target` nas 6 policies/attachments, depois faz polling em `aws iam list-attached-role-policies` (a cada 5s, timeout 60s) até confirmar que todas estão attachadas
+13. **Bootstrap das IAM policies do CI/CD** (se não for destroy) — `terraform apply -target` nas 7 policies/attachments, depois faz polling em `aws iam list-attached-role-policies` (a cada 5s, timeout 60s) até confirmar que todas estão attachadas
 14. Se `destroy_config[env] == true` → `terraform destroy`
 15. Se não → `terraform plan -out=<env>.plan` → Infracost (setup, breakdown no Job Summary, comentário no PR se o evento for `pull_request`) → `terraform apply <env>.plan`
 
@@ -280,13 +296,13 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 **Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
-**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao), `start_year` (default 2000), `end_year` (opcional)
+**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas), `start_year` (default 2000), `end_year` (opcional)
 
-**Mapeamento `table_group` → script:** `discover` → `backfill_historico.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`
+**Mapeamento `table_group` → script:** `discover` → `backfill_historico.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — migra `dt_processamento`/`dt_atualizacao` para os nomes atuais)
 
 **Etapas:** Checkout → resolve ambiente pelo branch → lê `infra/config/project.json` (`project_prefix`, step "Read project configuration") → autenticação OIDC com `AWS_ASSUME_ROLE_ARN_DEV` ou `AWS_ASSUME_ROLE_ARN_PROD` conforme o ambiente resolvido (sessão padrão de 1h) → Setup Python 3.12 → instala `boto3` (+ `scripts/requirements_backfill.txt` só para `traducao`) → executa o script correspondente dentro de um loop de retry (até 10 tentativas). `timeout-minutes: 360`.
 
-**Retomada automática (ExpiredTokenException):** os 4 scripts que iteram por ano (`discover`, `detalhes_e_providers`, `data_quality`, `traducao` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. O step "Run backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
+**Retomada automática (ExpiredTokenException):** os 5 scripts que iteram por ano (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. O step "Run backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
 
 Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montados dinamicamente como `<project_prefix>-...-<ambiente>` / `<prefixo>_..._<ambiente>`, usando o prefixo lido de `infra/config/project.json` e o ambiente resolvido pelo branch — nenhum nome fica hardcoded no workflow (exceto `S3_BUCKET_SOT`/`S3_BUCKET_TEMP`, que usam o prefixo de bucket `lsg`, não o prefixo do projeto).
 
@@ -323,7 +339,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `s3.tf` | 6 buckets: SOR, SOT, SPEC, DQ, AUX (código), TEMP (Athena) |
 | `iam_roles.tf` | Role para Lambda, Role para Glue |
 | `iam_policies.tf` | Policies de mínimo privilégio por serviço |
-| `iam_cicd.tf` | 6 policies least-privilege da role GitHub Actions (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
+| `iam_cicd.tf` | 7 policies least-privilege da role GitHub Actions (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
 | `lambda_api.tf` | Lambda function + zip do pacote Python |
 | `glue_etl.tf` | Glue Job ETL + upload de scripts/dependências no S3 AUX |
 | `glue_details.tf` | Glue Job Details + upload de scripts no S3 AUX |
@@ -332,7 +348,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
 | `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
 | `lightsail_scheduler.tf` | Lambda + EventBridge para ligar/desligar o Lightsail (custo) |
-| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, mensal) → Lambda |
+| `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, semanal de rotation, mensal) → Lambda |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |
 | `sns_topics.tf` | Tópicos SNS + subscrições de e-mail para alertas |
