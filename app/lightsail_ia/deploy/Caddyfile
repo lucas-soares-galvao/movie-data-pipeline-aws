@@ -1,3 +1,8 @@
 filmbot.lsgalvao.com.br {
-    reverse_proxy localhost:8501
+    # Sobrescreve X-Forwarded-For com o IP real do peer TCP em vez de anexar ao valor
+    # recebido do cliente — sem isso, o rate limit por IP em app.py pode ser burlado
+    # com um header forjado e diferente a cada requisição.
+    reverse_proxy localhost:8501 {
+        header_up X-Forwarded-For {http.request.remote.host}
+    }
 }

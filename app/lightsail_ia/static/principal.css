@@ -208,10 +208,17 @@ button[data-testid="stBaseButton-secondary"] {
 }
 .query-counter-highlight { color: #fb923c; font-weight: 700; }
 
+/* Linha divisória antes do grid de resultados (só aparece quando há recomendação) */
+.results-divider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  margin: 32px 0 24px;
+}
+
 /* Título "Encontramos X opções para você!" acima do grid de resultados */
 .results-heading {
   font-weight: 700;
-  margin-top: 56px;
+  margin-top: 8px;
   margin-bottom: 8px;
 }
 

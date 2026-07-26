@@ -20,6 +20,7 @@ Esta skill organiza o código por serviço AWS e tecnologia; não repete o que j
 | Checklist obrigatório pós-mudança (testes, `.md`, docstrings, type hints) | `revisao-testes-documentacao` |
 | Design visual do FilmBot (Streamlit/CSS) | `especialista-streamlit-filmbot` |
 | Doc funcional de cada módulo | `app/<modulo>/<modulo>.md` |
+| Racional de segurança/risco de SQL injection (por que `_validate_where` existe, gaps de denylist vs. allowlist) | `especialista-seguranca-aplicacao` |
 
 ## Não há arquivos `.sql` no projeto
 
@@ -62,14 +63,14 @@ Três dos quatro jobs Glue usam **awswrangler** para I/O — não a API DataFram
 
 ### Amazon Lightsail — FilmBot (Streamlit)
 
-`lightsail_ia/agent.py` é o único lugar do projeto onde SQL é **gerado dinamicamente por um LLM** (function calling via `litellm`) e depois executado — por isso tem uma camada de validação própria:
+`lightsail_ia/agent.py` é o único lugar do projeto onde SQL é **gerado dinamicamente por um LLM** (function calling via `litellm`) e depois executado — o vetor é uma classe real de **SQL injection** (texto do usuário → LLM gera a cláusula `WHERE` → interpolada em SQL executado), por isso tem uma camada de validação própria:
 
 - `recommend()` — orquestra: LLM gera cláusula `WHERE` → `search_titles_spec()` consulta Athena → `format_record()` (em `formatacao.py`) formata para a UI
 - `_validate_where()` — bloqueia `;`, palavras-chave DDL/DML (`_FORBIDDEN_KEYWORDS`: DROP/DELETE/INSERT/UPDATE/ALTER/CREATE/GRANT/TRUNCATE/EXEC/MERGE/REPLACE/CALL) e subqueries (`SELECT`) antes de interpolar a cláusula na query
 - `search_titles_spec()` — monta o SQL final (`WHERE vote_count >= 50 AND {where_clause}`), executa via `boto3.client("athena")` (start_query_execution + polling), não via awswrangler
 - Cache em memória (`_WHERE_CACHE`, TTL 1h) evita chamar o LLM de novo para a mesma preferência
 
-Ao mexer neste arquivo: qualquer nova forma de montar SQL a partir de input externo (usuário ou LLM) **precisa passar por `_validate_where`** ou equivalente — nunca interpolar direto.
+Ao mexer neste arquivo: qualquer nova forma de montar SQL a partir de input externo (usuário ou LLM) **precisa passar por `_validate_where`** ou equivalente — nunca interpolar direto. Para o racional de risco por trás dessa exigência (por que é bloqueante, gap de denylist vs. allowlist), ver `especialista-seguranca-aplicacao`.
 
 ### Pacote compartilhado — `shared_src/shared_utils` (não é serviço AWS isolado)
 
@@ -101,4 +102,4 @@ Ao escrever SQL novo: reaproveitar os padrões já usados em `queries.py` (dedup
 - Toda função nova ou alterada mantém type hints completos e docstring em português (`Args`/`Returns`, e `Raises` se aplicável) — ver exemplos reais em qualquer `src/utils.py` do projeto
 - SQL/Athena: reaproveitar os padrões de `glue_agg/src/queries.py` (CTEs, `ROW_NUMBER`/`DENSE_RANK`, pushdown predicate) em vez de criar uma abordagem nova
 - `glue_data_quality` é o único job que opera sobre DataFrame PySpark nativo; nos demais jobs Glue (`glue_etl`, `glue_details`, `glue_agg`), usar awswrangler/pandas — não introduzir a API DataFrame do Spark ali
-- SQL construído a partir de input externo (usuário, LLM) precisa de validação equivalente a `lightsail_ia/agent.py::_validate_where` antes de ser interpolado
+- SQL construído a partir de input externo (usuário, LLM) precisa de validação equivalente a `lightsail_ia/agent.py::_validate_where` antes de ser interpolado — é prevenção de SQL injection; racional de segurança em `especialista-seguranca-aplicacao`
