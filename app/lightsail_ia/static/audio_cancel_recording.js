@@ -9,6 +9,12 @@
         );
     }
 
+    function findUseButton() {
+        return Array.from(doc.querySelectorAll("button")).find(
+            (btn) => btn.textContent.includes("Usar gravação")
+        );
+    }
+
     function tick() {
         const stopBtn = doc.querySelector('[aria-label="Stop recording"]');
         let trash = doc.getElementById("audio-cancel-btn");
@@ -39,12 +45,18 @@
             trash.remove();
         }
 
-        if (window.localStorage.getItem("filmbot_audio_autocancel") === "1") {
+        const wantsDiscard = window.localStorage.getItem("filmbot_audio_autocancel") === "1";
+        if (wantsDiscard) {
             const cancelBtn = findConfirmCancelButton();
             if (cancelBtn) {
                 cancelBtn.click();
                 window.localStorage.removeItem("filmbot_audio_autocancel");
             }
+        } else {
+            // Botões de confirmação ficam escondidos via CSS (.st-key-audio-confirm-buttons) —
+            // "Usar gravação" é a ação padrão, confirmada automaticamente aqui assim que aparece.
+            const useBtn = findUseButton();
+            if (useBtn) useBtn.click();
         }
     }
 

@@ -215,31 +215,30 @@ with st.container(key="hero-section"):
             st.rerun()
 
     if st.session_state.get("audio_awaiting_confirmation"):
-        use_col, cancel_col, _ = st.columns([1, 1, 6], gap="small")
-        with use_col:
-            use_clicked = st.button(
-                "▶️ Usar gravação", type="primary", key="btn_usar_audio",
-                disabled=_audio_remaining <= 0,
-            )
-        with cancel_col:
-            cancel_clicked = st.button("✕ Cancelar", key="btn_cancelar_audio")
-
-        if use_clicked:
+        if _audio_remaining <= 0:
             st.session_state["audio_awaiting_confirmation"] = False
-            if _audio_remaining <= 0:
-                st.session_state["transcription_rate_limited"] = True
-            else:
+            st.session_state.pop("audio_pending_bytes", None)
+            st.session_state["transcription_rate_limited"] = True
+            st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
+            st.rerun()
+        else:
+            with st.container(key="audio-confirm-buttons"):
+                use_clicked = st.button("▶️ Usar gravação", type="primary", key="btn_usar_audio")
+                cancel_clicked = st.button("✕ Cancelar", key="btn_cancelar_audio")
+
+            if use_clicked:
+                st.session_state["audio_awaiting_confirmation"] = False
                 _audio_ip_history.setdefault(_client_ip, []).append(time.time())
                 st.session_state["transcribing"] = True
                 st.session_state["transcription_future"] = _executor.submit(
                     transcribe_preference, st.session_state.pop("audio_pending_bytes")
                 )
-            st.rerun()
-        elif cancel_clicked:
-            st.session_state["audio_awaiting_confirmation"] = False
-            st.session_state.pop("audio_pending_bytes", None)
-            st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
-            st.rerun()
+                st.rerun()
+            elif cancel_clicked:
+                st.session_state["audio_awaiting_confirmation"] = False
+                st.session_state.pop("audio_pending_bytes", None)
+                st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
+                st.rerun()
 
     if st.session_state.get("transcribing"):
         transcription_future: Future = st.session_state.get("transcription_future")
