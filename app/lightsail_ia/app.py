@@ -186,31 +186,58 @@ with st.container(key="hero-section"):
             f'<span>(Máx. {_MAX_AUDIO_SECONDS} segundos)</span></div>',
             unsafe_allow_html=True,
         )
+        _audio_widget_seq = st.session_state.get("audio_widget_seq", 0)
         audio_value = st.audio_input(
-            "Gravar preferência em áudio", label_visibility="collapsed", key="audio_input"
+            "Gravar preferência em áudio", label_visibility="collapsed",
+            key=f"audio_input_{_audio_widget_seq}",
         )
 
     _audio_queries_made = _queries_in_last_hour(_audio_ip_history, _client_ip)
     _audio_remaining = _MAX_TRANSCRIPTIONS_PER_HOUR - _audio_queries_made
 
-    if audio_value is not None and not st.session_state.get("transcribing"):
+    if (
+        audio_value is not None
+        and not st.session_state.get("transcribing")
+        and not st.session_state.get("audio_awaiting_confirmation")
+    ):
         audio_bytes = audio_value.getvalue()
         audio_hash = hashlib.md5(audio_bytes).hexdigest()
         if audio_hash != st.session_state.get("audio_last_hash"):
             st.session_state["audio_last_hash"] = audio_hash
+            st.session_state["audio_pending_bytes"] = audio_bytes
+            st.session_state["audio_awaiting_confirmation"] = True
             st.session_state["transcription_error"] = False
             st.session_state["transcription_empty"] = False
             st.session_state["transcription_too_long"] = False
             st.session_state["transcription_rate_limited"] = False
             st.session_state["transcription_truncated"] = False
+            st.rerun()
+
+    if st.session_state.get("audio_awaiting_confirmation"):
+        use_col, cancel_col, _ = st.columns([1, 1, 6], gap="small")
+        with use_col:
+            use_clicked = st.button(
+                "▶️ Usar gravação", type="primary", key="btn_usar_audio",
+                disabled=_audio_remaining <= 0,
+            )
+        with cancel_col:
+            cancel_clicked = st.button("✕ Cancelar", key="btn_cancelar_audio")
+
+        if use_clicked:
+            st.session_state["audio_awaiting_confirmation"] = False
             if _audio_remaining <= 0:
                 st.session_state["transcription_rate_limited"] = True
             else:
                 _audio_ip_history.setdefault(_client_ip, []).append(time.time())
                 st.session_state["transcribing"] = True
                 st.session_state["transcription_future"] = _executor.submit(
-                    transcribe_preference, audio_bytes
+                    transcribe_preference, st.session_state.pop("audio_pending_bytes")
                 )
+            st.rerun()
+        elif cancel_clicked:
+            st.session_state["audio_awaiting_confirmation"] = False
+            st.session_state.pop("audio_pending_bytes", None)
+            st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
             st.rerun()
 
     if st.session_state.get("transcribing"):
