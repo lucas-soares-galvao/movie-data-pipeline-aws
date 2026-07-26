@@ -20,6 +20,7 @@ from agent import (
     transcribe_preference,
 )
 from componentes import (
+    load_audio_cancel_script,
     load_login_css,
     load_main_css,
     load_preference_counter_script,
@@ -296,6 +297,7 @@ with st.container(key="hero-section"):
 # acima do divisor "ou" que não existia abaixo dele. O script busca o
 # textarea globalmente (querySelector), então a posição no DOM não importa.
 load_preference_counter_script(_MAX_PREFERENCE_CHARS)
+load_audio_cancel_script()
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made
