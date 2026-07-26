@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa os 7 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
+Testa os 8 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
 
 O foco principal é o **contrato do payload/argumentos** enviado a cada serviço (Lambda ou Glue), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 80% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
 
@@ -25,6 +25,7 @@ test/scripts/
 ├── test_backfill_data_quality.py
 ├── test_backfill_traducao.py
 ├── test_backfill_rename_colunas.py
+├── test_backfill_changes.py
 └── test_backfill_shared.py
 ```
 
@@ -330,6 +331,34 @@ reprocessado).
 | `test_marca_completo_mesmo_quando_rename_retorna_false` | Partição já migrada (`_rename_partition_column` retorna `False`) ainda conta como concluída — não é falha |
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
 | `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado) | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
+
+## Casos de teste — `test_backfill_changes.py`
+
+Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — sem checkpoint nem parâmetros de data, estruturalmente igual a `test_backfill_referencias.py`. A janela `[hoje - 8 dias, hoje]` é sempre resolvida dentro de `collect_changes_data` (`app/lambda_api`), fora do escopo deste script.
+
+### `TestContratoDoPayload`
+
+| Teste | O que verifica |
+|---|---|
+| `test_envia_only_changes_tables` | Payload contém `only_changes_tables: True` |
+| `test_payload_nao_contem_chaves_de_tabela` | Payload não inclui nenhuma chave `table_*` — o branch `only_changes_tables` de `main.py` sai antes de lê-las |
+| `test_payload_nao_contem_datas` | Regressão: o payload nunca inclui `changes_start_date`/`changes_end_date` — este script não escolhe janela |
+| `test_database_correto_por_content_type` | `database` do payload usa `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV` conforme o tipo |
+| `test_translate_provider_default_google` / `test_translate_provider_repassado_quando_informado` | `translate_provider` no payload |
+
+### `TestInvocacoes`
+
+| Teste | O que verifica |
+|---|---|
+| `test_invoca_lambda_uma_vez_para_movie_e_uma_para_tv` | 2 invocações, ordem `["movie", "tv"]` |
+| `test_pausa_apenas_entre_as_duas_invocacoes` | `time.sleep` chamado uma única vez |
+
+### `TestErros`
+
+| Teste | O que verifica |
+|---|---|
+| `test_erro_da_lambda_interrompe_o_backfill` | `RuntimeError` (Lambda com erro) propaga e para o script |
+| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
 
 ## Casos de teste — `test_backfill_shared.py`
 

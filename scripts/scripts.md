@@ -18,15 +18,16 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 | `backfill_rename_colunas.py` | Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para `processed_date`/`updated_date` nos parquets de details/watch_providers já gravados no S3 — sem chamar a API do TMDB, cobre inclusive IDs que já saíram do discover atual | S3 (direto) | awswrangler, pandas |
+| `backfill_changes.py` | Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — 2 invocações (movie, tv), janela sempre `[hoje - 8 dias, hoje]` (não configurável); útil quando o cron falha ou é pulado | Lambda | — |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
-por todos os 6 scripts acima: leitura de variável de ambiente obrigatória,
+por todos os 7 scripts acima: leitura de variável de ambiente obrigatória,
 setup de logging, invocação síncrona da Lambda API, payloads base de
 movie/tv, leitura do range de anos, proteção de custo do AWS Translate por
 intervalo de anos (`apply_translate_cost_guard`), wrapper de retry do exit
 code 75 e, para os 5 scripts que iteram por ano (todos exceto
-`backfill_referencias.py`), o checkpoint de retomada automática (ver seção
-"Retomada automática" abaixo).
+`backfill_referencias.py` e `backfill_changes.py`), o checkpoint de retomada
+automática (ver seção "Retomada automática" abaixo).
 
 ## Pré-requisitos
 
@@ -39,7 +40,7 @@ code 75 e, para os 5 scripts que iteram por ano (todos exceto
 ### Via GitHub Actions (recomendado)
 
 1. Ir em **Actions > 5. Backfill > Run workflow**, escolhendo o branch `main` (prod) ou `develop` (dev) no seletor "Use workflow from" — esse branch determina o ambiente
-2. Selecionar o grupo de tabelas (`table_group`), ano inicial e ano final (ambos ignorados para `referencias`)
+2. Selecionar o grupo de tabelas (`table_group`), ano inicial e ano final (ambos ignorados para `referencias` e `changes` — `changes` não usa nenhum input de data, é sempre a janela padrão de 8 dias)
 3. Acompanhar logs na aba do workflow
 
 O workflow (`.github/workflows/05_backfill.yml`) resolve o ambiente automaticamente pelo branch selecionado, autentica via OIDC no ambiente correspondente e configura todas as variáveis de ambiente automaticamente.
@@ -55,7 +56,7 @@ python scripts/backfill_enriquecimento.py
 
 ## Variáveis comuns
 
-Todos os scripts aceitam, **exceto `backfill_referencias.py`** (que não depende de ano e ignora ambas):
+Todos os scripts aceitam, **exceto `backfill_referencias.py` e `backfill_changes.py`** (nenhum dos dois depende de ano — `backfill_changes.py` usa sempre a janela padrão de 8 dias):
 
 | Variável | Padrão | Descrição |
 |---|---|---|
@@ -69,6 +70,13 @@ Os 5 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimen
 |---|---|
 | `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas`) |
 | `S3_BUCKET_TEMP` | Bucket onde o checkpoint é armazenado (dados temporários, não os dados reais do pipeline) |
+
+`backfill_changes.py` exige apenas `AWS_REGION`, `LAMBDA_FUNCTION_NAME`,
+`GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV` e, opcionalmente, `TRANSLATE_PROVIDER`
+— sem `TABLE_GROUP`/`S3_BUCKET_TEMP` (não grava checkpoint, ver "Retomada
+automática" abaixo) e fora da proteção de custo `apply_translate_cost_guard`
+(ver abaixo): o volume do modo changes é limitado aos IDs que a própria TMDB
+reporta como alterados na janela de 8 dias, não o catálogo inteiro.
 
 `backfill_traducao.py` exige adicionalmente `S3_BUCKET_SOT`, usado para ler e
 escrever os parquets reais de `tb_discover_movie/tv_tmdb` e

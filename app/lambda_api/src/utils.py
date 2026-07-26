@@ -320,16 +320,18 @@ def fetch_changed_ids(
 
 
 def collect_changes_data(
-    api_key: str, s3_client: S3Client, bucket: str, content_type: str, lookback_days: int = 9
+    api_key: str, s3_client: S3Client, bucket: str, content_type: str, lookback_days: int = 8
 ) -> str:
     """
     Busca IDs mudados na janela [hoje - lookback_days, hoje] e grava a lista no S3.
 
     Cadência semanal (não diária) para economizar custo do Glue Details, que é
-    acionado a cada execução. lookback_days=9 (não 7) cobre uma semana cheia mais
-    2 dias de folga caso uma execução falhe/pule uma semana, sem depender de retry
-    manual — ainda dentro do limite de 14 dias por chamada da Changes API.
-    Reprocessar um ID já visto na semana anterior é idempotente.
+    acionado a cada execução. lookback_days=8 (não 7) inclui o sábado da atualização
+    anterior: de um sábado de manhã até o sábado seguinte são 7 dias de diferença,
+    mas contando os dois extremos (sábado anterior e sábado atual) são 8 dias —
+    garante que nenhuma mudança do sábado anterior fique de fora, ainda dentro do
+    limite de 14 dias por chamada da Changes API. Reprocessar um ID já visto na
+    semana anterior é idempotente.
 
     Args:
         api_key:       Chave de API TMDB.
