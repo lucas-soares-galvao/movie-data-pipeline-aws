@@ -7,15 +7,15 @@ description: Especialista em prevenção de vazamento de segredos e credenciais 
 
 ## Papel
 
-Você é o especialista focado especificamente na camada de segredos e credenciais — não IAM em geral (isso é `especialista-infraestrutura-terraform.md`) nem supply-chain de actions (isso é `especialista-workflows-github.md`). Antes de aprovar um arquivo novo, um step de workflow ou uma variável de configuração, pergunta: "isso pode acabar num commit, num log do GitHub Actions, ou num artefato público?". Trata qualquer resposta afirmativa como bloqueante, independente do gate automático (Bandit/Safety) ser informativo ou não.
+Você é o especialista focado especificamente na camada de segredos e credenciais — não IAM em geral (isso é `especialista-infraestrutura-terraform`) nem supply-chain de actions (isso é `especialista-workflows-github`). Antes de aprovar um arquivo novo, um step de workflow ou uma variável de configuração, pergunta: "isso pode acabar num commit, num log do GitHub Actions, ou num artefato público?". Trata qualquer resposta afirmativa como bloqueante, independente do gate automático (Bandit/Safety) ser informativo ou não.
 
 ## Fontes de verdade (ler antes de agir)
 
 | O quê | Onde |
 |---|---|
-| IAM roles/policies, least privilege, criptografia S3/SNS | `.claude/skills/especialista-infraestrutura-terraform.md` |
-| Pin de actions, `curl \| bash`, supply-chain de CI/CD | `.claude/skills/especialista-workflows-github.md` |
-| Contrato de secrets por workflow (`aws-assume-role-arn` etc.) | `.claude/skills/especialista-workflows-github.md` |
+| IAM roles/policies, least privilege, criptografia S3/SNS | `especialista-infraestrutura-terraform` |
+| Pin de actions, `curl \| bash`, supply-chain de CI/CD | `especialista-workflows-github` |
+| Contrato de secrets por workflow (`aws-assume-role-arn` etc.) | `especialista-workflows-github` |
 | Roles/policies IAM e racional de cada uma | `infra/docs/iam.md` |
 
 ## Práticas já implementadas — preservar

@@ -1,6 +1,6 @@
 ---
 name: especialista-design-dados
-description: Especialista em decisões de design de dados que atravessam os jobs Glue (glue_etl, glue_details, glue_agg, glue_data_quality) — particionamento, modo de escrita/idempotência (overwrite vs. overwrite_partitions vs. read-merge-write manual), formato de arquivo por camada (JSON no SOR, Parquet no SOT/SPEC/DQ) e processamento incremental/delta. Use ao escolher partition_cols/mode para uma tabela nova ou alterada, ao decidir se uma escrita precisa de merge manual antes do wr.s3.to_parquet, ao investigar por que rodar um job duas vezes não duplica dados, ao desenhar a lógica que define "o que já foi processado" (delta), ou ao avaliar o impacto de uma mudança de schema numa tabela existente. Não cobre onde o código mora por serviço AWS (especialista-engenharia-dados-app.md) nem alarmes/regras DQDL de validação de qualidade (especialista-observabilidade-qualidade-dados.md).
+description: Especialista em decisões de design de dados que atravessam os jobs Glue (glue_etl, glue_details, glue_agg, glue_data_quality) — particionamento, modo de escrita/idempotência (overwrite vs. overwrite_partitions vs. read-merge-write manual), formato de arquivo por camada (JSON no SOR, Parquet no SOT/SPEC/DQ) e processamento incremental/delta. Use ao escolher partition_cols/mode para uma tabela nova ou alterada, ao decidir se uma escrita precisa de merge manual antes do wr.s3.to_parquet, ao investigar por que rodar um job duas vezes não duplica dados, ao desenhar a lógica que define "o que já foi processado" (delta), ou ao avaliar o impacto de uma mudança de schema numa tabela existente. Não cobre onde o código mora por serviço AWS (especialista-engenharia-dados-app) nem alarmes/regras DQDL de validação de qualidade (especialista-observabilidade-qualidade-dados).
 ---
 
 # Especialista em Design de Dados — Particionamento, Idempotência e Formato
@@ -24,12 +24,12 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
 
 | O quê | Onde |
 |---|---|
-| Onde mora cada função por serviço AWS (Lambda/Glue/Lightsail), reuso de `shared_utils` | `.claude/skills/especialista-engenharia-dados-app.md` |
-| Alarmes CloudWatch, tópicos SNS, regras DQDL, guard estrutural pré-escrita | `.claude/skills/especialista-observabilidade-qualidade-dados.md` |
-| Qual serviço AWS usar para uma necessidade nova (custo x volume x complexidade) | `.claude/skills/especialista-arquitetura-aws.md` |
-| Custo x benefício dos recursos já escolhidos (lifecycle S3, DPU Glue) | `.claude/skills/especialista-finops-aws.md` |
-| Arquitetura funcional/fluxo ponta a ponta, camadas S3, tabelas do Glue Catalog | `.claude/skills/projeto-filmes-aws.md` |
-| Racional do único caso de schema evolution do projeto (rename de coluna via runbook) | `scripts/backfill_rename_colunas.py`, `.claude/skills/especialista-scripts-backfill.md` |
+| Onde mora cada função por serviço AWS (Lambda/Glue/Lightsail), reuso de `shared_utils` | `especialista-engenharia-dados-app` |
+| Alarmes CloudWatch, tópicos SNS, regras DQDL, guard estrutural pré-escrita | `especialista-observabilidade-qualidade-dados` |
+| Qual serviço AWS usar para uma necessidade nova (custo x volume x complexidade) | `especialista-arquitetura-aws` |
+| Custo x benefício dos recursos já escolhidos (lifecycle S3, DPU Glue) | `especialista-finops-aws` |
+| Arquitetura funcional/fluxo ponta a ponta, camadas S3, tabelas do Glue Catalog | `projeto-filmes-aws` |
+| Racional do único caso de schema evolution do projeto (rename de coluna via runbook) | `scripts/backfill_rename_colunas.py`, `especialista-scripts-backfill` |
 
 ## Práticas já aplicadas — preservar
 
@@ -84,7 +84,7 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   (`watch_providers_ref`/`genre`/`configuration`), porque "o wrangler pode ter comportamento inesperado" nesse caso
   — comentário explícito em `app/glue_etl/src/utils.py:313-315`. SOT/SPEC/DQ são sempre Parquet via
   `wr.s3.to_parquet(..., dataset=True, database=..., table=...)`, que grava e atualiza o Glue Catalog na mesma
-  chamada (`.claude/skills/projeto-filmes-aws.md:65-68`).
+  chamada (`projeto-filmes-aws:65-68`).
 - **Delta é calculado por janela mensal, não por partição isolada**: `fetch_existing_ids_from_details`
   (`app/glue_details/src/utils.py:152-198`) considera "já processado" um ID cujo `processed_date` é deste mês, **em
   qualquer partição `year`** — não só a partição do `year` sendo processado agora — porque o `release_date` de um
@@ -144,4 +144,4 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   contra a partição do run atual — o padrão de `fetch_existing_ids_from_details`
   (`app/glue_details/src/utils.py:152-198`) evita reprocessar/sobrescrever o mesmo ID em duas partições diferentes.
 - **JSON só no SOR, Parquet em tudo depois dele**: não introduzir um formato novo numa camada existente sem
-  justificar contra o padrão já em vigor (`.claude/skills/projeto-filmes-aws.md:65-68`).
+  justificar contra o padrão já em vigor (`projeto-filmes-aws:65-68`).

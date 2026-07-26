@@ -1,3 +1,8 @@
+---
+name: revisao-testes-documentacao
+description: Checklist obrigatório pós-mudança de código neste projeto — testes, arquivos .md por módulo, docstrings e type hints. Use sempre ao terminar uma alteração em app/, test/ ou scripts/, antes de reportar a tarefa como concluída. Cobre o que verificar e onde, mapeando cada camada de código à sua documentação/teste espelhado.
+---
+
 # Skill: Revisão de Testes e Documentação Pós-Mudança
 
 Após **toda alteração de código** neste projeto, execute este checklist antes de considerar a tarefa concluída.
@@ -37,7 +42,7 @@ Se o módulo de teste ainda não existe, crie seguindo a estrutura espelhada com
 - [ ] **Módulo alterado** — o arquivo `app/<modulo>/<modulo>.md` reflete as mudanças? (novas funções, parâmetros, fluxos, dependências)
 - [ ] **Testes alterados** — o arquivo `test/<modulo>/<modulo>_tests.md` reflete os novos cenários, fixtures ou dependências de teste?
 - [ ] **Infraestrutura alterada** — os docs em `infra/docs/` (`overview.md`, `recursos.md`, `pipeline.md`, `iam.md`) estão atualizados?
-- [ ] **Skills** — se a mudança afeta arquitetura, estrutura de pastas, convenções ou fluxos do pipeline, atualize as skills em `.claude/skills/` (`projeto-filmes-aws.md`, `estrutura-projeto.md`); se afeta um domínio coberto por uma skill especialista (IAM, Terraform, testes, observabilidade/DQ, segurança, FinOps, etc.), atualize também essa skill — não só as duas gerais
+- [ ] **Skills** — se a mudança afeta arquitetura, estrutura de pastas, convenções ou fluxos do pipeline, atualize as skills em `.claude/skills/` (`projeto-filmes-aws`, `estrutura-projeto`); se afeta um domínio coberto por uma skill especialista (IAM, Terraform, testes, observabilidade/DQ, segurança, FinOps, etc.), atualize também essa skill — não só as duas gerais
 - [ ] **CLAUDE.md** — se a mudança introduz novo comando útil, nova convenção ou novo módulo, atualize o `CLAUDE.md` raiz
 
 ---

@@ -21,12 +21,12 @@ os detalhes de implementação:
 
 | O quê | Onde |
 |---|---|
-| Ajuste fino de custo dos recursos já escolhidos (lifecycle S3, DPU do Glue, retenção de log, bundle Lightsail) | `.claude/skills/especialista-finops-aws.md` |
-| Argumentos exatos de recurso, `depends_on`, convenções de nomeação Terraform | `.claude/skills/especialista-infraestrutura-terraform.md` |
-| Código Python/SQL/PySpark dentro de cada serviço já escolhido | `.claude/skills/especialista-engenharia-dados-app.md` |
+| Ajuste fino de custo dos recursos já escolhidos (lifecycle S3, DPU do Glue, retenção de log, bundle Lightsail) | `especialista-finops-aws` |
+| Argumentos exatos de recurso, `depends_on`, convenções de nomeação Terraform | `especialista-infraestrutura-terraform` |
+| Código Python/SQL/PySpark dentro de cada serviço já escolhido | `especialista-engenharia-dados-app` |
 | Visão geral de infraestrutura, ambientes, comandos Terraform | `infra/docs/overview.md` |
 | Inventário de recursos por serviço | `infra/docs/recursos.md` |
-| Arquitetura funcional do pipeline (o que cada etapa faz) | `.claude/skills/projeto-filmes-aws.md` |
+| Arquitetura funcional do pipeline (o que cada etapa faz) | `projeto-filmes-aws` |
 
 ## Práticas já aplicadas — preservar
 
@@ -63,7 +63,7 @@ mesmo que pareça "menos robusta" que a alternativa, porque a alternativa não s
   são 2 inteiros escalares (`rotation-year-pointer-movie`/`-tv`). Criar uma tabela DynamoDB (modo de capacidade, IAM
   actions, monitoramento próprio) para guardar 2 números seria overhead puro.
 - **Secrets Manager (1 secret combinado) em vez de Parameter Store `SecureString` (gratuito)** — do ângulo de FinOps
-  puro, `SecureString` seria mais barato (ver `especialista-finops-aws.md`); do ângulo de arquitetura, a escolha é
+  puro, `SecureString` seria mais barato (ver `especialista-finops-aws`); do ângulo de arquitetura, a escolha é
   aceita pela ergonomia de API (`get_secret_value` único) e pela rotação automática disponível nativamente caso um
   dia seja necessária — não é a opção mais barata, é a que custa pouco o suficiente para valer a ergonomia.
 
@@ -78,11 +78,11 @@ mesmo que pareça "menos robusta" que a alternativa, porque a alternativa não s
 - **Se a concorrência de consultas na tabela SPEC crescer** (muitos usuários simultâneos do FilmBot fazendo query no
   Athena ao mesmo tempo), a próxima alavanca é Athena provisioned capacity (workgroup dedicado) ou um Redshift
   Serverless pequeno — não uma reescrita da camada de dados.
-- **Contagem de regras EventBridge desatualizada em outras duas skills**: `especialista-infraestrutura-terraform.md`
-  e `especialista-observabilidade-qualidade-dados.md` citam "9 regras de schedule EventBridge", mas a contagem real
+- **Contagem de regras EventBridge desatualizada em outras duas skills**: `especialista-infraestrutura-terraform`
+  e `especialista-observabilidade-qualidade-dados` citam "9 regras de schedule EventBridge", mas a contagem real
   em `eventbridge.tf` hoje é **8** (rotation, discover, changes, mensal × movie/tv) — provável resquício de quando
   existia uma regra "anual" automática, substituída pelo backfill manual (achado já confirmado numa auditoria
-  anterior desta sessão sobre `estrutura-projeto.md`). Fora do escopo desta skill corrigir sozinha — sinalizar ao
+  anterior desta sessão sobre `estrutura-projeto`). Fora do escopo desta skill corrigir sozinha — sinalizar ao
   revisar qualquer uma das duas.
 
 ## Regras práticas ao avaliar um serviço novo
@@ -97,7 +97,7 @@ mesmo que pareça "menos robusta" que a alternativa, porque a alternativa não s
   processamento distribuído — não é o caso de nenhum job hoje além da Data Quality.
 - Ao documentar uma escolha de serviço nova: sempre nomear a alternativa descartada e o motivo específico ligado ao
   volume/característica real deste projeto — não uma justificativa genérica de "boas práticas". Seguir o formato já
-  usado nesta skill e em `especialista-finops-aws.md`.
+  usado nesta skill e em `especialista-finops-aws`.
 - Ao considerar mover o FilmBot ou qualquer job para um serviço de maior capacidade: buscar evidência de métrica
   (CloudWatch) do limite sendo atingido, não dimensionar preventivamente — mesmo princípio de
-  `especialista-finops-aws.md` aplicado à escolha do serviço, não só ao tamanho do já escolhido.
+  `especialista-finops-aws` aplicado à escolha do serviço, não só ao tamanho do já escolhido.

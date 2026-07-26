@@ -1,3 +1,8 @@
+---
+name: estrutura-projeto
+description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a 05_backfill), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
+---
+
 # Skill: Estrutura do Projeto proj-eng-dados-filmes-aws
 
 Você está trabalhando no projeto **proj-eng-dados-filmes-aws**. Esta skill descreve a organização de pastas, convenções e como cada parte se conecta.

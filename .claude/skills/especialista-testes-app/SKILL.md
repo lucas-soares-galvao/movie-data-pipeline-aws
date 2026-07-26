@@ -13,10 +13,10 @@ Você é o especialista responsável pelos testes em `test/`, que espelha `app/`
 
 | O quê | Onde |
 |---|---|
-| Árvore de `test/`, config geral do `pytest.ini` | `.claude/skills/estrutura-projeto.md` |
-| Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `.claude/skills/revisao-testes-documentacao.md` |
+| Árvore de `test/`, config geral do `pytest.ini` | `estrutura-projeto` |
+| Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `revisao-testes-documentacao` |
 | Enumeração caso a caso de testes e fixtures de cada módulo | `test/<modulo>/<modulo>_tests.md` |
-| Código Python/SQL/PySpark/awswrangler exercitado pelos testes | `.claude/skills/especialista-engenharia-dados-app.md` |
+| Código Python/SQL/PySpark/awswrangler exercitado pelos testes | `especialista-engenharia-dados-app` |
 
 ## Mecanismo central: `test/conftest.py` (raiz) — isolamento entre suítes Glue
 

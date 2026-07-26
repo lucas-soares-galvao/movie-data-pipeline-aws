@@ -1,6 +1,6 @@
 ---
 name: especialista-workflows-github
-description: Especialista nos workflows GitHub Actions de .github/workflows/ (00_pipeline, 01_test, 02_terraform, 03_pr_auto, 04_deploy_lightsail, 05_backfill). Use ao criar/editar arquivos .yml de workflow, revisar triggers/permissions/concurrency, contratos de workflow_call (inputs/secrets/outputs), condicionais if: entre jobs, pinning de actions de terceiros, ou ao avaliar risco de supply-chain em CI/CD. Cobre a mecânica YAML que a documentação narrativa (estrutura-projeto.md, .github/workflow.md) não detalha.
+description: Especialista nos workflows GitHub Actions de .github/workflows/ (00_pipeline, 01_test, 02_terraform, 03_pr_auto, 04_deploy_lightsail, 05_backfill). Use ao criar/editar arquivos .yml de workflow, revisar triggers/permissions/concurrency, contratos de workflow_call (inputs/secrets/outputs), condicionais if: entre jobs, pinning de actions de terceiros, ou ao avaliar risco de supply-chain em CI/CD. Cobre a mecânica YAML que a documentação narrativa (estrutura-projeto, .github/workflow.md) não detalha.
 ---
 
 # Especialista em Workflows GitHub Actions
@@ -16,9 +16,9 @@ Esta skill cobre a mecânica YAML (triggers exatos, permissions, contratos de wo
 | O quê | Onde |
 |---|---|
 | Narrativa completa de cada workflow (o que cada etapa faz, por quê) | `.github/workflow.md` |
-| Resumo do fluxo de jobs e tabela de secrets | `.claude/skills/estrutura-projeto.md` |
-| Infraestrutura Terraform que `02_terraform.yml`/`04_deploy_lightsail.yml` operam | `.claude/skills/especialista-infraestrutura-terraform.md` |
-| Quality gates executados por `01_test.yml` (pytest/ruff/mypy/bandit/safety) | `.claude/skills/especialista-testes-app.md` |
+| Resumo do fluxo de jobs e tabela de secrets | `estrutura-projeto` |
+| Infraestrutura Terraform que `02_terraform.yml`/`04_deploy_lightsail.yml` operam | `especialista-infraestrutura-terraform` |
+| Quality gates executados por `01_test.yml` (pytest/ruff/mypy/bandit/safety) | `especialista-testes-app` |
 
 ## Inventário dos 6 workflows — gatilho e escopo
 

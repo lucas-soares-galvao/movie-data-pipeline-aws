@@ -26,10 +26,10 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 |---|---|
 | Descrição de cada um dos 6 scripts, variáveis de ambiente, como executar (workflow ou local) | `scripts/scripts.md` |
 | Casos de teste por script, os 4 bugs reais que motivaram a suíte | `test/scripts/scripts_tests.md` |
-| Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC | `.claude/skills/especialista-workflows-github.md`, `.github/workflows/05_backfill.yml` |
-| Payloads enviados à Lambda API e o que `app/lambda_api/main.py` de fato lê | `.claude/skills/especialista-engenharia-dados-app.md` |
-| Padrões de mock específicos de `test/scripts/` (parametrização `ExpiredTokenException`/`ExpiredToken`) | `.claude/skills/especialista-testes-app.md` |
-| Guard de custo do AWS Translate como decisão de FinOps | `.claude/skills/especialista-finops-aws.md` |
+| Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC | `especialista-workflows-github`, `.github/workflows/05_backfill.yml` |
+| Payloads enviados à Lambda API e o que `app/lambda_api/main.py` de fato lê | `especialista-engenharia-dados-app` |
+| Padrões de mock específicos de `test/scripts/` (parametrização `ExpiredTokenException`/`ExpiredToken`) | `especialista-testes-app` |
+| Guard de custo do AWS Translate como decisão de FinOps | `especialista-finops-aws` |
 
 ## Práticas já aplicadas — preservar
 
