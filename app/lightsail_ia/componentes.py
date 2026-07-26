@@ -46,6 +46,13 @@ def load_preference_counter_script(max_chars: int) -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
+def load_audio_cancel_script() -> None:
+    """Injeta o script do ícone de descarte durante a gravação de áudio."""
+    path = Path(__file__).parent / "static" / "audio_cancel_recording.js"
+    script = path.read_text(encoding="utf-8")
+    components.html(f"<script>{script}</script>", height=0)
+
+
 def render_card(title: dict) -> str:
     """Monta o HTML de um card de título com escape contra XSS."""
     poster = title.get("backdrop_url") or title.get("poster_url") or ""
