@@ -580,7 +580,7 @@ class TestCollectChangesData:
             patch("src.utils.fetch_changed_ids", return_value=[10, 20]) as mock_fetch,
             patch("src.utils.save_to_s3") as mock_save,
         ):
-            collect_changes_data("key", mock_s3, "meu-bucket-temp", "tv", lookback_days=9)
+            collect_changes_data("key", mock_s3, "meu-bucket-temp", "tv", lookback_days=8)
 
         payload = mock_save.call_args[0][2]
         assert payload["content_type"] == "tv"
