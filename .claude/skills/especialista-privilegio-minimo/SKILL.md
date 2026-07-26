@@ -7,7 +7,7 @@ description: Especialista em privilégio mínimo (least privilege) das policies 
 
 ## Papel
 
-Você avalia toda permissão IAM, nova ou existente, pela pergunta: **"isso dá exatamente o que a role precisa para o seu papel, nem mais?"**. Não descreve a estrutura de `infra/*.tf` (isso é `especialista-infraestrutura-terraform.md`) — foca no racional de escopo de cada policy e sinaliza quando um `Resource` amplo demais não tem justificativa técnica (ao contrário de quando a própria API da AWS não suporta permissão em nível de recurso, o que é aceitável e já documentado em comentário). Trata qualquer `Resource = "*"` sem esse comentário explicativo como suspeito até prova em contrário.
+Você avalia toda permissão IAM, nova ou existente, pela pergunta: **"isso dá exatamente o que a role precisa para o seu papel, nem mais?"**. Não descreve a estrutura de `infra/*.tf` (isso é `especialista-infraestrutura-terraform`) — foca no racional de escopo de cada policy e sinaliza quando um `Resource` amplo demais não tem justificativa técnica (ao contrário de quando a própria API da AWS não suporta permissão em nível de recurso, o que é aceitável e já documentado em comentário). Trata qualquer `Resource = "*"` sem esse comentário explicativo como suspeito até prova em contrário.
 
 ## Fontes de verdade (ler antes de agir)
 
@@ -15,10 +15,10 @@ Esta skill cobre o racional de privilégio mínimo e os gaps encontrados; não d
 
 | O quê | Onde |
 |---|---|
-| Estrutura de cada arquivo `.tf`, argumentos de recurso, `depends_on` | `.claude/skills/especialista-infraestrutura-terraform.md` |
-| Prevenção de vazamento de segredos/credenciais (tema relacionado, mas distinto) | `.claude/skills/especialista-seguranca-segredos.md` |
+| Estrutura de cada arquivo `.tf`, argumentos de recurso, `depends_on` | `especialista-infraestrutura-terraform` |
+| Prevenção de vazamento de segredos/credenciais (tema relacionado, mas distinto) | `especialista-seguranca-segredos` |
 | Racional já documentado de cada role/policy, incluindo o bootstrap do CI/CD | `infra/docs/iam.md` |
-| Mecânica exata do step "Bootstrap CICD IAM Policies" em YAML | `.claude/skills/especialista-workflows-github.md`, `.github/workflows/02_terraform.yml` |
+| Mecânica exata do step "Bootstrap CICD IAM Policies" em YAML | `especialista-workflows-github`, `.github/workflows/02_terraform.yml` |
 
 ## Práticas já aplicadas — preservar
 
@@ -42,12 +42,12 @@ A role de CI/CD (`aws_iam_role.github_actions`, `iam_cicd.tf`) precisa de permis
 - **As 7 policies reais** (`cicd_backend`, `cicd_s3`, `iam_cicd`, `cicd_compute`, `cicd_observability`, `cicd_lightsail`, `cicd_ssm`), cada uma anexada via seu próprio `aws_iam_role_policy_attachment`. `terraform_data.cicd_policies_ready` depende dos 7 attachments, e os recursos raiz do projeto (buckets S3, roles de serviço) só são criados depois que ele existe — a dependência se propaga naturalmente para o resto.
 - **Atualizar uma policy já existente NUNCA precisa do bootstrap `-target`.** A policy `iam_cicd` (self-management) já concede `iam:CreatePolicy` **e** `iam:CreatePolicyVersion` sobre qualquer policy `tmdb-*`/`cicd-terraform-*`, no mesmo statement, sem diferenciar "criar" de "atualizar". `iam:AttachRolePolicy` também já é permitido por `Condition ArnLike` no mesmo padrão de nome, mesmo para uma policy ainda não anexada. Ou seja: adicionar uma `Action`/`Resource` dentro do JSON de uma das 7 policies já existentes é só um `terraform apply` normal.
 - **O bootstrap só é necessário para uma policy nova** (uma 8ª categoria) sendo criada e anexada à própria role de CI/CD **no mesmo apply** — não é falta de permissão, é um problema de ordem/propagação (eventual consistency do IAM): a role pode não "enxergar" a policy que acabou de se auto-conceder a tempo do restante do apply rodar.
-- **Exemplo real do que dá errado quando esse processo não é seguido** (já corrigido nesta mudança, mas serve de referência): a `cicd_ssm` foi adicionada como 7ª policy em `iam_cicd.tf`, mas o step de bootstrap do workflow continuou com a lista `-target`/`EXPECTED_POLICIES` das 6 originais, e `infra/docs/iam.md`/`estrutura-projeto.md` continuaram documentando "6 policies". A `cicd_ssm` tem seu próprio mecanismo de propagação, `null_resource.cicd_policies_propagation` (testa via `aws iam simulate-principal-policy`, janela própria de 60s) — só depois de sincronizar os três lugares (workflow `-target`, workflow `EXPECTED_POLICIES`, docs) é que o projeto voltou a ter um único processo coerente em vez de dois mecanismos de propagação não sincronizados.
+- **Exemplo real do que dá errado quando esse processo não é seguido** (já corrigido nesta mudança, mas serve de referência): a `cicd_ssm` foi adicionada como 7ª policy em `iam_cicd.tf`, mas o step de bootstrap do workflow continuou com a lista `-target`/`EXPECTED_POLICIES` das 6 originais, e `infra/docs/iam.md`/`estrutura-projeto` continuaram documentando "6 policies". A `cicd_ssm` tem seu próprio mecanismo de propagação, `null_resource.cicd_policies_propagation` (testa via `aws iam simulate-principal-policy`, janela própria de 60s) — só depois de sincronizar os três lugares (workflow `-target`, workflow `EXPECTED_POLICIES`, docs) é que o projeto voltou a ter um único processo coerente em vez de dois mecanismos de propagação não sincronizados.
 
 ## Processo ao adicionar, alterar ou remover um serviço AWS
 
 **Adicionar um serviço novo:**
-1. Role do próprio serviço: seguir os padrões já documentados (nomear via `local.envs.*`, policy customizada de escopo mínimo, `depends_on = [terraform_data.cicd_policies_ready]`) — ver `especialista-infraestrutura-terraform.md`.
+1. Role do próprio serviço: seguir os padrões já documentados (nomear via `local.envs.*`, policy customizada de escopo mínimo, `depends_on = [terraform_data.cicd_policies_ready]`) — ver `especialista-infraestrutura-terraform`.
 2. Permissão de CI/CD para gerenciar o recurso novo: se o serviço se encaixa numa categoria `cicd_*` já existente (ex.: mais um bucket → `cicd_s3`; mais um job Glue → `cicd_compute`), só adicionar a `Action`/`Resource` dentro da policy existente, escopado por prefixo do projeto — **não precisa tocar no bootstrap**.
 3. Só criar uma **8ª policy** `cicd_*` se o serviço não se encaixar em nenhuma categoria existente. Nesse caso, atualizar os três lugares **juntos, no mesmo PR**, para não repetir o gap da `cicd_ssm`: `terraform_data.cicd_policies_ready.depends_on`, a lista `-target` do step "Bootstrap CICD IAM Policies", e o array `EXPECTED_POLICIES` do mesmo step.
 4. Rodar `terraform plan` localmente antes de depender do CI/CD para validar que a policy nova não quebra o apply.

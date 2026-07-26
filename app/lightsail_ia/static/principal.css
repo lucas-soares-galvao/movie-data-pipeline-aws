@@ -197,7 +197,7 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 /* Badge "Consultas restantes" */
-.query-counter-wrap { display: flex; justify-content: center; margin-top: 16px; }
+.query-counter-wrap { display: flex; justify-content: center; margin-top: 16px; margin-bottom: 16px; }
 .query-counter-badge {
   padding: 6px 16px;
   border-radius: 999px;
@@ -211,7 +211,7 @@ button[data-testid="stBaseButton-secondary"] {
 /* Título "Encontramos X opções para você!" acima do grid de resultados */
 .results-heading {
   font-weight: 700;
-  margin-top: 32px;
+  margin-top: 56px;
   margin-bottom: 8px;
 }
 

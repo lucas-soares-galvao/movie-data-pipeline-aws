@@ -1,3 +1,8 @@
+---
+name: projeto-filmes-aws
+description: Arquitetura funcional do pipeline de engenharia de dados de filmes/séries na AWS — fluxo TMDB → S3 → Glue → FilmBot, camadas de dados, tabelas do Glue Catalog e variáveis de ambiente. Use para entender o pipeline como um todo antes de mexer numa parte específica, ao introduzir uma tabela/camada nova, ou ao explicar o projeto a alguém que não o conhece. Cobre o fluxo ponta-a-ponta e o papel de cada camada.
+---
+
 # Skill: Contexto do Projeto de Engenharia de Dados com AWS
 
 Você está trabalhando no projeto **proj-eng-dados-filmes-aws**, um pipeline de engenharia de dados serverless na AWS que coleta, transforma, avalia e unifica dados de filmes e séries da API do TMDB.
@@ -71,7 +76,7 @@ EventBridge (schedule)
 
 ## Estrutura de Código
 
-Árvore completa de diretórios (`app/`, `test/`, `infra/`, `.github/`) e organização por serviço AWS: ver `.claude/skills/estrutura-projeto.md` e `.claude/skills/especialista-engenharia-dados-app.md`.
+Árvore completa de diretórios (`app/`, `test/`, `infra/`, `.github/`) e organização por serviço AWS: ver `estrutura-projeto` e `especialista-engenharia-dados-app`.
 
 ---
 
@@ -240,4 +245,4 @@ Definidos em `app/glue_data_quality/src/rulesets_dq.py`. As 14 tabelas têm regr
 - `awswrangler` para I/O com S3 e Glue Catalog no ETL
 - `boto3` diretamente para chamadas ao Glue, Secrets Manager e S3 na Lambda
 - Particionamento temporal: `year` e `month` extraídos das colunas `release_date` (movie) e `first_air_date` (tv)
-- Estrutura de testes (`test/` espelhando `app/`, `conftest.py` por módulo, quality gate): ver `.claude/skills/estrutura-projeto.md` e `.claude/skills/especialista-testes-app.md`
+- Estrutura de testes (`test/` espelhando `app/`, `conftest.py` por módulo, quality gate): ver `estrutura-projeto` e `especialista-testes-app`

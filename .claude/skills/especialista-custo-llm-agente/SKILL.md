@@ -13,8 +13,8 @@ Você é o especialista que avalia toda mudança no agente de IA do FilmBot pela
 
 | O quê | Onde |
 |---|---|
-| Segurança/validação da cláusula WHERE gerada pelo LLM (`_validate_where`) | `.claude/skills/especialista-engenharia-dados-app.md` |
-| Custo de infraestrutura AWS "tradicional" (S3, Glue, Lambda, Lightsail) | `.claude/skills/especialista-finops-aws.md` |
+| Segurança/validação da cláusula WHERE gerada pelo LLM (`_validate_where`) | `especialista-engenharia-dados-app` |
+| Custo de infraestrutura AWS "tradicional" (S3, Glue, Lambda, Lightsail) | `especialista-finops-aws` |
 | Fluxo completo do agente (2 passos), cache, rate limiting, transcrição | `app/lightsail_ia/lightsail_ia.md` |
 | Código do agente | `app/lightsail_ia/agent.py` |
 
@@ -32,7 +32,7 @@ Você é o especialista que avalia toda mudança no agente de IA do FilmBot pela
 ## Lacunas encontradas — avaliar custo x benefício antes de agir
 
 - **Sem prompt caching no system prompt**: `_SYSTEM_PROMPT` (~60 linhas, schema completo da tabela SPEC) é reenviado por inteiro em toda chamada não cacheada pelo `_WHERE_CACHE` — é de longe o maior bloco de tokens de entrada do fluxo, e é idêntico entre chamadas. `litellm.completion()` hoje não define nenhum `cache_control`/breakpoint de prompt caching. O cache atual (`_WHERE_CACHE`) já resolve o caso "mesma pergunta repetida"; prompt caching resolveria o caso complementar — perguntas diferentes, mesmo system prompt gigante repetido. Antes de implementar, confirmar que o provedor/modelo configurado em `LLM_MODEL` realmente suporta prompt caching via litellm — a sintaxe e o suporte variam por provedor (Anthropic usa `cache_control` explícito; outros fazem caching automático sem marcação, ou não suportam).
-- **Nenhum alarme sobre volume de tokens**: os logs de `_log_token_usage()` existem, mas não viram métrica/alarme — diferente do padrão já usado no resto do projeto (CloudWatch alarms para Lambda/Glue/EventBridge, ver `especialista-finops-aws.md`). Um metric filter no log group do FilmBot somando `total_tokens` por período, com alarme de threshold via SNS, seguiria o mesmo padrão já existente — mas só implementar mediante pedido explícito, não preventivamente.
+- **Nenhum alarme sobre volume de tokens**: os logs de `_log_token_usage()` existem, mas não viram métrica/alarme — diferente do padrão já usado no resto do projeto (CloudWatch alarms para Lambda/Glue/EventBridge, ver `especialista-finops-aws`). Um metric filter no log group do FilmBot somando `total_tokens` por período, com alarme de threshold via SNS, seguiria o mesmo padrão já existente — mas só implementar mediante pedido explícito, não preventivamente.
 - **Cache só em memória, por processo**: `_WHERE_CACHE` é um dict a nível de módulo — funciona porque hoje há um único processo Streamlit numa única instância Lightsail. Não é um problema agora, mas é uma premissa implícita: se a topologia de deploy mudar (múltiplas instâncias/processos), o cache deixa de ser compartilhado e sua efetividade cai — vale revisitar esta skill se isso mudar.
 
 ## Regras para avaliar custo de tokens em mudanças novas

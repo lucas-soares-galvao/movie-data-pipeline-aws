@@ -1,6 +1,6 @@
 ---
 name: especialista-documentacao
-description: Especialista em documentação do projeto — docs por módulo (`app/<modulo>/<modulo>.md`, `test/<modulo>/<modulo>_tests.md`), skills agregadoras (`estrutura-projeto.md`, `projeto-filmes-aws.md`) e skills de domínio (`especialista-*.md`). Use ao criar um módulo novo (app/ ou scripts/), ao adicionar/remover uma tabela, script, variável de ambiente, regra EventBridge ou modo de execução, ao escrever um `.md` novo em qualquer camada, ao avaliar se uma skill/doc existente ainda bate com o código atual, ou ao decidir se uma necessidade nova justifica criar uma skill, atualizar uma existente, ou mantê-la combinada com outra. Cobre os templates já em uso, o padrão de gap encontrado entre docs agregadoras e docs por módulo, o framework de decisão sobre o ciclo de vida das skills, e as lacunas de verificação automática ainda não endereçadas.
+description: Especialista em documentação do projeto — docs por módulo (`app/<modulo>/<modulo>.md`, `test/<modulo>/<modulo>_tests.md`), skills agregadoras (`estrutura-projeto`, `projeto-filmes-aws`) e skills de domínio (`especialista-*.md`). Use ao criar um módulo novo (app/ ou scripts/), ao adicionar/remover uma tabela, script, variável de ambiente, regra EventBridge ou modo de execução, ao escrever um `.md` novo em qualquer camada, ao avaliar se uma skill/doc existente ainda bate com o código atual, ou ao decidir se uma necessidade nova justifica criar uma skill, atualizar uma existente, ou mantê-la combinada com outra. Cobre os templates já em uso, o padrão de gap encontrado entre docs agregadoras e docs por módulo, o framework de decisão sobre o ciclo de vida das skills, e as lacunas de verificação automática ainda não endereçadas.
 ---
 
 # Especialista em Documentação
@@ -19,9 +19,9 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
 | O quê | Onde |
 |---|---|
 | Convenção de idioma (prosa PT, identificadores EN), local de cada tipo de teste, quality gate, e o **índice completo de todas as skills existentes** | `CLAUDE.md` (raiz) |
-| Checklist mecânico de "o que verificar" após qualquer mudança de código (testes, docs, docstrings, type hints) | `.claude/skills/revisao-testes-documentacao.md` |
-| Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes | `.claude/skills/estrutura-projeto.md` |
-| Arquitetura funcional do pipeline, tabelas, variáveis de ambiente, fluxo de eventos | `.claude/skills/projeto-filmes-aws.md` |
+| Checklist mecânico de "o que verificar" após qualquer mudança de código (testes, docs, docstrings, type hints) | `revisao-testes-documentacao` |
+| Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes | `estrutura-projeto` |
+| Arquitetura funcional do pipeline, tabelas, variáveis de ambiente, fluxo de eventos | `projeto-filmes-aws` |
 | Racional de domínio específico (IAM, Terraform, testes, segurança, FinOps, observabilidade/DQ, legibilidade, custo LLM, workflows GitHub) | os demais `.claude/skills/especialista-*.md` |
 
 ## Práticas já aplicadas — preservar
@@ -44,7 +44,7 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
   (tabela — sempre a primeira seção depois do Papel) / `Práticas já aplicadas — preservar` / `Lacunas encontradas —
   avaliar risco x esforço antes de agir` / `Regras práticas ao escrever/revisar mudança nova`. A tabela de Fontes de
   verdade existe para impedir que a mesma explicação seja escrita duas vezes em skills diferentes — ver
-  `.claude/skills/especialista-privilegio-minimo.md` como o exemplo mais completo do padrão.
+  `especialista-privilegio-minimo` como o exemplo mais completo do padrão.
 - **CLAUDE.md raiz fica enxuto de propósito**: aponta para as skills em vez de descrever arquitetura — só repete o
   essencial (idioma, convenções de teste, comandos úteis) que qualquer sessão precisa mesmo sem carregar uma skill.
 
@@ -52,21 +52,21 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
 
 - **Nada no CI verifica se um `.md` ainda bate com o código.** A suíte de testes (`pytest --cov=app`) cobre `app/`;
   não existe um lint ou teste que confira se um número, nome de variável ou fluxo citado numa skill/doc ainda existe
-  no código. Confirmado nesta mesma sessão: `projeto-filmes-aws.md` e `estrutura-projeto.md` (as duas skills
+  no código. Confirmado nesta mesma sessão: `projeto-filmes-aws` e `estrutura-projeto` (as duas skills
   "agregadoras" listadas em `CLAUDE.md`) acumularam divergências reais — contagem de policies do CI/CD desatualizada,
   ranges DQDL citando colunas (`budget`, `revenue`) que não existem em `rulesets_dq.py`, tabela de variáveis de
   ambiente da Lambda incompleta, um modo inteiro da Lambda (`only_rotation_refresh`) e um `table_group` inteiro do
   backfill manual (`rename_colunas`) não documentados em lugar nenhum — sem que nada sinalizasse o gap até uma
   auditoria manual linha a linha contra `infra/*.tf`, `app/lambda_api/main.py` e `.github/workflows/05_backfill.yml`.
 - **Padrão do gap: docs agregadores driftam, docs por módulo não.** `scripts/scripts.md` e `test/scripts/
-  scripts_tests.md` (que descrevem só os 7 scripts de `scripts/`) estavam corretos e completos; `estrutura-projeto.md`
+  scripts_tests.md` (que descrevem só os 7 scripts de `scripts/`) estavam corretos e completos; `estrutura-projeto`
   (que resume a mesma lista de scripts numa árvore de diretório) estava desatualizado. Hipótese: quem edita um módulo
   tem o reflexo de atualizar o doc ao lado, mas não o de voltar aos agregadores que citam o mesmo fato em forma
   resumida. Ao revisar uma skill agregadora, tratar cada número/lista como suspeito até confirmar contra o código —
   não confiar em busca textual por palavra-chave, que não pega omissão (um item que deveria estar na lista e não
   está não aparece em nenhum grep).
 - **`.github/workflow.md` tem a mesma contagem desatualizada de "6 policies"** que foi corrigida em
-  `projeto-filmes-aws.md` nesta sessão — fora do escopo das 3 skills já auditadas, mas no mesmo raio de risco
+  `projeto-filmes-aws` nesta sessão — fora do escopo das 3 skills já auditadas, mas no mesmo raio de risco
   (qualquer doc que cite uma contagem específica do `iam_cicd.tf` tende a ficar velho quando a 7ª policy, `cicd_ssm`,
   ou uma futura 8ª, for adicionada). Vale revisar na próxima auditoria de documentação, não apenas as skills.
 - **As skills em `.claude/skills/` são arquivos `.md` soltos, não `.claude/skills/<nome>/SKILL.md`** — por isso
@@ -83,16 +83,16 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
 Framework usado para decidir o ciclo de vida de uma skill, extraído de 3 decisões reais já tomadas no projeto:
 
 1. **A pergunta já é respondida (mesmo que parcialmente) por uma skill existente?** Atualizar essa skill — nunca
-   criar uma nova que duplique. Ex.: os gaps de contagem/lista corrigidos em `estrutura-projeto.md` e
-   `projeto-filmes-aws.md` (ver "Lacunas encontradas" acima) foram correções nos arquivos existentes, não skills novas.
+   criar uma nova que duplique. Ex.: os gaps de contagem/lista corrigidos em `estrutura-projeto` e
+   `projeto-filmes-aws` (ver "Lacunas encontradas" acima) foram correções nos arquivos existentes, não skills novas.
 2. **É uma pergunta nova, mas tecnicamente acoplada a uma skill existente** (compartilha o mesmo mecanismo/recurso;
    explicar uma sem a outra duplicaria contexto)? Manter combinado / expandir a existente, não separar. Ex.:
-   avaliação de separar `especialista-observabilidade-qualidade-dados.md` em observabilidade + qualidade de dados —
+   avaliação de separar `especialista-observabilidade-qualidade-dados` em observabilidade + qualidade de dados —
    decisão de **não** separar, porque falha de job e falha de regra DQ passam pelo mesmo padrão
    `EventBridge → SNS` e a skill precisa explicar os dois tópicos juntos para não confundi-los.
 3. **É uma pergunta genuinamente nova, sem acoplamento técnico forte com nenhuma skill existente?** Criar skill
-   nova, seguindo o template padrão. Ex.: `especialista-documentacao.md` (nenhuma skill cobria templates/drift de
-   docs) e `especialista-arquitetura-aws.md` (nenhuma skill cobria "por que este serviço AWS e não outro" — as
+   nova, seguindo o template padrão. Ex.: `especialista-documentacao` (nenhuma skill cobria templates/drift de
+   docs) e `especialista-arquitetura-aws` (nenhuma skill cobria "por que este serviço AWS e não outro" — as
    skills adjacentes de FinOps/Terraform/engenharia de dados cobrem custo do já escolhido, implementação e código,
    não a escolha em si).
 4. **Antes de criar, checar o tamanho/substância esperado**: um `especialista-*.md` novo deve sustentar a faixa de
@@ -107,7 +107,7 @@ acima em "Lacunas encontradas").
 
 - **Tabela nova, script novo, variável de ambiente nova, regra EventBridge nova, ou modo de execução novo**:
   atualizar o `<modulo>.md` (ou `<modulo>_tests.md`) no mesmo PR — e perguntar explicitamente se
-  `estrutura-projeto.md` e/ou `projeto-filmes-aws.md` também citam esse mesmo fato em forma resumida (árvore de
+  `estrutura-projeto` e/ou `projeto-filmes-aws` também citam esse mesmo fato em forma resumida (árvore de
   diretório, tabela de variáveis, lista de regras). Se citam, atualizar os dois no mesmo PR — não depender de uma
   auditoria futura para pegar o gap.
 - **Skill de domínio nova (`especialista-*.md`)**: seguir o template de 5 seções (Papel / Fontes de verdade /

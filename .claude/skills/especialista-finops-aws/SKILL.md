@@ -15,11 +15,11 @@ Esta skill cobre o racional de custo por trás de decisões já tomadas e lacuna
 
 | O quê | Onde |
 |---|---|
-| Argumentos exatos de recurso (lifecycle S3, DPU Glue, bundle Lightsail, `depends_on`) | `.claude/skills/especialista-infraestrutura-terraform.md` |
+| Argumentos exatos de recurso (lifecycle S3, DPU Glue, bundle Lightsail, `depends_on`) | `especialista-infraestrutura-terraform` |
 | Inventário de recursos por serviço | `infra/docs/recursos.md` |
 | Schedules EventBridge, tópicos SNS, alarmes CloudWatch | `infra/docs/pipeline.md` |
-| Contrato do Infracost em `02_terraform.yml`, secrets `infracost-api-key`/`notification-email` | `.claude/skills/especialista-workflows-github.md` |
-| Estrutura geral de diretórios e workflows | `.claude/skills/estrutura-projeto.md` |
+| Contrato do Infracost em `02_terraform.yml`, secrets `infracost-api-key`/`notification-email` | `especialista-workflows-github` |
+| Estrutura geral de diretórios e workflows | `estrutura-projeto` |
 
 ## Alavancas de custo já aplicadas — preservar
 
@@ -48,7 +48,7 @@ Ao mexer nos arquivos abaixo, não reverta essas escolhas "para simplificar" sem
 
 - Recurso novo sempre dentro do provider default do projeto (herda a tag `FinOps`) — nunca criar via provider ou bloco de tags customizado que fuja do Cost Explorer.
 - Antes de aumentar qualquer capacidade (DPU de Glue Job, memória/timeout de Lambda, bundle do Lightsail, `max_concurrent_runs`), buscar evidência em métrica do CloudWatch de que o valor atual é insuficiente — não superdimensionar preventivamente.
-- Bucket S3 novo: sempre definir lifecycle conforme o padrão de acesso (efêmero → expiração curta sem IA, como TEMP; consultado raramente → IA em 30-90d, como os demais), seguindo a tabela de `especialista-infraestrutura-terraform.md`.
+- Bucket S3 novo: sempre definir lifecycle conforme o padrão de acesso (efêmero → expiração curta sem IA, como TEMP; consultado raramente → IA em 30-90d, como os demais), seguindo a tabela de `especialista-infraestrutura-terraform`.
 - Schedule EventBridge novo: usar `local.eventbridge_schedule_state`, nunca habilitar execução automática paga em dev.
 - Log group novo: usar `var.log_retention_days`, nunca hardcodar uma retenção maior que o padrão do ambiente.
 - Ao reabilitar o Infracost, validar que o breakdown aparece no Job Summary e no comentário do PR antes de remover o comentário "desabilitado temporariamente" do workflow.

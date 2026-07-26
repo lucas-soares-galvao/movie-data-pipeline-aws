@@ -15,12 +15,12 @@ Esta skill cobre o nível de detalhe que falta nos documentos abaixo (argumentos
 
 | O quê | Onde |
 |---|---|
-| Estrutura de diretórios de `infra/`, lista de arquivos `.tf`, workflows CI/CD | `.claude/skills/estrutura-projeto.md` |
+| Estrutura de diretórios de `infra/`, lista de arquivos `.tf`, workflows CI/CD | `estrutura-projeto` |
 | Inventário de recursos por serviço (tabelas resumidas) | `infra/docs/recursos.md` |
 | Schedules EventBridge, tópicos SNS, alarmes CloudWatch | `infra/docs/pipeline.md` |
 | Roles/policies IAM e racional de cada uma | `infra/docs/iam.md` |
 | Convenções de deploy/ambientes/CI-CD, comandos `terraform` | `infra/docs/overview.md` |
-| Código Python/SQL que essa infra hospeda | `.claude/skills/especialista-engenharia-dados-app.md` |
+| Código Python/SQL que essa infra hospeda | `especialista-engenharia-dados-app` |
 
 ## Convenções transversais (valem para todo `infra/*.tf`)
 
