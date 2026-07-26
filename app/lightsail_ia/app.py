@@ -150,8 +150,8 @@ load_main_css()
 
 title_col, logout_col = st.columns([9, 1])
 with title_col:
-    st.title("🎬 FilmBot — Seu assistente de filmes e séries")
-    st.caption("Descubra o que assistir com ajuda da inteligência artificial")
+    st.title("🎬 FilmBot")
+    st.caption("Seu assistente de filmes e séries com inteligência artificial")
 with logout_col:
     st.write("")
     if st.button("Sair"):
@@ -160,173 +160,158 @@ with logout_col:
 
 _client_ip = _get_client_ip()
 
-# ------------------------------------------------------------------
-# CAPTURA DE ÁUDIO E TRANSCRIÇÃO (precisa rodar ANTES do text_area abaixo:
-# o Streamlit proíbe setar session_state["preference_text"] depois que o
-# widget com essa key já rodou no mesmo script run)
-# ------------------------------------------------------------------
-st.caption(f"🎤 Ou grave o que você quer assistir (máx. {_MAX_AUDIO_SECONDS}s)")
-audio_value = st.audio_input(
-    "Gravar preferência em áudio", label_visibility="collapsed", key="audio_input"
-)
-
-_audio_queries_made = _queries_in_last_hour(_audio_ip_history, _client_ip)
-_audio_remaining = _MAX_TRANSCRIPTIONS_PER_HOUR - _audio_queries_made
-
-if audio_value is not None and not st.session_state.get("transcribing"):
-    audio_bytes = audio_value.getvalue()
-    audio_hash = hashlib.md5(audio_bytes).hexdigest()
-    if audio_hash != st.session_state.get("audio_last_hash"):
-        st.session_state["audio_last_hash"] = audio_hash
-        st.session_state["transcription_error"] = False
-        st.session_state["transcription_empty"] = False
-        st.session_state["transcription_too_long"] = False
-        st.session_state["transcription_rate_limited"] = False
-        st.session_state["transcription_truncated"] = False
-        if _audio_remaining <= 0:
-            st.session_state["transcription_rate_limited"] = True
-        else:
-            _audio_ip_history.setdefault(_client_ip, []).append(time.time())
-            st.session_state["transcribing"] = True
-            st.session_state["transcription_future"] = _executor.submit(
-                transcribe_preference, audio_bytes
-            )
-        st.rerun()
-
-if st.session_state.get("transcribing"):
-    transcription_future: Future = st.session_state.get("transcription_future")
-    if transcription_future and transcription_future.done():
-        st.session_state["transcribing"] = False
-        try:
-            text = transcription_future.result()
-        except AudioMuitoLongoError:
-            st.session_state["transcription_too_long"] = True
-        except Exception:
-            logging.exception("Erro ao transcrever áudio")
-            st.session_state["transcription_error"] = True
-        else:
-            if text:
-                if len(text) > _MAX_PREFERENCE_CHARS:
-                    text = text[:_MAX_PREFERENCE_CHARS]
-                    st.session_state["transcription_truncated"] = True
-                st.session_state["preference_text"] = text
-            else:
-                st.session_state["transcription_empty"] = True
-        st.rerun()
-    else:
-        st.caption("🎤 Transcrevendo áudio...")
-        time.sleep(0.5)
-        st.rerun()
-
-if st.session_state.get("transcription_rate_limited"):
-    st.caption(
-        f"⚠️ Limite de {_MAX_TRANSCRIPTIONS_PER_HOUR} transcrições por hora atingido. "
-        "Digite sua preferência manualmente."
+with st.container(key="hero-section"):
+    st.markdown(
+        """
+        <div class="hero-heading-wrap">
+          <h1 class="hero-heading">O que você quer <span class="accent-gradient-text">assistir</span> hoje?</h1>
+          <p class="hero-subtitle">✨ Descreva o que você está procurando ou fale com o FilmBot. ✨</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-if st.session_state.get("transcription_too_long"):
-    st.caption(f"⚠️ Áudio muito longo — grave até {_MAX_AUDIO_SECONDS} segundos ou digite sua preferência.")
-if st.session_state.get("transcription_error"):
-    st.caption("❌ Não conseguimos transcrever o áudio. Digite sua preferência manualmente.")
-if st.session_state.get("transcription_empty"):
-    st.caption("⚠️ Não detectamos fala no áudio. Tente gravar novamente ou digite sua preferência.")
-if st.session_state.get("transcription_truncated"):
-    st.caption(f"⚠️ Transcrição excedeu {_MAX_PREFERENCE_CHARS} caracteres e foi cortada.")
 
-preference = st.text_area(
-    "O que você quer assistir?",
-    placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com O Senhor dos Anéis...",
-    height=68,
-    max_chars=_MAX_PREFERENCE_CHARS,
-    key="preference_text",
-)
-load_preference_counter_script(_MAX_PREFERENCE_CHARS)
+    # ------------------------------------------------------------------
+    # CAPTURA DE ÁUDIO E TRANSCRIÇÃO (precisa rodar ANTES do text_area abaixo:
+    # o Streamlit proíbe setar session_state["preference_text"] depois que o
+    # widget com essa key já rodou no mesmo script run). O card aparece
+    # visualmente depois do text_area por causa do `order` CSS aplicado em
+    # .st-key-recorder-card (ver principal.css).
+    # ------------------------------------------------------------------
+    with st.container(key="recorder-card"):
+        st.markdown(
+            '<div class="recorder-label">🎤 Gravar a sua pergunta '
+            f'<span>(Máx. {_MAX_AUDIO_SECONDS} segundos)</span></div>',
+            unsafe_allow_html=True,
+        )
+        audio_value = st.audio_input(
+            "Gravar preferência em áudio", label_visibility="collapsed", key="audio_input"
+        )
+
+    _audio_queries_made = _queries_in_last_hour(_audio_ip_history, _client_ip)
+    _audio_remaining = _MAX_TRANSCRIPTIONS_PER_HOUR - _audio_queries_made
+
+    if audio_value is not None and not st.session_state.get("transcribing"):
+        audio_bytes = audio_value.getvalue()
+        audio_hash = hashlib.md5(audio_bytes).hexdigest()
+        if audio_hash != st.session_state.get("audio_last_hash"):
+            st.session_state["audio_last_hash"] = audio_hash
+            st.session_state["transcription_error"] = False
+            st.session_state["transcription_empty"] = False
+            st.session_state["transcription_too_long"] = False
+            st.session_state["transcription_rate_limited"] = False
+            st.session_state["transcription_truncated"] = False
+            if _audio_remaining <= 0:
+                st.session_state["transcription_rate_limited"] = True
+            else:
+                _audio_ip_history.setdefault(_client_ip, []).append(time.time())
+                st.session_state["transcribing"] = True
+                st.session_state["transcription_future"] = _executor.submit(
+                    transcribe_preference, audio_bytes
+                )
+            st.rerun()
+
+    if st.session_state.get("transcribing"):
+        transcription_future: Future = st.session_state.get("transcription_future")
+        if transcription_future and transcription_future.done():
+            st.session_state["transcribing"] = False
+            try:
+                text = transcription_future.result()
+            except AudioMuitoLongoError:
+                st.session_state["transcription_too_long"] = True
+            except Exception:
+                logging.exception("Erro ao transcrever áudio")
+                st.session_state["transcription_error"] = True
+            else:
+                if text:
+                    if len(text) > _MAX_PREFERENCE_CHARS:
+                        text = text[:_MAX_PREFERENCE_CHARS]
+                        st.session_state["transcription_truncated"] = True
+                    st.session_state["preference_text"] = text
+                else:
+                    st.session_state["transcription_empty"] = True
+            st.rerun()
+        else:
+            st.caption("🎤 Transcrevendo áudio...")
+            time.sleep(0.5)
+            st.rerun()
+
+    if st.session_state.get("transcription_rate_limited"):
+        st.caption(
+            f"⚠️ Limite de {_MAX_TRANSCRIPTIONS_PER_HOUR} transcrições por hora atingido. "
+            "Digite sua preferência manualmente."
+        )
+    if st.session_state.get("transcription_too_long"):
+        st.caption(f"⚠️ Áudio muito longo — grave até {_MAX_AUDIO_SECONDS} segundos ou digite sua preferência.")
+    if st.session_state.get("transcription_error"):
+        st.caption("❌ Não conseguimos transcrever o áudio. Digite sua preferência manualmente.")
+    if st.session_state.get("transcription_empty"):
+        st.caption("⚠️ Não detectamos fala no áudio. Tente gravar novamente ou digite sua preferência.")
+    if st.session_state.get("transcription_truncated"):
+        st.caption(f"⚠️ Transcrição excedeu {_MAX_PREFERENCE_CHARS} caracteres e foi cortada.")
+
+    preference = st.text_area(
+        "O que você quer assistir?",
+        placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com Dark...",
+        height=68,
+        max_chars=_MAX_PREFERENCE_CHARS,
+        key="preference_text",
+        label_visibility="collapsed",
+    )
+    load_preference_counter_script(_MAX_PREFERENCE_CHARS)
+
+    st.markdown('<div class="hero-divider"><span>ou</span></div>', unsafe_allow_html=True)
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made
-
-if _remaining <= 0:
-    _seconds = _seconds_until_available(_ip_history, _client_ip)
-    components.html(f"""
-    <style>
-      body {{ margin: 0; padding: 0; background: transparent; font-family: 'Source Sans Pro', sans-serif; }}
-      .msg-warning {{
-        background: rgba(250,204,21,0.1);
-        border: 1px solid rgba(250,204,21,0.3);
-        border-radius: 10px;
-        padding: 12px 16px;
-        color: #fbbf24;
-        font-size: 14px;
-        max-width: 50%;
-      }}
-      .time-countdown {{ font-weight: 600; }}
-    </style>
-    <div class="msg-warning">
-      ⚠️ Limite de {_MAX_QUERIES_PER_HOUR} consultas atingido. Disponível novamente em
-      <span class="time-countdown" id="countdown"></span>.
-    </div>
-    <script>
-      let remaining = {_seconds};
-      const el = document.getElementById('countdown');
-      function update() {{
-        if (remaining <= 0) {{
-          el.textContent = '00:00';
-          window.parent.location.reload();
-          return;
-        }}
-        const m = Math.floor(remaining / 60);
-        const s = remaining % 60;
-        el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-        remaining--;
-      }}
-      update();
-      setInterval(update, 1000);
-    </script>
-    """, height=55)
-else:
-    st.caption(f"Consultas restantes: {_remaining}/{_MAX_QUERIES_PER_HOUR} por hora")
 
 # ==============================================================================
 # LÓGICA DO BOTÃO E BUSCA ASSÍNCRONA
 # ==============================================================================
 searching = st.session_state.get("searching", False)
 
-if searching:
-    rec_col, cancel_col, _ = st.columns([1, 1, 6], gap="small")
-    with rec_col:
-        st.button("Recomendar", type="primary", disabled=True)
-    with cancel_col:
-        if st.button("Cancelar", type="primary", key="btn_cancelar"):
-            st.session_state["searching"] = False
-            st.session_state["search_completed"] = False
-            st.session_state["search_error"] = False
-            st.session_state["titles"] = []
-            st.session_state["future"] = None
-            st.rerun()
+with st.container(key="hero-actions"):
+    if searching:
+        rec_col, cancel_col, _ = st.columns([1, 1, 6], gap="small")
+        with rec_col:
+            st.button("Recomendar", type="primary", disabled=True)
+        with cancel_col:
+            if st.button("Cancelar", type="primary", key="btn_cancelar"):
+                st.session_state["searching"] = False
+                st.session_state["search_completed"] = False
+                st.session_state["search_error"] = False
+                st.session_state["titles"] = []
+                st.session_state["future"] = None
+                st.rerun()
 
-    future: Future = st.session_state.get("future")
-    if future and future.done():
-        st.session_state["searching"] = False
-        st.session_state["search_completed"] = True
-        try:
-            st.session_state["titles"] = future.result()
-        except Exception:
-            logging.exception("Erro ao buscar recomendações")
-            st.session_state["search_error"] = True
-            st.session_state["titles"] = []
-        st.rerun()
+        future: Future = st.session_state.get("future")
+        if future and future.done():
+            st.session_state["searching"] = False
+            st.session_state["search_completed"] = True
+            try:
+                st.session_state["titles"] = future.result()
+            except Exception:
+                logging.exception("Erro ao buscar recomendações")
+                st.session_state["search_error"] = True
+                st.session_state["titles"] = []
+            st.rerun()
+        else:
+            st.markdown("""
+            <div class="spinner-container">
+              <div class="spinner"></div>
+              <span class="spinner-text">Buscando as melhores opções para você...</span>
+            </div>
+            """, unsafe_allow_html=True)
+            time.sleep(0.5)
+            st.rerun()
     else:
-        st.markdown("""
-        <div class="spinner-container">
-          <div class="spinner"></div>
-          <span class="spinner-text">Buscando as melhores opções para você...</span>
-        </div>
-        """, unsafe_allow_html=True)
-        time.sleep(0.5)
-        st.rerun()
-else:
-    rec_col, _, __ = st.columns([1, 1, 6], gap="small")
-    with rec_col:
-        if st.button("Recomendar", type="primary", disabled=_remaining <= 0) and preference:
+        if st.button(
+            "✨ Recomendar",
+            type="primary",
+            disabled=_remaining <= 0,
+            use_container_width=True,
+            key="btn_recomendar",
+        ) and preference:
             _ip_history.setdefault(_client_ip, []).append(time.time())
             st.session_state["future"] = _executor.submit(recommend, preference)
             st.session_state["searching"] = True
@@ -334,6 +319,52 @@ else:
             st.session_state["search_error"] = False
             st.session_state["titles"] = []
             st.rerun()
+
+    if _remaining <= 0:
+        _seconds = _seconds_until_available(_ip_history, _client_ip)
+        components.html(f"""
+        <style>
+          body {{ margin: 0; padding: 0; background: transparent; font-family: 'Source Sans Pro', sans-serif; }}
+          .msg-warning {{
+            background: rgba(250,204,21,0.1);
+            border: 1px solid rgba(250,204,21,0.3);
+            border-radius: 10px;
+            padding: 12px 16px;
+            color: #fbbf24;
+            font-size: 14px;
+            max-width: 50%;
+          }}
+          .time-countdown {{ font-weight: 600; }}
+        </style>
+        <div class="msg-warning">
+          ⚠️ Limite de {_MAX_QUERIES_PER_HOUR} consultas atingido. Disponível novamente em
+          <span class="time-countdown" id="countdown"></span>.
+        </div>
+        <script>
+          let remaining = {_seconds};
+          const el = document.getElementById('countdown');
+          function update() {{
+            if (remaining <= 0) {{
+              el.textContent = '00:00';
+              window.parent.location.reload();
+              return;
+            }}
+            const m = Math.floor(remaining / 60);
+            const s = remaining % 60;
+            el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+            remaining--;
+          }}
+          update();
+          setInterval(update, 1000);
+        </script>
+        """, height=55)
+    else:
+        st.markdown(
+            f'<div class="query-counter-wrap"><span class="query-counter-badge">'
+            f'Consultas restantes: <span class="query-counter-highlight">'
+            f'{_remaining}/{_MAX_QUERIES_PER_HOUR}</span> por hora</span></div>',
+            unsafe_allow_html=True,
+        )
 
 # ==============================================================================
 # EXIBIÇÃO DOS RESULTADOS

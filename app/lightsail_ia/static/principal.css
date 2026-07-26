@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;600&display=swap');
+
 /* Padroniza todos os botoes */
 [data-testid="stBaseButton-primary"] button,
 [data-testid="stBaseButton-secondary"] button,
@@ -29,52 +31,174 @@ button[data-testid="stBaseButton-secondary"] {
   [data-testid="stAudioInput"] { max-width: 100%; }
 }
 
-/* Composer estilo chat moderno (WhatsApp/ChatGPT/Claude): pill único com o
-   botão de gravação embutido no canto do text_area via position:absolute.
-   Depende dos data-testid internos do widget nativo st.audio_input
-   (stAudioInputActionButton/stAudioInputWaveSurfer/stAudioInputWaveformTimeCode)
-   — não documentados publicamente, podem quebrar em upgrades do Streamlit
-   (mesmo risco já registrado para static/contador_caracteres.js). */
-.st-key-composer {
-  position: relative;
+/* Hero da tela principal: heading + textarea + card de gravação, agrupados
+   num único container flex para permitir reordenar visualmente o card de
+   gravação via `order` (o áudio precisa ser processado em Python antes do
+   text_area por causa da restrição de session_state, mas visualmente deve
+   aparecer depois, como no mockup). Depende da estrutura interna não
+   documentada de st.container(key=...) — pode quebrar em upgrades do
+   Streamlit (mesmo risco já registrado para contador_caracteres.js). */
+.st-key-hero-section,
+.st-key-hero-actions {
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+.st-key-hero-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* .st-key-recorder-card fica dentro de um stLayoutWrapper que é o filho
+   direto real de .st-key-hero-section (item flex) — o order precisa ir
+   nesse wrapper, não em .st-key-recorder-card (que é um neto). */
+.st-key-hero-section > div:has(.st-key-recorder-card) {
+  order: 2;
 }
 
-.st-key-composer [data-testid="stTextArea"] textarea {
+/* Heading centralizado do hero */
+.hero-heading-wrap { text-align: center; margin: 24px auto 8px; padding: 0 12px; }
+.hero-heading {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  font-size: 40px;
+  color: #fff;
+  margin: 0 0 12px;
+}
+.accent-gradient-text {
+  background: linear-gradient(90deg, #fb923c, #f97316, #f59e0b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-subtitle { color: #a3a3a3; font-size: 15px; margin: 0 0 24px; }
+
+/* Textarea do hero: ícone de lápis + borda que acende em laranja no foco.
+   Sobrescreve o max-width:75% genérico (linha ~18) para ocupar o container
+   do hero por inteiro, como no mockup. */
+.st-key-hero-section [data-testid="stTextArea"] {
+  position: relative;
+  max-width: 100% !important;
+}
+.st-key-hero-section [data-testid="stTextArea"] textarea {
   background: #1a1a1a !important;
   border: 1px solid rgba(255,255,255,0.12) !important;
-  border-radius: 24px !important;
-  padding: 14px 56px 14px 20px !important;
+  border-radius: 16px !important;
+  padding: 14px 16px 14px 44px !important;
   color: #f5f5f5 !important;
 }
-.st-key-composer [data-testid="stTextArea"] textarea:focus {
+.st-key-hero-section [data-testid="stTextArea"] textarea:focus {
   border-color: rgba(249,115,22,0.5) !important;
   box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
 }
-
-/* Retira o gravador do fluxo normal e o ancora no canto inferior direito do
-   textarea; como fica fora do fluxo, sua posição no DOM não importa. */
-.st-key-composer [data-testid="stAudioInput"] {
+.st-key-hero-section [data-testid="stTextArea"]::before {
+  content: "✏️";
   position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: auto !important;
-  max-width: none !important;
+  left: 14px;
+  top: 14px;
+  font-size: 16px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Divisor "ou" entre o textarea e o card de gravação */
+.hero-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #737373;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.hero-divider::before,
+.hero-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+}
+
+/* Card de gravação em pill, com o gravador nativo (stAudioInput) exibido
+   por dentro em largura total, abaixo do label — waveform e timer ficam
+   visíveis, ao contrário do padrão de composer chat que existia antes.
+   Depende dos mesmos data-testid internos do widget nativo st.audio_input
+   já documentados no projeto
+   (stAudioInputActionButton/stAudioInputWaveSurfer/stAudioInputWaveformTimeCode)
+   — não documentados publicamente pelo Streamlit. */
+.st-key-recorder-card {
+  background: #111;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 14px 20px;
+}
+.st-key-recorder-card [data-testid="stAudioInput"] {
+  display: flex !important;
+  align-items: center;
+  width: 100%;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
-  z-index: 2;
+  max-width: none !important;
 }
-
-/* Esconde a forma de onda e o timer, mantendo só o botão (mic/stop) visível
-   — a caixa de waveform completa não cabe no espaço do ícone embutido. */
-.st-key-composer [data-testid="stAudioInputWaveSurfer"],
-.st-key-composer [data-testid="stAudioInputWaveformTimeCode"] {
-  display: none !important;
-}
-
-.st-key-composer [data-testid="stAudioInputActionButton"] {
+.st-key-recorder-card [data-testid="stAudioInputActionButton"] {
   border-radius: 50% !important;
+  background: linear-gradient(135deg, #fb923c, #f97316) !important;
+  box-shadow: 0 0 16px -2px rgba(249,115,22,0.5);
+  flex-shrink: 0;
+}
+.st-key-recorder-card [data-testid="stAudioInputWaveSurfer"],
+.st-key-recorder-card [data-testid="stAudioInputWaveformTimeCode"] {
+  margin-left: auto;
+}
+.recorder-label {
+  color: #f5f5f5;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.recorder-label span { color: #a3a3a3; font-weight: 400; font-size: 13px; display: block; margin-top: 2px; }
+
+/* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill
+   com gradiente laranja->âmbar. Seletor mira a key específica (e não todo
+   .st-key-hero-actions) para não afetar o botão "Recomendar" desabilitado
+   do estado de busca, que mantém o layout compacto em colunas. */
+.st-key-btn_recomendar button {
+  width: 100% !important;
+  border-radius: 999px !important;
+  background: linear-gradient(90deg, #f97316, #f59e0b) !important;
+  box-shadow: 0 0 24px -4px rgba(249,115,22,0.6);
+  font-weight: 600 !important;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+.st-key-btn_recomendar button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: scale(1.01);
+}
+.st-key-btn_recomendar button:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+/* Badge "Consultas restantes" */
+.query-counter-wrap { display: flex; justify-content: center; margin-top: 16px; }
+.query-counter-badge {
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(249,115,22,0.08);
+  border: 1px solid rgba(249,115,22,0.25);
+  color: #d4d4d4;
+  font-size: 13px;
+}
+.query-counter-highlight { color: #fb923c; font-weight: 700; }
+
+@media (max-width: 1024px) {
+  .hero-heading { font-size: 28px; }
+  .st-key-hero-section, .st-key-hero-actions { max-width: 100%; padding: 0 8px; }
+}
+@media (max-width: 480px) {
+  .hero-heading { font-size: 22px; }
 }
 
 /* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam */
