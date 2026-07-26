@@ -74,10 +74,7 @@ button[data-testid="stBaseButton-secondary"] {
   margin: 0 0 12px;
 }
 .accent-gradient-text {
-  background: linear-gradient(90deg, #fb923c, #f97316, #f59e0b);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #f97316;
 }
 .hero-subtitle { color: #a3a3a3; font-size: 15px; margin: 0 0 24px; }
 
@@ -151,7 +148,7 @@ button[data-testid="stBaseButton-secondary"] {
 }
 .st-key-recorder-card [data-testid="stAudioInputActionButton"] {
   border-radius: 50% !important;
-  background: linear-gradient(135deg, #fb923c, #f97316) !important;
+  background: #f97316 !important;
   box-shadow: 0 0 16px -2px rgba(249,115,22,0.5);
   flex-shrink: 0;
 }

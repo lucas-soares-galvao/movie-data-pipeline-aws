@@ -32,10 +32,7 @@
    seu próprio CSS de forma independente, então a classe precisa existir
    nos dois arquivos. */
 .accent-gradient-text {
-  background: linear-gradient(90deg, #fb923c, #f97316, #f59e0b);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #f97316;
 }
 .login-subtitle {
   font-size: 14px;
