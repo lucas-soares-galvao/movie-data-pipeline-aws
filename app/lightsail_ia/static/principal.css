@@ -58,9 +58,13 @@ button[data-testid="stBaseButton-secondary"] {
 }
 /* .st-key-recorder-card fica dentro de um stLayoutWrapper que é o filho
    direto real de .st-key-hero-section (item flex) — o order precisa ir
-   nesse wrapper, não em .st-key-recorder-card (que é um neto). */
+   nesse wrapper, não em .st-key-recorder-card (que é um neto).
+   margin-top compensa o fato de o wrapper de markdown do "ou" (item
+   anterior) não crescer com o texto — sem isso, o espaço visual abaixo
+   do "ou" fica bem menor que o espaço acima dele. */
 .st-key-hero-section > div:has(.st-key-recorder-card) {
   order: 2;
+  margin-top: 16px;
 }
 
 /* Heading centralizado do hero */
@@ -106,7 +110,13 @@ button[data-testid="stBaseButton-secondary"] {
   z-index: 2;
 }
 
-/* Divisor "ou" entre o textarea e o card de gravação */
+/* Divisor "ou" entre o textarea e o card de gravação. Sem padding aqui de
+   propósito: o wrapper interno que o st.markdown gera ao redor desta div
+   não cresce para acompanhar padding/altura adicionada nela (fica com uma
+   altura "clampada" e o conteúdo extra só vaza visualmente para baixo),
+   o que desalinha o texto em relação ao gap uniforme do flex pai. O
+   espaçamento vertical é resolvido via margin nos vizinhos reais (ver
+   textarea e .st-key-recorder-card), não aqui dentro. */
 .hero-divider {
   display: flex;
   align-items: center;

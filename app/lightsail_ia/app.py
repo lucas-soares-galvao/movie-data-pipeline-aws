@@ -117,28 +117,27 @@ if not st.session_state.get("authenticated"):
 
     _, col, _ = st.columns([1, 1.1, 1])
     with col:
-        st.markdown("""
-        <div class="login-card">
-          <p class="login-title">🎬 <span class="accent-gradient-text">FilmBot</span></p>
-          <p class="login-subtitle">Seu assistente de filmes e séries com inteligência artificial</p>
-          <hr class="login-divider">
-        </div>
-        """, unsafe_allow_html=True)
+        with st.container(key="login-card"):
+            st.markdown("""
+            <p class="login-title">🎬 <span class="accent-gradient-text">FilmBot</span></p>
+            <p class="login-subtitle">Seu assistente de filmes e séries com inteligência artificial</p>
+            <hr class="login-divider">
+            """, unsafe_allow_html=True)
 
-        password = st.text_input(
-            "", placeholder="Digite a senha de acesso...",
-            type="password", label_visibility="collapsed",
-        )
-        submit = st.button("Entrar →", use_container_width=True)
-
-        if submit and password == st.secrets.get("auth", {}).get("password", ""):
-            st.session_state["authenticated"] = True
-            st.rerun()
-        elif submit and password:
-            st.markdown(
-                '<div class="login-error">❌ Senha incorreta. Tente novamente.</div>',
-                unsafe_allow_html=True,
+            password = st.text_input(
+                "", placeholder="Digite a senha de acesso...",
+                type="password", label_visibility="collapsed",
             )
+            submit = st.button("Entrar →", use_container_width=True)
+
+            if submit and password == st.secrets.get("auth", {}).get("password", ""):
+                st.session_state["authenticated"] = True
+                st.rerun()
+            elif submit and password:
+                st.markdown(
+                    '<div class="login-error">❌ Senha incorreta. Tente novamente.</div>',
+                    unsafe_allow_html=True,
+                )
 
     render_login_footer()
     st.stop()
@@ -258,9 +257,15 @@ with st.container(key="hero-section"):
         key="preference_text",
         label_visibility="collapsed",
     )
-    load_preference_counter_script(_MAX_PREFERENCE_CHARS)
 
     st.markdown('<div class="hero-divider"><span>ou</span></div>', unsafe_allow_html=True)
+
+# Fica fora do container do hero de propósito: é só um injetor de JS (height=0,
+# sem presença visual), mas dentro do flex column do hero ele ainda contava
+# como mais um item na sequência do `gap`, criando um espaço extra de 16px
+# acima do divisor "ou" que não existia abaixo dele. O script busca o
+# textarea globalmente (querySelector), então a posição no DOM não importa.
+load_preference_counter_script(_MAX_PREFERENCE_CHARS)
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
 _remaining = _MAX_QUERIES_PER_HOUR - _queries_made

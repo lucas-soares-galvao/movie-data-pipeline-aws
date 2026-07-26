@@ -11,8 +11,12 @@
   min-height: 100vh;
 }
 
-/* Card de login centralizado */
-.login-card {
+/* Card de login unificado: título, subtítulo, divisor, campo de senha e
+   botão "Entrar" ficam todos dentro do mesmo st.container(key="login-card"),
+   para o campo de senha herdar a mesma largura de conteúdo da linha
+   divisória (limitada pelo padding do card) em vez de ficar solto por fora
+   com uma largura diferente. */
+.st-key-login-card {
   background: rgba(17, 17, 17, 0.92);
   border: 1px solid rgba(249,115,22,0.18);
   border-radius: 20px;
@@ -107,5 +111,5 @@
 
 @media (max-width: 1024px) {
   .login-title { font-size: 24px; }
-  .login-card { padding: 24px 20px 20px; }
+  .st-key-login-card { padding: 24px 20px 20px; }
 }
