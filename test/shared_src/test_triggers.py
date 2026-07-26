@@ -14,7 +14,7 @@ class TestTriggerGlueJob:
         with patch("shared_utils.triggers.boto3.client", return_value=glue_mock):
             trigger_glue_job("my-job")
             glue_mock.start_job_run.assert_called_once_with(
-                JobName="my-job", Arguments={}
+                JobName="my-job", Arguments={}, JobRunQueuingEnabled=True
             )
 
     def test_converts_kwargs_to_glue_arguments(self):
@@ -24,6 +24,7 @@ class TestTriggerGlueJob:
             glue_mock.start_job_run.assert_called_once_with(
                 JobName="dq-job",
                 Arguments={"--TABLE_NAME": "tb_x", "--DATABASE": "db_y"},
+                JobRunQueuingEnabled=True,
             )
 
     def test_omits_none_values(self):
@@ -64,4 +65,5 @@ class TestTriggerGlueJob:
                     "--END_YEAR": "2026",
                     "--DATABASE": "db_tmdb_movie_dev",
                 },
+                JobRunQueuingEnabled=True,
             )
