@@ -60,6 +60,7 @@ Consulte para entender o projeto em profundidade:
 - **especialista-workflows-github.md** — Mecânica YAML dos workflows GitHub Actions (triggers, `workflow_call`, secrets, supply-chain)
 - **especialista-scripts-backfill.md** — Racional de design dos scripts de backfill manual (checkpoint S3, exit code 75, granularidade de unidade, padrões de tratamento de erro)
 - **especialista-engenharia-dados-app.md** — Código Python/SQL/PySpark/awswrangler em `app/`, por serviço AWS
+- **especialista-design-dados.md** — Particionamento, modo de escrita/idempotência (overwrite vs. overwrite_partitions vs. read-merge-write), formato por camada (JSON/Parquet) e processamento incremental/delta nos jobs Glue
 - **especialista-testes-app.md** — Testes em `test/`, por serviço AWS (mocks de boto3/awswrangler/Athena/PySpark)
 - **especialista-legibilidade-codigo.md** — Clareza e legibilidade de código Python e SQL em `app/`/`test/`
 - **especialista-custo-llm-agente.md** — Custo de tokens/LLM do agente de recomendação do FilmBot
