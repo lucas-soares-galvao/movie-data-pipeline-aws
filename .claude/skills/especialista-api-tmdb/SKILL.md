@@ -51,7 +51,7 @@ Esta skill cobre o *gate* de consulta à API oficial; não repete o que já est�
 - **Paginação com cap interno menor que o máximo real da API**: `MAX_PAGES = 100`
   (`app/lambda_api/src/utils.py:20`) — o TMDB permite até 500 páginas; o cap existe só para não estourar o
   timeout da Lambda, não porque 100 seja um limite da API.
-- **Changes API com janela de 9 dias de lookback**, dentro do limite de 14 dias documentado pela própria API —
+- **Changes API com janela de 8 dias de lookback**, dentro do limite de 14 dias documentado pela própria API —
   `collect_changes_data` em `app/lambda_api/src/utils.py`.
 - **Concorrência de `_TMDB_MAX_WORKERS = 20`** mantida abaixo do rate limit de ~40 req/s do TMDB —
   `app/glue_details/src/utils.py:285`.

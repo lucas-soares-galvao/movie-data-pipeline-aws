@@ -33,6 +33,8 @@ Chamadas à API usam **retry com backoff exponencial e jitter** para lidar com r
 
 Acionado pela `lambda_api` (modo `only_changes_tables`, semanal aos sábados) via o argumento opcional `CHANGES_S3_PATH` — um caminho `s3://bucket/key` com a lista de IDs sinalizados pelo `/movie/changes`/`/tv/changes` do TMDB como alterados numa janela de data recente, **independente do ano de lançamento**. Fecha o gap de staleness que os modos semanal/mensal não cobrem (títulos com `year < ano_atual - 1` nunca são re-tocados por eles).
 
+`CHANGES_S3_PATH` pode se originar tanto do lookback semanal automático quanto de um disparo manual sob demanda (`scripts/backfill_changes.py`) — em ambos os casos a janela é sempre `[hoje - 8 dias, hoje]` e o consumo pelo Glue Details é idêntico, sem nenhuma mudança de código aqui (ver `app/lambda_api/lambda_api.md`, seção "Modo changes").
+
 Quando `CHANGES_S3_PATH` está presente, o `main()` entra num ramo antecipado (mesmo padrão do argumento opcional `FORCE_REFETCH`) que substitui inteiramente o fluxo `YEAR`/`END_YEAR`:
 
 1. `fetch_ids_from_changes_file()` lê a lista de IDs do S3 (gravada pela `lambda_api`)

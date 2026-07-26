@@ -19,11 +19,15 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - rename_colunas        — migra dt_processamento/dt_atualizacao para
 #                             processed_date/updated_date nos parquets já gravados
 #                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
+#   - changes               — dispara sob demanda o mesmo modo changes que o cron
+#                             semanal de domingo já aciona automaticamente (janela
+#                             fixa de 8 dias, sem start_year/end_year — ver
+#                             scripts/backfill_changes.py)
 #
 # translate_provider escolhe o serviço de tradução usado por qualquer um dos grupos
-# acima que traduz (discover, referencias, detalhes_e_providers, traducao) — "google"
-# (grátis) é o default de todo backfill manual; "aws" (AWS Translate, pago por
-# caractere) é útil para testar um período menor via start_year/end_year.
+# acima que traduz (discover, referencias, detalhes_e_providers, traducao, changes) —
+# "google" (grátis) é o default de todo backfill manual; "aws" (AWS Translate, pago
+# por caractere) é útil para testar um período menor via start_year/end_year.
 #
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
 # do padrão de nomenclatura do Terraform (tmdb-*-<env> / db_tmdb_*_<env> / etc.).
@@ -43,13 +47,14 @@ on:
           - data_quality
           - traducao
           - rename_colunas
+          - changes
       start_year:
-        description: "Ano inicial (ignorado para referencias)"
+        description: "Ano inicial (ignorado para referencias e changes)"
         required: true
         default: "2000"
         type: string
       end_year:
-        description: "Ano final (vazio = ano atual; ignorado para referencias)"
+        description: "Ano final (vazio = ano atual; ignorado para referencias e changes)"
         required: false
         default: ""
         type: string
@@ -171,6 +176,7 @@ jobs:
               data_quality)         python scripts/backfill_data_quality.py ;;
               traducao)             python scripts/backfill_traducao.py ;;
               rename_colunas)       python scripts/backfill_rename_colunas.py ;;
+              changes)              python scripts/backfill_changes.py ;;
             esac
           }
 
@@ -192,8 +198,9 @@ jobs:
             export AWS_SESSION_TOKEN=$(echo "$creds" | cut -f3)
           }
 
-          # Nota: backfill_referencias.py não itera por ano, não grava checkpoint e nunca
-          # sai com código 75 — para ele, este loop roda uma única vez e sai normalmente.
+          # Nota: backfill_referencias.py e backfill_changes.py não iteram por ano, não
+          # gravam checkpoint e nunca saem com código 75 — para eles, este loop roda uma
+          # única vez e sai normalmente.
           # backfill_rename_colunas.py itera por tabela x ano (não por media_type) e usa
           # o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
