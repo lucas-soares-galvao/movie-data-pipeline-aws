@@ -40,8 +40,26 @@ bandit -r app/
 
 ## Skills para Contexto Detalhado
 
-Para entender o projeto em profundidade, consulte as skills em `.claude/skills/`:
+As skills em `.claude/skills/` são arquivos `.md` soltos (não `.claude/skills/<nome>/SKILL.md`), então **não** são
+descobertas automaticamente — carregar uma delas é sempre uma decisão manual (`Read` explícito) de quem estiver
+trabalhando na tarefa. Esta lista é o índice completo; ao criar, remover ou renomear uma skill, atualizar aqui no
+mesmo PR.
+
+Consulte para entender o projeto em profundidade:
 
 - **projeto-filmes-aws.md** — Arquitetura do pipeline, camadas de dados, tabelas, variáveis de ambiente, convenções
 - **estrutura-projeto.md** — Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes
 - **revisao-testes-documentacao.md** — Checklist obrigatório pós-mudança: testes, arquivos `.md`, docstrings e type hints
+- **especialista-documentacao.md** — Templates de docs por módulo/teste/skill, convenção de onde cada coisa mora, e quando criar/atualizar/juntar uma skill
+- **especialista-arquitetura-aws.md** — Qual serviço AWS escolher para uma necessidade nova (custo x benefício x eficiência)
+- **especialista-finops-aws.md** — Custo x benefício dos recursos AWS já escolhidos (lifecycle S3, DPU Glue, bundle Lightsail, retenção de log)
+- **especialista-infraestrutura-terraform.md** — Argumentos exatos de recurso Terraform, `depends_on`, convenções de nomeação por serviço AWS
+- **especialista-privilegio-minimo.md** — Privilégio mínimo das policies IAM, bootstrap de policies do CI/CD
+- **especialista-seguranca-segredos.md** — Prevenção de vazamento de segredos/credenciais no repositório, CI/CD e ambiente local
+- **especialista-observabilidade-qualidade-dados.md** — Alarmes CloudWatch, tópicos SNS, logs, e regras DQDL de Data Quality
+- **especialista-workflows-github.md** — Mecânica YAML dos workflows GitHub Actions (triggers, `workflow_call`, secrets, supply-chain)
+- **especialista-engenharia-dados-app.md** — Código Python/SQL/PySpark/awswrangler em `app/`, por serviço AWS
+- **especialista-testes-app.md** — Testes em `test/`, por serviço AWS (mocks de boto3/awswrangler/Athena/PySpark)
+- **especialista-legibilidade-codigo.md** — Clareza e legibilidade de código Python e SQL em `app/`/`test/`
+- **especialista-custo-llm-agente.md** — Custo de tokens/LLM do agente de recomendação do FilmBot
+- **especialista-streamlit-filmbot.md** — UI Streamlit do FilmBot (design system "Luminous", responsividade)
