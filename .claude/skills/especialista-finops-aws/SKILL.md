@@ -37,7 +37,6 @@ Ao mexer nos arquivos abaixo, não reverta essas escolhas "para simplificar" sem
 
 ## Lacunas e oportunidades — avaliar custo x benefício antes de agir
 
-- **Infracost desabilitado**: o step de estimativa de custo em `02_terraform.yml` está comentado (erro do lado do servidor do `infracost/actions/setup@v3`), apesar do secret `infracost-api-key` já configurado e do contrato `workflow_call` ainda declará-lo. Hoje não há estimativa de custo automática no PR. Ao investigar, primeiro checar se o problema upstream foi resolvido antes de reescrever o step do zero — é reativação, não reimplementação.
 - **Sem AWS Budgets / Cost Anomaly Detection no Terraform**: não existe `aws_budgets_budget` nem anomaly monitor na infra. O projeto já tem o padrão de tópicos SNS + e-mail por evento (`sns_topics.tf`) — um budget por ambiente notificando no mesmo padrão seria a adição de menor esforço/maior valor. Só implementar se pedido explicitamente; não é urgente para o volume atual.
 - **S3 Intelligent-Tiering**: não recomendar trocar o lifecycle manual atual por Intelligent-Tiering. O padrão de acesso deste pipeline é previsível (batch ETL + leituras do FilmBot), então a taxa de monitoramento por objeto do Intelligent-Tiering tende a não se pagar aqui. Só reconsiderar se o padrão de acesso deixar de ser previsível.
 - **Lambda `memory_size` fixo**: antes de ajustar, validar com métricas reais (`Max Memory Used` no CloudWatch) em vez de aumentar/reduzir especulativamente.
@@ -51,4 +50,4 @@ Ao mexer nos arquivos abaixo, não reverta essas escolhas "para simplificar" sem
 - Bucket S3 novo: sempre definir lifecycle conforme o padrão de acesso (efêmero → expiração curta sem IA, como TEMP; consultado raramente → IA em 30-90d, como os demais), seguindo a tabela de `especialista-infraestrutura-terraform`.
 - Schedule EventBridge novo: usar `local.eventbridge_schedule_state`, nunca habilitar execução automática paga em dev.
 - Log group novo: usar `var.log_retention_days`, nunca hardcodar uma retenção maior que o padrão do ambiente.
-- Ao reabilitar o Infracost, validar que o breakdown aparece no Job Summary e no comentário do PR antes de remover o comentário "desabilitado temporariamente" do workflow.
+- Infracost está ativo em `02_terraform.yml` (breakdown no Job Summary + comentário no PR) — ao alterar esse step, validar no próximo run que o breakdown continua aparecendo em ambos os lugares.
