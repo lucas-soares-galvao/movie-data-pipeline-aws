@@ -1,5 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;600&display=swap');
 
+/* Fundo cinematografico — mesmo gradiente radial usado em login.css, para
+   as duas telas terem a mesma textura de fundo. */
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+  min-height: 100vh;
+}
+
 /* Padroniza todos os botoes */
 [data-testid="stBaseButton-primary"] button,
 [data-testid="stBaseButton-secondary"] button,
@@ -160,14 +167,15 @@ button[data-testid="stBaseButton-secondary"] {
 }
 .recorder-label span { color: #a3a3a3; font-weight: 400; font-size: 13px; display: block; margin-top: 2px; }
 
-/* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill
-   com gradiente laranja->âmbar. Seletor mira a key específica (e não todo
-   .st-key-hero-actions) para não afetar o botão "Recomendar" desabilitado
-   do estado de busca, que mantém o layout compacto em colunas. */
+/* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill,
+   cor sólida (sem gradiente, mesma cor usada no botão "Entrar" do login).
+   Seletor mira a key específica (e não todo .st-key-hero-actions) para não
+   afetar o botão "Recomendar" desabilitado do estado de busca, que mantém
+   o layout compacto em colunas. */
 .st-key-btn_recomendar button {
   width: 100% !important;
   border-radius: 999px !important;
-  background: linear-gradient(90deg, #f97316, #f59e0b) !important;
+  background: #f97316 !important;
   box-shadow: 0 0 24px -4px rgba(249,115,22,0.6);
   font-weight: 600 !important;
   transition: filter 0.2s ease, transform 0.2s ease;
@@ -192,6 +200,13 @@ button[data-testid="stBaseButton-secondary"] {
   font-size: 13px;
 }
 .query-counter-highlight { color: #fb923c; font-weight: 700; }
+
+/* Título "Encontramos X opções para você!" acima do grid de resultados */
+.results-heading {
+  font-weight: 700;
+  margin-top: 32px;
+  margin-bottom: 8px;
+}
 
 @media (max-width: 1024px) {
   .hero-heading { font-size: 28px; }

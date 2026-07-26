@@ -119,8 +119,8 @@ if not st.session_state.get("authenticated"):
     with col:
         st.markdown("""
         <div class="login-card">
-          <p class="login-title">🎬 FilmBot</p>
-          <p class="login-subtitle">Seu assistente de recomendações de filmes e séries</p>
+          <p class="login-title">🎬 <span class="accent-gradient-text">FilmBot</span></p>
+          <p class="login-subtitle">Seu assistente de filmes e séries com inteligência artificial</p>
           <hr class="login-divider">
         </div>
         """, unsafe_allow_html=True)
@@ -386,7 +386,10 @@ if st.session_state.get("search_completed") and not titles and not st.session_st
     """, unsafe_allow_html=True)
 elif titles:
     word = "opção" if len(titles) == 1 else "opções"
-    st.markdown(f"**Encontramos {len(titles)} {word} para você!**")
+    st.markdown(
+        f'<p class="results-heading">Encontramos {len(titles)} {word} para você!</p>',
+        unsafe_allow_html=True,
+    )
     st.html(render_grid(titles))
 
 render_footer()

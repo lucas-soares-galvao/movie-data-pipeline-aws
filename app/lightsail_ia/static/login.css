@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;600&display=swap');
+
 /* Oculta header/toolbar do Streamlit na tela de login */
 [data-testid="stHeader"] { display: none; }
 [data-testid="stToolbar"] { display: none; }
@@ -19,11 +21,21 @@
   margin-bottom: 8px;
 }
 .login-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 32px;
-  font-weight: 800;
+  font-weight: 600;
   color: #ffffff;
   margin: 0 0 6px 0;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
+}
+/* Duplicado de .accent-gradient-text em principal.css — cada tela injeta
+   seu próprio CSS de forma independente, então a classe precisa existir
+   nos dois arquivos. */
+.accent-gradient-text {
+  background: linear-gradient(90deg, #fb923c, #f97316, #f59e0b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .login-subtitle {
   font-size: 14px;
@@ -51,21 +63,26 @@
   box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
 }
 
-/* Sobrescreve o botao de login */
+/* Sobrescreve o botao de login — mesmo padrão pill/glow do botão
+   "Recomendar" da página principal (.st-key-btn_recomendar em
+   principal.css), para consistência visual entre as duas telas.
+   Cor sólida (sem gradiente), no laranja principal do design system. */
 [data-testid="stButton"] > button {
-  background: linear-gradient(135deg, #f97316, #ea580c) !important;
+  background: #f97316 !important;
   color: #ffffff !important;
   border: none !important;
-  border-radius: 10px !important;
+  border-radius: 999px !important;
   font-size: 15px !important;
   font-weight: 600 !important;
   padding: 10px 0 !important;
   width: 100% !important;
   margin-top: 8px !important;
-  transition: opacity 0.15s ease !important;
+  box-shadow: 0 0 24px -4px rgba(249,115,22,0.6);
+  transition: filter 0.2s ease, transform 0.2s ease;
 }
 [data-testid="stButton"] > button:hover {
-  opacity: 0.88 !important;
+  filter: brightness(1.08);
+  transform: scale(1.01);
 }
 [data-testid="stColumns"],
 [data-testid="stHorizontalBlock"] {
