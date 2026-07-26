@@ -1,5 +1,5 @@
 ---
-name: filmbot-streamlit-design-system
+name: especialista-streamlit-filmbot
 description: Especialista em construir/estilizar telas Streamlit do FilmBot seguindo o design system "Luminous" já definido (cores, tipografia, componentes, motion), a partir de pedidos em texto do usuário e/ou imagens de referência (mockups) e imagens de conteúdo (pôsteres/backdrops TMDB), com foco em responsividade desktop/mobile. Use ao criar novas telas/seções do app/lightsail_ia, redesenhar componentes existentes (cards, login, grid), ajustar CSS/JS em static/*.css|js, ou ao receber um pedido (em texto ou imagem/mockup) para aplicar/replicar visualmente no Streamlit.
 ---
 

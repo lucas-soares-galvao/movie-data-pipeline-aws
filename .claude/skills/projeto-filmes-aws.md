@@ -71,46 +71,7 @@ EventBridge (schedule)
 
 ## Estrutura de Código
 
-```
-app/
-├── lambda_api/
-│   ├── main.py              # handler Lambda: extrai, salva SOR, dispara Glue ETL
-│   └── src/utils.py         # fetch TMDB, save S3, trigger Glue ETL
-├── glue_etl/
-│   ├── main.py              # resolve args Glue e chama main()
-│   └── src/utils.py         # get_parameters_glue(), read_from_sor(), write_parquet_to_sot(), derive_canonical_name()
-├── glue_data_quality/
-│   ├── main.py              # orquestra DQ: lê catálogo, avalia, salva, notifica
-│   └── src/
-│       ├── utils.py         # get_parameters_glue, get_ruleset, read_table_from_catalog, evaluate_data_quality, write_results_to_s3, notify_failed_outcomes
-│       └── rulesets_dq.py   # dict de rulesets DQDL por nome de tabela
-├── glue_details/
-│   ├── main.py              # resolve args Glue e chama main()
-│   └── src/utils.py         # busca detalhes TMDB, traduz sinopses EN→PT, streaming providers, salva SOT
-├── glue_agg/
-│   ├── main.py              # resolve args Glue e chama main()
-│   └── src/utils.py         # get_parameters_glue(), run_athena_query(), write_parquet_to_spec()
-├── lightsail_ia/
-│   ├── agent.py             # recomendar() + buscar_titulos_spec() (2 etapas: LLM → Athena → formatação Python)
-│   └── app.py               # interface Streamlit (FilmBot)
-├── lambda_lightsail_scheduler/
-│   └── main.py               # handler Lambda: liga/desliga instância Lightsail
-└── shared_src/
-    └── shared_utils/
-        ├── api_client.py       # API client genérico com retry/backoff e Secrets Manager (compartilhado)
-        ├── glue_helpers.py     # utilitários compartilhados de jobs Glue (compartilhado)
-        ├── traducao.py         # tradução inglês → português: Google Translate + fallback AWS Translate (compartilhado)
-        └── triggers.py        # disparo genérico de Glue jobs (compartilhado)
-test/
-├── lambda_api/
-├── glue_etl/
-├── glue_data_quality/
-├── glue_details/
-├── glue_agg/
-├── lightsail_ia/
-├── lambda_lightsail_scheduler/
-└── shared_src/
-```
+Árvore completa de diretórios (`app/`, `test/`, `infra/`, `.github/`) e organização por serviço AWS: ver `.claude/skills/estrutura-projeto.md` e `.claude/skills/especialista-engenharia-dados-app.md`.
 
 ---
 
@@ -260,8 +221,7 @@ Definidos em `app/glue_data_quality/src/rulesets_dq.py`. As 14 tabelas têm regr
 
 ## Convenções de Desenvolvimento
 
-- Testes em `test/` espelhando a estrutura de `app/`
-- `conftest.py` por módulo para fixtures compartilhadas
 - `awswrangler` para I/O com S3 e Glue Catalog no ETL
 - `boto3` diretamente para chamadas ao Glue, Secrets Manager e S3 na Lambda
 - Particionamento temporal: `year` e `month` extraídos das colunas `release_date` (movie) e `first_air_date` (tv)
+- Estrutura de testes (`test/` espelhando `app/`, `conftest.py` por módulo, quality gate): ver `.claude/skills/estrutura-projeto.md` e `.claude/skills/especialista-testes-app.md`
