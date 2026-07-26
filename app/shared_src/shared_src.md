@@ -90,7 +90,7 @@ Fachada de orquestração de detecção de idioma — papel equivalente ao de `t
 
 | Função | Responsabilidade |
 |---|---|
-| `trigger_glue_job(job_name, **arguments)` | Dispara qualquer job Glue (fire-and-forget), convertendo kwargs para o formato `--CHAVE` do Glue |
+| `trigger_glue_job(job_name, **arguments)` | Dispara qualquer job Glue (fire-and-forget), convertendo kwargs para o formato `--CHAVE` do Glue. Passa `JobRunQueuingEnabled=True` em todo `start_job_run` — esse valor tem precedência sobre o `job_run_queuing_enabled` da definição do job no Terraform, então sem ele o run nunca entraria na fila; com ele, um run que excede `max_concurrent_runs` é enfileirado em vez de falhar com `ConcurrentRunsExceededException` |
 
 ## Uso nos componentes
 
