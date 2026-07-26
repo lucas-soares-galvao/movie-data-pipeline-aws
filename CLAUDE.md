@@ -49,7 +49,9 @@ Consulte para entender o projeto em profundidade:
 - **projeto-filmes-aws** — Arquitetura do pipeline, camadas de dados, tabelas, variáveis de ambiente, convenções
 - **estrutura-projeto** — Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes
 - **revisao-testes-documentacao** — Checklist obrigatório pós-mudança: testes, arquivos `.md`, docstrings e type hints
+- **especialista-doc-oficial-aws** — Gate de consulta à fonte oficial da AWS e do Terraform (docs de serviço, registry dos providers `aws`/`archive`, Terraform core, IAM Service Authorization Reference) antes de decisões de infraestrutura/serviço/permissão
 - **especialista-documentacao** — Templates de docs por módulo/teste/skill, convenção de onde cada coisa mora, e quando criar/atualizar/juntar uma skill
+- **especialista-api-tmdb** — Gate de consulta à documentação oficial da API do TMDB antes de decisões de implementação (endpoint novo, parâmetro alterado, paginação, rate limit)
 - **especialista-arquitetura-aws** — Qual serviço AWS escolher para uma necessidade nova (custo x benefício x eficiência)
 - **especialista-finops-aws** — Custo x benefício dos recursos AWS já escolhidos (lifecycle S3, DPU Glue, bundle Lightsail, retenção de log)
 - **especialista-infraestrutura-terraform** — Argumentos exatos de recurso Terraform, `depends_on`, convenções de nomeação por serviço AWS
