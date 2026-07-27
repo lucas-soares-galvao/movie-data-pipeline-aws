@@ -15,7 +15,7 @@ Esta skill trata de legibilidade/clareza; não repete o que já está bem cobert
 
 | O quê | Onde |
 |---|---|
-| Checklist obrigatório de docstrings, type hints e testes pós-mudança | `revisao-testes-documentacao` |
+| Checklist obrigatório de docstrings, type hints e testes pós-mudança | `revisao-pos-mudanca-codigo` |
 | Organização do código por serviço AWS, onde vive cada função/query | `especialista-engenharia-dados-app` |
 | Padrões de nomeação e estrutura de testes (`test_<comportamento>`, mocks) | `especialista-testes-app` |
 | Idioma (identificadores em inglês, prosa/comentários em português) | `CLAUDE.md` (raiz) |
@@ -27,7 +27,7 @@ Esta skill trata de legibilidade/clareza; não repete o que já está bem cobert
 - **Comentário explica o "porquê", nunca o "o quê"** — o código já diz o quê. Exemplos reais a seguir como referência: `_CANONICAL_SUFFIXES` em `app/glue_etl/src/utils.py` explica por que a ordem da lista importa (sufixos mais específicos antes dos genéricos) e dá um exemplo concreto do bug que ocorreria na ordem errada; `MAX_PAGES` em `app/lambda_api/src/utils.py` explica o trade-off (limite real da API vs. timeout da Lambda) por trás do número 100, em vez de só dizer "número máximo de páginas".
 - **Padrão de paginação replicado, não reinventado**: `collect_now_playing_data`, `collect_discover_data` e `fetch_changed_ids` (todos em `app/lambda_api/src/utils.py`) usam a mesma estrutura — loop com contadores nomeados (`saved_pages`/`failed_pages`), captura de `HTTPError` por página sem abortar a coleta inteira, `raise RuntimeError` só quando todas as páginas falham. Ao escrever uma função de paginação nova, siga essa estrutura em vez de criar uma variação.
 - **Extrair helper privado quando a lógica se repete**, sem criar abstração além do necessário: `_add_translation` (`app/glue_etl/src/utils.py`) concentra a lógica comum de `_add_name_pt_countries`/`_add_name_pt_languages`, que viram wrappers de uma linha. Não crie uma camada de abstração genérica para um caso de uso único — três linhas parecidas em dois lugares não justificam um helper.
-- **Docstring `Args`/`Returns`/`Raises` completa + type hints em toda função nova ou alterada** — sem exceção, é o padrão em 100% dos módulos (checklist detalhado em `revisao-testes-documentacao`). Uma docstring que só repete o nome da função (`"""Busca dados."""` numa função chamada `fetch_data`) não conta — ela precisa agregar informação que o nome não carrega (formato do retorno, efeitos colaterais, por que um parâmetro é opcional).
+- **Docstring `Args`/`Returns`/`Raises` completa + type hints em toda função nova ou alterada** — sem exceção, é o padrão em 100% dos módulos (checklist detalhado em `revisao-pos-mudanca-codigo`). Uma docstring que só repete o nome da função (`"""Busca dados."""` numa função chamada `fetch_data`) não conta — ela precisa agregar informação que o nome não carrega (formato do retorno, efeitos colaterais, por que um parâmetro é opcional).
 - **Evitar comprehension ou lambda aninhado que exija reler duas vezes** para entender. Uma list comprehension com um `if` simples é clara (`collect_watch_providers_ref` em `lambda_api/src/utils.py`); uma comprehension com múltiplos `for`/`if` aninhados ou lambda dentro de lambda não é — nesse caso, prefira um loop explícito, mesmo que fique mais longo.
 
 ## Padrões de legibilidade em SQL (Athena) já em vigor — preservar
