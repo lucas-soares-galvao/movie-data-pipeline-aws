@@ -569,10 +569,10 @@ class TestCollectChangesData:
 
             s3_key = collect_changes_data("key", mock_s3, "meu-bucket-temp", "movie")
 
-        assert s3_key == "tmdb/changes/movie/2026-07-08.json"
+        assert s3_key == "tmdb/changes/movie/2026-07-07.json"
         mock_save.assert_called_once()
         assert mock_save.call_args[0][1] == "meu-bucket-temp"
-        assert mock_save.call_args[0][3] == "tmdb/changes/movie/2026-07-08.json"
+        assert mock_save.call_args[0][3] == "tmdb/changes/movie/2026-07-07.json"
 
     def test_payload_contem_ids_e_janela_de_data(self):
         mock_s3 = MagicMock()
@@ -580,7 +580,7 @@ class TestCollectChangesData:
             patch("src.utils.fetch_changed_ids", return_value=[10, 20]) as mock_fetch,
             patch("src.utils.save_to_s3") as mock_save,
         ):
-            collect_changes_data("key", mock_s3, "meu-bucket-temp", "tv", lookback_days=8)
+            collect_changes_data("key", mock_s3, "meu-bucket-temp", "tv", lookback_days=6)
 
         payload = mock_save.call_args[0][2]
         assert payload["content_type"] == "tv"

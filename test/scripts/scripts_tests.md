@@ -334,7 +334,7 @@ reprocessado).
 
 ## Casos de teste — `test_backfill_changes.py`
 
-Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — sem checkpoint nem parâmetros de data, estruturalmente igual a `test_backfill_referencias.py`. A janela `[hoje - 8 dias, hoje]` é sempre resolvida dentro de `collect_changes_data` (`app/lambda_api`), fora do escopo deste script.
+Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — sem checkpoint nem parâmetros de data, estruturalmente igual a `test_backfill_referencias.py`. A janela `[domingo passado, sábado de ontem]` é sempre resolvida dentro de `collect_changes_data` (`app/lambda_api`), fora do escopo deste script.
 
 ### `TestContratoDoPayload`
 

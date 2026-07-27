@@ -42,7 +42,7 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
         ) as mock_read,
         patch.object(m, "evaluate_data_quality", return_value=df_results) as mock_eval,
         patch.object(m, "write_results_to_s3") as mock_write,
-        patch.object(m, "notify_failed_outcomes"),
+        patch.object(m, "notify_failed_outcomes") as mock_notify,
     ):
         mock_sc_cls.getOrCreate.return_value = sc_mock
         mock_gc_cls.return_value = glue_context_mock
@@ -58,6 +58,7 @@ def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=No
         "mock_read": mock_read,
         "mock_eval": mock_eval,
         "mock_write": mock_write,
+        "mock_notify": mock_notify,
     }
 
 
@@ -235,3 +236,41 @@ class TestWriteResultsToS3Call:
         """write_results_to_s3 deve ser chamado apenas uma vez por execução."""
         mocks = _run_main()
         assert mocks["mock_write"].call_count == 1
+
+
+class TestMultiYearBatching:
+    """YEAR separado por vírgula (modo changes do glue_details, vários anos agrupados
+    num único job run) faz main() iterar read/evaluate/write/notify uma vez por ano."""
+
+    def test_loops_once_per_year_when_year_has_comma(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_details_movie_dev", "YEAR": "2020,2021,2023"}
+        mocks = _run_main(args=args)
+
+        assert mocks["mock_read"].call_count == 3
+        assert mocks["mock_eval"].call_count == 3
+        assert mocks["mock_write"].call_count == 3
+        assert mocks["mock_notify"].call_count == 3
+
+    def test_passes_each_year_in_order_to_read_table(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_details_movie_dev", "YEAR": "2020,2021,2023"}
+        mocks = _run_main(args=args)
+
+        years_read = [c.args[3] for c in mocks["mock_read"].call_args_list]
+        assert years_read == ["2020", "2021", "2023"]
+
+    def test_passes_each_year_in_order_to_evaluate_and_write(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_details_movie_dev", "YEAR": "2020,2021,2023"}
+        mocks = _run_main(args=args)
+
+        years_evaluated = [c.args[5] for c in mocks["mock_eval"].call_args_list]
+        years_written = [c.args[5] for c in mocks["mock_write"].call_args_list]
+        assert years_evaluated == ["2020", "2021", "2023"]
+        assert years_written == ["2020", "2021", "2023"]
+
+    def test_single_year_without_comma_still_loops_once(self):
+        """Comportamento do ciclo normal (YEAR sem vírgula) não muda — 1 iteração só."""
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_discover_movie_dev", "YEAR": "2002"}
+        mocks = _run_main(args=args)
+
+        assert mocks["mock_read"].call_count == 1
+        assert mocks["mock_read"].call_args.args[3] == "2002"

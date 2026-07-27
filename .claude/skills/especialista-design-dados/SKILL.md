@@ -97,6 +97,32 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   tipo de delta, orientado por evento (TMDB Changes API) em vez de janela de tempo — cruza IDs mudados com o
   discover para achar o `year`, descartando IDs que nunca entraram no catálogo via `/discover` (preserva a
   curadoria do pipeline).
+- **O modo changes não faz (nem precisa fazer) uma checagem de que o id ainda está "atualizado"/válido antes de
+  alterar o registro**: o details call (`GET /movie|tv/{id}`, disparado por `collect_and_write_details`) já busca
+  o estado atual do título no momento da escrita — uma checagem prévia seria uma chamada extra redundante, porque
+  os detalhes completos serão buscados de qualquer forma. Deleção do título entre a chamada de `/changes` e a
+  chamada de `/{id}` já é tratada sem checagem adicional: `fetch_tmdb_details` lança `HTTPError`, capturado em
+  `fetch_and_parse` (`app/glue_details/src/utils.py:835-842`), o id é descartado do batch, e o registro antigo é
+  preservado no SOT via `df_existing_keep` (o mesmo read-merge-write descrito acima). Se o título mudou de novo
+  entre as duas chamadas, o dado gravado reflete sempre a versão mais recente — correto por construção. Adicionar
+  uma checagem de freshness (ex.: comparar `updated_date` antes de decidir alterar) introduziria uma nova janela
+  de corrida (check-then-act) e dobraria as chamadas à API TMDB por id no modo changes, sem ganho de correção.
+- **O modo changes processa o ano atual de propósito — não é redundante com o discover semanal, apesar de rodarem
+  em dias consecutivos**: o discover roda sábado (`lambda_api_movie_weekly`/`tv`, `infra/eventbridge.tf:24-88`,
+  `start_year`/`end_year` default = ano atual, `app/lambda_api/main.py:158-161`) e o changes roda domingo, um dia
+  **depois** — não antes (`infra/eventbridge.tf:109-124`, comentário explícito sobre a folga evitar colisão de
+  partição `year=ano_atual` e garantir catálogo atualizado antes do changes resolver `year`). O próximo discover só
+  volta a rodar 6 dias depois. Mesmo assim, o discover não "recalcula" o que o changes atualiza: `glue_etl` no modo
+  discover só escreve na tabela `discover`, com o subconjunto de campos do endpoint `/discover` (sem elenco,
+  keywords, watch providers — só existem via `/movie|tv/{id}` com `append_to_response`,
+  `app/glue_details/src/utils.py:271-274`). E o cascade discover→details/watch_providers (modo normal, sem
+  `FORCE_REFETCH`) é gated por delta **mensal** (`fetch_existing_ids_from_details`,
+  `app/glue_details/src/utils.py:152-198`; `fetch_ids_stale_watch_providers`, `:201-253`) — um id do ano atual já
+  processado neste mês calendário não é re-buscado até o mês seguinte. O `process_changed_ids` do modo changes
+  ignora esse delta mensal e atualiza incondicionalmente todo id resolvido (`:1364-1387`), sendo por isso a única
+  via que refresca `details`/`watch_providers` de lançamentos do ano atual com cadência semanal, disparada por
+  mudança real reportada pelo TMDB. Excluir o ano atual do changes deixaria o conteúdo mais mutável do catálogo
+  (lançamentos recentes) sem atualização por até ~1 mês entre ciclos do cascade normal.
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 
@@ -120,6 +146,12 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   explicado em detalhe) pode concluir por engano que todo `overwrite_partitions` do projeto precisa de merge manual
   antes, e replicar o padrão sem necessidade em `glue_etl` — ou, o oposto, omitir o merge num job novo cuja escrita
   é parcial como `glue_details`, achando que `overwrite_partitions` sozinho basta.
+- **`fetch_and_parse` não distingue "404 porque o título foi deletado do TMDB" de qualquer outro erro de rede
+  transiente** (`app/glue_details/src/utils.py:835-842`) — hoje é um warning genérico em ambos os casos, o que
+  impede diferenciar nos logs "id sumiu do catálogo TMDB" de "falha de rede momentânea". Também não existe teste
+  que documente explicitamente o comportamento esperado "id deletado no modo changes preserva o registro antigo
+  no SOT". Nenhuma correção é necessária para a correção do dado (o registro antigo já é preservado
+  corretamente), mas é uma lacuna de observabilidade a avaliar depois, caso vire necessidade de diagnóstico.
 
 ## Regras práticas ao escrever/revisar mudança nova
 

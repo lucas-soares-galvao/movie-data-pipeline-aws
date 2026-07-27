@@ -205,7 +205,7 @@ Payload enxuto — sem nomes de tabela de discover/genre/etc, já que este modo 
   "database": "db_tmdb_movie_{env}"
 }
 ```
-Sai cedo, antes de qualquer coleta de referência/discover: busca IDs mudados via `/movie/changes` (ou `/tv/changes`) numa janela `[hoje - 8 dias, hoje]`, grava a lista no bucket TEMP e aciona o **Glue Details** diretamente com `CHANGES_S3_PATH` — não passa pelo Glue ETL. Fecha o gap de staleness em títulos com `year < ano_atual - 1`, que os modos semanal/mensal nunca re-tocam. Regras EventBridge: `lambda_api_movie_changes_weekly`/`..._tv_changes_weekly`, sábados 09:00/09:05 UTC (mesmo horário do discover de domingo, um dia antes).
+Sai cedo, antes de qualquer coleta de referência/discover: busca IDs mudados via `/movie/changes` (ou `/tv/changes`) numa janela `[domingo passado, sábado de ontem]` (7 dias corridos, contígua e sem sobreposição entre execuções semanais), grava a lista no bucket TEMP e aciona o **Glue Details** diretamente com `CHANGES_S3_PATH` — não passa pelo Glue ETL. Fecha o gap de staleness em títulos com `year < ano_atual - 1`, que os modos semanal/mensal nunca re-tocam. Regras EventBridge: `lambda_api_movie_changes_weekly`/`..._tv_changes_weekly`, domingos 09:00/09:05 UTC, um dia depois do discover de sábado.
 
 ### Modo rotation refresh (`only_rotation_refresh=True`)
 

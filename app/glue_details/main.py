@@ -75,9 +75,15 @@ def main() -> None:
             s3_bucket_temp=s3_bucket_temp,
             translate_provider=translate_provider,
         )
-        for affected_year in affected_years:
-            trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=affected_year)
-            trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=affected_year)
+        # Um disparo por tabela com todos os anos agrupados (não um disparo por ano):
+        # o DQ paga o overhead fixo de startup do Spark uma vez só, iterando os anos
+        # internamente, em vez de N vezes (um changes-run pode afetar dezenas de anos
+        # distintos, já que edição de metadado no TMDB não correlaciona com o ano de
+        # lançamento do título).
+        if affected_years:
+            years_arg = ",".join(affected_years)
+            trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=years_arg)
+            trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=years_arg)
 
         # AGG recalcula a tabela SPEC por completo a cada run (overwrite total, nunca
         # merge) — disparar aqui ao final do changes de tv evita a defasagem de até

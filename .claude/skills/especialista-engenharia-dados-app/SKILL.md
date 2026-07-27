@@ -17,7 +17,7 @@ Esta skill organiza o código por serviço AWS e tecnologia; não repete o que j
 |---|---|
 | Arquitetura/fluxo completo do pipeline, camadas S3, tabelas do Glue Catalog | `projeto-filmes-aws` |
 | Árvore de diretórios completa, CI/CD (workflows), estrutura Terraform, config de testes | `estrutura-projeto` |
-| Checklist obrigatório pós-mudança (testes, `.md`, docstrings, type hints) | `revisao-testes-documentacao` |
+| Checklist obrigatório pós-mudança (testes, `.md`, docstrings, type hints) | `revisao-pos-mudanca-codigo` |
 | Design visual do FilmBot (Streamlit/CSS) | `especialista-streamlit-filmbot` |
 | Doc funcional de cada módulo | `app/<modulo>/<modulo>.md` |
 | Racional de segurança/risco de SQL injection (por que `_validate_where` existe, gaps de denylist vs. allowlist) | `especialista-seguranca-aplicacao` |
