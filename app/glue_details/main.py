@@ -60,8 +60,7 @@ def main() -> None:
     # ── MODO CHANGES (Changes API do TMDB) ───────────────────────────────────
     # Acionado pela lambda_api (only_changes_tables) — não passa YEAR/END_YEAR,
     # passa CHANGES_S3_PATH com a lista de IDs mudados. Não escreve na tabela
-    # discover (nunca expande o catálogo) nem aciona o Glue AGG (já roda no
-    # ciclo normal semanal/mensal/anual).
+    # discover (nunca expande o catálogo).
     if changes_s3_path:
         changed_ids = fetch_ids_from_changes_file(changes_s3_path)
         affected_years = process_changed_ids(
@@ -79,6 +78,14 @@ def main() -> None:
         for affected_year in affected_years:
             trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=affected_year)
             trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=affected_year)
+
+        # AGG recalcula a tabela SPEC por completo a cada run (overwrite total, nunca
+        # merge) — disparar aqui ao final do changes de tv evita a defasagem de até
+        # 1 semana entre uma correção pontual via changes e o próximo ciclo normal.
+        if media_type == "tv" and affected_years:
+            logger.info("Acionando Glue AGG (modo changes)...")
+            trigger_glue_job(agg_job_name)
+
         logger.info("Job Glue Details (modo changes) finalizado com sucesso!")
         return
 

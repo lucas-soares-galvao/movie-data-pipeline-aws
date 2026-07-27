@@ -494,6 +494,32 @@ class TestChangesMode:
             assert len(agg_calls) == 0
             mock_repair_discover.assert_not_called()
 
+    def test_aciona_agg_quando_tv_e_ha_anos_afetados(self):
+        args = {**_BASE_CHANGES, "MEDIA_TYPE": "tv"}
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
+            patch.object(m, "process_changed_ids", return_value=["2020"]),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
+        ):
+            m.main()
+            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
+            assert agg_calls == [call("agg-job")]
+
+    def test_nao_aciona_agg_quando_tv_sem_anos_afetados(self):
+        args = {**_BASE_CHANGES, "MEDIA_TYPE": "tv"}
+        with (
+            patch.object(m, "get_parameters_glue", return_value=args),
+            patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
+            patch.object(m, "process_changed_ids", return_value=[]),
+            patch.object(m, "trigger_glue_job") as mock_trigger,
+        ):
+            m.main()
+            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
+            assert agg_calls == []
+
     def test_usa_tabelas_de_tv_quando_media_type_tv(self):
         args = {**_BASE_CHANGES, "MEDIA_TYPE": "tv"}
         with (
