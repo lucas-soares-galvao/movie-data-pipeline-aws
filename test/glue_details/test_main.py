@@ -48,6 +48,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123") as mock_key,
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -64,6 +65,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -84,6 +86,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS) as mock_ids,
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -103,6 +106,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -121,6 +125,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -141,6 +146,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -159,6 +165,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -177,6 +184,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -196,6 +204,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -215,6 +224,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -239,6 +249,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -261,6 +272,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -280,6 +292,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -297,6 +310,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -313,6 +327,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=_IDS),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -327,6 +342,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=[]),
@@ -341,6 +357,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -364,6 +381,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details") as mock_existing,
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -380,6 +398,7 @@ class TestMain:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
             patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
@@ -412,6 +431,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=["2020", "2021"]),
             patch.object(m, "trigger_glue_job"),
@@ -424,6 +444,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]) as mock_fetch,
             patch.object(m, "process_changed_ids", return_value=[]),
             patch.object(m, "trigger_glue_job"),
@@ -435,6 +456,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=[]) as mock_process,
             patch.object(m, "trigger_glue_job"),
@@ -457,6 +479,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=["2020", "2021"]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
@@ -471,6 +494,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[]),
             patch.object(m, "process_changed_ids", return_value=[]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
@@ -482,6 +506,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=["2020"]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
@@ -497,6 +522,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=["2020"]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
@@ -510,6 +536,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=[]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
@@ -523,6 +550,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=[]) as mock_process,
             patch.object(m, "trigger_glue_job"),
