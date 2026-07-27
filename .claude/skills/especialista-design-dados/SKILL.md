@@ -93,10 +93,18 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   considerados "stale" e voltam a ser buscados no mês seguinte. `fetch_ids_stale_watch_providers`
   (`app/glue_details/src/utils.py:201-253`) usa um delta separado (LEFT JOIN discover × watch_providers) para o
   mesmo motivo: ID sem registro, `updated_date` nulo, ou desatualizado antes do mês corrente. O modo changes
-  (`resolve_years_for_changed_ids`/`process_changed_ids`, `app/glue_details/src/utils.py:1250-1405`) é um terceiro
-  tipo de delta, orientado por evento (TMDB Changes API) em vez de janela de tempo — cruza IDs mudados com o
-  discover para achar o `year`, descartando IDs que nunca entraram no catálogo via `/discover` (preserva a
-  curadoria do pipeline).
+  (`resolve_matched_ids_for_changed_ids`/`process_changed_ids`, `app/glue_details/src/utils.py:1250-1405`) é um
+  terceiro tipo de delta, orientado por evento (TMDB Changes API) em vez de janela de tempo — cruza IDs mudados com
+  o discover só para confirmar pertencimento ao catálogo, descartando IDs que nunca entraram via `/discover`
+  (preserva a curadoria do pipeline). O `year` usado para particionar `watch_providers`/montar `affected_years`
+  **não** vem do discover — vem do retorno de `collect_and_write_details` (derivado do `release_date`/
+  `first_air_date` real da API), justamente porque o `year` gravado na partição discover pode divergir entre
+  partições para o mesmo id (discover é escrita com `overwrite_partitions`, cada run só toca a própria partição;
+  se o TMDB corrigir o `release_date` de um título entre execuções, o id pode acabar em duas partições `year` da
+  discover ao mesmo tempo). `resolve_matched_ids_for_changed_ids` detecta esse caso (`year_count > 1` na query
+  `GROUP BY id`) e loga em `discover_years_ambiguos_{data}.json` para investigação futura, mas nunca usa esse year
+  para decidir partição — regra "year sempre de release_date/first_air_date, nunca de outra fonte" (linha acima)
+  também vale para o modo changes.
 - **O modo changes não faz (nem precisa fazer) uma checagem de que o id ainda está "atualizado"/válido antes de
   alterar o registro**: o details call (`GET /movie|tv/{id}`, disparado por `collect_and_write_details`) já busca
   o estado atual do título no momento da escrita — uma checagem prévia seria uma chamada extra redundante, porque
@@ -111,7 +119,8 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   em dias consecutivos**: o discover roda sábado (`lambda_api_movie_weekly`/`tv`, `infra/eventbridge.tf:24-88`,
   `start_year`/`end_year` default = ano atual, `app/lambda_api/main.py:158-161`) e o changes roda domingo, um dia
   **depois** — não antes (`infra/eventbridge.tf:109-124`, comentário explícito sobre a folga evitar colisão de
-  partição `year=ano_atual` e garantir catálogo atualizado antes do changes resolver `year`). O próximo discover só
+  partição `year=ano_atual` e garantir catálogo atualizado antes do changes confirmar pertencimento ao catálogo).
+  O próximo discover só
   volta a rodar 6 dias depois. Mesmo assim, o discover não "recalcula" o que o changes atualiza: `glue_etl` no modo
   discover só escreve na tabela `discover`, com o subconjunto de campos do endpoint `/discover` (sem elenco,
   keywords, watch providers — só existem via `/movie|tv/{id}` com `append_to_response`,
