@@ -810,7 +810,7 @@ def collect_and_write_details(
     table_name: str,
     database: str,
     translate_provider: str = "google",
-) -> None:
+) -> dict[int, str]:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
 
@@ -828,6 +828,12 @@ def collect_and_write_details(
         translate_provider: "google" ou "aws" — ver resolve_translate_fn. Default "google"
                              (caminho automático via EventBridge); o serviço não
                              escolhido é usado automaticamente como fallback.
+
+    Returns:
+        Dicionário {id: year} dos IDs efetivamente buscados e gravados nesta execução
+        (year derivado do release_date/first_air_date retornado pela API — nunca de
+        outra fonte). IDs que falharam na API ou ficaram sem year não aparecem aqui,
+        mesmo que já existissem previamente na tabela.
     """
     records = []
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
@@ -846,7 +852,7 @@ def collect_and_write_details(
 
     if not records:
         logger.warning(f"Nenhum detalhe coletado para '{content_type}'. Nada gravado.")
-        return
+        return {}
 
     df = pd.DataFrame(records)
     # Remove linhas sem year — registros sem data de lançamento não podem ser particionados
@@ -857,7 +863,11 @@ def collect_and_write_details(
             f"Todos os {len(records)} registros coletados para '{content_type}' "
             "ficaram sem 'year' (sem data de lançamento). Nada gravado."
         )
-        return
+        return {}
+
+    # Capturado antes do merge com df_existing_keep: reflete só os ids buscados nesta
+    # execução (o delta), não os ids preservados de partições existentes.
+    id_to_year: dict[int, str] = {int(i): str(y) for i, y in zip(df["id"], df["year"])}
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
 
@@ -924,6 +934,7 @@ def collect_and_write_details(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
+    return id_to_year
 
 
 # ── Remoção de duplicatas intra-partição ─────────────────────────────────────
@@ -1247,16 +1258,16 @@ def fetch_ids_from_changes_file(s3_path: str) -> list[int]:
     return ids
 
 
-def resolve_years_for_changed_ids(
+def resolve_matched_ids_for_changed_ids(
     database: str,
     table_discover: str,
     ids: list[int],
     s3_bucket_temp: str,
     content_type: str,
     chunk_size: int = 500,
-) -> dict[int, str]:
+) -> list[int]:
     """
-    Cruza IDs mudados com a tabela discover via Athena para descobrir o year de cada um.
+    Cruza IDs mudados com a tabela discover via Athena para confirmar pertencimento ao catálogo.
 
     A tabela discover é a "base existente" do catálogo: IDs que não constam nela nunca
     cruzaram a régua de popularidade do /discover e são descartados (preserva a
@@ -1264,29 +1275,42 @@ def resolve_years_for_changed_ids(
     é gravada em S3 (não só a contagem) para permitir investigação manual futura de
     padrões de exclusão.
 
+    Não resolve o year do id — quem faz isso é collect_and_write_details, a partir do
+    release_date/first_air_date real da API (ver process_changed_ids). Isso evita
+    depender do year gravado na partição discover, que pode divergir entre partições
+    para o mesmo id (ex.: TMDB corrige o release_date entre execuções, já que discover
+    é escrita com overwrite_partitions e cada run só toca a própria partição). Quando
+    isso acontece, a query agrupa por id (GROUP BY) e o year_count > 1 sinaliza a
+    ambiguidade — que é apenas logada em S3 para investigação futura da causa raiz
+    (nunca usada para decidir partição).
+
     Args:
         database:       Nome do banco de dados no Glue Catalog.
         table_discover: Nome da tabela de discover (movie ou tv).
         ids:            IDs mudados retornados pela Changes API.
-        s3_bucket_temp: Bucket S3 para resultados temporários do Athena e para o log
-                        de IDs descartados.
-        content_type:   "movie" ou "tv" — usado no path do arquivo de descartados.
+        s3_bucket_temp: Bucket S3 para resultados temporários do Athena e para os logs
+                        de IDs descartados/ambíguos.
+        content_type:   "movie" ou "tv" — usado no path dos arquivos de log.
         chunk_size:     Tamanho do lote na cláusula IN do Athena (evita estourar o
                         limite de tamanho de query).
 
     Returns:
-        Dicionário {id: year} apenas para os IDs encontrados na tabela discover.
+        Lista de IDs encontrados na tabela discover (sem duplicatas).
     """
     if not ids:
-        return {}
+        return []
 
     s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
-    resolved: dict[int, str] = {}
+    matched_ids: list[int] = []
+    ambiguous: dict[str, list[str]] = {}
 
     for i in range(0, len(ids), chunk_size):
         chunk = ids[i : i + chunk_size]
         id_list = ",".join(str(item_id) for item_id in chunk)
-        query = f"SELECT id, year FROM {database}.{table_discover} WHERE id IN ({id_list})"
+        query = (
+            f"SELECT id, ARRAY_AGG(DISTINCT year) AS years, COUNT(DISTINCT year) AS year_count "
+            f"FROM {database}.{table_discover} WHERE id IN ({id_list}) GROUP BY id"
+        )
         df = wr.athena.read_sql_query(
             sql=query,
             database=database,
@@ -1294,11 +1318,14 @@ def resolve_years_for_changed_ids(
             ctas_approach=False,
         )
         for _, row in df.iterrows():
-            resolved[int(row["id"])] = str(row["year"])
+            item_id = int(row["id"])
+            matched_ids.append(item_id)
+            if row["year_count"] > 1:
+                ambiguous[str(item_id)] = sorted(row["years"])
 
-    discarded = sorted(set(ids) - set(resolved.keys()))
+    discarded = sorted(set(ids) - set(matched_ids))
     logger.info(
-        f"Changes ({content_type}): {len(resolved)}/{len(ids)} IDs encontrados na tabela "
+        f"Changes ({content_type}): {len(matched_ids)}/{len(ids)} IDs encontrados na tabela "
         f"discover; {len(discarded)} descartados (nunca ingeridos via discover)."
     )
     if discarded:
@@ -1309,7 +1336,20 @@ def resolve_years_for_changed_ids(
             {"content_type": content_type, "discarded_ids": discarded},
         )
 
-    return resolved
+    if ambiguous:
+        logger.warning(
+            f"Changes ({content_type}): {len(ambiguous)} IDs com mais de um year distinto na "
+            "tabela discover (provável duplicação cross-partition). Ignorado na resolução do "
+            "year (ver collect_and_write_details); registrado para investigação futura."
+        )
+        ambiguous_key = f"tmdb/changes/{content_type}/discover_years_ambiguos_{datetime.now(tz=timezone.utc).date().isoformat()}.json"
+        _write_json_to_s3(
+            s3_bucket_temp,
+            ambiguous_key,
+            {"content_type": content_type, "ambiguous_ids_years": ambiguous},
+        )
+
+    return matched_ids
 
 
 def process_changed_ids(
@@ -1327,11 +1367,16 @@ def process_changed_ids(
     """
     Orquestra o enriquecimento dos IDs sinalizados pela Changes API do TMDB.
 
-    Resolve o year de cada ID via resolve_years_for_changed_ids (descartando IDs fora
-    do catálogo), e reaproveita collect_and_write_details/collect_and_write_watch_providers
-    — as mesmas funções do fluxo normal de enriquecimento — para atualizar os registros
-    já existentes. Repara duplicatas por ano afetado ao final, mesma proteção contra
-    corrida de escrita já usada no fluxo normal quando year == end_year.
+    Usa resolve_matched_ids_for_changed_ids só para confirmar quais IDs pertencem ao
+    catálogo curado (descartando os demais), e reaproveita
+    collect_and_write_details/collect_and_write_watch_providers — as mesmas funções do
+    fluxo normal de enriquecimento — para atualizar os registros já existentes. O year
+    usado para particionar watch providers e montar affected_years vem do retorno de
+    collect_and_write_details (derivado do release_date/first_air_date real da API),
+    nunca da tabela discover — evita depender de um year que pode estar duplicado entre
+    partições para o mesmo id (ver resolve_matched_ids_for_changed_ids). Repara
+    duplicatas por ano afetado ao final, mesma proteção contra corrida de escrita já
+    usada no fluxo normal quando year == end_year.
 
     Args:
         api_key:                Chave de API do TMDB.
@@ -1348,20 +1393,19 @@ def process_changed_ids(
     Returns:
         Lista de anos afetados (para acionar o Glue Data Quality por partição).
     """
-    id_to_year = resolve_years_for_changed_ids(
+    matched_ids = resolve_matched_ids_for_changed_ids(
         database=database,
         table_discover=table_discover,
         ids=changed_ids,
         s3_bucket_temp=s3_bucket_temp,
         content_type=content_type,
     )
-    if not id_to_year:
+    if not matched_ids:
         logger.info("Changes: nenhum ID encontrado na tabela discover. Nada a processar.")
         return []
 
-    matched_ids = list(id_to_year.keys())
     logger.info(f"Changes: enriquecendo {len(matched_ids)} IDs ({content_type})...")
-    collect_and_write_details(
+    id_to_year = collect_and_write_details(
         api_key=api_key,
         ids=matched_ids,
         content_type=content_type,
@@ -1370,6 +1414,20 @@ def process_changed_ids(
         database=database,
         translate_provider=translate_provider,
     )
+    if not id_to_year:
+        logger.warning(
+            f"Changes ({content_type}): nenhum dos {len(matched_ids)} IDs teve year válido "
+            "após collect_and_write_details. Nada mais a processar neste run."
+        )
+        return []
+
+    missing = sorted(set(matched_ids) - set(id_to_year.keys()))
+    if missing:
+        logger.warning(
+            f"Changes ({content_type}): {len(missing)}/{len(matched_ids)} IDs sem year após "
+            "collect_and_write_details (falha de API ou sem data de lançamento) — watch "
+            "providers não atualizados para eles neste run."
+        )
 
     ids_by_year: dict[str, list[int]] = {}
     for item_id, year in id_to_year.items():

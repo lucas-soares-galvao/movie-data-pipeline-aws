@@ -1116,8 +1116,9 @@ class TestCollectAndWriteDetails:
             patch("src.utils.fetch_tmdb_details", side_effect=req_lib.RequestException("err")),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+            resultado = u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             mock_write.assert_not_called()
+            assert resultado == {}
 
     def test_does_not_write_when_all_records_missing_year(self):
         """Titulos sem release_date/first_air_date ficam sem 'year' apos o dropna
@@ -1131,8 +1132,44 @@ class TestCollectAndWriteDetails:
             patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
-            u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+            resultado = u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
             mock_write.assert_not_called()
+            assert resultado == {}
+
+    def test_retorna_dict_id_para_year_dos_registros_gravados(self):
+        ids = [1, 2]
+        responses = [self._mock_movie_response(i) for i in ids]
+
+        with (
+            patch("src.utils.fetch_tmdb_details", side_effect=responses),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet"),
+        ):
+            resultado = u.collect_and_write_details("key", ids, "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+
+        assert resultado == {1: "2023", 2: "2023"}
+
+    def test_dict_retornado_nao_inclui_ids_preservados_apenas_via_merge(self):
+        """Um id fora do batch pedido, preservado de uma particao existente via merge,
+        nao deve aparecer no dict retornado — so os ids buscados nesta execucao."""
+        response = self._mock_movie_response(1)
+        df_existente = pd.DataFrame([{
+            "id": 99, "year": "2023", "runtime": 90, "release_date": "2023-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.translate_text", side_effect=lambda t, **kw: t),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=df_existente),
+            patch("src.utils.wr.s3.to_parquet"),
+        ):
+            resultado = u.collect_and_write_details("key", [1], "movie", "sot", "tb_tmdb_details_movie_dev", "db")
+
+        assert resultado == {1: "2023"}
+        assert 99 not in resultado
 
     def test_writes_with_year_partition_and_overwrite_mode(self):
         responses = [self._mock_movie_response(1)]
@@ -1543,26 +1580,30 @@ class TestFetchIdsFromChangesFile:
         assert resultado == []
 
 
-class TestResolveYearsForChangedIds:
-    def test_retorna_dict_vazio_para_lista_vazia(self):
-        resultado = u.resolve_years_for_changed_ids("db", "tb_discover", [], "tmp-bucket", "movie")
-        assert resultado == {}
+class TestResolveMatchedIdsForChangedIds:
+    def test_retorna_lista_vazia_para_lista_vazia(self):
+        resultado = u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [], "tmp-bucket", "movie")
+        assert resultado == []
 
-    def test_resolve_years_dos_ids_encontrados(self):
-        df = pd.DataFrame({"id": [1, 2], "year": ["2020", "2021"]})
+    def test_retorna_ids_encontrados_na_tabela_discover(self):
+        df = pd.DataFrame({
+            "id": [1, 2],
+            "years": [["2020"], ["2021"]],
+            "year_count": [1, 1],
+        })
         with patch("src.utils.wr.athena.read_sql_query", return_value=df):
-            resultado = u.resolve_years_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
-        assert resultado == {1: "2020", 2: "2021"}
+            resultado = u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
+        assert sorted(resultado) == [1, 2]
 
     def test_descarta_ids_nao_encontrados_e_grava_no_s3(self):
-        df = pd.DataFrame({"id": [1], "year": ["2020"]})
+        df = pd.DataFrame({"id": [1], "years": [["2020"]], "year_count": [1]})
         with (
             patch("src.utils.wr.athena.read_sql_query", return_value=df),
             patch("src.utils._write_json_to_s3") as mock_write,
         ):
-            resultado = u.resolve_years_for_changed_ids("db", "tb_discover", [1, 2, 3], "tmp-bucket", "movie")
+            resultado = u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [1, 2, 3], "tmp-bucket", "movie")
 
-        assert resultado == {1: "2020"}
+        assert resultado == [1]
         mock_write.assert_called_once()
         bucket_arg, key_arg, data_arg = mock_write.call_args[0]
         assert bucket_arg == "tmp-bucket"
@@ -1570,26 +1611,69 @@ class TestResolveYearsForChangedIds:
         assert sorted(data_arg["discarded_ids"]) == [2, 3]
 
     def test_nao_grava_arquivo_de_descartados_quando_todos_encontrados(self):
-        df = pd.DataFrame({"id": [1, 2], "year": ["2020", "2020"]})
+        df = pd.DataFrame({"id": [1, 2], "years": [["2020"], ["2020"]], "year_count": [1, 1]})
         with (
             patch("src.utils.wr.athena.read_sql_query", return_value=df),
             patch("src.utils._write_json_to_s3") as mock_write,
         ):
-            u.resolve_years_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
+            u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
 
         mock_write.assert_not_called()
 
     def test_faz_chunking_da_clausula_in(self):
-        df_vazio = pd.DataFrame({"id": [], "year": []})
+        df_vazio = pd.DataFrame({"id": [], "years": [], "year_count": []})
         with (
             patch("src.utils.wr.athena.read_sql_query", return_value=df_vazio) as mock_athena,
             patch("src.utils._write_json_to_s3"),
         ):
-            u.resolve_years_for_changed_ids(
+            u.resolve_matched_ids_for_changed_ids(
                 "db", "tb_discover", list(range(5)), "tmp-bucket", "movie", chunk_size=2
             )
 
         assert mock_athena.call_count == 3  # 5 ids em lotes de 2 -> 3 chamadas
+
+    def test_grava_ids_ambiguos_quando_id_tem_mais_de_um_year_no_discover(self):
+        df = pd.DataFrame({
+            "id": [1],
+            "years": [["2020", "2021"]],
+            "year_count": [2],
+        })
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df),
+            patch("src.utils._write_json_to_s3") as mock_write,
+        ):
+            u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [1], "tmp-bucket", "movie")
+
+        mock_write.assert_called_once()
+        bucket_arg, key_arg, data_arg = mock_write.call_args[0]
+        assert bucket_arg == "tmp-bucket"
+        assert "discover_years_ambiguos_" in key_arg
+        assert data_arg["ambiguous_ids_years"] == {"1": ["2020", "2021"]}
+
+    def test_nao_grava_arquivo_de_ambiguos_quando_nenhum_id_tem_mais_de_um_year(self):
+        df = pd.DataFrame({"id": [1, 2], "years": [["2020"], ["2021"]], "year_count": [1, 1]})
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df),
+            patch("src.utils._write_json_to_s3") as mock_write,
+        ):
+            u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
+
+        mock_write.assert_not_called()
+
+    def test_id_ambiguo_ainda_aparece_uma_unica_vez_na_lista_de_matched_ids(self):
+        df = pd.DataFrame({
+            "id": [1, 2],
+            "years": [["2020", "2021"], ["2022"]],
+            "year_count": [2, 1],
+        })
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df),
+            patch("src.utils._write_json_to_s3"),
+        ):
+            resultado = u.resolve_matched_ids_for_changed_ids("db", "tb_discover", [1, 2], "tmp-bucket", "movie")
+
+        assert sorted(resultado) == [1, 2]
+        assert resultado.count(1) == 1
 
 
 class TestProcessChangedIds:
@@ -1609,14 +1693,14 @@ class TestProcessChangedIds:
         return base
 
     def test_retorna_lista_vazia_se_nenhum_id_encontrado(self):
-        with patch("src.utils.resolve_years_for_changed_ids", return_value={}):
+        with patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[]):
             resultado = u.process_changed_ids(**self._kwargs())
         assert resultado == []
 
     def test_chama_collect_and_write_details_com_todos_os_ids_resolvidos(self):
         with (
-            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020", 2: "2021"}),
-            patch("src.utils.collect_and_write_details") as mock_details,
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020", 2: "2021"}) as mock_details,
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.repair_details_duplicates"),
             patch("src.utils.repair_watch_providers_duplicates"),
@@ -1630,8 +1714,8 @@ class TestProcessChangedIds:
 
     def test_agrupa_watch_providers_por_year(self):
         with (
-            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020", 2: "2021", 3: "2020"}),
-            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2, 3]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020", 2: "2021", 3: "2020"}),
             patch("src.utils.collect_and_write_watch_providers") as mock_wp,
             patch("src.utils.repair_details_duplicates"),
             patch("src.utils.repair_watch_providers_duplicates"),
@@ -1644,8 +1728,8 @@ class TestProcessChangedIds:
 
     def test_repara_duplicatas_por_ano_afetado_e_retorna_anos(self):
         with (
-            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020", 2: "2021"}),
-            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020", 2: "2021"}),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.repair_details_duplicates") as mock_repair_details,
             patch("src.utils.repair_watch_providers_duplicates") as mock_repair_wp,
@@ -1658,8 +1742,8 @@ class TestProcessChangedIds:
 
     def test_nao_chama_repair_discover_duplicates(self):
         with (
-            patch("src.utils.resolve_years_for_changed_ids", return_value={1: "2020"}),
-            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020"}),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.repair_details_duplicates"),
             patch("src.utils.repair_watch_providers_duplicates"),
@@ -1668,6 +1752,74 @@ class TestProcessChangedIds:
             u.process_changed_ids(**self._kwargs(changed_ids=[1]))
 
         mock_repair_discover.assert_not_called()
+
+    def test_watch_providers_usa_year_retornado_por_collect_and_write_details_nao_do_discover(self):
+        with (
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020"}),
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            resultado = u.process_changed_ids(**self._kwargs(changed_ids=[1]))
+
+        mock_wp.assert_called_once()
+        assert mock_wp.call_args.kwargs["year"] == "2020"
+        assert resultado == ["2020"]
+
+    def test_ids_sem_year_apos_collect_and_write_details_sao_excluidos_de_watch_providers_e_affected_years(self):
+        with (
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020"}),  # id 2 falhou na API
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            resultado = u.process_changed_ids(**self._kwargs())
+
+        mock_wp.assert_called_once()
+        assert mock_wp.call_args.kwargs["ids"] == [1]
+        assert mock_wp.call_args.kwargs["year"] == "2020"
+        assert resultado == ["2020"]
+
+    def test_retorna_lista_vazia_quando_collect_and_write_details_nao_retorna_nenhum_year(self):
+        with (
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch("src.utils.collect_and_write_details", return_value={}),
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.repair_details_duplicates") as mock_repair_details,
+            patch("src.utils.repair_watch_providers_duplicates") as mock_repair_wp,
+        ):
+            resultado = u.process_changed_ids(**self._kwargs())
+
+        assert resultado == []
+        mock_wp.assert_not_called()
+        mock_repair_details.assert_not_called()
+        mock_repair_wp.assert_not_called()
+
+    def test_ambiguidade_de_year_no_discover_nao_afeta_o_year_usado_para_watch_providers(self):
+        """Reproduz o cenario do bug original: o id tem 2 years distintos na tabela
+        discover (cross-partition), mas o year usado para watch_providers/affected_years
+        deve vir sempre de collect_and_write_details (API), nunca do discover."""
+        df_discover_ambiguo = pd.DataFrame({
+            "id": [1],
+            "years": [["2020", "2021"]],
+            "year_count": [2],
+        })
+
+        with (
+            patch("src.utils.wr.athena.read_sql_query", return_value=df_discover_ambiguo),
+            patch("src.utils._write_json_to_s3"),
+            patch("src.utils.collect_and_write_details", return_value={1: "2019"}),
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            resultado = u.process_changed_ids(**self._kwargs(changed_ids=[1]))
+
+        mock_wp.assert_called_once()
+        assert mock_wp.call_args.kwargs["year"] == "2019"
+        assert resultado == ["2019"]
 
 
 # ---------------------------------------------------------------------------
