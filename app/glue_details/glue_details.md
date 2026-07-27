@@ -47,6 +47,8 @@ Este modo **nunca** escreve na tabela discover (`repair_discover_duplicates` nã
 
 **Limitação conhecida:** a duplicação cross-partition da própria tabela `discover` (mesmo id em duas partições `year` ao mesmo tempo) não é corrigida por este fluxo — apenas deixa de ser um risco de dado aqui, já que o `year` da discover nunca decide partição. O arquivo `discover_years_ambiguos_{data}.json` existe para permitir quantificar a frequência real do problema antes de investir num merge manual em `glue_etl` para a tabela discover.
 
+**Nota:** o piso de `year >= 2000` do rotation refresh/backfill (`app/lambda_api/main.py`) rege apenas o que é buscado via `/discover`. `details`/`watch_providers` podem legitimamente ter `year < 2000` para um id descoberto sob um year mais recente cujo `release_date`/`first_air_date` real a TMDB corrigiu depois — não é dado incorreto, é o `year` real da API prevalecendo sobre o year de descoberta (mesma regra de todo o modo changes).
+
 ## Entradas e saídas
 
 | | Descrição |
