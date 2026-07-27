@@ -22,7 +22,7 @@ roteamento rápido em uma linha; este explica quando exatamente cada skill entra
 | [especialista-doc-oficial-codigo](#especialista-doc-oficial-codigo) | Gate: consultar doc oficial de Python/SQL/bibliotecas de dados antes de implementar |
 | [especialista-api-tmdb](#especialista-api-tmdb) | Gate: consultar doc oficial da API do TMDB antes de mudar endpoint/parâmetro |
 | [especialista-documentacao](#especialista-documentacao) | Templates de docs por módulo/teste/skill e ciclo de vida das skills |
-| [revisao-pos-mudanca-codigo](#revisao-pos-mudanca-codigo) | Checklist obrigatório pós-mudança: testes, `.md`, docstrings, type hints, e ponte para as skills de qualidade/teste/doc |
+| [revisao-pos-mudanca-codigo](#revisao-pos-mudanca-codigo) | Checklist obrigatório pós-mudança: testes, `.md`, docstrings, type hints, permissão IAM, e ponte para as skills de qualidade/teste/doc/IAM |
 | [especialista-arquitetura-aws](#especialista-arquitetura-aws) | Qual serviço AWS escolher para uma necessidade nova |
 | [especialista-finops-aws](#especialista-finops-aws) | Custo x benefício dos recursos AWS já escolhidos |
 | [especialista-infraestrutura-terraform](#especialista-infraestrutura-terraform) | Argumentos exatos de recurso Terraform por serviço AWS |
@@ -141,13 +141,17 @@ dados já coletados).
 ### revisao-pos-mudanca-codigo
 
 **O que é:** o checklist mecânico obrigatório de "o que verificar" depois de qualquer mudança de código —
-testes, `.md` por módulo, docstrings e type hints — com ponte explícita, em cada item, para a skill irmã que
-ensina *como* cumprir aquele item bem (`especialista-engenharia-dados-app`, `especialista-legibilidade-codigo`,
-`especialista-testes-app`, `especialista-documentacao`).
+testes, `.md` por módulo, docstrings, type hints e (quando a mudança chama um serviço AWS novo/diferente)
+permissão IAM — com ponte explícita, em cada item, para a skill irmã que ensina *como* cumprir aquele item bem
+(`especialista-engenharia-dados-app`, `especialista-legibilidade-codigo`, `especialista-testes-app`,
+`especialista-documentacao`, `especialista-privilegio-minimo`).
 
 **Quando usar:**
 - Sempre ao terminar uma alteração em `app/`, `test/` ou `scripts/`, **antes** de reportar a tarefa como
   concluída.
+- O item de IAM do checklist só se aplica quando a mudança introduz uma chamada nova/diferente a um serviço AWS
+  (novo bucket/prefixo S3, tabela do Glue Catalog, client/action boto3 ou awswrangler, role diferente) — skip em
+  refactor puro ou transformação de dado já lido.
 
 ---
 

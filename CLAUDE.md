@@ -50,7 +50,7 @@ Consulte para entender o projeto em profundidade:
 
 - **projeto-filmes-aws** — Arquitetura do pipeline, camadas de dados, tabelas, variáveis de ambiente, convenções
 - **estrutura-projeto** — Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes
-- **revisao-pos-mudanca-codigo** — Checklist obrigatório pós-mudança: testes, arquivos `.md`, docstrings, type hints, e ponte para as skills de qualidade/teste/doc que guiam a mudança
+- **revisao-pos-mudanca-codigo** — Checklist obrigatório pós-mudança: testes, arquivos `.md`, docstrings, type hints, permissão IAM quando a mudança chama serviço AWS novo, e ponte para as skills de qualidade/teste/doc/IAM que guiam a mudança
 - **especialista-doc-oficial-aws** — Gate de consulta à fonte oficial da AWS e do Terraform (docs de serviço, registry dos providers `aws`/`archive`, Terraform core, IAM Service Authorization Reference) antes de decisões de infraestrutura/serviço/permissão
 - **especialista-doc-oficial-codigo** — Gate de consulta à documentação oficial de Python/SQL/bibliotecas de dados (pandas, PySpark, awswrangler, boto3) e do framework de testes (pytest, unittest.mock) antes de decisões de implementação em `app/` e `test/`
 - **especialista-documentacao** — Templates de docs por módulo/teste/skill, convenção de onde cada coisa mora, e quando criar/atualizar/juntar uma skill
