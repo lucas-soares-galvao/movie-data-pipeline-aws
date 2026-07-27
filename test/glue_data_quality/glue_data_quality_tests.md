@@ -95,6 +95,17 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 | `test_passes_each_year_in_order_to_evaluate_and_write` | Mesma ordem é preservada nas chamadas a `evaluate_data_quality` e `write_results_to_s3` |
 | `test_single_year_without_comma_still_loops_once` | `YEAR` sem vírgula (ciclo normal) continua chamando tudo apenas 1 vez — sem mudança de comportamento |
 
+### `TestSkipsMissingPartition`
+
+`dynamic_frame` vazio (partição inexistente no catálogo, ex.: `watch_providers` que nunca escreveu aquele `year` — ver `glue_data_quality.md`, seção "Partição inexistente ou vazia") não deve derrubar o job — só pular a avaliação desse `year`.
+
+| Teste | O que verifica |
+|---|---|
+| `test_pula_avaliacao_quando_particao_esta_vazia` | `dynamic_frame.count() == 0` faz `evaluate_data_quality`/`write_results_to_s3`/`notify_failed_outcomes` não serem chamados |
+| `test_loga_warning_quando_pula_particao_vazia` | Um `logger.warning` menciona a tabela e o `year` pulados |
+| `test_pula_apenas_o_ano_sem_dados_no_multi_year` | Em `YEAR="2020,2021,2023"` com um `dynamic_frame` vazio no meio, `read_table_from_catalog` ainda é chamado 3x, mas `evaluate_data_quality` só 2x (`2020` e `2023`) |
+| `test_ano_unico_sem_virgula_com_particao_vazia_tambem_pula` | `YEAR` sem vírgula (ciclo normal) também pula quando a partição está vazia |
+
 ## Casos de teste — `test_utils.py`
 
 ### `TestGetParametersGlue`
@@ -130,6 +141,13 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 | `test_no_push_down_predicate_when_year_is_none` | Sem `year`, `push_down_predicate` não é passado (tabelas sem partição) |
 | `test_push_down_predicate_when_year_is_provided` | Com `year`, `push_down_predicate` filtra apenas a partição informada (`year = '2019'`) |
 | `test_push_down_predicate_uses_correct_year_value` | O predicado contém exatamente o ano passado como argumento |
+
+### `TestHasData`
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_true_quando_dynamic_frame_tem_registros` | `count() > 0` → `True` |
+| `test_retorna_false_quando_dynamic_frame_esta_vazio` | `count() == 0` → `False` |
 
 ### `TestEvaluateDataQuality`
 

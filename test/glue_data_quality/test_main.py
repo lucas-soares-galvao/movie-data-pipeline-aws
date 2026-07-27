@@ -18,28 +18,42 @@ _BASE_ARGS = {
 }
 
 
-def _run_main(args=None, ruleset="Rules = []", dynamic_frame=None, df_results=None):
+def _run_main(
+    args=None, ruleset="Rules = []", dynamic_frame=None, df_results=None,
+    read_table_side_effect=None,
+):
     """
     Executa main() com todos os colaboradores simulados.
+
+    Por padrão, o dynamic_frame simulado tem count()=1 (partição com dados) para não
+    exercitar o skip de has_data() em testes que não são sobre esse comportamento.
+    read_table_side_effect permite simular um dynamic_frame diferente por chamada
+    (necessário para testar runs multi-year com um year sem dados no meio dos outros).
 
     Retorna um dicionário com os mocks para que cada teste possa inspecionar
     as chamadas realizadas.
     """
     args = args or _BASE_ARGS
-    dynamic_frame = dynamic_frame or MagicMock()
+    if dynamic_frame is None:
+        dynamic_frame = MagicMock()
+        dynamic_frame.count.return_value = 1
     df_results = df_results or MagicMock()
 
     sc_mock = MagicMock()
     glue_context_mock = MagicMock()
+
+    read_table_kwargs = (
+        {"side_effect": read_table_side_effect}
+        if read_table_side_effect is not None
+        else {"return_value": dynamic_frame}
+    )
 
     with (
         patch.object(m, "SparkContext") as mock_sc_cls,
         patch.object(m, "GlueContext") as mock_gc_cls,
         patch.object(m, "get_parameters_glue", return_value=args),
         patch.object(m, "get_ruleset", return_value=ruleset) as mock_ruleset,
-        patch.object(
-            m, "read_table_from_catalog", return_value=dynamic_frame
-        ) as mock_read,
+        patch.object(m, "read_table_from_catalog", **read_table_kwargs) as mock_read,
         patch.object(m, "evaluate_data_quality", return_value=df_results) as mock_eval,
         patch.object(m, "write_results_to_s3") as mock_write,
         patch.object(m, "notify_failed_outcomes") as mock_notify,
@@ -133,6 +147,7 @@ class TestEvaluateDataQualityCall:
     def test_calls_evaluate_with_dynamic_frame_from_catalog(self):
         """evaluate_data_quality deve receber o DynamicFrame lido do Catalog."""
         dynamic_frame = MagicMock()
+        dynamic_frame.count.return_value = 1
         mocks = _run_main(dynamic_frame=dynamic_frame)
         dynamic_frame_arg = mocks["mock_eval"].call_args[0][1]
         assert dynamic_frame_arg is dynamic_frame
@@ -274,3 +289,50 @@ class TestMultiYearBatching:
 
         assert mocks["mock_read"].call_count == 1
         assert mocks["mock_read"].call_args.args[3] == "2002"
+
+
+class TestSkipsMissingPartition:
+    """dynamic_frame vazio (partição inexistente no catálogo, ex.: watch_providers que
+    nunca escreveu aquele year) não deve derrubar o job — só pular a avaliação desse year."""
+
+    def _empty_frame(self):
+        frame = MagicMock()
+        frame.count.return_value = 0
+        return frame
+
+    def test_pula_avaliacao_quando_particao_esta_vazia(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_watch_providers_tv_dev", "YEAR": "1998"}
+        mocks = _run_main(args=args, dynamic_frame=self._empty_frame())
+
+        mocks["mock_eval"].assert_not_called()
+        mocks["mock_write"].assert_not_called()
+        mocks["mock_notify"].assert_not_called()
+
+    def test_loga_warning_quando_pula_particao_vazia(self, caplog):
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_watch_providers_tv_dev", "YEAR": "1998"}
+        with caplog.at_level("WARNING"):
+            _run_main(args=args, dynamic_frame=self._empty_frame())
+
+        assert any(
+            "tb_tmdb_watch_providers_tv_dev" in record.message and "1998" in record.message
+            for record in caplog.records
+        )
+
+    def test_pula_apenas_o_ano_sem_dados_no_multi_year(self):
+        frame_ok = MagicMock()
+        frame_ok.count.return_value = 5
+        frame_vazio = self._empty_frame()
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_watch_providers_tv_dev", "YEAR": "2020,2021,2023"}
+
+        mocks = _run_main(args=args, read_table_side_effect=[frame_ok, frame_vazio, frame_ok])
+
+        assert mocks["mock_read"].call_count == 3
+        assert mocks["mock_eval"].call_count == 2
+        years_evaluated = [c.args[5] for c in mocks["mock_eval"].call_args_list]
+        assert years_evaluated == ["2020", "2023"]
+
+    def test_ano_unico_sem_virgula_com_particao_vazia_tambem_pula(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": "tb_tmdb_discover_movie_dev", "YEAR": "2002"}
+        mocks = _run_main(args=args, dynamic_frame=self._empty_frame())
+
+        mocks["mock_eval"].assert_not_called()
