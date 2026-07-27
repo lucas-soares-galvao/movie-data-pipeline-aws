@@ -58,7 +58,7 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 | `test_entra_no_ramo_changes_e_nao_chama_fetch_ids_from_sot` | O fluxo `YEAR`/`END_YEAR` normal (`fetch_ids_from_sot`) não é executado |
 | `test_chama_fetch_ids_from_changes_file_com_o_path_correto` | `fetch_ids_from_changes_file` é chamado com o `CHANGES_S3_PATH` recebido |
 | `test_chama_process_changed_ids_com_ids_e_tabelas_corretas` | `process_changed_ids` recebe os IDs, tabelas e `translate_provider` corretos |
-| `test_aciona_dq_para_cada_ano_afetado` | Glue DQ é acionado para `TABLE_DETAILS` e `TABLE_WATCH_PROVIDERS` de cada ano retornado por `process_changed_ids` |
+| `test_aciona_dq_uma_vez_por_tabela_com_anos_agrupados` | Glue DQ é acionado só 1x por tabela (`TABLE_DETAILS`/`TABLE_WATCH_PROVIDERS`), com `YEAR` sendo todos os anos de `process_changed_ids` juntos numa string separada por vírgula (não 1 disparo por ano) |
 | `test_nao_aciona_dq_quando_nenhum_ano_afetado` | Nenhum DQ é acionado quando `process_changed_ids` retorna lista vazia |
 | `test_nao_aciona_agg_nem_repair_discover` | Glue AGG e `repair_discover_duplicates` **não** são acionados para `media_type="movie"`, mesmo com anos afetados |
 | `test_aciona_agg_quando_tv_e_ha_anos_afetados` | Glue AGG é acionado quando `media_type="tv"` e `process_changed_ids` retorna pelo menos um ano afetado |

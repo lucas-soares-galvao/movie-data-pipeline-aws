@@ -84,6 +84,17 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 | `test_calls_write_with_year_when_in_args` | `year` correto para tabelas discover |
 | `test_write_is_called_exactly_once` | `write_results_to_s3` é chamado exatamente uma vez por execução |
 
+### `TestMultiYearBatching`
+
+`YEAR` separado por vírgula (modo changes do `glue_details`, que agrupa vários anos afetados num único disparo de job) faz `main()` iterar a leitura/avaliação/escrita/notificação uma vez por ano, dentro do mesmo `SparkContext`.
+
+| Teste | O que verifica |
+|---|---|
+| `test_loops_once_per_year_when_year_has_comma` | `read_table_from_catalog`, `evaluate_data_quality`, `write_results_to_s3` e `notify_failed_outcomes` são cada um chamados 1x por ano em `YEAR="2020,2021,2023"` (3x) |
+| `test_passes_each_year_in_order_to_read_table` | Cada ano de `YEAR` é passado a `read_table_from_catalog` na ordem em que aparece na string |
+| `test_passes_each_year_in_order_to_evaluate_and_write` | Mesma ordem é preservada nas chamadas a `evaluate_data_quality` e `write_results_to_s3` |
+| `test_single_year_without_comma_still_loops_once` | `YEAR` sem vírgula (ciclo normal) continua chamando tudo apenas 1 vez — sem mudança de comportamento |
+
 ## Casos de teste — `test_utils.py`
 
 ### `TestGetParametersGlue`

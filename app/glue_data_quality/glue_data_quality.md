@@ -12,16 +12,17 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 1. Recebe argumentos do job: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `OUTPUT_TABLE`, `YEAR` (quando aplicável)
 2. Busca o ruleset DQDL correspondente à tabela em `rulesets_dq.py` (mapeado por nome de tabela)
-3. Lê a tabela do Glue Catalog via Spark, aplicando filtro de partição por `year` quando disponível
-4. Avalia as regras usando o motor nativo do **AWS Glue Data Quality** (DQDL)
-5. Grava os resultados como Parquet na camada DQ, particionado por `source_table` e `year`
-6. Se qualquer regra falhar: envia notificação via **SNS** (e-mail configurado por variável)
+3. Para cada ano em `YEAR` (ver "Múltiplos anos por job run" abaixo): lê a tabela do Glue Catalog via Spark, aplicando filtro de partição por `year`; avalia as regras usando o motor nativo do **AWS Glue Data Quality** (DQDL); grava os resultados como Parquet na camada DQ, particionado por `source_table` e `year`; se qualquer regra falhar, envia notificação via **SNS** (e-mail configurado por variável)
+
+### Múltiplos anos por job run
+
+`YEAR` pode ser um único valor (`"2025"`, ciclo normal), ausente (tabelas sem partição por ano) ou uma **lista separada por vírgula** (`"2020,2021,2023"`) — usado pelo modo changes do `glue_details`, que agrupa todos os anos afetados por uma janela de mudanças da Changes API num único disparo de job, em vez de um disparo por ano. `main()` faz `YEAR.split(",")` e itera a leitura/avaliação/escrita/notificação uma vez por ano, dentro do mesmo `SparkContext` — preserva a mesma granularidade de resultado por partição (cada ano ainda gera sua própria avaliação e escrita), só paga o overhead fixo de startup do Spark uma vez em vez de N vezes.
 
 ## Entradas e saídas
 
 | | Descrição |
 |---|---|
-| **Entrada** | Argumentos: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `OUTPUT_TABLE`, `YEAR` (opcional — apenas tabelas com partição por ano) |
+| **Entrada** | Argumentos: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `OUTPUT_TABLE`, `YEAR` (opcional — apenas tabelas com partição por ano; pode ser um único ano ou uma lista separada por vírgula) |
 | **Leitura** | Glue Catalog (tabela a ser validada na SOT ou SPEC) |
 | **Escrita** | S3 DQ — resultados em Parquet particionados por `source_table` e `year` |
 | **Notifica** | SNS → e-mail configurado para o job (em caso de falha) |

@@ -453,7 +453,7 @@ class TestChangesMode:
                 translate_provider="aws",
             )
 
-    def test_aciona_dq_para_cada_ano_afetado(self):
+    def test_aciona_dq_uma_vez_por_tabela_com_anos_agrupados(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
@@ -463,11 +463,9 @@ class TestChangesMode:
         ):
             m.main()
             dq_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "dq-job"]
-            assert len(dq_calls) == 4
-            assert call("dq-job", TABLE_NAME="tb_tmdb_details_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2020") in dq_calls
-            assert call("dq-job", TABLE_NAME="tb_tmdb_watch_providers_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2020") in dq_calls
-            assert call("dq-job", TABLE_NAME="tb_tmdb_details_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2021") in dq_calls
-            assert call("dq-job", TABLE_NAME="tb_tmdb_watch_providers_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2021") in dq_calls
+            assert len(dq_calls) == 2
+            assert call("dq-job", TABLE_NAME="tb_tmdb_details_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2020,2021") in dq_calls
+            assert call("dq-job", TABLE_NAME="tb_tmdb_watch_providers_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2020,2021") in dq_calls
 
     def test_nao_aciona_dq_quando_nenhum_ano_afetado(self):
         with (

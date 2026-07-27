@@ -39,31 +39,37 @@ def main() -> None:
     environment              = args["ENVIRONMENT"]
     sns_topic_arn_dq_metrics = args["SNS_TOPIC_ARN_DQ_METRICS"]
     output_table             = args["OUTPUT_TABLE"]
-    year = args.get("YEAR")  # None para tabelas sem partição (gêneros, configurações)
+    # YEAR pode ser None (tabela sem partição), um único ano ("2025") ou uma lista
+    # separada por vírgula ("2020,2021,2023") — o modo changes do glue_details agrupa
+    # todos os anos afetados num único disparo para pagar o overhead de startup do
+    # Spark uma vez só, em vez de um job run por ano.
+    year_arg = args.get("YEAR")
+    years: list[str | None] = year_arg.split(",") if year_arg else [None]
 
     logger.info(
-        f"Iniciando Data Quality | tabela: '{table_name}' | banco: '{database}'"
+        f"Iniciando Data Quality | tabela: '{table_name}' | banco: '{database}' | anos: {years}"
     )
 
     ruleset = get_ruleset(table_name, environment)
 
-    # Para tabelas com partição por ano, push_down_predicate lê só o ano atual.
-    dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)
+    for year in years:
+        # Para tabelas com partição por ano, push_down_predicate lê só o ano atual.
+        dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)
 
-    df_results = evaluate_data_quality(
-        glue_context, dynamic_frame, ruleset, table_name, database, year
-    )
+        df_results = evaluate_data_quality(
+            glue_context, dynamic_frame, ruleset, table_name, database, year
+        )
 
-    write_results_to_s3(
-        df_results,
-        s3_bucket_data_quality,
-        table_name,
-        database_results,
-        output_table,
-        year,
-    )
+        write_results_to_s3(
+            df_results,
+            s3_bucket_data_quality,
+            table_name,
+            database_results,
+            output_table,
+            year,
+        )
 
-    notify_failed_outcomes(df_results, table_name, sns_topic_arn_dq_metrics, environment, year)
+        notify_failed_outcomes(df_results, table_name, sns_topic_arn_dq_metrics, environment, year)
 
     logger.info("Job Glue Data Quality finalizado com sucesso!")
 
