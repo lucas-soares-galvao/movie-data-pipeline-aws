@@ -12,11 +12,15 @@ Garante que dados problemáticos (IDs nulos, duplicatas, notas fora do intervalo
 
 1. Recebe argumentos do job: `TABLE_NAME`, `DATABASE`, `DATABASE_RESULTS`, `S3_BUCKET_DATA_QUALITY`, `SNS_TOPIC_ARN_DQ_METRICS`, `ENVIRONMENT`, `OUTPUT_TABLE`, `YEAR` (quando aplicável)
 2. Busca o ruleset DQDL correspondente à tabela em `rulesets_dq.py` (mapeado por nome de tabela)
-3. Para cada ano em `YEAR` (ver "Múltiplos anos por job run" abaixo): lê a tabela do Glue Catalog via Spark, aplicando filtro de partição por `year`; avalia as regras usando o motor nativo do **AWS Glue Data Quality** (DQDL); grava os resultados como Parquet na camada DQ, particionado por `source_table` e `year`; se qualquer regra falhar, envia notificação via **SNS** (e-mail configurado por variável)
+3. Para cada ano em `YEAR` (ver "Múltiplos anos por job run" abaixo): lê a tabela do Glue Catalog via Spark, aplicando filtro de partição por `year`; se a partição não tiver dados (ver "Partição inexistente ou vazia" abaixo), pula esse ano; senão, avalia as regras usando o motor nativo do **AWS Glue Data Quality** (DQDL); grava os resultados como Parquet na camada DQ, particionado por `source_table` e `year`; se qualquer regra falhar, envia notificação via **SNS** (e-mail configurado por variável)
 
 ### Múltiplos anos por job run
 
 `YEAR` pode ser um único valor (`"2025"`, ciclo normal), ausente (tabelas sem partição por ano) ou uma **lista separada por vírgula** (`"2020,2021,2023"`) — usado pelo modo changes do `glue_details`, que agrupa todos os anos afetados por uma janela de mudanças da Changes API num único disparo de job, em vez de um disparo por ano. `main()` faz `YEAR.split(",")` e itera a leitura/avaliação/escrita/notificação uma vez por ano, dentro do mesmo `SparkContext` — preserva a mesma granularidade de resultado por partição (cada ano ainda gera sua própria avaliação e escrita), só paga o overhead fixo de startup do Spark uma vez em vez de N vezes.
+
+### Partição inexistente ou vazia
+
+No modo changes, o `year` de cada tabela vem do dado real gravado por `glue_details` (release_date/first_air_date via API, sem nenhum floor de ano — ver `glue_details.md`, seção "Modo changes"), não de um argumento fixo como no ciclo normal. Isso significa que o job pode ser acionado para um `year` cuja partição nunca foi escrita numa tabela específica — ex.: `watch_providers` não grava nada quando nenhum id do grupo tem provedores de streaming no Brasil, mas esse `year` ainda entra na lista de anos afetados. Quando isso acontece, `read_table_from_catalog` devolve um `DynamicFrame` vazio (sem partição correspondente no catálogo), e converter esse frame vazio para Spark DataFrame (`.toDF()`) resultaria num schema sem colunas — qualquer filtro subsequente (`col("year")`) quebraria com `UNRESOLVED_COLUMN`. Por isso, antes de avaliar, `main()` chama `has_data(dynamic_frame)`: se vazio, loga um `warning` e pula esse ano (`continue`) — sem gravar resultado nem notificar, mas sem derrubar o job nem os demais anos do mesmo run multi-year.
 
 ## Entradas e saídas
 
@@ -73,6 +77,7 @@ Rules = [
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job |
 | `get_ruleset(table_name, environment)` | Retorna o DQDL ruleset correspondente ao nome da tabela |
 | `read_table_from_catalog(glue_context, database, table_name, year)` | Lê tabela do Catalog com pushdown de partição por ano |
+| `has_data(dynamic_frame)` | Verifica se o `DynamicFrame` tem ao menos um registro (`count() > 0`) — usado para pular graciosamente um `year` cuja partição não existe/está vazia, em vez de quebrar em `UNRESOLVED_COLUMN` (ver "Partição inexistente ou vazia" acima) |
 | `evaluate_data_quality(glue_context, dynamic_frame, ruleset, table_name, database, year)` | Executa avaliação das regras via motor Glue DQ e retorna DataFrame com resultados e colunas de contexto |
 | `write_results_to_s3(df, s3_bucket_data_quality, source_table_name, database, output_table, year)` | Salva resultados como Parquet na camada DQ |
 | `notify_failed_outcomes(df, table_name, sns_topic_arn, environment, year)` | Envia e-mail via SNS se alguma regra falhou |

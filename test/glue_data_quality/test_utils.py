@@ -5,6 +5,7 @@ from src.utils import (
     evaluate_data_quality,
     get_parameters_glue,
     get_ruleset,
+    has_data,
     notify_failed_outcomes,
     read_table_from_catalog,
     write_results_to_s3,
@@ -200,6 +201,18 @@ class TestReadTableFromCatalog:
 
         _, kwargs = glue_context.create_dynamic_frame.from_catalog.call_args
         assert "2023" in kwargs["push_down_predicate"]
+
+
+class TestHasData:
+    def test_retorna_true_quando_dynamic_frame_tem_registros(self):
+        dynamic_frame = MagicMock()
+        dynamic_frame.count.return_value = 5
+        assert has_data(dynamic_frame) is True
+
+    def test_retorna_false_quando_dynamic_frame_esta_vazio(self):
+        dynamic_frame = MagicMock()
+        dynamic_frame.count.return_value = 0
+        assert has_data(dynamic_frame) is False
 
 
 class TestEvaluateDataQuality:

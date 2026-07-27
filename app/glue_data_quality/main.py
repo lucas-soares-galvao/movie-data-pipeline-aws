@@ -10,6 +10,7 @@ from src.utils import (
     evaluate_data_quality,
     get_parameters_glue,
     get_ruleset,
+    has_data,
     notify_failed_outcomes,
     read_table_from_catalog,
     write_results_to_s3,
@@ -55,6 +56,18 @@ def main() -> None:
     for year in years:
         # Para tabelas com partição por ano, push_down_predicate lê só o ano atual.
         dynamic_frame = read_table_from_catalog(glue_context, database, table_name, year)
+
+        # Partição inexistente ou vazia (ex.: watch_providers nunca escreveu esse year
+        # porque nenhum id do grupo tinha provedores BR) faz dynamic_frame.toDF() vir
+        # sem schema — pula esse year com warning em vez de derrubar o job inteiro
+        # (e, num run multi-year, os demais years junto com ele).
+        if not has_data(dynamic_frame):
+            logger.warning(
+                f"Nenhum dado encontrado para '{table_name}'"
+                + (f" year={year}" if year is not None else "")
+                + " — partição inexistente ou vazia. Pulando avaliação DQ."
+            )
+            continue
 
         df_results = evaluate_data_quality(
             glue_context, dynamic_frame, ruleset, table_name, database, year
