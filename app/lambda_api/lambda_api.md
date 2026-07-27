@@ -30,11 +30,11 @@ Fecha o gap de staleness em títulos de qualquer ano — não só o ano atual/an
 
 Acionado por `only_changes_tables=True` (regras EventBridge `lambda_api_movie_changes_weekly`/`..._tv_changes_weekly`, domingos, um dia inteiro depois do discover semanal de sábado — roda isolado, sem nenhum outro job Glue Details no mesmo dia, e já com o catálogo atualizado com os títulos novos da semana). Sai cedo — antes de qualquer coleta de referência/discover, já que este modo é estruturalmente diferente dos demais: não usa `/discover`, não escreve no SOR e não passa pelo Glue ETL.
 
-Fluxo: `collect_changes_data()` calcula a janela `[hoje - 8 dias, hoje]` (8 dias, não 7 — inclui o sábado da atualização anterior: contando os dois extremos, de um sábado de manhã até o sábado seguinte são 8 dias, não 7, garantindo que nenhuma mudança do sábado anterior fique de fora, ainda dentro do limite de 14 dias da Changes API), pagina `fetch_changed_ids()`, grava a lista de IDs no bucket **TEMP** (`tmdb/changes/{movie|tv}/{data}.json` — handoff efêmero, não dado a catalogar) e aciona o **Glue Details** diretamente com `CHANGES_S3_PATH` apontando para esse arquivo. O Glue Details resolve o `year` de cada ID via Athena na tabela discover e reaproveita o mesmo enriquecimento do fluxo normal — ver `app/glue_details/glue_details.md`.
+Fluxo: `collect_changes_data()` calcula a janela `[domingo passado, sábado de ontem]` (7 dias corridos, `end_date` = ontem, `start_date` = 6 dias antes — contígua com a janela da semana anterior, sem gap e sem sobreposição, ainda dentro do limite de 14 dias da Changes API), pagina `fetch_changed_ids()`, grava a lista de IDs no bucket **TEMP** (`tmdb/changes/{movie|tv}/{data}.json` — handoff efêmero, não dado a catalogar) e aciona o **Glue Details** diretamente com `CHANGES_S3_PATH` apontando para esse arquivo. O Glue Details resolve o `year` de cada ID via Athena na tabela discover e reaproveita o mesmo enriquecimento do fluxo normal — ver `app/glue_details/glue_details.md`.
 
 Cadência semanal (não diária) para economizar custo do Glue Details, que é acionado a cada execução.
 
-**Backfill manual**: `scripts/backfill_changes.py` dispara o mesmo modo sob demanda (`only_changes_tables=True`, sem parâmetros de data) — útil quando o cron semanal falha ou é pulado. A janela continua sendo sempre `[hoje - 8 dias, hoje]`, calculada por `collect_changes_data()` no momento da invocação; o script não escolhe uma janela histórica (ver `scripts/scripts.md`).
+**Backfill manual**: `scripts/backfill_changes.py` dispara o mesmo modo sob demanda (`only_changes_tables=True`, sem parâmetros de data) — útil quando o cron semanal falha ou é pulado. A janela continua sendo sempre `[domingo passado, sábado de ontem]`, calculada por `collect_changes_data()` no momento da invocação; o script não escolhe uma janela histórica (ver `scripts/scripts.md`).
 
 ### Modo rotation refresh (catálogo antigo, 1 ano por vez)
 
@@ -68,7 +68,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 | `collect_discover_data(...)` | Coleta filmes/séries populares de um ano (paginado) |
 | `collect_now_playing_data(...)` | Coleta filmes em cartaz nos cinemas no Brasil (`region=BR`, paginado), extrai datas de janela teatral e salva no S3 SOR |
 | `fetch_changed_ids(...)` | Pagina `/movie/changes` ou `/tv/changes` numa janela de data e retorna IDs únicos que mudaram |
-| `collect_changes_data(...)` | Calcula a janela `[hoje - lookback_days, hoje]`, chama `fetch_changed_ids` e grava a lista de IDs no S3 TEMP |
+| `collect_changes_data(...)` | Calcula a janela `[ontem - lookback_days, ontem]`, chama `fetch_changed_ids` e grava a lista de IDs no S3 TEMP |
 
 ## Funções compartilhadas (`shared_utils/`)
 
