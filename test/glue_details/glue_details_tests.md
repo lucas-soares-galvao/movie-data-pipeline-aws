@@ -60,7 +60,9 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 | `test_chama_process_changed_ids_com_ids_e_tabelas_corretas` | `process_changed_ids` recebe os IDs, tabelas e `translate_provider` corretos |
 | `test_aciona_dq_para_cada_ano_afetado` | Glue DQ é acionado para `TABLE_DETAILS` e `TABLE_WATCH_PROVIDERS` de cada ano retornado por `process_changed_ids` |
 | `test_nao_aciona_dq_quando_nenhum_ano_afetado` | Nenhum DQ é acionado quando `process_changed_ids` retorna lista vazia |
-| `test_nao_aciona_agg_nem_repair_discover` | Glue AGG e `repair_discover_duplicates` **não** são acionados neste modo |
+| `test_nao_aciona_agg_nem_repair_discover` | Glue AGG e `repair_discover_duplicates` **não** são acionados para `media_type="movie"`, mesmo com anos afetados |
+| `test_aciona_agg_quando_tv_e_ha_anos_afetados` | Glue AGG é acionado quando `media_type="tv"` e `process_changed_ids` retorna pelo menos um ano afetado |
+| `test_nao_aciona_agg_quando_tv_sem_anos_afetados` | Glue AGG **não** é acionado quando `media_type="tv"` mas `process_changed_ids` retorna lista vazia |
 | `test_usa_tabelas_de_tv_quando_media_type_tv` | `process_changed_ids` recebe as tabelas de TV quando `MEDIA_TYPE="tv"` |
 
 ## Casos de teste — `test_utils.py`
