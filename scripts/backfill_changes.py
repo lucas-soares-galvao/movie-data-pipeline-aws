@@ -3,10 +3,10 @@ backfill_changes.py — Dispara manualmente o modo changes da Lambda API (TMDB C
 
 Invoca a Lambda uma vez para movie e uma vez para tv com only_changes_tables=True —
 o mesmo modo que o EventBridge já aciona automaticamente todo domingo (ver
-infra/eventbridge.tf). A janela de busca é sempre [hoje - 8 dias, hoje], calculada
-internamente por collect_changes_data (app/lambda_api/src/utils.py) — este script não
-aceita nem precisa de datas. Útil para rodar sob demanda quando o cron semanal falhou
-ou foi pulado, sem esperar até o próximo domingo.
+infra/eventbridge.tf). A janela de busca é sempre [domingo passado, sábado de ontem],
+calculada internamente por collect_changes_data (app/lambda_api/src/utils.py) — este
+script não aceita nem precisa de datas. Útil para rodar sob demanda quando o cron
+semanal falhou ou foi pulado, sem esperar até o próximo domingo.
 
 Cada invocação aciona o Glue Details diretamente (sem passar por /discover nem Glue
 ETL) — ver app/lambda_api/main.py e app/glue_details/src/utils.py.
@@ -47,7 +47,7 @@ def main() -> None:
     payload_movie = {"type": "movie", "database": database_movie, "only_changes_tables": True, "translate_provider": translate_provider}
     payload_tv    = {"type": "tv",    "database": database_tv,    "only_changes_tables": True, "translate_provider": translate_provider}
 
-    logger.info("Disparando changes (janela padrão de 8 dias) — 2 invocações")
+    logger.info("Disparando changes (janela padrão de 7 dias) — 2 invocações")
 
     logger.info("[1/2] movie | changes")
     shared.invoke_lambda_sync(client, function_name, payload_movie)

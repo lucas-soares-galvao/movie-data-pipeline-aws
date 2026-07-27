@@ -33,16 +33,17 @@ Chamadas à API usam **retry com backoff exponencial e jitter** para lidar com r
 
 Acionado pela `lambda_api` (modo `only_changes_tables`, semanal aos sábados) via o argumento opcional `CHANGES_S3_PATH` — um caminho `s3://bucket/key` com a lista de IDs sinalizados pelo `/movie/changes`/`/tv/changes` do TMDB como alterados numa janela de data recente, **independente do ano de lançamento**. Fecha o gap de staleness que os modos semanal/mensal não cobrem (títulos com `year < ano_atual - 1` nunca são re-tocados por eles).
 
-`CHANGES_S3_PATH` pode se originar tanto do lookback semanal automático quanto de um disparo manual sob demanda (`scripts/backfill_changes.py`) — em ambos os casos a janela é sempre `[hoje - 8 dias, hoje]` e o consumo pelo Glue Details é idêntico, sem nenhuma mudança de código aqui (ver `app/lambda_api/lambda_api.md`, seção "Modo changes").
+`CHANGES_S3_PATH` pode se originar tanto do lookback semanal automático quanto de um disparo manual sob demanda (`scripts/backfill_changes.py`) — em ambos os casos a janela é sempre `[domingo passado, sábado de ontem]` e o consumo pelo Glue Details é idêntico, sem nenhuma mudança de código aqui (ver `app/lambda_api/lambda_api.md`, seção "Modo changes").
 
 Quando `CHANGES_S3_PATH` está presente, o `main()` entra num ramo antecipado (mesmo padrão do argumento opcional `FORCE_REFETCH`) que substitui inteiramente o fluxo `YEAR`/`END_YEAR`:
 
 1. `fetch_ids_from_changes_file()` lê a lista de IDs do S3 (gravada pela `lambda_api`)
 2. `resolve_years_for_changed_ids()` cruza os IDs com a tabela discover via Athena para descobrir o `year` de cada um — a tabela discover é a "base existente" do catálogo: IDs que não constam nela nunca cruzaram a régua de popularidade do `/discover` e são **descartados** (este fluxo nunca expande o catálogo). A lista completa de descartados (não só a contagem) é gravada em `s3://{s3_bucket_temp}/tmdb/changes/{content_type}/discarded_{data}.json` para investigação manual futura
-3. `process_changed_ids()` orquestra o refresh: chama `collect_and_write_details()` com todos os IDs resolvidos (sem year — a função já deriva o ano do `release_date`/`first_air_date` de cada resposta), agrupa os IDs por `year` para `collect_and_write_watch_providers()` (que exige `year` explícito por partição), e roda `repair_details_duplicates`/`repair_watch_providers_duplicates` por ano afetado ao final — mesma proteção contra corrida de escrita já usada no fluxo normal quando `year == end_year`
-4. Aciona o Glue Data Quality para cada ano afetado
+3. `process_changed_ids()` orquestra o refresh: chama `collect_and_write_details()` com todos os IDs resolvidos (sem year — a função já deriva o ano do `release_date`/`first_air_date` de cada resposta), agrupa os IDs por `year` para `collect_and_write_watch_providers()` (que exige `year` explícito por partição), e roda `repair_details_duplicates`/`repair_watch_providers_duplicates` por ano afetado ao final — mesma proteção contra corrida de escrita já usada no fluxo normal quando `year == end_year`. Retorna a lista de anos afetados (única, via as chaves do agrupamento por `year`)
+4. Aciona o Glue Data Quality **uma vez por tabela** (`TABLE_DETAILS`/`TABLE_WATCH_PROVIDERS`), passando todos os anos afetados juntos num único argumento `YEAR` separado por vírgula (ex.: `"2020,2021,2023"`) — não um disparo por ano. Um changes-run pode afetar dezenas de anos distintos numa única janela (edição de metadado no TMDB não correlaciona com o ano de lançamento do título); agrupar evita pagar o overhead fixo de startup do Spark do Data Quality uma vez por ano (ver `app/glue_data_quality/glue_data_quality.md`, seção "Múltiplos anos por job run")
+5. Quando `media_type == "tv"` e houve pelo menos um ano afetado, aciona o Glue AGG uma única vez — o AGG sempre recalcula a tabela SPEC por completo (`overwrite` total, nunca merge incremental), então rodá-lo aqui fecha a defasagem que existiria até o próximo ciclo normal, sem risco de corrida além do já aceito no fluxo normal (movie/tv em paralelo)
 
-Este modo **nunca** escreve na tabela discover (`repair_discover_duplicates` não é chamado) nem aciona o Glue AGG (já roda no ciclo normal semanal/mensal/anual — rodá-lo a cada execução de changes seria redundante).
+Este modo **nunca** escreve na tabela discover (`repair_discover_duplicates` não é chamado).
 
 ## Entradas e saídas
 
@@ -51,11 +52,14 @@ Este modo **nunca** escreve na tabela discover (`repair_discover_duplicates` nã
 | **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`/`END_YEAR` (opcionais — ausentes no modo changes), `DATABASE`, nomes dos buckets e jobs, `FORCE_REFETCH` (opcional, default `false`), `TRANSLATE_PROVIDER` (opcional, default `"google"` — serviço de tradução primário; o outro é usado automaticamente como fallback — ver `resolve_translate_fn` em `shared_utils.traducao`), `CHANGES_S3_PATH` (opcional — presente apenas no modo changes, ver seção acima) |
 | **Leitura** | Athena (IDs da tabela discover na SOT), Secrets Manager (chave API), API TMDB; S3 TEMP (lista de IDs mudados, modo changes) |
 | **Escrita** | S3 SOT — tabelas `tb_details_*` e `tb_watch_providers_*` como Parquet + Glue Catalog; S3 TEMP — `tmdb/changes/{content_type}/discarded_{data}.json` (IDs descartados no modo changes) |
-| **Aciona** | Glue Data Quality (por tabela gravada) + Glue AGG (apenas na última execução de séries, fluxo normal — não no modo changes) |
+| **Aciona** | Glue Data Quality (por tabela gravada; no modo changes, uma vez por tabela com todos os anos afetados agrupados em `YEAR`) + Glue AGG (ver seção abaixo) |
 
 ## Lógica de acionamento do AGG
 
-O Glue AGG só pode rodar após todos os detalhes de filmes e séries de todos os anos estarem prontos. O critério é: `media_type == "tv"` e `year == end_year`. Isso garante que o AGG seja acionado apenas uma vez, após o último job de detalhes de séries do ano mais recente.
+O Glue AGG só pode rodar após todos os detalhes de filmes e séries estarem prontos, já que ele sempre recalcula a tabela SPEC por completo (`overwrite` total). Dois gatilhos, mesma condição de fundo (`media_type == "tv"`):
+
+- **Fluxo normal**: `media_type == "tv"` e `year == end_year` — garante que o AGG rode uma única vez, após o último job de detalhes de séries do ano mais recente do ciclo.
+- **Modo changes**: `media_type == "tv"` e houve pelo menos um ano afetado — fecha a defasagem entre uma correção pontual via changes e a próxima execução do ciclo normal, sem exigir saber qual é o "último" ano da lista de afetados.
 
 ## Funções principais (`src/utils.py`)
 

@@ -1,11 +1,27 @@
 ---
-name: revisao-testes-documentacao
-description: Checklist obrigatório pós-mudança de código neste projeto — testes, arquivos .md por módulo, docstrings e type hints. Use sempre ao terminar uma alteração em app/, test/ ou scripts/, antes de reportar a tarefa como concluída. Cobre o que verificar e onde, mapeando cada camada de código à sua documentação/teste espelhado.
+name: revisao-pos-mudanca-codigo
+description: Checklist obrigatório pós-mudança de código neste projeto — testes, arquivos .md por módulo, docstrings e type hints — com ponte para as skills de qualidade/teste/documentação que devem guiar a mudança ao longo do caminho (especialista-engenharia-dados-app, especialista-legibilidade-codigo, especialista-testes-app, especialista-documentacao). Use sempre ao terminar uma alteração em app/, test/ ou scripts/, antes de reportar a tarefa como concluída. Cobre o que verificar e onde, mapeando cada camada de código à sua documentação/teste espelhado.
 ---
 
-# Skill: Revisão de Testes e Documentação Pós-Mudança
+# Skill: Revisão Pós-Mudança de Código
 
 Após **toda alteração de código** neste projeto, execute este checklist antes de considerar a tarefa concluída.
+
+---
+
+## 0. Antes do Checklist
+
+Este checklist é a conferência final — não é o único momento em que qualidade de código entra em jogo. Ao
+escrever ou alterar a lógica de negócio em si, estas duas skills já deveriam ter guiado o código antes de chegar
+aqui:
+
+- **`especialista-engenharia-dados-app`** — padrão `main.py`/`src/utils.py`, reaproveitamento de `shared_src`,
+  type hints e docstrings completos por serviço AWS.
+- **`especialista-legibilidade-codigo`** — nomes descritivos, extração de função/CTE, comentários que explicam o
+  "porquê".
+
+Se o código ainda não seguiu essas skills, corrija antes de rodar os checklists abaixo — eles verificam o
+resultado, não substituem o processo de escrever bem.
 
 ---
 
@@ -18,6 +34,9 @@ Após **toda alteração de código** neste projeto, execute este checklist ante
 - [ ] **Parâmetros novos ou removidos** de funções existentes foram refletidos nos mocks e chamadas dos testes?
 - [ ] **Fixtures em `conftest.py`** foram atualizadas se a assinatura de dependências mudou?
 - [ ] **Cobertura >= 80%** — rode `pytest --cov=app --cov-report=term-missing --cov-fail-under=80` e confirme que o gate passa
+
+> Para *como* escrever/mockar cada teste corretamente (padrão de mock por serviço AWS — Lambda, Glue
+> awswrangler, Glue PySpark, Lightsail), ver `especialista-testes-app`.
 
 ### Onde criar testes
 
@@ -44,6 +63,9 @@ Se o módulo de teste ainda não existe, crie seguindo a estrutura espelhada com
 - [ ] **Infraestrutura alterada** — os docs em `infra/docs/` (`overview.md`, `recursos.md`, `pipeline.md`, `iam.md`) estão atualizados?
 - [ ] **Skills** — se a mudança afeta arquitetura, estrutura de pastas, convenções ou fluxos do pipeline, atualize as skills em `.claude/skills/` (`projeto-filmes-aws`, `estrutura-projeto`); se afeta um domínio coberto por uma skill especialista (IAM, Terraform, testes, observabilidade/DQ, segurança, FinOps, etc.), atualize também essa skill — não só as duas gerais
 - [ ] **CLAUDE.md** — se a mudança introduz novo comando útil, nova convenção ou novo módulo, atualize o `CLAUDE.md` raiz
+
+> Para os templates e o formato esperado de cada `.md` (por módulo, por teste, por skill), ver
+> `especialista-documentacao`.
 
 ---
 

@@ -19,7 +19,7 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
 | O quê | Onde |
 |---|---|
 | Convenção de idioma (prosa PT, identificadores EN), local de cada tipo de teste, quality gate, e o **índice completo de todas as skills existentes** | `CLAUDE.md` (raiz) |
-| Checklist mecânico de "o que verificar" após qualquer mudança de código (testes, docs, docstrings, type hints) | `revisao-testes-documentacao` |
+| Checklist mecânico de "o que verificar" após qualquer mudança de código (testes, docs, docstrings, type hints) | `revisao-pos-mudanca-codigo` |
 | Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes | `estrutura-projeto` |
 | Arquitetura funcional do pipeline, tabelas, variáveis de ambiente, fluxo de eventos | `projeto-filmes-aws` |
 | Racional de domínio específico (IAM, Terraform, testes, segurança, FinOps, observabilidade/DQ, legibilidade, custo LLM, workflows GitHub) | os demais `.claude/skills/especialista-*.md` |

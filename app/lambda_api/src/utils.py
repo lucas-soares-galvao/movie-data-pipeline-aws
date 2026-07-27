@@ -320,30 +320,29 @@ def fetch_changed_ids(
 
 
 def collect_changes_data(
-    api_key: str, s3_client: S3Client, bucket: str, content_type: str, lookback_days: int = 8
+    api_key: str, s3_client: S3Client, bucket: str, content_type: str, lookback_days: int = 6
 ) -> str:
     """
-    Busca IDs mudados na janela [hoje - lookback_days, hoje] e grava a lista no S3.
+    Busca IDs mudados na janela [ontem - lookback_days, ontem] e grava a lista no S3.
 
     Cadência semanal (não diária) para economizar custo do Glue Details, que é
-    acionado a cada execução. lookback_days=8 (não 7) inclui o sábado da atualização
-    anterior: de um sábado de manhã até o sábado seguinte são 7 dias de diferença,
-    mas contando os dois extremos (sábado anterior e sábado atual) são 8 dias —
-    garante que nenhuma mudança do sábado anterior fique de fora, ainda dentro do
-    limite de 14 dias por chamada da Changes API. Reprocessar um ID já visto na
-    semana anterior é idempotente.
+    acionado a cada execução. end_date é o dia anterior à execução (não o próprio dia)
+    e lookback_days=6 fecha uma janela de 7 dias corridos: [domingo passado, sábado de
+    ontem]. Isso deixa a janela desta semana exatamente contígua com a da semana
+    seguinte — termina um dia antes de onde a próxima começa, sem gap e sem
+    sobreposição. Reprocessar um ID já visto na semana anterior é idempotente.
 
     Args:
         api_key:       Chave de API TMDB.
         s3_client:     Cliente boto3 S3.
         bucket:        Nome do bucket TEMP de destino (handoff efêmero, não SOR).
         content_type:  "movie" ou "tv".
-        lookback_days: Tamanho da janela de busca, em dias.
+        lookback_days: Tamanho da janela de busca, em dias, a partir de ontem.
 
     Returns:
         A s3_key onde a lista de IDs foi gravada.
     """
-    end_date = datetime.now(tz=timezone.utc).date()
+    end_date = datetime.now(tz=timezone.utc).date() - timedelta(days=1)
     start_date = end_date - timedelta(days=lookback_days)
 
     logger.info(f"Coletando changes de '{content_type}' de {start_date} a {end_date}...")

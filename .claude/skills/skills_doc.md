@@ -22,7 +22,7 @@ roteamento rápido em uma linha; este explica quando exatamente cada skill entra
 | [especialista-doc-oficial-codigo](#especialista-doc-oficial-codigo) | Gate: consultar doc oficial de Python/SQL/bibliotecas de dados antes de implementar |
 | [especialista-api-tmdb](#especialista-api-tmdb) | Gate: consultar doc oficial da API do TMDB antes de mudar endpoint/parâmetro |
 | [especialista-documentacao](#especialista-documentacao) | Templates de docs por módulo/teste/skill e ciclo de vida das skills |
-| [revisao-testes-documentacao](#revisao-testes-documentacao) | Checklist obrigatório pós-mudança: testes, `.md`, docstrings, type hints |
+| [revisao-pos-mudanca-codigo](#revisao-pos-mudanca-codigo) | Checklist obrigatório pós-mudança: testes, `.md`, docstrings, type hints, e ponte para as skills de qualidade/teste/doc |
 | [especialista-arquitetura-aws](#especialista-arquitetura-aws) | Qual serviço AWS escolher para uma necessidade nova |
 | [especialista-finops-aws](#especialista-finops-aws) | Custo x benefício dos recursos AWS já escolhidos |
 | [especialista-infraestrutura-terraform](#especialista-infraestrutura-terraform) | Argumentos exatos de recurso Terraform por serviço AWS |
@@ -138,10 +138,12 @@ dados já coletados).
 - Ao decidir se uma necessidade nova justifica criar uma skill, atualizar uma existente, ou mantê-la combinada
   com outra.
 
-### revisao-testes-documentacao
+### revisao-pos-mudanca-codigo
 
 **O que é:** o checklist mecânico obrigatório de "o que verificar" depois de qualquer mudança de código —
-testes, `.md` por módulo, docstrings e type hints.
+testes, `.md` por módulo, docstrings e type hints — com ponte explícita, em cada item, para a skill irmã que
+ensina *como* cumprir aquele item bem (`especialista-engenharia-dados-app`, `especialista-legibilidade-codigo`,
+`especialista-testes-app`, `especialista-documentacao`).
 
 **Quando usar:**
 - Sempre ao terminar uma alteração em `app/`, `test/` ou `scripts/`, **antes** de reportar a tarefa como
