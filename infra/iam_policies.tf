@@ -913,6 +913,25 @@ resource "aws_iam_role_policy" "glue_details_catalog" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
         ]
+      },
+      {
+        # resolve_matched_ids_for_changed_ids usa ctas_approach=True (ARRAY_AGG exige CTAS —
+        # ver comentário em glue_agg_catalog). O awswrangler cria uma tabela temporária no
+        # Glue Catalog para a CTAS e a apaga logo em seguida; sem DeleteTable a limpeza falha
+        # com AccessDeniedException. Mesmo padrão e mesmo escopo de recurso já usado por
+        # glue_agg_catalog (restrito às databases/tables deste job, não ao catalog inteiro).
+        Sid    = "DeleteCtasTempTable"
+        Effect = "Allow"
+        Action = [
+          "glue:DeleteTable",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_movie}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_tv}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_movie}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_tv}/*",
+        ]
       }
     ]
   })
