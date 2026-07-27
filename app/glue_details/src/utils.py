@@ -1311,11 +1311,13 @@ def resolve_matched_ids_for_changed_ids(
             f"SELECT id, ARRAY_AGG(DISTINCT year) AS years, COUNT(DISTINCT year) AS year_count "
             f"FROM {database}.{table_discover} WHERE id IN ({id_list}) GROUP BY id"
         )
+        # ctas_approach=True: obrigatório para colunas ARRAY (ver glue_agg/src/utils.py:76) —
+        # sem CTAS, o Athena não retorna colunas List via query direta.
         df = wr.athena.read_sql_query(
             sql=query,
             database=database,
             s3_output=s3_output,
-            ctas_approach=False,
+            ctas_approach=True,
         )
         for _, row in df.iterrows():
             item_id = int(row["id"])
