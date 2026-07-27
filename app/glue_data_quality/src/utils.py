@@ -118,6 +118,24 @@ def read_table_from_catalog(
     )
 
 
+def has_data(dynamic_frame: DynamicFrame) -> bool:
+    """
+    Verifica se o DynamicFrame tem ao menos um registro.
+
+    dynamic_frame.toDF() de um DynamicFrame vazio (ex.: partição year filtrada via
+    push_down_predicate que não existe no catálogo) devolve um DataFrame sem nenhuma
+    coluna — qualquer filtro/seleção subsequente falha com UNRESOLVED_COLUMN. count()
+    funciona mesmo sem schema inferido, permitindo checar antes de prosseguir.
+
+    Args:
+        dynamic_frame: DynamicFrame lido via read_table_from_catalog.
+
+    Returns:
+        True se houver ao menos um registro, False se a partição/tabela estiver vazia.
+    """
+    return dynamic_frame.count() > 0
+
+
 def _evaluate_dq(
     glue_context: GlueContext,
     dynamic_frame: DynamicFrame,
