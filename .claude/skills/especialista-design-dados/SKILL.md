@@ -105,6 +105,13 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   `GROUP BY id`) e loga em `discover_years_ambiguos_{data}.json` para investigação futura, mas nunca usa esse year
   para decidir partição — regra "year sempre de release_date/first_air_date, nunca de outra fonte" (linha acima)
   também vale para o modo changes.
+- **O piso de `year >= 2000` (rotation refresh/backfill, `app/lambda_api/main.py:80`) só existe do lado
+  do `discover`** — controla o que é *buscado* via `/discover`, não o que aparece em
+  `details`/`watch_providers`. Um `year < 2000` nessas duas últimas tabelas não é dado corrompido: é o
+  `release_date`/`first_air_date` real de um id que já estava no catálogo (descoberto sob um year
+  ≥2000) e cuja data a TMDB corrigiu depois para antes de 2000 — o mesmo cenário de divergência
+  descrito acima, só que cruzando a fronteira de 2000. Não filtrar/clampar esse `year` nessas tabelas:
+  reintroduziria o problema de fonte ambígua que este design já resolve.
 - **O modo changes não faz (nem precisa fazer) uma checagem de que o id ainda está "atualizado"/válido antes de
   alterar o registro**: o details call (`GET /movie|tv/{id}`, disparado por `collect_and_write_details`) já busca
   o estado atual do título no momento da escrita — uma checagem prévia seria uma chamada extra redundante, porque
