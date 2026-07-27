@@ -3,6 +3,8 @@ Glue Details — enriquece IDs do discover com detalhes da API TMDB (runtime, te
 Roda fora da Lambda porque o volume de chamadas excede o timeout de 15 min da Lambda.
 """
 
+import time
+
 from shared_utils.glue_helpers import configure_glue_logging
 from src.utils import (
     collect_and_write_details,
@@ -155,6 +157,8 @@ def main() -> None:
         )
 
     trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=year)
+
+    time.sleep(5)
 
     trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=year)
 
