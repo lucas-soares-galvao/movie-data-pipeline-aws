@@ -1,6 +1,6 @@
 ---
 name: revisao-pos-mudanca-codigo
-description: Checklist obrigatório pós-mudança de código neste projeto — testes, arquivos .md por módulo, docstrings e type hints — com ponte para as skills de qualidade/teste/documentação que devem guiar a mudança ao longo do caminho (especialista-engenharia-dados-app, especialista-legibilidade-codigo, especialista-testes-app, especialista-documentacao). Use sempre ao terminar uma alteração em app/, test/ ou scripts/, antes de reportar a tarefa como concluída. Cobre o que verificar e onde, mapeando cada camada de código à sua documentação/teste espelhado.
+description: Checklist obrigatório pós-mudança de código neste projeto — testes, arquivos .md por módulo, docstrings, type hints e permissão IAM quando a mudança chama um serviço AWS novo/diferente — com ponte para as skills de qualidade/teste/documentação/IAM que devem guiar a mudança ao longo do caminho (especialista-engenharia-dados-app, especialista-legibilidade-codigo, especialista-testes-app, especialista-documentacao, especialista-privilegio-minimo). Use sempre ao terminar uma alteração em app/, test/ ou scripts/, antes de reportar a tarefa como concluída. Cobre o que verificar e onde, mapeando cada camada de código à sua documentação/teste espelhado.
 ---
 
 # Skill: Revisão Pós-Mudança de Código
@@ -23,6 +23,9 @@ aqui:
 Se o código ainda não seguiu essas skills, corrija antes de rodar os checklists abaixo — eles verificam o
 resultado, não substituem o processo de escrever bem.
 
+Se a mudança faz o código chamar um serviço/action AWS novo ou diferente do que já chamava, o checklist da Seção 1
+tem um item específico para isso, com ponte para `especialista-privilegio-minimo`.
+
 ---
 
 ## 1. Testes
@@ -34,6 +37,7 @@ resultado, não substituem o processo de escrever bem.
 - [ ] **Parâmetros novos ou removidos** de funções existentes foram refletidos nos mocks e chamadas dos testes?
 - [ ] **Fixtures em `conftest.py`** foram atualizadas se a assinatura de dependências mudou?
 - [ ] **Cobertura >= 80%** — rode `pytest --cov=app --cov-report=term-missing --cov-fail-under=80` e confirme que o gate passa
+- [ ] **A mudança faz uma chamada nova/diferente a um serviço AWS?** (novo bucket/prefixo S3, nova tabela do Glue Catalog, novo client/action boto3 ou awswrangler, módulo passa a rodar sob outra role) — se sim, confirmar que a policy IAM da role correspondente em `infra/*.tf` já cobre essa permissão antes de reportar a tarefa como concluída; ver `especialista-privilegio-minimo` (racional de escopo mínimo) e `especialista-infraestrutura-terraform` (sintaxe do recurso). Se a policy não cobrir, é mudança de infra que precisa acompanhar o PR — sinalizar ao usuário, não apenas ao código de `app/`. Skip se a mudança não introduz nenhuma chamada nova/diferente a um serviço AWS (refactor puro, transformação de dado já lido, ajuste de teste).
 
 > Para *como* escrever/mockar cada teste corretamente (padrão de mock por serviço AWS — Lambda, Glue
 > awswrangler, Glue PySpark, Lightsail), ver `especialista-testes-app`.
