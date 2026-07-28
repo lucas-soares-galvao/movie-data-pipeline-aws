@@ -46,7 +46,8 @@ button[data-testid="stBaseButton-secondary"] {
    documentada de st.container(key=...) — pode quebrar em upgrades do
    Streamlit (mesmo risco já registrado para contador_caracteres.js). */
 .st-key-hero-section,
-.st-key-hero-actions {
+.st-key-hero-actions,
+.st-key-header-row {
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
@@ -229,7 +230,7 @@ button[data-testid="stBaseButton-secondary"] {
 
 @media (max-width: 1024px) {
   .hero-heading { font-size: 28px; }
-  .st-key-hero-section, .st-key-hero-actions { max-width: 100%; padding: 0 8px; }
+  .st-key-hero-section, .st-key-hero-actions, .st-key-header-row { max-width: 100%; padding: 0 8px; }
 }
 @media (max-width: 480px) {
   .hero-heading { font-size: 22px; }
@@ -244,7 +245,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 .grid-titles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
 }
 
@@ -298,9 +299,14 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   display: block;
 }
 
+.card-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .card-subtitle {
   color: #737373;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .genres-container {
@@ -319,7 +325,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   color: #fb923c;
   border-radius: 99px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 12px;
   display: inline-block;
   margin: 2px;
   border: 1px solid rgba(249,115,22,0.2);
@@ -355,21 +361,21 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 .meta-icon {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
   flex-shrink: 0;
   width: 20px;
   text-align: center;
 }
 
-.rating { color: #f97316; font-weight: bold; font-size: 16px; }
-.duration { color: #a3a3a3; font-size: 14px; }
-.release-date { color: #a3a3a3; font-size: 14px; }
-.overview { color: #d4d4d4; font-size: 14px; margin-top: 6px; line-height: 1.5; flex: 1; }
+.rating { color: #f97316; font-weight: bold; font-size: 18px; }
+.duration { color: #a3a3a3; font-size: 15px; }
+.release-date { color: #a3a3a3; font-size: 15px; }
+.overview { color: #d4d4d4; font-size: 16px; margin-top: 6px; line-height: 1.5; flex: 1; }
 
 .reason {
   color: #a3a3a3;
-  font-size: 11px;
+  font-size: 12px;
   font-style: italic;
   margin-top: 8px;
   padding-top: 8px;
@@ -381,7 +387,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   color: #4ade80;
   border-radius: 99px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 12px;
   display: inline-block;
   margin: 2px;
   vertical-align: middle;
@@ -392,7 +398,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   color: #fbbf24;
   border-radius: 99px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 12px;
   display: inline-block;
   margin: 2px;
   vertical-align: middle;
