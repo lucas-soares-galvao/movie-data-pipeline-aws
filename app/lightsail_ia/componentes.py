@@ -138,7 +138,7 @@ def render_card(title: dict) -> str:
     <article class="card">
       {img_html}
       <div class="card-body">
-        <strong>{title_name}</strong>
+        <strong class="card-title">{title_name}</strong>
         <span class="card-subtitle">
           &nbsp;({year}) — {title_type} {certification_html}
         </span>
