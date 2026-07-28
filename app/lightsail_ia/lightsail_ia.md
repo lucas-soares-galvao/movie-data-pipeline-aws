@@ -10,7 +10,7 @@ Permite que qualquer pessoa consuma os dados do pipeline sem precisar escrever S
 
 ## Como funciona
 
-O processo de recomendação é dividido em duas etapas encadeadas:
+O processo de recomendação é dividido em três etapas encadeadas:
 
 ### Etapa 1 — Geração da cláusula WHERE (LLM + Function Calling, com cache)
 O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Function Calling*, gera a cláusula WHERE do SQL livremente, combinando qualquer coluna disponível:
@@ -49,6 +49,11 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
+### Etapa 3 — Geração do motivo (LLM)
+O LLM recebe apenas os campos que ajudam a justificar a recomendação de cada título já encontrado pelo Athena — `id`, `title`, `overview`, `genre_names`, `year`, `vote_average`, `director`, `actor_names`, `streaming_providers`, `certification`, `keywords_pt` — e gera um `reason` curto (1-2 frases) explicando por que aquele título específico atende ao pedido do usuário, podendo citar diretor/elenco/streaming/classificação/palavras-chave quando fizerem parte do motivo real. Retorna JSON com apenas `id` e `reason` por título (`{"titles": [...]}`), mesclado por índice ao registro já formatado pelo Python. O merge é tolerante a variações de resposta do LLM: aceita `id` como int ou string (converte via `int()`), aceita tanto `{"titles": [...]}` quanto lista direta `[...]`, e degrada para `reason=""` em caso de resposta vazia ou JSON inválido — uma falha aqui nunca derruba a recomendação.
+
+Esta etapa roda em toda busca com resultados, mesmo quando a Etapa 1 tem cache hit: os títulos reais só existem depois da consulta ao Athena, então o motivo não pode ser cacheado junto com a cláusula WHERE.
+
 ### Entrada alternativa — Transcrição de áudio (Whisper via litellm)
 Além de digitar, o usuário pode gravar a preferência em áudio pelo widget nativo `st.audio_input`. Ao parar a gravação, o app confirma automaticamente e transcreve por `transcribe_preference()` (`agent.py`) usando Whisper via `litellm` — modelo configurável por `TRANSCRIPTION_MODEL` (padrão: Groq Whisper Large v3 Turbo, rápido e barato), com `language="pt"` fixo. O texto resultante pré-popula o `st.text_area` de preferência, permanecendo totalmente editável antes de clicar em "Recomendar".
 
@@ -78,7 +83,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
   - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
   - Link clicável ▶ Trailer (quando disponível)
-  - Sinopse
+  - Sinopse e motivo da recomendação (gerado pelo LLM na Etapa 3)
 
 ## Entradas e saídas
 
@@ -92,7 +97,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 
 | Arquivo | Função | Responsabilidade |
 |---|---|---|
-| `agent.py` | `recommend(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) |
+| `agent.py` | `recommend(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) → gerar motivo (LLM) |
 | `agent.py` | `search_titles_spec(where_clause, limit)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 10) |
 | `agent.py` | `_validate_where(where_clause)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries, UPDATE, ALTER, CREATE, GRANT, TRUNCATE, EXEC, MERGE, REPLACE, CALL) |
 | `agent.py` | `_load_llm_api_key()` | Busca `LLM_API_KEY` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou usa `.env` como fallback em desenvolvimento |
@@ -100,6 +105,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `agent.py` | `_get_cached_where(preference)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
 | `agent.py` | `_save_cached_where(preference, args)` | Salva cláusula WHERE no cache em memória com timestamp |
 | `agent.py` | `_call_llm_step1(preference)` | Chama o LLM (`LLM_MODEL`) para gerar a cláusula WHERE via function calling |
+| `agent.py` | `_call_llm_step3(preference, titles_for_llm)` | Chama o LLM (`LLM_MODEL`) para gerar o motivo de cada título já encontrado pelo Athena |
 | `agent.py` | `_log_token_usage(step, response)` | Registra `prompt_tokens`, `completion_tokens`, `total_tokens` e `model` (`LLM_MODEL`) da resposta do LLM via `logging.info` (ver observação na seção "Observabilidade de tokens") |
 | `agent.py` | `transcribe_preference(audio_bytes)` | Transcreve áudio (WAV) para texto via Whisper (`litellm.transcription`, modelo `TRANSCRIPTION_MODEL`). Rejeita áudios acima de 20s (`AudioMuitoLongoError`) antes de chamar a API. Sem fallback automático de modelo |
 | `agent.py` | `_audio_duration_seconds(audio_bytes)` | Calcula a duração de um áudio WAV via módulo padrão `wave` |
@@ -174,6 +180,6 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 
 ## Observabilidade de tokens
 
-Cada chamada a `litellm.completion()` (etapa 1) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `model` e `step` (`_log_token_usage()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
+Cada chamada a `litellm.completion()` (etapas 1 e 3) registra via `logging.info` os campos `prompt_tokens`, `completion_tokens`, `total_tokens`, `model` e `step` (`_log_token_usage()` em `agent.py`). Esses logs são enviados ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) e podem ser usados para criar métricas de custo e alertas de consumo.
 
 `app.py` eleva o root logger para `ERROR` quando o CloudWatch está configurado (`logging.root.setLevel(logging.ERROR)`), para silenciar bibliotecas ruidosas. Como isso suprimiria por herança os `logger.info(...)` de `_log_token_usage()`, `agent.py` define explicitamente `logger.setLevel(logging.INFO)` no seu próprio logger — garantindo que os logs de tokens continuem passando pelo handler do root independentemente do nível herdado.

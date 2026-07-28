@@ -2,9 +2,11 @@
 #   start_query_execution → get_query_execution (polling) → get_paginator().paginate()
 # O mock precisa dessas 3 chamadas encadeadas porque agent.py as chama em sequência.
 #
-# _mock_litellm() retorna side_effect=[step1] porque recommend() chama
-# o LLM uma vez para extrair filtros como JSON (salva em cache).
-# Se houver cache hit, a chamada é pulada.
+# _mock_litellm() retorna side_effect=[step1, step3] porque recommend() chama
+# o LLM até 2 vezes: Passo 1 extrai filtros como JSON (salvo em cache — se houver
+# cache hit, essa chamada é pulada) e Passo 3 gera o motivo de cada título
+# encontrado pelo Athena (sempre roda quando há títulos, mesmo com cache hit no
+# Passo 1, pois os títulos reais só existem depois da consulta ao Athena).
 
 import io
 import json
@@ -105,8 +107,16 @@ def _setup_athena_mock(mock_boto3, rows_data=None):
     return mock_athena
 
 
-def _mock_litellm(tool_args: dict):
-    """Retorna lista com 1 resposta para o side_effect de litellm.completion."""
+def _mock_litellm(tool_args: dict, reason_content: str | None = None):
+    """Retorna lista com 2 respostas para o side_effect de litellm.completion:
+    Passo 1 (function calling com tool_args) e Passo 3 (motivos).
+
+    reason_content: conteúdo bruto da mensagem do Passo 3. Se None, usa uma
+    resposta "sem motivos" padrão (`{"titles": []}`) — suficiente para testes
+    que não avaliam o conteúdo do motivo, mas que ainda precisam de uma 2ª
+    resposta no side_effect (recommend() sempre chama o Passo 3 quando há
+    títulos retornados pelo Athena).
+    """
     tool_call = MagicMock()
     tool_call.id = "call_test_123"
     tool_call.function.name = "search_titles_spec"
@@ -125,7 +135,15 @@ def _mock_litellm(tool_args: dict):
     step1.choices = [MagicMock(message=msg_step1)]
     step1.usage = usage_mock
 
-    return [step1]
+    msg_step3 = MagicMock()
+    msg_step3.content = reason_content if reason_content is not None else '{"titles": []}'
+    msg_step3.tool_calls = None
+
+    step3 = MagicMock()
+    step3.choices = [MagicMock(message=msg_step3)]
+    step3.usage = usage_mock
+
+    return [step1, step3]
 
 
 class TestValidateWhere:
@@ -287,7 +305,7 @@ class TestRecommend:
 
         assert result == []
 
-    def test_chama_llm_uma_vez(self):
+    def test_chama_llm_duas_vezes(self):
         with (
             patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
             patch("agent.litellm.completion") as mock_completion,
@@ -297,7 +315,7 @@ class TestRecommend:
             )
             agent.recommend("filmes de terror")
 
-        assert mock_completion.call_count == 1
+        assert mock_completion.call_count == 2
 
     def test_retorna_lista_de_titulos(self):
         with (
@@ -377,6 +395,124 @@ class TestRecommend:
         assert r["streaming_providers"] == "Netflix"
         assert r["in_theaters"] is False
 
+    def test_motivo_incluido_no_resultado(self):
+        reason_json = json.dumps({"titles": [{"id": 0, "reason": "Combina com o pedido de terror."}]})
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == "Combina com o pedido de terror."
+
+    def test_remove_markdown_code_block_do_motivo(self):
+        reason_json = (
+            "```json\n"
+            + json.dumps({"titles": [{"id": 0, "reason": "Ótima pedida."}]})
+            + "\n```"
+        )
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == "Ótima pedida."
+
+    def test_motivo_vazio_se_llm_retorna_string_vazia(self):
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=""
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == ""
+
+    def test_motivo_vazio_se_llm_retorna_json_invalido(self):
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content="não é json"
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == ""
+
+    def test_motivo_funciona_com_id_como_string(self):
+        reason_json = json.dumps(
+            {"titles": [{"id": "0", "reason": "Nota alta e clássico do gênero."}]}
+        )
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == "Nota alta e clássico do gênero."
+
+    def test_motivo_funciona_com_lista_direta_sem_wrapper(self):
+        reason_json = json.dumps([{"id": 0, "reason": "Direto na lista, sem wrapper."}])
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == "Direto na lista, sem wrapper."
+
+    def test_motivo_ignora_item_com_id_nao_conversivel(self):
+        reason_json = json.dumps({"titles": [{"id": "abc", "reason": "Motivo órfão."}]})
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == ""
+
+    def test_payload_do_motivo_inclui_campos_de_ficha_tecnica(self):
+        fake_title_com_ficha = dict(
+            FAKE_TITLE,
+            director="Stanley Kubrick",
+            actor_names="Jack Nicholson",
+            certification="16",
+            keywords_pt="isolamento, loucura",
+        )
+        with (
+            patch("agent.search_titles_spec", return_value=[fake_title_com_ficha]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror")
+
+        step3_call = mock_completion.call_args_list[1]
+        user_content = step3_call.kwargs["messages"][1]["content"]
+        assert "Stanley Kubrick" in user_content
+        assert "Jack Nicholson" in user_content
+        assert "isolamento" in user_content
+
 
 class TestCacheWhere:
 
@@ -404,6 +540,9 @@ class TestCacheWhere:
         assert key not in agent._WHERE_CACHE
 
     def test_cache_evita_chamada_llm_passo_1(self):
+        """Cache hit pula o Passo 1 (extração de filtros), mas o Passo 3 (motivo)
+        ainda roda — os títulos reais só existem depois da consulta ao Athena,
+        então o motivo não pode vir do cache do Passo 1."""
         cached_args = {"where_clause": "media_type = 'movie'"}
         agent._save_cached_where("filmes de terror", cached_args)
 
@@ -411,9 +550,10 @@ class TestCacheWhere:
             patch("agent.search_titles_spec", return_value=[FAKE_TITLE]) as mock_search,
             patch("agent.litellm.completion") as mock_completion,
         ):
+            mock_completion.side_effect = _mock_litellm({})
             result = agent.recommend("filmes de terror")
 
-        assert mock_completion.call_count == 0
+        assert mock_completion.call_count == 1
         mock_search.assert_called_once_with(**cached_args)
         assert len(result) == 1
 
