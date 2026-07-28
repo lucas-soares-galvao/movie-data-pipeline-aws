@@ -151,15 +151,16 @@ if not st.session_state.get("authenticated"):
 # ==============================================================================
 load_main_css()
 
-title_col, logout_col = st.columns([9, 1])
-with title_col:
-    st.title("🎬 FilmBot")
-    st.caption("Seu assistente de filmes e séries com inteligência artificial")
-with logout_col:
-    st.write("")
-    if st.button("Sair"):
-        st.session_state["authenticated"] = False
-        st.rerun()
+with st.container(key="header-row"):
+    title_col, logout_col = st.columns([9, 1])
+    with title_col:
+        st.title("🎬 FilmBot")
+        st.caption("Seu assistente de filmes e séries com inteligência artificial")
+    with logout_col:
+        st.write("")
+        if st.button("Sair"):
+            st.session_state["authenticated"] = False
+            st.rerun()
 
 _client_ip = _get_client_ip()
 
