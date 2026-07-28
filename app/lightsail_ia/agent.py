@@ -4,7 +4,7 @@ agent.py — Agente de IA para recomendação de filmes e séries.
 ==============================================================================
 O QUE ESTE ARQUIVO FAZ?
 ==============================================================================
-Implementa o "cérebro" do FilmBot em 2 passos usando LLM + AWS Athena:
+Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
 
   PASSO 1 — Interpretação (LLM via litellm):
     O usuário digita em linguagem natural: "filmes coreanos de terror dos anos 2010".
@@ -18,10 +18,14 @@ Implementa o "cérebro" do FilmBot em 2 passos usando LLM + AWS Athena:
     A cláusula WHERE gerada pelo LLM é validada (segurança) e executada no Athena.
     O filtro fixo vote_count >= 50 é sempre aplicado automaticamente.
     O Athena retorna títulos reais que passaram pelo pipeline completo de ETL.
+    Em seguida, funções em formatacao.py convertem cada registro em campos
+    prontos para o card da interface (sem usar LLM).
 
-  FORMATAÇÃO — Registros formatados pelo Python (formatacao.py):
-    Após o Athena retornar os títulos, funções em formatacao.py convertem
-    cada registro em campos prontos para o card da interface.
+  PASSO 3 — Geração do motivo (LLM via litellm):
+    O LLM recebe apenas os campos essenciais de cada título já encontrado pelo
+    Athena e escreve um motivo curto (1-2 frases) explicando por que aquele
+    título específico atende ao pedido do usuário. Responde em JSON, que é
+    mesclado por índice aos registros já formatados pelo Python.
 
 POR QUE USAR "FUNCTION CALLING" (TOOL USE)?
   O Function Calling (ou Tool Use) é uma técnica que permite ao LLM
@@ -282,6 +286,20 @@ _SYSTEM_PROMPT = (
     "- Nunca use SELECT, INSERT, UPDATE, DELETE ou outros comandos — apenas expressões de filtro."
 )
 
+# System prompt enviado ao LLM no Passo 3. Pede um motivo curto por título, em
+# JSON estruturado (menos tokens de completion do que prosa livre).
+_REASON_SYSTEM_PROMPT = (
+    "Você é um curador de filmes e séries. "
+    "Para cada título na lista, escreva um motivo curto (1-2 frases) explicando "
+    "por que ele é uma boa recomendação para o pedido do usuário. "
+    "Cite diretor, elenco, plataforma de streaming, classificação indicativa ou "
+    "palavras-chave apenas quando fizerem parte do motivo real — não force menção "
+    "a um campo que não tenha relação com o pedido. "
+    "Retorne APENAS um JSON com a chave 'titles': uma lista de objetos com "
+    "'id' (inteiro, índice do título na lista) e 'reason' (string em português). "
+    "Não inclua texto fora do JSON."
+)
+
 # Palavras-chave SQL proibidas na cláusula WHERE gerada pelo LLM.
 # O Athena é read-only por natureza, mas essa validação impede que o LLM
 # gere cláusulas malformadas ou que fujam do escopo de um filtro SELECT.
@@ -467,16 +485,34 @@ def _call_llm_step1(preference: str) -> object:
     return response
 
 
+def _call_llm_step3(preference: str, titles_for_llm: list[dict]) -> object:
+    """Chama o LLM do Passo 3 (_LLM_MODEL) para gerar o motivo de cada título encontrado."""
+    titles_data = json.dumps(titles_for_llm, ensure_ascii=False, default=str)
+    response = litellm.completion(
+        model=_LLM_MODEL,
+        api_key=_LLM_API_KEY,
+        messages=[
+            {"role": "system", "content": _REASON_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"Pedido: {preference}\n\nTítulos encontrados:\n{titles_data}",
+            },
+        ],
+    )
+    _log_token_usage("step3_reasons", response)
+    return response
+
+
 # ==============================================================================
-# PASSO 1 + 2 + formatação: Orquestração do agente (função principal)
+# PASSO 1 + 2 + 3: Orquestração do agente (função principal)
 # ==============================================================================
 
 def recommend(preference: str) -> list[dict]:
     """
-    Orquestra os 2 passos do agente e retorna uma lista de recomendações.
+    Orquestra os 3 passos do agente e retorna uma lista de recomendações.
 
     Esta é a única função chamada pelo app.py. Ela coordena todo o fluxo:
-    LLM extrai filtros → Athena consulta → formatação Python.
+    LLM extrai filtros → Athena consulta → formatação Python → LLM gera motivos.
 
     Args:
         preference: Texto em linguagem natural do usuário.
@@ -485,7 +521,7 @@ def recommend(preference: str) -> list[dict]:
     Returns:
         Lista de dicionários, cada um com: title, type, year, genres, overview,
         rating, poster_url, backdrop_url, duration, streaming_providers,
-        in_theaters, theater_end_date.
+        in_theaters, theater_end_date, reason.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
     """
 
@@ -517,4 +553,66 @@ def recommend(preference: str) -> list[dict]:
         return []  # nenhum título encontrado com esses filtros
 
     # Formata todos os campos determinísticos via Python (instantâneo)
-    return [format_record(r) for r in titles_from_spec]
+    formatted_records = [format_record(r) for r in titles_from_spec]
+
+    # ------------------------------------------------------------------
+    # PASSO 3: LLM gera apenas o "motivo" de cada recomendação
+    # ------------------------------------------------------------------
+    # Envia ao LLM só os campos que ajudam a justificar a recomendação — não o
+    # registro inteiro (~35 campos). overview domina o tamanho do payload; os
+    # demais são strings curtas que cobrem os critérios de filtro mais comuns
+    # (diretor, elenco, streaming, classificação, palavras-chave) sem inflar
+    # tokens de entrada com campos que não ajudam a explicar a recomendação
+    # (produtoras, orçamento, títulos similares etc.).
+    titles_for_llm = [
+        {
+            "id": i,
+            "title": r.get("title", ""),
+            "overview": r.get("overview", ""),
+            "genre_names": r.get("genre_names", ""),
+            "year": r.get("year", ""),
+            "vote_average": r.get("vote_average", ""),
+            "director": r.get("director", ""),
+            "actor_names": r.get("actor_names", ""),
+            "streaming_providers": r.get("streaming_providers", ""),
+            "certification": r.get("certification", ""),
+            "keywords_pt": r.get("keywords_pt", ""),
+        }
+        for i, r in enumerate(titles_from_spec)
+    ]
+
+    response = _call_llm_step3(preference, titles_for_llm)
+    content = (response.choices[0].message.content or "").strip()
+
+    # Remove blocos de código Markdown (```json ... ```) que o LLM às vezes
+    # adiciona ao redor do JSON.
+    if content.startswith("```"):
+        content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+    if not content:
+        for record in formatted_records:
+            record["reason"] = ""
+        return formatted_records
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        for record in formatted_records:
+            record["reason"] = ""
+        return formatted_records
+
+    reasons = data if isinstance(data, list) else data.get("titles", [])
+
+    # Merge: adiciona o motivo do LLM ao registro já formatado pelo Python.
+    # Tolerante a variações de resposta do LLM: aceita "id" como int ou string.
+    reasons_by_id = {}
+    for item in reasons:
+        if "id" in item:
+            try:
+                reasons_by_id[int(item["id"])] = item.get("reason", "")
+            except (ValueError, TypeError):
+                continue
+    for i, record in enumerate(formatted_records):
+        record["reason"] = reasons_by_id.get(i, "")
+
+    return formatted_records

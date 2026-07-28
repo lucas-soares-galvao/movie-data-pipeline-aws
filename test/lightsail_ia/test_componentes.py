@@ -6,6 +6,7 @@ BASE_TITLE = {
     "year": 1980,
     "genres": ["Terror", "Drama"],
     "overview": "Um escritor enlouquece num hotel isolado.",
+    "reason": None,
     "rating": 8.4,
     "poster_url": "https://example.com/poster.jpg",
     "backdrop_url": None,
@@ -108,8 +109,20 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE)
         assert "Netflix" in html
 
+    def test_card_exibe_motivo(self):
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_card(t)
+        assert "Nota alta e mesmo gênero pedido." in html
+        assert 'class="reason"' in html
+
     def test_card_escapa_xss(self):
         t = {**BASE_TITLE, "title": '<script>alert("xss")</script>'}
+        html = componentes.render_card(t)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
+    def test_card_escapa_xss_no_motivo(self):
+        t = {**BASE_TITLE, "reason": '<script>alert("xss")</script>'}
         html = componentes.render_card(t)
         assert "<script>" not in html
         assert "&lt;script&gt;" in html

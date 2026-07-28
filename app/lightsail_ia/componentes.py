@@ -61,6 +61,7 @@ def render_card(title: dict) -> str:
     title_type = html.escape(title.get("type", ""))
     rating = title.get("rating")
     overview = html.escape(title.get("overview") or "")
+    reason = html.escape(title.get("reason") or "")
     genres = title.get("genres") or []
     duration = title.get("duration") or ""
     release_date = html.escape(title.get("release_date") or "")
@@ -149,6 +150,7 @@ def render_card(title: dict) -> str:
         {providers_html}
         {trailer_html}
         <p class="overview">{overview}</p>
+        <p class="reason">💡 {reason}</p>
       </div>
     </article>
     """

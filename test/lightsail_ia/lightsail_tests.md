@@ -37,7 +37,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | Função | Descrição |
 |---|---|
 | `_setup_athena_mock(mock_boto3, rows_data)` | Configura o mock do `boto3` para simular as 3 etapas da API nativa do Athena: `start_query_execution` → `get_query_execution` (polling) → `get_paginator().paginate()`. `rows_data` define as linhas de resultado; `None` retorna apenas o header (resultado vazio). |
-| `_mock_litellm(tool_args)` | Retorna lista com 1 resposta para `side_effect` de `litellm.completion`: simula a resposta da Etapa 1 (Function Calling com `tool_args`). Inclui mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_log_token_usage()`. |
+| `_mock_litellm(tool_args, reason_content=None)` | Retorna lista com 2 respostas para `side_effect` de `litellm.completion`: Etapa 1 (Function Calling com `tool_args`) e Etapa 3 (motivo, com o conteúdo de `reason_content` — ou `{"titles": []}` por padrão, se `None`). Inclui mock de `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`) para compatibilidade com `_log_token_usage()`. |
 
 ## Casos de teste — `test_agent.py`
 
@@ -77,12 +77,20 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | Teste | O que verifica |
 |---|---|
 | `test_retorna_lista_vazia_se_athena_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
-| `test_chama_llm_uma_vez` | `litellm.completion` é chamado exatamente 1 vez (etapa 1) |
+| `test_chama_llm_duas_vezes` | `litellm.completion` é chamado exatamente 2 vezes (etapa 1 + etapa 3) |
 | `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | `where_clause` e `limit` extraídos na etapa 1 são passados corretamente para `search_titles_spec()` |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
 | `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Maio de 1980"`) |
 | `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`type`, `year`, `genres`, `overview`, `rating`, `duration`, `streaming_providers`, `in_theaters`) |
+| `test_motivo_incluido_no_resultado` | Campo `reason` da etapa 3 é mesclado corretamente ao registro formatado |
+| `test_remove_markdown_code_block_do_motivo` | Remove cerca de código Markdown (` ```json ... ``` `) antes do `json.loads()` |
+| `test_motivo_vazio_se_llm_retorna_string_vazia` | `reason=""` quando a etapa 3 retorna conteúdo vazio |
+| `test_motivo_vazio_se_llm_retorna_json_invalido` | `reason=""` quando a etapa 3 retorna JSON inválido, sem levantar exceção |
+| `test_motivo_funciona_com_id_como_string` | Merge por `id` funciona mesmo quando o LLM retorna `id` como string |
+| `test_motivo_funciona_com_lista_direta_sem_wrapper` | Merge funciona com resposta em lista direta `[...]`, sem o wrapper `{"titles": [...]}` |
+| `test_motivo_ignora_item_com_id_nao_conversivel` | Item com `id` que não converte para `int` (ex: `"abc"`) é ignorado no merge, sem levantar exceção |
+| `test_payload_do_motivo_inclui_campos_de_ficha_tecnica` | Payload enviado à etapa 3 inclui `director`, `actor_names`, `keywords_pt` (além dos 6 campos mínimos) |
 
 ### `TestCacheWhere` — Cache de cláusulas WHERE
 
@@ -92,7 +100,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_salvar_e_buscar_cache` | Salvar e buscar retorna os mesmos argumentos |
 | `test_cache_miss_retorna_none` | Retorna `None` para preferência não cacheada |
 | `test_cache_expirado_retorna_none` | Retorna `None` e remove entrada quando TTL expira |
-| `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` não é chamado (0 vezes) |
+| `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` é chamado apenas 1 vez (etapa 3 — o motivo ainda roda, pois depende dos títulos reais retornados pelo Athena, não do cache da etapa 1) |
 
 ### `TestLogTokenUsage` — Logging de uso de tokens
 
@@ -138,7 +146,9 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
 | `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
 | `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
+| `test_card_exibe_motivo` | Card exibe o motivo da recomendação (`reason`) |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
+| `test_card_escapa_xss_no_motivo` | Valor de `reason` com `<script>` é escapado via `html.escape` |
 
 ### `TestRenderGrid` — Renderização do grid de cards
 
