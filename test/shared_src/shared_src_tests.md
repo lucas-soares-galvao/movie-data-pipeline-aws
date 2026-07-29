@@ -294,4 +294,4 @@ pytest test/shared_src/ --cov=app/shared_src --cov-report=term-missing
 
 ## Cobertura mínima
 
-**80%** — definido via `--cov-fail-under=80` no workflow de CI (`.github/workflows/01_test.yml`).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`).

@@ -65,7 +65,7 @@ Três cenários distintos — não confunda um com o outro:
 
 ## Checklist antes de finalizar uma mudança visual
 
-- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`<1024px` e `<480px`) — `app.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual.
+- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`<1024px` e `<480px`) — `app.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. `app.py` está inclusive excluído do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
 - Confira que nenhum seletor novo quebra os já existentes em `principal.css`/`login.css` — teste visualmente as duas telas (login e principal).
-- Se a mudança tocar `utils.py` ou lógica Python testável, siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 80% de cobertura).
+- Se a mudança tocar `componentes.py`/`utils.py` ou lógica Python testável (fora de `app.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
 - Prosa em português, identificadores em inglês, conforme `CLAUDE.md`.

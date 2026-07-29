@@ -177,7 +177,7 @@ proj-eng-dados-filmes-aws/
     │   ├── test_glue_helpers.py
     │   ├── test_traducao.py
     │   └── test_triggers.py
-    └── scripts/                    # Espelha scripts/ — roda no CI, mas fora do gate de 80% (não entra em --cov=app)
+    └── scripts/                    # Espelha scripts/ — roda no CI, mas fora do gate de 95% (não entra em --cov=app)
         ├── __init__.py
         ├── conftest.py
         ├── requirements_tests.txt
@@ -234,7 +234,7 @@ Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-la
 7. **mypy** — type check de `app/` (informativo, não bloqueia)
 8. **Bandit** — scan de segurança em `app/` (informativo)
 9. **Safety** — vulnerabilidades em dependências (informativo)
-10. **pytest** — testes com cobertura; **quality gate: ≥ 80% de cobertura** (`--cov-fail-under=80`, bloqueia se falhar)
+10. **pytest** — testes com cobertura; **quality gate: ≥ 95% de cobertura** (`--cov-fail-under=95`, bloqueia se falhar)
 
 ---
 
@@ -426,5 +426,5 @@ python_files = test_*.py
 
 ### Quality Gate
 
-O pipeline bloqueia se a cobertura de `app/` for **menor que 80%** (definido no workflow `.github/workflows/01_test.yml`, não no `pytest.ini`).  
-Rodar localmente: `pytest --cov=app --cov-report=term-missing --cov-fail-under=80`
+O pipeline bloqueia se a cobertura de `app/` for **menor que 95%** (definido no workflow `.github/workflows/01_test.yml`, não no `pytest.ini`).  
+Rodar localmente: `pytest --cov=app --cov-report=term-missing --cov-fail-under=95`

@@ -23,6 +23,7 @@ roteamento rápido em uma linha; este explica quando exatamente cada skill entra
 | [especialista-api-tmdb](#especialista-api-tmdb) | Gate: consultar doc oficial da API do TMDB antes de mudar endpoint/parâmetro |
 | [especialista-documentacao](#especialista-documentacao) | Templates de docs por módulo/teste/skill e ciclo de vida das skills |
 | [revisao-pos-mudanca-codigo](#revisao-pos-mudanca-codigo) | Checklist obrigatório pós-mudança: testes, `.md`, docstrings, type hints, permissão IAM, e ponte para as skills de qualidade/teste/doc/IAM |
+| [revisao-de-pr](#revisao-de-pr) | Checklist de revisão de um PR completo antes do merge, por camada do diff, com o que o CI não bloqueia/verifica |
 | [especialista-arquitetura-aws](#especialista-arquitetura-aws) | Qual serviço AWS escolher para uma necessidade nova |
 | [especialista-finops-aws](#especialista-finops-aws) | Custo x benefício dos recursos AWS já escolhidos |
 | [especialista-infraestrutura-terraform](#especialista-infraestrutura-terraform) | Argumentos exatos de recurso Terraform por serviço AWS |
@@ -152,6 +153,19 @@ permissão IAM — com ponte explícita, em cada item, para a skill irmã que en
 - O item de IAM do checklist só se aplica quando a mudança introduz uma chamada nova/diferente a um serviço AWS
   (novo bucket/prefixo S3, tabela do Glue Catalog, client/action boto3 ou awswrangler, role diferente) — skip em
   refactor puro ou transformação de dado já lido.
+
+### revisao-de-pr
+
+**O que é:** o checklist de revisão de um Pull Request **completo** (diff de outra sessão/pessoa, via
+`git diff <base>...HEAD` ou `gh pr diff <numero>`) antes do merge — as mesmas 4 camadas de
+`revisao-pos-mudanca-codigo` (testes, `.md`, docstrings, type hints, IAM) aplicadas arquivo por arquivo sobre o
+diff, mais pontes para infra/Terraform, workflows GitHub, Streamlit/FilmBot e segurança que
+`revisao-pos-mudanca-codigo` não cobre. Sinaliza explicitamente o que `01_test.yml` roda mas não bloqueia
+(`mypy`/`bandit`/`safety` são informativos) e o que ele não verifica (sincronia de `.md`, testes de `scripts/`).
+
+**Quando usar:**
+- Ao revisar um PR pronto antes de aprovar ou mergear — não ao terminar sua própria mudança na sessão atual (aí
+  é `revisao-pos-mudanca-codigo`).
 
 ---
 

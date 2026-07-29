@@ -87,7 +87,7 @@ Qualquer alteração no código passa por um processo automatizado de validaçã
 
 | Branch | O que acontece |
 |---|---|
-| `feature/*` | Testes (lint, cobertura ≥ 80%, type check, segurança) → PR automático para `develop` |
+| `feature/*` | Testes (lint, cobertura ≥ 95%, type check, segurança) → PR automático para `develop` |
 | `develop` | Terraform apply no ambiente `dev` → PR automático para `main` |
 | `main` | Terraform apply no ambiente `prod` → deploy do FilmBot no Lightsail |
 
@@ -123,8 +123,8 @@ for req in app/*/requirements.txt test/*/requirements_tests.txt; do pip install 
 ### Rodando os testes
 
 ```bash
-# Todos os testes com cobertura (gate de 80%)
-pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+# Todos os testes com cobertura (gate de 95%)
+pytest --cov=app --cov-report=term-missing --cov-fail-under=95
 
 # Testes de um módulo específico
 pytest test/lambda_api/ -v

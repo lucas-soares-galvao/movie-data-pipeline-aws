@@ -12,9 +12,9 @@ Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis,
 
 - Lógica de negócio fica em `app/<modulo>/src/utils.py`; `main.py` apenas resolve argumentos e delega
 - Testes em `test/` espelham a estrutura de `app/` — cada módulo tem `conftest.py`, `test_main.py`, `test_utils.py`
-- Scripts de operação manual em `scripts/` também têm testes espelhados em `test/scripts/` (um `test_<script>.py` por script), mas ficam fora do gate de 80% — `scripts/` não entra em `--cov=app`. Os testes ainda rodam e bloqueiam o CI normalmente
+- Scripts de operação manual em `scripts/` também têm testes espelhados em `test/scripts/` (um `test_<script>.py` por script), mas ficam fora do gate de 95% — `scripts/` não entra em `--cov=app`. Os testes ainda rodam e bloqueiam o CI normalmente
 - Cada módulo em `app/` tem um `.md` descrevendo o que faz, e cada módulo em `test/` tem um `*_tests.md`
-- Quality gate: cobertura de testes **>= 80%** (bloqueante no CI)
+- Quality gate: cobertura de testes **>= 95%** (bloqueante no CI)
 - Infraestrutura gerenciada por **Terraform** em `infra/`
 - CI/CD via **GitHub Actions** com OIDC (sem Access Keys fixas)
 - Ambientes isolados: `dev` e `prod` em contas AWS separadas
@@ -25,8 +25,8 @@ Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis,
 # Testes de um módulo específico
 pytest test/<modulo>/ -v
 
-# Testes com cobertura completa (gate de 80%)
-pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+# Testes com cobertura completa (gate de 95%)
+pytest --cov=app --cov-report=term-missing --cov-fail-under=95
 
 # Lint
 ruff check app/ test/
@@ -51,6 +51,7 @@ Consulte para entender o projeto em profundidade:
 - **projeto-filmes-aws** — Arquitetura do pipeline, camadas de dados, tabelas, variáveis de ambiente, convenções
 - **estrutura-projeto** — Árvore de diretórios, workflows CI/CD, estrutura Terraform, organização de testes
 - **revisao-pos-mudanca-codigo** — Checklist obrigatório pós-mudança: testes, arquivos `.md`, docstrings, type hints, permissão IAM quando a mudança chama serviço AWS novo, e ponte para as skills de qualidade/teste/doc/IAM que guiam a mudança
+- **revisao-de-pr** — Checklist de revisão de um PR completo antes do merge (diff de outra sessão/pessoa), por camada do diff, sinalizando o que o CI não bloqueia (mypy/bandit/safety) e não verifica (sincronia de docs)
 - **especialista-doc-oficial-aws** — Gate de consulta à fonte oficial da AWS e do Terraform (docs de serviço, registry dos providers `aws`/`archive`, Terraform core, IAM Service Authorization Reference) antes de decisões de infraestrutura/serviço/permissão
 - **especialista-doc-oficial-codigo** — Gate de consulta à documentação oficial de Python/SQL/bibliotecas de dados (pandas, PySpark, awswrangler, boto3) e do framework de testes (pytest, unittest.mock) antes de decisões de implementação em `app/` e `test/`
 - **especialista-documentacao** — Templates de docs por módulo/teste/skill, convenção de onde cada coisa mora, e quando criar/atualizar/juntar uma skill

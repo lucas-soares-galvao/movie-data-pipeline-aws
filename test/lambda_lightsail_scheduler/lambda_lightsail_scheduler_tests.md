@@ -46,4 +46,4 @@ pytest test/lambda_lightsail_scheduler/ --cov=app/lambda_lightsail_scheduler --c
 
 ## Cobertura mínima
 
-**80%** — definido via `--cov-fail-under=80` no workflow de CI (`.github/workflows/01_test.yml`).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`).
