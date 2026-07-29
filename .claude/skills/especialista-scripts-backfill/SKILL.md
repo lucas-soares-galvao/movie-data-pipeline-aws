@@ -14,7 +14,7 @@ existem para reprocessar até 26 anos de histórico (2000–atual) através de r
 ou sessões AWS de 1h (OIDC) — o checkpoint em S3 e o exit code 75 são o mecanismo que torna isso seguro de rodar por
 horas sem supervisão constante. `scripts/` também é estruturalmente diferente de `app/<modulo>/src/utils.py` +
 `main.py` (cada script concentra `main()` e helpers privados no próprio arquivo, sem pasta `src/`) — decisão
-deliberada, não descuido: são runbooks de operação manual fora do gate de cobertura de 80%, não código do pipeline
+deliberada, não descuido: são runbooks de operação manual fora do gate de cobertura de 95%, não código do pipeline
 deployado. Esta skill não descreve o que cada script faz linha a linha (isso é `scripts/scripts.md`) nem os testes
 (`test/scripts/scripts_tests.md`) — foca no racional de design: por que a unidade de checkpoint é o que é, por que
 existem 3 padrões diferentes de tratamento de erro entre os 6 scripts, e o que um script novo precisa reaproveitar

@@ -4,4 +4,5 @@ omit =
     test/*
     infra/*
     setup.py
+    app/lightsail_ia/app.py
     

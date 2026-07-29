@@ -66,7 +66,7 @@ Valida a qualidade do código antes de qualquer deploy. Executa **apenas em bran
 | Etapa | Ferramenta | Comportamento |
 |---|---|---|
 | Lint | Ruff | **Bloqueia** se falhar |
-| Cobertura de testes | pytest-cov | **Bloqueia** se < 80% |
+| Cobertura de testes | pytest-cov | **Bloqueia** se < 95% |
 | Type check | mypy | Aviso (não bloqueia) |
 | Segurança do código | Bandit | Aviso (não bloqueia) |
 | Vulnerabilidades em deps | Safety | Aviso (não bloqueia) |

@@ -235,11 +235,11 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**80%** — definido via `--cov-fail-under=80` no workflow de CI (`.github/workflows/01_test.yml`).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py` está formalmente excluído dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não conta nem a favor nem contra o gate.
 
 ## Observação sobre testes de interface
 
-A interface Streamlit (`app.py`) não é coberta por testes automatizados nesta suite. Para validar o app visualmente, execute localmente:
+A interface Streamlit (`app.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, o arquivo ficaria em 0% de cobertura (roda código a nível de import, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubaria o gate de 95% sozinho. Para validar o app visualmente, execute localmente:
 
 ```bash
 cd app/lightsail_ia
