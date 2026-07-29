@@ -17,6 +17,8 @@ _CERTIFICATION_DESCRIPTIONS = {
 }
 
 _OVERVIEW_TRUNCATE_CHARS = 200
+_MAX_VISIBLE_GENRES = 5
+_MAX_VISIBLE_PROVIDERS = 5
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -79,9 +81,12 @@ def render_card(title: dict, idx: int = 0) -> str:
         if poster else ""
     )
 
-    genres_html = "".join(
-        f'<span class="genre">{html.escape(g.strip())}</span>' for g in genres
-    )
+    genres_clean = [html.escape(g.strip()) for g in genres if g.strip()]
+    visible_genres = genres_clean[:_MAX_VISIBLE_GENRES]
+    extra_genres = len(genres_clean) - len(visible_genres)
+    genres_html = "".join(f'<span class="genre">{g}</span>' for g in visible_genres)
+    if extra_genres > 0:
+        genres_html += f'<span class="genre genre-more">+{extra_genres}</span>'
 
     cinema_html = ""
     if in_theaters:
@@ -110,14 +115,18 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     providers_html = ""
     if streaming_providers:
+        provs = [p.strip() for p in streaming_providers.split(",") if p.strip()]
+        visible_provs = provs[:_MAX_VISIBLE_PROVIDERS]
+        extra_provs = len(provs) - len(visible_provs)
         stream_badges = "".join(
-            f'<span class="provider">{html.escape(p.strip())}</span>'
-            for p in streaming_providers.split(",")
-            if p.strip()
+            f'<span class="provider">{html.escape(p)}</span>' for p in visible_provs
         )
+        if extra_provs > 0:
+            stream_badges += f'<span class="provider provider-more">+{extra_provs}</span>'
         providers_html = (
-            f'<div class="meta-row providers-row">'
-            f'<span class="meta-icon">📺</span>{stream_badges}</div>'
+            f'<div class="providers-block">'
+            f'<span class="providers-label">📺 Onde assistir</span>'
+            f'<div class="meta-row providers-row">{stream_badges}</div></div>'
         )
 
     if len(overview_raw) > _OVERVIEW_TRUNCATE_CHARS:
@@ -134,20 +143,20 @@ def render_card(title: dict, idx: int = 0) -> str:
     else:
         overview_html = f'<p class="overview">{html.escape(overview_raw)}</p>'
 
-    rating_html = (
-        f'<div class="meta-row"><span class="meta-icon">★</span>'
-        f'<span class="rating">{html.escape(str(rating))}</span></div>'
-        if rating is not None else ""
-    )
-    duration_html = (
-        f'<div class="meta-row"><span class="meta-icon">⏱</span>'
-        f'<span class="duration">{html.escape(duration)}</span></div>'
-        if duration else ""
-    )
-    release_date_html = (
-        f'<div class="meta-row"><span class="meta-icon">📅</span>'
-        f'<span class="release-date">{release_date}</span></div>'
-        if release_date else ""
+    vitals_parts = []
+    if rating is not None:
+        vitals_parts.append(
+            f'<span class="vital vital-rating">★ {html.escape(str(rating))}</span>'
+        )
+    if duration:
+        vitals_parts.append(f'<span class="vital vital-duration">⏱ {html.escape(duration)}</span>')
+    if release_date:
+        vitals_parts.append(f'<span class="vital vital-release">📅 {release_date}</span>')
+    vitals_html = (
+        '<div class="meta-row vitals-row">'
+        + '<span class="vital-sep">·</span>'.join(vitals_parts)
+        + '</div>'
+        if vitals_parts else ""
     )
 
     return f"""
@@ -159,11 +168,9 @@ def render_card(title: dict, idx: int = 0) -> str:
           &nbsp;({year}) — {title_type} {certification_html}
         </span>
         <div class="genres-container">{genres_html}</div>
-        {rating_html}
-        {duration_html}
-        {release_date_html}
-        {cinema_html}
         {providers_html}
+        {cinema_html}
+        {vitals_html}
         {trailer_html}
         {overview_html}
         <p class="reason">💡 {reason}</p>

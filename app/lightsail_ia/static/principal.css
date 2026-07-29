@@ -249,6 +249,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .grid-titles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  align-items: stretch;
   gap: 16px;
 }
 
@@ -333,6 +334,13 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   border: 1px solid rgba(249,115,22,0.2);
 }
 
+.genre-more,
+.provider-more {
+  background: rgba(255,255,255,0.06);
+  color: #a3a3a3;
+  border-color: rgba(255,255,255,0.12);
+}
+
 .certification-badge {
   display: inline-flex;
   align-items: center;
@@ -370,9 +378,19 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   text-align: center;
 }
 
-.rating { color: #f97316; font-weight: bold; font-size: 18px; }
-.duration { color: #a3a3a3; font-size: 15px; }
-.release-date { color: #a3a3a3; font-size: 15px; }
+.vitals-row {
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+.vital {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #a3a3a3;
+}
+.vital-rating { color: #f97316; font-weight: bold; font-size: 16px; }
+.vital-sep { color: #525252; margin: 0 2px; }
+
 .overview { color: #d4d4d4; font-size: 16px; margin-top: 6px; line-height: 1.5; flex: 1; }
 
 /* Sinopse longa: "ver mais"/"ver menos" via checkbox hack (sem JS — st.html não
@@ -403,11 +421,20 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.05);
   line-height: 1.4;
-  min-height: calc(1.4em * 2);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+}
+
+/* Altura fixa de 2 linhas só no desktop, onde os cards ficam lado a lado na
+   mesma fileira (.grid-titles com 3 colunas) e precisam alinhar a base. No
+   mobile os cards ficam empilhados (1 por linha), então não há desalinhamento
+   a corrigir e o texto do motivo pode ocupar quantas linhas precisar. */
+@media (min-width: 769px) {
+  .reason {
+    min-height: calc(1.4em * 2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
 .provider {
@@ -438,6 +465,16 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   flex-wrap: wrap;
   gap: 4px;
   margin: 2px 0;
+}
+
+.providers-block { margin: 4px 0; }
+.providers-label {
+  display: block;
+  color: #737373;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
 }
 
 /* Cancelar vermelho — so aplica quando ha um botao primary desabilitado (estado de busca) */
