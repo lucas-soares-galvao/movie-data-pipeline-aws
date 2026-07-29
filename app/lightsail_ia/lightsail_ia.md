@@ -22,9 +22,11 @@ O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Fun
 ```
 Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz, diretor, elenco). O limite máximo de resultados é 15.
 
+**Destaque de gênero/provedor nas badges:** `_extract_highlighted_terms()` extrai por regex os valores de `lower(genre_names) LIKE '%valor%'` e `lower(streaming_providers) LIKE '%valor%'` de volta da própria `where_clause` gerada pelo LLM — reaproveita uma decisão que o LLM já tomou no Passo 1, sem chamada extra de LLM. Cláusulas `NOT LIKE` são ignoradas (o usuário não quer aquele valor, não deve ser destacado). O resultado é anexado a cada registro formatado como `highlighted_genres`/`highlighted_providers` e usado por `componentes.py::_prioritize()` (ver seção "Interface") para colocar o gênero/provedor mencionado primeiro nas badges do card.
+
 O schema informado ao LLM inclui colunas de ficha técnica como `director` e `actor_names` (além de `screenplay`, `music_composer`, `producer`, `cinematographer`, `editor`), permitindo buscas como "filmes do Christopher Nolan" ou "filmes com Tom Hanks" — mesmo que esses campos não sejam exibidos no card (ver seção "Interface").
 
-**Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit.
+**Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit. Como o destaque de gênero/provedor (`_extract_highlighted_terms()`) é derivado da mesma `where_clause` cacheada, um cache hit reproduz exatamente o mesmo destaque de uma chamada fresca ao LLM.
 
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
@@ -78,10 +80,14 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Cada card exibe:
   - Imagem de fundo (backdrop preferido sobre poster)
   - Título, ano, tipo (filme/série) e badge de classificação indicativa (L/10/12/14/16/18)
-  - Badges laranja por gênero (máx. 5 visíveis + badge "+N" para o restante)
+  - Badges laranja por gênero (máx. 5 visíveis + badge "+N" para o restante). Um gênero mencionado
+    explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()`
+    o move para o início da lista antes do corte de 5, então ele nunca cai no "+N" se estiver presente
+    no título
   - Onde assistir: rótulo + badges verdes 📺 com as plataformas de streaming no Brasil (máx. 5
     visíveis + badge "+N"), seguido do badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando
-    `in_theaters=true`
+    `in_theaters=true`. Mesma priorização de `_prioritize()` para um provedor mencionado explicitamente
+    (ex: "animações da Crunchyroll")
   - Linha compacta de "vitals": nota (★), data de lançamento (📅) e link ▶ Trailer (quando disponível),
     separados por "·"
   - Linha própria com a duração (⏱), logo abaixo
@@ -102,6 +108,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `agent.py` | `recommend(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) → gerar motivo (LLM) |
 | `agent.py` | `search_titles_spec(where_clause, limit)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 15) |
 | `agent.py` | `_validate_where(where_clause)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries, UPDATE, ALTER, CREATE, GRANT, TRUNCATE, EXEC, MERGE, REPLACE, CALL) |
+| `agent.py` | `_extract_highlighted_terms(where_clause)` | Extrai por regex os valores de `lower(genre_names) LIKE '%valor%'`/`lower(streaming_providers) LIKE '%valor%'` da where_clause gerada pelo LLM (ignora `NOT LIKE`), para priorizar as badges correspondentes nos cards sem chamada extra de LLM |
 | `agent.py` | `_load_llm_api_key()` | Busca `LLM_API_KEY` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou usa `.env` como fallback em desenvolvimento |
 | `agent.py` | `_cache_key(preference)` | Calcula o hash MD5 da preferência normalizada (lowercase + strip), usado como chave do cache de WHERE clauses |
 | `agent.py` | `_get_cached_where(preference)` | Busca cláusula WHERE cacheada; retorna `None` se ausente ou expirada (TTL 1h) |
@@ -121,6 +128,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `app.py` | `_seconds_until_available(history, ip)` | Calcula quantos segundos faltam até a consulta mais antiga do IP expirar, no histórico informado |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `render_card()`, `render_grid()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
+| `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges (gêneros ou provedores) colocando primeiro as que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador a cada tecla digitada |
