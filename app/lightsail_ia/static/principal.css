@@ -172,8 +172,11 @@ button[data-testid="stBaseButton-secondary"] {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
-.recorder-label span { color: #a3a3a3; font-weight: 400; font-size: 13px; display: block; margin-top: 2px; }
+.recorder-label span { color: #a3a3a3; font-weight: 400; font-size: 13px; }
 
 /* Botões de confirmação de áudio ("Usar gravação"/"Cancelar") escondidos —
    servem só de plumbing interno pro script de auto-confirmação/descarte
@@ -372,6 +375,20 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .duration { color: #a3a3a3; font-size: 15px; }
 .release-date { color: #a3a3a3; font-size: 15px; }
 .overview { color: #d4d4d4; font-size: 16px; margin-top: 6px; line-height: 1.5; flex: 1; }
+
+/* Sinopse longa: "ver mais" via checkbox hack (sem JS — st.html não executa <script>) */
+.overview-full { display: none; }
+.overview-toggle { display: none; }
+.overview-toggle:checked ~ .overview-full { display: block; }
+.overview-toggle:checked ~ .overview-short { display: none; }
+.overview-toggle:checked ~ .overview-more-label { display: none; }
+.overview-more-label {
+  cursor: pointer;
+  color: #fb923c;
+  font-size: 13px;
+  margin-top: 4px;
+  display: inline-block;
+}
 
 .reason {
   color: #a3a3a3;
