@@ -211,7 +211,7 @@ TOOL = {
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Quantidade máxima de resultados (padrão 10, máximo 10)",
+                    "description": "Quantidade máxima de resultados (padrão 15, máximo 15)",
                 },
             },
             "required": ["where_clause"],
@@ -328,7 +328,7 @@ def _validate_where(where_clause: str) -> str:
 # PASSO 2: Consulta real no Athena
 # ==============================================================================
 
-def search_titles_spec(where_clause: str, limit: int = 10) -> list[dict]:
+def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
     """
     Consulta a tabela SPEC no Athena e retorna os títulos que correspondem aos filtros.
 
@@ -338,12 +338,12 @@ def search_titles_spec(where_clause: str, limit: int = 10) -> list[dict]:
 
     Args:
         where_clause: Cláusula WHERE gerada pelo LLM (sem a palavra WHERE).
-        limit:        Máximo de títulos retornados. Padrão 10.
+        limit:        Máximo de títulos retornados. Padrão 15.
 
     Returns:
         Lista de dicionários, cada um representando um título com todos os campos da SPEC.
     """
-    limit = max(1, min(int(limit), 10))
+    limit = max(1, min(int(limit), 15))
     where_clause = _validate_where(where_clause)
 
     sql = f"""
