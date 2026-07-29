@@ -375,13 +375,19 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .release-date { color: #a3a3a3; font-size: 15px; }
 .overview { color: #d4d4d4; font-size: 16px; margin-top: 6px; line-height: 1.5; flex: 1; }
 
-/* Sinopse longa: "ver mais" via checkbox hack (sem JS — st.html não executa <script>) */
+/* Sinopse longa: "ver mais"/"ver menos" via checkbox hack (sem JS — st.html não
+   executa <script>). Os dois labels apontam para o mesmo checkbox — clicar em
+   qualquer um dos dois alterna o :checked, então "ver menos" simplesmente
+   desmarca a mesma caixa que "ver mais" marcou. */
 .overview-full { display: none; }
 .overview-toggle { display: none; }
+.overview-less-label { display: none; }
 .overview-toggle:checked ~ .overview-full { display: block; }
 .overview-toggle:checked ~ .overview-short { display: none; }
 .overview-toggle:checked ~ .overview-more-label { display: none; }
-.overview-more-label {
+.overview-toggle:checked ~ .overview-less-label { display: inline-block; }
+.overview-more-label,
+.overview-less-label {
   cursor: pointer;
   color: #fb923c;
   font-size: 13px;
