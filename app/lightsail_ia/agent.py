@@ -328,6 +328,41 @@ def _validate_where(where_clause: str) -> str:
     return where_clause.strip()
 
 
+# Regex para extrair de volta os valores de gênero/provedor que o LLM já filtrou na
+# where_clause (_SYSTEM_PROMPT instrui sempre usar lower(genre_names) LIKE '%valor%' e
+# lower(streaming_providers) LIKE '%valor%' para esses dois campos). Reaproveita uma
+# decisão que o LLM já tomou no Passo 1 para priorizar as badges do card na Etapa 2.5,
+# sem custo extra de tokens/chamadas de LLM.
+_HIGHLIGHT_FIELD_PATTERNS = {
+    "genres": re.compile(
+        r"lower\s*\(\s*genre_names\s*\)\s*(?P<neg>NOT\s+)?LIKE\s*'(?P<val>[^']*)'",
+        re.IGNORECASE,
+    ),
+    "providers": re.compile(
+        r"lower\s*\(\s*streaming_providers\s*\)\s*(?P<neg>NOT\s+)?LIKE\s*'(?P<val>[^']*)'",
+        re.IGNORECASE,
+    ),
+}
+
+
+def _extract_highlighted_terms(where_clause: str) -> dict[str, list[str]]:
+    """Extrai os termos de gênero/provedor que o LLM já filtrou na where_clause (Passo 1),
+    usados para priorizar as badges correspondentes nos cards (ver componentes.py::_prioritize).
+
+    Cláusulas NOT LIKE são ignoradas: significam que o usuário não quer aquele valor, então
+    ele não deve ser destacado.
+    """
+    result: dict[str, list[str]] = {"genres": [], "providers": []}
+    for key, pattern in _HIGHLIGHT_FIELD_PATTERNS.items():
+        for match in pattern.finditer(where_clause):
+            if match.group("neg"):
+                continue
+            term = match.group("val").strip("%").strip().lower()
+            if term and term not in result[key]:
+                result[key].append(term)
+    return result
+
+
 # ==============================================================================
 # PASSO 2: Consulta real no Athena
 # ==============================================================================
@@ -525,7 +560,7 @@ def recommend(preference: str) -> list[dict]:
     Returns:
         Lista de dicionários, cada um com: title, type, year, genres, overview,
         rating, poster_url, backdrop_url, duration, streaming_providers,
-        in_theaters, theater_end_date, reason.
+        in_theaters, theater_end_date, reason, highlighted_genres, highlighted_providers.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
     """
 
@@ -548,6 +583,11 @@ def recommend(preference: str) -> list[dict]:
         args = json.loads(tool_call.function.arguments)
         _save_cached_where(preference, args)
 
+    # Reaproveita os termos de gênero/provedor que o próprio LLM já filtrou na where_clause
+    # (cache-hit ou fresca — ambos convergem para o mesmo dict `args`) para priorizar as
+    # badges correspondentes nos cards, sem chamada extra ao LLM.
+    highlighted_terms = _extract_highlighted_terms(args.get("where_clause", ""))
+
     # ------------------------------------------------------------------
     # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
     # ------------------------------------------------------------------
@@ -558,6 +598,9 @@ def recommend(preference: str) -> list[dict]:
 
     # Formata todos os campos determinísticos via Python (instantâneo)
     formatted_records = [format_record(r) for r in titles_from_spec]
+    for record in formatted_records:
+        record["highlighted_genres"] = highlighted_terms["genres"]
+        record["highlighted_providers"] = highlighted_terms["providers"]
 
     # ------------------------------------------------------------------
     # PASSO 3: LLM gera apenas o "motivo" de cada recomendação

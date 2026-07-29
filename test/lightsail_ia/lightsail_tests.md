@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -53,6 +53,26 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_rejeita_subquery_select` | Rejeita cláusulas com `SELECT` (prevenção de subquery) |
 | `test_remove_espacos_nas_pontas` | Remove espaços em branco nas extremidades da cláusula |
 
+### `TestExtractHighlightedTerms` — Extração de termos de gênero/provedor para destaque
+
+Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PATTERNS`), sem nenhum branch que dependa dos dois campos juntos — por isso os testes cobrem cada campo isolado nos seus 3 estados de contagem (nenhum/um/mais de um), mais um único caso combinado provando que não há interferência entre eles, mais os cenários de "tipo de menção" (positivo/negativo) e robustez do regex.
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_filtro_de_genero_ou_provedor_retorna_listas_vazias` | `where_clause` sem `genre_names`/`streaming_providers` → `{"genres": [], "providers": []}` |
+| `test_extrai_um_genero` | Um `LIKE` de gênero → `genres == ["terror"]` |
+| `test_extrai_mais_de_um_genero` | Dois `LIKE` ORed de gênero → `genres == ["terror", "comédia"]`, na ordem de aparição |
+| `test_extrai_um_provedor` | Um `LIKE` de provedor → `providers == ["netflix"]` |
+| `test_extrai_mais_de_um_provedor` | Dois `LIKE` ORed de provedor → `providers == ["netflix", "crunchyroll"]` |
+| `test_extrai_genero_e_provedor_juntos_sem_interferencia` | `where_clause` com gênero E provedor → os dois campos populados corretamente no mesmo resultado |
+| `test_case_insensitive_lower_e_like` | `LOWER(...)`/`Like` (caixa variada) ainda é reconhecido |
+| `test_tolera_espacos_extras` | Espaços extras dentro de `lower( genre_names )  LIKE  '%x%'` não quebram o match |
+| `test_not_like_e_excluido` | `NOT LIKE` nunca é destacado (usuário não quer aquele valor) |
+| `test_positivo_e_negativo_no_mesmo_campo` | `LIKE '%comédia%' AND NOT LIKE '%terror%'` → só `["comédia"]` |
+| `test_overview_nao_conta_como_filtro_de_genero` | `lower(overview) LIKE '%terror%'` não é confundido com filtro de `genre_names` |
+| `test_rent_buy_providers_nao_conta_como_filtro_de_streaming` | `lower(rent_buy_providers) LIKE '%netflix%'` não é confundido com filtro de `streaming_providers` |
+| `test_termo_duplicado_aparece_uma_vez` | Mesmo termo repetido na `where_clause` aparece uma única vez na lista (dedup) |
+
 ### `TestSearchTitlesSpec` — Consulta ao Athena (Etapa 2)
 
 | Teste | O que verifica |
@@ -91,6 +111,9 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_motivo_funciona_com_lista_direta_sem_wrapper` | Merge funciona com resposta em lista direta `[...]`, sem o wrapper `{"titles": [...]}` |
 | `test_motivo_ignora_item_com_id_nao_conversivel` | Item com `id` que não converte para `int` (ex: `"abc"`) é ignorado no merge, sem levantar exceção |
 | `test_payload_do_motivo_inclui_campos_de_ficha_tecnica` | Payload enviado à etapa 3 inclui `director`, `actor_names`, `keywords_pt` (além dos 6 campos mínimos) |
+| `test_anexa_generos_destacados_ao_resultado` | `where_clause` com filtro de gênero → `highlighted_genres` populado e `highlighted_providers == []` no registro final |
+| `test_anexa_provedores_destacados_ao_resultado` | `where_clause` com filtro de provedor → `highlighted_providers` populado e `highlighted_genres == []` no registro final |
+| `test_destaque_vazio_sem_filtro_de_genero_ou_provedor` | `where_clause` sem filtro de gênero/provedor → ambas as chaves presentes como `[]` |
 
 ### `TestCacheWhere` — Cache de cláusulas WHERE
 
@@ -101,6 +124,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_cache_miss_retorna_none` | Retorna `None` para preferência não cacheada |
 | `test_cache_expirado_retorna_none` | Retorna `None` e remove entrada quando TTL expira |
 | `test_cache_evita_chamada_llm_passo_1` | Com cache preenchido, `litellm.completion` é chamado apenas 1 vez (etapa 3 — o motivo ainda roda, pois depende dos títulos reais retornados pelo Athena, não do cache da etapa 1) |
+| `test_destaque_reproduzido_em_cache_hit` | Destaque de gênero/provedor extraído de uma `where_clause` cacheada é idêntico ao de uma chamada fresca com a mesma `where_clause` |
 
 ### `TestLogTokenUsage` — Logging de uso de tokens
 
@@ -126,6 +150,18 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_audio_muito_longo_levanta_erro_sem_chamar_api` | Áudio acima de `_MAX_AUDIO_SECONDS` levanta `AudioMuitoLongoError` **sem** chamar `litellm.transcription` (`assert_not_called()`), evitando gastar crédito à toa |
 
 ## Casos de teste — `test_componentes.py`
+
+### `TestPrioritize` — Reordenação de badges por termo destacado
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_termos_retorna_lista_original` | Lista de termos vazia → `_prioritize` é no-op |
+| `test_item_casado_vai_para_o_inicio` | Item que contém o termo destacado é movido para o início |
+| `test_mantem_ordem_relativa_dentro_de_cada_grupo` | Múltiplos itens casados/não casados mantêm a ordem original entre si dentro de cada grupo |
+| `test_case_insensitive` | Match funciona independente da caixa do termo/item |
+| `test_termo_curto_bate_em_mais_de_um_genero` | Termo curto (ex: "ação") que é substring de mais de um gênero (ex: "Ação & Aventura" e "Animação") prioriza ambos |
+| `test_termo_curto_bate_em_mais_de_um_provedor` | Mesmo cenário de overlap do lado de provedor (ex: termo "play" em "Google Play" e "Globoplay") |
+| `test_lista_vazia_com_termos_nao_gera_erro` | Lista de items vazia com termos destacados presentes → `[]` sem erro |
 
 ### `TestRenderCard` — Renderização de cards individuais
 
@@ -153,6 +189,12 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_exibe_motivo` | Card exibe o motivo da recomendação (`reason`) |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 | `test_card_escapa_xss_no_motivo` | Valor de `reason` com `<script>` é escapado via `html.escape` |
+| `test_card_genero_destacado_entra_nos_visiveis_alem_do_limite` | Gênero destacado originalmente na 6ª posição (cairia no "+1") aparece nas 5 badges visíveis, e outro gênero passa a ficar no "+1" |
+| `test_card_provedor_destacado_entra_nos_visiveis_alem_do_limite` | Mesmo cenário do teste acima, para provedores |
+| `test_card_multiplos_generos_destacados_mantem_ordem_entre_si` | Dois gêneros destacados aparecem antes dos demais, mantendo ordem relativa entre si |
+| `test_card_generos_e_provedores_destacados_priorizam_fileiras_independentes` | `highlighted_genres` e `highlighted_providers` populados juntos no mesmo card → cada fileira de badges prioriza os seus, independentemente uma da outra |
+| `test_card_sem_chave_highlighted_ordem_permanece_igual` | Sem `highlighted_genres`/`highlighted_providers` no dict do título → ordem idêntica à anterior à feature (sem regressão) |
+| `test_card_highlighted_vazio_ordem_permanece_igual` | `highlighted_genres`/`highlighted_providers` presentes mas vazios → ordem idêntica à anterior à feature |
 
 ### `TestRenderGrid` — Renderização do grid de cards
 
