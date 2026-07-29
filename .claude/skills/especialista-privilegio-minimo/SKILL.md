@@ -16,7 +16,8 @@ Esta skill cobre o racional de privilégio mínimo e os gaps encontrados; não d
 | O quê | Onde |
 |---|---|
 | Estrutura de cada arquivo `.tf`, argumentos de recurso, `depends_on` | `especialista-infraestrutura-terraform` |
-| Prevenção de vazamento de segredos/credenciais, SQL injection, abuso automatizado (tema relacionado, mas distinto) | `especialista-seguranca-aplicacao` |
+| Prevenção de vazamento de segredos/credenciais (tema relacionado, mas distinto) | `especialista-seguranca-segredos` |
+| Prevenção de SQL injection, abuso automatizado (bots) do FilmBot | `especialista-seguranca-filmbot` |
 | Racional já documentado de cada role/policy, incluindo o bootstrap do CI/CD | `infra/docs/iam.md` |
 | Mecânica exata do step "Bootstrap CICD IAM Policies" em YAML | `especialista-workflows-github`, `.github/workflows/02_terraform.yml` |
 

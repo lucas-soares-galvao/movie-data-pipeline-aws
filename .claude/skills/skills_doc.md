@@ -35,8 +35,9 @@ roteamento rápido em uma linha; este explica quando exatamente cada skill entra
 | [especialista-testes-app](#especialista-testes-app) | Testes em `test/`, por serviço AWS |
 | [especialista-legibilidade-codigo](#especialista-legibilidade-codigo) | Clareza e legibilidade de código Python/SQL |
 | [especialista-workflows-github](#especialista-workflows-github) | Mecânica YAML dos workflows GitHub Actions |
-| [especialista-seguranca-aplicacao](#especialista-seguranca-aplicacao) | Vazamento de segredos, SQL injection e abuso automatizado no FilmBot |
+| [especialista-seguranca-segredos](#especialista-seguranca-segredos) | Vazamento de segredos/credenciais no repositório, CI/CD e ambiente local |
 | [especialista-streamlit-filmbot](#especialista-streamlit-filmbot) | UI Streamlit do FilmBot (design system "Luminous") |
+| [especialista-seguranca-filmbot](#especialista-seguranca-filmbot) | Segurança do agente FilmBot: SQL injection e abuso automatizado (bots) |
 | [especialista-custo-llm-agente](#especialista-custo-llm-agente) | Custo de tokens/LLM do agente de recomendação do FilmBot |
 
 ---
@@ -314,17 +315,15 @@ narrativa (`estrutura-projeto`, `.github/workflow.md`) não detalha.
 
 ## Segurança
 
-### especialista-seguranca-aplicacao
+### especialista-seguranca-segredos
 
-**O que é:** especialista em segurança de aplicação em três eixos — (1) vazamento de segredos/credenciais no
-repositório, CI/CD e ambiente local; (2) prevenção de SQL injection via input externo (usuário ou LLM); (3)
-proteção contra abuso automatizado (bots/scripts) do FilmBot.
+**O que é:** especialista em prevenção de vazamento de segredos/credenciais no repositório, CI/CD e ambiente
+local.
 
 **Quando usar:**
 - Ao criar arquivos `.example`, ou configurar steps de workflow que manipulam credenciais.
 - Ao decidir o que entra em `.gitignore`, ou revisar `terraform.tfvars`.
-- Ao avaliar exposição de rede (SSH/CIDR), revisar SQL montado a partir de input externo.
-- Ao avaliar login/rate limit/limites de tamanho do FilmBot.
+- Ao avaliar exposição de rede (SSH/CIDR) ligada a controle de acesso por credencial.
 
 ---
 
@@ -340,6 +339,16 @@ já definido (cores, tipografia, componentes, motion), com foco em responsividad
 - Ao redesenhar componentes existentes (cards, login, grid).
 - Ao ajustar CSS/JS em `static/*.css|js`.
 - Ao receber um pedido (texto ou imagem/mockup) para aplicar/replicar visualmente no Streamlit.
+
+### especialista-seguranca-filmbot
+
+**O que é:** especialista em segurança do agente/app FilmBot em dois eixos — (1) prevenção de SQL injection via
+input externo (usuário ou LLM); (2) proteção contra abuso automatizado (bots/scripts) do FilmBot.
+
+**Quando usar:**
+- Ao mexer em SQL montado a partir de input externo em `app/lightsail_ia/agent.py`.
+- Ao avaliar login/rate limit/limites de tamanho do FilmBot.
+- Ao mudar como o IP do cliente é identificado (proxy reverso, `X-Forwarded-For`).
 
 ### especialista-custo-llm-agente
 
