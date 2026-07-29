@@ -62,6 +62,7 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "https://youtube.com/watch?v=abc123" in html
         assert "Trailer" in html
+        assert 'class="vital vital-trailer"' in html
 
     def test_card_ignora_colecao(self):
         t = {**BASE_TITLE, "collection": "The Shining Collection"}
@@ -149,20 +150,32 @@ class TestRenderCard:
         assert '<span class="provider provider-more">+1</span>' in html
         assert "Telecine" not in html
 
-    def test_card_vitals_combina_nota_duracao_e_data(self):
-        html = componentes.render_card(BASE_TITLE)
+    def test_card_vitals_combina_nota_data_e_trailer(self):
+        t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}
+        html = componentes.render_card(t)
         assert 'class="meta-row vitals-row"' in html
         assert "★ 8.4" in html
-        assert "⏱ 2h 26min" in html
         assert "📅 Maio de 1980" in html
-        assert 'class="vital-sep">·</span>' in html
+        assert "Trailer" in html
+        assert html.count('class="vital-sep">·</span>') == 2
+        rating_pos = html.index("★ 8.4")
+        date_pos = html.index("📅 Maio de 1980")
+        trailer_pos = html.index("vital-trailer")
+        assert rating_pos < date_pos < trailer_pos
+
+    def test_card_duracao_fica_em_linha_separada_apos_vitals(self):
+        html = componentes.render_card(BASE_TITLE)
+        rating_pos = html.index("★ 8.4")
+        date_pos = html.index("📅 Maio de 1980")
+        duration_pos = html.index("⏱ 2h 26min")
+        assert rating_pos < date_pos < duration_pos
 
     def test_card_vitals_omite_nota_ausente_sem_separador_solto(self):
         t = {**BASE_TITLE, "rating": None}
         html = componentes.render_card(t)
         assert "★" not in html
         assert "vitals-row" in html
-        assert html.count('class="vital-sep">·</span>') == 1
+        assert html.count('class="vital-sep">·</span>') == 0
 
     def test_card_sem_vitals_nao_gera_linha_vazia(self):
         t = {**BASE_TITLE, "rating": None, "duration": None, "release_date": None}

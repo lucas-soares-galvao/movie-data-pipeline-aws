@@ -423,15 +423,15 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   line-height: 1.4;
 }
 
-/* Altura fixa de 2 linhas só no desktop, onde os cards ficam lado a lado na
+/* Altura fixa de 3 linhas só no desktop, onde os cards ficam lado a lado na
    mesma fileira (.grid-titles com 3 colunas) e precisam alinhar a base. No
    mobile os cards ficam empilhados (1 por linha), então não há desalinhamento
    a corrigir e o texto do motivo pode ocupar quantas linhas precisar. */
 @media (min-width: 769px) {
   .reason {
-    min-height: calc(1.4em * 2);
+    min-height: calc(1.4em * 3);
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }

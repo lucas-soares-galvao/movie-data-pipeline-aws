@@ -104,13 +104,13 @@ def render_card(title: dict, idx: int = 0) -> str:
         if certification else ""
     )
 
-    trailer_html = ""
+    trailer_vital_html = ""
     if trailer_url:
         safe_url = html.escape(trailer_url)
-        trailer_html = (
-            f'<div class="meta-row"><span class="meta-icon">{_YT_IMG}</span>'
+        trailer_vital_html = (
+            f'<span class="vital vital-trailer">{_YT_IMG}'
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
-            f'Trailer</a></div>'
+            f'Trailer</a></span>'
         )
 
     providers_html = ""
@@ -148,15 +148,20 @@ def render_card(title: dict, idx: int = 0) -> str:
         vitals_parts.append(
             f'<span class="vital vital-rating">★ {html.escape(str(rating))}</span>'
         )
-    if duration:
-        vitals_parts.append(f'<span class="vital vital-duration">⏱ {html.escape(duration)}</span>')
     if release_date:
         vitals_parts.append(f'<span class="vital vital-release">📅 {release_date}</span>')
+    if trailer_vital_html:
+        vitals_parts.append(trailer_vital_html)
     vitals_html = (
         '<div class="meta-row vitals-row">'
         + '<span class="vital-sep">·</span>'.join(vitals_parts)
         + '</div>'
         if vitals_parts else ""
+    )
+
+    duration_html = (
+        f'<div class="meta-row vitals-row"><span class="vital vital-duration">⏱ {html.escape(duration)}</span></div>'
+        if duration else ""
     )
 
     return f"""
@@ -171,7 +176,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         {providers_html}
         {cinema_html}
         {vitals_html}
-        {trailer_html}
+        {duration_html}
         {overview_html}
         <p class="reason">💡 {reason}</p>
       </div>
