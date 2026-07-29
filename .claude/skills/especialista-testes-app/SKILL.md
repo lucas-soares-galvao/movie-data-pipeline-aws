@@ -15,6 +15,30 @@ Você é o especialista responsável pelos testes em `test/`, que espelha `app/`
 |---|---|
 | Árvore de `test/`, config geral do `pytest.ini` | `estrutura-projeto` |
 | Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `revisao-pos-mudanca-codigo` |
+| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/01_test.yml`) — `scripts/` e `app/lightsail_ia/app.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
+
+## Débito de cobertura para chegar a 95% — ordem de prioridade
+
+Com `app.py` excluído do gate (script de página do Streamlit, sem framework de teste automatizado
+no projeto), a cobertura de `app/` fica em ~95,25% — margem mínima (poucas linhas). Ao fechar essa
+lacuna, seguir esta ordem (do mais barato ao mais caro):
+
+1. **`app/lightsail_ia/componentes.py`** (15 linhas faltando) — funções wrapper finas em torno de
+   `st.markdown`/`components.html` (`_inject_css`, `load_login_css`, `load_main_css`,
+   `load_preference_counter_script`, `load_audio_cancel_script`, `render_footer`,
+   `render_login_footer`). Reaproveitar o mock de `streamlit` que já cobre `render_card`/`render_grid`
+   no mesmo arquivo.
+2. **`app/lambda_api/src/utils.py`** (12 linhas faltando) — branches de erro em
+   `collect_now_playing_data`/`collect_discover_data`: `except HTTPError` (retry/continue) e
+   `if saved_pages == 0: raise RuntimeError`. Reaproveitar o mock de `tmdb_get`/`fetch_tmdb_data`
+   levantando `HTTPError` já usado em outros testes do arquivo.
+3. **`app/glue_details/src/utils.py`** (27 linhas faltando, maior bloco isolado) — parsing de
+   `sys.argv` para `--FORCE_REFETCH`/`--TRANSLATE_PROVIDER`, a função `_fetch_collections_pt_br`
+   inteira (busca paralela de coleções em pt-BR, ainda sem nenhum teste) e o branch de merge com
+   dados existentes via `wr.s3.read_parquet` no fluxo de watch providers.
+4. **`app/lightsail_ia/agent.py`** (12 linhas) e **`app/lightsail_ia/formatacao.py`** (6 linhas) —
+   branches de erro/edge case do agente de recomendação (LLM) e de formatação de data/duração;
+   deixar por último por menor volume e maior complexidade de mock (LLM).
 | Enumeração caso a caso de testes e fixtures de cada módulo | `test/<modulo>/<modulo>_tests.md` |
 | Código Python/SQL/PySpark/awswrangler exercitado pelos testes | `especialista-engenharia-dados-app` |
 

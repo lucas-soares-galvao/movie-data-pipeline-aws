@@ -375,7 +375,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 .reason {
   color: #a3a3a3;
-  font-size: 12px;
+  font-size: 15px;
   font-style: italic;
   margin-top: 8px;
   padding-top: 8px;

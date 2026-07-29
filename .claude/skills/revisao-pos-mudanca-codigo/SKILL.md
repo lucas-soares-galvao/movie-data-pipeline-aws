@@ -36,7 +36,7 @@ tem um item específico para isso, com ponte para `especialista-privilegio-minim
 - [ ] **Novos branches de lógica** (if/else, try/except, loops com condição) estão cobertos por cenários de teste (caso feliz + caso de erro)?
 - [ ] **Parâmetros novos ou removidos** de funções existentes foram refletidos nos mocks e chamadas dos testes?
 - [ ] **Fixtures em `conftest.py`** foram atualizadas se a assinatura de dependências mudou?
-- [ ] **Cobertura >= 80%** — rode `pytest --cov=app --cov-report=term-missing --cov-fail-under=80` e confirme que o gate passa
+- [ ] **Cobertura >= 95%** — rode `pytest --cov=app --cov-report=term-missing --cov-fail-under=95` e confirme que o gate passa
 - [ ] **A mudança faz uma chamada nova/diferente a um serviço AWS?** (novo bucket/prefixo S3, nova tabela do Glue Catalog, novo client/action boto3 ou awswrangler, módulo passa a rodar sob outra role) — se sim, confirmar que a policy IAM da role correspondente em `infra/*.tf` já cobre essa permissão antes de reportar a tarefa como concluída; ver `especialista-privilegio-minimo` (racional de escopo mínimo) e `especialista-infraestrutura-terraform` (sintaxe do recurso). Se a policy não cobrir, é mudança de infra que precisa acompanhar o PR — sinalizar ao usuário, não apenas ao código de `app/`. Skip se a mudança não introduz nenhuma chamada nova/diferente a um serviço AWS (refactor puro, transformação de dado já lido, ajuste de teste).
 
 > Para *como* escrever/mockar cada teste corretamente (padrão de mock por serviço AWS — Lambda, Glue
@@ -124,7 +124,7 @@ Ao finalizar qualquer alteração de código:
 3. Faça as correções necessárias antes de reportar a tarefa como concluída
 4. Rode os comandos de validação:
    ```bash
-   pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+   pytest --cov=app --cov-report=term-missing --cov-fail-under=95
    ruff check app/ test/
    mypy app/
    ```
