@@ -287,11 +287,15 @@ _SYSTEM_PROMPT = (
 )
 
 # System prompt enviado ao LLM no Passo 3. Pede um motivo curto por título, em
-# JSON estruturado (menos tokens de completion do que prosa livre).
+# JSON estruturado (menos tokens de completion do que prosa livre). O limite de
+# ~150 caracteres mira o espaço do card na UI (bloco "reason" truncado em 3
+# linhas no desktop via CSS line-clamp) — mantém a maioria dos motivos visíveis
+# por completo, sem depender só do corte visual como rede de segurança.
 _REASON_SYSTEM_PROMPT = (
     "Você é um curador de filmes e séries. "
-    "Para cada título na lista, escreva um motivo curto (1-2 frases) explicando "
-    "por que ele é uma boa recomendação para o pedido do usuário. "
+    "Para cada título na lista, escreva um motivo curto (1-2 frases, no máximo "
+    "~150 caracteres) explicando por que ele é uma boa recomendação para o "
+    "pedido do usuário. "
     "Cite diretor, elenco, plataforma de streaming, classificação indicativa ou "
     "palavras-chave apenas quando fizerem parte do motivo real — não force menção "
     "a um campo que não tenha relação com o pedido. "

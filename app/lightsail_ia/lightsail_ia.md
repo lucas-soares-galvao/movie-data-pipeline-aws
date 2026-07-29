@@ -82,9 +82,10 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Onde assistir: rótulo + badges verdes 📺 com as plataformas de streaming no Brasil (máx. 5
     visíveis + badge "+N"), seguido do badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando
     `in_theaters=true`
-  - Linha compacta de "vitals": nota (★), duração (⏱) e data de lançamento (📅) separados por "·"
-  - Link clicável ▶ Trailer (quando disponível)
-  - Sinopse e motivo da recomendação (gerado pelo LLM na Etapa 3)
+  - Linha compacta de "vitals": nota (★), data de lançamento (📅) e link ▶ Trailer (quando disponível),
+    separados por "·"
+  - Linha própria com a duração (⏱), logo abaixo
+  - Sinopse e motivo da recomendação (gerado pelo LLM na Etapa 3, truncado em 3 linhas no desktop)
 
 ## Entradas e saídas
 
