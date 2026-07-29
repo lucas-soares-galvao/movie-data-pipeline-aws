@@ -136,7 +136,11 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_nao_exibe_elenco` | Card não renderiza nomes do elenco mesmo quando fornecidos |
 | `test_card_nao_exibe_diretor` | Card não renderiza "Diretor: {nome}" mesmo quando fornecido |
 | `test_card_com_certificacao` | Card exibe badge de classificação indicativa |
-| `test_card_com_trailer` | Card exibe link clicável para o trailer |
+| `test_card_com_trailer` | Card exibe link clicável para o trailer, como item da linha de nota/data |
+| `test_card_vitals_combina_nota_data_e_trailer` | Linha de vitals agrupa nota, data de lançamento e trailer, nessa ordem |
+| `test_card_duracao_fica_em_linha_separada_apos_vitals` | Duração aparece em linha própria, depois da linha de nota/data/trailer |
+| `test_card_vitals_omite_nota_ausente_sem_separador_solto` | Sem nota, a linha de vitals não deixa separador `·` solto |
+| `test_card_sem_vitals_nao_gera_linha_vazia` | Sem nota, duração e data, nenhuma linha de vitals é gerada |
 | `test_card_ignora_colecao` | Card não renderiza coleção/franquia mesmo quando fornecida |
 | `test_card_ignora_criadores` | Card não renderiza criadores mesmo quando fornecidos |
 | `test_card_ignora_redes_tv` | Card não renderiza redes de TV mesmo quando fornecidas |
