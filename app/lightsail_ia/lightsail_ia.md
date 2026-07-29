@@ -68,7 +68,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
-- Grid responsivo de cards (largura mínima 260px por coluna, preenche a tela automaticamente)
+- Grid responsivo de cards: 3 colunas fixas no desktop (`repeat(3, 1fr)`), 1 coluna no mobile (`≤768px`)
 - Botão "Sair" no cabeçalho para encerrar a sessão autenticada
 - **Rate limiting por IP:** máximo de 20 consultas por hora (janela deslizante). O contador é exibido abaixo do campo de texto; ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS (JavaScript client-side via `st.components.v1.html`) mostra quanto tempo falta em tempo real, decrementando a cada segundo. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
 - **Limite de caracteres:** o `st.text_area` da preferência tem `max_chars=300` (`_MAX_PREFERENCE_CHARS`), aplicado tanto à digitação manual (o Streamlit trava a digitação ao atingir o limite) quanto ao texto vindo da transcrição de áudio (truncado antes de preencher o campo — ver seção de transcrição acima). Um contador "N / 300 caracteres" é exibido abaixo da caixa, atualizado em tempo real a cada tecla digitada via `static/contador_caracteres.js` (injetado por `load_preference_counter_script()` em `componentes.py`, mesmo padrão de `_inject_css`/`load_main_css`) — o script acessa o DOM da página (`window.parent.document`) através de um iframe same-origin (`st.components.v1.html`) e observa a textarea pelo hook `data-testid="stTextArea"`, já que o Streamlit não oferece rerun por-tecla nativamente. **Atenção:** por depender de um detalhe interno não documentado do Streamlit, esse contador pode quebrar silenciosamente em upgrades futuros de versão — `app.py` não tem teste automatizado, validação é manual (`streamlit run app.py`)
@@ -78,10 +78,11 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Cada card exibe:
   - Imagem de fundo (backdrop preferido sobre poster)
   - Título, ano, tipo (filme/série) e badge de classificação indicativa (L/10/12/14/16/18)
-  - Badges laranja por gênero
-  - Linha com nota (★), duração (⏱), data de lançamento (📅)
-  - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" (ou "Em cartaz") quando `in_theaters=true`
-  - Badges verdes 📺 com as plataformas de streaming disponíveis no Brasil
+  - Badges laranja por gênero (máx. 5 visíveis + badge "+N" para o restante)
+  - Onde assistir: rótulo + badges verdes 📺 com as plataformas de streaming no Brasil (máx. 5
+    visíveis + badge "+N"), seguido do badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando
+    `in_theaters=true`
+  - Linha compacta de "vitals": nota (★), duração (⏱) e data de lançamento (📅) separados por "·"
   - Link clicável ▶ Trailer (quando disponível)
   - Sinopse e motivo da recomendação (gerado pelo LLM na Etapa 3)
 

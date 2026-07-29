@@ -109,6 +109,66 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE)
         assert "Netflix" in html
 
+    def test_card_sem_streaming_providers_nao_exibe_rotulo(self):
+        t = {**BASE_TITLE, "streaming_providers": None}
+        html = componentes.render_card(t)
+        assert "Onde assistir" not in html
+        assert "providers-label" not in html
+
+    def test_card_generos_dentro_do_limite_nao_exibe_badge_extra(self):
+        t = {**BASE_TITLE, "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação"]}
+        html = componentes.render_card(t)
+        assert "genre-more" not in html
+
+    def test_card_generos_acima_do_limite_exibe_badge_com_contagem(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação", "Mistério", "Comédia"],
+        }
+        html = componentes.render_card(t)
+        assert '<span class="genre genre-more">+2</span>' in html
+        assert "Mistério" not in html
+        assert "Comédia" not in html
+
+    def test_card_providers_dentro_do_limite_nao_exibe_badge_extra(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": "Netflix,HBO Max,Disney Plus,Crunchyroll,Amazon Prime Video",
+        }
+        html = componentes.render_card(t)
+        assert "provider-more" not in html
+
+    def test_card_providers_acima_do_limite_exibe_badge_com_contagem(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": (
+                "Netflix,HBO Max,Disney Plus,Crunchyroll,Amazon Prime Video,Telecine"
+            ),
+        }
+        html = componentes.render_card(t)
+        assert '<span class="provider provider-more">+1</span>' in html
+        assert "Telecine" not in html
+
+    def test_card_vitals_combina_nota_duracao_e_data(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert 'class="meta-row vitals-row"' in html
+        assert "★ 8.4" in html
+        assert "⏱ 2h 26min" in html
+        assert "📅 Maio de 1980" in html
+        assert 'class="vital-sep">·</span>' in html
+
+    def test_card_vitals_omite_nota_ausente_sem_separador_solto(self):
+        t = {**BASE_TITLE, "rating": None}
+        html = componentes.render_card(t)
+        assert "★" not in html
+        assert "vitals-row" in html
+        assert html.count('class="vital-sep">·</span>') == 1
+
+    def test_card_sem_vitals_nao_gera_linha_vazia(self):
+        t = {**BASE_TITLE, "rating": None, "duration": None, "release_date": None}
+        html = componentes.render_card(t)
+        assert "vitals-row" not in html
+
     def test_card_exibe_motivo(self):
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
         html = componentes.render_card(t)
