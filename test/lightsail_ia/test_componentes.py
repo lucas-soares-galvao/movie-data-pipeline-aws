@@ -127,6 +127,27 @@ class TestRenderCard:
         assert "<script>" not in html
         assert "&lt;script&gt;" in html
 
+    def test_card_sinopse_curta_nao_exibe_ver_mais(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "Ver mais" not in html
+        assert 'class="overview"' in html
+
+    def test_card_sinopse_longa_trunca_com_ver_mais(self):
+        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
+        t = {**BASE_TITLE, "overview": sinopse_longa}
+        html = componentes.render_card(t)
+        assert "Ver mais" in html
+        assert 'class="overview overview-short"' in html
+        assert 'class="overview overview-full"' in html
+        assert sinopse_longa in html
+        assert "…" in html
+
+    def test_card_toggle_id_usa_indice(self):
+        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
+        t = {**BASE_TITLE, "overview": sinopse_longa}
+        html = componentes.render_card(t, idx=3)
+        assert "overview-toggle-3" in html
+
 
 class TestRenderGrid:
     def test_grid_vazio(self):
@@ -136,3 +157,10 @@ class TestRenderGrid:
     def test_grid_com_titulos(self):
         html = componentes.render_grid([BASE_TITLE, BASE_TITLE])
         assert html.count("card") >= 2
+
+    def test_grid_gera_ids_de_toggle_unicos_por_indice(self):
+        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
+        t = {**BASE_TITLE, "overview": sinopse_longa}
+        html = componentes.render_grid([t, t])
+        assert "overview-toggle-0" in html
+        assert "overview-toggle-1" in html
