@@ -16,6 +16,8 @@ _CERTIFICATION_DESCRIPTIONS = {
     "18": "Não recomendado para menores de 18 anos",
 }
 
+_OVERVIEW_TRUNCATE_CHARS = 200
+
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
     ' width="20" height="20" alt="YouTube" style="display:inline-block;vertical-align:middle;" />'
@@ -53,14 +55,14 @@ def load_audio_cancel_script() -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
-def render_card(title: dict) -> str:
+def render_card(title: dict, idx: int = 0) -> str:
     """Monta o HTML de um card de título com escape contra XSS."""
     poster = title.get("backdrop_url") or title.get("poster_url") or ""
     title_name = html.escape(title.get("title", ""))
     year = html.escape(str(title.get("year", "")))
     title_type = html.escape(title.get("type", ""))
     rating = title.get("rating")
-    overview = html.escape(title.get("overview") or "")
+    overview_raw = title.get("overview") or ""
     reason = html.escape(title.get("reason") or "")
     genres = title.get("genres") or []
     duration = title.get("duration") or ""
@@ -118,6 +120,19 @@ def render_card(title: dict) -> str:
             f'<span class="meta-icon">📺</span>{stream_badges}</div>'
         )
 
+    if len(overview_raw) > _OVERVIEW_TRUNCATE_CHARS:
+        overview_short = html.escape(overview_raw[:_OVERVIEW_TRUNCATE_CHARS].rstrip() + "…")
+        overview_full = html.escape(overview_raw)
+        toggle_id = f"overview-toggle-{idx}"
+        overview_html = (
+            f'<input type="checkbox" id="{toggle_id}" class="overview-toggle" hidden>'
+            f'<p class="overview overview-short">{overview_short}</p>'
+            f'<p class="overview overview-full">{overview_full}</p>'
+            f'<label for="{toggle_id}" class="overview-more-label">Ver mais</label>'
+        )
+    else:
+        overview_html = f'<p class="overview">{html.escape(overview_raw)}</p>'
+
     rating_html = (
         f'<div class="meta-row"><span class="meta-icon">★</span>'
         f'<span class="rating">{html.escape(str(rating))}</span></div>'
@@ -149,7 +164,7 @@ def render_card(title: dict) -> str:
         {cinema_html}
         {providers_html}
         {trailer_html}
-        <p class="overview">{overview}</p>
+        {overview_html}
         <p class="reason">💡 {reason}</p>
       </div>
     </article>
@@ -158,7 +173,7 @@ def render_card(title: dict) -> str:
 
 def render_grid(titles: list[dict]) -> str:
     """Monta o HTML completo do grid de cards."""
-    cards = [render_card(t) for t in titles]
+    cards = [render_card(t, idx) for idx, t in enumerate(titles)]
     return '<div class="grid-titles">' + "".join(cards) + "</div>"
 
 
