@@ -129,6 +129,7 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<p class="overview overview-short">{overview_short}</p>'
             f'<p class="overview overview-full">{overview_full}</p>'
             f'<label for="{toggle_id}" class="overview-more-label">Ver mais</label>'
+            f'<label for="{toggle_id}" class="overview-less-label">Ver menos</label>'
         )
     else:
         overview_html = f'<p class="overview">{html.escape(overview_raw)}</p>'
