@@ -437,6 +437,39 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   }
 }
 
+/* Grade fixa de 3 colunas para os badges de gênero e provedor, só no desktop
+   (mesmo raciocínio do bloco acima): com o limite de 5 itens visíveis, a
+   primeira linha preenche 3 e a segunda fica com 2; se houver excedente, o
+   badge "+N" entra como 6º item e equaliza para 3+3. As 2 linhas de altura
+   são sempre reservadas (mesmo com 1 linha de conteúdo real) para o rótulo
+   "ONDE ASSISTIR" e o que vem depois começarem na mesma altura em cards
+   vizinhos da fileira — line-height fixo nos chips torna essa altura
+   previsível, independente do line-height herdado do tema do Streamlit. No
+   mobile os chips continuam com wrap livre (largura pelo conteúdo, altura
+   variável), já que os cards ficam empilhados e mais largos, sem
+   necessidade de alinhamento entre vizinhos. */
+@media (min-width: 769px) {
+  .genres-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, minmax(24px, auto));
+    gap: 4px 6px;
+  }
+  .providers-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, minmax(24px, auto));
+  }
+  .genre,
+  .provider {
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+}
+
 .provider {
   background: rgba(34,197,94,0.12);
   color: #4ade80;
