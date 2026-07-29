@@ -68,7 +68,7 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `test_filtro_plataforma_na_query` | WHERE inclui `lower(streaming_providers) LIKE '%netflix%'` para filtro de streaming |
 | `test_filtro_faixa_de_ano_na_query` | WHERE inclui `year BETWEEN '2000' AND '2010'` para faixa de ano |
 | `test_limite_aplicado_na_query` | LIMIT na query reflete o parâmetro `limit` |
-| `test_limite_e_limitado_ao_maximo_de_10` | Limita a `LIMIT 10` mesmo se `limit=100` for passado |
+| `test_limite_e_limitado_ao_maximo_de_15` | Limita a `LIMIT 15` mesmo se `limit=100` for passado |
 | `test_limite_minimo_e_1` | Usa `LIMIT 1` quando `limit=0` for passado |
 | `test_rejeita_where_com_sql_perigoso` | Levanta `ValueError` quando a cláusula WHERE contém SQL perigoso |
 

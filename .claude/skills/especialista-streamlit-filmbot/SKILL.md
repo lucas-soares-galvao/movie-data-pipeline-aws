@@ -46,8 +46,8 @@ Como aplicar esses tokens dentro das limitações reais do Streamlit:
 
 - **CSS**: sempre injetado via `st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)` (ver `_inject_css` em `componentes.py`). Evite `style=` inline espalhado pelo Python quando dá para centralizar num `.css` em `static/`.
 - **Seletores**: os widgets nativos do Streamlit não têm classes CSS estáveis — o CSS mira atributos `data-testid` (`stTextArea`, `stAudioInput`, `stHorizontalBlock`, `stBaseButton-primary`, etc.). Isso é estrutura interna não documentada e pode quebrar em upgrades do Streamlit — quando usar um seletor desses, deixe um comentário curto avisando (mesmo padrão já usado em `contador_caracteres.js` e `principal.css`).
-- **Grid responsivo mobile-first**: `grid-template-columns: repeat(N, 1fr)` com número fixo de colunas por breakpoint — 5 no desktop, 3 no tablet, 1 (coluna única) no mobile. Replique o padrão de `.grid-titles` em `principal.css`.
-- **Breakpoints já estabelecidos no projeto**: `1200px` (tablet/desktop, unificado para toda a página — hero, cabeçalho, textarea/áudio, mensagens de erro/aviso e grid de cards viram juntos nesse ponto) e `768px` (mobile/tablet do grid de cards) — reutilize esses dois antes de inventar um novo. Existe também um `480px` isolado só para o `font-size` do `.hero-heading`, que não faz parte desse par principal.
+- **Grid responsivo mobile-first**: `grid-template-columns: repeat(N, 1fr)` com número fixo de colunas — 3 como padrão (desktop), 1 (coluna única) no mobile. Replique o padrão de `.grid-titles` em `principal.css`.
+- **Breakpoints já estabelecidos no projeto**: `768px` (mobile/desktop, unificado para toda a página — hero, cabeçalho, textarea/áudio, mensagens de erro/aviso e grid de cards viram juntos nesse ponto) — reutilize antes de inventar um novo. Existe também um `480px` isolado só para o `font-size` do `.hero-heading`, que não faz parte desse breakpoint principal.
 - **Imagens de conteúdo**: `aspect-ratio` fixo (`16/9` para cards) + `object-fit: cover` + `loading="lazy"`; prefira backdrop sobre poster quando os dois existirem (padrão já usado em `render_card`).
 - **JS**: injetado via `components.html`, acessando `window.parent.document` (iframe same-origin) quando precisa manipular o DOM da página real — padrão de `load_preference_counter_script`.
 - **Segurança**: qualquer HTML montado a partir de dado dinâmico (título, sinopse, etc. vindo do TMDB ou do LLM) passa por `html.escape()` antes de entrar na string — nunca interpolar texto de fonte externa sem escapar.
@@ -65,7 +65,7 @@ Três cenários distintos — não confunda um com o outro:
 
 ## Checklist antes de finalizar uma mudança visual
 
-- Rode `streamlit run app.py` localmente e verifique em viewport desktop, tablet e mobile (`>1200px`, `769–1200px` e `<768px`) — `app.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. `app.py` está inclusive excluído do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
+- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`>768px` e `≤768px`) — `app.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. `app.py` está inclusive excluído do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
 - Confira que nenhum seletor novo quebra os já existentes em `principal.css`/`login.css` — teste visualmente as duas telas (login e principal).
 - Se a mudança tocar `componentes.py`/`utils.py` ou lógica Python testável (fora de `app.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
 - Prosa em português, identificadores em inglês, conforme `CLAUDE.md`.
