@@ -33,7 +33,7 @@ button[data-testid="stBaseButton-secondary"] {
   display: none;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   [data-testid="stTextArea"],
   [data-testid="stAudioInput"] { max-width: 100%; }
 }
@@ -228,7 +228,7 @@ button[data-testid="stBaseButton-secondary"] {
   margin-bottom: 8px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .hero-heading { font-size: 28px; }
   .st-key-hero-section, .st-key-hero-actions, .st-key-header-row { max-width: 100%; padding: 0 8px; }
 }
@@ -257,9 +257,9 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   max-width: 100vw !important;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .grid-titles {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
   }
 
@@ -272,11 +272,11 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
     flex-wrap: wrap !important;
   }
 
-  /* Mensagens de erro/aviso ocupam 100% no mobile */
+  /* Mensagens de erro/aviso ocupam 100% em tablet e mobile */
   .msg-feedback, .msg-error, .msg-warning { max-width: 100% !important; }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .grid-titles {
     grid-template-columns: 1fr;
   }
@@ -468,7 +468,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   font-size: 14px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .msg-error, .msg-warning { max-width: 100%; }
 }
 
