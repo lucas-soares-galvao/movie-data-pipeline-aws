@@ -60,7 +60,7 @@ Consulte para entender o projeto em profundidade:
 - **especialista-finops-aws** — Custo x benefício dos recursos AWS já escolhidos (lifecycle S3, DPU Glue, bundle Lightsail, retenção de log)
 - **especialista-infraestrutura-terraform** — Argumentos exatos de recurso Terraform, `depends_on`, convenções de nomeação por serviço AWS
 - **especialista-privilegio-minimo** — Privilégio mínimo das policies IAM, bootstrap de policies do CI/CD
-- **especialista-seguranca-aplicacao** — Prevenção de vazamento de segredos/credenciais, de SQL injection e de abuso automatizado (bots) no FilmBot
+- **especialista-seguranca-segredos** — Prevenção de vazamento de segredos/credenciais no repositório, CI/CD e ambiente local
 - **especialista-observabilidade-qualidade-dados** — Alarmes CloudWatch, tópicos SNS, logs, e regras DQDL de Data Quality
 - **especialista-workflows-github** — Mecânica YAML dos workflows GitHub Actions (triggers, `workflow_call`, secrets, supply-chain)
 - **especialista-scripts-backfill** — Racional de design dos scripts de backfill manual (checkpoint S3, exit code 75, granularidade de unidade, padrões de tratamento de erro)
@@ -70,3 +70,4 @@ Consulte para entender o projeto em profundidade:
 - **especialista-legibilidade-codigo** — Clareza e legibilidade de código Python e SQL em `app/`/`test/`
 - **especialista-custo-llm-agente** — Custo de tokens/LLM do agente de recomendação do FilmBot
 - **especialista-streamlit-filmbot** — UI Streamlit do FilmBot (design system "Luminous", responsividade)
+- **especialista-seguranca-filmbot** — Segurança do agente FilmBot: SQL injection via input externo e abuso automatizado (bots)
