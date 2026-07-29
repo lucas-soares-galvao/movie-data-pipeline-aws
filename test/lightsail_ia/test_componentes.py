@@ -31,6 +31,39 @@ BASE_TITLE = {
 }
 
 
+class TestPrioritize:
+    """_prioritize() reordena badges colocando primeiro os que casam com algum termo
+    destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo."""
+
+    def test_sem_termos_retorna_lista_original(self):
+        assert componentes._prioritize(["Terror", "Drama"], []) == ["Terror", "Drama"]
+
+    def test_item_casado_vai_para_o_inicio(self):
+        result = componentes._prioritize(["Drama", "Terror", "Comédia"], ["terror"])
+        assert result == ["Terror", "Drama", "Comédia"]
+
+    def test_mantem_ordem_relativa_dentro_de_cada_grupo(self):
+        result = componentes._prioritize(
+            ["Drama", "Ação", "Terror", "Comédia"], ["terror", "comédia"]
+        )
+        assert result == ["Terror", "Comédia", "Drama", "Ação"]
+
+    def test_case_insensitive(self):
+        result = componentes._prioritize(["Drama", "Terror"], ["TERROR"])
+        assert result == ["Terror", "Drama"]
+
+    def test_termo_curto_bate_em_mais_de_um_genero(self):
+        result = componentes._prioritize(["Drama", "Ação & Aventura", "Animação"], ["ação"])
+        assert result == ["Ação & Aventura", "Animação", "Drama"]
+
+    def test_termo_curto_bate_em_mais_de_um_provedor(self):
+        result = componentes._prioritize(["Netflix", "Google Play", "Globoplay"], ["play"])
+        assert result == ["Google Play", "Globoplay", "Netflix"]
+
+    def test_lista_vazia_com_termos_nao_gera_erro(self):
+        assert componentes._prioritize([], ["terror"]) == []
+
+
 class TestRenderCard:
     def test_card_basico_contem_titulo(self):
         html = componentes.render_card(BASE_TITLE)
@@ -149,6 +182,69 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert '<span class="provider provider-more">+1</span>' in html
         assert "Telecine" not in html
+
+    def test_card_genero_destacado_entra_nos_visiveis_alem_do_limite(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Drama", "Suspense", "Ficção", "Ação", "Aventura", "Terror"],
+            "highlighted_genres": ["terror"],
+        }
+        html = componentes.render_card(t)
+        assert '<span class="genre">Terror</span>' in html
+        assert '<span class="genre genre-more">+1</span>' in html
+        assert "Aventura" not in html
+
+    def test_card_provedor_destacado_entra_nos_visiveis_alem_do_limite(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": (
+                "Netflix,HBO Max,Disney Plus,Amazon Prime Video,Telecine,Crunchyroll"
+            ),
+            "highlighted_providers": ["crunchyroll"],
+        }
+        html = componentes.render_card(t)
+        assert '<span class="provider">Crunchyroll</span>' in html
+        assert '<span class="provider provider-more">+1</span>' in html
+        assert "Telecine" not in html
+
+    def test_card_multiplos_generos_destacados_mantem_ordem_entre_si(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Drama", "Terror", "Comédia"],
+            "highlighted_genres": ["terror", "comédia"],
+        }
+        html = componentes.render_card(t)
+        terror_pos = html.index(">Terror<")
+        comedia_pos = html.index(">Comédia<")
+        drama_pos = html.index(">Drama<")
+        assert terror_pos < comedia_pos < drama_pos
+
+    def test_card_generos_e_provedores_destacados_priorizam_fileiras_independentes(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Drama", "Terror"],
+            "streaming_providers": "Netflix,Crunchyroll",
+            "highlighted_genres": ["terror"],
+            "highlighted_providers": ["crunchyroll"],
+        }
+        html = componentes.render_card(t)
+        assert html.index(">Terror<") < html.index(">Drama<")
+        assert html.index(">Crunchyroll<") < html.index(">Netflix<")
+
+    def test_card_sem_chave_highlighted_ordem_permanece_igual(self):
+        t = {**BASE_TITLE, "genres": ["Drama", "Terror"]}
+        html = componentes.render_card(t)
+        assert html.index(">Drama<") < html.index(">Terror<")
+
+    def test_card_highlighted_vazio_ordem_permanece_igual(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Drama", "Terror"],
+            "highlighted_genres": [],
+            "highlighted_providers": [],
+        }
+        html = componentes.render_card(t)
+        assert html.index(">Drama<") < html.index(">Terror<")
 
     def test_card_vitals_combina_nota_data_e_trailer(self):
         t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}

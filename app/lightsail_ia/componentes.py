@@ -57,6 +57,23 @@ def load_audio_cancel_script() -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
+def _prioritize(items: list[str], terms: list[str]) -> list[str]:
+    """Reordena items colocando primeiro os que contêm algum termo destacado (case-insensitive),
+    preservando a ordem relativa dentro de cada grupo. Usado para que um gênero/provedor
+    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N"."""
+    if not terms:
+        return items
+    lowered = [t.lower() for t in terms if t]
+
+    def _matches(item: str) -> bool:
+        item_lower = item.lower()
+        return any(t in item_lower for t in lowered)
+
+    matched = [i for i in items if _matches(i)]
+    unmatched = [i for i in items if not _matches(i)]
+    return matched + unmatched
+
+
 def render_card(title: dict, idx: int = 0) -> str:
     """Monta o HTML de um card de título com escape contra XSS."""
     poster = title.get("backdrop_url") or title.get("poster_url") or ""
@@ -81,7 +98,10 @@ def render_card(title: dict, idx: int = 0) -> str:
         if poster else ""
     )
 
-    genres_clean = [html.escape(g.strip()) for g in genres if g.strip()]
+    genres_raw = _prioritize(
+        [g.strip() for g in genres if g.strip()], title.get("highlighted_genres") or []
+    )
+    genres_clean = [html.escape(g) for g in genres_raw]
     visible_genres = genres_clean[:_MAX_VISIBLE_GENRES]
     extra_genres = len(genres_clean) - len(visible_genres)
     genres_html = "".join(f'<span class="genre">{g}</span>' for g in visible_genres)
@@ -116,6 +136,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     providers_html = ""
     if streaming_providers:
         provs = [p.strip() for p in streaming_providers.split(",") if p.strip()]
+        provs = _prioritize(provs, title.get("highlighted_providers") or [])
         visible_provs = provs[:_MAX_VISIBLE_PROVIDERS]
         extra_provs = len(provs) - len(visible_provs)
         stream_badges = "".join(

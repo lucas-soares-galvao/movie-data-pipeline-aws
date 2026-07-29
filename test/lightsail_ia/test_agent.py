@@ -177,6 +177,78 @@ class TestValidateWhere:
         assert result == "media_type = 'movie'"
 
 
+class TestExtractHighlightedTerms:
+    """_extract_highlighted_terms() lê de volta os valores de gênero/provedor que o
+    LLM já filtrou na where_clause do Passo 1, para priorizar badges no card sem
+    custo extra de LLM. Gênero e provedor são extraídos por regex independentes —
+    por isso os testes cobrem cada campo isolado nos seus 3 estados de contagem
+    (nenhum/um/mais de um) e só um caso combinado, provando que não há interferência
+    entre os dois campos."""
+
+    def test_sem_filtro_de_genero_ou_provedor_retorna_listas_vazias(self):
+        result = agent._extract_highlighted_terms("original_language = 'ko'")
+        assert result == {"genres": [], "providers": []}
+
+    def test_extrai_um_genero(self):
+        result = agent._extract_highlighted_terms("lower(genre_names) LIKE '%terror%'")
+        assert result["genres"] == ["terror"]
+        assert result["providers"] == []
+
+    def test_extrai_mais_de_um_genero(self):
+        where = "(lower(genre_names) LIKE '%terror%' OR lower(genre_names) LIKE '%comédia%')"
+        result = agent._extract_highlighted_terms(where)
+        assert result["genres"] == ["terror", "comédia"]
+
+    def test_extrai_um_provedor(self):
+        result = agent._extract_highlighted_terms("lower(streaming_providers) LIKE '%netflix%'")
+        assert result["providers"] == ["netflix"]
+        assert result["genres"] == []
+
+    def test_extrai_mais_de_um_provedor(self):
+        where = (
+            "(lower(streaming_providers) LIKE '%netflix%' "
+            "OR lower(streaming_providers) LIKE '%crunchyroll%')"
+        )
+        result = agent._extract_highlighted_terms(where)
+        assert result["providers"] == ["netflix", "crunchyroll"]
+
+    def test_extrai_genero_e_provedor_juntos_sem_interferencia(self):
+        where = "lower(genre_names) LIKE '%terror%' AND lower(streaming_providers) LIKE '%netflix%'"
+        result = agent._extract_highlighted_terms(where)
+        assert result["genres"] == ["terror"]
+        assert result["providers"] == ["netflix"]
+
+    def test_case_insensitive_lower_e_like(self):
+        result = agent._extract_highlighted_terms("LOWER(genre_names) Like '%terror%'")
+        assert result["genres"] == ["terror"]
+
+    def test_tolera_espacos_extras(self):
+        result = agent._extract_highlighted_terms("lower( genre_names )  LIKE  '%terror%'")
+        assert result["genres"] == ["terror"]
+
+    def test_not_like_e_excluido(self):
+        result = agent._extract_highlighted_terms("lower(genre_names) NOT LIKE '%terror%'")
+        assert result["genres"] == []
+
+    def test_positivo_e_negativo_no_mesmo_campo(self):
+        where = "lower(genre_names) LIKE '%comédia%' AND lower(genre_names) NOT LIKE '%terror%'"
+        result = agent._extract_highlighted_terms(where)
+        assert result["genres"] == ["comédia"]
+
+    def test_overview_nao_conta_como_filtro_de_genero(self):
+        result = agent._extract_highlighted_terms("lower(overview) LIKE '%terror%'")
+        assert result["genres"] == []
+
+    def test_rent_buy_providers_nao_conta_como_filtro_de_streaming(self):
+        result = agent._extract_highlighted_terms("lower(rent_buy_providers) LIKE '%netflix%'")
+        assert result["providers"] == []
+
+    def test_termo_duplicado_aparece_uma_vez(self):
+        where = "lower(genre_names) LIKE '%terror%' AND lower(genre_names) LIKE '%terror%'"
+        result = agent._extract_highlighted_terms(where)
+        assert result["genres"] == ["terror"]
+
+
 class TestSearchTitlesSpec:
 
     def test_retorna_lista_vazia_sem_resultados(self):
@@ -513,6 +585,42 @@ class TestRecommend:
         assert "Jack Nicholson" in user_content
         assert "isolamento" in user_content
 
+    def test_anexa_generos_destacados_ao_resultado(self):
+        filters = {"where_clause": "lower(genre_names) LIKE '%terror%'"}
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(filters)
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["highlighted_genres"] == ["terror"]
+        assert result[0]["highlighted_providers"] == []
+
+    def test_anexa_provedores_destacados_ao_resultado(self):
+        filters = {"where_clause": "lower(streaming_providers) LIKE '%netflix%'"}
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(filters)
+            result = agent.recommend("filmes da netflix")
+
+        assert result[0]["highlighted_providers"] == ["netflix"]
+        assert result[0]["highlighted_genres"] == []
+
+    def test_destaque_vazio_sem_filtro_de_genero_ou_provedor(self):
+        filters = {"where_clause": "media_type = 'movie'"}
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(filters)
+            result = agent.recommend("filmes")
+
+        assert result[0]["highlighted_genres"] == []
+        assert result[0]["highlighted_providers"] == []
+
 
 class TestCacheWhere:
 
@@ -556,6 +664,22 @@ class TestCacheWhere:
         assert mock_completion.call_count == 1
         mock_search.assert_called_once_with(**cached_args)
         assert len(result) == 1
+
+    def test_destaque_reproduzido_em_cache_hit(self):
+        """Cache hit reutiliza a where_clause cacheada, então o destaque de
+        gênero/provedor extraído dela deve ser idêntico ao de uma chamada fresca
+        com a mesma where_clause — mesmo código de extração para os dois caminhos."""
+        cached_args = {"where_clause": "lower(genre_names) LIKE '%terror%'"}
+        agent._save_cached_where("filmes de terror", cached_args)
+
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm({})
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["highlighted_genres"] == ["terror"]
 
 
 class TestLogTokenUsage:
