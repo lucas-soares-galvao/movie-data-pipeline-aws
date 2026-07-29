@@ -264,18 +264,18 @@ class TestSearchTitlesSpec:
     def test_limite_aplicado_na_query(self):
         with patch("agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
-            agent.search_titles_spec("vote_average >= 6.0", limit=10)
+            agent.search_titles_spec("vote_average >= 6.0", limit=15)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 10" in executed_sql
+        assert "LIMIT 15" in executed_sql
 
-    def test_limite_e_limitado_ao_maximo_de_10(self):
+    def test_limite_e_limitado_ao_maximo_de_15(self):
         with patch("agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("vote_average >= 6.0", limit=100)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 10" in executed_sql
+        assert "LIMIT 15" in executed_sql
         assert "LIMIT 100" not in executed_sql
 
     def test_limite_minimo_e_1(self):
