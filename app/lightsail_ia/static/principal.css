@@ -381,19 +381,19 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    desmarca a mesma caixa que "ver mais" marcou. */
 .overview-full { display: none; }
 .overview-toggle { display: none; }
-.overview-less-label { display: none; }
-.overview-toggle:checked ~ .overview-full { display: block; }
-.overview-toggle:checked ~ .overview-short { display: none; }
-.overview-toggle:checked ~ .overview-more-label { display: none; }
-.overview-toggle:checked ~ .overview-less-label { display: inline-block; }
 .overview-more-label,
 .overview-less-label {
   cursor: pointer;
   color: #fb923c;
   font-size: 13px;
   margin-top: 4px;
-  display: inline-block;
 }
+.overview-more-label { display: inline-block; }
+.overview-less-label { display: none; }
+.overview-toggle:checked ~ .overview-full { display: block; }
+.overview-toggle:checked ~ .overview-short { display: none; }
+.overview-toggle:checked ~ .overview-more-label { display: none; }
+.overview-toggle:checked ~ .overview-less-label { display: inline-block; }
 
 .reason {
   color: #a3a3a3;
@@ -402,6 +402,12 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.4;
+  min-height: calc(1.4em * 2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .provider {
