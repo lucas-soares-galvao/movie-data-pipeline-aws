@@ -130,17 +130,26 @@ class TestRenderCard:
     def test_card_sinopse_curta_nao_exibe_ver_mais(self):
         html = componentes.render_card(BASE_TITLE)
         assert "Ver mais" not in html
+        assert "Ver menos" not in html
         assert 'class="overview"' in html
 
-    def test_card_sinopse_longa_trunca_com_ver_mais(self):
+    def test_card_sinopse_longa_trunca_com_ver_mais_e_ver_menos(self):
         sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
         t = {**BASE_TITLE, "overview": sinopse_longa}
         html = componentes.render_card(t)
         assert "Ver mais" in html
+        assert "Ver menos" in html
         assert 'class="overview overview-short"' in html
         assert 'class="overview overview-full"' in html
         assert sinopse_longa in html
         assert "…" in html
+
+    def test_card_ver_mais_e_ver_menos_apontam_pro_mesmo_checkbox(self):
+        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
+        t = {**BASE_TITLE, "overview": sinopse_longa}
+        html = componentes.render_card(t, idx=5)
+        assert 'for="overview-toggle-5" class="overview-more-label"' in html
+        assert 'for="overview-toggle-5" class="overview-less-label"' in html
 
     def test_card_toggle_id_usa_indice(self):
         sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
