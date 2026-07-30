@@ -21,6 +21,7 @@ from agent import (
 )
 from componentes import (
     load_audio_cancel_script,
+    load_audio_timer_script,
     load_login_css,
     load_main_css,
     load_preference_counter_script,
@@ -184,9 +185,10 @@ with st.container(key="hero-section"):
     # .st-key-recorder-card (ver principal.css).
     # ------------------------------------------------------------------
     with st.container(key="recorder-card"):
+        _max_audio_label = f"{_MAX_AUDIO_SECONDS // 60:02d}:{_MAX_AUDIO_SECONDS % 60:02d}"
         st.markdown(
             '<div class="recorder-label">🎤 Grave a sua pergunta '
-            f'<span>(Máx. {_MAX_AUDIO_SECONDS} segundos)</span></div>',
+            f'<span id="audio-timer-badge">00:00 / {_max_audio_label}</span></div>',
             unsafe_allow_html=True,
         )
         _audio_widget_seq = st.session_state.get("audio_widget_seq", 0)
@@ -299,6 +301,7 @@ with st.container(key="hero-section"):
 # textarea globalmente (querySelector), então a posição no DOM não importa.
 load_preference_counter_script(_MAX_PREFERENCE_CHARS)
 load_audio_cancel_script()
+load_audio_timer_script()
 load_textarea_autogrow_script()
 
 _queries_made = _queries_in_last_hour(_ip_history, _client_ip)
