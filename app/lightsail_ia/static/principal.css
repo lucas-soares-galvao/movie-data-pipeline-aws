@@ -433,29 +433,25 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   }
 }
 
-/* Grade fixa de 3 colunas para os badges de gênero e provedor, só no desktop
-   (mesmo raciocínio do bloco acima): com o limite de 6 itens visíveis, a
-   grade sempre fecha em 3+3 (itens além do 6º são descartados em silêncio,
-   sem indicador de quantos ficaram de fora). As 2 linhas de altura
-   "ONDE ASSISTIR" e o que vem depois começarem na mesma altura em cards
-   vizinhos da fileira — line-height fixo nos chips torna essa altura
-   previsível, independente do line-height herdado do tema do Streamlit. No
-   mobile os chips continuam com wrap livre (largura pelo conteúdo, altura
+/* Grade fixa de 3 colunas só para os badges de provedor, só no desktop (mesmo
+   raciocínio do bloco acima): com o limite de 6 itens visíveis, a grade
+   sempre fecha em 3+3 (itens além do 6º são descartados em silêncio, sem
+   indicador de quantos ficaram de fora). As 2 linhas de altura são sempre
+   reservadas (mesmo com 1 linha de conteúdo real) para o que vem depois
+   começar na mesma altura em cards vizinhos da fileira — line-height fixo
+   nos chips torna essa altura previsível, independente do line-height
+   herdado do tema do Streamlit. Os badges de gênero ficam de fora dessa
+   grade de propósito: largura pelo conteúdo (pill natural) e wrap livre,
+   mesmo que isso desalinhe a altura entre cards vizinhos. No mobile os
+   provedores também voltam a ter wrap livre (largura pelo conteúdo, altura
    variável), já que os cards ficam empilhados e mais largos, sem
    necessidade de alinhamento entre vizinhos. */
 @media (min-width: 769px) {
-  .genres-container {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(2, minmax(24px, auto));
-    gap: 4px 6px;
-  }
   .providers-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(2, minmax(24px, auto));
   }
-  .genre,
   .provider {
     text-align: center;
     overflow: hidden;
