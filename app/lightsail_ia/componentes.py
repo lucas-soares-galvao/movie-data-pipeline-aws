@@ -17,8 +17,8 @@ _CERTIFICATION_DESCRIPTIONS = {
 }
 
 _OVERVIEW_TRUNCATE_CHARS = 200
-_MAX_VISIBLE_GENRES = 5
-_MAX_VISIBLE_PROVIDERS = 5
+_MAX_VISIBLE_GENRES = 6
+_MAX_VISIBLE_PROVIDERS = 6
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -103,10 +103,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     )
     genres_clean = [html.escape(g) for g in genres_raw]
     visible_genres = genres_clean[:_MAX_VISIBLE_GENRES]
-    extra_genres = len(genres_clean) - len(visible_genres)
     genres_html = "".join(f'<span class="genre">{g}</span>' for g in visible_genres)
-    if extra_genres > 0:
-        genres_html += f'<span class="genre genre-more">+{extra_genres}</span>'
 
     cinema_html = ""
     if in_theaters:
@@ -138,12 +135,9 @@ def render_card(title: dict, idx: int = 0) -> str:
         provs = [p.strip() for p in streaming_providers.split(",") if p.strip()]
         provs = _prioritize(provs, title.get("highlighted_providers") or [])
         visible_provs = provs[:_MAX_VISIBLE_PROVIDERS]
-        extra_provs = len(provs) - len(visible_provs)
         stream_badges = "".join(
             f'<span class="provider">{html.escape(p)}</span>' for p in visible_provs
         )
-        if extra_provs > 0:
-            stream_badges += f'<span class="provider provider-more">+{extra_provs}</span>'
         providers_html = (
             f'<div class="providers-block">'
             f'<span class="providers-label">📺 Onde assistir</span>'

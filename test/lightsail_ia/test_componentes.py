@@ -150,29 +150,27 @@ class TestRenderCard:
         assert "providers-label" not in html
 
     def test_card_generos_dentro_do_limite_nao_exibe_badge_extra(self):
-        t = {**BASE_TITLE, "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação"]}
+        t = {
+            **BASE_TITLE,
+            "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação", "Aventura"],
+        }
         html = componentes.render_card(t)
         assert "genre-more" not in html
 
-    def test_card_generos_acima_do_limite_exibe_badge_com_contagem(self):
+    def test_card_generos_acima_do_limite_trunca_sem_indicador(self):
         t = {
             **BASE_TITLE,
-            "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação", "Mistério", "Comédia"],
+            "genres": [
+                "Terror", "Drama", "Suspense", "Ficção", "Ação", "Aventura", "Mistério", "Comédia",
+            ],
         }
         html = componentes.render_card(t)
-        assert '<span class="genre genre-more">+2</span>' in html
+        assert "genre-more" not in html
+        assert "+2" not in html
         assert "Mistério" not in html
         assert "Comédia" not in html
 
     def test_card_providers_dentro_do_limite_nao_exibe_badge_extra(self):
-        t = {
-            **BASE_TITLE,
-            "streaming_providers": "Netflix,HBO Max,Disney Plus,Crunchyroll,Amazon Prime Video",
-        }
-        html = componentes.render_card(t)
-        assert "provider-more" not in html
-
-    def test_card_providers_acima_do_limite_exibe_badge_com_contagem(self):
         t = {
             **BASE_TITLE,
             "streaming_providers": (
@@ -180,32 +178,43 @@ class TestRenderCard:
             ),
         }
         html = componentes.render_card(t)
-        assert '<span class="provider provider-more">+1</span>' in html
-        assert "Telecine" not in html
+        assert "provider-more" not in html
+
+    def test_card_providers_acima_do_limite_trunca_sem_indicador(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": (
+                "Netflix,HBO Max,Disney Plus,Crunchyroll,Amazon Prime Video,Telecine,Globoplay"
+            ),
+        }
+        html = componentes.render_card(t)
+        assert "provider-more" not in html
+        assert "+1" not in html
+        assert "Globoplay" not in html
 
     def test_card_genero_destacado_entra_nos_visiveis_alem_do_limite(self):
         t = {
             **BASE_TITLE,
-            "genres": ["Drama", "Suspense", "Ficção", "Ação", "Aventura", "Terror"],
+            "genres": [
+                "Drama", "Suspense", "Ficção", "Ação", "Aventura", "Comédia", "Terror",
+            ],
             "highlighted_genres": ["terror"],
         }
         html = componentes.render_card(t)
         assert '<span class="genre">Terror</span>' in html
-        assert '<span class="genre genre-more">+1</span>' in html
-        assert "Aventura" not in html
+        assert "Comédia" not in html
 
     def test_card_provedor_destacado_entra_nos_visiveis_alem_do_limite(self):
         t = {
             **BASE_TITLE,
             "streaming_providers": (
-                "Netflix,HBO Max,Disney Plus,Amazon Prime Video,Telecine,Crunchyroll"
+                "Netflix,HBO Max,Disney Plus,Amazon Prime Video,Telecine,Globoplay,Crunchyroll"
             ),
             "highlighted_providers": ["crunchyroll"],
         }
         html = componentes.render_card(t)
         assert '<span class="provider">Crunchyroll</span>' in html
-        assert '<span class="provider provider-more">+1</span>' in html
-        assert "Telecine" not in html
+        assert "Globoplay" not in html
 
     def test_card_multiplos_generos_destacados_mantem_ordem_entre_si(self):
         t = {

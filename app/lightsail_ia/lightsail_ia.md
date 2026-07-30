@@ -80,12 +80,12 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Cada card exibe:
   - Imagem de fundo (backdrop preferido sobre poster)
   - Título, ano, tipo (filme/série) e badge de classificação indicativa (L/10/12/14/16/18)
-  - Badges laranja por gênero (máx. 5 visíveis + badge "+N" para o restante). Um gênero mencionado
+  - Badges laranja por gênero (máx. 6 visíveis, sem indicador para o restante). Um gênero mencionado
     explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()`
-    o move para o início da lista antes do corte de 5, então ele nunca cai no "+N" se estiver presente
+    o move para o início da lista antes do corte de 6, então ele nunca fica de fora se estiver presente
     no título
-  - Onde assistir: rótulo + badges verdes 📺 com as plataformas de streaming no Brasil (máx. 5
-    visíveis + badge "+N"), seguido do badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando
+  - Onde assistir: rótulo + badges verdes 📺 com as plataformas de streaming no Brasil (máx. 6
+    visíveis, sem indicador para o restante), seguido do badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando
     `in_theaters=true`. Mesma priorização de `_prioritize()` para um provedor mencionado explicitamente
     (ex: "animações da Crunchyroll")
   - Linha compacta de "vitals": nota (★), data de lançamento (📅) e link ▶ Trailer (quando disponível),
