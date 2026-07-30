@@ -96,6 +96,8 @@ button[data-testid="stBaseButton-secondary"] {
   border-radius: 16px !important;
   padding: 14px 16px 14px 44px !important;
   color: #f5f5f5 !important;
+  overflow-x: hidden !important;
+  word-wrap: break-word !important;
 }
 .st-key-hero-section [data-testid="stTextArea"] textarea:focus {
   border-color: rgba(249,115,22,0.5) !important;
@@ -334,13 +336,6 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   border: 1px solid rgba(249,115,22,0.2);
 }
 
-.genre-more,
-.provider-more {
-  background: rgba(255,255,255,0.06);
-  color: #a3a3a3;
-  border-color: rgba(255,255,255,0.12);
-}
-
 .certification-badge {
   display: inline-flex;
   align-items: center;
@@ -438,10 +433,9 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 /* Grade fixa de 3 colunas para os badges de gênero e provedor, só no desktop
-   (mesmo raciocínio do bloco acima): com o limite de 5 itens visíveis, a
-   primeira linha preenche 3 e a segunda fica com 2; se houver excedente, o
-   badge "+N" entra como 6º item e equaliza para 3+3. As 2 linhas de altura
-   são sempre reservadas (mesmo com 1 linha de conteúdo real) para o rótulo
+   (mesmo raciocínio do bloco acima): com o limite de 6 itens visíveis, a
+   grade sempre fecha em 3+3 (itens além do 6º são descartados em silêncio,
+   sem indicador de quantos ficaram de fora). As 2 linhas de altura
    "ONDE ASSISTIR" e o que vem depois começarem na mesma altura em cards
    vizinhos da fileira — line-height fixo nos chips torna essa altura
    previsível, independente do line-height herdado do tema do Streamlit. No
