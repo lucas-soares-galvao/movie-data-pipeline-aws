@@ -98,6 +98,7 @@ button[data-testid="stBaseButton-secondary"] {
   color: #f5f5f5 !important;
   overflow-x: hidden !important;
   word-wrap: break-word !important;
+  overflow-y: hidden;
 }
 .st-key-hero-section [data-testid="stTextArea"] textarea:focus {
   border-color: rgba(249,115,22,0.5) !important;

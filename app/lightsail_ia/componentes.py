@@ -57,6 +57,13 @@ def load_audio_cancel_script() -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
+def load_textarea_autogrow_script() -> None:
+    """Injeta o script que ajusta a altura do campo de preferência ao conteúdo digitado."""
+    path = Path(__file__).parent / "static" / "auto_grow_textarea.js"
+    script = path.read_text(encoding="utf-8")
+    components.html(f"<script>{script}</script>", height=0)
+
+
 def _prioritize(items: list[str], terms: list[str]) -> list[str]:
     """Reordena items colocando primeiro os que contêm algum termo destacado (case-insensitive),
     preservando a ordem relativa dentro de cada grupo. Usado para que um gênero/provedor
