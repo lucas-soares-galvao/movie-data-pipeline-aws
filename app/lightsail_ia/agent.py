@@ -84,7 +84,7 @@ load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
 _TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
-_MAX_AUDIO_SECONDS = 20
+_MAX_AUDIO_SECONDS = 15
 
 
 def _load_llm_api_key() -> str | None:

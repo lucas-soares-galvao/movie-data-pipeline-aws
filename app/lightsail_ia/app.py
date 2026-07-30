@@ -63,9 +63,9 @@ if _log_group:
     logging.root.setLevel(logging.ERROR)
 
 _executor = ThreadPoolExecutor(max_workers=2)
-_MAX_QUERIES_PER_HOUR = 20
+_MAX_QUERIES_PER_HOUR = 15
 _MAX_TRANSCRIPTIONS_PER_HOUR = 30  # Whisper é bem mais barato que o fluxo LLM+Athena
-_MAX_PREFERENCE_CHARS = 300
+_MAX_PREFERENCE_CHARS = 150
 
 
 @st.cache_resource
@@ -283,7 +283,7 @@ with st.container(key="hero-section"):
     preference = st.text_area(
         "O que você quer assistir?",
         placeholder="Ex: filmes de terror dos anos 2010, séries parecidas com Dark...",
-        height=68,
+        height=90,
         max_chars=_MAX_PREFERENCE_CHARS,
         key="preference_text",
         label_visibility="collapsed",
