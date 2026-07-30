@@ -151,6 +151,12 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 
 ## Casos de teste — `test_componentes.py`
 
+### `TestLoadAudioTimerScript` — Injeção do script do timer de áudio
+
+| Teste | O que verifica |
+|---|---|
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `audio-timer-badge` (mock de `componentes.components.html`, já que não há `st.testing`/`AppTest` na suite) |
+
 ### `TestPrioritize` — Reordenação de badges por termo destacado
 
 | Teste | O que verifica |

@@ -57,6 +57,13 @@ def load_audio_cancel_script() -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
+def load_audio_timer_script() -> None:
+    """Injeta o script que atualiza o timer do gravador de áudio para o formato decorrido/máximo."""
+    path = Path(__file__).parent / "static" / "audio_timer.js"
+    script = path.read_text(encoding="utf-8")
+    components.html(f"<script>{script}</script>", height=0)
+
+
 def load_textarea_autogrow_script() -> None:
     """Injeta o script que ajusta a altura do campo de preferência ao conteúdo digitado."""
     path = Path(__file__).parent / "static" / "auto_grow_textarea.js"
