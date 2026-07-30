@@ -31,6 +31,18 @@ BASE_TITLE = {
 }
 
 
+class TestLoadAudioTimerScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_audio_timer_script()
+        assert "audio-timer-badge" in captured["content"]
+        assert captured["height"] == 0
+
+
 class TestPrioritize:
     """_prioritize() reordena badges colocando primeiro os que casam com algum termo
     destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo."""
