@@ -50,6 +50,7 @@ test/glue_agg/
 | `test_query_contains_details_tv_join` | SQL contém `tb_tmdb_details_tv_{env}` e colunas `number_of_seasons`, `number_of_episodes`, `episode_runtime_minutes` |
 | `test_query_contains_enrichment_columns` | SQL contém colunas de enriquecimento: `actor_names`, `director`, `screenplay`, `music_composer`, `keywords_pt`, `certification`, `tagline`, `collection_name`, `trailer_url`, `imdb_id`, `created_by`, `networks`, `in_production`, `tv_type`, `title_status`, `production_companies`, `spoken_languages` |
 | `test_query_contains_watch_providers_join` | SQL contém `tb_tmdb_watch_providers_movie_{env}`, `tb_tmdb_watch_providers_tv_{env}` e coluna `streaming_providers` |
+| `test_query_contains_provider_logo_columns` | SQL contém `streaming_provider_logos`/`rent_buy_provider_logos` (colunas paralelas às de nome), `logo_path` e o prefixo da CDN `https://image.tmdb.org/t/p/w45` |
 | `test_query_deduplica_watch_providers_por_ano_mais_recente` | SQL contém CTEs `movie_wp_recent` / `tv_wp_recent` com `DENSE_RANK()` e `CAST(year AS INTEGER) DESC`; garante que **não** usa `ROW_NUMBER()` (que filtraria um único provedor por título em vez de todos do ano mais recente) |
 | `test_query_possui_dedup_final_spec_deduped` | SQL contém CTEs `spec_raw` e `spec_deduped` com `PARTITION BY id, media_type` e alias `rn_final` para garantir unicidade na saída |
 | `test_query_traduz_status_via_case_when` | SQL contém CASE WHEN para traduzir `status` de en-US para pt-BR (ex: `Released` → `Lançado`, `Cancelado`) |

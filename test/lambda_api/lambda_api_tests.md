@@ -187,8 +187,9 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salva
 | `test_envia_watch_region_br` | Params enviados são `{"watch_region": "BR"}` |
 | `test_s3_key_movie` | Chave S3 é `tmdb/watch_providers_ref/movie/watch_providers_ref.json` |
 | `test_s3_key_tv` | Chave S3 é `tmdb/watch_providers_ref/tv/watch_providers_ref.json` |
-| `test_extrai_campos_corretos_do_provider` | Extrai `provider_id`, `provider_name`, `display_priority_br`; descarta `logo_path` |
+| `test_extrai_campos_corretos_do_provider` | Extrai `provider_id`, `provider_name`, `display_priority_br`, `logo_path` |
 | `test_display_priority_br_none_quando_ausente` | `display_priority_br` é `None` quando `display_priorities` está ausente no provider |
+| `test_logo_path_none_quando_ausente` | `logo_path` é `None` quando ausente no provider |
 
 ### `TestCollectNowPlayingData`
 

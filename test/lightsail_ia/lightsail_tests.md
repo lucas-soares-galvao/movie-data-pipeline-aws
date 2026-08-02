@@ -196,6 +196,18 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_termo_curto_bate_em_mais_de_um_genero` | Termo curto (ex: "ação") que é substring de mais de um gênero (ex: "Ação & Aventura" e "Animação") prioriza ambos |
 | `test_termo_curto_bate_em_mais_de_um_provedor` | Mesmo cenário de overlap do lado de provedor (ex: termo "play" em "Google Play" e "Globoplay") |
 | `test_lista_vazia_com_termos_nao_gera_erro` | Lista de items vazia com termos destacados presentes → `[]` sem erro |
+| `test_key_extrai_nome_de_pares_provedor_logo` | Parâmetro `key` permite reordenar pares `(nome, logo_url)` comparando só o nome, preservando o par |
+
+### `TestRenderProviderBadges` — Badges de provedor (logo com fallback texto)
+
+| Teste | O que verifica |
+|---|---|
+| `test_com_logo_renderiza_img` | Provedor com logo renderiza `<img>` (alt = nome) em vez de texto |
+| `test_sem_logo_cai_para_texto` | Provedor sem logo (string vazia) cai para badge de texto, igual ao comportamento anterior à feature |
+| `test_logos_vazios_por_posicao_caem_para_texto_individualmente` | Em uma lista com múltiplos provedores, cada posição decide independentemente entre `<img>` e texto conforme tenha ou não logo |
+| `test_logos_string_mais_curta_preenche_com_vazio` | Rede de segurança: `logos_raw` com menos posições que `names_raw` é completada com string vazia em vez de estourar índice |
+| `test_escapa_html_no_nome_e_na_url_da_logo` | Nome e URL da logo passam por `html.escape` (proteção XSS) |
+| `test_prioriza_provedor_destacado_mesmo_com_logo` | `highlighted` continua priorizando o provedor certo mesmo quando os badges são imagens, não texto |
 
 ### `TestRenderCard` — Renderização de cards individuais
 
@@ -220,6 +232,10 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
 | `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
 | `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
+| `test_card_com_streaming_provider_logo_renderiza_img` | Card com `streaming_provider_logos` preenchido renderiza `<img>` da logo em vez do nome como texto |
+| `test_card_sem_rent_buy_providers_nao_exibe_bloco` | Sem `rent_buy_providers`, o bloco "Aluguel/Compra" não é renderizado |
+| `test_card_com_rent_buy_providers_exibe_bloco` | Com `rent_buy_providers` preenchido, o bloco "Aluguel/Compra" aparece com os nomes das plataformas |
+| `test_card_com_rent_buy_provider_logo_renderiza_img` | Bloco "Aluguel/Compra" também renderiza `<img>` quando `rent_buy_provider_logos` está preenchido |
 | `test_card_exibe_motivo` | Card exibe o motivo da recomendação (`reason`) |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 | `test_card_escapa_xss_no_motivo` | Valor de `reason` com `<script>` é escapado via `html.escape` |
@@ -299,8 +315,8 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 |---|---|
 | `test_registro_completo_filme` | Registro de filme formatado com todos os campos corretos |
 | `test_novos_campos_filme` | Campos `writers`, `composer`, `keywords` (pt) formatados corretamente |
-| `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
-| `test_novos_campos_nulos` | Campos `writers` e `composer` retornam `None` quando ausentes |
+| `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `rent_buy_provider_logos`, `streaming_provider_logos`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
+| `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_provider_logos`, `streaming_provider_logos` (entre outros) retornam `None` quando ausentes |
 | `test_registro_serie` | Registro de série com `type="série"` e duração formatada com temporadas |
 
 ## Como executar

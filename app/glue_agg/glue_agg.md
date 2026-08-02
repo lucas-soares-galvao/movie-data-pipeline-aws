@@ -20,6 +20,7 @@ Os dados de filmes e séries chegam em tabelas separadas (discover, details, gen
 2. Executa uma query SQL complexa no **Athena** que:
    - Une filmes e séries via `UNION ALL`
    - Deduplica watch providers por `DENSE_RANK` sobre o ano mais recente (CTEs `movie_wp_recent` / `tv_wp_recent`), preservando todos os provedores do ano mais recente por ID
+   - Constrói `streaming_provider_logos`/`rent_buy_provider_logos` (CTE `provider_ref`) a partir de `logo_path` (coletado em `lambda_api`), montando a URL da CDN do TMDB (`https://image.tmdb.org/t/p/w45{logo_path}`). São colunas string comma-joined **paralelas** a `streaming_providers`/`rent_buy_providers` — mesmo `GROUP BY`/`ORDER BY min_priority ASC`, alinhadas posição a posição — em vez de um tipo `ARRAY<ROW>`, porque o consumidor (`app/lightsail_ia/agent.py`) lê o Athena via boto3 cru (`get_query_results`), que devolve tudo como string; e porque `streaming_providers` continua sendo usado como filtro (`LIKE`) pelo LLM, o que exige mantê-lo como string simples
    - Faz `LEFT JOIN` com gêneros, idiomas, países, detalhes (runtime/temporadas, elenco, diretor, roteiristas, compositor, produtor, cinematógrafo, montador, keywords_pt, país de origem, países de produção, classificação indicativa, trailer, coleção, produtoras, status, tagline, IMDB ID, títulos recomendados/similares/alternativos, campos TV), plataformas de streaming (assinatura e aluguel/compra) e a tabela `now_playing` (para filmes em cartaz nos cinemas)
    - Resolve `recommended_titles` e `similar_titles` para pt-BR cruzando os IDs (`recommended_ids`/`similar_ids`) com a tabela `unified` (discover pt-BR) via CTEs `recommended_resolved` e `similar_resolved`, com fallback para o título em inglês quando o ID não existe no discover
    - Traduz `tv_type` de inglês para português via `CASE WHEN` (ex: `Scripted` → `Roteirizada`, `Documentary` → `Documentário`)
@@ -60,9 +61,9 @@ details AS (
   SELECT id, 'tv'    AS media_type, NULL AS runtime, number_of_seasons, ... FROM tv_details
 ),
 providers AS (
-  SELECT id, 'movie' AS media_type, streaming_providers FROM movie_providers
+  SELECT id, 'movie' AS media_type, streaming_providers, streaming_provider_logos FROM movie_providers
   UNION ALL
-  SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
+  SELECT id, 'tv'    AS media_type, streaming_providers, streaming_provider_logos FROM tv_providers
 )
 SELECT
   COALESCE(
@@ -70,7 +71,7 @@ SELECT
     d.overview_pt, d.overview_en
   ) AS overview,
   d.runtime AS runtime_minutes, d.number_of_seasons, d.number_of_episodes,
-  p.streaming_providers,
+  p.streaming_providers, p.streaming_provider_logos,
   CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
   ...
 FROM unified u

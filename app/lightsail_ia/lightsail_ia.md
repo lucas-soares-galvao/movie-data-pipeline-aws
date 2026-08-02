@@ -39,7 +39,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `rating` (float), `poster_url`, `backdrop_url`
 - `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temporadas · 36 eps · ~45 min/ep"`)
 - `release_date` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
-- `streaming_providers` (cópia direta — onde assistir no Brasil)
+- `streaming_providers` (cópia direta — onde assistir no Brasil), `streaming_provider_logos` (URLs de logo do TMDB, comma-joined e alinhada posicionalmente a `streaming_providers`; string vazia por posição quando o provedor não tem logo)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 - `tagline`, `cast` (top 5 atores), `director` (filmes e séries) — campos formatados mas atualmente não renderizados por `render_card()` (`componentes.py`), junto com `collection`, `creators`, `networks`, `producer`, `cinematographer`, `editor`
 - `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora)
@@ -48,7 +48,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `trailer_url` (link do YouTube), `collection` (saga/franquia, apenas filmes)
 - `production_companies` (estúdios), `production_countries` (países de produção, diferente de país de origem)
 - `networks` (redes originais, apenas séries), `creators` (apenas séries)
-- `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
+- `rent_buy_providers` (plataformas de aluguel/compra no Brasil), `rent_buy_provider_logos` (mesmo esquema de `streaming_provider_logos`, alinhada a `rent_buy_providers`)
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
 ### Etapa 3 — Geração do motivo (LLM)
@@ -91,10 +91,14 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()`
     o move para o início da lista antes do corte de 6, então ele nunca fica de fora se estiver presente
     no título
-  - Onde assistir: rótulo + badges verdes 📺 com as plataformas de streaming no Brasil (máx. 6
-    visíveis, sem indicador para o restante), seguido do badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando
-    `in_theaters=true`. Mesma priorização de `_prioritize()` para um provedor mencionado explicitamente
-    (ex: "animações da Crunchyroll")
+  - Onde assistir: rótulo + badges verdes 📺 com a **logo** de cada plataforma de streaming no Brasil
+    (`componentes.py::_render_provider_badges()`; cai para badge de texto quando o provedor não tem
+    logo), máx. 6 visíveis, sem indicador para o restante, seguido do badge amarelo 🎬 "Em cartaz até
+    DD/MM/YYYY" quando `in_theaters=true`. Mesma priorização de `_prioritize()` para um provedor
+    mencionado explicitamente (ex: "animações da Crunchyroll")
+  - Aluguel/Compra: mesmo padrão de badges/logo do bloco "Onde assistir", a partir de
+    `rent_buy_providers`/`rent_buy_provider_logos`, só aparece quando o título tem alguma plataforma
+    de aluguel/compra
   - Linha compacta de "vitals": nota (★), data de lançamento (📅) e link ▶ Trailer (quando disponível),
     separados por "·"
   - Linha própria com a duração (⏱), logo abaixo
@@ -135,7 +139,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `app.py` | `_seconds_until_available(history, ip, window_seconds)` | Calcula quantos segundos faltam até o evento mais antigo do IP expirar, na janela de tempo informada |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
-| `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges (gêneros ou provedores) colocando primeiro as que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
+| `componentes.py` | `_prioritize(items, terms, key=...)` | Reordena uma lista de badges (gêneros, ou pares nome/logo de provedores via `key`) colocando primeiro os que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
+| `componentes.py` | `_render_provider_badges(names_raw, logos_raw, highlighted)` | Monta os badges de um grupo de provedores (streaming ou aluguel/compra): faz `zip` posicional de `names_raw`/`logos_raw` (strings comma-joined alinhadas vindas de `glue_agg`), prioriza via `_prioritize()` e renderiza `<img>` da logo quando disponível, com fallback para badge de texto |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência + habilitar/desabilitar "Recomendar" | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador e o `disabled` do botão "Recomendar" a cada tecla digitada (exceto quando `rate_limited`) |

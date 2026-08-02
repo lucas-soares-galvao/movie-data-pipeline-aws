@@ -115,21 +115,52 @@ def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
     )
 
 
-def _prioritize(items: list[str], terms: list[str]) -> list[str]:
+def _prioritize(items: list, terms: list[str], key=lambda item: item) -> list:
     """Reordena items colocando primeiro os que contêm algum termo destacado (case-insensitive),
     preservando a ordem relativa dentro de cada grupo. Usado para que um gênero/provedor
-    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N"."""
+    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N".
+    `key` extrai o texto comparável de cada item — por padrão o próprio item (strings de
+    gênero); para badges de provedor, items são pares (nome, logo_url) e key extrai o nome."""
     if not terms:
         return items
     lowered = [t.lower() for t in terms if t]
 
-    def _matches(item: str) -> bool:
-        item_lower = item.lower()
+    def _matches(item) -> bool:
+        item_lower = key(item).lower()
         return any(t in item_lower for t in lowered)
 
     matched = [i for i in items if _matches(i)]
     unmatched = [i for i in items if not _matches(i)]
     return matched + unmatched
+
+
+def _render_provider_badges(names_raw: str, logos_raw: str, highlighted: list[str]) -> str:
+    """Monta os badges de um grupo de provedores (streaming ou aluguel/compra).
+
+    names_raw e logos_raw vêm de glue_agg como strings comma-joined construídas pela
+    MESMA agregação/ordenação (ver queries.py), logo alinhadas posição a posição — o
+    zip abaixo depende disso. Quando um provedor tem logo, o badge mostra só a imagem
+    (nome no alt); sem logo, cai de volta para o badge de texto.
+    """
+    names = [p.strip() for p in names_raw.split(",") if p.strip()]
+    logos = [logo.strip() for logo in (logos_raw or "").split(",")]
+    logos += [""] * (len(names) - len(logos))  # protege contra desalinhamento inesperado
+
+    pairs = _prioritize(list(zip(names, logos)), highlighted, key=lambda pair: pair[0])
+    visible = pairs[:_MAX_VISIBLE_PROVIDERS]
+
+    badges = []
+    for name, logo in visible:
+        safe_name = html.escape(name)
+        if logo:
+            badges.append(
+                f'<span class="provider">'
+                f'<img src="{html.escape(logo)}" alt="{safe_name}"'
+                f' class="provider-logo" loading="lazy" /></span>'
+            )
+        else:
+            badges.append(f'<span class="provider">{safe_name}</span>')
+    return "".join(badges)
 
 
 def render_card(title: dict, idx: int = 0) -> str:
@@ -145,6 +176,9 @@ def render_card(title: dict, idx: int = 0) -> str:
     duration = title.get("duration") or ""
     release_date = html.escape(title.get("release_date") or "")
     streaming_providers = title.get("streaming_providers") or ""
+    streaming_provider_logos = title.get("streaming_provider_logos") or ""
+    rent_buy_providers = title.get("rent_buy_providers") or ""
+    rent_buy_provider_logos = title.get("rent_buy_provider_logos") or ""
     in_theaters = title.get("in_theaters") or False
     theater_end_date = html.escape(title.get("theater_end_date") or "")
     certification = html.escape(title.get("certification") or "")
@@ -190,16 +224,24 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     providers_html = ""
     if streaming_providers:
-        provs = [p.strip() for p in streaming_providers.split(",") if p.strip()]
-        provs = _prioritize(provs, title.get("highlighted_providers") or [])
-        visible_provs = provs[:_MAX_VISIBLE_PROVIDERS]
-        stream_badges = "".join(
-            f'<span class="provider">{html.escape(p)}</span>' for p in visible_provs
+        stream_badges = _render_provider_badges(
+            streaming_providers, streaming_provider_logos, title.get("highlighted_providers") or []
         )
         providers_html = (
             f'<div class="providers-block">'
             f'<span class="providers-label">📺 Onde assistir</span>'
             f'<div class="meta-row providers-row">{stream_badges}</div></div>'
+        )
+
+    rent_buy_html = ""
+    if rent_buy_providers:
+        rent_buy_badges = _render_provider_badges(
+            rent_buy_providers, rent_buy_provider_logos, title.get("highlighted_providers") or []
+        )
+        rent_buy_html = (
+            f'<div class="providers-block">'
+            f'<span class="providers-label">🛒 Aluguel/Compra</span>'
+            f'<div class="meta-row providers-row">{rent_buy_badges}</div></div>'
         )
 
     if len(overview_raw) > _OVERVIEW_TRUNCATE_CHARS:
@@ -247,6 +289,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         </span>
         <div class="genres-container">{genres_html}</div>
         {providers_html}
+        {rent_buy_html}
         {cinema_html}
         {vitals_html}
         {duration_html}
