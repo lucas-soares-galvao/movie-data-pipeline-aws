@@ -89,6 +89,20 @@ class TestRunAthenaQuery:
             assert "tb_tmdb_watch_providers_tv_dev" in sql
             assert "streaming_providers" in sql
 
+    def test_query_contains_provider_logo_columns(self):
+        """streaming_provider_logos/rent_buy_provider_logos são colunas paralelas às de nome,
+        construídas a partir de logo_path com o prefixo da CDN do TMDB (mesmo padrão de
+        poster_url/backdrop_url)."""
+        with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
+            run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
+            _, kwargs = mock_read.call_args
+            sql = kwargs["sql"]
+
+        assert "streaming_provider_logos" in sql
+        assert "rent_buy_provider_logos" in sql
+        assert "https://image.tmdb.org/t/p/w45" in sql
+        assert "logo_path" in sql
+
     def test_query_deduplica_watch_providers_por_ano_mais_recente(self):
         """movie_wp_recent e tv_wp_recent devem usar DENSE_RANK por year DESC.
         DENSE_RANK (não ROW_NUMBER) garante que TODOS os provedores do ano mais recente

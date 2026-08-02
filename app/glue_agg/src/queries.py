@@ -245,6 +245,7 @@ providers_ref_ranked AS (
         provider_name,
         canonical_name,
         display_priority_br,
+        logo_path,
         ROW_NUMBER() OVER (
             PARTITION BY provider_id
             ORDER BY COALESCE(display_priority_br, 999) ASC
@@ -254,11 +255,18 @@ providers_ref_ranked AS (
 
 -- provider_id não é selecionado porque o JOIN downstream (movie_providers_ranked,
 -- tv_providers_ranked) usa provider_name como chave, não provider_id.
+-- logo_url segue o mesmo padrão de construção de URL de poster_url/backdrop_url:
+-- prefixo da CDN do TMDB + path relativo. String vazia (não NULL) quando não há
+-- logo, para não derrubar posições no array_agg de streaming_provider_logos.
 provider_ref AS (
     SELECT
         provider_name,
         canonical_name,
-        COALESCE(display_priority_br, 999) AS priority_br
+        COALESCE(display_priority_br, 999) AS priority_br,
+        CASE
+            WHEN logo_path IS NULL THEN ''
+            ELSE CONCAT('https://image.tmdb.org/t/p/w45', logo_path)
+        END AS logo_url
     FROM providers_ref_ranked
     WHERE rn = 1
 ),
@@ -285,31 +293,37 @@ tv_wp_recent AS (
 -- JOIN com provider_ref para normalizar nomes e obter prioridade,
 -- desduplicado por canonical_name, ordenado por prioridade BR crescente.
 movie_providers_ranked AS (
-    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    SELECT wp.id, r.canonical_name, r.logo_url, MIN(r.priority_br) AS min_priority
     FROM movie_wp_recent wp
     JOIN provider_ref r ON r.provider_name = wp.provider_name
     WHERE wp.rn = 1
-    GROUP BY wp.id, r.canonical_name
+    GROUP BY wp.id, r.canonical_name, r.logo_url
 ),
 
+-- streaming_provider_logos é posicionalmente alinhado a streaming_providers: mesmo
+-- GROUP BY id e mesmo ORDER BY min_priority ASC nos dois array_agg.
 movie_providers AS (
     SELECT
         id,
         array_join(
             array_agg(canonical_name ORDER BY min_priority ASC),
             ', '
-        ) AS streaming_providers
+        ) AS streaming_providers,
+        array_join(
+            array_agg(logo_url ORDER BY min_priority ASC),
+            ', '
+        ) AS streaming_provider_logos
     FROM movie_providers_ranked
     GROUP BY id
 ),
 
 -- Provedores de streaming BR (flatrate) por série: mesma lógica.
 tv_providers_ranked AS (
-    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    SELECT wp.id, r.canonical_name, r.logo_url, MIN(r.priority_br) AS min_priority
     FROM tv_wp_recent wp
     JOIN provider_ref r ON r.provider_name = wp.provider_name
     WHERE wp.rn = 1
-    GROUP BY wp.id, r.canonical_name
+    GROUP BY wp.id, r.canonical_name, r.logo_url
 ),
 
 tv_providers AS (
@@ -318,16 +332,20 @@ tv_providers AS (
         array_join(
             array_agg(canonical_name ORDER BY min_priority ASC),
             ', '
-        ) AS streaming_providers
+        ) AS streaming_providers,
+        array_join(
+            array_agg(logo_url ORDER BY min_priority ASC),
+            ', '
+        ) AS streaming_provider_logos
     FROM tv_providers_ranked
     GROUP BY id
 ),
 
 -- Provedores unificados: filmes e séries num único conjunto com media_type como chave.
 providers AS (
-    SELECT id, 'movie' AS media_type, streaming_providers FROM movie_providers
+    SELECT id, 'movie' AS media_type, streaming_providers, streaming_provider_logos FROM movie_providers
     UNION ALL
-    SELECT id, 'tv'    AS media_type, streaming_providers FROM tv_providers
+    SELECT id, 'tv'    AS media_type, streaming_providers, streaming_provider_logos FROM tv_providers
 ),
 
 -- Provedores de aluguel/compra BR: mesma lógica de streaming_providers,
@@ -347,11 +365,11 @@ tv_rb_recent AS (
 ),
 
 movie_rb_ranked AS (
-    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    SELECT wp.id, r.canonical_name, r.logo_url, MIN(r.priority_br) AS min_priority
     FROM movie_rb_recent wp
     JOIN provider_ref r ON r.provider_name = wp.provider_name
     WHERE wp.rn = 1
-    GROUP BY wp.id, r.canonical_name
+    GROUP BY wp.id, r.canonical_name, r.logo_url
 ),
 
 movie_rent_buy AS (
@@ -360,18 +378,22 @@ movie_rent_buy AS (
         array_join(
             array_agg(canonical_name ORDER BY min_priority ASC),
             ', '
-        ) AS rent_buy_providers
+        ) AS rent_buy_providers,
+        array_join(
+            array_agg(logo_url ORDER BY min_priority ASC),
+            ', '
+        ) AS rent_buy_provider_logos
     FROM movie_rb_ranked
     GROUP BY id
 ),
 
 -- Mesma lógica de aluguel/compra para séries.
 tv_rb_ranked AS (
-    SELECT wp.id, r.canonical_name, MIN(r.priority_br) AS min_priority
+    SELECT wp.id, r.canonical_name, r.logo_url, MIN(r.priority_br) AS min_priority
     FROM tv_rb_recent wp
     JOIN provider_ref r ON r.provider_name = wp.provider_name
     WHERE wp.rn = 1
-    GROUP BY wp.id, r.canonical_name
+    GROUP BY wp.id, r.canonical_name, r.logo_url
 ),
 
 tv_rent_buy AS (
@@ -380,16 +402,20 @@ tv_rent_buy AS (
         array_join(
             array_agg(canonical_name ORDER BY min_priority ASC),
             ', '
-        ) AS rent_buy_providers
+        ) AS rent_buy_providers,
+        array_join(
+            array_agg(logo_url ORDER BY min_priority ASC),
+            ', '
+        ) AS rent_buy_provider_logos
     FROM tv_rb_ranked
     GROUP BY id
 ),
 
 -- Provedores de aluguel/compra unificados: filmes e séries num único conjunto com media_type como chave.
 rent_buy AS (
-    SELECT id, 'movie' AS media_type, rent_buy_providers FROM movie_rent_buy
+    SELECT id, 'movie' AS media_type, rent_buy_providers, rent_buy_provider_logos FROM movie_rent_buy
     UNION ALL
-    SELECT id, 'tv'    AS media_type, rent_buy_providers FROM tv_rent_buy
+    SELECT id, 'tv'    AS media_type, rent_buy_providers, rent_buy_provider_logos FROM tv_rent_buy
 ),
 
 -- Resolução de países de produção: cruza códigos ISO com a tabela de referência
@@ -606,7 +632,9 @@ spec_raw AS (
             ELSE d.tv_type
         END AS tv_type,
         p.streaming_providers,
+        p.streaming_provider_logos,
         rb.rent_buy_providers,
+        rb.rent_buy_provider_logos,
         -- TRUE se o filme está atualmente em cartaz nos cinemas (snapshot semanal).
         -- Séries e filmes fora de cartaz recebem FALSE (np.id = NULL no LEFT JOIN).
         CASE WHEN np.id IS NOT NULL THEN TRUE ELSE FALSE END AS in_theaters,
@@ -662,7 +690,8 @@ SELECT
     trailer_url, imdb_id,
     recommended_titles, similar_titles, alternative_titles,
     created_by, networks, in_production, last_air_date, tv_type,
-    streaming_providers, rent_buy_providers,
+    streaming_providers, streaming_provider_logos,
+    rent_buy_providers, rent_buy_provider_logos,
     in_theaters, theater_start_date, theater_end_date
 FROM spec_deduped
 WHERE rn_final = 1

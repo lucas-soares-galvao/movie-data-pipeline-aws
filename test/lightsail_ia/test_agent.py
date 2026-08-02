@@ -60,7 +60,8 @@ COLUMNS = [
     "producer", "cinematographer", "editor",
     "keywords_pt", "certification", "trailer_url", "collection_name",
     "production_companies", "production_countries", "networks", "created_by",
-    "streaming_providers", "rent_buy_providers",
+    "streaming_providers", "streaming_provider_logos",
+    "rent_buy_providers", "rent_buy_provider_logos",
     "recommended_titles", "similar_titles", "alternative_titles",
     "in_theaters", "theater_end_date",
 ]

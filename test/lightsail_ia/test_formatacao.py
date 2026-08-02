@@ -186,6 +186,8 @@ class TestFormatRecord:
             "editor": "Thelma Schoonmaker",
             "production_countries": "United States, New Zealand",
             "rent_buy_providers": "Apple TV, Google Play",
+            "rent_buy_provider_logos": "https://x/appletv.png, https://x/googleplay.png",
+            "streaming_provider_logos": "https://x/netflix.png",
             "recommended_titles": "Interstellar, The Prestige",
             "similar_titles": "Inception, Tenet",
             "alternative_titles": "Seven, Se7en",
@@ -196,6 +198,8 @@ class TestFormatRecord:
         assert result["editor"] == "Thelma Schoonmaker"
         assert result["production_countries"] == "United States, New Zealand"
         assert result["rent_buy_providers"] == "Apple TV, Google Play"
+        assert result["rent_buy_provider_logos"] == "https://x/appletv.png, https://x/googleplay.png"
+        assert result["streaming_provider_logos"] == "https://x/netflix.png"
         assert result["recommended"] == "Interstellar, The Prestige"
         assert result["similar"] == "Inception, Tenet"
         assert result["alternative_titles"] == "Seven, Se7en"
@@ -212,6 +216,8 @@ class TestFormatRecord:
         assert result["editor"] is None
         assert result["production_countries"] is None
         assert result["rent_buy_providers"] is None
+        assert result["rent_buy_provider_logos"] is None
+        assert result["streaming_provider_logos"] is None
         assert result["recommended"] is None
         assert result["similar"] is None
         assert result["alternative_titles"] is None

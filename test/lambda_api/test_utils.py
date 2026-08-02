@@ -431,7 +431,19 @@ class TestCollectWatchProvidersRef:
         assert dados_salvos[0]["provider_id"] == 8
         assert dados_salvos[0]["provider_name"] == "Netflix"
         assert dados_salvos[0]["display_priority_br"] == 1
-        assert "logo_path" not in dados_salvos[0]
+        assert dados_salvos[0]["logo_path"] == "/netflix.png"
+
+    def test_logo_path_none_quando_ausente(self):
+        provider = {"provider_id": 9, "provider_name": "Prime", "display_priorities": {"BR": 1}}
+        mock_s3 = MagicMock()
+        with (
+            patch("src.utils.fetch_tmdb_reference", return_value=self._api_response([provider])),
+            patch("src.utils.save_to_s3") as mock_save,
+        ):
+            collect_watch_providers_ref("key", mock_s3, "meu-bucket", "movie")
+
+        dados_salvos = mock_save.call_args[0][2]
+        assert dados_salvos[0]["logo_path"] is None
 
     def test_display_priority_br_none_quando_ausente(self):
         provider = {"provider_id": 9, "provider_name": "Prime", "logo_path": None}
