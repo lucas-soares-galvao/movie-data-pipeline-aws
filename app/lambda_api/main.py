@@ -5,6 +5,7 @@ Fluxo: EventBridge → busca API key → coleta referências → coleta discover
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,8 +29,32 @@ logger.setLevel(logging.INFO)
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 GLUE_DETAILS_JOB_NAME = os.environ["GLUE_DETAILS_JOB_NAME"]
+GLUE_AGG_JOB_NAME = os.environ["GLUE_AGG_JOB_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
 S3_BUCKET_TEMP = os.environ["S3_BUCKET_TEMP"]
+
+
+def _wait_for_reference_jobs(job_name: str, run_ids: list[str], poll_interval: int = 15) -> None:
+    """Aguarda cada run_id de `job_name` atingir um estado terminal.
+
+    `trigger_glue_job` é fire-and-forget (ver shared_utils.triggers) — sem isso, o Glue AGG
+    disparado logo em seguida (modo skip_weekly, ver lambda_handler) poderia começar a ler as
+    tabelas de referência no Athena antes do Glue ETL terminar de escrevê-las, unindo dados
+    desatualizados. Não aborta em caso de falha: loga e segue, para não perder a atualização
+    das tabelas que tiveram sucesso.
+    """
+    glue_client = boto3.client("glue")
+    for run_id in run_ids:
+        while True:
+            state = glue_client.get_job_run(JobName=job_name, RunId=run_id)["JobRun"]["JobRunState"]
+            if state in ("SUCCEEDED", "FAILED", "STOPPED", "ERROR", "TIMEOUT"):
+                if state != "SUCCEEDED":
+                    logger.error(
+                        f"Job '{job_name}' (run_id={run_id}) terminou em '{state}' — Glue AGG "
+                        "será acionado mesmo assim, com essa tabela de referência desatualizada."
+                    )
+                break
+            time.sleep(poll_interval)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -132,6 +157,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Anual backfill |    False    |    True     |    False     |    False    | discover histórico (sem referências)
     # Só referências |    False    |    False    |    False     |    True     | genre + config + watch_providers_ref
     #
+    # Modo "Só referências": não passa pelo discover/Glue Details, então o Glue AGG não seria
+    # acionado pelo cascade normal (Glue Details "tv + end_year" — ver app/glue_details/main.py).
+    # Para que a atualização de referências chegue à camada SPEC sem esperar o próximo ciclo
+    # semanal/mensal, este modo aciona o Glue AGG diretamente ao final — só no run de "tv" (mesma
+    # convenção do resto do pipeline: tv é a perna que fecha o ciclo, tanto no EventBridge — roda
+    # 5 min depois de movie — quanto em scripts/backfill_referencias.py, que invoca movie e
+    # depois tv de forma síncrona). Antes de acionar o AGG, aguarda (_wait_for_reference_jobs) os
+    # 3 Glue ETL de referência que esta mesma invocação (tv) acabou de disparar — trigger_glue_job
+    # é fire-and-forget, então sem essa espera o AGG poderia ler as tabelas de tv ainda com o dado
+    # antigo. Não espera pelos jobs de "movie" (invocação anterior, separada) — como no resto do
+    # pipeline, isso depende do intervalo entre as duas invocações (5 min no EventBridge, 300s em
+    # backfill_referencias.py) já ser suficiente para o Glue ETL de referência de movie terminar.
+    #
     # only_changes_tables e only_rotation_refresh (tratados acima, antes desta tabela)
     # não combinam com as flags abaixo — saem cedo, direto para o Glue Details, sem
     # passar por /discover nem Glue ETL:
@@ -169,37 +207,41 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         end_year = current_year - 1
         loop_end_year = current_year - 1
 
+    # Run IDs dos 3 Glue ETL de referência acionados abaixo — usados só pelo modo skip_weekly
+    # (ver bloco "if skip_weekly" logo adiante) para aguardar essas escritas antes do Glue AGG.
+    reference_run_ids: list[str] = []
+
     if not skip_reference:
         logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
         collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de gêneros...")
-        trigger_glue_job(
+        reference_run_ids.append(trigger_glue_job(
             GLUE_ETL_JOB_NAME,
             TABLE_TYPE="genre",
             TABLE_NAME=table_genre,
             **glue_base_args,
-        )
+        ))
 
         logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
         collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de configuração...")
-        trigger_glue_job(
+        reference_run_ids.append(trigger_glue_job(
             GLUE_ETL_JOB_NAME,
             TABLE_TYPE="configuration",
             TABLE_NAME=table_configuration,
             **glue_base_args,
-        )
+        ))
 
         logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
         try:
             collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
             logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
-            trigger_glue_job(
+            reference_run_ids.append(trigger_glue_job(
                 GLUE_ETL_JOB_NAME,
                 TABLE_TYPE="watch_providers_ref",
                 TABLE_NAME=table_watch_providers_ref,
                 **glue_base_args,
-            )
+            ))
         except HTTPError:
             logger.error(
                 f"Falha ao coletar watch_providers_ref para '{content_type}'. "
@@ -210,6 +252,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     if skip_weekly:
         logger.info("skip_weekly=True: pulando coleta de discover.")
+        if content_type == "tv":
+            logger.info(
+                "skip_weekly=True (tv): aguardando os %d Glue ETL de referência desta invocação "
+                "terminarem antes de acionar o Glue AGG...", len(reference_run_ids),
+            )
+            _wait_for_reference_jobs(GLUE_ETL_JOB_NAME, reference_run_ids)
+            logger.info("Referências de tv atualizadas — acionando Glue AGG.")
+            trigger_glue_job(GLUE_AGG_JOB_NAME)
         return {
             "statusCode": 200,
             "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",

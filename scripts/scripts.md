@@ -13,7 +13,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
 | `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda — cada invocação aciona Glue ETL → Glue Details, que traduzem via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
-| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). A invocação de tv (sempre a 2ª, síncrona) aciona o Glue AGG ao final, para a atualização chegar à camada SPEC sem esperar o próximo ciclo semanal/mensal — ver `app/lambda_api/lambda_api.md` (`skip_weekly`) | Lambda | — |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); dispara o Glue Details diretamente, que traduz via `TRANSLATE_PROVIDER` (default `google`) | Glue Details | — |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
