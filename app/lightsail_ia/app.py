@@ -298,17 +298,25 @@ with st.container(key="hero-section"):
 
                 if use_clicked:
                     st.session_state["audio_awaiting_confirmation"] = False
-                    _audio_ip_history.setdefault(_client_ip, []).append(time.time())
-                    st.session_state["transcribing"] = True
-                    st.session_state["transcription_future"] = _executor.submit(
-                        transcribe_preference, st.session_state.pop("audio_pending_bytes")
-                    )
+                    # .pop(..., None) em vez de .pop() puro: o clique de "Usar gravação"
+                    # é simulado via JS (audio_cancel_recording.js), que agora só clica
+                    # uma vez por instância do botão — mas essa checagem aqui é rede de
+                    # segurança extra contra qualquer evento duplicado que ainda chegue
+                    # ao backend, evitando KeyError num segundo pop() e uma submissão
+                    # duplicada pro executor.
+                    pending_bytes = st.session_state.pop("audio_pending_bytes", None)
                     # Reseta o widget (nova key) também no caminho de sucesso: sem isso, o
                     # gravador nativo mantém o botão "▶️ Play" da gravação já usada
                     # indefinidamente (recordingUrl só é limpo trocando a key do widget),
                     # e o CSS que trava a largura do card em repouso (principal.css) corta
                     # esse botão extra por não esperar um segundo botão nesse estado.
                     st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
+                    if pending_bytes is not None:
+                        _audio_ip_history.setdefault(_client_ip, []).append(time.time())
+                        st.session_state["transcribing"] = True
+                        st.session_state["transcription_future"] = _executor.submit(
+                            transcribe_preference, pending_bytes
+                        )
                     st.rerun()
                 elif cancel_clicked:
                     st.session_state["audio_awaiting_confirmation"] = False

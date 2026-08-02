@@ -15,6 +15,23 @@
         );
     }
 
+    // Clica no botão certo só uma vez por instância dele no DOM. Sem isso, o
+    // poll de 250ms clicava repetidamente no mesmo <button> obsoleto até o
+    // Streamlit terminar o round-trip e re-renderizar (removendo os botões
+    // escondidos) — múltiplos cliques sintéticos chegavam pro backend antes
+    // do primeiro ser processado, derrubando o fluxo silenciosamente (a
+    // gravação era descartada sem transcrever nem mostrar erro, reproduzido
+    // via Playwright). O marcador fica no próprio elemento: como
+    // audio_widget_seq muda a cada ciclo, o Streamlit sempre re-renderiza um
+    // <button> novo sem o marcador, então o guard nunca trava um clique
+    // legítimo futuro.
+    function clickOnce(btn) {
+        if (!btn || btn.dataset.filmbotClicked) return false;
+        btn.dataset.filmbotClicked = "1";
+        btn.click();
+        return true;
+    }
+
     function tick() {
         const stopBtn = doc.querySelector('[aria-label="Stop recording"]');
         let trash = doc.getElementById("audio-cancel-btn");
@@ -53,16 +70,13 @@
 
         const wantsDiscard = window.localStorage.getItem("filmbot_audio_autocancel") === "1";
         if (wantsDiscard) {
-            const cancelBtn = findConfirmCancelButton();
-            if (cancelBtn) {
-                cancelBtn.click();
+            if (clickOnce(findConfirmCancelButton())) {
                 window.localStorage.removeItem("filmbot_audio_autocancel");
             }
         } else {
             // Botões de confirmação ficam escondidos via CSS (.st-key-audio-confirm-buttons) —
             // "Usar gravação" é a ação padrão, confirmada automaticamente aqui assim que aparece.
-            const useBtn = findUseButton();
-            if (useBtn) useBtn.click();
+            clickOnce(findUseButton());
         }
     }
 
