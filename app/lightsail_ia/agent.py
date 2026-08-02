@@ -85,6 +85,16 @@ load_dotenv()
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
 _TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
 _MAX_AUDIO_SECONDS = 15
+# Folga só pra rejeição, não pro auto-stop nem pro rótulo mostrado ao usuário
+# ("00:00 / 00:15", "máx. 15s"): o auto-stop no cliente corta a gravação assim
+# que o tempo decorrido atinge _MAX_AUDIO_SECONDS, mas o áudio resultante mede
+# um pouco além disso por jitter do poll de 250ms + arredondamento de
+# encoding — medido via inspeção real do log do servidor (15.00s a 15.06s
+# num áudio "de 15s"). Sem essa folga, todo áudio que usou o tempo cheio
+# (o caso normal, não um abuso) era rejeitado como "muito longo" em vez de
+# transcrito — rejeitar só faz sentido pra um áudio claramente fora do limite
+# (bypass do auto-stop), não pra esse jitter esperado.
+_AUDIO_DURATION_TOLERANCE_SECONDS = 1
 
 
 def _load_llm_api_key() -> str | None:
@@ -483,9 +493,10 @@ def transcribe_preference(audio_bytes: bytes) -> str:
             (indisponibilidade, timeout, autenticação, formato de áudio inválido, etc.).
     """
     duration = _audio_duration_seconds(audio_bytes)
-    # >= (não >): ver mesmo motivo em app.py, na checagem que já deveria ter
-    # barrado isso antes daqui — esta é só a rede de segurança redundante.
-    if duration >= _MAX_AUDIO_SECONDS:
+    # + tolerância (ver comentário em _AUDIO_DURATION_TOLERANCE_SECONDS): mesmo
+    # motivo em app.py, na checagem que já deveria ter barrado isso antes
+    # daqui — esta é só a rede de segurança redundante.
+    if duration > _MAX_AUDIO_SECONDS + _AUDIO_DURATION_TOLERANCE_SECONDS:
         raise AudioMuitoLongoError(
             f"Áudio de {duration:.0f}s excede o limite de {_MAX_AUDIO_SECONDS}s."
         )

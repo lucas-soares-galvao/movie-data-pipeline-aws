@@ -776,8 +776,25 @@ class TestTranscribePreference:
 
         mock_transcription.assert_called_once()
 
+    def test_audio_dentro_da_tolerancia_nao_levanta_erro(self):
+        # Duração logo acima de _MAX_AUDIO_SECONDS, mas dentro da folga de
+        # _AUDIO_DURATION_TOLERANCE_SECONDS: representa o áudio real que o
+        # auto-stop do cliente entrega quando a gravação usa o tempo cheio
+        # (jitter do poll de 250ms + arredondamento de encoding) — não deve
+        # ser tratado como abuso.
+        audio_bytes = _make_wav_bytes(
+            agent._MAX_AUDIO_SECONDS + agent._AUDIO_DURATION_TOLERANCE_SECONDS
+        )
+        with patch("agent.litellm.transcription") as mock_transcription:
+            mock_transcription.return_value = MagicMock(text="ok")
+            agent.transcribe_preference(audio_bytes)
+
+        mock_transcription.assert_called_once()
+
     def test_audio_muito_longo_levanta_erro_sem_chamar_api(self):
-        audio_bytes = _make_wav_bytes(agent._MAX_AUDIO_SECONDS + 1)
+        audio_bytes = _make_wav_bytes(
+            agent._MAX_AUDIO_SECONDS + agent._AUDIO_DURATION_TOLERANCE_SECONDS + 1
+        )
         with patch("agent.litellm.transcription") as mock_transcription:
             with pytest.raises(agent.AudioMuitoLongoError):
                 agent.transcribe_preference(audio_bytes)
