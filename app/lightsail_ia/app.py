@@ -13,6 +13,7 @@ import boto3
 import streamlit as st
 import watchtower
 from agent import (
+    _AUDIO_DURATION_TOLERANCE_SECONDS,
     _MAX_AUDIO_SECONDS,
     AudioMuitoLongoError,
     _audio_duration_seconds,
@@ -276,16 +277,14 @@ with st.container(key="hero-section"):
                 # script JS parou a gravação (limite de tempo ou clique manual), a
                 # decisão de rejeitar fica determinística no servidor, sem depender do
                 # fluxo de confirmação nem do round-trip assíncrono de transcrição.
-                # >= (não >): o auto-stop no cliente (audio_timer.js) para a gravação
-                # assim que o tempo decorrido atinge _MAX_AUDIO_SECONDS (também via
-                # >=), então um áudio cortado no limite mede exatamente
-                # _MAX_AUDIO_SECONDS aqui — com > estrito, esse áudio passava como
-                # "aceitável" e seguia pro fluxo normal de transcrição em vez de cair
-                # em "muito longo", contradizendo o motivo do auto-stop ter disparado
-                # (medido via inspeção real do log do servidor: duration=15.00 caindo
-                # no ramo errado). Mesma correção necessária em
-                # agent.transcribe_preference() (rede de segurança redundante).
-                if _audio_duration_seconds(audio_bytes) >= _MAX_AUDIO_SECONDS:
+                # + _AUDIO_DURATION_TOLERANCE_SECONDS: o auto-stop no cliente
+                # (audio_timer.js) já para a gravação assim que o tempo decorrido
+                # atinge _MAX_AUDIO_SECONDS — um áudio que usou o tempo cheio (o caso
+                # normal, não abuso) mede um pouco além disso por jitter do poll de
+                # 250ms + arredondamento de encoding (ver constante em agent.py).
+                # Rejeitar sem essa folga barrava exatamente quem gravou até o limite
+                # em vez de transcrever.
+                if _audio_duration_seconds(audio_bytes) > _MAX_AUDIO_SECONDS + _AUDIO_DURATION_TOLERANCE_SECONDS:
                     st.session_state["transcription_too_long"] = True
                     st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
                 else:
