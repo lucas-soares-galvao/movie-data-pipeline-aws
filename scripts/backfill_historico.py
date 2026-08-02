@@ -71,7 +71,7 @@ def main() -> None:
 
     base_movie, base_tv = shared.build_base_payloads(start_year, end_year)
 
-    client    = boto3.client("lambda", region_name=region)
+    client    = shared.build_lambda_client(region)
     s3_client = boto3.client("s3", region_name=region)
 
     wait_seconds = 300
