@@ -231,9 +231,10 @@ with st.container(key="hero-section"):
     with input_card:
         text_area_slot = st.container(key="text-area-slot")
         footer_slot = st.container(key="input-footer-row")
-    # Avisos de transcrição (áudio muito longo, erro, rate limit, etc.) ficam
-    # fora do card cinza, abaixo dele — não são parte do "formulário" em si,
-    # são feedback sobre uma ação já concluída (ou rejeitada).
+    # Avisos de transcrição (áudio muito longo, erro, rate limit, etc.) e o
+    # status "Transcrevendo áudio..." ficam fora do card cinza, abaixo dele —
+    # não são parte do "formulário" em si, são feedback sobre uma ação em
+    # andamento ou já concluída (ou rejeitada).
     audio_messages_slot = st.container(key="audio-messages")
 
     # ------------------------------------------------------------------
@@ -336,7 +337,12 @@ with st.container(key="hero-section"):
                         st.session_state["transcription_empty"] = True
                 st.rerun()
             else:
-                st.caption("🎤 Transcrevendo áudio...")
+                # audio_messages_slot (fora do card cinza, ver comentário acima em sua
+                # criação) em vez de st.caption() direto aqui dentro: esse texto é
+                # feedback sobre uma ação em andamento, não parte do formulário, mesmo
+                # motivo pelo qual os avisos/erros de transcrição já vivem lá fora.
+                with audio_messages_slot:
+                    st.caption("🎤 Transcrevendo áudio...")
                 time.sleep(0.5)
                 st.rerun()
 
