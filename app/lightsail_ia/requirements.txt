@@ -1,4 +1,9 @@
-streamlit>=1.38.0
+# Raciocínio: versão travada (não só um piso) porque o CSS/JS deste módulo depende de
+# detalhes internos não documentados do DOM do Streamlit (data-testid como
+# stTextAreaRootElement, stAudioInputWaveSurfer — ver principal.css/lightsail_ia.md).
+# Sem essa trava, local e Lightsail podem instalar versões diferentes em cada deploy
+# (nenhum dos dois lados usa lockfile) e divergir visualmente sem nenhuma mudança de código.
+streamlit==1.59.2
 litellm
 openai
 boto3
