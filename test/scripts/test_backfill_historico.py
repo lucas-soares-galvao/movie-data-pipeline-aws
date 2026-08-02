@@ -54,20 +54,21 @@ def _s3_client_sem_checkpoint() -> MagicMock:
 
 
 def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mock_s3: MagicMock | None = None):
-    """Roda bh.main() com boto3 e time.sleep mockados. Retorna (mock_lambda, mock_sleep, mock_s3)."""
+    """Roda bh.main() com boto3 (s3), o cliente Lambda e time.sleep mockados.
+
+    Retorna (mock_lambda, mock_sleep, mock_s3).
+    """
     _set_env(monkeypatch, overrides)
     mock_lambda = MagicMock()
     mock_lambda.invoke.return_value = _lambda_ok_response()
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
 
-    def _client_factory(service_name, **kwargs):
-        return {"lambda": mock_lambda, "s3": mock_s3}[service_name]
-
     with (
+        patch("backfill_shared.build_lambda_client", return_value=mock_lambda),
         patch("backfill_historico.boto3") as mock_boto3,
         patch("backfill_historico.time.sleep") as mock_sleep,
     ):
-        mock_boto3.client.side_effect = _client_factory
+        mock_boto3.client.return_value = mock_s3
         bh.main()
     return mock_lambda, mock_sleep, mock_s3
 
@@ -160,15 +161,13 @@ class TestErros:
         }
         mock_s3 = _s3_client_sem_checkpoint()
 
-        def _client_factory(service_name, **kwargs):
-            return {"lambda": mock_client, "s3": mock_s3}[service_name]
-
         with (
+            patch("backfill_shared.build_lambda_client", return_value=mock_client),
             patch("backfill_historico.boto3") as mock_boto3,
             patch("backfill_historico.time.sleep"),
             pytest.raises(RuntimeError),
         ):
-            mock_boto3.client.side_effect = _client_factory
+            mock_boto3.client.return_value = mock_s3
             bh.main()
 
     def test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro(self, monkeypatch):
@@ -197,14 +196,12 @@ class TestErros:
         )
         mock_s3 = _s3_client_sem_checkpoint()
 
-        def _client_factory(service_name, **kwargs):
-            return {"lambda": mock_client, "s3": mock_s3}[service_name]
-
         with (
+            patch("backfill_shared.build_lambda_client", return_value=mock_client),
             patch("backfill_historico.boto3") as mock_boto3,
             patch("backfill_historico.time.sleep"),
         ):
-            mock_boto3.client.side_effect = _client_factory
+            mock_boto3.client.return_value = mock_s3
             try:
                 bh.main()
             except ClientError as exc:
@@ -267,15 +264,13 @@ class TestCheckpoint:
         ]
         mock_s3 = _s3_client_sem_checkpoint()
 
-        def _client_factory(service_name, **kwargs):
-            return {"lambda": mock_lambda, "s3": mock_s3}[service_name]
-
         with (
+            patch("backfill_shared.build_lambda_client", return_value=mock_lambda),
             patch("backfill_historico.boto3") as mock_boto3,
             patch("backfill_historico.time.sleep"),
             pytest.raises(ClientError),
         ):
-            mock_boto3.client.side_effect = _client_factory
+            mock_boto3.client.return_value = mock_s3
             bh.main()
 
         assert mock_s3.put_object.call_count == 1

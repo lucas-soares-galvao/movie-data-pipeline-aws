@@ -26,8 +26,6 @@ Variáveis de ambiente obrigatórias:
 import time
 from datetime import datetime
 
-import boto3
-
 import backfill_shared as shared
 
 logger = shared.setup_logging()
@@ -40,7 +38,7 @@ def main() -> None:
 
     base_movie, base_tv = shared.build_base_payloads()
 
-    client       = boto3.client("lambda", region_name=region)
+    client       = shared.build_lambda_client(region)
     wait_seconds = 300
 
     logger.info("Atualizando referências (genre, configuration, watch_providers_ref) — 2 invocações")
