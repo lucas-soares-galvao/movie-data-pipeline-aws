@@ -38,9 +38,143 @@ class TestLoadAudioTimerScript:
             componentes.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        componentes.load_audio_timer_script()
+        componentes.load_audio_timer_script(15)
         assert "audio-timer-badge" in captured["content"]
         assert captured["height"] == 0
+
+    def test_substitui_max_seconds_no_template(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_audio_timer_script(15)
+        assert "__MAX_SECONDS__" not in captured["content"]
+        assert "const maxSeconds = 15;" in captured["content"]
+
+
+class TestRenderFeedback:
+    def test_renderiza_classe_error(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        componentes.render_feedback("error", "Algo deu errado.")
+        assert 'class="msg-error"' in captured["content"]
+        assert "❌" in captured["content"]
+
+    def test_renderiza_classe_warning(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        componentes.render_feedback("warning", "Fique atento.")
+        assert 'class="msg-warning"' in captured["content"]
+        assert "⚠️" in captured["content"]
+
+    def test_escapa_xss_na_mensagem(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        componentes.render_feedback("error", '<script>alert("xss")</script>')
+        assert "<script>" not in captured["content"]
+        assert "&lt;script&gt;" in captured["content"]
+
+    def test_extra_html_nao_e_escapado(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        componentes.render_feedback(
+            "warning", "Disponível em", extra_html='<span id="countdown"></span>'
+        )
+        assert '<span id="countdown"></span>' in captured["content"]
+
+    def test_sem_extra_html_nao_inclui_span(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        componentes.render_feedback("error", "Mensagem simples.")
+        assert "<span" not in captured["content"]
+
+
+class TestLoadCountdownScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_countdown_script(42)
+        assert "countdown" in captured["content"]
+        assert captured["height"] == 0
+
+    def test_substitui_seconds_no_template(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_countdown_script(42)
+        assert "__SECONDS__" not in captured["content"]
+        assert "let remaining = 42;" in captured["content"]
+
+    def test_usa_countdown_como_element_id_padrao(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_countdown_script(42)
+        assert 'getElementById("countdown")' in captured["content"]
+
+    def test_substitui_element_id_customizado(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_countdown_script(42, element_id="audio-countdown")
+        assert "__ELEMENT_ID__" not in captured["content"]
+        assert 'getElementById("audio-countdown")' in captured["content"]
+
+
+class TestLoadLoginButtonToggleScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_login_button_toggle_script(False)
+        assert "btn_entrar" in captured["content"]
+        assert captured["height"] == 0
+
+    def test_substitui_locked_out_false(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_login_button_toggle_script(False)
+        assert "__LOCKED_OUT__" not in captured["content"]
+        assert "const lockedOut = false;" in captured["content"]
+
+    def test_substitui_locked_out_true(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            componentes.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        componentes.load_login_button_toggle_script(True)
+        assert "const lockedOut = true;" in captured["content"]
 
 
 class TestPrioritize:

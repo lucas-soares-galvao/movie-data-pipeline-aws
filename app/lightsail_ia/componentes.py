@@ -43,10 +43,14 @@ def load_main_css() -> None:
     _inject_css("principal.css")
 
 
-def load_preference_counter_script(max_chars: int) -> None:
-    """Injeta o script do contador dinâmico de caracteres do campo de preferência."""
+def load_preference_counter_script(max_chars: int, rate_limited: bool = False) -> None:
+    """Injeta o script do contador dinâmico de caracteres e do habilitar/desabilitar do botão "Recomendar"."""
     path = Path(__file__).parent / "static" / "contador_caracteres.js"
-    script = path.read_text(encoding="utf-8").replace("__MAX_CHARS__", str(max_chars))
+    script = (
+        path.read_text(encoding="utf-8")
+        .replace("__MAX_CHARS__", str(max_chars))
+        .replace("__RATE_LIMITED__", "true" if rate_limited else "false")
+    )
     components.html(f"<script>{script}</script>", height=0)
 
 
@@ -57,10 +61,10 @@ def load_audio_cancel_script() -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
-def load_audio_timer_script() -> None:
-    """Injeta o script que atualiza o timer do gravador de áudio para o formato decorrido/máximo."""
+def load_audio_timer_script(max_seconds: int) -> None:
+    """Injeta o script do timer decorrido/máximo do gravador, que também para a gravação sozinha ao atingir max_seconds."""
     path = Path(__file__).parent / "static" / "audio_timer.js"
-    script = path.read_text(encoding="utf-8")
+    script = path.read_text(encoding="utf-8").replace("__MAX_SECONDS__", str(max_seconds))
     components.html(f"<script>{script}</script>", height=0)
 
 
@@ -69,6 +73,46 @@ def load_textarea_autogrow_script() -> None:
     path = Path(__file__).parent / "static" / "auto_grow_textarea.js"
     script = path.read_text(encoding="utf-8")
     components.html(f"<script>{script}</script>", height=0)
+
+
+def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
+    """Injeta o script de countdown MM:SS genérico (rate limit de busca, rate limit de
+    transcrição e bloqueio temporário de login), que recarrega a página sozinho ao chegar
+    a 00:00. `element_id` mira o `<span>` a atualizar — necessário quando mais de um
+    countdown pode estar visível na mesma página ao mesmo tempo (busca e transcrição),
+    para não colidir em `id="countdown"` duplicado no DOM."""
+    path = Path(__file__).parent / "static" / "countdown.js"
+    script = (
+        path.read_text(encoding="utf-8")
+        .replace("__SECONDS__", str(seconds))
+        .replace("__ELEMENT_ID__", element_id)
+    )
+    components.html(f"<script>{script}</script>", height=0)
+
+
+def load_login_button_toggle_script(locked_out: bool) -> None:
+    """Injeta o script que habilita/desabilita o botão "Entrar" a cada tecla digitada
+    no campo de senha, mesmo padrão de `load_preference_counter_script()` para o botão
+    "Recomendar"."""
+    path = Path(__file__).parent / "static" / "login_button_toggle.js"
+    script = path.read_text(encoding="utf-8").replace(
+        "__LOCKED_OUT__", "true" if locked_out else "false"
+    )
+    components.html(f"<script>{script}</script>", height=0)
+
+
+def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
+    """Renderiza uma caixa de mensagem de feedback padronizada (.msg-error/.msg-warning).
+
+    kind: "error" (ícone ❌) ou "warning" (ícone ⚠️).
+    extra_html: HTML bruto adicional anexado ao final, não escapado — usado só pelo
+    countdown de rate limit de busca, para injetar o <span id="countdown"> vazio.
+    """
+    icon = "❌" if kind == "error" else "⚠️"
+    st.markdown(
+        f'<div class="msg-{kind}">{icon} {html.escape(message)}{extra_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _prioritize(items: list[str], terms: list[str]) -> list[str]:
