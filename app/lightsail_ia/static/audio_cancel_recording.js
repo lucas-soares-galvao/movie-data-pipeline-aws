@@ -43,13 +43,13 @@
                 trash.type = "button";
                 trash.title = "Descartar gravação";
                 trash.innerText = "✕";
-                // 20x20 casa com o tamanho renderizado do botão nativo
-                // (stAudioInputActionButton) — medido via inspeção real do DOM
-                // (Playwright); se o Streamlit mudar esse tamanho num upgrade,
-                // ajustar aqui também.
+                // 28x28 casa com o tamanho renderizado do botão nativo
+                // (stAudioInputActionButton, ver principal.css) — medido via
+                // inspeção real do DOM (Playwright); se o Streamlit mudar esse
+                // tamanho num upgrade, ajustar aqui também.
                 trash.style.cssText =
-                    "margin-left:0;width:20px;height:20px;border-radius:50%;border:none;" +
-                    "background:rgba(248,113,113,0.15);color:#f87171;font-size:12px;font-weight:700;" +
+                    "margin-left:8px;width:28px;height:28px;border-radius:50%;border:none;" +
+                    "background:rgba(248,113,113,0.15);color:#f87171;font-size:14px;font-weight:700;" +
                     "cursor:pointer;flex-shrink:0;" +
                     "display:flex;align-items:center;justify-content:center;padding:0;";
                 trash.addEventListener("click", (e) => {

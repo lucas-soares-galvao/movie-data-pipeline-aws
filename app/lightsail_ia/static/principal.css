@@ -244,6 +244,7 @@ button[data-testid="stBaseButton-secondary"] {
   box-sizing: border-box !important;
   padding: 0 16px !important;
   color: #f5f5f5 !important;
+  font-size: 17px !important;
   overflow-x: hidden !important;
   word-wrap: break-word !important;
   overflow-y: hidden;
@@ -316,6 +317,26 @@ button[data-testid="stBaseButton-secondary"] {
   background: #f97316 !important;
   box-shadow: 0 0 16px -2px rgba(249,115,22,0.5);
   flex-shrink: 0;
+  width: 28px !important;
+  height: 28px !important;
+}
+.st-key-recorder-card [data-testid="stAudioInputActionButton"] svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+/* Quando o widget nativo mostra dois botões de ação lado a lado (ex.: mic de
+   regravar + ▶ Play de prévia, no instante após parar uma gravação, antes do
+   auto-clique em "Usar gravação" trocar a key do widget) — cada botão vem
+   dentro do seu próprio <span> (sem classe estável, só `st-emotion-cache-*`,
+   que muda a cada build), então miramos o `:has()` do descendente estável
+   stAudioInputActionButton em vez da classe gerada. Mesmo valor de 12px do
+   respiro já usado entre o botão nativo e o "✕" (audio_cancel_recording.js)
+   e entre o "✕" e o badge do timer (.recorder-timer), pro ritmo da linha
+   inteira ficar igual em qualquer estado do gravador — medido via inspeção
+   real do DOM (Playwright): sem essa regra os dois botões ficam a ~4px um
+   do outro. */
+.st-key-recorder-card span:has(> [data-testid="stAudioInputActionButton"]) + span:has(> [data-testid="stAudioInputActionButton"]) {
+  margin-left: 12px;
 }
 /* Esconde o wrapper inteiro do waveform (sem data-testid próprio, selecionado
    via :has do descendente estável stAudioInputWaveSurfer), não só o
@@ -346,20 +367,20 @@ button[data-testid="stBaseButton-secondary"] {
    de ocultação dele). */
 .recorder-timer {
   color: #a3a3a3;
-  font-size: 13px;
+  font-size: 14px;
   flex-shrink: 0;
   white-space: nowrap;
   position: relative;
-  top: -3px;
+  top: -2px;
   /* margin-left negativo compensa o wrapper interno do botão nativo do
      gravador (dentro de [data-testid="stAudioInput"]), que tem um tamanho
      fixo reservado pelo Streamlit (~50px) maior que o círculo visível
-     (20px) e não encolhe mesmo com width:auto !important — já documentado
-     como limitação conhecida acima (stAudioInputActionButton). Sem isso,
-     sobra uma folga invisível de ~18px entre o botão e o badge mesmo com
-     gap:0 no .st-key-recorder-card — medido via getBoundingClientRect
-     (Chrome DevTools). -14px deixa ~4px reais de respiro (18px de folga - 14). */
-  margin-left: -14px;
+     (agora 28px) e não encolhe mesmo com width:auto !important — já
+     documentado como limitação conhecida acima (stAudioInputActionButton).
+     Valor tornado menos negativo (de -14px) para abrir mais respiro entre
+     os botões e o badge — ajustar se a folga real mudar (medir via
+     getBoundingClientRect, Chrome DevTools). */
+  margin-left: -6px;
 }
 
 @media (max-width: 768px) {
@@ -431,7 +452,7 @@ button[data-testid="stBaseButton-secondary"] {
 .query-counter-text {
   text-align: center;
   color: #a3a3a3;
-  font-size: 13px !important;
+  font-size: 15px !important;
   margin: 16px 0;
 }
 
