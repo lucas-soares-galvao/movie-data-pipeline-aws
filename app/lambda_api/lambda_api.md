@@ -16,7 +16,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`only_weekly_tables=True`** (execução semanal): pula gêneros, idiomas, países e plataformas de referência.
    - **`only_annual_tables=True`** (backfill manual de múltiplos anos): mesmo efeito do `only_weekly_tables` — pula referências e roda apenas o discover.
    - **`only_monthly_tables=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
-   - **`skip_weekly=True`** (modo legado — referências apenas): pula o loop de discover.
+   - **`skip_weekly=True`** (referências apenas — hoje só usado por `scripts/backfill_referencias.py`): pula o loop de discover. Como esse modo nunca passa pelo Glue Details, aciona o **Glue AGG** diretamente ao final, só no run de `content_type="tv"` — mesma convenção de "tv fecha o ciclo" usada no cascade normal do discover (`app/glue_details/main.py`, `media_type == "tv" and year == end_year`) — sem isso, a referência atualizada só apareceria na camada SPEC no próximo ciclo semanal/mensal. Antes de acionar o AGG, `_wait_for_reference_jobs()` faz polling (`glue:GetJobRun`) nos 3 Glue ETL de referência que essa mesma invocação (tv) disparou, até cada um atingir um estado terminal — como `trigger_glue_job` é fire-and-forget, sem essa espera o AGG poderia começar a ler as tabelas de tv no Athena antes do Glue ETL terminar de escrevê-las. Não espera pelos jobs de `movie` (invocação separada e anterior) — como no resto do pipeline, depende do intervalo entre as duas invocações (5 min no EventBridge, 300s em `scripts/backfill_referencias.py`) já ser suficiente. Um job de referência que termina em estado diferente de `SUCCEEDED` não bloqueia o AGG — só loga o erro e segue.
    - **`only_changes_tables=True`** (execução semanal de changes, ver "Modo changes" abaixo): sai antes de qualquer coleta de referência/discover.
    - **`only_rotation_refresh=True`** (execução semanal de rotation refresh, ver "Modo rotation refresh" abaixo): sai antes de qualquer coleta de referência/discover.
    - Sem flags: coleta tudo.
@@ -56,7 +56,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 | **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `skip_weekly`, `only_changes_tables`, `only_rotation_refresh`, `translate_provider`) |
 | **Leitura** | API TMDB (HTTP), Secrets Manager (chave de API), SSM Parameter Store (ponteiro do modo rotation refresh) |
 | **Escrita** | S3 SOR — `tmdb/discover/{movie\|tv}/year={ano}/`, `tmdb/{genre\|configuration\|watch_providers_ref}/{movie\|tv}/` e `tmdb/now_playing/movie/pagina_NNN.json`; S3 TEMP — `tmdb/changes/{movie\|tv}/{data}.json` (modo changes); SSM Parameter Store — `/tmdb-pipeline/rotation-year-pointer-{movie\|tv}` (modo rotation refresh) |
-| **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes); Glue Details diretamente nos modos changes e rotation refresh |
+| **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes); Glue Details diretamente nos modos changes e rotation refresh; Glue AGG diretamente no modo `skip_weekly` (só no run de `content_type="tv"`) |
 
 ## Funções principais (`src/utils.py`)
 
@@ -76,7 +76,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 |---|---|---|
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
-| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona o job Glue ETL, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, `--TRANSLATE_PROVIDER`, etc.) |
+| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona um job Glue, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, `--TRANSLATE_PROVIDER`, etc.); usado para o Glue ETL (fluxo normal), o Glue Details (modos changes/rotation refresh) e o Glue AGG sem argumentos (modo `skip_weekly`, run de `content_type="tv"`) |
 
 ## Tecnologias
 
