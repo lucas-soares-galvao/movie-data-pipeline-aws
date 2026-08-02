@@ -24,16 +24,15 @@
             counter = doc.createElement("div");
             counter.id = "pref-char-counter";
             // position:relative;top:-2px — nudge vertical fino medido via inspeção
-            // real do DOM (Playwright): sem isso, o texto do contador fica ~2px
-            // abaixo do centro vertical da linha (mesmo desalinhamento sutil do
-            // badge de timer ao lado, ver .recorder-timer em principal.css).
+            // real do DOM (Playwright), igual ao usado em .recorder-timer
+            // (principal.css) para os dois labels ficarem na mesma linha de base.
             // left:12px — compensa o margin-left:-12px de .st-key-recorder-card
             // (principal.css, nudge de alinhamento do gravador com o início do
             // texto): como o contador é filho dessa mesma linha e empurrado pra
             // ponta via margin-left:auto, aquele nudge também arrastava o
             // contador 12px pra esquerda do fim real do texto — medido via
             // getBoundingClientRect (Chrome DevTools).
-            counter.style.cssText = "font-size:13px;opacity:0.6;margin-left:auto;white-space:nowrap;position:relative;top:-2px;left:12px;";
+            counter.style.cssText = "font-size:14px;opacity:0.6;margin-left:auto;white-space:nowrap;position:relative;top:-2px;left:12px;";
             recorderRow.appendChild(counter);
         }
 
