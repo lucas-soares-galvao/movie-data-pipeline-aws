@@ -483,7 +483,9 @@ def transcribe_preference(audio_bytes: bytes) -> str:
             (indisponibilidade, timeout, autenticação, formato de áudio inválido, etc.).
     """
     duration = _audio_duration_seconds(audio_bytes)
-    if duration > _MAX_AUDIO_SECONDS:
+    # >= (não >): ver mesmo motivo em app.py, na checagem que já deveria ter
+    # barrado isso antes daqui — esta é só a rede de segurança redundante.
+    if duration >= _MAX_AUDIO_SECONDS:
         raise AudioMuitoLongoError(
             f"Áudio de {duration:.0f}s excede o limite de {_MAX_AUDIO_SECONDS}s."
         )

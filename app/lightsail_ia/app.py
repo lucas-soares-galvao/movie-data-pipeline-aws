@@ -276,7 +276,16 @@ with st.container(key="hero-section"):
                 # script JS parou a gravação (limite de tempo ou clique manual), a
                 # decisão de rejeitar fica determinística no servidor, sem depender do
                 # fluxo de confirmação nem do round-trip assíncrono de transcrição.
-                if _audio_duration_seconds(audio_bytes) > _MAX_AUDIO_SECONDS:
+                # >= (não >): o auto-stop no cliente (audio_timer.js) para a gravação
+                # assim que o tempo decorrido atinge _MAX_AUDIO_SECONDS (também via
+                # >=), então um áudio cortado no limite mede exatamente
+                # _MAX_AUDIO_SECONDS aqui — com > estrito, esse áudio passava como
+                # "aceitável" e seguia pro fluxo normal de transcrição em vez de cair
+                # em "muito longo", contradizendo o motivo do auto-stop ter disparado
+                # (medido via inspeção real do log do servidor: duration=15.00 caindo
+                # no ramo errado). Mesma correção necessária em
+                # agent.transcribe_preference() (rede de segurança redundante).
+                if _audio_duration_seconds(audio_bytes) >= _MAX_AUDIO_SECONDS:
                     st.session_state["transcription_too_long"] = True
                     st.session_state["audio_widget_seq"] = _audio_widget_seq + 1
                 else:
