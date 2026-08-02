@@ -1039,6 +1039,10 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
       name = "canonical_name"
       type = "string"
     }
+    columns {
+      name = "logo_path"
+      type = "string"
+    }
   }
 }
 
@@ -1076,6 +1080,10 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
     }
     columns {
       name = "canonical_name"
+      type = "string"
+    }
+    columns {
+      name = "logo_path"
       type = "string"
     }
   }
