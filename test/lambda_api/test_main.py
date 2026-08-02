@@ -6,6 +6,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("GLUE_ETL_JOB_NAME", "test-glue-etl-job")
 os.environ.setdefault("GLUE_DETAILS_JOB_NAME", "test-glue-details-job")
+os.environ.setdefault("GLUE_AGG_JOB_NAME", "test-glue-agg-job")
 os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 os.environ.setdefault("S3_BUCKET_TEMP", "test-bucket-temp")
 
@@ -61,10 +62,14 @@ def _run(event: dict, *, year: int = 2025) -> dict:
         patch("main.collect_genre_data") as mock_genre,
         patch("main.collect_changes_data", return_value="tmdb/changes/movie/2026-07-08.json") as mock_changes,
         patch("main.get_api_secret", return_value="api-key-teste"),
-        patch("main.boto3"),
+        patch("main.boto3") as mock_boto3,
         patch("main.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.year = year
+        # skip_weekly (perna tv) espera os Glue ETL de referência via get_job_run antes do AGG
+        # (ver _wait_for_reference_jobs em main.py) — sem "SUCCEEDED" aqui, o loop de polling
+        # giraria indefinidamente sobre um MagicMock que nunca atinge um estado terminal.
+        mock_boto3.client.return_value.get_job_run.return_value = {"JobRun": {"JobRunState": "SUCCEEDED"}}
         result = main.lambda_handler(event, mock_context)
 
     return {
@@ -248,6 +253,95 @@ class TestSkipWeekly:
     def test_skip_weekly_retorna_status_200(self):
         mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
         assert mocks["result"]["statusCode"] == 200
+
+    # --- Glue AGG (aciona ao final do ciclo de referências, só na perna "tv") ---
+
+    def test_skip_weekly_movie_nao_aciona_glue_agg(self):
+        """A perna "movie" só coleta referências de movie — tv ainda não rodou,
+        então acionar o AGG aqui uniria referências de tv desatualizadas."""
+        mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
+        job_names = [c[0][0] for c in mocks["mock_trigger"].call_args_list]
+        assert main.GLUE_AGG_JOB_NAME not in job_names
+
+    def test_skip_weekly_tv_aciona_glue_agg(self):
+        """A perna "tv" fecha o ciclo (mesma convenção do resto do pipeline —
+        ver app/glue_details/main.py): aciona o Glue AGG sem esperar o próximo
+        ciclo semanal/mensal."""
+        mocks = _run({**EVENTO_TV, "skip_weekly": True}, year=2025)
+        assert mocks["mock_trigger"].call_count == 4
+        ultima_chamada = mocks["mock_trigger"].call_args_list[-1]
+        assert ultima_chamada[0][0] == main.GLUE_AGG_JOB_NAME
+        assert ultima_chamada[1] == {}
+
+    def test_skip_weekly_tv_aguarda_glue_etl_de_referencia_antes_do_agg(self):
+        """trigger_glue_job é fire-and-forget — sem aguardar os 3 Glue ETL de
+        referência (get_job_run), o AGG poderia rodar antes deles terminarem
+        de escrever e ler dado desatualizado (ver _wait_for_reference_jobs)."""
+        with (
+            patch("main.trigger_glue_job", side_effect=["run-genre", "run-config", "run-watch-ref", "run-agg"]) as mock_trigger,
+            patch("main.collect_genre_data"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.get_api_secret", return_value="api-key-teste"),
+            patch("main.boto3") as mock_boto3,
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = 2025
+            mock_get_job_run = mock_boto3.client.return_value.get_job_run
+            mock_get_job_run.return_value = {"JobRun": {"JobRunState": "SUCCEEDED"}}
+            main.lambda_handler({**EVENTO_TV, "skip_weekly": True}, MagicMock())
+
+        mock_boto3.client.assert_any_call("glue")
+        chamadas_run_id = [c.kwargs["RunId"] for c in mock_get_job_run.call_args_list]
+        assert chamadas_run_id == ["run-genre", "run-config", "run-watch-ref"]
+        assert mock_trigger.call_args_list[-1][0][0] == main.GLUE_AGG_JOB_NAME
+
+    def test_skip_weekly_tv_faz_polling_ate_estado_terminal(self):
+        """Enquanto o job de referência está RUNNING, o polling continua
+        (com sleep) até chegar a um estado terminal."""
+        with (
+            patch("main.trigger_glue_job", side_effect=["run-genre", "run-config", "run-watch-ref", "run-agg"]),
+            patch("main.collect_genre_data"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.get_api_secret", return_value="api-key-teste"),
+            patch("main.boto3") as mock_boto3,
+            patch("main.time.sleep") as mock_sleep,
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = 2025
+            mock_boto3.client.return_value.get_job_run.side_effect = [
+                {"JobRun": {"JobRunState": "RUNNING"}},
+                {"JobRun": {"JobRunState": "SUCCEEDED"}},
+                {"JobRun": {"JobRunState": "SUCCEEDED"}},
+                {"JobRun": {"JobRunState": "SUCCEEDED"}},
+            ]
+            main.lambda_handler({**EVENTO_TV, "skip_weekly": True}, MagicMock())
+
+        mock_sleep.assert_called_once()
+
+    def test_skip_weekly_tv_aciona_agg_mesmo_com_glue_etl_falho(self):
+        """Um Glue ETL de referência que termina em FAILED não impede o AGG —
+        loga o erro e segue, para não perder a atualização das tabelas que
+        tiveram sucesso (ver _wait_for_reference_jobs)."""
+        with (
+            patch("main.trigger_glue_job", side_effect=["run-genre", "run-config", "run-watch-ref", "run-agg"]) as mock_trigger,
+            patch("main.collect_genre_data"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_watch_providers_ref"),
+            patch("main.get_api_secret", return_value="api-key-teste"),
+            patch("main.boto3") as mock_boto3,
+            patch("main.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value.year = 2025
+            mock_boto3.client.return_value.get_job_run.side_effect = [
+                {"JobRun": {"JobRunState": "FAILED"}},
+                {"JobRun": {"JobRunState": "SUCCEEDED"}},
+                {"JobRun": {"JobRunState": "SUCCEEDED"}},
+            ]
+            main.lambda_handler({**EVENTO_TV, "skip_weekly": True}, MagicMock())
+
+        assert mock_trigger.call_args_list[-1][0][0] == main.GLUE_AGG_JOB_NAME
 
 
 class TestOnlyDiscover:
