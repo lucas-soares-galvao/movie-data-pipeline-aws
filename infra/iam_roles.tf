@@ -50,6 +50,45 @@ resource "aws_iam_role_policy" "lambda_logs" {
   })
 }
 
+resource "aws_iam_role" "lambda_glue_orchestrator" {
+  name = "${local.tmdb_prefix}-lambda-glue-orchestrator-${var.env}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+
+  depends_on = [terraform_data.cicd_policies_ready]
+}
+
+# Mesmo racional de "lambda_logs" acima: policy customizada em vez da managed policy
+# AWSLambdaBasicExecutionRole, para não conceder "logs:CreateLogGroup" — só escreve em
+# grupos de log já criados pelo Terraform (cloudwatch_logs.tf).
+resource "aws_iam_role_policy" "lambda_glue_orchestrator_logs" {
+  name = "${local.tmdb_prefix}-lambda-glue-orchestrator-logs-${var.env}"
+  role = aws_iam_role.lambda_glue_orchestrator.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "WriteLambdaLogs"
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+      ]
+      Resource = [
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.envs.lambda_glue_orchestrator_name}",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.envs.lambda_glue_orchestrator_name}:log-stream:*",
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_role" "glue_etl_role" {
   name = "${local.tmdb_prefix}-glue-etl-${var.env}"
 

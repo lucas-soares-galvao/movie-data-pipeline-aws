@@ -27,6 +27,11 @@ proj-eng-dados-filmes-aws/
 │   │   ├── requirements.txt
 │   │   ├── lambda_api.md          # Documentação do módulo
 │   │   └── src/utils.py           # Lógica de negócio: TMDB fetch, S3, Glue trigger
+│   ├── lambda_glue_orchestrator/
+│   │   ├── main.py                # Handler da Lambda (entry point)
+│   │   ├── requirements.txt
+│   │   ├── lambda_glue_orchestrator.md  # Documentação do módulo
+│   │   └── src/utils.py           # wait_for_job_runs: polling genérico de Glue job runs
 │   ├── glue_etl/
 │   │   ├── main.py                # Entry point do Glue ETL
 │   │   ├── requirements.txt
@@ -97,6 +102,7 @@ proj-eng-dados-filmes-aws/
 │   ├── iam_policies.tf             # Policies com privilégio mínimo
 │   ├── iam_cicd.tf                 # 7 policies least-privilege da role GitHub Actions + sync
 │   ├── lambda_api.tf               # Função Lambda + package zip
+│   ├── lambda_glue_orchestrator.tf # Função Lambda (invocada assíncrona pela lambda_api) + package zip
 │   ├── glue_etl.tf                 # Glue Job ETL + upload de scripts no S3
 │   ├── glue_details.tf             # Glue Job Details + upload de scripts no S3
 │   ├── glue_agg.tf                 # Glue Job AGG + upload de scripts no S3
@@ -125,6 +131,13 @@ proj-eng-dados-filmes-aws/
     │   ├── conftest.py
     │   ├── requirements_tests.txt
     │   ├── lambda_api_tests.md
+    │   ├── test_main.py
+    │   └── test_utils.py
+    ├── lambda_glue_orchestrator/
+    │   ├── __init__.py
+    │   ├── conftest.py
+    │   ├── requirements_tests.txt
+    │   ├── lambda_glue_orchestrator_tests.md
     │   ├── test_main.py
     │   └── test_utils.py
     ├── glue_etl/
@@ -346,6 +359,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `iam_policies.tf` | Policies de mínimo privilégio por serviço |
 | `iam_cicd.tf` | 7 policies least-privilege da role GitHub Actions (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
 | `lambda_api.tf` | Lambda function + zip do pacote Python |
+| `lambda_glue_orchestrator.tf` | Lambda function (espera Glue job runs, aciona um job alvo) + zip do pacote Python |
 | `glue_etl.tf` | Glue Job ETL + upload de scripts/dependências no S3 AUX |
 | `glue_details.tf` | Glue Job Details + upload de scripts no S3 AUX |
 | `glue_agg.tf` | Glue Job AGG + upload de scripts no S3 AUX |
@@ -391,6 +405,7 @@ app/<modulo>/
 | Módulo | Deps principais |
 |--------|----------------|
 | `lambda_api` | `boto3`, `requests` |
+| `lambda_glue_orchestrator` | `boto3` |
 | `glue_etl` | `awswrangler`, `boto3`, `pandas`, `awsglue` (Glue runtime) |
 | `glue_data_quality` | `awswrangler`, `awsgluedq`, `pyspark`, `awsglue` (Glue runtime) |
 | `glue_details` | `awswrangler`, `boto3`, `pandas`, `requests`, `awsglue` (Glue runtime) |
