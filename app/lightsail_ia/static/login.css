@@ -50,6 +50,12 @@
   margin: 0 0 24px 0;
 }
 
+/* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
+   usada pro "Press Ctrl+Enter to apply" da textarea em principal.css. */
+[data-testid="stTextInput"] [data-testid="InputInstructions"] {
+  display: none;
+}
+
 /* Sobrescreve o input de senha */
 [data-testid="stTextInput"] input {
   background: #1a1a1a !important;
@@ -62,6 +68,13 @@
 [data-testid="stTextInput"] input:focus {
   border-color: rgba(249,115,22,0.5) !important;
   box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
+}
+/* O Streamlit já tem seu próprio ícone de olho pra mostrar/esconder a senha
+   (type="password") — no Edge/Windows, o navegador soma o ícone nativo dele
+   (::-ms-reveal) por cima, duplicando o olho. Esconde só o nativo. */
+[data-testid="stTextInput"] input::-ms-reveal,
+[data-testid="stTextInput"] input::-ms-clear {
+  display: none !important;
 }
 
 /* Sobrescreve o botao de login — mesmo padrão pill/glow do botão
@@ -85,20 +98,36 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
+[data-testid="stButton"] > button:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
 [data-testid="stColumns"],
 [data-testid="stHorizontalBlock"] {
   gap: 0.4rem !important;
 }
 
-/* Erro customizado */
-.login-error {
-  background: rgba(239,68,68,0.08);
-  border: 1px solid rgba(239,68,68,0.25);
-  color: #fca5a5;
+/* Duplicado de .msg-error/.msg-warning em principal.css — cada tela injeta
+   seu próprio CSS de forma independente (mesmo motivo de .accent-gradient-text
+   acima). Usado por render_feedback() na mensagem de senha incorreta. */
+.msg-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
   border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 13px;
-  margin-top: 10px;
+  padding: 12px 16px;
+  max-width: 100%;
+  color: #fca5a5;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.msg-warning {
+  background: rgba(250,204,21,0.1);
+  border: 1px solid rgba(250,204,21,0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+  max-width: 100%;
+  color: #fbbf24;
+  font-size: 14px;
 }
 
 .footer-login {
