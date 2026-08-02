@@ -394,7 +394,7 @@ with st.container(key="hero-section"):
         preference = st.text_area(
             "O que você quer assistir?",
             placeholder="Ex: filmes de terror dos anos 2010. Séries mais populares da HBO.",
-            height=90,
+            height=120,
             max_chars=_MAX_PREFERENCE_CHARS,
             key="preference_text",
             label_visibility="collapsed",
