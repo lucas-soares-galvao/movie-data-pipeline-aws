@@ -50,26 +50,28 @@ button[data-testid="stBaseButton-secondary"] {
    botão "Sair" e a borda direita real do hero — medido via inspeção real do
    DOM (Playwright). Restaurado aqui: a coluna do título cresce (flex:1) pra
    preencher o espaço extra, empurrando a do botão (flex:0 0 auto) pra ponta
-   direita — sem margin-left:auto (que empurraria o botão pra direita mesmo
-   quando ele quebra sozinho pra própria linha, ver regra do row abaixo),
-   independente da proporção definida em st.columns([9, 1]). Wrap natural em
-   vez de empilhar numa largura fixa: o botão fica lado a lado enquanto
-   couber (como no desktop) e só quebra pra linha de baixo quando o espaço
-   realmente não for suficiente. justify-content:space-between cobre os dois
-   cenários sozinho: título encostado à esquerda e botão à direita quando
-   cabem na mesma linha; botão alinhado à esquerda quando quebra pra sua
-   própria linha (não sobra "outro lado" pra space-between empurrar). gap
-   garante um respiro mínimo tanto na horizontal (lado a lado) quanto na
-   vertical (quando quebra). */
+   direita, independente da proporção definida em st.columns([9, 1]).
+   flex-wrap:nowrap (não wrap) é proposital: tentamos wrap+min-width:0 antes,
+   pra deixar o botão "cair" pra própria linha só quando faltasse espaço, mas
+   a decisão de quebra de um flex container usa o tamanho max-content de cada
+   item (o subtítulo inteiro sem quebrar), não o tamanho já encolhido — ou
+   seja, com wrap o botão sempre "sobrava" e caía pra linha de baixo,
+   independente de min-width:0, confirmado via inspeção real do DOM
+   (Playwright, viewport 375px: coluna do título ocupava 327px sozinha numa
+   linha, botão "Sair" na linha seguinte). Com nowrap, os dois ficam sempre
+   na mesma linha e é o encolhimento (min-width:0 na coluna do título/
+   .header-text/.header-subtitle abaixo) que faz o subtítulo quebrar em
+   várias linhas pra caber — o botão nunca mais "cai". */
 .st-key-header-row [data-testid="stHorizontalBlock"] {
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: space-between;
   gap: 12px;
 }
 .st-key-header-row [data-testid="stHorizontalBlock"] > div:first-child {
   flex: 1 1 auto !important;
   width: auto !important;
+  min-width: 0 !important;
 }
 .st-key-header-row [data-testid="stHorizontalBlock"] > div:last-child {
   flex: 0 0 auto !important;
@@ -89,9 +91,16 @@ button[data-testid="stBaseButton-secondary"] {
   line-height: 1;
   flex-shrink: 0;
 }
+/* Itens flex têm min-width:auto por padrão, travando a largura mínima no
+   conteúdo sem quebra — o subtítulo inteiro numa linha só. Isso empurra a
+   coluna do título além da largura disponível no mobile, disparando o
+   flex-wrap do row (acima) e derrubando o botão "Sair" pra linha de baixo.
+   min-width:0 aqui (e em .header-subtitle) libera o subtítulo pra quebrar em
+   duas linhas dentro da própria coluna em vez de forçar o row a estourar. */
 .header-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 /* !important em font-size (aqui e no subtítulo) necessário: o Streamlit
    aplica um font-size próprio no <p> via seletor com especificidade maior
@@ -110,6 +119,7 @@ button[data-testid="stBaseButton-secondary"] {
   font-size: 13px !important;
   color: #a3a3a3;
   margin: -8px 0 0 !important;
+  min-width: 0;
 }
 /* Nudge vertical fino, mesmo princípio do .recorder-timer: o wrapper interno
    sem data-testid que o Streamlit gera em volta de st.markdown (entre
@@ -765,6 +775,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   max-width: 100%;
   color: #fbbf24;
   font-size: 14px;
+  margin-bottom: 12px;
 }
 
 .time-countdown {
