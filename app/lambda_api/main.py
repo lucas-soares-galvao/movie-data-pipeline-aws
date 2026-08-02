@@ -3,9 +3,9 @@ Lambda API — coleta dados da API TMDB e dispara o Glue ETL.
 Fluxo: EventBridge → busca API key → coleta referências → coleta discover (por ano) → dispara Glue ETL.
 """
 
+import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,31 +30,9 @@ TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 GLUE_DETAILS_JOB_NAME = os.environ["GLUE_DETAILS_JOB_NAME"]
 GLUE_AGG_JOB_NAME = os.environ["GLUE_AGG_JOB_NAME"]
+LAMBDA_GLUE_ORCHESTRATOR_NAME = os.environ["LAMBDA_GLUE_ORCHESTRATOR_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
 S3_BUCKET_TEMP = os.environ["S3_BUCKET_TEMP"]
-
-
-def _wait_for_reference_jobs(job_name: str, run_ids: list[str], poll_interval: int = 15) -> None:
-    """Aguarda cada run_id de `job_name` atingir um estado terminal.
-
-    `trigger_glue_job` é fire-and-forget (ver shared_utils.triggers) — sem isso, o Glue AGG
-    disparado logo em seguida (modo skip_weekly, ver lambda_handler) poderia começar a ler as
-    tabelas de referência no Athena antes do Glue ETL terminar de escrevê-las, unindo dados
-    desatualizados. Não aborta em caso de falha: loga e segue, para não perder a atualização
-    das tabelas que tiveram sucesso.
-    """
-    glue_client = boto3.client("glue")
-    for run_id in run_ids:
-        while True:
-            state = glue_client.get_job_run(JobName=job_name, RunId=run_id)["JobRun"]["JobRunState"]
-            if state in ("SUCCEEDED", "FAILED", "STOPPED", "ERROR", "TIMEOUT"):
-                if state != "SUCCEEDED":
-                    logger.error(
-                        f"Job '{job_name}' (run_id={run_id}) terminou em '{state}' — Glue AGG "
-                        "será acionado mesmo assim, com essa tabela de referência desatualizada."
-                    )
-                break
-            time.sleep(poll_interval)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -160,13 +138,23 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Modo "Só referências": não passa pelo discover/Glue Details, então o Glue AGG não seria
     # acionado pelo cascade normal (Glue Details "tv + end_year" — ver app/glue_details/main.py).
     # Para que a atualização de referências chegue à camada SPEC sem esperar o próximo ciclo
-    # semanal/mensal, este modo aciona o Glue AGG diretamente ao final — só no run de "tv" (mesma
-    # convenção do resto do pipeline: tv é a perna que fecha o ciclo, tanto no EventBridge — roda
-    # 5 min depois de movie — quanto em scripts/backfill_referencias.py, que invoca movie e
-    # depois tv de forma síncrona). Antes de acionar o AGG, aguarda (_wait_for_reference_jobs) os
-    # 3 Glue ETL de referência que esta mesma invocação (tv) acabou de disparar — trigger_glue_job
-    # é fire-and-forget, então sem essa espera o AGG poderia ler as tabelas de tv ainda com o dado
-    # antigo. Não espera pelos jobs de "movie" (invocação anterior, separada) — como no resto do
+    # semanal/mensal, este modo aciona o Glue AGG ao final — só no run de "tv" (mesma convenção
+    # do resto do pipeline: tv é a perna que fecha o ciclo, tanto no EventBridge — roda 5 min
+    # depois de movie — quanto em scripts/backfill_referencias.py, que invoca movie e depois tv
+    # de forma síncrona).
+    #
+    # O disparo do AGG precisa esperar os 3 Glue ETL de referência (trigger_glue_job é
+    # fire-and-forget) terminarem antes de rodar, senão leria as tabelas de tv ainda desatualizadas.
+    # Essa espera NÃO roda dentro desta Lambda: é delegada, de forma assíncrona
+    # (InvocationType="Event"), à app/lambda_glue_orchestrator — nenhum chamador desta função fica
+    # esperando a resposta dela. Isso é proposital: uma versão anterior fazia essa espera aqui
+    # dentro (polling de get_job_run, ~4-5min), o que estourou o read_timeout padrão do cliente
+    # síncrono de scripts/backfill_referencias.py e — como lambda:Invoke não é idempotente — o
+    # retry automático do botocore após o timeout chegou a gerar 5 execuções concorrentes desta
+    # Lambda em produção, cada uma reacionando os mesmos 3 Glue ETL. Ver
+    # app/lambda_glue_orchestrator/lambda_glue_orchestrator.md para o racional completo.
+    #
+    # Não espera pelos jobs de "movie" (invocação anterior, separada) — como no resto do
     # pipeline, isso depende do intervalo entre as duas invocações (5 min no EventBridge, 300s em
     # backfill_referencias.py) já ser suficiente para o Glue ETL de referência de movie terminar.
     #
@@ -254,12 +242,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("skip_weekly=True: pulando coleta de discover.")
         if content_type == "tv":
             logger.info(
-                "skip_weekly=True (tv): aguardando os %d Glue ETL de referência desta invocação "
-                "terminarem antes de acionar o Glue AGG...", len(reference_run_ids),
+                "skip_weekly=True (tv): acionando o orquestrador assíncrono para aguardar os "
+                "%d Glue ETL de referência e disparar o Glue AGG...", len(reference_run_ids),
             )
-            _wait_for_reference_jobs(GLUE_ETL_JOB_NAME, reference_run_ids)
-            logger.info("Referências de tv atualizadas — acionando Glue AGG.")
-            trigger_glue_job(GLUE_AGG_JOB_NAME)
+            boto3.client("lambda").invoke(
+                FunctionName=LAMBDA_GLUE_ORCHESTRATOR_NAME,
+                InvocationType="Event",
+                Payload=json.dumps({
+                    "wait_for": [
+                        {"job_name": GLUE_ETL_JOB_NAME, "run_id": run_id}
+                        for run_id in reference_run_ids
+                    ],
+                    "target_job_name": GLUE_AGG_JOB_NAME,
+                }).encode(),
+            )
         return {
             "statusCode": 200,
             "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",

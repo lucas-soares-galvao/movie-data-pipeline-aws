@@ -550,11 +550,6 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   font-weight: 700;
 }
 
-.card-subtitle {
-  color: #737373;
-  font-size: 13px;
-}
-
 .genres-container {
   margin: 6px 0;
 }
@@ -566,38 +561,31 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   flex: 1;
 }
 
-.genre {
-  background: rgba(249,115,22,0.13);
-  color: #fb923c;
-  border-radius: 99px;
-  padding: 2px 8px;
-  font-size: 12px;
-  display: inline-block;
-  margin: 2px;
-  border: 1px solid rgba(249,115,22,0.2);
+.reason {
+  color: #fdba74;
+  font-size: 14px;
+  font-style: italic;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+  background: rgba(249,115,22,0.08);
+  border-left: 2px solid rgba(249,115,22,0.4);
+  border-radius: 4px;
+  line-height: 1.4;
 }
 
-.certification-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  background: #555;
-  margin: 2px;
-  vertical-align: middle;
-  cursor: default;
+/* Altura fixa de 3 linhas só no desktop, onde os cards ficam lado a lado na
+   mesma fileira (.grid-titles com 3 colunas) e precisam alinhar a base. No
+   mobile os cards ficam empilhados (1 por linha), então não há desalinhamento
+   a corrigir e o texto do motivo pode ocupar quantas linhas precisar. */
+@media (min-width: 769px) {
+  .reason {
+    min-height: calc(1.4em * 3 + 12px);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
-.certification-badge[data-rating="L"]  { background: #00a651; }
-.certification-badge[data-rating="10"] { background: #0091d4; }
-.certification-badge[data-rating="12"] { background: #f8c709; }
-.certification-badge[data-rating="14"] { background: #ee7a1a; }
-.certification-badge[data-rating="16"] { background: #d21920; }
-.certification-badge[data-rating="18"] { background: #1d1815; }
 
 .meta-row {
   display: flex;
@@ -614,109 +602,91 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   text-align: center;
 }
 
-.vitals-row {
+.meta-line {
+  justify-content: space-between;
   flex-wrap: wrap;
-  font-size: 15px;
+  color: #a3a3a3;
+  font-size: 13px;
 }
+
+.meta-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .vital {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   color: #a3a3a3;
 }
-.vital-rating { color: #f97316; font-weight: bold; font-size: 16px; }
-.vital-sep { color: #525252; margin: 0 2px; }
+.vital-rating { color: #f97316; font-weight: bold; font-size: 15px; }
 
-.overview { color: #d4d4d4; font-size: 16px; margin-top: 6px; line-height: 1.5; flex: 1; }
-
-/* Sinopse longa: "ver mais"/"ver menos" via checkbox hack (sem JS — st.html não
-   executa <script>). Os dois labels apontam para o mesmo checkbox — clicar em
-   qualquer um dos dois alterna o :checked, então "ver menos" simplesmente
-   desmarca a mesma caixa que "ver mais" marcou. */
-.overview-full { display: none; }
-.overview-toggle { display: none; }
-.overview-more-label,
-.overview-less-label {
-  cursor: pointer;
+.genre {
+  background: rgba(249,115,22,0.13);
   color: #fb923c;
-  font-size: 13px;
-  margin-top: 4px;
-}
-.overview-more-label { display: inline-block; }
-.overview-less-label { display: none; }
-.overview-toggle:checked ~ .overview-full { display: block; }
-.overview-toggle:checked ~ .overview-short { display: none; }
-.overview-toggle:checked ~ .overview-more-label { display: none; }
-.overview-toggle:checked ~ .overview-less-label { display: inline-block; }
-
-.reason {
-  color: #a3a3a3;
-  font-size: 15px;
-  font-style: italic;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255,255,255,0.05);
-  line-height: 1.4;
-}
-
-/* Altura fixa de 3 linhas só no desktop, onde os cards ficam lado a lado na
-   mesma fileira (.grid-titles com 3 colunas) e precisam alinhar a base. No
-   mobile os cards ficam empilhados (1 por linha), então não há desalinhamento
-   a corrigir e o texto do motivo pode ocupar quantas linhas precisar. */
-@media (min-width: 769px) {
-  .reason {
-    min-height: calc(1.4em * 3);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-}
-
-/* Grade fixa de 3 colunas só para os badges de provedor, só no desktop (mesmo
-   raciocínio do bloco acima): com o limite de 6 itens visíveis, a grade
-   sempre fecha em 3+3 (itens além do 6º são descartados em silêncio, sem
-   indicador de quantos ficaram de fora). As 2 linhas de altura são sempre
-   reservadas (mesmo com 1 linha de conteúdo real) para o que vem depois
-   começar na mesma altura em cards vizinhos da fileira — line-height fixo
-   nos chips torna essa altura previsível, independente do line-height
-   herdado do tema do Streamlit. Os badges de gênero ficam de fora dessa
-   grade de propósito: largura pelo conteúdo (pill natural) e wrap livre,
-   mesmo que isso desalinhe a altura entre cards vizinhos. No mobile os
-   provedores também voltam a ter wrap livre (largura pelo conteúdo, altura
-   variável), já que os cards ficam empilhados e mais largos, sem
-   necessidade de alinhamento entre vizinhos. */
-@media (min-width: 769px) {
-  .providers-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(2, minmax(24px, auto));
-  }
-  .provider {
-    text-align: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-}
-
-.provider {
-  background: rgba(34,197,94,0.12);
-  color: #4ade80;
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 12px;
   display: inline-block;
-  margin: 2px;
+  margin: 2px 2px 2px 0;
+  border: 1px solid rgba(249,115,22,0.2);
+}
+
+.certification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #555;
+  vertical-align: middle;
+  cursor: default;
+}
+.certification-badge[data-rating="L"]  { background: #00a651; }
+.certification-badge[data-rating="10"] { background: #0091d4; }
+.certification-badge[data-rating="12"] { background: #f8c709; }
+.certification-badge[data-rating="14"] { background: #ee7a1a; }
+.certification-badge[data-rating="16"] { background: #d21920; }
+.certification-badge[data-rating="18"] { background: #1d1815; }
+
+.duration-row {
+  color: #a3a3a3;
+  font-size: 13px;
+}
+
+.trailer-providers-row {
+  justify-content: space-between;
+}
+
+.provider-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.provider-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-block;
   vertical-align: middle;
 }
 
-.provider-logo {
-  height: 16px;
-  width: auto;
-  display: block;
-  vertical-align: middle;
+.provider-dot-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(74,222,128,0.15);
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .cinema-badge {
@@ -730,23 +700,32 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   vertical-align: middle;
 }
 
-.providers-row {
-  display: flex;
+/* Sinopse recolhida por padrão: checkbox hack (sem JS — st.html não executa
+   <script>). O label aponta para o checkbox oculto; marcar/desmarcar alterna
+   :checked, que revela o texto e troca a seta ▸/▾ — mesmo princípio do antigo
+   "ver mais"/"ver menos", só que fechado por padrão em vez de mostrar um
+   trecho truncado. */
+.synopsis-toggle { display: none; }
+.synopsis-label {
+  cursor: pointer;
+  color: #fb923c;
+  font-size: 13px;
+  margin-top: 8px;
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 4px;
-  margin: 2px 0;
 }
-
-.providers-block { margin: 4px 0; }
-.providers-label {
-  display: block;
-  color: #737373;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 2px;
+.synopsis-arrow-open { display: none; }
+.synopsis-toggle:checked ~ .synopsis-label .synopsis-arrow-closed { display: none; }
+.synopsis-toggle:checked ~ .synopsis-label .synopsis-arrow-open { display: inline; }
+.synopsis-text {
+  display: none;
+  color: #d4d4d4;
+  font-size: 14px;
+  margin-top: 6px;
+  line-height: 1.5;
 }
+.synopsis-toggle:checked ~ .synopsis-text { display: block; }
 
 /* Cancelar vermelho — so aplica quando ha um botao primary desabilitado (estado de busca) */
 :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled) {

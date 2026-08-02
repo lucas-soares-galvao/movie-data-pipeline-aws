@@ -16,9 +16,8 @@ _CERTIFICATION_DESCRIPTIONS = {
     "18": "Não recomendado para menores de 18 anos",
 }
 
-_OVERVIEW_TRUNCATE_CHARS = 200
-_MAX_VISIBLE_GENRES = 6
-_MAX_VISIBLE_PROVIDERS = 6
+_MAX_VISIBLE_GENRES = 3
+_MAX_VISIBLE_PROVIDER_DOTS = 6
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -134,33 +133,44 @@ def _prioritize(items: list, terms: list[str], key=lambda item: item) -> list:
     return matched + unmatched
 
 
-def _render_provider_badges(names_raw: str, logos_raw: str, highlighted: list[str]) -> str:
-    """Monta os badges de um grupo de provedores (streaming ou aluguel/compra).
+def _parse_provider_pairs(names_raw: str, logos_raw: str) -> list[tuple[str, str]]:
+    """Faz o zip posicional de nomes e logos de um grupo de provedores (streaming ou
+    aluguel/compra).
 
     names_raw e logos_raw vêm de glue_agg como strings comma-joined construídas pela
     MESMA agregação/ordenação (ver queries.py), logo alinhadas posição a posição — o
-    zip abaixo depende disso. Quando um provedor tem logo, o badge mostra só a imagem
-    (nome no alt); sem logo, cai de volta para o badge de texto.
+    zip abaixo depende disso.
     """
-    names = [p.strip() for p in names_raw.split(",") if p.strip()]
+    names = [p.strip() for p in (names_raw or "").split(",") if p.strip()]
     logos = [logo.strip() for logo in (logos_raw or "").split(",")]
     logos += [""] * (len(names) - len(logos))  # protege contra desalinhamento inesperado
+    return list(zip(names, logos))
 
-    pairs = _prioritize(list(zip(names, logos)), highlighted, key=lambda pair: pair[0])
-    visible = pairs[:_MAX_VISIBLE_PROVIDERS]
 
-    badges = []
+def _render_provider_dots(pairs: list[tuple[str, str]], highlighted: list[str]) -> str:
+    """Monta os ícones circulares de provedor (streaming e aluguel/compra já combinados
+    e deduplicados por `render_card`) — sem rótulo de texto, nome do provedor só via
+    atributo `title` (tooltip). Quando não há logo, cai para um círculo com a inicial
+    do nome em vez de badge de texto por extenso.
+    """
+    prioritized = _prioritize(pairs, highlighted, key=lambda pair: pair[0])
+    visible = prioritized[:_MAX_VISIBLE_PROVIDER_DOTS]
+
+    dots = []
     for name, logo in visible:
         safe_name = html.escape(name)
         if logo:
-            badges.append(
-                f'<span class="provider">'
-                f'<img src="{html.escape(logo)}" alt="{safe_name}"'
-                f' class="provider-logo" loading="lazy" /></span>'
+            dots.append(
+                f'<img src="{html.escape(logo)}" alt="" title="{safe_name}"'
+                f' class="provider-dot" loading="lazy" />'
             )
         else:
-            badges.append(f'<span class="provider">{safe_name}</span>')
-    return "".join(badges)
+            initial = html.escape(name[0].upper()) if name else "?"
+            dots.append(
+                f'<span class="provider-dot provider-dot-fallback" title="{safe_name}">'
+                f'{initial}</span>'
+            )
+    return "".join(dots)
 
 
 def render_card(title: dict, idx: int = 0) -> str:
@@ -213,88 +223,89 @@ def render_card(title: dict, idx: int = 0) -> str:
         if certification else ""
     )
 
-    trailer_vital_html = ""
+    reason_html = f'<p class="reason">{reason}</p>' if reason else ""
+
+    date_type_parts = []
+    if release_date:
+        date_type_parts.append(release_date)
+    elif year:
+        date_type_parts.append(f"({year})")
+    if title_type:
+        date_type_parts.append(title_type)
+    meta_left = " · ".join(date_type_parts)
+    if certification_html:
+        meta_left = f"{meta_left} {certification_html}" if meta_left else certification_html
+
+    rating_html = (
+        f'<span class="vital vital-rating">★ {html.escape(str(rating))}</span>'
+        if rating is not None else ""
+    )
+    meta_html = (
+        f'<div class="meta-row meta-line">'
+        f'<span class="meta-info">{meta_left}</span>{rating_html}</div>'
+        if meta_left or rating_html else ""
+    )
+
+    duration_html = (
+        f'<div class="meta-row duration-row">{html.escape(duration)}</div>'
+        if duration else ""
+    )
+
+    trailer_html = ""
     if trailer_url:
         safe_url = html.escape(trailer_url)
-        trailer_vital_html = (
+        trailer_html = (
             f'<span class="vital vital-trailer">{_YT_IMG}'
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
             f'Trailer</a></span>'
         )
 
-    providers_html = ""
-    if streaming_providers:
-        stream_badges = _render_provider_badges(
-            streaming_providers, streaming_provider_logos, title.get("highlighted_providers") or []
-        )
-        providers_html = (
-            f'<div class="providers-block">'
-            f'<span class="providers-label">📺 Onde assistir</span>'
-            f'<div class="meta-row providers-row">{stream_badges}</div></div>'
-        )
-
-    rent_buy_html = ""
-    if rent_buy_providers:
-        rent_buy_badges = _render_provider_badges(
-            rent_buy_providers, rent_buy_provider_logos, title.get("highlighted_providers") or []
-        )
-        rent_buy_html = (
-            f'<div class="providers-block">'
-            f'<span class="providers-label">🛒 Aluguel/Compra</span>'
-            f'<div class="meta-row providers-row">{rent_buy_badges}</div></div>'
-        )
-
-    if len(overview_raw) > _OVERVIEW_TRUNCATE_CHARS:
-        overview_short = html.escape(overview_raw[:_OVERVIEW_TRUNCATE_CHARS].rstrip() + "…")
-        overview_full = html.escape(overview_raw)
-        toggle_id = f"overview-toggle-{idx}"
-        overview_html = (
-            f'<input type="checkbox" id="{toggle_id}" class="overview-toggle" hidden>'
-            f'<p class="overview overview-short">{overview_short}</p>'
-            f'<p class="overview overview-full">{overview_full}</p>'
-            f'<label for="{toggle_id}" class="overview-more-label">Ver mais</label>'
-            f'<label for="{toggle_id}" class="overview-less-label">Ver menos</label>'
-        )
-    else:
-        overview_html = f'<p class="overview">{html.escape(overview_raw)}</p>'
-
-    vitals_parts = []
-    if rating is not None:
-        vitals_parts.append(
-            f'<span class="vital vital-rating">★ {html.escape(str(rating))}</span>'
-        )
-    if release_date:
-        vitals_parts.append(f'<span class="vital vital-release">📅 {release_date}</span>')
-    if trailer_vital_html:
-        vitals_parts.append(trailer_vital_html)
-    vitals_html = (
-        '<div class="meta-row vitals-row">'
-        + '<span class="vital-sep">·</span>'.join(vitals_parts)
-        + '</div>'
-        if vitals_parts else ""
+    provider_pairs = _parse_provider_pairs(streaming_providers, streaming_provider_logos)
+    provider_pairs += _parse_provider_pairs(rent_buy_providers, rent_buy_provider_logos)
+    seen_providers: set[str] = set()
+    deduped_pairs = []
+    for name, logo in provider_pairs:
+        key = name.lower()
+        if key in seen_providers:
+            continue
+        seen_providers.add(key)
+        deduped_pairs.append((name, logo))
+    provider_dots_html = (
+        _render_provider_dots(deduped_pairs, title.get("highlighted_providers") or [])
+        if deduped_pairs else ""
     )
 
-    duration_html = (
-        f'<div class="meta-row vitals-row"><span class="vital vital-duration">⏱ {html.escape(duration)}</span></div>'
-        if duration else ""
-    )
+    trailer_providers_html = ""
+    if trailer_html or provider_dots_html:
+        trailer_providers_html = (
+            f'<div class="meta-row trailer-providers-row">{trailer_html}'
+            f'<span class="provider-dots">{provider_dots_html}</span></div>'
+        )
+
+    toggle_id = f"synopsis-toggle-{idx}"
+    synopsis_html = ""
+    if overview_raw:
+        overview_escaped = html.escape(overview_raw)
+        synopsis_html = (
+            f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
+            f'<label for="{toggle_id}" class="synopsis-label">'
+            f'<span class="synopsis-arrow-closed">▸</span>'
+            f'<span class="synopsis-arrow-open">▾</span> Sinopse</label>'
+            f'<p class="synopsis-text">{overview_escaped}</p>'
+        )
 
     return f"""
     <article class="card">
       {img_html}
       <div class="card-body">
         <strong class="card-title">{title_name}</strong>
-        <span class="card-subtitle">
-          &nbsp;({year}) — {title_type} {certification_html}
-        </span>
+        {reason_html}
+        {meta_html}
         <div class="genres-container">{genres_html}</div>
-        {providers_html}
-        {rent_buy_html}
-        {cinema_html}
-        {vitals_html}
         {duration_html}
-        {overview_html}
-        <p class="reason">💡 {reason}</p>
+        {trailer_providers_html}
+        {cinema_html}
+        {synopsis_html}
       </div>
     </article>
     """
