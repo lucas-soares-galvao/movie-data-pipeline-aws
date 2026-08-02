@@ -84,25 +84,30 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Botão "Cancelar" durante a busca: a recomendação roda em thread separada (`ThreadPoolExecutor`) com polling de 500ms, permitindo ao usuário cancelar a qualquer momento sem esperar a resposta completa
 - Confirmação de áudio automática e invisível ("▶️ Usar gravação" / "✕ Cancelar", ver seção "Entrada alternativa" acima) — o rate limit de transcrições é resolvido diretamente em Python antes de renderizar os botões (escondidos), sem depender de clique em botão desabilitado
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
-- Cada card exibe:
+- Cada card exibe, de cima para baixo (layout enxuto, poucos rótulos de texto — `componentes.py::render_card()`):
   - Imagem de fundo (backdrop preferido sobre poster)
-  - Título, ano, tipo (filme/série) e badge de classificação indicativa (L/10/12/14/16/18)
-  - Badges laranja por gênero (máx. 6 visíveis, sem indicador para o restante). Um gênero mencionado
+  - Título
+  - Motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), logo abaixo do título — itálico,
+    com leve realce visual, truncado em 3 linhas no desktop
+  - Linha única de metadados: data de lançamento (ou ano, quando a data não está disponível) · tipo
+    (filme/série) · badge de classificação indicativa (L/10/12/14/16/18), com a nota (★) alinhada à
+    direita
+  - Badges laranja por gênero (máx. 3 visíveis, sem indicador para o restante). Um gênero mencionado
     explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()`
-    o move para o início da lista antes do corte de 6, então ele nunca fica de fora se estiver presente
+    o move para o início da lista antes do corte de 3, então ele nunca fica de fora se estiver presente
     no título
-  - Onde assistir: rótulo + badges verdes 📺 com a **logo** de cada plataforma de streaming no Brasil
-    (`componentes.py::_render_provider_badges()`; cai para badge de texto quando o provedor não tem
-    logo), máx. 6 visíveis, sem indicador para o restante, seguido do badge amarelo 🎬 "Em cartaz até
-    DD/MM/YYYY" quando `in_theaters=true`. Mesma priorização de `_prioritize()` para um provedor
-    mencionado explicitamente (ex: "animações da Crunchyroll")
-  - Aluguel/Compra: mesmo padrão de badges/logo do bloco "Onde assistir", a partir de
-    `rent_buy_providers`/`rent_buy_provider_logos`, só aparece quando o título tem alguma plataforma
-    de aluguel/compra
-  - Linha compacta de "vitals": nota (★), data de lançamento (📅) e link ▶ Trailer (quando disponível),
-    separados por "·"
-  - Linha própria com a duração (⏱), logo abaixo
-  - Sinopse e motivo da recomendação (gerado pelo LLM na Etapa 3, truncado em 3 linhas no desktop)
+  - Duração/temporadas em linha própria
+  - Link ▶ Trailer (quando disponível) e, à direita na mesma linha, os ícones circulares dos provedores
+    — streaming e aluguel/compra combinados num único grupo e deduplicados por nome
+    (`componentes.py::_render_provider_dots()`), sem rótulo "Onde assistir"/"Aluguel/Compra" e sem nome
+    visível: o nome do provedor só aparece via atributo `title` (tooltip); cai para um círculo com a
+    inicial do nome quando não há logo. Máx. 6 visíveis, sem indicador para o restante, mesma
+    priorização de `_prioritize()` para um provedor mencionado explicitamente (ex: "animações da
+    Crunchyroll")
+  - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`
+  - Sinopse recolhida por padrão atrás de um accordion "▸ Sinopse" (checkbox hack em CSS, já que
+    `st.html` não executa `<script>`) — clicar expande o texto completo e troca a seta para "▾",
+    independente do tamanho do texto
 
 ## Entradas e saídas
 
@@ -140,7 +145,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
 | `componentes.py` | `_prioritize(items, terms, key=...)` | Reordena uma lista de badges (gêneros, ou pares nome/logo de provedores via `key`) colocando primeiro os que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
-| `componentes.py` | `_render_provider_badges(names_raw, logos_raw, highlighted)` | Monta os badges de um grupo de provedores (streaming ou aluguel/compra): faz `zip` posicional de `names_raw`/`logos_raw` (strings comma-joined alinhadas vindas de `glue_agg`), prioriza via `_prioritize()` e renderiza `<img>` da logo quando disponível, com fallback para badge de texto |
+| `componentes.py` | `_parse_provider_pairs(names_raw, logos_raw)` | Faz o `zip` posicional de nomes e logos de um grupo de provedores (streaming ou aluguel/compra), a partir das strings comma-joined alinhadas vindas de `glue_agg` |
+| `componentes.py` | `_render_provider_dots(pairs, highlighted)` | Monta os ícones circulares de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` e renderiza `<img>` da logo quando disponível — sem rótulo de texto, nome só via atributo `title`; cai para um círculo com a inicial do nome quando não há logo |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência + habilitar/desabilitar "Recomendar" | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador e o `disabled` do botão "Recomendar" a cada tecla digitada (exceto quando `rate_limited`) |
