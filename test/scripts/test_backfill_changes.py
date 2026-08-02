@@ -33,15 +33,14 @@ def _lambda_ok_response() -> dict:
 
 
 def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None):
-    """Roda bc.main() com boto3 e time.sleep mockados. Retorna (mock_client, mock_sleep)."""
+    """Roda bc.main() com o cliente Lambda e time.sleep mockados. Retorna (mock_client, mock_sleep)."""
     _set_env(monkeypatch, overrides)
     mock_client = MagicMock()
     mock_client.invoke.return_value = _lambda_ok_response()
     with (
-        patch("backfill_changes.boto3") as mock_boto3,
+        patch("backfill_shared.build_lambda_client", return_value=mock_client),
         patch("backfill_changes.time.sleep") as mock_sleep,
     ):
-        mock_boto3.client.return_value = mock_client
         bc.main()
     return mock_client, mock_sleep
 
@@ -108,11 +107,10 @@ class TestErros:
             "Payload": MagicMock(read=MagicMock(return_value=b'{"errorMessage": "falhou"}')),
         }
         with (
-            patch("backfill_changes.boto3") as mock_boto3,
+            patch("backfill_shared.build_lambda_client", return_value=mock_client),
             patch("backfill_changes.time.sleep"),
             pytest.raises(RuntimeError),
         ):
-            mock_boto3.client.return_value = mock_client
             bc.main()
 
     def test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro(self, monkeypatch):

@@ -27,8 +27,6 @@ Variáveis opcionais:
 import os
 import time
 
-import boto3
-
 import backfill_shared as shared
 
 logger = shared.setup_logging()
@@ -41,7 +39,7 @@ def main() -> None:
     database_tv    = shared.require_env("GLUE_DATABASE_TV")
     translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
 
-    client       = boto3.client("lambda", region_name=region)
+    client       = shared.build_lambda_client(region)
     wait_seconds = 300
 
     payload_movie = {"type": "movie", "database": database_movie, "only_changes_tables": True, "translate_provider": translate_provider}

@@ -165,6 +165,34 @@ class TestRequireEnv:
             bs.require_env("MINHA_VAR")
 
 
+class TestBuildLambdaClient:
+    def test_usa_a_regiao_informada(self):
+        with patch("backfill_shared.boto3") as mock_boto3:
+            bs.build_lambda_client("sa-east-1")
+        assert mock_boto3.client.call_args.kwargs["region_name"] == "sa-east-1"
+
+    def test_read_timeout_compativel_com_o_timeout_do_lambda(self):
+        """O timeout do Lambda é 900s (infra/lambda_api.tf) — o read_timeout do
+        cliente boto3 precisa ser maior, senão o cliente desiste antes do Lambda
+        responder numa invocação síncrona longa (ex.: skip_weekly/tv, que aguarda
+        os Glue ETL de referência antes do Glue AGG — ver app/lambda_api/main.py)."""
+        with patch("backfill_shared.boto3") as mock_boto3:
+            bs.build_lambda_client("sa-east-1")
+        config = mock_boto3.client.call_args.kwargs["config"]
+        assert config.read_timeout > 900
+        assert config.read_timeout == bs.LAMBDA_READ_TIMEOUT_SECONDS
+
+    def test_desliga_retry_automatico_do_botocore(self):
+        """lambda:Invoke não é idempotente — um retry automático do botocore após
+        timeout dispara uma execução nova e concorrente da Lambda, não uma
+        repetição segura da mesma chamada (causa raiz de um incidente real:
+        5 execuções órfãs da Lambda a partir de uma única chamada invoke())."""
+        with patch("backfill_shared.boto3") as mock_boto3:
+            bs.build_lambda_client("sa-east-1")
+        config = mock_boto3.client.call_args.kwargs["config"]
+        assert config.retries == {"max_attempts": 1}
+
+
 class TestInvokeLambdaSync:
     def _ok_response(self) -> dict:
         payload = MagicMock()
