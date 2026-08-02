@@ -1,6 +1,11 @@
 (function () {
     const doc = window.parent.document;
     const maxChars = __MAX_CHARS__;
+    // Se a Python computou disabled=True por rate limit (não por campo vazio),
+    // o JS nunca deve reabilitar o botão via digitação — só o rerun seguinte
+    // (quando o rate limit já não se aplicar) manda de novo com esse valor
+    // atualizado.
+    const rateLimited = __RATE_LIMITED__;
     let lastLength = -1;
 
     function attach() {
@@ -8,14 +13,28 @@
         // classes CSS auto-geradas ou o texto exato do aria-label, que pode mudar
         // com a copy). Só existe uma st.text_area na página hoje.
         const textarea = doc.querySelector('[data-testid="stTextArea"] textarea');
-        if (!textarea) { setTimeout(attach, 200); return; }
+        // Contador vive na mesma linha do gravador (.st-key-recorder-card,
+        // flex row com label+stAudioInput) — anexado como terceiro filho,
+        // empurrado para a ponta direita via margin-left:auto.
+        const recorderRow = doc.querySelector('.st-key-recorder-card');
+        if (!textarea || !recorderRow) { setTimeout(attach, 200); return; }
 
         let counter = doc.getElementById("pref-char-counter");
         if (!counter) {
             counter = doc.createElement("div");
             counter.id = "pref-char-counter";
-            counter.style.cssText = "font-size:0.8rem;opacity:0.6;margin-top:4px;text-align:right;";
-            textarea.closest('[data-testid="stTextArea"]').insertAdjacentElement("afterend", counter);
+            // position:relative;top:-2px — nudge vertical fino medido via inspeção
+            // real do DOM (Playwright): sem isso, o texto do contador fica ~2px
+            // abaixo do centro vertical da linha (mesmo desalinhamento sutil do
+            // badge de timer ao lado, ver .recorder-timer em principal.css).
+            // left:12px — compensa o margin-left:-12px de .st-key-recorder-card
+            // (principal.css, nudge de alinhamento do gravador com o início do
+            // texto): como o contador é filho dessa mesma linha e empurrado pra
+            // ponta via margin-left:auto, aquele nudge também arrastava o
+            // contador 12px pra esquerda do fim real do texto — medido via
+            // getBoundingClientRect (Chrome DevTools).
+            counter.style.cssText = "font-size:13px;opacity:0.6;margin-left:auto;white-space:nowrap;position:relative;top:-2px;left:12px;";
+            recorderRow.appendChild(counter);
         }
 
         const update = () => {
@@ -24,12 +43,30 @@
             counter.innerText = `${textarea.value.length} / ${maxChars} caracteres`;
         };
 
+        // Habilita/desabilita "Recomendar" a cada tecla, em vez de esperar um
+        // rerun do Streamlit (que só acontece ao perder o foco/Ctrl+Enter) —
+        // Python já calcula disabled=_remaining<=0 or not preference a cada
+        // rerun; isso só deixa a reação instantânea entre um rerun e outro.
+        const updateButton = () => {
+            if (rateLimited) return;
+            const btn = doc.querySelector('.st-key-btn_recomendar button');
+            if (!btn) return;
+            btn.disabled = textarea.value.trim().length === 0;
+        };
+
         if (!textarea.dataset.counterBound) {
-            textarea.addEventListener("input", update);
+            textarea.addEventListener("input", () => {
+                update();
+                updateButton();
+            });
             textarea.dataset.counterBound = "1";
         }
         update();
-        setInterval(update, 300);
+        updateButton();
+        setInterval(() => {
+            update();
+            updateButton();
+        }, 300);
     }
     attach();
 })();

@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -156,6 +156,34 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | Teste | O que verifica |
 |---|---|
 | `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `audio-timer-badge` (mock de `componentes.components.html`, já que não há `st.testing`/`AppTest` na suite) |
+| `test_substitui_max_seconds_no_template` | O placeholder `__MAX_SECONDS__` é substituído pelo valor passado (`15` → `const maxSeconds = 15;`) — mesmo padrão de template string de `__MAX_CHARS__` em `contador_caracteres.js` |
+
+### `TestRenderFeedback` — Renderização da caixa de mensagem de erro/aviso padronizada
+
+| Teste | O que verifica |
+|---|---|
+| `test_renderiza_classe_error` | `kind="error"` gera `class="msg-error"` e ícone ❌ |
+| `test_renderiza_classe_warning` | `kind="warning"` gera `class="msg-warning"` e ícone ⚠️ |
+| `test_escapa_xss_na_mensagem` | `message` com `<script>` é escapado via `html.escape` |
+| `test_extra_html_nao_e_escapado` | `extra_html` (ex: `<span id="countdown">`) passa intacto, sem escape — único uso hoje é o countdown de rate limit de busca |
+| `test_sem_extra_html_nao_inclui_span` | Sem `extra_html`, nenhum `<span` aparece no HTML gerado |
+
+### `TestLoadCountdownScript` — Injeção do script de countdown genérico (rate limit de busca, rate limit de transcrição e bloqueio de login)
+
+| Teste | O que verifica |
+|---|---|
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `countdown` |
+| `test_substitui_seconds_no_template` | O placeholder `__SECONDS__` é substituído pelo valor passado (`42` → `let remaining = 42;`) |
+| `test_usa_countdown_como_element_id_padrao` | Sem `element_id` explícito, o script busca `getElementById("countdown")` |
+| `test_substitui_element_id_customizado` | O placeholder `__ELEMENT_ID__` é substituído pelo `element_id` passado (ex: `"audio-countdown"`), necessário para não colidir com o `id="countdown"` do rate limit de busca quando os dois countdowns estão visíveis ao mesmo tempo |
+
+### `TestLoadLoginButtonToggleScript` — Injeção do script de habilitar/desabilitar "Entrar" do login
+
+| Teste | O que verifica |
+|---|---|
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `btn_entrar` |
+| `test_substitui_locked_out_false` | O placeholder `__LOCKED_OUT__` é substituído por `false` quando `locked_out=False` |
+| `test_substitui_locked_out_true` | O placeholder `__LOCKED_OUT__` é substituído por `true` quando `locked_out=True` |
 
 ### `TestPrioritize` — Reordenação de badges por termo destacado
 
