@@ -691,6 +691,13 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   vertical-align: middle;
 }
 
+.provider-logo {
+  height: 16px;
+  width: auto;
+  display: block;
+  vertical-align: middle;
+}
+
 .cinema-badge {
   background: rgba(250,204,21,0.15);
   color: #fbbf24;

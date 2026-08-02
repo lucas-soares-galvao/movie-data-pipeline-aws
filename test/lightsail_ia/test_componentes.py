@@ -209,6 +209,53 @@ class TestPrioritize:
     def test_lista_vazia_com_termos_nao_gera_erro(self):
         assert componentes._prioritize([], ["terror"]) == []
 
+    def test_key_extrai_nome_de_pares_provedor_logo(self):
+        pares = [("Netflix", ""), ("Crunchyroll", "https://x/logo.png")]
+        result = componentes._prioritize(pares, ["crunchyroll"], key=lambda par: par[0])
+        assert result == [("Crunchyroll", "https://x/logo.png"), ("Netflix", "")]
+
+
+class TestRenderProviderBadges:
+    """_render_provider_badges() monta os badges de um grupo de provedores, zipando
+    nomes e logos posicionalmente (mesma ordenação vinda de glue_agg)."""
+
+    def test_com_logo_renderiza_img(self):
+        html = componentes._render_provider_badges("Netflix", "https://x/netflix.png", [])
+        assert '<img src="https://x/netflix.png" alt="Netflix"' in html
+        assert "provider-logo" in html
+        assert ">Netflix<" not in html  # sem logo o nome viraria texto; com logo só o alt carrega o nome
+
+    def test_sem_logo_cai_para_texto(self):
+        html = componentes._render_provider_badges("Netflix", "", [])
+        assert html == '<span class="provider">Netflix</span>'
+
+    def test_logos_vazios_por_posicao_caem_para_texto_individualmente(self):
+        html = componentes._render_provider_badges("Netflix,HBO Max", "https://x/netflix.png,", [])
+        assert '<img src="https://x/netflix.png" alt="Netflix"' in html
+        assert '<span class="provider">HBO Max</span>' in html
+
+    def test_logos_string_mais_curta_preenche_com_vazio(self):
+        """Rede de segurança: se logos_raw tiver menos posições que names_raw (não deveria
+        acontecer, já que ambas vêm da mesma agregação em glue_agg), completa com string
+        vazia em vez de estourar índice."""
+        html = componentes._render_provider_badges("Netflix,HBO Max,Disney Plus", "https://x/netflix.png", [])
+        assert '<img src="https://x/netflix.png" alt="Netflix"' in html
+        assert '<span class="provider">HBO Max</span>' in html
+        assert '<span class="provider">Disney Plus</span>' in html
+
+    def test_escapa_html_no_nome_e_na_url_da_logo(self):
+        html = componentes._render_provider_badges('<b>X</b>', '"><script>', [])
+        assert "<script>" not in html
+        assert "&lt;b&gt;X&lt;/b&gt;" in html
+
+    def test_prioriza_provedor_destacado_mesmo_com_logo(self):
+        html = componentes._render_provider_badges(
+            "Netflix,Crunchyroll",
+            "https://x/netflix.png,https://x/crunchyroll.png",
+            ["crunchyroll"],
+        )
+        assert html.index("crunchyroll.png") < html.index("netflix.png")
+
 
 class TestRenderCard:
     def test_card_basico_contem_titulo(self):
@@ -294,6 +341,36 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "Onde assistir" not in html
         assert "providers-label" not in html
+
+    def test_card_com_streaming_provider_logo_renderiza_img(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": "Netflix",
+            "streaming_provider_logos": "https://image.tmdb.org/t/p/w45/netflix.png",
+        }
+        html = componentes.render_card(t)
+        assert '<img src="https://image.tmdb.org/t/p/w45/netflix.png" alt="Netflix"' in html
+        assert "provider-logo" in html
+
+    def test_card_sem_rent_buy_providers_nao_exibe_bloco(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "Aluguel/Compra" not in html
+
+    def test_card_com_rent_buy_providers_exibe_bloco(self):
+        t = {**BASE_TITLE, "rent_buy_providers": "Apple TV,Google Play"}
+        html = componentes.render_card(t)
+        assert "Aluguel/Compra" in html
+        assert "Apple TV" in html
+        assert "Google Play" in html
+
+    def test_card_com_rent_buy_provider_logo_renderiza_img(self):
+        t = {
+            **BASE_TITLE,
+            "rent_buy_providers": "Apple TV",
+            "rent_buy_provider_logos": "https://image.tmdb.org/t/p/w45/appletv.png",
+        }
+        html = componentes.render_card(t)
+        assert '<img src="https://image.tmdb.org/t/p/w45/appletv.png" alt="Apple TV"' in html
 
     def test_card_generos_dentro_do_limite_nao_exibe_badge_extra(self):
         t = {
