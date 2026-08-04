@@ -1,5 +1,7 @@
 # Raciocinio: fixa dependencias da Lambda API para evitar divergencia entre deploys.
+# boto3 nao entra aqui — ja vem embutido no runtime Lambda Python 3.11, nao precisa ir no
+# zip (evita ~2000 arquivos extras hasheados pelo data.archive_file a cada terraform plan).
+# types-requests tambem nao entra — e um pacote so de stubs (.pyi) pro mypy, sem codigo em
+# runtime; ja fica disponivel pro mypy via test/lambda_api/requirements_tests.txt.
 
-boto3
 requests
-types-requests
