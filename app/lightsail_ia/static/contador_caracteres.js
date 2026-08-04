@@ -42,10 +42,10 @@
             counter.innerText = `${textarea.value.length} / ${maxChars} caracteres`;
         };
 
-        // Habilita/desabilita "Recomendar" a cada tecla, em vez de esperar um
-        // rerun do Streamlit (que só acontece ao perder o foco/Ctrl+Enter) —
-        // Python já calcula disabled=_remaining<=0 or not preference a cada
-        // rerun; isso só deixa a reação instantânea entre um rerun e outro.
+        // Habilita/desabilita "Recomendar" a cada tecla. Python só calcula
+        // disabled=_remaining<=0 (não depende do texto digitado, para não
+        // conflitar com a prop React que o clique nativo do st.button usa
+        // internamente) — este script é a única fonte da gate de campo vazio.
         const updateButton = () => {
             if (rateLimited) return;
             const btn = doc.querySelector('.st-key-btn_recomendar button');

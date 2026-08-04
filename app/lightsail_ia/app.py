@@ -160,7 +160,7 @@ if not st.session_state.get("authenticated"):
             error_placeholder = st.empty()
             submit = st.button(
                 "Entrar →", use_container_width=True, key="btn_entrar",
-                disabled=_locked_out or not password,
+                disabled=_locked_out,
             )
             load_login_button_toggle_script(_locked_out)
 
@@ -446,7 +446,7 @@ with st.container(key="hero-actions"):
         if st.button(
             "✨ Recomendar",
             type="primary",
-            disabled=_remaining <= 0 or not preference,
+            disabled=_remaining <= 0,
             use_container_width=True,
             key="btn_recomendar",
         ) and preference:

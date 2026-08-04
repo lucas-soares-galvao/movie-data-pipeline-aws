@@ -97,13 +97,13 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     o move para o início da lista antes do corte de 3, então ele nunca fica de fora se estiver presente
     no título
   - Duração/temporadas em linha própria
-  - Link ▶ Trailer (quando disponível) e, à direita na mesma linha, os ícones circulares dos provedores
+  - Link ▶ Trailer (quando disponível) e, à direita na mesma linha, os badges de texto dos provedores
     — streaming e aluguel/compra combinados num único grupo e deduplicados por nome
-    (`componentes.py::_render_provider_dots()`), sem rótulo "Onde assistir"/"Aluguel/Compra" e sem nome
-    visível: o nome do provedor só aparece via atributo `title` (tooltip); cai para um círculo com a
-    inicial do nome quando não há logo. Máx. 6 visíveis, sem indicador para o restante, mesma
-    priorização de `_prioritize()` para um provedor mencionado explicitamente (ex: "animações da
-    Crunchyroll")
+    (`componentes.py::_render_provider_badges()`), sem rótulo "Onde assistir"/"Aluguel/Compra", mas
+    com o nome do provedor sempre visível como texto (sem logo — `streaming_provider_logos`/
+    `rent_buy_provider_logos` continuam vindo da query em `agent.py`, mas não são mais consumidos por
+    esta camada). Máx. 6 visíveis, sem indicador para o restante, mesma priorização de `_prioritize()`
+    para um provedor mencionado explicitamente (ex: "animações da Crunchyroll")
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`
   - Sinopse recolhida por padrão atrás de um accordion "▸ Sinopse" (checkbox hack em CSS, já que
     `st.html` não executa `<script>`) — clicar expande o texto completo e troca a seta para "▾",
@@ -144,9 +144,9 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `app.py` | `_seconds_until_available(history, ip, window_seconds)` | Calcula quantos segundos faltam até o evento mais antigo do IP expirar, na janela de tempo informada |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
-| `componentes.py` | `_prioritize(items, terms, key=...)` | Reordena uma lista de badges (gêneros, ou pares nome/logo de provedores via `key`) colocando primeiro os que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
-| `componentes.py` | `_parse_provider_pairs(names_raw, logos_raw)` | Faz o `zip` posicional de nomes e logos de um grupo de provedores (streaming ou aluguel/compra), a partir das strings comma-joined alinhadas vindas de `glue_agg` |
-| `componentes.py` | `_render_provider_dots(pairs, highlighted)` | Monta os ícones circulares de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` e renderiza `<img>` da logo quando disponível — sem rótulo de texto, nome só via atributo `title`; cai para um círculo com a inicial do nome quando não há logo |
+| `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges de texto (gêneros ou nomes de provedores) colocando primeiro os que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
+| `componentes.py` | `_parse_provider_names(names_raw)` | Faz o parsing de um grupo de provedores (streaming ou aluguel/compra) a partir da string comma-joined vinda de `glue_agg` |
+| `componentes.py` | `_render_provider_badges(names, highlighted)` | Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` o provedor mencionado pelo usuário |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência + habilitar/desabilitar "Recomendar" | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador e o `disabled` do botão "Recomendar" a cada tecla digitada (exceto quando `rate_limited`) |

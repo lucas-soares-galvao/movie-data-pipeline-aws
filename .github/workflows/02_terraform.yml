@@ -373,3 +373,43 @@ jobs:
           cd infra
           terraform apply "${{ inputs.environment }}.plan"
           echo "✅ Terraform apply concluído com sucesso (${{ inputs.environment }})"
+
+      # Cancelar o run manualmente (ex.: via GitHub UI) enquanto um step de
+      # terraform (import/apply/plan/destroy) está em andamento mata o
+      # processo sem dar chance dele liberar o lock do DynamoDB — o próximo
+      # run trava em "Error acquiring the state lock" mesmo sem nenhuma
+      # execução concorrente de verdade. Este step roda só quando o job foi
+      # cancelado, consulta o item de lock direto na tabela e, se existir,
+      # destrava usando o ID armazenado nele — sem chute de ID hardcoded.
+      # Reinicializa o backend aqui porque a etapa "Terraform Init" pode não
+      # ter rodado ainda se o cancelamento ocorreu antes dela.
+      - name: Force-unlock automático em caso de cancelamento
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          cd infra
+          LOCK_KEY="${{ secrets.aws-statefile-s3-bucket }}/${{ steps.project.outputs.statefile_key }}"
+          ITEM=$(aws dynamodb get-item \
+            --table-name "${{ secrets.aws-lock-dynamodb-table }}" \
+            --key "{\"LockID\": {\"S\": \"$LOCK_KEY\"}}" \
+            --region sa-east-1 --output json)
+
+          if [ -z "$ITEM" ] || [ "$ITEM" = "{}" ]; then
+            echo "✅ Nenhum lock encontrado — nada a destravar"
+            exit 0
+          fi
+
+          LOCK_ID=$(echo "$ITEM" | jq -r '.Item.Info.S' | jq -r '.ID // empty')
+          if [ -z "$LOCK_ID" ]; then
+            echo "⚠ Lock encontrado mas sem ID legível — não vou destravar às cegas"
+            exit 0
+          fi
+
+          terraform init \
+            -backend-config="bucket=${{ secrets.aws-statefile-s3-bucket }}" \
+            -backend-config="key=${{ steps.project.outputs.statefile_key }}" \
+            -backend-config="region=sa-east-1" \
+            -backend-config="dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}"
+
+          terraform force-unlock -force "$LOCK_ID"
+          echo "🔓 Lock $LOCK_ID removido automaticamente (job cancelado)"
