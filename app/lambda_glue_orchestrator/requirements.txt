@@ -1,0 +1,3 @@
+# Raciocinio: sem dependencias externas no pacote de deploy — boto3 ja vem embutido no
+# runtime Lambda Python 3.11, nao precisa ir no zip (evita ~2000 arquivos extras hasheados
+# pelo data.archive_file a cada terraform plan).

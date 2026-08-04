@@ -45,14 +45,15 @@ resource "aws_lambda_function" "simple_lambda" {
 
   environment {
     variables = {
-      TMDB_SECRET_ARN       = var.filmbot_secret_arn
-      GLUE_ETL_JOB_NAME     = local.envs.glue_etl_job_name
-      GLUE_DETAILS_JOB_NAME = local.envs.glue_details_job_name
-      GLUE_AGG_JOB_NAME     = local.envs.glue_agg_job_name
-      S3_BUCKET_SOR         = local.envs.s3_bucket_sor
-      S3_BUCKET_AUX         = local.envs.s3_bucket_aux
-      S3_BUCKET_TEMP        = local.envs.s3_bucket_temp
-      ENVIRONMENT           = var.env
+      TMDB_SECRET_ARN               = var.filmbot_secret_arn
+      GLUE_ETL_JOB_NAME             = local.envs.glue_etl_job_name
+      GLUE_DETAILS_JOB_NAME         = local.envs.glue_details_job_name
+      GLUE_AGG_JOB_NAME             = local.envs.glue_agg_job_name
+      LAMBDA_GLUE_ORCHESTRATOR_NAME = local.envs.lambda_glue_orchestrator_name
+      S3_BUCKET_SOR                 = local.envs.s3_bucket_sor
+      S3_BUCKET_AUX                 = local.envs.s3_bucket_aux
+      S3_BUCKET_TEMP                = local.envs.s3_bucket_temp
+      ENVIRONMENT                   = var.env
     }
   }
 
@@ -64,10 +65,12 @@ resource "aws_lambda_function" "simple_lambda" {
   depends_on = [
     aws_iam_role_policy.lambda_logs,
     aws_iam_role_policy.lambda_start_glue_jobs,
+    aws_iam_role_policy.lambda_api_invoke_orchestrator,
     aws_iam_role_policy.lambda_s3_policy,
     null_resource.lambda_build,
     aws_s3_object.lambda_deploy_package,
     aws_cloudwatch_log_group.lambda_log,
     aws_iam_role_policy.lambda_secrets_manager_policy,
+    aws_lambda_function.lambda_glue_orchestrator,
   ]
 }

@@ -1,0 +1,3 @@
+# Raciocinio: fixa dependencias necessarias para rodar testes da Lambda Glue Orchestrator.
+
+boto3

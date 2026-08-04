@@ -12,10 +12,10 @@
         const btn = doc.querySelector('.st-key-btn_entrar button');
         if (!input || !btn) { setTimeout(attach, 200); return; }
 
-        // Habilita/desabilita "Entrar" a cada tecla, em vez de esperar um rerun
-        // do Streamlit (que só acontece ao perder o foco/Enter) — Python já
-        // calcula disabled=_locked_out or not password a cada rerun; isso só
-        // deixa a reação instantânea entre um rerun e outro.
+        // Habilita/desabilita "Entrar" a cada tecla. Python só calcula
+        // disabled=_locked_out (não depende do texto digitado, para não
+        // conflitar com a prop React que o clique nativo do st.button usa
+        // internamente) — este script é a única fonte da gate de campo vazio.
         const update = () => {
             if (lockedOut) return;
             btn.disabled = input.value.length === 0;

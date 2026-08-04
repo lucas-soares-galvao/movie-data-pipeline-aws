@@ -16,7 +16,7 @@ test/lambda_api/
 
 ## Setup
 
-As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME`, `GLUE_DETAILS_JOB_NAME`, `GLUE_AGG_JOB_NAME`, `S3_BUCKET_SOR` e `S3_BUCKET_TEMP` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
+As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME`, `GLUE_DETAILS_JOB_NAME`, `GLUE_AGG_JOB_NAME`, `LAMBDA_GLUE_ORCHESTRATOR_NAME`, `S3_BUCKET_SOR` e `S3_BUCKET_TEMP` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
 
 ### Helper `_run()` (`test_main.py`)
 
@@ -28,7 +28,7 @@ assert mocks["result"]["statusCode"] == 200
 assert mocks["mock_discover"].call_count == 2
 ```
 
-Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`.
+Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`, `mock_boto3` (usado para inspecionar a invocação assíncrona da `lambda_glue_orchestrator` em `TestSkipWeekly`).
 
 `TestOnlyRotationRefresh` não usa `_run()` — tem seu próprio helper `_run_rotation()`, porque esse modo chama `boto3.client("ssm")` (não coberto pelos mocks de `_run()`). `_run_rotation()` mocka `main.boto3` inteiro e configura `get_parameter`/`put_parameter` do cliente SSM retornado.
 
@@ -61,11 +61,9 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_skip_weekly_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
 | `test_skip_weekly_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
 | `test_skip_weekly_retorna_status_200` | Handler retorna 200 mesmo com skip_weekly |
-| `test_skip_weekly_movie_nao_aciona_glue_agg` | Na perna `movie`, `GLUE_AGG_JOB_NAME` não está entre os jobs acionados (tv ainda não coletou referências) |
-| `test_skip_weekly_tv_aciona_glue_agg` | Na perna `tv`, a 4ª chamada a `trigger_glue_job` é `GLUE_AGG_JOB_NAME`, sem argumentos extras |
-| `test_skip_weekly_tv_aguarda_glue_etl_de_referencia_antes_do_agg` | `_wait_for_reference_jobs` chama `get_job_run` (via `boto3.client("glue")`) com o `RunId` de cada um dos 3 Glue ETL de referência, antes do AGG ser acionado |
-| `test_skip_weekly_tv_faz_polling_ate_estado_terminal` | Quando `get_job_run` retorna `RUNNING`, o polling chama `time.sleep` e consulta de novo até um estado terminal |
-| `test_skip_weekly_tv_aciona_agg_mesmo_com_glue_etl_falho` | Um Glue ETL de referência em `FAILED` não impede o disparo do AGG (loga e segue, não bloqueia) |
+| `test_skip_weekly_movie_nao_invoca_orquestrador` | Na perna `movie`, `boto3.client("lambda").invoke` não é chamado (tv ainda não coletou referências) |
+| `test_skip_weekly_tv_invoca_orquestrador_de_forma_assincrona` | Na perna `tv`, `invoke` é chamado com `FunctionName=LAMBDA_GLUE_ORCHESTRATOR_NAME`, `InvocationType="Event"` e um `Payload` cujo `wait_for` tem os 3 `run_id`s capturados e `target_job_name=GLUE_AGG_JOB_NAME` |
+| `test_skip_weekly_tv_nao_espera_glue_dentro_da_lambda` | Regressão: `get_job_run` não é chamado — a espera pelos Glue ETL de referência foi extraída para `app/lambda_glue_orchestrator` (testada em `test/lambda_glue_orchestrator/`) |
 
 ### `TestOnlyDiscover` — flag `only_weekly_tables=True`
 

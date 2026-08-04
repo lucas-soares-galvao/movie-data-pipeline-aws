@@ -209,52 +209,51 @@ class TestPrioritize:
     def test_lista_vazia_com_termos_nao_gera_erro(self):
         assert componentes._prioritize([], ["terror"]) == []
 
-    def test_key_extrai_nome_de_pares_provedor_logo(self):
-        pares = [("Netflix", ""), ("Crunchyroll", "https://x/logo.png")]
-        result = componentes._prioritize(pares, ["crunchyroll"], key=lambda par: par[0])
-        assert result == [("Crunchyroll", "https://x/logo.png"), ("Netflix", "")]
+
+class TestParseProviderNames:
+    """_parse_provider_names() faz o parsing de um grupo de provedores (streaming ou
+    aluguel/compra) a partir da string comma-joined vinda de glue_agg."""
+
+    def test_separa_nomes_por_virgula(self):
+        nomes = componentes._parse_provider_names("Netflix,HBO Max")
+        assert nomes == ["Netflix", "HBO Max"]
+
+    def test_remove_espacos_em_volta_de_cada_nome(self):
+        nomes = componentes._parse_provider_names("Netflix, HBO Max , Disney Plus")
+        assert nomes == ["Netflix", "HBO Max", "Disney Plus"]
+
+    def test_names_vazio_retorna_lista_vazia(self):
+        assert componentes._parse_provider_names("") == []
+
+    def test_none_retorna_lista_vazia(self):
+        assert componentes._parse_provider_names(None) == []
 
 
 class TestRenderProviderBadges:
-    """_render_provider_badges() monta os badges de um grupo de provedores, zipando
-    nomes e logos posicionalmente (mesma ordenação vinda de glue_agg)."""
+    """_render_provider_badges() monta os badges de texto de provedor."""
 
-    def test_com_logo_renderiza_img(self):
-        html = componentes._render_provider_badges("Netflix", "https://x/netflix.png", [])
-        assert '<img src="https://x/netflix.png" alt="Netflix"' in html
-        assert "provider-logo" in html
-        assert ">Netflix<" not in html  # sem logo o nome viraria texto; com logo só o alt carrega o nome
+    def test_renderiza_nome_como_texto_visivel(self):
+        html = componentes._render_provider_badges(["Netflix"], [])
+        assert '<span class="provider-badge">Netflix</span>' in html
 
-    def test_sem_logo_cai_para_texto(self):
-        html = componentes._render_provider_badges("Netflix", "", [])
-        assert html == '<span class="provider">Netflix</span>'
+    def test_nao_renderiza_imagem(self):
+        html = componentes._render_provider_badges(["Netflix"], [])
+        assert "<img" not in html
 
-    def test_logos_vazios_por_posicao_caem_para_texto_individualmente(self):
-        html = componentes._render_provider_badges("Netflix,HBO Max", "https://x/netflix.png,", [])
-        assert '<img src="https://x/netflix.png" alt="Netflix"' in html
-        assert '<span class="provider">HBO Max</span>' in html
-
-    def test_logos_string_mais_curta_preenche_com_vazio(self):
-        """Rede de segurança: se logos_raw tiver menos posições que names_raw (não deveria
-        acontecer, já que ambas vêm da mesma agregação em glue_agg), completa com string
-        vazia em vez de estourar índice."""
-        html = componentes._render_provider_badges("Netflix,HBO Max,Disney Plus", "https://x/netflix.png", [])
-        assert '<img src="https://x/netflix.png" alt="Netflix"' in html
-        assert '<span class="provider">HBO Max</span>' in html
-        assert '<span class="provider">Disney Plus</span>' in html
-
-    def test_escapa_html_no_nome_e_na_url_da_logo(self):
-        html = componentes._render_provider_badges('<b>X</b>', '"><script>', [])
+    def test_escapa_html_no_nome(self):
+        html = componentes._render_provider_badges(["<b>X</b>"], [])
         assert "<script>" not in html
         assert "&lt;b&gt;X&lt;/b&gt;" in html
 
-    def test_prioriza_provedor_destacado_mesmo_com_logo(self):
-        html = componentes._render_provider_badges(
-            "Netflix,Crunchyroll",
-            "https://x/netflix.png,https://x/crunchyroll.png",
-            ["crunchyroll"],
-        )
-        assert html.index("crunchyroll.png") < html.index("netflix.png")
+    def test_prioriza_provedor_destacado(self):
+        html = componentes._render_provider_badges(["Netflix", "Crunchyroll"], ["crunchyroll"])
+        assert html.index("Crunchyroll") < html.index("Netflix")
+
+    def test_corta_no_limite_de_provedores_visiveis(self):
+        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES + 2)]
+        html = componentes._render_provider_badges(nomes, [])
+        assert "Provedor0" in html
+        assert f"Provedor{componentes._MAX_VISIBLE_PROVIDER_BADGES}" not in html
 
 
 class TestRenderCard:
@@ -342,15 +341,17 @@ class TestRenderCard:
         assert "Onde assistir" not in html
         assert "providers-label" not in html
 
-    def test_card_com_streaming_provider_logo_renderiza_img(self):
+    def test_card_ignora_campo_de_logo_do_provedor(self):
+        """streaming_provider_logos/rent_buy_provider_logos continuam vindo da query, mas
+        não são mais consumidos pelo card — nome do provedor renderiza só como texto."""
         t = {
             **BASE_TITLE,
             "streaming_providers": "Netflix",
             "streaming_provider_logos": "https://image.tmdb.org/t/p/w45/netflix.png",
         }
         html = componentes.render_card(t)
-        assert '<img src="https://image.tmdb.org/t/p/w45/netflix.png" alt="Netflix"' in html
-        assert "provider-logo" in html
+        assert '<span class="provider-badge">Netflix</span>' in html
+        assert "netflix.png" not in html
 
     def test_card_sem_rent_buy_providers_nao_exibe_bloco(self):
         html = componentes.render_card(BASE_TITLE)
@@ -359,39 +360,37 @@ class TestRenderCard:
     def test_card_com_rent_buy_providers_exibe_bloco(self):
         t = {**BASE_TITLE, "rent_buy_providers": "Apple TV,Google Play"}
         html = componentes.render_card(t)
-        assert "Aluguel/Compra" in html
-        assert "Apple TV" in html
-        assert "Google Play" in html
+        assert "Aluguel/Compra" not in html  # rótulo foi removido, provedores viram só badges
+        assert '<span class="provider-badge">Apple TV</span>' in html
+        assert '<span class="provider-badge">Google Play</span>' in html
 
-    def test_card_com_rent_buy_provider_logo_renderiza_img(self):
+    def test_card_streaming_e_rent_buy_combinados_e_deduplicados(self):
         t = {
             **BASE_TITLE,
-            "rent_buy_providers": "Apple TV",
-            "rent_buy_provider_logos": "https://image.tmdb.org/t/p/w45/appletv.png",
+            "streaming_providers": "Netflix,Apple TV",
+            "rent_buy_providers": "Apple TV,Google Play",
         }
         html = componentes.render_card(t)
-        assert '<img src="https://image.tmdb.org/t/p/w45/appletv.png" alt="Apple TV"' in html
+        assert html.count('<span class="provider-badge">Apple TV</span>') == 1
 
     def test_card_generos_dentro_do_limite_nao_exibe_badge_extra(self):
-        t = {
-            **BASE_TITLE,
-            "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação", "Aventura"],
-        }
+        t = {**BASE_TITLE, "genres": ["Terror", "Drama", "Suspense"]}
         html = componentes.render_card(t)
         assert "genre-more" not in html
+        assert '<span class="genre">Terror</span>' in html
+        assert '<span class="genre">Drama</span>' in html
+        assert '<span class="genre">Suspense</span>' in html
 
     def test_card_generos_acima_do_limite_trunca_sem_indicador(self):
         t = {
             **BASE_TITLE,
-            "genres": [
-                "Terror", "Drama", "Suspense", "Ficção", "Ação", "Aventura", "Mistério", "Comédia",
-            ],
+            "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação"],
         }
         html = componentes.render_card(t)
         assert "genre-more" not in html
         assert "+2" not in html
-        assert "Mistério" not in html
-        assert "Comédia" not in html
+        assert "Ficção" not in html
+        assert "Ação" not in html
 
     def test_card_providers_dentro_do_limite_nao_exibe_badge_extra(self):
         t = {
@@ -436,7 +435,7 @@ class TestRenderCard:
             "highlighted_providers": ["crunchyroll"],
         }
         html = componentes.render_card(t)
-        assert '<span class="provider">Crunchyroll</span>' in html
+        assert '<span class="provider-badge">Crunchyroll</span>' in html
         assert "Globoplay" not in html
 
     def test_card_multiplos_generos_destacados_mantem_ordem_entre_si(self):
@@ -478,43 +477,61 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert html.index(">Drama<") < html.index(">Terror<")
 
-    def test_card_vitals_combina_nota_data_e_trailer(self):
+    def test_card_meta_line_combina_data_tipo_e_nota(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert 'class="meta-row meta-line"' in html
+        assert "Maio de 1980 · filme" in html
+        assert "★ 8.4" in html
+        meta_info_pos = html.index('class="meta-info"')
+        rating_pos = html.index("★ 8.4")
+        assert meta_info_pos < rating_pos
+
+    def test_card_meta_line_usa_ano_quando_sem_release_date(self):
+        t = {**BASE_TITLE, "release_date": None}
+        html = componentes.render_card(t)
+        assert "(1980) · filme" in html
+
+    def test_card_trailer_e_provedores_ficam_na_mesma_linha(self):
         t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}
         html = componentes.render_card(t)
-        assert 'class="meta-row vitals-row"' in html
-        assert "★ 8.4" in html
-        assert "📅 Maio de 1980" in html
+        assert 'class="meta-row trailer-providers-row"' in html
         assert "Trailer" in html
-        assert html.count('class="vital-sep">·</span>') == 2
-        rating_pos = html.index("★ 8.4")
-        date_pos = html.index("📅 Maio de 1980")
+        assert '<span class="provider-badge">Netflix</span>' in html
         trailer_pos = html.index("vital-trailer")
-        assert rating_pos < date_pos < trailer_pos
+        providers_pos = html.index('class="provider-badges"')
+        assert trailer_pos < providers_pos
 
-    def test_card_duracao_fica_em_linha_separada_apos_vitals(self):
+    def test_card_duracao_fica_em_linha_propria(self):
         html = componentes.render_card(BASE_TITLE)
-        rating_pos = html.index("★ 8.4")
-        date_pos = html.index("📅 Maio de 1980")
-        duration_pos = html.index("⏱ 2h 26min")
-        assert rating_pos < date_pos < duration_pos
+        assert 'class="meta-row duration-row"' in html
+        assert "2h 26min" in html
+        assert "⏱" not in html
 
-    def test_card_vitals_omite_nota_ausente_sem_separador_solto(self):
+    def test_card_meta_line_omite_nota_ausente(self):
         t = {**BASE_TITLE, "rating": None}
         html = componentes.render_card(t)
         assert "★" not in html
-        assert "vitals-row" in html
-        assert html.count('class="vital-sep">·</span>') == 0
+        assert "meta-line" in html
 
-    def test_card_sem_vitals_nao_gera_linha_vazia(self):
-        t = {**BASE_TITLE, "rating": None, "duration": None, "release_date": None}
+    def test_card_sem_data_tipo_nota_nao_gera_meta_line(self):
+        t = {**BASE_TITLE, "rating": None, "release_date": None, "year": "", "type": ""}
         html = componentes.render_card(t)
-        assert "vitals-row" not in html
+        assert "meta-line" not in html
+
+    def test_card_sem_duracao_nao_gera_linha_vazia(self):
+        t = {**BASE_TITLE, "duration": None}
+        html = componentes.render_card(t)
+        assert "duration-row" not in html
 
     def test_card_exibe_motivo(self):
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
         html = componentes.render_card(t)
         assert "Nota alta e mesmo gênero pedido." in html
         assert 'class="reason"' in html
+
+    def test_card_sem_motivo_nao_gera_paragrafo_vazio(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert 'class="reason"' not in html
 
     def test_card_escapa_xss(self):
         t = {**BASE_TITLE, "title": '<script>alert("xss")</script>'}
@@ -528,35 +545,30 @@ class TestRenderCard:
         assert "<script>" not in html
         assert "&lt;script&gt;" in html
 
-    def test_card_sinopse_curta_nao_exibe_ver_mais(self):
+    def test_card_sinopse_fica_recolhida_por_padrao(self):
         html = componentes.render_card(BASE_TITLE)
-        assert "Ver mais" not in html
-        assert "Ver menos" not in html
-        assert 'class="overview"' in html
+        assert "Sinopse" in html
+        assert 'class="synopsis-toggle"' in html
+        assert BASE_TITLE["overview"] in html  # texto existe no DOM, mas fica oculto até expandir
 
-    def test_card_sinopse_longa_trunca_com_ver_mais_e_ver_menos(self):
+    def test_card_sinopse_recolhida_independe_do_tamanho(self):
+        # accordion recolhe a sinopse inteira por padrão, sem truncar por tamanho
         sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
         t = {**BASE_TITLE, "overview": sinopse_longa}
         html = componentes.render_card(t)
-        assert "Ver mais" in html
-        assert "Ver menos" in html
-        assert 'class="overview overview-short"' in html
-        assert 'class="overview overview-full"' in html
         assert sinopse_longa in html
-        assert "…" in html
+        assert "…" not in html  # não trunca mais o texto
 
-    def test_card_ver_mais_e_ver_menos_apontam_pro_mesmo_checkbox(self):
-        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
-        t = {**BASE_TITLE, "overview": sinopse_longa}
-        html = componentes.render_card(t, idx=5)
-        assert 'for="overview-toggle-5" class="overview-more-label"' in html
-        assert 'for="overview-toggle-5" class="overview-less-label"' in html
+    def test_card_sinopse_ausente_nao_gera_accordion(self):
+        t = {**BASE_TITLE, "overview": None}
+        html = componentes.render_card(t)
+        assert "Sinopse" not in html
+        assert "synopsis-toggle" not in html
 
     def test_card_toggle_id_usa_indice(self):
-        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
-        t = {**BASE_TITLE, "overview": sinopse_longa}
-        html = componentes.render_card(t, idx=3)
-        assert "overview-toggle-3" in html
+        html = componentes.render_card(BASE_TITLE, idx=3)
+        assert 'id="synopsis-toggle-3"' in html
+        assert 'for="synopsis-toggle-3"' in html
 
 
 class TestRenderGrid:
@@ -569,8 +581,6 @@ class TestRenderGrid:
         assert html.count("card") >= 2
 
     def test_grid_gera_ids_de_toggle_unicos_por_indice(self):
-        sinopse_longa = "Um escritor enlouquece num hotel isolado. " * 10
-        t = {**BASE_TITLE, "overview": sinopse_longa}
-        html = componentes.render_grid([t, t])
-        assert "overview-toggle-0" in html
-        assert "overview-toggle-1" in html
+        html = componentes.render_grid([BASE_TITLE, BASE_TITLE])
+        assert "synopsis-toggle-0" in html
+        assert "synopsis-toggle-1" in html
