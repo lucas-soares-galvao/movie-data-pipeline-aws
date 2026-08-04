@@ -209,68 +209,51 @@ class TestPrioritize:
     def test_lista_vazia_com_termos_nao_gera_erro(self):
         assert componentes._prioritize([], ["terror"]) == []
 
-    def test_key_extrai_nome_de_pares_provedor_logo(self):
-        pares = [("Netflix", ""), ("Crunchyroll", "https://x/logo.png")]
-        result = componentes._prioritize(pares, ["crunchyroll"], key=lambda par: par[0])
-        assert result == [("Crunchyroll", "https://x/logo.png"), ("Netflix", "")]
 
+class TestParseProviderNames:
+    """_parse_provider_names() faz o parsing de um grupo de provedores (streaming ou
+    aluguel/compra) a partir da string comma-joined vinda de glue_agg."""
 
-class TestParseProviderPairs:
-    """_parse_provider_pairs() faz o zip posicional de nomes e logos de um grupo de
-    provedores (streaming ou aluguel/compra)."""
+    def test_separa_nomes_por_virgula(self):
+        nomes = componentes._parse_provider_names("Netflix,HBO Max")
+        assert nomes == ["Netflix", "HBO Max"]
 
-    def test_zipa_nomes_e_logos(self):
-        pares = componentes._parse_provider_pairs("Netflix,HBO Max", "https://x/netflix.png,")
-        assert pares == [("Netflix", "https://x/netflix.png"), ("HBO Max", "")]
-
-    def test_logos_string_mais_curta_preenche_com_vazio(self):
-        """Rede de segurança: se logos_raw tiver menos posições que names_raw (não deveria
-        acontecer, já que ambas vêm da mesma agregação em glue_agg), completa com string
-        vazia em vez de estourar índice."""
-        pares = componentes._parse_provider_pairs("Netflix,HBO Max,Disney Plus", "https://x/netflix.png")
-        assert pares == [
-            ("Netflix", "https://x/netflix.png"), ("HBO Max", ""), ("Disney Plus", ""),
-        ]
+    def test_remove_espacos_em_volta_de_cada_nome(self):
+        nomes = componentes._parse_provider_names("Netflix, HBO Max , Disney Plus")
+        assert nomes == ["Netflix", "HBO Max", "Disney Plus"]
 
     def test_names_vazio_retorna_lista_vazia(self):
-        assert componentes._parse_provider_pairs("", "") == []
+        assert componentes._parse_provider_names("") == []
+
+    def test_none_retorna_lista_vazia(self):
+        assert componentes._parse_provider_names(None) == []
 
 
-class TestRenderProviderDots:
-    """_render_provider_dots() monta os ícones circulares de provedor, sem rótulo de
-    texto — nome do provedor só via atributo title (tooltip)."""
+class TestRenderProviderBadges:
+    """_render_provider_badges() monta os badges de texto de provedor."""
 
-    def test_com_logo_renderiza_img_circular(self):
-        html = componentes._render_provider_dots([("Netflix", "https://x/netflix.png")], [])
-        assert '<img src="https://x/netflix.png" alt=""' in html
-        assert 'title="Netflix"' in html
-        assert "provider-dot" in html
-        assert ">Netflix<" not in html  # nome só no title, nunca como texto visível
+    def test_renderiza_nome_como_texto_visivel(self):
+        html = componentes._render_provider_badges(["Netflix"], [])
+        assert '<span class="provider-badge">Netflix</span>' in html
 
-    def test_sem_logo_cai_para_iniciais(self):
-        html = componentes._render_provider_dots([("Netflix", "")], [])
-        assert 'class="provider-dot provider-dot-fallback" title="Netflix">N</span>' in html
+    def test_nao_renderiza_imagem(self):
+        html = componentes._render_provider_badges(["Netflix"], [])
+        assert "<img" not in html
 
-    def test_escapa_html_no_nome_e_na_url_da_logo(self):
-        html = componentes._render_provider_dots([("<b>X</b>", '"><script>')], [])
+    def test_escapa_html_no_nome(self):
+        html = componentes._render_provider_badges(["<b>X</b>"], [])
         assert "<script>" not in html
         assert "&lt;b&gt;X&lt;/b&gt;" in html
 
-    def test_prioriza_provedor_destacado_mesmo_com_logo(self):
-        html = componentes._render_provider_dots(
-            [
-                ("Netflix", "https://x/netflix.png"),
-                ("Crunchyroll", "https://x/crunchyroll.png"),
-            ],
-            ["crunchyroll"],
-        )
-        assert html.index("crunchyroll.png") < html.index("netflix.png")
+    def test_prioriza_provedor_destacado(self):
+        html = componentes._render_provider_badges(["Netflix", "Crunchyroll"], ["crunchyroll"])
+        assert html.index("Crunchyroll") < html.index("Netflix")
 
     def test_corta_no_limite_de_provedores_visiveis(self):
-        pares = [(f"Provedor{i}", "") for i in range(componentes._MAX_VISIBLE_PROVIDER_DOTS + 2)]
-        html = componentes._render_provider_dots(pares, [])
+        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES + 2)]
+        html = componentes._render_provider_badges(nomes, [])
         assert "Provedor0" in html
-        assert f"Provedor{componentes._MAX_VISIBLE_PROVIDER_DOTS}" not in html
+        assert f"Provedor{componentes._MAX_VISIBLE_PROVIDER_BADGES}" not in html
 
 
 class TestRenderCard:
@@ -358,16 +341,17 @@ class TestRenderCard:
         assert "Onde assistir" not in html
         assert "providers-label" not in html
 
-    def test_card_com_streaming_provider_logo_renderiza_img(self):
+    def test_card_ignora_campo_de_logo_do_provedor(self):
+        """streaming_provider_logos/rent_buy_provider_logos continuam vindo da query, mas
+        não são mais consumidos pelo card — nome do provedor renderiza só como texto."""
         t = {
             **BASE_TITLE,
             "streaming_providers": "Netflix",
             "streaming_provider_logos": "https://image.tmdb.org/t/p/w45/netflix.png",
         }
         html = componentes.render_card(t)
-        assert '<img src="https://image.tmdb.org/t/p/w45/netflix.png" alt=""' in html
-        assert 'title="Netflix"' in html
-        assert "provider-dot" in html
+        assert '<span class="provider-badge">Netflix</span>' in html
+        assert "netflix.png" not in html
 
     def test_card_sem_rent_buy_providers_nao_exibe_bloco(self):
         html = componentes.render_card(BASE_TITLE)
@@ -376,19 +360,9 @@ class TestRenderCard:
     def test_card_com_rent_buy_providers_exibe_bloco(self):
         t = {**BASE_TITLE, "rent_buy_providers": "Apple TV,Google Play"}
         html = componentes.render_card(t)
-        assert "Aluguel/Compra" not in html  # rótulo foi removido, provedores viram só ícones
-        assert 'title="Apple TV"' in html
-        assert 'title="Google Play"' in html
-
-    def test_card_com_rent_buy_provider_logo_renderiza_img(self):
-        t = {
-            **BASE_TITLE,
-            "rent_buy_providers": "Apple TV",
-            "rent_buy_provider_logos": "https://image.tmdb.org/t/p/w45/appletv.png",
-        }
-        html = componentes.render_card(t)
-        assert '<img src="https://image.tmdb.org/t/p/w45/appletv.png" alt=""' in html
-        assert 'title="Apple TV"' in html
+        assert "Aluguel/Compra" not in html  # rótulo foi removido, provedores viram só badges
+        assert '<span class="provider-badge">Apple TV</span>' in html
+        assert '<span class="provider-badge">Google Play</span>' in html
 
     def test_card_streaming_e_rent_buy_combinados_e_deduplicados(self):
         t = {
@@ -397,7 +371,7 @@ class TestRenderCard:
             "rent_buy_providers": "Apple TV,Google Play",
         }
         html = componentes.render_card(t)
-        assert html.count('title="Apple TV"') == 1
+        assert html.count('<span class="provider-badge">Apple TV</span>') == 1
 
     def test_card_generos_dentro_do_limite_nao_exibe_badge_extra(self):
         t = {**BASE_TITLE, "genres": ["Terror", "Drama", "Suspense"]}
@@ -461,7 +435,7 @@ class TestRenderCard:
             "highlighted_providers": ["crunchyroll"],
         }
         html = componentes.render_card(t)
-        assert 'title="Crunchyroll"' in html
+        assert '<span class="provider-badge">Crunchyroll</span>' in html
         assert "Globoplay" not in html
 
     def test_card_multiplos_generos_destacados_mantem_ordem_entre_si(self):
@@ -486,7 +460,7 @@ class TestRenderCard:
         }
         html = componentes.render_card(t)
         assert html.index(">Terror<") < html.index(">Drama<")
-        assert html.index('title="Crunchyroll"') < html.index('title="Netflix"')
+        assert html.index(">Crunchyroll<") < html.index(">Netflix<")
 
     def test_card_sem_chave_highlighted_ordem_permanece_igual(self):
         t = {**BASE_TITLE, "genres": ["Drama", "Terror"]}
@@ -522,9 +496,9 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert 'class="meta-row trailer-providers-row"' in html
         assert "Trailer" in html
-        assert 'title="Netflix"' in html
+        assert '<span class="provider-badge">Netflix</span>' in html
         trailer_pos = html.index("vital-trailer")
-        providers_pos = html.index('class="provider-dots"')
+        providers_pos = html.index('class="provider-badges"')
         assert trailer_pos < providers_pos
 
     def test_card_duracao_fica_em_linha_propria(self):

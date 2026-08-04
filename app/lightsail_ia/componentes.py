@@ -17,7 +17,7 @@ _CERTIFICATION_DESCRIPTIONS = {
 }
 
 _MAX_VISIBLE_GENRES = 3
-_MAX_VISIBLE_PROVIDER_DOTS = 6
+_MAX_VISIBLE_PROVIDER_BADGES = 6
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -114,18 +114,16 @@ def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
     )
 
 
-def _prioritize(items: list, terms: list[str], key=lambda item: item) -> list:
+def _prioritize(items: list[str], terms: list[str]) -> list[str]:
     """Reordena items colocando primeiro os que contêm algum termo destacado (case-insensitive),
     preservando a ordem relativa dentro de cada grupo. Usado para que um gênero/provedor
-    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N".
-    `key` extrai o texto comparável de cada item — por padrão o próprio item (strings de
-    gênero); para badges de provedor, items são pares (nome, logo_url) e key extrai o nome."""
+    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N"."""
     if not terms:
         return items
     lowered = [t.lower() for t in terms if t]
 
-    def _matches(item) -> bool:
-        item_lower = key(item).lower()
+    def _matches(item: str) -> bool:
+        item_lower = item.lower()
         return any(t in item_lower for t in lowered)
 
     matched = [i for i in items if _matches(i)]
@@ -133,44 +131,19 @@ def _prioritize(items: list, terms: list[str], key=lambda item: item) -> list:
     return matched + unmatched
 
 
-def _parse_provider_pairs(names_raw: str, logos_raw: str) -> list[tuple[str, str]]:
-    """Faz o zip posicional de nomes e logos de um grupo de provedores (streaming ou
-    aluguel/compra).
-
-    names_raw e logos_raw vêm de glue_agg como strings comma-joined construídas pela
-    MESMA agregação/ordenação (ver queries.py), logo alinhadas posição a posição — o
-    zip abaixo depende disso.
-    """
-    names = [p.strip() for p in (names_raw or "").split(",") if p.strip()]
-    logos = [logo.strip() for logo in (logos_raw or "").split(",")]
-    logos += [""] * (len(names) - len(logos))  # protege contra desalinhamento inesperado
-    return list(zip(names, logos))
+def _parse_provider_names(names_raw: str) -> list[str]:
+    """Faz o parsing de um grupo de provedores (streaming ou aluguel/compra) a partir da
+    string comma-joined vinda de glue_agg."""
+    return [p.strip() for p in (names_raw or "").split(",") if p.strip()]
 
 
-def _render_provider_dots(pairs: list[tuple[str, str]], highlighted: list[str]) -> str:
-    """Monta os ícones circulares de provedor (streaming e aluguel/compra já combinados
-    e deduplicados por `render_card`) — sem rótulo de texto, nome do provedor só via
-    atributo `title` (tooltip). Quando não há logo, cai para um círculo com a inicial
-    do nome em vez de badge de texto por extenso.
-    """
-    prioritized = _prioritize(pairs, highlighted, key=lambda pair: pair[0])
-    visible = prioritized[:_MAX_VISIBLE_PROVIDER_DOTS]
-
-    dots = []
-    for name, logo in visible:
-        safe_name = html.escape(name)
-        if logo:
-            dots.append(
-                f'<img src="{html.escape(logo)}" alt="" title="{safe_name}"'
-                f' class="provider-dot" loading="lazy" />'
-            )
-        else:
-            initial = html.escape(name[0].upper()) if name else "?"
-            dots.append(
-                f'<span class="provider-dot provider-dot-fallback" title="{safe_name}">'
-                f'{initial}</span>'
-            )
-    return "".join(dots)
+def _render_provider_badges(names: list[str], highlighted: list[str]) -> str:
+    """Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e
+    deduplicados por `render_card`), priorizando via `_prioritize` o provedor mencionado
+    pelo usuário."""
+    prioritized = _prioritize(names, highlighted)
+    visible = prioritized[:_MAX_VISIBLE_PROVIDER_BADGES]
+    return "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in visible)
 
 
 def render_card(title: dict, idx: int = 0) -> str:
@@ -186,9 +159,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     duration = title.get("duration") or ""
     release_date = html.escape(title.get("release_date") or "")
     streaming_providers = title.get("streaming_providers") or ""
-    streaming_provider_logos = title.get("streaming_provider_logos") or ""
     rent_buy_providers = title.get("rent_buy_providers") or ""
-    rent_buy_provider_logos = title.get("rent_buy_provider_logos") or ""
     in_theaters = title.get("in_theaters") or False
     theater_end_date = html.escape(title.get("theater_end_date") or "")
     certification = html.escape(title.get("certification") or "")
@@ -260,26 +231,26 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'Trailer</a></span>'
         )
 
-    provider_pairs = _parse_provider_pairs(streaming_providers, streaming_provider_logos)
-    provider_pairs += _parse_provider_pairs(rent_buy_providers, rent_buy_provider_logos)
+    provider_names = _parse_provider_names(streaming_providers)
+    provider_names += _parse_provider_names(rent_buy_providers)
     seen_providers: set[str] = set()
-    deduped_pairs = []
-    for name, logo in provider_pairs:
+    deduped_names = []
+    for name in provider_names:
         key = name.lower()
         if key in seen_providers:
             continue
         seen_providers.add(key)
-        deduped_pairs.append((name, logo))
-    provider_dots_html = (
-        _render_provider_dots(deduped_pairs, title.get("highlighted_providers") or [])
-        if deduped_pairs else ""
+        deduped_names.append(name)
+    provider_badges_html = (
+        _render_provider_badges(deduped_names, title.get("highlighted_providers") or [])
+        if deduped_names else ""
     )
 
     trailer_providers_html = ""
-    if trailer_html or provider_dots_html:
+    if trailer_html or provider_badges_html:
         trailer_providers_html = (
             f'<div class="meta-row trailer-providers-row">{trailer_html}'
-            f'<span class="provider-dots">{provider_dots_html}</span></div>'
+            f'<span class="provider-badges">{provider_badges_html}</span></div>'
         )
 
     toggle_id = f"synopsis-toggle-{idx}"
