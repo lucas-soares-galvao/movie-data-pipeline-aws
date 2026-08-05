@@ -44,9 +44,11 @@ EventBridge (schedule)
   └── Repara duplicatas nas partições (discover, details, watch_providers)
 
   aws_glue_trigger SCHEDULED (sábado e domingo, 08:00 BRT — infra/glue_agg.tf)
+  + disparo pelo backfill manual ao final de qualquer table_group exceto
+  data_quality (.github/workflows/05_backfill.yml — ver scripts/scripts.md)
        │
        ▼
-  Glue AGG (app/glue_agg/) — independente do restante do pipeline, não espera o Glue Details
+  Glue AGG (app/glue_agg/) — independente do pipeline automático, não espera o Glue Details
   ├── Une filmes e séries via Athena SQL com CTEs e DENSE_RANK
   ├── Joins com gêneros, detalhes, streaming providers e now_playing
   ├── Deduplicação final por (id, media_type)
