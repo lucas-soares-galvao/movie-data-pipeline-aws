@@ -150,17 +150,36 @@ um run do Glue Details que terminou em `FAILED`), o checkpoint permanece,
 então disparar o workflow de novo com o mesmo range de anos re-tenta só as
 unidades que faltaram.
 
-## Disparo do Glue AGG ao final
+## Step summary: resumo do backfill e disparo do Glue AGG ao final
 
-O AGG roda em agendamento próprio (sábado e domingo às 08:00 BRT — ver
-`app/glue_agg/glue_agg.md`), desacoplado do pipeline automático. Para o
-backfill manual, essa espera (até 6 dias) é indesejada: o workflow
-(`.github/workflows/05_backfill.yml`) dispara `glue:StartJobRun` no AGG
-(fire-and-forget) uma única vez, logo após o loop de retry do script
-terminar com sucesso — para **todo `table_group` exceto `data_quality`**
-(que só valida, não escreve dado novo). O disparo é centralizado no
-workflow, não em cada script, para garantir que rode exatamente uma vez por
-execução mesmo quando o script precisou de retomada via exit code 75. Uma
-falha nesse disparo (ex.: permissão, throttling) não derruba o workflow —
-loga um `::warning::` e segue, já que o trigger agendado do fim de semana
-continua cobrindo o caso.
+Depois que o loop de retry termina com sucesso (`exit 0`), o workflow
+(`.github/workflows/05_backfill.yml`) escreve duas seções no step summary do
+GitHub Actions, nessa ordem:
+
+1. **"Backfill"** — o resumo real do que o script fez, extraído do log via
+   `grep` (todos os 7 scripts usam o mesmo formato de log,
+   `backfill_shared.py:41-45`: `"%(asctime)s %(levelname)s %(message)s"`).
+   Isso importa porque `exit 0` **não** garante que toda unidade teve
+   sucesso para 2 dos 7 scripts: `backfill_enriquecimento.py` é
+   soft-fail-continue (loga `ERROR` por unidade que falhou, mas nunca chama
+   `sys.exit`) e `backfill_data_quality.py` é fire-and-forget ("submetido" ≠
+   "validado" — ver `especialista-scripts-backfill`). Se sobrar qualquer
+   linha `ERROR` no log, o step summary mostra "⚠️ Falhas parciais
+   registradas" com as linhas encontradas, mesmo com o job do Actions
+   terminando verde.
+2. **"glue_agg"** — o AGG roda em agendamento próprio (sábado e domingo às
+   08:00 BRT — ver `app/glue_agg/glue_agg.md`), desacoplado do pipeline
+   automático. Para o backfill manual, essa espera (até 6 dias) é
+   indesejada: o workflow dispara `glue:StartJobRun` uma única vez para
+   **todo `table_group` exceto `data_quality`** (que não escreve dado novo)
+   e faz polling do `JobRunId` (`glue:GetJobRun` a cada 30s) até um estado
+   terminal, escrevendo `SUCCEEDED`/`FAILED`/`STOPPED`/`ERROR`/`TIMEOUT` no
+   step summary.
+
+O disparo/polling do AGG é centralizado no workflow, não em cada script,
+para garantir que rode exatamente uma vez por execução mesmo quando o
+script precisou de retomada via exit code 75. Nem uma falha ao disparar nem
+uma conclusão diferente de `SUCCEEDED` derrubam o workflow — loga um
+`::warning::` e segue: o trigger agendado do fim de semana e o alarme SNS
+dedicado (`aws_cloudwatch_event_rule.glue_agg_failed`,
+`infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso.
