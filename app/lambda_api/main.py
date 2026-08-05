@@ -3,7 +3,6 @@ Lambda API — coleta dados da API TMDB e dispara o Glue ETL.
 Fluxo: EventBridge → busca API key → coleta referências → coleta discover (por ano) → dispara Glue ETL.
 """
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -29,8 +28,6 @@ logger.setLevel(logging.INFO)
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
 GLUE_DETAILS_JOB_NAME = os.environ["GLUE_DETAILS_JOB_NAME"]
-GLUE_AGG_JOB_NAME = os.environ["GLUE_AGG_JOB_NAME"]
-LAMBDA_GLUE_ORCHESTRATOR_NAME = os.environ["LAMBDA_GLUE_ORCHESTRATOR_NAME"]
 S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
 S3_BUCKET_TEMP = os.environ["S3_BUCKET_TEMP"]
 
@@ -135,28 +132,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Anual backfill |    False    |    True     |    False     |    False    | discover histórico (sem referências)
     # Só referências |    False    |    False    |    False     |    True     | genre + config + watch_providers_ref
     #
-    # Modo "Só referências": não passa pelo discover/Glue Details, então o Glue AGG não seria
-    # acionado pelo cascade normal (Glue Details "tv + end_year" — ver app/glue_details/main.py).
-    # Para que a atualização de referências chegue à camada SPEC sem esperar o próximo ciclo
-    # semanal/mensal, este modo aciona o Glue AGG ao final — só no run de "tv" (mesma convenção
-    # do resto do pipeline: tv é a perna que fecha o ciclo, tanto no EventBridge — roda 5 min
-    # depois de movie — quanto em scripts/backfill_referencias.py, que invoca movie e depois tv
-    # de forma síncrona).
-    #
-    # O disparo do AGG precisa esperar os 3 Glue ETL de referência (trigger_glue_job é
-    # fire-and-forget) terminarem antes de rodar, senão leria as tabelas de tv ainda desatualizadas.
-    # Essa espera NÃO roda dentro desta Lambda: é delegada, de forma assíncrona
-    # (InvocationType="Event"), à app/lambda_glue_orchestrator — nenhum chamador desta função fica
-    # esperando a resposta dela. Isso é proposital: uma versão anterior fazia essa espera aqui
-    # dentro (polling de get_job_run, ~4-5min), o que estourou o read_timeout padrão do cliente
-    # síncrono de scripts/backfill_referencias.py e — como lambda:Invoke não é idempotente — o
-    # retry automático do botocore após o timeout chegou a gerar 5 execuções concorrentes desta
-    # Lambda em produção, cada uma reacionando os mesmos 3 Glue ETL. Ver
-    # app/lambda_glue_orchestrator/lambda_glue_orchestrator.md para o racional completo.
-    #
-    # Não espera pelos jobs de "movie" (invocação anterior, separada) — como no resto do
-    # pipeline, isso depende do intervalo entre as duas invocações (5 min no EventBridge, 300s em
-    # backfill_referencias.py) já ser suficiente para o Glue ETL de referência de movie terminar.
+    # Modo "Só referências": dispara os 3 Glue ETL de referência e retorna, sem esperar
+    # (trigger_glue_job é fire-and-forget) e sem acionar o Glue AGG — ele roda em agendamento
+    # próprio (aws_glue_trigger SCHEDULED, sábado e domingo às 08:00 BRT), independente do
+    # restante do pipeline (ver app/glue_agg/glue_agg.md). A atualização de referências chega à
+    # camada SPEC no próximo ciclo do AGG, não no mesmo dia.
     #
     # only_changes_tables e only_rotation_refresh (tratados acima, antes desta tabela)
     # não combinam com as flags abaixo — saem cedo, direto para o Glue Details, sem
@@ -195,41 +175,37 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         end_year = current_year - 1
         loop_end_year = current_year - 1
 
-    # Run IDs dos 3 Glue ETL de referência acionados abaixo — usados só pelo modo skip_weekly
-    # (ver bloco "if skip_weekly" logo adiante) para aguardar essas escritas antes do Glue AGG.
-    reference_run_ids: list[str] = []
-
     if not skip_reference:
         logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
         collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de gêneros...")
-        reference_run_ids.append(trigger_glue_job(
+        trigger_glue_job(
             GLUE_ETL_JOB_NAME,
             TABLE_TYPE="genre",
             TABLE_NAME=table_genre,
             **glue_base_args,
-        ))
+        )
 
         logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
         collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
         logger.info("Acionando Glue ETL para tabela de configuração...")
-        reference_run_ids.append(trigger_glue_job(
+        trigger_glue_job(
             GLUE_ETL_JOB_NAME,
             TABLE_TYPE="configuration",
             TABLE_NAME=table_configuration,
             **glue_base_args,
-        ))
+        )
 
         logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
         try:
             collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
             logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
-            reference_run_ids.append(trigger_glue_job(
+            trigger_glue_job(
                 GLUE_ETL_JOB_NAME,
                 TABLE_TYPE="watch_providers_ref",
                 TABLE_NAME=table_watch_providers_ref,
                 **glue_base_args,
-            ))
+            )
         except HTTPError:
             logger.error(
                 f"Falha ao coletar watch_providers_ref para '{content_type}'. "
@@ -240,22 +216,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     if skip_weekly:
         logger.info("skip_weekly=True: pulando coleta de discover.")
-        if content_type == "tv":
-            logger.info(
-                "skip_weekly=True (tv): acionando o orquestrador assíncrono para aguardar os "
-                "%d Glue ETL de referência e disparar o Glue AGG...", len(reference_run_ids),
-            )
-            boto3.client("lambda").invoke(
-                FunctionName=LAMBDA_GLUE_ORCHESTRATOR_NAME,
-                InvocationType="Event",
-                Payload=json.dumps({
-                    "wait_for": [
-                        {"job_name": GLUE_ETL_JOB_NAME, "run_id": run_id}
-                        for run_id in reference_run_ids
-                    ],
-                    "target_job_name": GLUE_AGG_JOB_NAME,
-                }).encode(),
-            )
         return {
             "statusCode": 200,
             "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",

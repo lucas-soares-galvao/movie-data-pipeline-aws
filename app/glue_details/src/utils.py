@@ -57,7 +57,6 @@ def get_parameters_glue() -> dict[str, Any]:
         "TABLE_WATCH_PROVIDERS_MOVIE",
         "TABLE_WATCH_PROVIDERS_TV",
         "TMDB_SECRET_ARN",
-        "GLUE_AGG_JOB_NAME",
         "GLUE_DATA_QUALITY_JOB_NAME",
         "MEDIA_TYPE",
     ]

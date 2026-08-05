@@ -28,12 +28,6 @@ resource "aws_cloudwatch_log_group" "lambda_log" {
   tags              = local.component_tags.lambda_api
 }
 
-resource "aws_cloudwatch_log_group" "lambda_glue_orchestrator_log" {
-  name              = "/aws/lambda/${local.envs.lambda_glue_orchestrator_name}"
-  retention_in_days = var.log_retention_days
-  tags              = local.component_tags.lambda_glue_orchestrator
-}
-
 resource "aws_cloudwatch_log_group" "glue_agg_error" {
   name              = "/${local.envs.glue_agg_job_name}/error"
   retention_in_days = var.log_retention_days

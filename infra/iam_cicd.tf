@@ -391,6 +391,23 @@ resource "aws_iam_policy" "cicd_compute" {
         Resource = "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.tmdb_prefix}-*"
       },
       {
+        Sid    = "GlueTriggerManagement"
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTrigger",
+          "glue:DeleteTrigger",
+          "glue:GetTrigger",
+          "glue:GetTriggers",
+          "glue:UpdateTrigger",
+          "glue:StartTrigger",
+          "glue:StopTrigger",
+          "glue:TagResource",
+          "glue:UntagResource",
+          "glue:GetTags",
+        ]
+        Resource = "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:trigger/${local.tmdb_prefix}-*"
+      },
+      {
         Sid    = "GlueCatalogManagement"
         Effect = "Allow"
         Action = [

@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa a função `main()` em `app/glue_details/main.py` e as funções utilitárias em `app/glue_details/src/utils.py`. O foco é verificar: coleta paralela de detalhes via API TMDB, lógica de acionamento condicional do Glue AGG (apenas na última execução) e escrita das tabelas de detalhes e watch providers na SOT. Todas as dependências externas (Athena, Secrets Manager, API TMDB, S3) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem fazer chamadas reais, mantendo os testes rápidos, gratuitos e isolados.
+Testa a função `main()` em `app/glue_details/main.py` e as funções utilitárias em `app/glue_details/src/utils.py`. O foco é verificar: coleta paralela de detalhes via API TMDB, acionamento condicional do repair de duplicatas (apenas na última execução do ciclo) e escrita das tabelas de detalhes e watch providers na SOT. Todas as dependências externas (Athena, Secrets Manager, API TMDB, S3) são substituídas por **mocks** — objetos falsos que simulam o comportamento esperado sem fazer chamadas reais, mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -38,18 +38,15 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 | `test_skip_collect_watch_providers_when_no_stale_ids` | `collect_and_write_watch_providers` **não** é chamado quando não há IDs stale |
 | `test_force_refetch_skips_existing_ids_check` | Com `FORCE_REFETCH=true`, `fetch_existing_ids_from_details` não é chamado e todos os IDs do discover são rebuscados |
 
-### Acionamento condicional do repair e do Glue AGG
+### Acionamento condicional do repair
 
 | Teste | O que verifica |
 |---|---|
-| `test_triggers_agg_when_tv_and_last_year` | AGG é acionado quando `media_type="tv"` e `year == end_year` |
-| `test_repair_called_before_agg_when_tv_and_last_year` | Os três repairs são chamados na ordem `discover → watch_providers → details → agg` quando tv+end_year |
+| `test_repair_called_in_order_when_tv_and_last_year` | Os três repairs são chamados na ordem `discover → watch_providers → details` quando tv+end_year |
 | `test_repair_called_for_movie_at_last_year` | `repair_details_duplicates` é chamado para `media_type="movie"` quando `year == end_year` |
 | `test_repair_not_called_when_not_last_year` | Nenhum dos três repairs é chamado quando `year != end_year` |
 | `test_repair_discover_duplicates_called_at_last_year` | `repair_discover_duplicates` é chamado com os argumentos corretos quando `year == end_year` |
 | `test_repair_watch_providers_duplicates_called_at_last_year` | `repair_watch_providers_duplicates` é chamado com os argumentos corretos quando `year == end_year` |
-| `test_does_not_trigger_agg_for_movie` | AGG **não** é acionado para `media_type="movie"` |
-| `test_does_not_trigger_agg_for_tv_non_last_year` | AGG **não** é acionado para séries quando `year != end_year` |
 
 ### `TestChangesMode` — ramo acionado quando `CHANGES_S3_PATH` está presente
 
@@ -60,9 +57,7 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 | `test_chama_process_changed_ids_com_ids_e_tabelas_corretas` | `process_changed_ids` recebe os IDs, tabelas e `translate_provider` corretos |
 | `test_aciona_dq_uma_vez_por_tabela_com_anos_agrupados` | Glue DQ é acionado só 1x por tabela (`TABLE_DETAILS`/`TABLE_WATCH_PROVIDERS`), com `YEAR` sendo todos os anos de `process_changed_ids` juntos numa string separada por vírgula (não 1 disparo por ano) |
 | `test_nao_aciona_dq_quando_nenhum_ano_afetado` | Nenhum DQ é acionado quando `process_changed_ids` retorna lista vazia |
-| `test_nao_aciona_agg_nem_repair_discover` | Glue AGG e `repair_discover_duplicates` **não** são acionados para `media_type="movie"`, mesmo com anos afetados |
-| `test_aciona_agg_quando_tv_e_ha_anos_afetados` | Glue AGG é acionado quando `media_type="tv"` e `process_changed_ids` retorna pelo menos um ano afetado |
-| `test_nao_aciona_agg_quando_tv_sem_anos_afetados` | Glue AGG **não** é acionado quando `media_type="tv"` mas `process_changed_ids` retorna lista vazia |
+| `test_modo_changes_nao_aciona_repair_discover` | `repair_discover_duplicates` **não** é acionado neste modo (nunca escreve na tabela discover) |
 | `test_usa_tabelas_de_tv_quando_media_type_tv` | `process_changed_ids` recebe as tabelas de TV quando `MEDIA_TYPE="tv"` |
 
 ## Casos de teste — `test_utils.py`
@@ -331,7 +326,7 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 
 | Teste | O que verifica |
 |---|---|
-| `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `AGG_JOB_NAME`, etc.) |
+| `test_returns_all_required_args` | Retorna os parâmetros obrigatórios do job (`S3_BUCKET_SOT`, databases, tabelas de discover e details, `TABLE_WATCH_PROVIDERS_*`, `GLUE_DATA_QUALITY_JOB_NAME`, etc.) |
 | `test_year_end_year_default_none_quando_ausentes` | `YEAR`/`END_YEAR` ficam `None` quando ausentes (modo changes não os passa) |
 | `test_year_lido_do_sys_argv_quando_ausente_do_resolved_option` | `YEAR`/`END_YEAR` são lidos de `sys.argv` quando presentes (mesmo padrão opcional de `FORCE_REFETCH`) |
 | `test_changes_s3_path_default_none` | `CHANGES_S3_PATH` fica `None` quando ausente de `sys.argv` |

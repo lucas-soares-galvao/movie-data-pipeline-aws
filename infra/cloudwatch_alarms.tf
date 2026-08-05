@@ -16,26 +16,6 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
   tags = local.component_tags.lambda_api
 }
 
-# Alarme simples (sem o Event Rule + input_transformer de "lambda_error_alarm" acima — não
-# vale a complexidade extra pra essa função pequena): notifica direto via SNS quando a Lambda
-# Glue Orchestrator falha.
-resource "aws_cloudwatch_metric_alarm" "lambda_glue_orchestrator_error_alarm" {
-  alarm_name          = "${local.tmdb_prefix}-lambda-glue-orchestrator-error-alarm-${var.env}"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Alerta por e-mail quando a Lambda Glue Orchestrator apresenta erro."
-  dimensions = {
-    FunctionName = local.envs.lambda_glue_orchestrator_name
-  }
-  alarm_actions = [aws_sns_topic.lambda_failure_notifications.arn]
-  tags          = local.component_tags.lambda_glue_orchestrator
-}
-
 # Alarme de falha no EventBridge (somando as duas regras agendadas da pipeline)
 resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
   alarm_name          = "${local.tmdb_prefix}-eventbridge-failed-alarm-${var.env}"
