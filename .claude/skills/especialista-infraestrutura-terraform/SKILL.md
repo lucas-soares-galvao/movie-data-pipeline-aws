@@ -61,8 +61,8 @@ Os três compartilham o mesmo esqueleto: `command.name="pythonshell"`, `command.
 | Job | Timeout | `max_concurrent_runs` | Observação |
 |---|---|---|---|
 | `glue_etl_job_name` (ETL) | 15min | 7 | SOR→SOT; dispara DQ e Details ao concluir |
-| `glue_agg_job_name` (AGG) | 30min | 1 | Unifica movie+tv via SQL Athena; dispara DQ |
-| `glue_details_job_name` (Details) | 30min | 4 | Enriquece runtime/temporadas/streaming; dispara AGG e DQ |
+| `glue_agg_job_name` (AGG) | 30min | 1 | Unifica movie+tv via SQL Athena; dispara DQ; próprio `aws_glue_trigger` SCHEDULED (sáb/dom 08:00 BRT), não é mais acionado pelo Details |
+| `glue_details_job_name` (Details) | 30min | 4 | Enriquece runtime/temporadas/streaming; dispara DQ |
 
 ### AWS Glue — job Spark — `glue_data_quality.tf`
 

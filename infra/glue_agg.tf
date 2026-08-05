@@ -61,6 +61,31 @@ resource "aws_glue_job" "agg_job_pythonshell" {
 }
 
 
+
+# =============================================================================
+# Agendamento do Glue AGG — sábados e domingos às 08:00 BRT (11:00 UTC)
+#
+# Trigger nativo do Glue (SCHEDULED), sem EventBridge: o job passa a rodar de
+# forma independente do restante do pipeline, em vez de ser acionado pelo
+# Glue Details ao fim do ciclo semanal (tv + end_year / tv + affected_years).
+# Horário calibrado com o histórico real de execução do Glue Details — no pior
+# caso observado (rotation + discover + monthly coincidindo no mesmo sábado),
+# o ciclo terminou às 06:42 BRT; 08:00 BRT dá ~77 min de folga.
+# =============================================================================
+
+resource "aws_glue_trigger" "agg_weekly" {
+  name     = "${local.tmdb_prefix}-glue-agg-weekly-${var.env}"
+  schedule = "cron(00 11 ? * SAT,SUN *)" # 11:00 UTC = 08:00 BRT, sábado e domingo
+  type     = "SCHEDULED"
+  enabled  = local.eventbridge_schedule_state == "ENABLED"
+  tags     = local.component_tags.glue_agg
+
+  actions {
+    job_name = aws_glue_job.agg_job_pythonshell.name
+  }
+}
+
+
 resource "aws_s3_object" "deploy_scripts_bucket_agg" {
   bucket     = aws_s3_bucket.auxiliary_bucket.id
   key        = "${local.tmdb_prefix}/${local.envs.glue_agg_job_name}/app/main.py"

@@ -1482,7 +1482,6 @@ class TestGetParametersGlue:
             "TABLE_WATCH_PROVIDERS_MOVIE": "wp_m",
             "TABLE_WATCH_PROVIDERS_TV": "wp_tv",
             "TMDB_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:1:secret:tmdb",
-            "GLUE_AGG_JOB_NAME": "agg-job",
             "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
             "MEDIA_TYPE": "movie",
             "YEAR": "2024",

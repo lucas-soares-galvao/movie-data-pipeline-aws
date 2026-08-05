@@ -29,9 +29,6 @@ locals {
     lambda_api = {
       Component = "lambda_api"
     }
-    lambda_glue_orchestrator = {
-      Component = "lambda_glue_orchestrator"
-    }
     eventbridge = {
       Component = "eventbridge"
     }
@@ -91,10 +88,6 @@ locals {
   lambda_api_src_path          = "${path.root}/../app/${var.lambda_api_path_app}"
   lambda_api_requirements_path = "${path.root}/../app/${var.lambda_api_path_app}/requirements.txt"
   lambda_api_build_path        = "${path.module}/.lambda_build" # Pasta de output do .zip
-
-  lambda_glue_orchestrator_src_path          = "${path.root}/../app/${var.lambda_glue_orchestrator_path_app}"
-  lambda_glue_orchestrator_requirements_path = "${path.root}/../app/${var.lambda_glue_orchestrator_path_app}/requirements.txt"
-  lambda_glue_orchestrator_build_path        = "${path.module}/.lambda_glue_orchestrator_build" # Pasta de output do .zip
 
   glue_etl_src_path          = "${path.root}/../app/${var.glue_etl_path_app}"
   glue_etl_requirements_path = "${path.root}/../app/${var.glue_etl_path_app}/requirements.txt"
@@ -218,7 +211,6 @@ EOT
     glue_agg_job_name             = "${local.tmdb_prefix}-${var.glue_agg_job_name}-${var.env}"             # ex (dev): "tmdb-glue-agg-dev"
     glue_details_job_name         = "${local.tmdb_prefix}-${var.glue_details_job_name}-${var.env}"         # ex (dev): "tmdb-glue-details-dev"
     lambda_api_name               = "${local.tmdb_prefix}-${var.lambda_api_name}-${var.env}"               # ex (dev): "tmdb-lambda-api-dev"
-    lambda_glue_orchestrator_name = "${local.tmdb_prefix}-${var.lambda_glue_orchestrator_name}-${var.env}" # ex (dev): "tmdb-lambda-glue-orchestrator-dev"
     iam_role_glue                 = "${local.tmdb_prefix}-${var.iam_role_glue}-${var.env}"
     iam_role_lambda               = "${local.tmdb_prefix}-${var.iam_role_lambda}-${var.env}"
     s3_bucket_aux                 = "${var.s3_bucket_aux}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-aux-dev"

@@ -2,17 +2,14 @@
 # LAMBDA — Políticas da função Lambda
 # =============================================================================
 
-# Permite que a Lambda dispare os jobs Glue ETL e Details (fire-and-forget, sem monitorar —
-# ver "por que não glue:GetJobRun aqui" abaixo).
+# Permite que a Lambda dispare os jobs Glue ETL e Details (fire-and-forget, sem monitorar).
 # Resource restrito aos ARNs dos jobs especificos para limitar o escopo de acesso.
 # Glue Details é usado pelo modo changes (only_changes_tables) — aciona o job
 # diretamente, sem passar pelo Glue ETL (ver app/lambda_api/main.py).
 #
-# glue_agg_job_name NÃO está no Resource: a lambda_api não aciona o Glue AGG diretamente no
-# modo skip_weekly — delega para a Lambda Glue Orchestrator (invocação assíncrona), que tem
-# sua própria permissão escopada (ver lambda_glue_orchestrator_glue abaixo). E por não aciona
-# mais glue_agg aqui, também não precisa mais de "glue:GetJobRun" — quem espera job terminar
-# agora é só a Orchestrator.
+# glue_agg_job_name NÃO está no Resource: a lambda_api nunca aciona o Glue AGG — ele roda em
+# agendamento próprio (aws_glue_trigger SCHEDULED, sábado e domingo às 08:00 BRT), independente
+# do restante do pipeline (ver app/glue_agg/glue_agg.md).
 resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
   name = "${local.tmdb_prefix}-lambda-api-start-glue-jobs-${var.env}"
   role = aws_iam_role.lambda_function.id
@@ -26,43 +23,6 @@ resource "aws_iam_role_policy" "lambda_start_glue_jobs" {
         "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_details_job_name}"
       ]
     }]
-  })
-}
-
-# Permite que a lambda_api invoque a Lambda Glue Orchestrator de forma assíncrona
-# (InvocationType="Event", modo skip_weekly — ver app/lambda_api/main.py).
-resource "aws_iam_role_policy" "lambda_api_invoke_orchestrator" {
-  name = "${local.tmdb_prefix}-lambda-api-invoke-orchestrator-${var.env}"
-  role = aws_iam_role.lambda_function.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["lambda:InvokeFunction"]
-      Resource = [aws_lambda_function.lambda_glue_orchestrator.arn]
-    }]
-  })
-}
-
-# Permite que a Lambda Glue Orchestrator espere (get_job_run) os Glue ETL de referência e
-# acione (start_job_run) o Glue AGG — ver app/lambda_glue_orchestrator/main.py.
-resource "aws_iam_role_policy" "lambda_glue_orchestrator_glue" {
-  name = "${local.tmdb_prefix}-lambda-glue-orchestrator-glue-${var.env}"
-  role = aws_iam_role.lambda_glue_orchestrator.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["glue:GetJobRun"]
-        Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_etl_job_name}"]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["glue:StartJobRun"]
-        Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_agg_job_name}"]
-      }
-    ]
   })
 }
 
@@ -1033,20 +993,6 @@ resource "aws_iam_role_policy" "glue_details_translate" {
       Effect   = "Allow"
       Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
       Resource = "*"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "glue_details_start_agg" {
-  name = "${local.tmdb_prefix}-glue-details-start-agg-${var.env}"
-  role = aws_iam_role.glue_details_role.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["glue:StartJobRun"]
-      Resource = ["arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:job/${local.envs.glue_agg_job_name}"]
     }]
   })
 }

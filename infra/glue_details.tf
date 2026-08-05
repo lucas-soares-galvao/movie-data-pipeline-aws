@@ -31,7 +31,6 @@ resource "aws_glue_job" "details_job_pythonshell" {
     "--TABLE_WATCH_PROVIDERS_MOVIE" = local.envs.glue_catalog_tb_watch_providers_movie
     "--TABLE_WATCH_PROVIDERS_TV"    = local.envs.glue_catalog_tb_watch_providers_tv
     "--TMDB_SECRET_ARN"             = var.filmbot_secret_arn
-    "--GLUE_AGG_JOB_NAME"           = local.envs.glue_agg_job_name
     "--GLUE_DATA_QUALITY_JOB_NAME"  = local.envs.glue_data_quality_job_name
     "--ENVIRONMENT"                 = var.env
   }
@@ -50,9 +49,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
     aws_iam_role_policy.glue_details_athena,
     aws_iam_role_policy.glue_details_secrets,
     aws_iam_role_policy.glue_details_translate,
-    aws_iam_role_policy.glue_details_start_agg,
     aws_iam_role_policy.glue_details_start_dq,
-    aws_glue_job.agg_job_pythonshell,
     aws_cloudwatch_log_group.glue_details_error,
     aws_cloudwatch_log_group.glue_details_output,
   ]

@@ -1,4 +1,3 @@
-import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -7,8 +6,6 @@ os.environ.setdefault(
 )
 os.environ.setdefault("GLUE_ETL_JOB_NAME", "test-glue-etl-job")
 os.environ.setdefault("GLUE_DETAILS_JOB_NAME", "test-glue-details-job")
-os.environ.setdefault("GLUE_AGG_JOB_NAME", "test-glue-agg-job")
-os.environ.setdefault("LAMBDA_GLUE_ORCHESTRATOR_NAME", "test-lambda-glue-orchestrator")
 os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 os.environ.setdefault("S3_BUCKET_TEMP", "test-bucket-temp")
 
@@ -253,65 +250,24 @@ class TestSkipWeekly:
         mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
         assert mocks["result"]["statusCode"] == 200
 
-    # --- Orquestrador assíncrono (aciona ao final do ciclo de referências, só na perna "tv") ---
-    #
-    # A espera pelos 3 Glue ETL de referência (get_job_run) não roda mais dentro desta Lambda —
-    # foi extraída para app/lambda_glue_orchestrator (invocada de forma assíncrona), testada
-    # separadamente em test/lambda_glue_orchestrator/. Aqui só verificamos o contrato do que a
-    # lambda_api envia para ela.
+    # A lambda_glue_orchestrator foi removida (glue_agg roda em agendamento próprio,
+    # independente do restante do pipeline — ver app/glue_agg/glue_agg.md). As duas pernas
+    # (movie/tv) agora se comportam de forma idêntica em skip_weekly: disparam os 3 Glue ETL
+    # de referência e retornam, sem invocar nenhuma outra Lambda.
 
-    def test_skip_weekly_movie_nao_invoca_orquestrador(self):
-        """A perna "movie" só coleta referências de movie — tv ainda não rodou,
-        então invocar o orquestrador aqui uniria referências de tv desatualizadas."""
-        mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
-        mocks["mock_boto3"].client.return_value.invoke.assert_not_called()
-
-    def test_skip_weekly_tv_invoca_orquestrador_de_forma_assincrona(self):
-        """A perna "tv" fecha o ciclo (mesma convenção do resto do pipeline — ver
-        app/glue_details/main.py): invoca a lambda_glue_orchestrator com os run_ids
-        dos 3 Glue ETL de referência e o Glue AGG como alvo, sem esperar a resposta
-        (InvocationType="Event") — ver app/lambda_glue_orchestrator/main.py."""
-        with (
-            patch("main.trigger_glue_job", side_effect=["run-genre", "run-config", "run-watch-ref"]),
-            patch("main.collect_genre_data"),
-            patch("main.collect_configuration_data"),
-            patch("main.collect_watch_providers_ref"),
-            patch("main.get_api_secret", return_value="api-key-teste"),
-            patch("main.boto3") as mock_boto3,
-            patch("main.datetime") as mock_dt,
-        ):
-            mock_dt.now.return_value.year = 2025
-            main.lambda_handler({**EVENTO_TV, "skip_weekly": True}, MagicMock())
-
-        mock_invoke = mock_boto3.client.return_value.invoke
-        mock_invoke.assert_called_once()
-        kwargs = mock_invoke.call_args.kwargs
-        assert kwargs["FunctionName"] == main.LAMBDA_GLUE_ORCHESTRATOR_NAME
-        assert kwargs["InvocationType"] == "Event"
-        payload = json.loads(kwargs["Payload"])
-        assert payload["wait_for"] == [
-            {"job_name": main.GLUE_ETL_JOB_NAME, "run_id": "run-genre"},
-            {"job_name": main.GLUE_ETL_JOB_NAME, "run_id": "run-config"},
-            {"job_name": main.GLUE_ETL_JOB_NAME, "run_id": "run-watch-ref"},
-        ]
-        assert payload["target_job_name"] == main.GLUE_AGG_JOB_NAME
-
-    def test_skip_weekly_tv_nao_espera_glue_dentro_da_lambda(self):
-        """Regressão: a Lambda não deve mais fazer polling de get_job_run — isso é
-        responsabilidade exclusiva da lambda_glue_orchestrator agora."""
-        with (
-            patch("main.trigger_glue_job", side_effect=["run-genre", "run-config", "run-watch-ref"]),
-            patch("main.collect_genre_data"),
-            patch("main.collect_configuration_data"),
-            patch("main.collect_watch_providers_ref"),
-            patch("main.get_api_secret", return_value="api-key-teste"),
-            patch("main.boto3") as mock_boto3,
-            patch("main.datetime") as mock_dt,
-        ):
-            mock_dt.now.return_value.year = 2025
-            main.lambda_handler({**EVENTO_TV, "skip_weekly": True}, MagicMock())
-
-        mock_boto3.client.return_value.get_job_run.assert_not_called()
+    def test_skip_weekly_nao_invoca_nenhuma_lambda_para_movie_ou_tv(self):
+        mocks_movie = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
+        mocks_tv = _run({**EVENTO_TV, "skip_weekly": True}, year=2025)
+        mocks_movie["mock_boto3"].client.return_value.invoke.assert_not_called()
+        mocks_tv["mock_boto3"].client.return_value.invoke.assert_not_called()
+        assert mocks_movie["result"] == {
+            "statusCode": 200,
+            "body": "Coleta de referência de 'movie' finalizada com sucesso.",
+        }
+        assert mocks_tv["result"] == {
+            "statusCode": 200,
+            "body": "Coleta de referência de 'tv' finalizada com sucesso.",
+        }
 
 
 class TestOnlyDiscover:

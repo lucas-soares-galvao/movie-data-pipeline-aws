@@ -16,7 +16,7 @@ test/lambda_api/
 
 ## Setup
 
-As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME`, `GLUE_DETAILS_JOB_NAME`, `GLUE_AGG_JOB_NAME`, `LAMBDA_GLUE_ORCHESTRATOR_NAME`, `S3_BUCKET_SOR` e `S3_BUCKET_TEMP` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
+As variáveis de ambiente `TMDB_SECRET_ARN`, `GLUE_ETL_JOB_NAME`, `GLUE_DETAILS_JOB_NAME`, `S3_BUCKET_SOR` e `S3_BUCKET_TEMP` são definidas via `os.environ.setdefault()` no início de `test_main.py`, antes do import de `main.py`.
 
 ### Helper `_run()` (`test_main.py`)
 
@@ -28,7 +28,7 @@ assert mocks["result"]["statusCode"] == 200
 assert mocks["mock_discover"].call_count == 2
 ```
 
-Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`, `mock_boto3` (usado para inspecionar a invocação assíncrona da `lambda_glue_orchestrator` em `TestSkipWeekly`).
+Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`, `mock_boto3` (usado em `TestSkipWeekly` para confirmar que nenhuma outra Lambda é invocada).
 
 `TestOnlyRotationRefresh` não usa `_run()` — tem seu próprio helper `_run_rotation()`, porque esse modo chama `boto3.client("ssm")` (não coberto pelos mocks de `_run()`). `_run_rotation()` mocka `main.boto3` inteiro e configura `get_parameter`/`put_parameter` do cliente SSM retornado.
 
@@ -61,9 +61,7 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_skip_weekly_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
 | `test_skip_weekly_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
 | `test_skip_weekly_retorna_status_200` | Handler retorna 200 mesmo com skip_weekly |
-| `test_skip_weekly_movie_nao_invoca_orquestrador` | Na perna `movie`, `boto3.client("lambda").invoke` não é chamado (tv ainda não coletou referências) |
-| `test_skip_weekly_tv_invoca_orquestrador_de_forma_assincrona` | Na perna `tv`, `invoke` é chamado com `FunctionName=LAMBDA_GLUE_ORCHESTRATOR_NAME`, `InvocationType="Event"` e um `Payload` cujo `wait_for` tem os 3 `run_id`s capturados e `target_job_name=GLUE_AGG_JOB_NAME` |
-| `test_skip_weekly_tv_nao_espera_glue_dentro_da_lambda` | Regressão: `get_job_run` não é chamado — a espera pelos Glue ETL de referência foi extraída para `app/lambda_glue_orchestrator` (testada em `test/lambda_glue_orchestrator/`) |
+| `test_skip_weekly_nao_invoca_nenhuma_lambda_para_movie_ou_tv` | `boto3.client("lambda").invoke` não é chamado em nenhuma das duas pernas (`movie`/`tv`), e a resposta segue o mesmo formato (`statusCode=200`, `body` só diferindo pelo `content_type`) — a lambda_glue_orchestrator foi removida, o Glue AGG roda em agendamento próprio |
 
 ### `TestOnlyDiscover` — flag `only_weekly_tables=True`
 

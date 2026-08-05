@@ -41,11 +41,12 @@ EventBridge (schedule)
   ├── Busca streaming providers do Brasil por título (tb_tmdb_watch_providers_{media_type}_{env})
   ├── Salva em S3 SOT (tb_tmdb_details_{media_type}_{env} + tb_tmdb_watch_providers_{media_type}_{env})
   ├── Lógica delta: só busca IDs que ainda não existem na camada details
-  ├── Repara duplicatas nas partições (discover, details, watch_providers)
-  └── Dispara Glue AGG job apenas quando year == end_year (último ano do ciclo)
+  └── Repara duplicatas nas partições (discover, details, watch_providers)
+
+  aws_glue_trigger SCHEDULED (sábado e domingo, 08:00 BRT — infra/glue_agg.tf)
        │
        ▼
-  Glue AGG (app/glue_agg/)
+  Glue AGG (app/glue_agg/) — independente do restante do pipeline, não espera o Glue Details
   ├── Une filmes e séries via Athena SQL com CTEs e DENSE_RANK
   ├── Joins com gêneros, detalhes, streaming providers e now_playing
   ├── Deduplicação final por (id, media_type)
@@ -162,7 +163,7 @@ EventBridge (schedule)
 --TABLE_DISCOVER_MOVIE, --TABLE_DISCOVER_TV
 --TABLE_DETAILS_MOVIE, --TABLE_DETAILS_TV
 --TABLE_WATCH_PROVIDERS_MOVIE, --TABLE_WATCH_PROVIDERS_TV
---TMDB_SECRET_ARN, --GLUE_AGG_JOB_NAME, --GLUE_DATA_QUALITY_JOB_NAME
+--TMDB_SECRET_ARN, --GLUE_DATA_QUALITY_JOB_NAME
 --MEDIA_TYPE, --YEAR, --END_YEAR  (YEAR/END_YEAR opcionais — ausentes no modo changes)
 --FORCE_REFETCH (opcional), --TRANSLATE_PROVIDER (opcional)
 --CHANGES_S3_PATH (opcional — presente só no modo changes, ver abaixo)
