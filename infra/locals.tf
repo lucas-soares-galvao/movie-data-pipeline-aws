@@ -206,19 +206,19 @@ EOT
   # Em vez de escrever "${var.glue_etl_job_name}-${var.env}" em cada arquivo,
   # usamos "local.envs.glue_etl_job_name".
   envs = {
-    glue_etl_job_name             = "${local.tmdb_prefix}-${var.glue_etl_job_name}-${var.env}"             # ex (dev): "tmdb-glue-etl-dev"
-    glue_data_quality_job_name    = "${local.tmdb_prefix}-${var.glue_data_quality_job_name}-${var.env}"    # ex (dev): "tmdb-glue-data-quality-dev"
-    glue_agg_job_name             = "${local.tmdb_prefix}-${var.glue_agg_job_name}-${var.env}"             # ex (dev): "tmdb-glue-agg-dev"
-    glue_details_job_name         = "${local.tmdb_prefix}-${var.glue_details_job_name}-${var.env}"         # ex (dev): "tmdb-glue-details-dev"
-    lambda_api_name               = "${local.tmdb_prefix}-${var.lambda_api_name}-${var.env}"               # ex (dev): "tmdb-lambda-api-dev"
-    iam_role_glue                 = "${local.tmdb_prefix}-${var.iam_role_glue}-${var.env}"
-    iam_role_lambda               = "${local.tmdb_prefix}-${var.iam_role_lambda}-${var.env}"
-    s3_bucket_aux                 = "${var.s3_bucket_aux}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-aux-dev"
-    s3_bucket_temp                = "${var.s3_bucket_temp}-${var.env}"         # ex (dev): "lsg-sa-east-1-bucket-temp-dev"
-    s3_bucket_sor                 = "${var.s3_bucket_sor}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-sor-dev"
-    s3_bucket_sot                 = "${var.s3_bucket_sot}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-sot-dev"
-    s3_bucket_spec                = "${var.s3_bucket_spec}-${var.env}"         # ex (dev): "lsg-sa-east-1-bucket-spec-dev"
-    s3_bucket_data_quality        = "${var.s3_bucket_data_quality}-${var.env}" # ex (dev): "lsg-sa-east-1-bucket-dq-dev"
+    glue_etl_job_name          = "${local.tmdb_prefix}-${var.glue_etl_job_name}-${var.env}"          # ex (dev): "tmdb-glue-etl-dev"
+    glue_data_quality_job_name = "${local.tmdb_prefix}-${var.glue_data_quality_job_name}-${var.env}" # ex (dev): "tmdb-glue-data-quality-dev"
+    glue_agg_job_name          = "${local.tmdb_prefix}-${var.glue_agg_job_name}-${var.env}"          # ex (dev): "tmdb-glue-agg-dev"
+    glue_details_job_name      = "${local.tmdb_prefix}-${var.glue_details_job_name}-${var.env}"      # ex (dev): "tmdb-glue-details-dev"
+    lambda_api_name            = "${local.tmdb_prefix}-${var.lambda_api_name}-${var.env}"            # ex (dev): "tmdb-lambda-api-dev"
+    iam_role_glue              = "${local.tmdb_prefix}-${var.iam_role_glue}-${var.env}"
+    iam_role_lambda            = "${local.tmdb_prefix}-${var.iam_role_lambda}-${var.env}"
+    s3_bucket_aux              = "${var.s3_bucket_aux}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-aux-dev"
+    s3_bucket_temp             = "${var.s3_bucket_temp}-${var.env}"         # ex (dev): "lsg-sa-east-1-bucket-temp-dev"
+    s3_bucket_sor              = "${var.s3_bucket_sor}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-sor-dev"
+    s3_bucket_sot              = "${var.s3_bucket_sot}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-sot-dev"
+    s3_bucket_spec             = "${var.s3_bucket_spec}-${var.env}"         # ex (dev): "lsg-sa-east-1-bucket-spec-dev"
+    s3_bucket_data_quality     = "${var.s3_bucket_data_quality}-${var.env}" # ex (dev): "lsg-sa-east-1-bucket-dq-dev"
 
     # Glue Catalog — Databases
     glue_catalog_db_movie   = "db_${local.tmdb_prefix}_movie_${var.env}"   # ex (dev): "db_tmdb_movie_dev"
