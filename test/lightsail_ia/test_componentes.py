@@ -342,8 +342,9 @@ class TestRenderCard:
         assert "providers-label" not in html
 
     def test_card_ignora_campo_de_logo_do_provedor(self):
-        """streaming_provider_logos/rent_buy_provider_logos continuam vindo da query, mas
-        não são mais consumidos pelo card — nome do provedor renderiza só como texto."""
+        """streaming_provider_logos/rent_buy_provider_logos não são mais buscados nem
+        formatados — se aparecerem no dict do card por algum outro motivo, o card
+        continua ignorando-os e renderiza o nome do provedor só como texto."""
         t = {
             **BASE_TITLE,
             "streaming_providers": "Netflix",
