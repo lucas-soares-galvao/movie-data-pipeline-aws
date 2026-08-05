@@ -68,6 +68,7 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import time
 import wave
@@ -84,6 +85,11 @@ load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
 _LLM_NUM_RETRIES = 3
+# Pool de candidatos maior que o limit pedido: search_titles_spec() sorteia um
+# subconjunto desse pool a cada busca, para não repetir sempre o mesmo top-N
+# por popularidade quando a mesma pergunta (ou uma parecida) é feita de novo.
+_CANDIDATE_POOL_MULTIPLIER = 4
+_CANDIDATE_POOL_MAX = 45
 _TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
 _MAX_AUDIO_SECONDS = 15
 # Folga só pra rejeição, não pro auto-stop nem pro rótulo mostrado ao usuário
@@ -386,6 +392,12 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
     O filtro fixo vote_count >= 50 é sempre aplicado automaticamente para
     garantir qualidade dos dados (exclui títulos com poucos votos).
 
+    Busca um pool de candidatos maior que `limit` (ordenado por popularidade,
+    até _CANDIDATE_POOL_MAX) e sorteia um subconjunto de `limit` títulos desse
+    pool, preservando a ordem de popularidade entre os escolhidos. Evita que a
+    mesma pergunta (ou uma parecida) sempre retorne exatamente os mesmos
+    títulos mais populares.
+
     Args:
         where_clause: Cláusula WHERE gerada pelo LLM (sem a palavra WHERE).
         limit:        Máximo de títulos retornados. Padrão 15.
@@ -394,6 +406,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
         Lista de dicionários, cada um representando um título com todos os campos da SPEC.
     """
     limit = max(1, min(int(limit), 15))
+    pool_size = min(limit * _CANDIDATE_POOL_MULTIPLIER, _CANDIDATE_POOL_MAX)
     where_clause = _validate_where(where_clause)
 
     sql = f"""
@@ -411,7 +424,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
         WHERE vote_count >= 50 AND {where_clause}
         ORDER BY popularity DESC
-        LIMIT {int(limit)}
+        LIMIT {pool_size}
     """
 
     athena = boto3.client("athena", region_name=os.getenv("AWS_REGION", "sa-east-1"))
@@ -450,6 +463,14 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
         for row in rows:
             values = [item.get("VarCharValue") for item in row["Data"]]
             records.append(dict(zip(columns, values)))
+
+    # Sorteia um subconjunto do pool para variar os títulos entre buscas
+    # repetidas ou parecidas. Preserva a ordem por popularidade dentro do
+    # subconjunto escolhido — não embaralha o resultado, só troca quais
+    # títulos do pool aparecem a cada chamada.
+    if len(records) > limit:
+        chosen_indices = sorted(random.sample(range(len(records)), limit))
+        records = [records[i] for i in chosen_indices]
 
     # Libera memória dos objetos de resposta do boto3 antes de passar ao LLM
     gc.collect()

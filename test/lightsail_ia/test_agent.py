@@ -334,21 +334,21 @@ class TestSearchTitlesSpec:
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
         assert "year BETWEEN '2000' AND '2010'" in executed_sql
 
-    def test_limite_aplicado_na_query(self):
+    def test_pool_maior_que_limite_solicitado_na_query(self):
         with patch("agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
-            agent.search_titles_spec("vote_average >= 6.0", limit=15)
+            agent.search_titles_spec("vote_average >= 6.0", limit=5)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 15" in executed_sql
+        assert "LIMIT 20" in executed_sql  # 5 * _CANDIDATE_POOL_MULTIPLIER
 
-    def test_limite_e_limitado_ao_maximo_de_15(self):
+    def test_limite_solicitado_e_limitado_a_15_antes_do_pool(self):
         with patch("agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("vote_average >= 6.0", limit=100)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 15" in executed_sql
+        assert "LIMIT 45" in executed_sql  # limit capado a 15, pool = min(15*4, 45)
         assert "LIMIT 100" not in executed_sql
 
     def test_limite_minimo_e_1(self):
@@ -357,7 +357,45 @@ class TestSearchTitlesSpec:
             agent.search_titles_spec("vote_average >= 6.0", limit=0)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 1" in executed_sql
+        assert "LIMIT 4" in executed_sql  # limit capado a 1, pool = min(1*4, 45)
+
+    def test_pool_nao_ultrapassa_maximo_absoluto(self):
+        with patch("agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("vote_average >= 6.0", limit=15)
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "LIMIT 45" in executed_sql
+        assert "LIMIT 60" not in executed_sql
+
+    def test_amostra_e_limitada_ao_limit_solicitado_quando_pool_maior(self):
+        many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
+        with patch("agent.boto3") as mock_boto3:
+            _setup_athena_mock(mock_boto3, rows_data=many_rows)
+            result = agent.search_titles_spec("vote_average >= 6.0", limit=3)
+
+        assert len(result) == 3
+
+    def test_retorna_todos_quando_pool_nao_excede_limit(self):
+        few_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(3)]
+        with patch("agent.boto3") as mock_boto3:
+            _setup_athena_mock(mock_boto3, rows_data=few_rows)
+            result = agent.search_titles_spec("vote_average >= 6.0", limit=15)
+
+        assert len(result) == 3
+
+    def test_amostra_preserva_ordem_de_popularidade_do_subconjunto(self):
+        many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
+        with (
+            patch("agent.boto3") as mock_boto3,
+            patch("agent.random.sample", return_value=[7, 2, 5]),
+        ):
+            _setup_athena_mock(mock_boto3, rows_data=many_rows)
+            result = agent.search_titles_spec("vote_average >= 6.0", limit=3)
+
+        # mesmo com random.sample devolvendo índices fora de ordem, o resultado
+        # final preserva a ordem original (popularidade DESC) entre os escolhidos
+        assert [r["title"] for r in result] == ["Filme 2", "Filme 5", "Filme 7"]
 
     def test_rejeita_where_com_sql_perigoso(self):
         with pytest.raises(ValueError):
