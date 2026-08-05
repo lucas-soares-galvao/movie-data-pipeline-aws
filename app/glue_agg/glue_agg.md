@@ -2,11 +2,17 @@
 
 ## O que é
 
-O Glue AGG é o estágio final de transformação do pipeline. Acionado pelo Glue Details após todos os detalhes de filmes e séries estarem prontos, ele une todas as tabelas da camada SOT em uma única tabela consolidada na camada SPEC (Gold) e grava o resultado pronto para consumo pelo aplicativo de recomendações (FilmBot).
+O Glue AGG é o estágio final de transformação do pipeline. Roda em agendamento próprio — um `aws_glue_trigger` nativo do Glue (`type = "SCHEDULED"`, sem EventBridge/Lambda no meio), sábado e domingo às 08:00 BRT (`infra/glue_agg.tf`) — independente do restante do pipeline: não espera nenhum sinal de conclusão do Glue Details, apenas une todas as tabelas da camada SOT disponíveis no momento em uma única tabela consolidada na camada SPEC (Gold) e grava o resultado pronto para consumo pelo aplicativo de recomendações (FilmBot).
 
 ## Por que existe
 
 Os dados de filmes e séries chegam em tabelas separadas (discover, details, genres, languages, watch_providers). O aplicativo precisa de uma visão única e enriquecida. Este job faz essa consolidação via SQL no Athena, garantindo que o app consulte apenas uma tabela final, já traduzida e sem duplicatas.
+
+## Agendamento (`aws_glue_trigger`, sábado e domingo às 08:00 BRT)
+
+Antes, o AGG era acionado por código a partir do `glue_details` (`media_type == "tv" and year == end_year`, ou `media_type == "tv" and affected_years` no modo changes) — uma condição que garantia que todas as tabelas de origem já estivessem gravadas antes da unificação. Isso foi substituído por um agendamento fixo, tratando o AGG como independente do resto do pipeline: menos acoplamento, ao custo de aceitar o risco de o AGG rodar antes do ciclo semanal terminar e unificar dados incompletos até o próximo ciclo bem-sucedido (o job sempre faz `overwrite` total, sem validar completude).
+
+O horário (11:00 UTC) foi calibrado com o histórico real de execução do Glue Details: no pior caso observado (rotation + discover semanal + monthly coincidindo no mesmo sábado — confirmado via CloudWatch, já que dia 1 do mês caindo num sábado dispara os três ciclos juntos), o `glue_details` terminou às 06:42 BRT. 08:00 BRT dá ~77 min de folga sobre esse cenário. O modo changes (Domingo) nunca colide com rotation/discover/monthly de sábado, já que roda isolado — o único caso não medido é monthly caindo num domingo (colidindo com changes), mas a contribuição marginal do monthly observada no sábado (~3-4 min) sugere folga bem maior que a necessária mesmo nesse cenário.
 
 ## Conceitos-chave
 

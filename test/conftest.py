@@ -33,7 +33,6 @@ _SUITE_TO_APP: dict[str, Path] = {
     "glue_etl": _APP_ROOT / "glue_etl",
     "glue_details": _APP_ROOT / "glue_details",
     "lambda_api": _APP_ROOT / "lambda_api",
-    "lambda_glue_orchestrator": _APP_ROOT / "lambda_glue_orchestrator",
 }
 
 # Suites sem entrada aqui não recebem alias src.utils (ex: lightsail usa estrutura diferente).
@@ -43,7 +42,6 @@ _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_etl": "app.glue_etl.src.utils",
     "glue_details": "app.glue_details.src.utils",
     "lambda_api": "app.lambda_api.src.utils",
-    "lambda_glue_orchestrator": "app.lambda_glue_orchestrator.src.utils",
 }
 
 # Conjuntos de todos os diretórios conhecidos de cada suite.

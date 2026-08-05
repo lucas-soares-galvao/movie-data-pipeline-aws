@@ -34,7 +34,6 @@ def main() -> None:
     s3_bucket_temp = args["S3_BUCKET_TEMP"]
     database       = args["DATABASE"]
     secret_arn     = args["TMDB_SECRET_ARN"]
-    agg_job_name   = args["GLUE_AGG_JOB_NAME"]
     dq_job_name    = args["GLUE_DATA_QUALITY_JOB_NAME"]
 
     table_discover_movie        = args["TABLE_DISCOVER_MOVIE"]
@@ -86,13 +85,6 @@ def main() -> None:
             years_arg = ",".join(affected_years)
             trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=years_arg)
             trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=years_arg)
-
-        # AGG recalcula a tabela SPEC por completo a cada run (overwrite total, nunca
-        # merge) — disparar aqui ao final do changes de tv evita a defasagem de até
-        # 1 semana entre uma correção pontual via changes e o próximo ciclo normal.
-        if media_type == "tv" and affected_years:
-            logger.info("Acionando Glue AGG (modo changes)...")
-            trigger_glue_job(agg_job_name)
 
         logger.info("Job Glue Details (modo changes) finalizado com sucesso!")
         return
@@ -189,11 +181,6 @@ def main() -> None:
             s3_bucket_temp=s3_bucket_temp,
             year=year,
         )
-
-    # tv + end_year é o último run do ciclo; só neste ponto todos os JOINs do AGG são possíveis.
-    if media_type == "tv" and year == end_year:
-        logger.info("Acionando Glue AGG...")
-        trigger_glue_job(agg_job_name)
 
     logger.info("Job Glue Details finalizado com sucesso!")
 

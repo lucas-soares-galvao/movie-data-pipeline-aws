@@ -16,7 +16,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`only_weekly_tables=True`** (execução semanal): pula gêneros, idiomas, países e plataformas de referência.
    - **`only_annual_tables=True`** (backfill manual de múltiplos anos): mesmo efeito do `only_weekly_tables` — pula referências e roda apenas o discover.
    - **`only_monthly_tables=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
-   - **`skip_weekly=True`** (referências apenas — hoje só usado por `scripts/backfill_referencias.py`): pula o loop de discover. Como esse modo nunca passa pelo Glue Details, o **Glue AGG** não seria acionado pelo cascade normal — sem isso, a referência atualizada só apareceria na camada SPEC no próximo ciclo semanal/mensal. Só no run de `content_type="tv"` (mesma convenção de "tv fecha o ciclo" usada no cascade normal do discover — `app/glue_details/main.py`, `media_type == "tv" and year == end_year`), a Lambda invoca a **`lambda_glue_orchestrator`** de forma assíncrona (`InvocationType="Event"`) com os `run_id`s dos 3 Glue ETL de referência que essa mesma invocação disparou e `target_job_name=GLUE_AGG_JOB_NAME`. A espera pelos 3 Glue ETL (antes necessária aqui, via polling em `glue:GetJobRun`) não roda mais dentro desta Lambda — foi extraída para essa segunda função justamente porque essa espera (~4-5min) estourava o `read_timeout` padrão de clientes síncronos e, via retry automático do botocore (`lambda:Invoke` não é idempotente), chegou a causar execuções concorrentes em produção. Ver `app/lambda_glue_orchestrator/lambda_glue_orchestrator.md` para o racional completo. Não espera pelos jobs de `movie` (invocação separada e anterior) — como no resto do pipeline, depende do intervalo entre as duas invocações (5 min no EventBridge, 300s em `scripts/backfill_referencias.py`) já ser suficiente.
+   - **`skip_weekly=True`** (referências apenas — hoje só usado por `scripts/backfill_referencias.py`): pula o loop de discover, dispara os 3 Glue ETL de referência (genre/configuration/watch_providers_ref) e retorna — comportamento idêntico em `movie` e `tv`. O **Glue AGG** não é acionado a partir daqui (nem de nenhum outro lugar do código): ele roda em agendamento próprio (`aws_glue_trigger` nativo do Glue, sábado e domingo às 08:00 BRT, independente do restante do pipeline — ver `app/glue_agg/glue_agg.md`), então a referência atualizada por este modo chega à camada SPEC no próximo AGG agendado, não no mesmo dia.
    - **`only_changes_tables=True`** (execução semanal de changes, ver "Modo changes" abaixo): sai antes de qualquer coleta de referência/discover.
    - **`only_rotation_refresh=True`** (execução semanal de rotation refresh, ver "Modo rotation refresh" abaixo): sai antes de qualquer coleta de referência/discover.
    - Sem flags: coleta tudo.
@@ -56,7 +56,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 | **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `skip_weekly`, `only_changes_tables`, `only_rotation_refresh`, `translate_provider`) |
 | **Leitura** | API TMDB (HTTP), Secrets Manager (chave de API), SSM Parameter Store (ponteiro do modo rotation refresh) |
 | **Escrita** | S3 SOR — `tmdb/discover/{movie\|tv}/year={ano}/`, `tmdb/{genre\|configuration\|watch_providers_ref}/{movie\|tv}/` e `tmdb/now_playing/movie/pagina_NNN.json`; S3 TEMP — `tmdb/changes/{movie\|tv}/{data}.json` (modo changes); SSM Parameter Store — `/tmdb-pipeline/rotation-year-pointer-{movie\|tv}` (modo rotation refresh) |
-| **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes); Glue Details diretamente nos modos changes e rotation refresh; Lambda `lambda_glue_orchestrator` de forma assíncrona no modo `skip_weekly` (só no run de `content_type="tv"`) — que por sua vez aciona o Glue AGG |
+| **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes); Glue Details diretamente nos modos changes e rotation refresh |
 
 ## Funções principais (`src/utils.py`)
 
@@ -76,7 +76,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 |---|---|---|
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
-| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona um job Glue, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, `--TRANSLATE_PROVIDER`, etc.); usado para o Glue ETL (fluxo normal) e o Glue Details (modos changes/rotation refresh). O Glue AGG não é acionado por esta função — ver modo `skip_weekly` acima |
+| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona um job Glue, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, `--TRANSLATE_PROVIDER`, etc.); usado para o Glue ETL (fluxo normal) e o Glue Details (modos changes/rotation refresh) |
 
 ## Tecnologias
 

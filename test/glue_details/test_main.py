@@ -13,7 +13,6 @@ _BASE = {
     "TABLE_WATCH_PROVIDERS_MOVIE": "tb_tmdb_watch_providers_movie_dev",
     "TABLE_WATCH_PROVIDERS_TV": "tb_tmdb_watch_providers_tv_dev",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
-    "GLUE_AGG_JOB_NAME": "agg-job",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
     "MEDIA_TYPE": "movie",
     "YEAR": "2025",
@@ -199,26 +198,7 @@ class TestMain:
             assert set(call_kw.kwargs["ids"]) == set(_IDS)
             assert call_kw.kwargs["table_name"] == "tb_tmdb_details_tv_dev"
 
-    def test_triggers_agg_when_tv_and_last_year(self):
-        args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2025", "END_YEAR": "2025"}
-        with (
-            patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "time"),
-            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
-            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
-            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
-            patch.object(m, "collect_and_write_details"),
-            patch.object(m, "collect_and_write_watch_providers"),
-            patch.object(m, "trigger_glue_job") as mock_trigger,
-            patch.object(m, "repair_details_duplicates"),
-        ):
-            m.main()
-            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
-            assert len(agg_calls) == 1
-            assert agg_calls[0] == call("agg-job")
-
-    def test_repair_called_before_agg_when_tv_and_last_year(self):
+    def test_repair_called_in_order_when_tv_and_last_year(self):
         args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2025", "END_YEAR": "2025"}
         call_order = []
         with (
@@ -230,7 +210,7 @@ class TestMain:
             patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
             patch.object(m, "collect_and_write_details"),
             patch.object(m, "collect_and_write_watch_providers"),
-            patch.object(m, "trigger_glue_job", side_effect=lambda *a, **kw: call_order.append("agg") if not kw else None),
+            patch.object(m, "trigger_glue_job"),
             patch.object(m, "repair_discover_duplicates", side_effect=lambda **_: call_order.append("repair_discover")),
             patch.object(m, "repair_watch_providers_duplicates", side_effect=lambda **_: call_order.append("repair_wp")),
             patch.object(m, "repair_details_duplicates", side_effect=lambda **_: call_order.append("repair_details")) as mock_repair,
@@ -243,7 +223,7 @@ class TestMain:
             s3_bucket_temp="my-temp",
             year="2025",
         )
-        assert call_order == ["repair_discover", "repair_wp", "repair_details", "agg"]
+        assert call_order == ["repair_discover", "repair_wp", "repair_details"]
 
     def test_repair_called_for_movie_at_last_year(self):
         with (
@@ -287,41 +267,6 @@ class TestMain:
             mock_repair_discover.assert_not_called()
             mock_repair_wp.assert_not_called()
             mock_repair_details.assert_not_called()
-
-    def test_does_not_trigger_agg_for_movie(self):
-        with (
-            patch.object(m, "get_parameters_glue", return_value=_BASE),
-            patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "time"),
-            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
-            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
-            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
-            patch.object(m, "collect_and_write_details"),
-            patch.object(m, "collect_and_write_watch_providers"),
-            patch.object(m, "trigger_glue_job") as mock_trigger,
-            patch.object(m, "repair_details_duplicates"),
-        ):
-            m.main()
-            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
-            assert len(agg_calls) == 0
-
-    def test_does_not_trigger_agg_for_tv_non_last_year(self):
-        args = {**_BASE, "MEDIA_TYPE": "tv", "YEAR": "2024", "END_YEAR": "2025"}
-        with (
-            patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "time"),
-            patch.object(m, "fetch_ids_from_sot", return_value=_IDS),
-            patch.object(m, "fetch_existing_ids_from_details", return_value=[]),
-            patch.object(m, "fetch_ids_stale_watch_providers", return_value=_IDS),
-            patch.object(m, "collect_and_write_details"),
-            patch.object(m, "collect_and_write_watch_providers"),
-            patch.object(m, "trigger_glue_job") as mock_trigger,
-            patch.object(m, "repair_details_duplicates"),
-        ):
-            m.main()
-            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
-            assert len(agg_calls) == 0
 
     def test_skip_collect_details_when_no_new_ids(self):
         with (
@@ -502,48 +447,18 @@ class TestChangesMode:
             m.main()
             mock_trigger.assert_not_called()
 
-    def test_nao_aciona_agg_nem_repair_discover(self):
+    def test_modo_changes_nao_aciona_repair_discover(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "time"),
             patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
             patch.object(m, "process_changed_ids", return_value=["2020"]),
-            patch.object(m, "trigger_glue_job") as mock_trigger,
+            patch.object(m, "trigger_glue_job"),
             patch.object(m, "repair_discover_duplicates") as mock_repair_discover,
         ):
             m.main()
-            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
-            assert len(agg_calls) == 0
             mock_repair_discover.assert_not_called()
-
-    def test_aciona_agg_quando_tv_e_ha_anos_afetados(self):
-        args = {**_BASE_CHANGES, "MEDIA_TYPE": "tv"}
-        with (
-            patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "time"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
-            patch.object(m, "process_changed_ids", return_value=["2020"]),
-            patch.object(m, "trigger_glue_job") as mock_trigger,
-        ):
-            m.main()
-            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
-            assert agg_calls == [call("agg-job")]
-
-    def test_nao_aciona_agg_quando_tv_sem_anos_afetados(self):
-        args = {**_BASE_CHANGES, "MEDIA_TYPE": "tv"}
-        with (
-            patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "time"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
-            patch.object(m, "process_changed_ids", return_value=[]),
-            patch.object(m, "trigger_glue_job") as mock_trigger,
-        ):
-            m.main()
-            agg_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "agg-job"]
-            assert agg_calls == []
 
     def test_usa_tabelas_de_tv_quando_media_type_tv(self):
         args = {**_BASE_CHANGES, "MEDIA_TYPE": "tv"}

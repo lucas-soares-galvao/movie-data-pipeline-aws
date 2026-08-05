@@ -146,22 +146,6 @@ variable "lambda_api_name" {
 }
 
 # =============================================================================
-# LAMBDA GLUE ORCHESTRATOR
-# =============================================================================
-
-variable "lambda_glue_orchestrator_path_app" {
-  description = "Caminho para os modulos Python da aplicacao da Lambda Glue Orchestrator"
-  type        = string
-  default     = "lambda_glue_orchestrator"
-}
-
-variable "lambda_glue_orchestrator_name" {
-  description = "Nome da funcao Lambda a ser criada por ambiente"
-  type        = string
-  default     = "lambda-glue-orchestrator"
-}
-
-# =============================================================================
 # GLUE ETL — Processamento Básico de Dados
 # =============================================================================
 
