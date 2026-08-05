@@ -77,10 +77,10 @@ resource "aws_iam_role_policy" "backfill_invoke_lambda" {
 
 # =============================================================================
 # POLICY 2 — Glue Jobs Details, Data Quality e AGG (backfill_enriquecimento.py,
-# backfill_data_quality.py, e o disparo do glue_agg ao final de qualquer grupo
-# elegível — todos exceto data_quality, ver step "Run backfill" em
-# 05_backfill.yml). O AGG é fire-and-forget (sem polling), por isso só precisa
-# de StartJobRun, não GetJobRun.
+# backfill_data_quality.py, e o disparo + polling do glue_agg ao final de
+# qualquer grupo elegível — todos exceto data_quality, ver step "Run backfill"
+# em 05_backfill.yml). GetJobRun também é usado para o AGG porque o workflow
+# faz polling do estado até um estado terminal, não é fire-and-forget.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_glue_jobs" {
   name = "${local.tmdb_prefix}-backfill-glue-jobs-${var.env}"
@@ -88,26 +88,19 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "StartAndMonitorBackfillJobs"
-        Effect = "Allow"
-        Action = [
-          "glue:StartJobRun",
-          "glue:GetJobRun",
-        ]
-        Resource = [
-          aws_glue_job.details_job_pythonshell.arn,
-          aws_glue_job.data_quality_job.arn,
-        ]
-      },
-      {
-        Sid      = "StartAggJobAfterBackfill"
-        Effect   = "Allow"
-        Action   = "glue:StartJobRun"
-        Resource = aws_glue_job.agg_job_pythonshell.arn
-      },
-    ]
+    Statement = [{
+      Sid    = "StartAndMonitorBackfillJobs"
+      Effect = "Allow"
+      Action = [
+        "glue:StartJobRun",
+        "glue:GetJobRun",
+      ]
+      Resource = [
+        aws_glue_job.details_job_pythonshell.arn,
+        aws_glue_job.data_quality_job.arn,
+        aws_glue_job.agg_job_pythonshell.arn,
+      ]
+    }]
   })
 }
 
