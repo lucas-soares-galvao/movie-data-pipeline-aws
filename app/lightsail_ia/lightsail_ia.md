@@ -31,6 +31,8 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente.
 
+**Pool de candidatos + sorteio (variedade entre buscas):** a query busca um pool maior que o `limit` pedido — `min(limit * _CANDIDATE_POOL_MULTIPLIER, _CANDIDATE_POOL_MAX)` títulos, ordenados por popularidade — e `search_titles_spec()` sorteia um subconjunto de `limit` títulos desse pool, preservando a ordem de popularidade entre os escolhidos. Sem isso, a mesma pergunta (ou uma parecida, já que o LLM tende a gerar a mesma `where_clause`) sempre devolveria exatamente o mesmo top-N por popularidade — a ordenação fixa da query, não só o cache, é que causava a repetição. Como a Etapa 2 roda em toda busca (mesmo em cache hit do Passo 1 — só a cláusula WHERE é cacheada, não os títulos), a variedade acontece sempre, sem custo adicional de LLM.
+
 ### Etapa 2.5 — Formatação determinística (formatacao.py)
 Após o Athena retornar os resultados brutos, funções puras em `formatacao.py` (`format_record()`) convertem cada registro em campos prontos para o card da interface, sem usar LLM:
 - `title` (cópia de `title`), `type` (`"movie"` → `"filme"`, `"tv"` → `"série"`)
@@ -122,7 +124,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | Arquivo | Função | Responsabilidade |
 |---|---|---|
 | `agent.py` | `recommend(user_input)` | Orquestra as etapas: verificar cache → gerar WHERE (LLM) → consultar → formatar (Python) → gerar motivo (LLM) |
-| `agent.py` | `search_titles_spec(where_clause, limit)` | Valida o WHERE gerado pelo LLM e executa query SQL no Athena (limite máximo: 15) |
+| `agent.py` | `search_titles_spec(where_clause, limit)` | Valida o WHERE gerado pelo LLM, busca um pool de candidatos maior que `limit` (ordenados por popularidade, até `_CANDIDATE_POOL_MAX`) e sorteia um subconjunto de `limit` títulos (máximo 15) preservando a ordem de popularidade entre os escolhidos |
 | `agent.py` | `_validate_where(where_clause)` | Valida a cláusula WHERE contra SQL perigoso (DROP, DELETE, INSERT, subqueries, UPDATE, ALTER, CREATE, GRANT, TRUNCATE, EXEC, MERGE, REPLACE, CALL) |
 | `agent.py` | `_extract_highlighted_terms(where_clause)` | Extrai por regex os valores de `lower(genre_names) LIKE '%valor%'`/`lower(streaming_providers) LIKE '%valor%'` da where_clause gerada pelo LLM (ignora `NOT LIKE`), para priorizar as badges correspondentes nos cards sem chamada extra de LLM |
 | `agent.py` | `_load_llm_api_key()` | Busca `LLM_API_KEY` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou usa `.env` como fallback em desenvolvimento |

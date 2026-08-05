@@ -87,9 +87,13 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_filtro_em_cartaz_na_query` | WHERE inclui `in_theaters = true` para filtro de cinema |
 | `test_filtro_plataforma_na_query` | WHERE inclui `lower(streaming_providers) LIKE '%netflix%'` para filtro de streaming |
 | `test_filtro_faixa_de_ano_na_query` | WHERE inclui `year BETWEEN '2000' AND '2010'` para faixa de ano |
-| `test_limite_aplicado_na_query` | LIMIT na query reflete o parâmetro `limit` |
-| `test_limite_e_limitado_ao_maximo_de_15` | Limita a `LIMIT 15` mesmo se `limit=100` for passado |
-| `test_limite_minimo_e_1` | Usa `LIMIT 1` quando `limit=0` for passado |
+| `test_pool_maior_que_limite_solicitado_na_query` | LIMIT na query reflete o pool (`limit * _CANDIDATE_POOL_MULTIPLIER`), não o `limit` pedido |
+| `test_limite_solicitado_e_limitado_a_15_antes_do_pool` | `limit=100` é capado a 15 antes de calcular o pool (`LIMIT 45` na query, não `LIMIT 100`/`LIMIT 15`) |
+| `test_limite_minimo_e_1` | `limit=0` é capado a 1 antes de calcular o pool (`LIMIT 4` na query) |
+| `test_pool_nao_ultrapassa_maximo_absoluto` | Pool nunca ultrapassa `_CANDIDATE_POOL_MAX` (45), mesmo quando `limit * _CANDIDATE_POOL_MULTIPLIER` seria maior |
+| `test_amostra_e_limitada_ao_limit_solicitado_quando_pool_maior` | Pool com mais linhas que `limit` → resultado final tem exatamente `limit` títulos |
+| `test_retorna_todos_quando_pool_nao_excede_limit` | Pool com menos linhas que `limit` → retorna todas, sem erro |
+| `test_amostra_preserva_ordem_de_popularidade_do_subconjunto` | Mesmo com `random.sample` retornando índices fora de ordem, o resultado final preserva a ordem original (popularidade DESC) entre os títulos escolhidos |
 | `test_rejeita_where_com_sql_perigoso` | Levanta `ValueError` quando a cláusula WHERE contém SQL perigoso |
 
 ### `TestRecommend` — Fluxo completo de recomendação
