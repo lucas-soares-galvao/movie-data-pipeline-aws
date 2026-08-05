@@ -232,10 +232,9 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
 | `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
 | `test_card_com_streaming_providers` | Card exibe plataformas de streaming |
-| `test_card_com_streaming_provider_logo_renderiza_img` | Card com `streaming_provider_logos` preenchido renderiza `<img>` da logo em vez do nome como texto |
+| `test_card_ignora_campo_de_logo_do_provedor` | Se `streaming_provider_logos`/`rent_buy_provider_logos` aparecerem no dict do card, são ignorados — nome do provedor renderiza só como texto, nunca `<img>` |
 | `test_card_sem_rent_buy_providers_nao_exibe_bloco` | Sem `rent_buy_providers`, o bloco "Aluguel/Compra" não é renderizado |
 | `test_card_com_rent_buy_providers_exibe_bloco` | Com `rent_buy_providers` preenchido, o bloco "Aluguel/Compra" aparece com os nomes das plataformas |
-| `test_card_com_rent_buy_provider_logo_renderiza_img` | Bloco "Aluguel/Compra" também renderiza `<img>` quando `rent_buy_provider_logos` está preenchido |
 | `test_card_exibe_motivo` | Card exibe o motivo da recomendação (`reason`) |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 | `test_card_escapa_xss_no_motivo` | Valor de `reason` com `<script>` é escapado via `html.escape` |
@@ -315,8 +314,8 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 |---|---|
 | `test_registro_completo_filme` | Registro de filme formatado com todos os campos corretos |
 | `test_novos_campos_filme` | Campos `writers`, `composer`, `keywords` (pt) formatados corretamente |
-| `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `rent_buy_provider_logos`, `streaming_provider_logos`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
-| `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_provider_logos`, `streaming_provider_logos` (entre outros) retornam `None` quando ausentes |
+| `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
+| `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_providers` (entre outros) retornam `None` quando ausentes |
 | `test_registro_serie` | Registro de série com `type="série"` e duração formatada com temporadas |
 
 ## Como executar

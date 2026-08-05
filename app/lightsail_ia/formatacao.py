@@ -92,7 +92,6 @@ def format_record(record: dict) -> dict:
         "duration": _format_title_duration(record),
         "release_date": _format_release_date(record.get("air_date")),
         "streaming_providers": record.get("streaming_providers") or None,
-        "streaming_provider_logos": record.get("streaming_provider_logos") or None,
         "in_theaters": in_theaters,
         "theater_end_date": _format_theater_end_date(
             record.get("theater_end_date"), in_theaters
@@ -114,7 +113,6 @@ def format_record(record: dict) -> dict:
         "networks": record.get("networks") or None,
         "creators": record.get("created_by") or None,
         "rent_buy_providers": record.get("rent_buy_providers") or None,
-        "rent_buy_provider_logos": record.get("rent_buy_provider_logos") or None,
         "recommended": record.get("recommended_titles") or None,
         "similar": record.get("similar_titles") or None,
         "alternative_titles": record.get("alternative_titles") or None,
