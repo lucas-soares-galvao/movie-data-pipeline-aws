@@ -16,6 +16,7 @@ import wave
 from unittest.mock import MagicMock, patch
 
 import agent
+import litellm
 import openai
 import pytest
 
@@ -389,6 +390,33 @@ class TestRecommend:
             agent.recommend("filmes de terror")
 
         assert mock_completion.call_count == 2
+
+    def test_passos_1_e_3_usam_retry_configurado(self):
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror")
+
+        step1_call, step3_call = mock_completion.call_args_list
+        assert step1_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
+        assert step3_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
+
+    def test_propaga_erro_do_provedor_mesmo_com_retry_configurado(self):
+        error = litellm.exceptions.ServiceUnavailableError(
+            message="Service is too busy",
+            llm_provider="deepseek",
+            model="deepseek/deepseek-v4-flash",
+        )
+        with (
+            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("agent.litellm.completion", side_effect=error),
+        ):
+            with pytest.raises(litellm.exceptions.ServiceUnavailableError):
+                agent.recommend("filmes de terror")
 
     def test_retorna_lista_de_titulos(self):
         with (

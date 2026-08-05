@@ -83,6 +83,7 @@ from formatacao import format_record
 load_dotenv()
 
 _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
+_LLM_NUM_RETRIES = 3
 _TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
 _MAX_AUDIO_SECONDS = 15
 # Folga só pra rejeição, não pro auto-stop nem pro rótulo mostrado ao usuário
@@ -533,6 +534,7 @@ def _call_llm_step1(preference: str) -> object:
         api_key=_LLM_API_KEY,
         messages=messages,
         tools=[TOOL],
+        num_retries=_LLM_NUM_RETRIES,
     )
     _log_token_usage("step1_where", response)
     return response
@@ -551,6 +553,7 @@ def _call_llm_step3(preference: str, titles_for_llm: list[dict]) -> object:
                 "content": f"Pedido: {preference}\n\nTítulos encontrados:\n{titles_data}",
             },
         ],
+        num_retries=_LLM_NUM_RETRIES,
     )
     _log_token_usage("step3_reasons", response)
     return response
