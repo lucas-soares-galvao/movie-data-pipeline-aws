@@ -39,7 +39,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `rating` (float), `poster_url`, `backdrop_url`
 - `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temporadas · 36 eps · ~45 min/ep"`)
 - `release_date` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
-- `streaming_providers` (cópia direta — onde assistir no Brasil), `streaming_provider_logos` (URLs de logo do TMDB, comma-joined e alinhada posicionalmente a `streaming_providers`; string vazia por posição quando o provedor não tem logo)
+- `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 - `tagline`, `cast` (top 5 atores), `director` (filmes e séries) — campos formatados mas atualmente não renderizados por `render_card()` (`componentes.py`), junto com `collection`, `creators`, `networks`, `producer`, `cinematographer`, `editor`
 - `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora)
@@ -48,7 +48,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `trailer_url` (link do YouTube), `collection` (saga/franquia, apenas filmes)
 - `production_companies` (estúdios), `production_countries` (países de produção, diferente de país de origem)
 - `networks` (redes originais, apenas séries), `creators` (apenas séries)
-- `rent_buy_providers` (plataformas de aluguel/compra no Brasil), `rent_buy_provider_logos` (mesmo esquema de `streaming_provider_logos`, alinhada a `rent_buy_providers`)
+- `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
 ### Etapa 3 — Geração do motivo (LLM)
@@ -101,9 +101,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Link ▶ Trailer (quando disponível) e, à direita na mesma linha, os badges de texto dos provedores
     — streaming e aluguel/compra combinados num único grupo e deduplicados por nome
     (`componentes.py::_render_provider_badges()`), sem rótulo "Onde assistir"/"Aluguel/Compra", mas
-    com o nome do provedor sempre visível como texto (sem logo — `streaming_provider_logos`/
-    `rent_buy_provider_logos` continuam vindo da query em `agent.py`, mas não são mais consumidos por
-    esta camada). Máx. 6 visíveis, sem indicador para o restante, mesma priorização de `_prioritize()`
+    com o nome do provedor sempre visível como texto (sem logo — a query em `agent.py` traz apenas
+    `streaming_providers`/`rent_buy_providers`, os nomes). Máx. 6 visíveis, sem indicador para o restante, mesma priorização de `_prioritize()`
     para um provedor mencionado explicitamente (ex: "animações da Crunchyroll")
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`
   - Sinopse recolhida por padrão atrás de um accordion "▸ Sinopse" (checkbox hack em CSS, já que
