@@ -13,9 +13,9 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
 | `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda — cada invocação aciona Glue ETL → Glue Details, que traduzem via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
-| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Não dispara o Glue AGG explicitamente — ele roda em agendamento próprio (sábado e domingo às 08:00 BRT), então a atualização chega à camada SPEC no próximo ciclo agendado, não no mesmo dia — ver `app/lambda_api/lambda_api.md` (`skip_weekly`) e `app/glue_agg/glue_agg.md` | Lambda | — |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`) — ver `app/lambda_api/lambda_api.md` (`skip_weekly`) | Lambda | — |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); dispara o Glue Details diretamente, que traduz via `TRANSLATE_PROVIDER` (default `google`) | Glue Details | — |
-| `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas | Glue Data Quality | — |
+| `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** dispara o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 | `backfill_rename_colunas.py` | Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para `processed_date`/`updated_date` nos parquets de details/watch_providers já gravados no S3 — sem chamar a API do TMDB, cobre inclusive IDs que já saíram do discover atual | S3 (direto) | awswrangler, pandas |
 | `backfill_changes.py` | Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — 2 invocações (movie, tv), janela sempre `[domingo passado, sábado de ontem]` (não configurável); útil quando o cron falha ou é pulado | Lambda | — |
@@ -149,3 +149,18 @@ quando o backfill termina 100% sem falhas — se sobrarem falhas "soft" (ex.:
 um run do Glue Details que terminou em `FAILED`), o checkpoint permanece,
 então disparar o workflow de novo com o mesmo range de anos re-tenta só as
 unidades que faltaram.
+
+## Disparo do Glue AGG ao final
+
+O AGG roda em agendamento próprio (sábado e domingo às 08:00 BRT — ver
+`app/glue_agg/glue_agg.md`), desacoplado do pipeline automático. Para o
+backfill manual, essa espera (até 6 dias) é indesejada: o workflow
+(`.github/workflows/05_backfill.yml`) dispara `glue:StartJobRun` no AGG
+(fire-and-forget) uma única vez, logo após o loop de retry do script
+terminar com sucesso — para **todo `table_group` exceto `data_quality`**
+(que só valida, não escreve dado novo). O disparo é centralizado no
+workflow, não em cada script, para garantir que rode exatamente uma vez por
+execução mesmo quando o script precisou de retomada via exit code 75. Uma
+falha nesse disparo (ex.: permissão, throttling) não derruba o workflow —
+loga um `::warning::` e segue, já que o trigger agendado do fim de semana
+continua cobrindo o caso.
