@@ -29,6 +29,13 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 # "google" (grátis) é o default de todo backfill manual; "aws" (AWS Translate, pago
 # por caractere) é útil para testar um período menor via start_year/end_year.
 #
+# Ao final de uma execução bem-sucedida de qualquer grupo, EXCETO data_quality (que só
+# valida, não escreve dado novo), o workflow dispara o glue_agg uma única vez, como
+# última etapa, para propagar o backfill à camada SPEC sem esperar o próximo ciclo
+# agendado (sábado/domingo 08:00 BRT — ver aws_glue_trigger.agg_weekly em
+# infra/glue_agg.tf). O disparo é fire-and-forget: uma falha aqui não derruba o
+# workflow, já que o trigger agendado continua cobrindo o caso.
+#
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
 # do padrão de nomenclatura do Terraform (tmdb-*-<env> / db_tmdb_*_<env> / etc.).
 # =============================================================================
@@ -136,6 +143,7 @@ jobs:
           # Jobs
           GLUE_DETAILS_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-details-${{ steps.env.outputs.name }}
           GLUE_DATA_QUALITY_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-data-quality-${{ steps.env.outputs.name }}
+          GLUE_AGG_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-agg-${{ steps.env.outputs.name }}
           LAMBDA_FUNCTION_NAME: ${{ steps.project.outputs.project_prefix }}-lambda-api-${{ steps.env.outputs.name }}
 
           # Databases
@@ -227,3 +235,14 @@ jobs:
               exit $codigo
             fi
           done
+
+          # Propaga o backfill à camada SPEC sem esperar o próximo ciclo agendado do
+          # AGG (sáb/dom 08:00 BRT). data_quality só valida, não escreve dado novo —
+          # não há o que propagar. Fire-and-forget: uma falha aqui não derruba o
+          # workflow, já que o trigger agendado continua cobrindo o caso.
+          if [ "${{ inputs.table_group }}" != "data_quality" ]; then
+            echo "Disparando glue_agg ($GLUE_AGG_JOB_NAME) para propagar o backfill à camada SPEC..."
+            if ! aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME" --region sa-east-1 > /dev/null; then
+              echo "::warning::Falha ao disparar glue_agg após o backfill — o trigger agendado (sáb/dom 08:00 BRT) ainda cobre este caso."
+            fi
+          fi
