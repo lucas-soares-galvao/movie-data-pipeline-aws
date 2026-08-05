@@ -93,14 +93,26 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
      padrão 2.
 - **O disparo do Glue AGG ao final de um backfill vive no workflow (`05_backfill.yml`), não em cada script**: logo
   após o `break` do loop de retry (script terminou com `codigo -eq 0`), um bloco condicional
-  (`table_group != data_quality`) chama `aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME"` uma única vez —
-  fire-and-forget, sem esperar conclusão (mesmo padrão do `trigger_glue_job` de `shared_utils.triggers`, mas via AWS
-  CLI porque os scripts em `scripts/` só têm `boto3` instalado no ambiente do workflow, não `shared_utils`).
-  Centralizar no workflow (em vez de replicar em cada um dos 6 scripts elegíveis) garante, por construção, que o
-  disparo aconteça exatamente uma vez por execução do workflow, mesmo quando o script precisou de retomada via exit
-  code 75 (múltiplas tentativas dentro do mesmo loop bash). `backfill_data_quality.py` é o único `table_group` que
-  não dispara o AGG — não escreve dado novo, só valida. Uma falha nesse disparo (`::warning::` no log) não derruba o
-  workflow — o trigger agendado (`aws_glue_trigger.agg_weekly`, sábado/domingo 08:00 BRT) continua cobrindo o caso.
+  (`table_group != data_quality`) chama `aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME"` uma única vez e faz
+  polling do `JobRunId` (`aws glue get-job-run` a cada 30s, mesmo padrão de `_wait_for_job` em
+  `scripts/backfill_enriquecimento.py:95-112`) até um estado terminal. É via AWS CLI, não `shared_utils.triggers`,
+  porque os scripts em `scripts/` só têm `boto3` instalado no ambiente do workflow, não `shared_utils`. Centralizar
+  no workflow (em vez de replicar em cada um dos 6 scripts elegíveis) garante, por construção, que o disparo
+  aconteça exatamente uma vez por execução do workflow, mesmo quando o script precisou de retomada via exit code 75
+  (múltiplas tentativas dentro do mesmo loop bash). `backfill_data_quality.py` é o único `table_group` que não
+  dispara o AGG — não escreve dado novo, só valida. Nem falha ao disparar nem uma conclusão != `SUCCEEDED`
+  (`::warning::` no log + step summary) derrubam o workflow — o trigger agendado (`aws_glue_trigger.agg_weekly`,
+  sábado/domingo 08:00 BRT) e o alarme SNS dedicado (`aws_cloudwatch_event_rule.glue_agg_failed`,
+  `infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso.
+- **O step summary também expõe o resumo real do próprio backfill, extraído do log via `grep`, antes da seção do
+  AGG**: a saída do `executar_script` é gravada em `$RUNNER_TEMP/backfill_output.log` via `tee` (com
+  `codigo=${PIPESTATUS[0]}`, não `$?`, para capturar o exit code do script e não do `tee`). Isso existe porque
+  `codigo -eq 0` (a condição que já existia para decidir "backfill terminou") **não implica que toda unidade teve
+  sucesso** para os 2 scripts com tratamento de erro não-abortante (padrões 2 e 3 abaixo): se sobrar alguma linha
+  ` ERROR ` no log (mesmo formato em todos os 7 scripts, ver `backfill_shared.py:41-45`), o step summary mostra
+  "Falhas parciais registradas" com as linhas encontradas, mesmo o job do Actions terminando verde. Um script novo
+  não precisa fazer nada especial para isso funcionar — só logar `logger.error` normalmente nos casos de falha soft
+  (como já fazem os padrões 2 e 3).
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 

@@ -29,12 +29,16 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 # "google" (grátis) é o default de todo backfill manual; "aws" (AWS Translate, pago
 # por caractere) é útil para testar um período menor via start_year/end_year.
 #
-# Ao final de uma execução bem-sucedida de qualquer grupo, EXCETO data_quality (que só
-# valida, não escreve dado novo), o workflow dispara o glue_agg uma única vez, como
-# última etapa, para propagar o backfill à camada SPEC sem esperar o próximo ciclo
-# agendado (sábado/domingo 08:00 BRT — ver aws_glue_trigger.agg_weekly em
-# infra/glue_agg.tf). O disparo é fire-and-forget: uma falha aqui não derruba o
-# workflow, já que o trigger agendado continua cobrindo o caso.
+# Ao final de qualquer execução bem-sucedida (exit 0), o workflow escreve no step
+# summary um resumo real do que o script de backfill fez (não só "sucesso" pelo exit
+# code — para detalhes_e_providers/data_quality, exit 0 não garante que toda unidade
+# teve sucesso, ver scripts/scripts.md). Em seguida, para todo grupo EXCETO
+# data_quality (que só valida, não escreve dado novo), dispara o glue_agg uma única
+# vez, como última etapa, e aguarda sua conclusão (polling) para propagar o backfill
+# à camada SPEC sem esperar o próximo ciclo agendado (sábado/domingo 08:00 BRT — ver
+# aws_glue_trigger.agg_weekly em infra/glue_agg.tf). Nem a falha ao disparar nem uma
+# conclusão != SUCCEEDED do glue_agg derrubam o workflow — o trigger agendado e o
+# alarme SNS de falha (infra/cloudwatch_glue_alarms.tf) continuam cobrindo o caso.
 #
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
 # do padrão de nomenclatura do Terraform (tmdb-*-<env> / db_tmdb_*_<env> / etc.).
@@ -213,6 +217,9 @@ jobs:
           # o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
           # se o timeout mudar, ajustar aqui também.
+          LOG_FILE="$RUNNER_TEMP/backfill_output.log"
+          : > "$LOG_FILE"
+
           max_tentativas=6
           tentativa=1
           while true; do
@@ -220,9 +227,12 @@ jobs:
             # set +e/-e: sob "set -e" (padrão dos steps run: do GitHub Actions), um
             # exit code != 0 de executar_script derruba o script aqui mesmo, antes de
             # "codigo=$?" rodar — o retry abaixo nunca seria alcançado.
+            # A saída também é gravada em $LOG_FILE (via tee, mantendo a visibilidade
+            # ao vivo no log do Actions) para extrair o resumo real do backfill depois
+            # do loop — codigo=${PIPESTATUS[0]} pega o exit code do script, não do tee.
             set +e
-            executar_script
-            codigo=$?
+            executar_script 2>&1 | tee -a "$LOG_FILE"
+            codigo=${PIPESTATUS[0]}
             set -e
             if [ $codigo -eq 0 ]; then
               echo "Backfill concluído com sucesso."
@@ -235,6 +245,63 @@ jobs:
               exit $codigo
             fi
           done
+
+          # --- Backfill: resumo real extraído do log, antes da seção do glue_agg ---
+          # Todos os scripts usam o mesmo formato de log (backfill_shared.py:
+          # "%(asctime)s %(levelname)s %(message)s"), então isso funciona igual para os
+          # 7 scripts sem lógica por table_group. Importante para detalhes_e_providers
+          # (soft-fail-continue) e data_quality (fire-and-forget): "exit 0" não garante
+          # que toda unidade teve sucesso — ver scripts/scripts.md.
+          echo "## Backfill (\`${{ inputs.table_group }}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+          resumo_final=$(grep -E "conclu[ií]d|atualizadas|disparado com sucesso|submetidas" "$LOG_FILE" | tail -1 || true)
+          if [ -n "$resumo_final" ]; then
+            echo "- $resumo_final" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          erros=$(grep " ERROR " "$LOG_FILE" || true)
+          if [ -n "$erros" ]; then
+            echo "::warning::Backfill terminou com exit 0, mas há linha(s) de ERROR no log — revisar antes de considerar 100% completo."
+            {
+              echo "- ⚠️ **Falhas parciais registradas** (script terminou com sucesso mas nem toda unidade foi processada):"
+              echo '```'
+              echo "$erros"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- ✅ Sem erros registrados no log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # --- glue_agg: dispara e aguarda conclusão (exceto data_quality) ---
+          echo "## glue_agg" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.table_group }}" != "data_quality" ]; then
+            echo "Disparando glue_agg ($GLUE_AGG_JOB_NAME) para propagar o backfill à camada SPEC..."
+            run_id=$(aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME" --region sa-east-1 \
+              --query 'JobRunId' --output text 2>&1) || run_id=""
+
+            if [ -z "$run_id" ]; then
+              echo "::warning::Falha ao disparar glue_agg após o backfill — o trigger agendado (sáb/dom 08:00 BRT) ainda cobre este caso."
+              echo "- ⚠️ Falha ao disparar" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "glue_agg disparado (run_id=$run_id) — aguardando conclusão..."
+              estado="RUNNING"
+              while [ "$estado" = "RUNNING" ] || [ "$estado" = "STARTING" ] || [ "$estado" = "WAITING" ]; do
+                sleep 30
+                estado=$(aws glue get-job-run --job-name "$GLUE_AGG_JOB_NAME" --run-id "$run_id" \
+                  --region sa-east-1 --query 'JobRun.JobRunState' --output text 2>&1) || estado="ERROR"
+              done
+
+              echo "glue_agg finalizado com estado: $estado"
+              if [ "$estado" = "SUCCEEDED" ]; then
+                echo "- ✅ Sucesso (run_id=$run_id)" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::warning::glue_agg terminou em estado $estado (run_id=$run_id) — ver Glue Console / notificação SNS de falha."
+                echo "- ❌ Falha — estado \`$estado\` (run_id=$run_id)" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            fi
+          else
+            echo "- não disparado (\`data_quality\` não escreve dado novo)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           # Propaga o backfill à camada SPEC sem esperar o próximo ciclo agendado do
           # AGG (sáb/dom 08:00 BRT). data_quality só valida, não escreve dado novo —
