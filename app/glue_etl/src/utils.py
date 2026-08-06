@@ -316,6 +316,13 @@ def read_from_sor(
     elif table_type == "watch_providers_ref":
         df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
         df["canonical_name"] = df["provider_name"].apply(derive_canonical_name)
+        # Reordena para bater com a ordem de colunas do Glue Catalog (infra/glue_catalog.tf):
+        # provider_id, provider_name, display_priority_br, canonical_name, logo_path.
+        # A ordem "natural" do DataFrame (colunas do JSON + canonical_name anexada por
+        # último) deixaria logo_path antes de canonical_name — desalinhado com o Catalog,
+        # o que faz o ParquetHiveSerDe (que resolve colunas por posição) ler o valor de
+        # canonical_name como se fosse logo_path e vice-versa.
+        df = df[["provider_id", "provider_name", "display_priority_br", "canonical_name", "logo_path"]]
 
     elif table_type in ("genre", "configuration"):
         df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
