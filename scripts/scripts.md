@@ -158,7 +158,9 @@ GitHub Actions, nessa ordem:
 
 1. **"Backfill"** — o resumo real do que o script fez, extraído do log via
    `grep` (todos os 7 scripts usam o mesmo formato de log,
-   `backfill_shared.py:41-45`: `"%(asctime)s %(levelname)s %(message)s"`).
+   `backfill_shared.py:58-63`: `"%(asctime)s %(levelname)s %(message)s"`, com
+   `%(asctime)s` em horário de São Paulo (`DD/MM/YYYY HH:MM:SS`) via
+   `Formatter.converter`/`datefmt` customizados em `backfill_shared.py`).
    Isso importa porque `exit 0` **não** garante que toda unidade teve
    sucesso para 2 dos 7 scripts: `backfill_enriquecimento.py` é
    soft-fail-continue (loga `ERROR` por unidade que falhou, mas nunca chama

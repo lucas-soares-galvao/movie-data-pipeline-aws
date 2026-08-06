@@ -109,7 +109,9 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   `codigo=${PIPESTATUS[0]}`, não `$?`, para capturar o exit code do script e não do `tee`). Isso existe porque
   `codigo -eq 0` (a condição que já existia para decidir "backfill terminou") **não implica que toda unidade teve
   sucesso** para os 2 scripts com tratamento de erro não-abortante (padrões 2 e 3 abaixo): se sobrar alguma linha
-  ` ERROR ` no log (mesmo formato em todos os 7 scripts, ver `backfill_shared.py:41-45`), o step summary mostra
+  ` ERROR ` no log (mesmo formato em todos os 7 scripts, ver `backfill_shared.py:58-63`; `%(asctime)s` sai em
+  horário de São Paulo, `DD/MM/YYYY HH:MM:SS`, via `Formatter.converter`/`datefmt` customizados, também em
+  `backfill_shared.py`), o step summary mostra
   "Falhas parciais registradas" com as linhas encontradas, mesmo o job do Actions terminando verde. Um script novo
   não precisa fazer nada especial para isso funcionar — só logar `logger.error` normalmente nos casos de falha soft
   (como já fazem os padrões 2 e 3).
