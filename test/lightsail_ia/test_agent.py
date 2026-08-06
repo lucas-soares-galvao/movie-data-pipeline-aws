@@ -511,7 +511,7 @@ class TestRecommend:
             result = agent.recommend("filmes de terror")
 
         assert "release_date" in result[0]
-        assert result[0]["release_date"] == "Maio de 1980"
+        assert result[0]["release_date"] == "Mai de 1980"
 
     def test_campos_formatados_pelo_python(self):
         with (
@@ -524,7 +524,7 @@ class TestRecommend:
             result = agent.recommend("filmes de terror")
 
         r = result[0]
-        assert r["type"] == "filme"
+        assert r["type"] == "Filme"
         assert r["year"] == 1980
         assert r["genres"] == ["Terror", "Drama"]
         assert r["overview"] == "Um escritor enlouquece num hotel isolado."

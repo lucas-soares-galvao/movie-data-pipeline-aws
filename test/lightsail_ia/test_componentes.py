@@ -30,6 +30,11 @@ BASE_TITLE = {
     "creators": None,
 }
 
+# BASE_TITLE tem poster_url, então usa o layout novo (nota/classificação sobre a imagem,
+# trailer na meta-line). Este fixture cobre o fallback sem pôster (layout anterior: nota/
+# classificação na meta-row, trailer e provedores na mesma linha).
+TITLE_SEM_POSTER = {**BASE_TITLE, "poster_url": None, "backdrop_url": None}
+
 
 class TestLoadAudioTimerScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
@@ -255,6 +260,34 @@ class TestRenderProviderBadges:
         assert "Provedor0" in html
         assert f"Provedor{componentes._MAX_VISIBLE_PROVIDER_BADGES}" not in html
 
+    def test_dentro_do_teto_colapsado_nao_gera_badge_de_expandir(self):
+        nomes = [f"Provedor{i}" for i in range(componentes._COLLAPSED_PROVIDER_BADGES)]
+        html = componentes._render_provider_badges(nomes, [])
+        assert "provider-badge-more" not in html
+        assert "providers-toggle" not in html
+
+    def test_acima_do_teto_colapsado_gera_badge_mais_com_contagem_correta(self):
+        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES)]
+        html = componentes._render_provider_badges(nomes, [])
+        escondidos = componentes._MAX_VISIBLE_PROVIDER_BADGES - componentes._COLLAPSED_PROVIDER_BADGES
+        assert f'+{escondidos}' in html
+        assert 'class="provider-badge provider-badge-more"' in html
+
+    def test_provedores_escondidos_continuam_no_html_dentro_de_providers_hidden(self):
+        """O restante não desaparece — fica dentro de .providers-hidden, revelado ao
+        clicar/tocar no badge "+N" (checkbox hack, sem JS, funciona em qualquer dispositivo)."""
+        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES)]
+        html = componentes._render_provider_badges(nomes, [])
+        assert '<span class="providers-hidden">' in html
+        ultimo_visivel = componentes._COLLAPSED_PROVIDER_BADGES - 1
+        assert f"Provedor{ultimo_visivel + 1}" in html  # primeiro escondido, mas presente no DOM
+
+    def test_toggle_id_usa_indice_do_card(self):
+        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES)]
+        html = componentes._render_provider_badges(nomes, [], idx=5)
+        assert 'id="providers-toggle-5"' in html
+        assert 'for="providers-toggle-5"' in html
+
 
 class TestRenderCard:
     def test_card_basico_contem_titulo(self):
@@ -393,7 +426,12 @@ class TestRenderCard:
         assert "Ficção" not in html
         assert "Ação" not in html
 
-    def test_card_providers_dentro_do_limite_nao_exibe_badge_extra(self):
+    def test_card_providers_dentro_do_teto_colapsado_nao_exibe_badge_extra(self):
+        t = {**BASE_TITLE, "streaming_providers": "Netflix,HBO Max,Disney Plus"}
+        html = componentes.render_card(t)
+        assert "provider-badge-more" not in html
+
+    def test_card_providers_acima_do_teto_colapsado_exibe_badge_mais(self):
         t = {
             **BASE_TITLE,
             "streaming_providers": (
@@ -401,9 +439,11 @@ class TestRenderCard:
             ),
         }
         html = componentes.render_card(t)
-        assert "provider-more" not in html
+        assert 'class="provider-badge provider-badge-more"' in html
+        assert "+3" in html  # 6 provedores: 3 visíveis + 3 atrás do "+N"
+        assert "Telecine" in html  # escondido, mas presente no DOM (dentro de providers-hidden)
 
-    def test_card_providers_acima_do_limite_trunca_sem_indicador(self):
+    def test_card_providers_acima_do_teto_maximo_trunca_sem_indicador(self):
         t = {
             **BASE_TITLE,
             "streaming_providers": (
@@ -411,9 +451,7 @@ class TestRenderCard:
             ),
         }
         html = componentes.render_card(t)
-        assert "provider-more" not in html
-        assert "+1" not in html
-        assert "Globoplay" not in html
+        assert "Globoplay" not in html  # 7º provedor, acima do teto máximo de 6
 
     def test_card_genero_destacado_entra_nos_visiveis_alem_do_limite(self):
         t = {
@@ -478,29 +516,67 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert html.index(">Drama<") < html.index(">Terror<")
 
-    def test_card_meta_line_combina_data_tipo_e_nota(self):
+    def test_card_com_poster_meta_line_so_tem_data_e_tipo(self):
+        # BASE_TITLE tem poster_url — nota sai da meta-line e vai pra imagem (ver
+        # TestRenderCardComPoster), então a meta-line fica só com data · tipo.
         html = componentes.render_card(BASE_TITLE)
         assert 'class="meta-row meta-line"' in html
         assert "Maio de 1980 · filme" in html
-        assert "★ 8.4" in html
-        meta_info_pos = html.index('class="meta-info"')
-        rating_pos = html.index("★ 8.4")
-        assert meta_info_pos < rating_pos
+        assert 'class="vital vital-rating"' not in html
 
     def test_card_meta_line_usa_ano_quando_sem_release_date(self):
         t = {**BASE_TITLE, "release_date": None}
         html = componentes.render_card(t)
         assert "(1980) · filme" in html
 
-    def test_card_trailer_e_provedores_ficam_na_mesma_linha(self):
+    def test_card_trailer_fica_na_linha_da_sinopse_nao_na_meta_line(self):
+        # Trailer e sinopse são as duas ações de "quero saber mais" do card — dividem a
+        # mesma linha em vez do trailer competir com data/tipo na meta-line.
         t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}
         html = componentes.render_card(t)
-        assert 'class="meta-row trailer-providers-row"' in html
-        assert "Trailer" in html
-        assert '<span class="provider-badge">Netflix</span>' in html
+        meta_line_pos = html.index('class="meta-row meta-line"')
+        meta_line_end = html.index("</div>", meta_line_pos)
+        assert "vital-trailer" not in html[meta_line_pos:meta_line_end]
+        synopsis_row_pos = html.index('class="meta-row synopsis-row"')
         trailer_pos = html.index("vital-trailer")
-        providers_pos = html.index('class="provider-badges"')
-        assert trailer_pos < providers_pos
+        assert synopsis_row_pos < trailer_pos
+
+    def test_card_trailer_e_sinopse_ficam_na_mesma_linha(self):
+        t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}
+        html = componentes.render_card(t)
+        assert 'class="meta-row synopsis-row"' in html
+        synopsis_row_pos = html.index('class="meta-row synopsis-row"')
+        synopsis_row_end = html.index("</div>", synopsis_row_pos)
+        row = html[synopsis_row_pos:synopsis_row_end]
+        assert "synopsis-label" in row
+        assert "vital-trailer" in row
+        label_pos = row.index("synopsis-label")
+        trailer_pos = row.index("vital-trailer")
+        assert label_pos < trailer_pos  # sinopse à esquerda, trailer à direita
+
+    def test_card_trailer_sem_sinopse_ainda_gera_linha(self):
+        # overview ausente: sem label/accordion de sinopse, mas o trailer não pode sumir
+        t = {
+            **BASE_TITLE,
+            "overview": None,
+            "trailer_url": "https://youtube.com/watch?v=abc123",
+        }
+        html = componentes.render_card(t)
+        assert "synopsis-toggle" not in html
+        assert 'class="meta-row synopsis-row"' in html
+        assert "vital-trailer" in html
+
+    def test_card_providers_row_nunca_contem_trailer(self):
+        for t in (
+            {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"},
+            {**TITLE_SEM_POSTER, "trailer_url": "https://youtube.com/watch?v=abc123"},
+        ):
+            html = componentes.render_card(t)
+            assert "trailer-providers-row" not in html
+            providers_row_pos = html.index('class="meta-row providers-row"')
+            providers_row_end = html.index("</div>", providers_row_pos)
+            assert "vital-trailer" not in html[providers_row_pos:providers_row_end]
+            assert '<span class="provider-badge">Netflix</span>' in html
 
     def test_card_duracao_fica_em_linha_propria(self):
         html = componentes.render_card(BASE_TITLE)
@@ -529,6 +605,13 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "Nota alta e mesmo gênero pedido." in html
         assert 'class="reason"' in html
+
+    def test_card_motivo_tem_tooltip_com_texto_completo(self):
+        # texto some visualmente com -webkit-line-clamp: 2, mas continua acessível via
+        # title= (tooltip nativo do navegador) — sem depender de hover pra ler o resto.
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_card(t)
+        assert 'title="Nota alta e mesmo gênero pedido."' in html
 
     def test_card_sem_motivo_nao_gera_paragrafo_vazio(self):
         html = componentes.render_card(BASE_TITLE)
@@ -572,6 +655,67 @@ class TestRenderCard:
         assert 'for="synopsis-toggle-3"' in html
 
 
+class TestRenderCardComPoster:
+    """Com pôster (backdrop_url/poster_url), nota e classificação etária ficam sobrepostas
+    na imagem em vez de disputar espaço com data/tipo no corpo do card."""
+
+    def test_imagem_fica_dentro_de_card_media(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert 'class="card-media"' in html
+        assert 'class="media-scrim"' in html
+
+    def test_nota_vira_rating_chip_sobre_a_imagem(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert 'class="rating-chip"' in html
+        assert "★ 8.4" in html
+        assert 'class="vital vital-rating"' not in html
+
+    def test_nota_fica_a_esquerda_e_classificacao_a_direita(self):
+        # .media-badges-top usa justify-content: space-between — a ordem no HTML
+        # determina esquerda/direita, nota primeiro.
+        t = {**BASE_TITLE, "certification": "16"}
+        html = componentes.render_card(t)
+        rating_pos = html.index("rating-chip")
+        certification_pos = html.index("certification-badge")
+        assert rating_pos < certification_pos
+
+    def test_classificacao_fica_dentro_de_media_badges_top(self):
+        t = {**BASE_TITLE, "certification": "16"}
+        html = componentes.render_card(t)
+        media_badges_pos = html.index('class="media-badges-top"')
+        certification_pos = html.index("certification-badge")
+        card_body_pos = html.index('class="card-body"')
+        assert media_badges_pos < certification_pos < card_body_pos
+
+    def test_sem_nota_nem_classificacao_nao_gera_media_badges_vazio(self):
+        t = {**BASE_TITLE, "rating": None, "certification": None}
+        html = componentes.render_card(t)
+        assert "media-badges-top" not in html
+
+
+class TestRenderCardSemPoster:
+    """Sem pôster não há onde sobrepor nota/classificação, então o card cai no layout
+    anterior: badges na meta-row, trailer junto dos provedores."""
+
+    def test_nao_gera_card_media(self):
+        html = componentes.render_card(TITLE_SEM_POSTER)
+        assert "card-media" not in html
+        assert "<img" not in html
+
+    def test_nota_continua_na_meta_line(self):
+        html = componentes.render_card(TITLE_SEM_POSTER)
+        assert 'class="vital vital-rating"' in html
+        assert "★ 8.4" in html
+        assert "rating-chip" not in html
+
+    def test_classificacao_continua_na_meta_line(self):
+        t = {**TITLE_SEM_POSTER, "certification": "16"}
+        html = componentes.render_card(t)
+        meta_line_pos = html.index('class="meta-row meta-line"')
+        certification_pos = html.index("certification-badge")
+        assert meta_line_pos < certification_pos
+
+
 class TestRenderGrid:
     def test_grid_vazio(self):
         html = componentes.render_grid([])
@@ -585,3 +729,12 @@ class TestRenderGrid:
         html = componentes.render_grid([BASE_TITLE, BASE_TITLE])
         assert "synopsis-toggle-0" in html
         assert "synopsis-toggle-1" in html
+
+    def test_grid_gera_ids_de_toggle_de_provedores_unicos_por_indice(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": "Netflix,HBO Max,Disney Plus,Crunchyroll",
+        }
+        html = componentes.render_grid([t, t])
+        assert "providers-toggle-0" in html
+        assert "providers-toggle-1" in html

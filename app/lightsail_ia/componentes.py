@@ -18,6 +18,7 @@ _CERTIFICATION_DESCRIPTIONS = {
 
 _MAX_VISIBLE_GENRES = 3
 _MAX_VISIBLE_PROVIDER_BADGES = 6
+_COLLAPSED_PROVIDER_BADGES = 3
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -137,18 +138,38 @@ def _parse_provider_names(names_raw: str) -> list[str]:
     return [p.strip() for p in (names_raw or "").split(",") if p.strip()]
 
 
-def _render_provider_badges(names: list[str], highlighted: list[str]) -> str:
+def _render_provider_badges(names: list[str], highlighted: list[str], idx: int = 0) -> str:
     """Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e
     deduplicados por `render_card`), priorizando via `_prioritize` o provedor mencionado
-    pelo usuário."""
-    prioritized = _prioritize(names, highlighted)
-    visible = prioritized[:_MAX_VISIBLE_PROVIDER_BADGES]
-    return "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in visible)
+    pelo usuário. Mostra até `_COLLAPSED_PROVIDER_BADGES` badges de cara; o restante (até
+    `_MAX_VISIBLE_PROVIDER_BADGES` no total) fica atrás de um badge "+N" clicável (checkbox
+    hack, mesmo padrão de `render_card` para a sinopse — sem JS, funciona em toque e clique)."""
+    prioritized = _prioritize(names, highlighted)[:_MAX_VISIBLE_PROVIDER_BADGES]
+    collapsed = prioritized[:_COLLAPSED_PROVIDER_BADGES]
+    rest = prioritized[_COLLAPSED_PROVIDER_BADGES:]
+    badges = "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in collapsed)
+    if rest:
+        toggle_id = f"providers-toggle-{idx}"
+        rest_html = "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in rest)
+        badges += (
+            f'<input type="checkbox" id="{toggle_id}" class="providers-toggle" hidden>'
+            f'<label for="{toggle_id}" class="provider-badge provider-badge-more">'
+            f'<span class="providers-more-closed">+{len(rest)}</span>'
+            f'<span class="providers-more-open">−</span></label>'
+            f'<span class="providers-hidden">{rest_html}</span>'
+        )
+    return badges
 
 
 def render_card(title: dict, idx: int = 0) -> str:
-    """Monta o HTML de um card de título com escape contra XSS."""
+    """Monta o HTML de um card de título com escape contra XSS.
+
+    Com pôster (`backdrop_url`/`poster_url`), nota e classificação etária ficam sobrepostas
+    na imagem e o trailer sobe para a meta-line — layout "at a glance" estilo
+    Netflix/JustWatch. Sem pôster não há onde sobrepor, então o card cai no layout anterior:
+    nota/classificação na meta-row, trailer e provedores na mesma linha."""
     poster = title.get("backdrop_url") or title.get("poster_url") or ""
+    has_poster = bool(poster)
     title_name = html.escape(title.get("title", ""))
     year = html.escape(str(title.get("year", "")))
     title_type = html.escape(title.get("type", ""))
@@ -164,12 +185,6 @@ def render_card(title: dict, idx: int = 0) -> str:
     theater_end_date = html.escape(title.get("theater_end_date") or "")
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
-
-    img_html = (
-        f'<img src="{poster}" alt="{title_name}"'
-        f' class="card-img" loading="lazy" />'
-        if poster else ""
-    )
 
     genres_raw = _prioritize(
         [g.strip() for g in genres if g.strip()], title.get("highlighted_genres") or []
@@ -194,7 +209,23 @@ def render_card(title: dict, idx: int = 0) -> str:
         if certification else ""
     )
 
-    reason_html = f'<p class="reason">{reason}</p>' if reason else ""
+    rating_str = html.escape(str(rating)) if rating is not None else ""
+    rating_html = f'<span class="vital vital-rating">★ {rating_str}</span>' if rating_str else ""
+    rating_chip_html = f'<span class="rating-chip">★ {rating_str}</span>' if rating_str else ""
+
+    img_html = ""
+    if poster:
+        media_badges = f"{rating_chip_html}{certification_html}"
+        media_badges_html = f'<div class="media-badges-top">{media_badges}</div>' if media_badges else ""
+        img_html = (
+            f'<div class="card-media">'
+            f'<img src="{poster}" alt="{title_name}" class="card-img" loading="lazy" />'
+            f'<div class="media-scrim"></div>'
+            f'{media_badges_html}'
+            f'</div>'
+        )
+
+    reason_html = f'<p class="reason" title="{reason}">{reason}</p>' if reason else ""
 
     date_type_parts = []
     if release_date:
@@ -204,23 +235,8 @@ def render_card(title: dict, idx: int = 0) -> str:
     if title_type:
         date_type_parts.append(title_type)
     meta_left = " · ".join(date_type_parts)
-    if certification_html:
+    if not has_poster and certification_html:
         meta_left = f"{meta_left} {certification_html}" if meta_left else certification_html
-
-    rating_html = (
-        f'<span class="vital vital-rating">★ {html.escape(str(rating))}</span>'
-        if rating is not None else ""
-    )
-    meta_html = (
-        f'<div class="meta-row meta-line">'
-        f'<span class="meta-info">{meta_left}</span>{rating_html}</div>'
-        if meta_left or rating_html else ""
-    )
-
-    duration_html = (
-        f'<div class="meta-row duration-row">{html.escape(duration)}</div>'
-        if duration else ""
-    )
 
     trailer_html = ""
     if trailer_url:
@@ -230,6 +246,22 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
             f'Trailer</a></span>'
         )
+
+    # Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo; sem
+    # pôster a nota continua no slot direito, como sempre foi. O trailer não entra mais
+    # aqui — fica na linha da sinopse (ver synopsis_row_html), junto da outra ação de
+    # "quero saber mais" do card, em vez de disputar espaço com um fato objetivo.
+    meta_right = "" if has_poster else rating_html
+    meta_html = (
+        f'<div class="meta-row meta-line">'
+        f'<span class="meta-info">{meta_left}</span>{meta_right}</div>'
+        if meta_left or meta_right else ""
+    )
+
+    duration_html = (
+        f'<div class="meta-row duration-row">{html.escape(duration)}</div>'
+        if duration else ""
+    )
 
     provider_names = _parse_provider_names(streaming_providers)
     provider_names += _parse_provider_names(rent_buy_providers)
@@ -242,27 +274,39 @@ def render_card(title: dict, idx: int = 0) -> str:
         seen_providers.add(key)
         deduped_names.append(name)
     provider_badges_html = (
-        _render_provider_badges(deduped_names, title.get("highlighted_providers") or [])
+        _render_provider_badges(deduped_names, title.get("highlighted_providers") or [], idx)
         if deduped_names else ""
     )
 
-    trailer_providers_html = ""
-    if trailer_html or provider_badges_html:
-        trailer_providers_html = (
-            f'<div class="meta-row trailer-providers-row">{trailer_html}'
-            f'<span class="provider-badges">{provider_badges_html}</span></div>'
-        )
+    # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
+    # provedores agora, com ou sem pôster.
+    providers_block_html = (
+        f'<div class="meta-row providers-row">'
+        f'<span class="provider-badges">{provider_badges_html}</span></div>'
+        if provider_badges_html else ""
+    )
 
+    # Sinopse e trailer são as duas ações de "quero saber mais" do card, então dividem a
+    # mesma linha (checkbox fica fora da .synopsis-row, como sibling direto de
+    # .synopsis-text, pra o seletor CSS ~ continuar funcionando).
     toggle_id = f"synopsis-toggle-{idx}"
-    synopsis_html = ""
+    synopsis_toggle_html = ""
+    synopsis_label_html = ""
+    synopsis_text_html = ""
     if overview_raw:
         overview_escaped = html.escape(overview_raw)
-        synopsis_html = (
-            f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
+        synopsis_toggle_html = f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
+        synopsis_label_html = (
             f'<label for="{toggle_id}" class="synopsis-label">'
             f'<span class="synopsis-arrow-closed">▸</span>'
             f'<span class="synopsis-arrow-open">▾</span> Sinopse</label>'
-            f'<p class="synopsis-text">{overview_escaped}</p>'
+        )
+        synopsis_text_html = f'<p class="synopsis-text">{overview_escaped}</p>'
+
+    synopsis_row_html = ""
+    if synopsis_label_html or trailer_html:
+        synopsis_row_html = (
+            f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
         )
 
     return f"""
@@ -274,9 +318,11 @@ def render_card(title: dict, idx: int = 0) -> str:
         {meta_html}
         <div class="genres-container">{genres_html}</div>
         {duration_html}
-        {trailer_providers_html}
+        {providers_block_html}
         {cinema_html}
-        {synopsis_html}
+        {synopsis_toggle_html}
+        {synopsis_row_html}
+        {synopsis_text_html}
       </div>
     </article>
     """

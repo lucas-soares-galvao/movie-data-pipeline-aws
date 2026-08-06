@@ -40,7 +40,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `overview` (cópia de `overview` — já vem em pt-BR do pipeline via `COALESCE(overview, overview_pt, overview_en)`)
 - `rating` (float), `poster_url`, `backdrop_url`
 - `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temporadas · 36 eps · ~45 min/ep"`)
-- `release_date` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
+- `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 - `tagline`, `cast` (top 5 atores), `director` (filmes e séries) — campos formatados mas atualmente não renderizados por `render_card()` (`componentes.py`), junto com `collection`, `creators`, `networks`, `producer`, `cinematographer`, `editor`
@@ -87,29 +87,45 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Confirmação de áudio automática e invisível ("▶️ Usar gravação" / "✕ Cancelar", ver seção "Entrada alternativa" acima) — o rate limit de transcrições é resolvido diretamente em Python antes de renderizar os botões (escondidos), sem depender de clique em botão desabilitado
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Retry automático nas chamadas ao LLM: `_call_llm_step1` e `_call_llm_step3` (`agent.py`) passam `num_retries=_LLM_NUM_RETRIES` (3) para `litellm.completion()`, que reenvia a chamada internamente (via tenacity) quando o provedor responde com `APIError`, `TimeoutError` ou `ServiceUnavailableError` — cobre indisponibilidades transitórias do provedor (ex.: erro 503 "service too busy"), que sem isso já eram tratadas como falha definitiva na primeira tentativa. Se todas as tentativas falharem, a exceção ainda propaga normalmente para `app.py`, que trata como qualquer outro erro de busca (ver item acima). Diferente da transcrição de áudio (que não tem retry nem fallback de modelo, por design — ver seção de transcrição)
-- Cada card exibe, de cima para baixo (layout enxuto, poucos rótulos de texto — `componentes.py::render_card()`):
-  - Imagem de fundo (backdrop preferido sobre poster)
+- Cada card exibe, de cima para baixo (layout enxuto, poucos rótulos de texto — `componentes.py::render_card()`).
+  Badges de cor são neutros (cinza) por padrão — laranja fica reservado pra nota, motivo e o link de sinopse, os
+  três pontos que realmente pedem destaque. **O layout muda conforme há ou não imagem** (`backdrop_url`/
+  `poster_url`):
+  - **Imagem** (backdrop preferido sobre poster), quando existe: nota (★, em chip translúcido) e badge de
+    classificação indicativa (L/10/12/14/16/18) ficam sobrepostos no canto superior da própria imagem — sobre um
+    leve gradiente escuro (scrim) que garante legibilidade em qualquer pôster — em vez de disputar espaço com o
+    texto do corpo do card. **Sem imagem**, não há onde sobrepor: os dois caem de volta pra dentro da linha de
+    metadados (ver abaixo), como no layout anterior
   - Título
-  - Motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), logo abaixo do título — itálico,
-    com leve realce visual, truncado em 3 linhas no desktop
-  - Linha única de metadados: data de lançamento (ou ano, quando a data não está disponível) · tipo
-    (filme/série) · badge de classificação indicativa (L/10/12/14/16/18), com a nota (★) alinhada à
-    direita
-  - Badges laranja por gênero (máx. 3 visíveis, sem indicador para o restante). Um gênero mencionado
-    explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()`
-    o move para o início da lista antes do corte de 3, então ele nunca fica de fora se estiver presente
-    no título
+  - Motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), logo abaixo do título — itálico, com leve
+    realce visual (mais suave que os demais elementos, mas ainda o segundo ponto de maior destaque do card depois
+    do título), truncado em 2 linhas em qualquer largura de tela, com o texto completo acessível via tooltip
+    nativo (`title=`) quando truncado
+  - Linha única de metadados: data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série).
+    **Com imagem**, é só texto — nota e classificação já foram pra imagem. **Sem imagem**, o lado direito volta a
+    ser a nota (★) e a classificação entra junto de data/tipo à esquerda, como antes. O link ▶ Trailer **não**
+    fica nessa linha em nenhum dos dois casos (ver bullet da sinopse, mais abaixo) — misturar uma ação (trailer)
+    com um fato objetivo (data/tipo) não fazia sentido
+  - Badges de gênero (máx. 3 visíveis, sem indicador para o restante). Um gênero mencionado explicitamente pelo
+    usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()` o move para o início da lista
+    antes do corte de 3, então ele nunca fica de fora se estiver presente no título
   - Duração/temporadas em linha própria
-  - Link ▶ Trailer (quando disponível) e, à direita na mesma linha, os badges de texto dos provedores
-    — streaming e aluguel/compra combinados num único grupo e deduplicados por nome
-    (`componentes.py::_render_provider_badges()`), sem rótulo "Onde assistir"/"Aluguel/Compra", mas
-    com o nome do provedor sempre visível como texto (sem logo — a query em `agent.py` traz apenas
-    `streaming_providers`/`rent_buy_providers`, os nomes). Máx. 6 visíveis, sem indicador para o restante, mesma priorização de `_prioritize()`
-    para um provedor mencionado explicitamente (ex: "animações da Crunchyroll")
+  - Provedores sempre sozinhos numa linha própria (com ou sem imagem) — badges de texto, streaming e
+    aluguel/compra combinados num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`),
+    sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do provedor sempre visível como texto (sem logo — a
+    query em `agent.py` traz apenas `streaming_providers`/`rent_buy_providers`, os nomes). Mostra até 3 de cara;
+    se houver mais (até um teto de 6 no total), o restante fica atrás de um badge "+N" **clicável** — mesmo
+    checkbox hack em CSS do accordion de sinopse (não é tooltip: hover não é confiável em touch/mobile, então o
+    `+N` precisa expandir com um toque, não só com o mouse) — que revela o restante sem escondê-lo de vez. Mesma
+    priorização de `_prioritize()` garante que um provedor mencionado explicitamente (ex: "animações da
+    Crunchyroll") nunca fica atrás do "+N"
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`
-  - Sinopse recolhida por padrão atrás de um accordion "▸ Sinopse" (checkbox hack em CSS, já que
-    `st.html` não executa `<script>`) — clicar expande o texto completo e troca a seta para "▾",
-    independente do tamanho do texto
+  - Sinopse e trailer dividem a última linha do card — as duas são ações de "quero saber mais" sobre o título,
+    então ficam juntas em vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox
+    hack em CSS, já que `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando
+    disponível) à direita na mesma linha. Clicar no label expande o texto completo da sinopse e troca a seta para
+    "▾", independente do tamanho do texto. Se não houver sinopse mas houver trailer, a linha aparece só com o
+    link; se não houver nenhum dos dois, a linha nem é gerada
 
 ## Entradas e saídas
 
@@ -149,7 +165,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
 | `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges de texto (gêneros ou nomes de provedores) colocando primeiro os que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
 | `componentes.py` | `_parse_provider_names(names_raw)` | Faz o parsing de um grupo de provedores (streaming ou aluguel/compra) a partir da string comma-joined vinda de `glue_agg` |
-| `componentes.py` | `_render_provider_badges(names, highlighted)` | Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` o provedor mencionado pelo usuário |
+| `componentes.py` | `_render_provider_badges(names, highlighted, idx)` | Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` o provedor mencionado pelo usuário. Mostra até 3 de cara; o restante (até um teto de 6 no total) fica atrás de um badge "+N" clicável (checkbox hack, `idx` gera um `id` de toggle único por card no grid) |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência + habilitar/desabilitar "Recomendar" | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador e o `disabled` do botão "Recomendar" a cada tecla digitada (exceto quando `rate_limited`) |
