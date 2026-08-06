@@ -225,7 +225,20 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'</div>'
         )
 
-    reason_html = f'<p class="reason" title="{reason}">{reason}</p>' if reason else ""
+    # Motivo colapsado em até 3 linhas no desktop (checkbox hack, mesmo padrão da sinopse
+    # e do "+N" de provedores) — cada card expande/recolhe de forma independente, sem JS
+    # não tem como sincronizar os vizinhos da mesma fileira. No mobile não há clamp nem
+    # toggle: o texto completo já aparece direto (ver principal.css).
+    reason_html = ""
+    if reason:
+        reason_toggle_id = f"reason-toggle-{idx}"
+        reason_html = (
+            f'<input type="checkbox" id="{reason_toggle_id}" class="reason-toggle" hidden>'
+            f'<p class="reason">{reason}</p>'
+            f'<label for="{reason_toggle_id}" class="reason-more-label">'
+            f'<span class="reason-more-closed">Ver mais</span>'
+            f'<span class="reason-more-open">Ver menos</span></label>'
+        )
 
     date_type_parts = []
     if release_date:
