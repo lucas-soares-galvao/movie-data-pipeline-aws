@@ -88,8 +88,11 @@ _LLM_NUM_RETRIES = 3
 # Pool de candidatos maior que o limit pedido: search_titles_spec() sorteia um
 # subconjunto desse pool a cada busca, para não repetir sempre o mesmo top-N
 # por popularidade quando a mesma pergunta (ou uma parecida) é feita de novo.
-_CANDIDATE_POOL_MULTIPLIER = 4
-_CANDIDATE_POOL_MAX = 45
+# Valores conservadores (não maior) de propósito: a instância Lightsail de
+# produção tem só 1 GB de RAM (bundle micro_3_0) e cada linha a mais do pool
+# aumenta proporcionalmente o payload de boto3 carregado na memória por busca.
+_CANDIDATE_POOL_MULTIPLIER = 3
+_CANDIDATE_POOL_MAX = 30
 _TRANSCRIPTION_MODEL = os.getenv("TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo")
 _MAX_AUDIO_SECONDS = 15
 # Folga só pra rejeição, não pro auto-stop nem pro rótulo mostrado ao usuário
