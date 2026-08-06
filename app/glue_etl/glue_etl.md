@@ -64,6 +64,8 @@ Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `re
 | `write_parquet_to_sot(df, bucket, table_name, database, partition_cols, mode)` | Escreve Parquet e registra no Glue Catalog via AWS Wrangler |
 | `derive_canonical_name(name)` | Padroniza um nome de plataforma de streaming (ex: "Netflix Standard with Ads" → "Netflix"); usada internamente por `read_from_sor()` |
 
+**Ordem de colunas em `watch_providers_ref`:** após adicionar `canonical_name`, `read_from_sor()` reindexa explicitamente o DataFrame para `provider_id, provider_name, display_priority_br, canonical_name, logo_path` — a mesma ordem declarada em `infra/glue_catalog.tf` para `tb_watch_providers_ref_movie`/`_tv`. Isso é necessário porque o `ParquetHiveSerDe` (serde dessas tabelas) resolve colunas por **posição**, não por nome: sem a reindexação, a ordem natural do DataFrame (colunas do JSON, com `canonical_name` anexada por último) deixaria `logo_path` antes de `canonical_name`, fazendo o Athena ler os valores de uma coluna como se fossem da outra.
+
 ## Funções compartilhadas (`shared_utils/`)
 
 Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do pipeline:

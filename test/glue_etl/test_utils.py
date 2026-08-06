@@ -184,6 +184,22 @@ class TestReadFromSorWatchProvidersRef:
             result = read_from_sor("my-sor", "movie", "watch_providers_ref")
             assert result["canonical_name"].iloc[0] == "Paramount+"
 
+    def test_ordem_das_colunas_bate_com_glue_catalog(self):
+        """A ordem física das colunas do DataFrame precisa bater com a ordem declarada
+        em infra/glue_catalog.tf para tb_watch_providers_ref_movie/_tv — o
+        ParquetHiveSerDe resolve colunas por posição, não por nome. Se canonical_name
+        e logo_path saírem fora dessa ordem (ex: logo_path antes de canonical_name,
+        que é a ordem "natural" ao ler o JSON e só depois anexar canonical_name), o
+        Athena lê os valores das duas colunas trocados entre si."""
+        providers = [{"provider_id": 8, "provider_name": "Netflix", "logo_path": "/n.png", "display_priority_br": 1}]
+        s3_mock = self._make_s3_mock(providers)
+        with patch("boto3.client", return_value=s3_mock):
+            result = read_from_sor("my-sor", "movie", "watch_providers_ref")
+            assert list(result.columns) == [
+                "provider_id", "provider_name", "display_priority_br",
+                "canonical_name", "logo_path",
+            ]
+
 
 # ---------------------------------------------------------------------------
 # read_from_sor — table_type="configuration"
