@@ -5,3 +5,4 @@ awswrangler
 pandas
 deep_translator
 langdetect
+tzdata

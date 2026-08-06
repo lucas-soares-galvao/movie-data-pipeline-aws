@@ -31,17 +31,35 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
+from zoneinfo import ZoneInfo
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+_SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+def _sao_paulo_converter(timestamp: float) -> time.struct_time:
+    """Converte o timestamp do LogRecord para horário de São Paulo.
+
+    Atribuído a `logging.Formatter.converter` (atributo de classe) logo abaixo
+    — afeta `%(asctime)s` de todos os 7 scripts de backfill no processo
+    inteiro, sem precisar duplicar configuração em cada `logging.basicConfig`.
+    """
+    return datetime.fromtimestamp(timestamp, tz=_SAO_PAULO_TZ).timetuple()
+
+
+logging.Formatter.converter = staticmethod(_sao_paulo_converter)
+
 logging.basicConfig(
     stream=sys.stdout,
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%d/%m/%Y %H:%M:%S",
 )
 logger = logging.getLogger()
 
@@ -78,17 +96,7 @@ _EXPIRED_TOKEN_CODES = frozenset({"ExpiredTokenException", "ExpiredToken"})
 
 
 def setup_logging() -> logging.Logger:
-    """Configura o logging padrão dos scripts de backfill e retorna o logger.
-
-    `logging.basicConfig` é idempotente (no-op após a primeira chamada), então
-    é seguro cada script chamar esta função mesmo já tendo sido chamada na
-    importação deste módulo.
-    """
-    logging.basicConfig(
-        stream=sys.stdout,
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
+    """Retorna o logger configurado no nível de módulo (ver topo do arquivo)."""
     return logging.getLogger()
 
 
