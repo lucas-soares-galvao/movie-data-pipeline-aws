@@ -1,0 +1,20 @@
+# Desabilita o ForwardMsgCache do Streamlit (server-side).
+#
+# Motivo: erro "Connection error / Failed to process a Websocket message.
+# Cached ForwardMsg MISS" — reproduzido em produção no fluxo entrar → buscar
+# → sair → entrar de novo. É um bug conhecido do próprio Streamlit (ver
+# streamlit/streamlit#11357, #11847, #1028): o servidor cacheia mensagens
+# grandes (>= minCachedMessageSize) e referencia por hash em vez de reenviar
+# o conteúdo, mas a entrada expira no servidor depois de
+# maxCachedMessageAge (padrão 2) reruns sem uso — sessões com trocas de tela
+# drásticas (login ↔ página principal, cada uma com CSS/HTML grandes via
+# unsafe_allow_html) acumulam reruns suficientes entre uma visita e outra
+# pra cair nessa janela, dessincronizando cliente e servidor sobre o que
+# ainda está cacheado.
+#
+# minCachedMessageSize = inf desabilitaria o cache por completo (confirmado
+# em streamlit/streamlit#1028), mas um valor finito bem acima de qualquer
+# mensagem real deste app evita depender do parser de TOML aceitar "inf"
+# nesta versão do Streamlit — nenhuma mensagem deste app chega perto de 1GB.
+[global]
+minCachedMessageSize = 1000000000
