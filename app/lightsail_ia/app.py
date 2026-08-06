@@ -58,15 +58,32 @@ def _load_filmbot_password() -> None:
 
 _load_filmbot_password()
 
-_log_group = os.getenv("CLOUDWATCH_LOG_GROUP", "")
-if _log_group:
-    _cw_handler = watchtower.CloudWatchLogHandler(
-        log_group_name=_log_group,
+
+@st.cache_resource
+def _setup_cloudwatch_logging() -> None:
+    """Registra o handler de CloudWatch no root logger uma única vez por processo.
+
+    O Streamlit reexecuta o script inteiro a cada rerun (clique, st.rerun(),
+    etc.) — sem @st.cache_resource, este bloco rodaria a cada rerun e
+    acumularia um CloudWatchLogHandler novo no root logger por vez (cada um
+    com seu próprio cliente boto3, fila e thread de background), sem nunca
+    remover os anteriores. Resultado: vazamento de memória progressivo e
+    cada log duplicado uma vez por handler acumulado. Mesmo padrão de
+    "roda uma vez por processo" já usado em _create_ip_history() etc.
+    """
+    log_group = os.getenv("CLOUDWATCH_LOG_GROUP", "")
+    if not log_group:
+        return
+    cw_handler = watchtower.CloudWatchLogHandler(
+        log_group_name=log_group,
         boto3_client=boto3.client("logs", region_name=os.getenv("AWS_REGION", "sa-east-1")),
         create_log_group=False,
     )
-    logging.root.addHandler(_cw_handler)
+    logging.root.addHandler(cw_handler)
     logging.root.setLevel(logging.ERROR)
+
+
+_setup_cloudwatch_logging()
 
 _executor = ThreadPoolExecutor(max_workers=2)
 _MAX_QUERIES_PER_HOUR = 15
