@@ -62,7 +62,7 @@ class TestFormatTitleDuration:
             "number_of_episodes": 36,
             "episode_runtime_minutes": 45,
         }
-        assert formatacao._format_title_duration(record) == "3 temporadas · 36 eps · ~45 min/ep"
+        assert formatacao._format_title_duration(record) == "3 temps · 36 eps · ~45 min/ep"
 
     def test_serie_sem_episode_runtime(self):
         record = {
@@ -71,7 +71,7 @@ class TestFormatTitleDuration:
             "number_of_episodes": 20,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._format_title_duration(record) == "2 temporadas · 20 eps"
+        assert formatacao._format_title_duration(record) == "2 temps · 20 eps"
 
     def test_serie_uma_temporada(self):
         record = {
@@ -80,7 +80,7 @@ class TestFormatTitleDuration:
             "number_of_episodes": 10,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._format_title_duration(record) == "1 temporada · 10 eps"
+        assert formatacao._format_title_duration(record) == "1 temp · 10 eps"
 
     def test_serie_sem_dados(self):
         record = {
@@ -237,4 +237,4 @@ class TestFormatRecord:
         }
         result = formatacao.format_record(tv_show)
         assert result["type"] == "Série"
-        assert result["duration"] == "4 temporadas · 34 eps · ~50 min/ep"
+        assert result["duration"] == "4 temps · 34 eps · ~50 min/ep"

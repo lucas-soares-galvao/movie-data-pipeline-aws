@@ -39,7 +39,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `year` (inteiro), `genres` (lista de strings a partir de `genre_names`)
 - `overview` (cópia de `overview` — já vem em pt-BR do pipeline via `COALESCE(overview, overview_pt, overview_en)`)
 - `rating` (float), `poster_url`, `backdrop_url`
-- `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temporadas · 36 eps · ~45 min/ep"`)
+- `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temps · 36 eps · ~45 min/ep"`)
 - `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
@@ -99,8 +99,15 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Título
   - Motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), logo abaixo do título — itálico, com leve
     realce visual (mais suave que os demais elementos, mas ainda o segundo ponto de maior destaque do card depois
-    do título), truncado em 2 linhas em qualquer largura de tela, com o texto completo acessível via tooltip
-    nativo (`title=`) quando truncado
+    do título). No **desktop** (`.grid-titles` com 3 colunas, onde os cards ficam lado a lado e precisam de
+    proporção padronizada), o box tem `min-height` **e** `max-height` de 3 linhas — colapsado por padrão, com um
+    link **"Ver mais"/"Ver menos"** (checkbox hack, mesmo padrão da sinopse e do "+N" de provedores — sem JS,
+    funciona em clique e toque) que libera o `max-height` sob demanda. Cada card expande/recolhe **de forma
+    independente**: sem JS não dá pra sincronizar os vizinhos da mesma fileira quando um expande — os outros
+    ficam parados no `min-height` de 3 linhas. No **mobile** os cards empilham 1 por linha (sem proporção pra
+    padronizar entre vizinhos), então não há `min-height`/`max-height`/toggle nenhum — o texto completo aparece
+    direto. O tamanho do motivo em si também é orientado pelo prompt do LLM (`_REASON_SYSTEM_PROMPT` em
+    `agent.py`, que pede ~90 caracteres, mirando a maioria dos motivos cabendo nas 3 linhas sem precisar expandir)
   - Linha única de metadados: data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série).
     **Com imagem**, é só texto — nota e classificação já foram pra imagem. **Sem imagem**, o lado direito volta a
     ser a nota (★) e a classificação entra junto de data/tipo à esquerda, como antes. O link ▶ Trailer **não**

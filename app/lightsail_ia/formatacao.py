@@ -20,7 +20,7 @@ def _format_genres(genre_names: str | None) -> list[str]:
 
 
 def _format_title_duration(record: dict) -> str | None:
-    """Formata duração: '2h 15min' para filmes, '3 temporadas · 24 eps' para séries."""
+    """Formata duração: '2h 15min' para filmes, '3 temps · 24 eps' para séries."""
     if record.get("media_type") == "movie":
         raw = record.get("runtime_minutes")
         if not raw:
@@ -35,7 +35,7 @@ def _format_title_duration(record: dict) -> str | None:
     ep_runtime = record.get("episode_runtime_minutes")
     if seasons:
         n = int(seasons)
-        parts.append(f"{n} temporada{'s' if n != 1 else ''}")
+        parts.append(f"{n} temp{'s' if n != 1 else ''}")
     if episodes:
         parts.append(f"{int(episodes)} eps")
     if ep_runtime:

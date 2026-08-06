@@ -606,16 +606,30 @@ class TestRenderCard:
         assert "Nota alta e mesmo gênero pedido." in html
         assert 'class="reason"' in html
 
-    def test_card_motivo_tem_tooltip_com_texto_completo(self):
-        # texto some visualmente com -webkit-line-clamp: 2, mas continua acessível via
-        # title= (tooltip nativo do navegador) — sem depender de hover pra ler o resto.
-        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
-        html = componentes.render_card(t)
-        assert 'title="Nota alta e mesmo gênero pedido."' in html
-
     def test_card_sem_motivo_nao_gera_paragrafo_vazio(self):
         html = componentes.render_card(BASE_TITLE)
         assert 'class="reason"' not in html
+
+    def test_card_motivo_gera_toggle_ver_mais(self):
+        # checkbox hack — mesmo padrão da sinopse e do "+N" de provedores: colapsado em
+        # 3 linhas só no desktop (CSS), expande sob demanda sem sincronizar os vizinhos.
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_card(t)
+        assert 'class="reason-toggle"' in html
+        assert 'class="reason-more-label"' in html
+        assert "Ver mais" in html
+        assert "Ver menos" in html
+
+    def test_card_sem_motivo_nao_gera_toggle(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "reason-toggle" not in html
+        assert "Ver mais" not in html
+
+    def test_card_motivo_toggle_id_usa_indice(self):
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_card(t, idx=4)
+        assert 'id="reason-toggle-4"' in html
+        assert 'for="reason-toggle-4"' in html
 
     def test_card_escapa_xss(self):
         t = {**BASE_TITLE, "title": '<script>alert("xss")</script>'}
@@ -738,3 +752,9 @@ class TestRenderGrid:
         html = componentes.render_grid([t, t])
         assert "providers-toggle-0" in html
         assert "providers-toggle-1" in html
+
+    def test_grid_gera_ids_de_toggle_de_motivo_unicos_por_indice(self):
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_grid([t, t])
+        assert "reason-toggle-0" in html
+        assert "reason-toggle-1" in html
