@@ -22,10 +22,10 @@ FAKE_TITLE = {
 
 class TestFormatType:
     def test_movie_para_filme(self):
-        assert formatacao._format_type("movie") == "filme"
+        assert formatacao._format_type("movie") == "Filme"
 
     def test_tv_para_serie(self):
-        assert formatacao._format_type("tv") == "série"
+        assert formatacao._format_type("tv") == "Série"
 
     def test_valor_desconhecido(self):
         assert formatacao._format_type("outro") == "outro"
@@ -94,7 +94,7 @@ class TestFormatTitleDuration:
 
 class TestFormatReleaseDate:
     def test_data_valida(self):
-        assert formatacao._format_release_date("1980-05-23") == "Maio de 1980"
+        assert formatacao._format_release_date("1980-05-23") == "Mai de 1980"
 
     def test_data_none(self):
         assert formatacao._format_release_date(None) is None
@@ -135,7 +135,7 @@ class TestFormatRecord:
     def test_registro_completo_filme(self):
         result = formatacao.format_record(FAKE_TITLE)
         assert result["title"] == "O Iluminado"
-        assert result["type"] == "filme"
+        assert result["type"] == "Filme"
         assert result["year"] == 1980
         assert result["genres"] == ["Terror", "Drama"]
         assert result["overview"] == "Um escritor enlouquece num hotel isolado."
@@ -143,7 +143,7 @@ class TestFormatRecord:
         assert result["poster_url"] == "https://example.com/poster.jpg"
         assert result["backdrop_url"] is None
         assert result["duration"] == "2h 26min"
-        assert result["release_date"] == "Maio de 1980"
+        assert result["release_date"] == "Mai de 1980"
         assert result["streaming_providers"] == "Netflix"
         assert result["in_theaters"] is False
         assert result["theater_end_date"] is None
@@ -236,5 +236,5 @@ class TestFormatRecord:
             "theater_end_date": None,
         }
         result = formatacao.format_record(tv_show)
-        assert result["type"] == "série"
+        assert result["type"] == "Série"
         assert result["duration"] == "4 temporadas · 34 eps · ~50 min/ep"

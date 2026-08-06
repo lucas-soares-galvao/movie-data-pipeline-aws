@@ -1,15 +1,15 @@
 """formatacao.py — Formatação determinística de registros do Athena para cards do FilmBot."""
 
 _MONTHS = {
-    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+    1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
+    5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
+    9: "Set", 10: "Out", 11: "Nov", 12: "Dez",
 }
 
 
 def _format_type(media_type: str) -> str:
-    """Converte media_type da API ('movie'/'tv') para português ('filme'/'série')."""
-    return "filme" if media_type == "movie" else "série" if media_type == "tv" else media_type
+    """Converte media_type da API ('movie'/'tv') para português ('Filme'/'Série')."""
+    return "Filme" if media_type == "movie" else "Série" if media_type == "tv" else media_type
 
 
 def _format_genres(genre_names: str | None) -> list[str]:
@@ -44,7 +44,7 @@ def _format_title_duration(record: dict) -> str | None:
 
 
 def _format_release_date(air_date: str | None) -> str | None:
-    """Converte data ISO 'YYYY-MM-DD' para 'Mês de Ano' em português."""
+    """Converte data ISO 'YYYY-MM-DD' para 'Mês abreviado de Ano' em português."""
     if not air_date or len(air_date) < 7:
         return None
     try:
