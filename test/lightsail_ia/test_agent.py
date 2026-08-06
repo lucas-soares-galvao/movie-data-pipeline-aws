@@ -340,7 +340,7 @@ class TestSearchTitlesSpec:
             agent.search_titles_spec("vote_average >= 6.0", limit=5)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 20" in executed_sql  # 5 * _CANDIDATE_POOL_MULTIPLIER
+        assert "LIMIT 15" in executed_sql  # 5 * _CANDIDATE_POOL_MULTIPLIER
 
     def test_limite_solicitado_e_limitado_a_15_antes_do_pool(self):
         with patch("agent.boto3") as mock_boto3:
@@ -348,7 +348,7 @@ class TestSearchTitlesSpec:
             agent.search_titles_spec("vote_average >= 6.0", limit=100)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 45" in executed_sql  # limit capado a 15, pool = min(15*4, 45)
+        assert "LIMIT 30" in executed_sql  # limit capado a 15, pool = min(15*3, 30)
         assert "LIMIT 100" not in executed_sql
 
     def test_limite_minimo_e_1(self):
@@ -357,7 +357,7 @@ class TestSearchTitlesSpec:
             agent.search_titles_spec("vote_average >= 6.0", limit=0)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 4" in executed_sql  # limit capado a 1, pool = min(1*4, 45)
+        assert "LIMIT 3" in executed_sql  # limit capado a 1, pool = min(1*3, 30)
 
     def test_pool_nao_ultrapassa_maximo_absoluto(self):
         with patch("agent.boto3") as mock_boto3:
@@ -365,8 +365,8 @@ class TestSearchTitlesSpec:
             agent.search_titles_spec("vote_average >= 6.0", limit=15)
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
-        assert "LIMIT 45" in executed_sql
-        assert "LIMIT 60" not in executed_sql
+        assert "LIMIT 30" in executed_sql
+        assert "LIMIT 45" not in executed_sql
 
     def test_amostra_e_limitada_ao_limit_solicitado_quando_pool_maior(self):
         many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
