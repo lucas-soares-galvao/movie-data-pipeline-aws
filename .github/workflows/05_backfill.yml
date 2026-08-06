@@ -129,7 +129,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install boto3
+          # tzdata é do backfill_shared.py (compartilhado pelos 7 scripts, ver
+          # Formatter.converter de horário de São Paulo) — instalado sempre, não só
+          # nos 2 table_group abaixo, para não depender da base IANA do runner.
+          pip install boto3 tzdata
           if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi

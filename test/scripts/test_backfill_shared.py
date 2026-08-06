@@ -10,6 +10,7 @@ anos, wrapper de retry e mensagem de progresso do checkpoint.
 
 import json
 import logging
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import backfill_shared as bs
@@ -19,6 +20,31 @@ from botocore.exceptions import ClientError
 
 def _client_error(codigo: str) -> ClientError:
     return ClientError({"Error": {"Code": codigo, "Message": codigo}}, "S3Op")
+
+
+class TestSaoPauloConverter:
+    def test_converte_utc_para_horario_de_sao_paulo(self):
+        # 2024-01-15T12:00:00Z — período pós-2019 (Brasil sem horário de
+        # verão), America/Sao_Paulo é UTC-3 fixo nessa janela.
+        timestamp = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+
+        result = bs._sao_paulo_converter(timestamp)
+
+        assert (result.tm_year, result.tm_mon, result.tm_mday) == (2024, 1, 15)
+        assert (result.tm_hour, result.tm_min, result.tm_sec) == (9, 0, 0)
+
+    def test_formatter_usa_o_converter_de_sao_paulo(self):
+        assert logging.Formatter.converter is bs._sao_paulo_converter
+
+    def test_asctime_sai_no_formato_dd_mm_yyyy(self):
+        # Formatter isolado (não usa logging.getLogger().handlers[0]): sob pytest
+        # o root logger tem o LogCaptureHandler do próprio pytest, com formatter
+        # e datefmt independentes dos configurados em backfill_shared.
+        formatter = logging.Formatter(datefmt="%d/%m/%Y %H:%M:%S")
+        record = logging.LogRecord("x", logging.INFO, __file__, 1, "msg", None, None)
+        record.created = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+
+        assert formatter.formatTime(record, formatter.datefmt) == "15/01/2024 09:00:00"
 
 
 def _get_object_response(data: dict) -> dict:
