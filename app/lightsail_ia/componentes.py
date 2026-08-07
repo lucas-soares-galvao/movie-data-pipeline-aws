@@ -1,6 +1,7 @@
 """componentes.py — Funções auxiliares de renderização para o FilmBot."""
 
 import html
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,9 +17,14 @@ _CERTIFICATION_DESCRIPTIONS = {
     "18": "Não recomendado para menores de 18 anos",
 }
 
-_MAX_VISIBLE_GENRES = 3
+_MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
-_COLLAPSED_PROVIDER_BADGES = 3
+
+# Linhas locais do subgrid de cada card (pôster, título, motivo, data/tipo/nota, gêneros,
+# duração, provedores, "em cartaz", sinopse/trailer) — ver render_grid()/render_card() e a
+# regra .grid-titles em principal.css, que precisam concordar com esse número pro
+# alinhamento entre os 3 cards de uma fileira funcionar.
+_CARD_GRID_ROWS = 9
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -138,27 +144,14 @@ def _parse_provider_names(names_raw: str) -> list[str]:
     return [p.strip() for p in (names_raw or "").split(",") if p.strip()]
 
 
-def _render_provider_badges(names: list[str], highlighted: list[str], idx: int = 0) -> str:
+def _render_provider_badges(names: list[str], highlighted: list[str]) -> str:
     """Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e
     deduplicados por `render_card`), priorizando via `_prioritize` o provedor mencionado
-    pelo usuário. Mostra até `_COLLAPSED_PROVIDER_BADGES` badges de cara; o restante (até
-    `_MAX_VISIBLE_PROVIDER_BADGES` no total) fica atrás de um badge "+N" clicável (checkbox
-    hack, mesmo padrão de `render_card` para a sinopse — sem JS, funciona em toque e clique)."""
+    pelo usuário. Mostra até `_MAX_VISIBLE_PROVIDER_BADGES` badges direto — o restante trunca
+    silenciosamente, mesmo padrão que gêneros já usam, já que a linha de provedores se
+    ajusta automaticamente ao card com mais badges na mesma fileira (grid da .card-body)."""
     prioritized = _prioritize(names, highlighted)[:_MAX_VISIBLE_PROVIDER_BADGES]
-    collapsed = prioritized[:_COLLAPSED_PROVIDER_BADGES]
-    rest = prioritized[_COLLAPSED_PROVIDER_BADGES:]
-    badges = "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in collapsed)
-    if rest:
-        toggle_id = f"providers-toggle-{idx}"
-        rest_html = "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in rest)
-        badges += (
-            f'<input type="checkbox" id="{toggle_id}" class="providers-toggle" hidden>'
-            f'<label for="{toggle_id}" class="provider-badge provider-badge-more">'
-            f'<span class="providers-more-closed">+{len(rest)}</span>'
-            f'<span class="providers-more-open">−</span></label>'
-            f'<span class="providers-hidden">{rest_html}</span>'
-        )
-    return badges
+    return "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in prioritized)
 
 
 def render_card(title: dict, idx: int = 0) -> str:
@@ -193,13 +186,16 @@ def render_card(title: dict, idx: int = 0) -> str:
     visible_genres = genres_clean[:_MAX_VISIBLE_GENRES]
     genres_html = "".join(f'<span class="genre">{g}</span>' for g in visible_genres)
 
-    cinema_html = ""
+    # Sempre gera a div, vazia quando não está em cartaz — reserva a linha própria do
+    # subgrid (ver principal.css) pra não deslocar o que vem depois só nesse card.
+    cinema_content = ""
     if in_theaters:
         label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
-        cinema_html = (
-            f'<div class="meta-row"><span class="meta-icon">🎬</span>'
-            f'<span class="cinema-badge">{html.escape(label)}</span></div>'
+        cinema_content = (
+            f'<span class="meta-icon">🎬</span>'
+            f'<span class="cinema-badge">{html.escape(label)}</span>'
         )
+    cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>'
 
     certification_title = html.escape(_CERTIFICATION_DESCRIPTIONS.get(certification, certification))
     certification_html = (
@@ -225,20 +221,11 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'</div>'
         )
 
-    # Motivo colapsado em até 3 linhas no desktop (checkbox hack, mesmo padrão da sinopse
-    # e do "+N" de provedores) — cada card expande/recolhe de forma independente, sem JS
-    # não tem como sincronizar os vizinhos da mesma fileira. No mobile não há clamp nem
-    # toggle: o texto completo já aparece direto (ver principal.css).
-    reason_html = ""
-    if reason:
-        reason_toggle_id = f"reason-toggle-{idx}"
-        reason_html = (
-            f'<input type="checkbox" id="{reason_toggle_id}" class="reason-toggle" hidden>'
-            f'<p class="reason">{reason}</p>'
-            f'<label for="{reason_toggle_id}" class="reason-more-label">'
-            f'<span class="reason-more-closed">Ver mais</span>'
-            f'<span class="reason-more-open">Ver menos</span></label>'
-        )
+    # Motivo é limitado a 90 caracteres na origem (prompt do agente), então a variação de
+    # altura entre os 3 cards da mesma fileira é pequena — sem clamp nem toggle, o subgrid
+    # de .card-body (ver principal.css) já alinha a linha do motivo sozinho, ajustando a
+    # altura ao maior motivo entre os cards da fileira.
+    reason_html = f'<p class="reason">{reason}</p>' if reason else ""
 
     date_type_parts = []
     if release_date:
@@ -264,16 +251,16 @@ def render_card(title: dict, idx: int = 0) -> str:
     # pôster a nota continua no slot direito, como sempre foi. O trailer não entra mais
     # aqui — fica na linha da sinopse (ver synopsis_row_html), junto da outra ação de
     # "quero saber mais" do card, em vez de disputar espaço com um fato objetivo.
+    # meta-line e duration-row sempre geram a div (mesmo vazia) — reservam a própria linha
+    # do subgrid, senão a ausência do campo desloca as linhas seguintes só nesse card.
     meta_right = "" if has_poster else rating_html
     meta_html = (
         f'<div class="meta-row meta-line">'
         f'<span class="meta-info">{meta_left}</span>{meta_right}</div>'
-        if meta_left or meta_right else ""
     )
 
     duration_html = (
-        f'<div class="meta-row duration-row">{html.escape(duration)}</div>'
-        if duration else ""
+        f'<div class="meta-row duration-row">{html.escape(duration) if duration else ""}</div>'
     )
 
     provider_names = _parse_provider_names(streaming_providers)
@@ -286,17 +273,16 @@ def render_card(title: dict, idx: int = 0) -> str:
             continue
         seen_providers.add(key)
         deduped_names.append(name)
-    provider_badges_html = (
-        _render_provider_badges(deduped_names, title.get("highlighted_providers") or [], idx)
-        if deduped_names else ""
+    provider_badges_html = _render_provider_badges(
+        deduped_names, title.get("highlighted_providers") or []
     )
 
     # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
-    # provedores agora, com ou sem pôster.
+    # provedores agora, com ou sem pôster. Sempre gera a div (mesmo vazia), mesma razão de
+    # meta-line/duration-row acima.
     providers_block_html = (
         f'<div class="meta-row providers-row">'
         f'<span class="provider-badges">{provider_badges_html}</span></div>'
-        if provider_badges_html else ""
     )
 
     # Sinopse e trailer são as duas ações de "quero saber mais" do card, então dividem a
@@ -322,29 +308,47 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
         )
 
+    # Posição do card no subgrid compartilhado da fileira: cada card ocupa um bloco de
+    # _CARD_GRID_ROWS linhas (mais 1 linha de respiro entre fileiras, ver render_grid) na
+    # coluna correspondente ao seu índice dentro do grupo de 3. Ver principal.css pra como
+    # cada campo (título, motivo, gêneros...) se posiciona dentro desse bloco.
+    row_start = (idx // 3) * (_CARD_GRID_ROWS + 1) + 1
+    column = (idx % 3) + 1
+    card_style = f"grid-row:{row_start} / span {_CARD_GRID_ROWS};grid-column:{column}"
+
     return f"""
-    <article class="card">
+    <article class="card" style="{card_style}">
       {img_html}
       <div class="card-body">
         <strong class="card-title">{title_name}</strong>
-        {reason_html}
+        <div class="row-reason">{reason_html}</div>
         {meta_html}
         <div class="genres-container">{genres_html}</div>
         {duration_html}
         {providers_block_html}
         {cinema_html}
-        {synopsis_toggle_html}
-        {synopsis_row_html}
-        {synopsis_text_html}
+        <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
       </div>
     </article>
     """
 
 
 def render_grid(titles: list[dict]) -> str:
-    """Monta o HTML completo do grid de cards."""
+    """Monta o HTML completo do grid de cards.
+
+    O subgrid de cada card (ver render_card()/principal.css) exige que .grid-titles declare
+    o total de linhas explicitamente — um bloco de _CARD_GRID_ROWS linhas de conteúdo mais 1
+    linha de respiro (16px) por fileira de até 3 títulos. CSS não permite aninhar repeat()
+    dentro de repeat(), por isso as _CARD_GRID_ROWS linhas "auto" são escritas por extenso
+    dentro do padrão repetido, em vez de um repeat() aninhado.
+    """
     cards = [render_card(t, idx) for idx, t in enumerate(titles)]
-    return '<div class="grid-titles">' + "".join(cards) + "</div>"
+    n_groups = math.ceil(len(titles) / 3) if titles else 0
+    style_attr = ""
+    if n_groups:
+        group_pattern = " ".join(["auto"] * _CARD_GRID_ROWS) + " 16px"
+        style_attr = f' style="grid-template-rows: repeat({n_groups}, {group_pattern})"'
+    return f'<div class="grid-titles"{style_attr}>' + "".join(cards) + "</div>"
 
 
 def render_footer() -> None:
