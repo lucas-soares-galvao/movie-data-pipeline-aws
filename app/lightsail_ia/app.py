@@ -86,6 +86,7 @@ def _setup_cloudwatch_logging() -> None:
 _setup_cloudwatch_logging()
 
 _executor = ThreadPoolExecutor(max_workers=2)
+
 _MAX_QUERIES_PER_HOUR = 15
 _MAX_TRANSCRIPTIONS_PER_HOUR = 30  # Whisper é bem mais barato que o fluxo LLM+Athena
 _MAX_PREFERENCE_CHARS = 150
