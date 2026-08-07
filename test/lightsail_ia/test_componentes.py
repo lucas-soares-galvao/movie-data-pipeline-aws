@@ -255,38 +255,15 @@ class TestRenderProviderBadges:
         assert html.index("Crunchyroll") < html.index("Netflix")
 
     def test_corta_no_limite_de_provedores_visiveis(self):
+        # Sem toggle "+N": acima do teto, trunca silenciosamente — a linha de provedores se
+        # ajusta automaticamente ao card com mais badges na mesma fileira (subgrid), então
+        # colapsar atrás de um clique deixou de ser necessário só por alinhamento.
         nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES + 2)]
         html = componentes._render_provider_badges(nomes, [])
         assert "Provedor0" in html
         assert f"Provedor{componentes._MAX_VISIBLE_PROVIDER_BADGES}" not in html
-
-    def test_dentro_do_teto_colapsado_nao_gera_badge_de_expandir(self):
-        nomes = [f"Provedor{i}" for i in range(componentes._COLLAPSED_PROVIDER_BADGES)]
-        html = componentes._render_provider_badges(nomes, [])
         assert "provider-badge-more" not in html
         assert "providers-toggle" not in html
-
-    def test_acima_do_teto_colapsado_gera_badge_mais_com_contagem_correta(self):
-        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES)]
-        html = componentes._render_provider_badges(nomes, [])
-        escondidos = componentes._MAX_VISIBLE_PROVIDER_BADGES - componentes._COLLAPSED_PROVIDER_BADGES
-        assert f'+{escondidos}' in html
-        assert 'class="provider-badge provider-badge-more"' in html
-
-    def test_provedores_escondidos_continuam_no_html_dentro_de_providers_hidden(self):
-        """O restante não desaparece — fica dentro de .providers-hidden, revelado ao
-        clicar/tocar no badge "+N" (checkbox hack, sem JS, funciona em qualquer dispositivo)."""
-        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES)]
-        html = componentes._render_provider_badges(nomes, [])
-        assert '<span class="providers-hidden">' in html
-        ultimo_visivel = componentes._COLLAPSED_PROVIDER_BADGES - 1
-        assert f"Provedor{ultimo_visivel + 1}" in html  # primeiro escondido, mas presente no DOM
-
-    def test_toggle_id_usa_indice_do_card(self):
-        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES)]
-        html = componentes._render_provider_badges(nomes, [], idx=5)
-        assert 'id="providers-toggle-5"' in html
-        assert 'for="providers-toggle-5"' in html
 
 
 class TestRenderCard:
@@ -418,30 +395,16 @@ class TestRenderCard:
     def test_card_generos_acima_do_limite_trunca_sem_indicador(self):
         t = {
             **BASE_TITLE,
-            "genres": ["Terror", "Drama", "Suspense", "Ficção", "Ação"],
+            "genres": [
+                "Terror", "Drama", "Suspense", "Ficção", "Ação", "Aventura",
+                "Comédia", "Romance",
+            ],
         }
         html = componentes.render_card(t)
         assert "genre-more" not in html
         assert "+2" not in html
-        assert "Ficção" not in html
-        assert "Ação" not in html
-
-    def test_card_providers_dentro_do_teto_colapsado_nao_exibe_badge_extra(self):
-        t = {**BASE_TITLE, "streaming_providers": "Netflix,HBO Max,Disney Plus"}
-        html = componentes.render_card(t)
-        assert "provider-badge-more" not in html
-
-    def test_card_providers_acima_do_teto_colapsado_exibe_badge_mais(self):
-        t = {
-            **BASE_TITLE,
-            "streaming_providers": (
-                "Netflix,HBO Max,Disney Plus,Crunchyroll,Amazon Prime Video,Telecine"
-            ),
-        }
-        html = componentes.render_card(t)
-        assert 'class="provider-badge provider-badge-more"' in html
-        assert "+3" in html  # 6 provedores: 3 visíveis + 3 atrás do "+N"
-        assert "Telecine" in html  # escondido, mas presente no DOM (dentro de providers-hidden)
+        assert "Comédia" not in html
+        assert "Romance" not in html
 
     def test_card_providers_acima_do_teto_maximo_trunca_sem_indicador(self):
         t = {
@@ -590,15 +553,19 @@ class TestRenderCard:
         assert "★" not in html
         assert "meta-line" in html
 
-    def test_card_sem_data_tipo_nota_nao_gera_meta_line(self):
+    def test_card_sem_data_tipo_nota_gera_meta_line_vazia(self):
+        # A div continua existindo mesmo sem conteúdo — reserva a própria linha do subgrid
+        # (ver principal.css) pra não deslocar as linhas seguintes só nesse card.
         t = {**BASE_TITLE, "rating": None, "release_date": None, "year": "", "type": ""}
         html = componentes.render_card(t)
-        assert "meta-line" not in html
+        assert 'class="meta-row meta-line"' in html
+        assert '<span class="meta-info"></span>' in html
 
-    def test_card_sem_duracao_nao_gera_linha_vazia(self):
+    def test_card_sem_duracao_gera_linha_vazia(self):
+        # Mesma razão de meta-line acima: a div sempre existe, só fica sem texto dentro.
         t = {**BASE_TITLE, "duration": None}
         html = componentes.render_card(t)
-        assert "duration-row" not in html
+        assert 'class="meta-row duration-row"></div>' in html
 
     def test_card_exibe_motivo(self):
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
@@ -610,26 +577,16 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE)
         assert 'class="reason"' not in html
 
-    def test_card_motivo_gera_toggle_ver_mais(self):
-        # checkbox hack — mesmo padrão da sinopse e do "+N" de provedores: colapsado em
-        # 3 linhas só no desktop (CSS), expande sob demanda sem sincronizar os vizinhos.
+    def test_card_motivo_sem_toggle(self):
+        # Motivo é limitado a 90 caracteres na origem (prompt do agente) e o subgrid entre
+        # os cards da fileira já resolve o alinhamento — sem clamp, sem checkbox hack de
+        # "Ver mais/Ver menos" (diferente de sinopse, que continua com accordion próprio).
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
         html = componentes.render_card(t)
-        assert 'class="reason-toggle"' in html
-        assert 'class="reason-more-label"' in html
-        assert "Ver mais" in html
-        assert "Ver menos" in html
-
-    def test_card_sem_motivo_nao_gera_toggle(self):
-        html = componentes.render_card(BASE_TITLE)
         assert "reason-toggle" not in html
+        assert "reason-more-label" not in html
         assert "Ver mais" not in html
-
-    def test_card_motivo_toggle_id_usa_indice(self):
-        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
-        html = componentes.render_card(t, idx=4)
-        assert 'id="reason-toggle-4"' in html
-        assert 'for="reason-toggle-4"' in html
+        assert "Ver menos" not in html
 
     def test_card_escapa_xss(self):
         t = {**BASE_TITLE, "title": '<script>alert("xss")</script>'}
@@ -744,17 +701,20 @@ class TestRenderGrid:
         assert "synopsis-toggle-0" in html
         assert "synopsis-toggle-1" in html
 
-    def test_grid_gera_ids_de_toggle_de_provedores_unicos_por_indice(self):
-        t = {
-            **BASE_TITLE,
-            "streaming_providers": "Netflix,HBO Max,Disney Plus,Crunchyroll",
-        }
-        html = componentes.render_grid([t, t])
-        assert "providers-toggle-0" in html
-        assert "providers-toggle-1" in html
+    def test_grid_posiciona_cards_em_linha_coluna_do_subgrid(self):
+        html = componentes.render_grid([BASE_TITLE] * 4)
+        # Grupo 0 (cards 0-2): linha 1, colunas 1-3. Grupo 1 (card 3): linha 11 (9 linhas de
+        # conteúdo + 1 de respiro depois do grupo 0), coluna 1.
+        assert "grid-row:1 / span 9;grid-column:1" in html
+        assert "grid-row:1 / span 9;grid-column:3" in html
+        assert "grid-row:11 / span 9;grid-column:1" in html
 
-    def test_grid_gera_ids_de_toggle_de_motivo_unicos_por_indice(self):
-        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
-        html = componentes.render_grid([t, t])
-        assert "reason-toggle-0" in html
-        assert "reason-toggle-1" in html
+    def test_grid_declara_grid_template_rows_proporcional_ao_numero_de_fileiras(self):
+        html_uma_fileira = componentes.render_grid([BASE_TITLE] * 3)
+        html_duas_fileiras = componentes.render_grid([BASE_TITLE] * 4)
+        assert "repeat(1," in html_uma_fileira
+        assert "repeat(2," in html_duas_fileiras
+
+    def test_grid_vazio_nao_declara_grid_template_rows(self):
+        html = componentes.render_grid([])
+        assert "grid-template-rows" not in html
