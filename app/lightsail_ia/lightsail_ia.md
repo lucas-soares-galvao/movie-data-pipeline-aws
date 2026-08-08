@@ -72,7 +72,35 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 
 ### Interface (`app.py`)
 - Tema escuro com CSS customizado
-- Grid responsivo de cards: 3 colunas fixas no desktop (`repeat(3, 1fr)`), 1 coluna no mobile (`≤768px`). No desktop, cada `.card`/`.card-body` usa CSS Grid `subgrid` (`grid-template-rows: subgrid`, encadeado em 2 níveis a partir de `.grid-titles`) pra alinhar título, motivo, gêneros, duração, provedores, "Em cartaz" e sinopse/trailer entre os 3 cards de uma mesma fileira — cada campo ocupa uma linha nomeada compartilhada, cuja altura se ajusta automaticamente ao maior conteúdo entre os 3 cards, sem truncar texto em nenhum campo. `render_grid()`/`render_card()` (`componentes.py`) calculam o total de linhas por fileira e a posição (`grid-row`/`grid-column`) de cada card via `style` inline; no mobile esse posicionamento é neutralizado (`!important` em `principal.css`) e os cards voltam a empilhar em fluxo natural, sem subgrid
+- Grid responsivo de cards: 3 colunas fixas (`repeat(3, 1fr)`) acima de 1200px (breakpoint
+  "xl" do Bootstrap, escolhido por convenção), 1 coluna abaixo disso (`≤1200px`, cobrindo
+  tanto celular quanto janela de desktop estreita). O breakpoint não é 768px (limite típico
+  de "mobile") porque abaixo de ~1200px badges de gênero/provedor com nomes longos ("Amazon
+  Prime Video", "Ação & Aventura") costumam não caber numa linha só — como o subgrid
+  (abaixo) compartilha a altura da linha entre os 3 cards da fileira, um card assim estufava
+  a linha pros vizinhos também, deixando um vão vazio perceptível; valor aproximadamente
+  confirmado empiricamente via Playwright com nomes reais e longos do catálogo (~373px de
+  card já resolve o caso comum), mas sem folga extra pro overhead real do Streamlit, então
+  vale reconferir no app se aparecer wrap bem na borda do breakpoint. Mesmo com esse ajuste,
+  o teto máximo de 6
+  gêneros/6 provedores simultâneos (caso raro) ainda pode quebrar linha em qualquer largura
+  — nomes demais pra caber num card, risco residual aceito conscientemente em vez de
+  resolvido com "+N" (exigiria JS pra contar precisamente quantos badges couberam, o que
+  esse componente específico não tem — ver bullet da linha de sinopse/trailer mais abaixo).
+  No fallback de 1 coluna, `.card` ganha `max-width: 460px` + `.grid-titles { justify-items:
+  center }` — sem isso, numa janela larga mas ainda abaixo do breakpoint (ex. 1000px), o
+  único card da fileira esticaria pra largura inteira do container, deixando o pôster (16:9,
+  `width:100%`) desproporcionalmente grande; em celular real (viewport mais estreito que o
+  teto) isso não muda nada, o card já ocupa a largura disponível de qualquer forma. No
+  desktop (acima do breakpoint), cada `.card`/`.card-body` usa CSS Grid `subgrid`
+  (`grid-template-rows: subgrid`, encadeado em 2 níveis a partir de `.grid-titles`) pra
+  alinhar título, motivo, gêneros, duração, provedores, "Em cartaz" e sinopse/trailer entre
+  os 3 cards de uma mesma fileira — cada campo ocupa uma linha nomeada compartilhada, cuja
+  altura se ajusta automaticamente ao maior conteúdo entre os 3 cards, sem truncar texto em
+  nenhum campo. `render_grid()`/`render_card()` (`componentes.py`) calculam o total de
+  linhas por fileira e a posição (`grid-row`/`grid-column`) de cada card via `style` inline;
+  abaixo do breakpoint esse posicionamento é neutralizado (`!important` em `principal.css`)
+  e os cards voltam a empilhar em fluxo natural, sem subgrid
 - **Largura do rodapé (`render_footer()`):** antes de pesquisar, o rodapé fica com a mesma largura do hero (640px, centralizado, `.footer { max-width: 640px; margin: auto }`). `.grid-titles` (resultados) não tem largura própria — ocupa a largura natural do `block-container`. Quando há resultado na tela, `body:has(.grid-titles) .footer { max-width: none }` destrava o rodapé pra acompanhar essa largura maior, em vez de ficar preso nos 640px do hero
 - **Cabeçalho (`st.container(key="header-row")`):** ícone 🎬 maior (`.header-icon`, 34px) à esquerda, com título "FilmBot" (28px, `!important` — ver nota abaixo) + subtítulo (13px, `!important`) empilhados à direita dele sem nenhuma das duas linhas passar por baixo do ícone (`.header-brand` flex row + `.header-text` flex column, dentro de um único `st.markdown`) — substitui `st.title`/`st.caption`, que rendem um `<h1>` grande demais pra esse contexto de topo de página, mesmo padrão de markdown customizado já usado em `.login-title`/`.login-subtitle` na tela de login. **`!important` no `font-size` de `.header-title`/`.header-subtitle`:** o Streamlit aplica um `font-size` próprio no `<p>` via seletor com especificidade maior que a classe sozinha — sem o `!important`, o valor definido aqui é ignorado e o texto renderiza sempre em 16px, confirmado via inspeção real do DOM (Playwright). Botão "Sair" (`key="btn_sair"`) estilizado como pill discreto (`#3f3f3f`, cinza neutro). A coluna do título cresce (`flex:1 1 auto`) pra preencher o espaço extra e empurrar a coluna do botão (`flex:0 0 auto`) pra ponta direita — necessário porque a regra genérica "Colunas dos botoes se ajustam ao conteudo" (mais acima em `principal.css`) exclui explicitamente linhas com `<h1>`; sem esse `<h1>` (trocado por markdown), as colunas do header passaram a encolher pro conteúdo, deixando um vão grande entre o botão e a borda direita real do hero — medido via inspeção real do DOM (Playwright). Alinhamento vertical do botão via `align-items:center` no `stHorizontalBlock` mais um nudge fino (`position:relative; top:8px`) — o wrapper interno que o Streamlit gera em volta de `st.markdown` reporta uma altura menor que a dos dois parágrafos reais (título+subtítulo), então o `align-items:center` sozinho centraliza o botão ~8px acima do centro visual verdadeiro; compensado diretamente após medir via inspeção real do DOM, já que a causa raiz da altura errada não pôde ser isolada/corrigida via CSS (`height`/`min-height`/`max-height:auto` não tiveram efeito). **Wrap natural (sem breakpoint fixo):** `flex-wrap:wrap` + `justify-content:space-between` no `stHorizontalBlock` — o botão fica lado a lado com o ícone+texto enquanto couber (como no desktop, em qualquer largura) e só quebra pra linha de baixo quando o espaço realmente não for suficiente; `justify-content:space-between` resolve o alinhamento nos dois cenários sozinho (título à esquerda/botão à direita quando cabem juntos; botão alinhado à esquerda quando quebra pra própria linha, já que não sobra "outro lado" pra empurrar), e o `gap:12px` do row garante um respiro mínimo tanto na horizontal quanto na vertical (quando quebra) — testado via Playwright em várias larguras (1280px a 320px)
 - **Rate limiting por IP:** máximo de 15 consultas por hora (janela deslizante). O contador ("Consultas restantes: N/15 por hora") é exibido abaixo do campo de texto, em cinza (`.query-counter-text`); quando restam 3 consultas ou menos, o texto muda para laranja em negrito (`.query-counter-low`, `principal.css`) para avisar a pessoa antes de o limite ser atingido. Ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS mostra quanto tempo falta em tempo real, decrementando a cada segundo — a caixa de aviso vem de `render_feedback()` (renderizada na página real, com CSS de `principal.css`) e só o `<span id="countdown">` é atualizado por `static/countdown.js` (injetado por `load_countdown_script()`, genérico — reusado também pelo bloqueio de login, ver abaixo), que acessa `window.parent.document` a partir do iframe do `st.components.v1.html` — mesmo padrão de `audio_timer.js`, sem duplicar CSS dentro do iframe. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
@@ -103,16 +131,26 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     alinha a linha do motivo entre os 3 cards da fileira automaticamente, ajustando a altura ao maior motivo
     entre eles, então o texto completo sempre aparece direto (motivo raramente varia muito de tamanho: o prompt
     do LLM, `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres)
-  - Linha única de metadados: data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série).
-    **Com imagem**, é só texto — nota e classificação já foram pra imagem. **Sem imagem**, o lado direito volta a
-    ser a nota (★) e a classificação entra junto de data/tipo à esquerda, como antes. O link ▶ Trailer **não**
-    fica nessa linha em nenhum dos dois casos (ver bullet da sinopse, mais abaixo) — misturar uma ação (trailer)
-    com um fato objetivo (data/tipo) não fazia sentido
+  - Linha única de metadados: ícone ℹ️ (`.meta-icon`, mesmo padrão do 🎬 de "Em cartaz" mais abaixo) seguido de
+    data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série). O ícone fica **dentro**
+    de `.meta-info` junto do texto (não como irmão direto de `.meta-row`) — `.meta-line` usa
+    `justify-content:space-between` pra separar texto/nota, então um 3º filho solto empurraria o ícone pra ponta
+    esquerda e o texto pra ponta direita, longe um do outro. Só aparece quando há data/tipo pra rotular (sem
+    isso, `.meta-info` fica vazio, e ícone sozinho sem texto ao lado não faria sentido). **Com imagem**, o resto
+    da linha é só texto — nota e classificação já foram pra imagem. **Sem imagem**, o lado direito volta a ser a
+    nota (★) e a classificação entra junto de data/tipo à esquerda, como antes. O link ▶ Trailer **não** fica
+    nessa linha em nenhum dos dois casos (ver bullet da sinopse, mais abaixo) — misturar uma ação (trailer) com
+    um fato objetivo (data/tipo) não fazia sentido. Gênero, duração e provedor (bullets abaixo) não têm ícone —
+    só a linha de data/tipo ganhou esse tratamento
+  - Duração/temporadas em linha própria, logo abaixo de data/tipo
+  - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`, logo abaixo da duração — informação,
+    duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
+    dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
+    do rodapé de ações
   - Badges de gênero (máx. 6 visíveis, sem indicador para o restante — trunca silenciosamente, já que a linha se
     ajusta ao card com mais badges na mesma fileira via subgrid). Um gênero mencionado explicitamente pelo
     usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()` o move para o início da lista
     antes do corte, então ele nunca fica de fora se estiver presente no título
-  - Duração/temporadas em linha própria
   - Provedores sempre sozinhos numa linha própria (com ou sem imagem) — badges de texto, streaming e
     aluguel/compra combinados num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`),
     sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do provedor sempre visível como texto (sem logo — a
@@ -121,7 +159,6 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     colapsar atrás de um clique deixou de ser necessário só por alinhamento — acima do teto de 6, trunca
     silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` garante que um provedor
     mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte
-  - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`
   - Sinopse e trailer dividem a última linha do card — as duas são ações de "quero saber mais" sobre o título,
     então ficam juntas em vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox
     hack em CSS, já que `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando
