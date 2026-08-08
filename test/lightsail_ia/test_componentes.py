@@ -559,11 +559,27 @@ class TestRenderCard:
             assert "vital-trailer" not in html[providers_row_pos:providers_row_end]
             assert '<span class="provider-badge">Netflix</span>' in html
 
-    def test_card_duracao_fica_em_linha_propria(self):
+    def test_card_com_poster_duracao_fica_na_meta_line(self):
+        # Com pôster, duração entra na mesma linha de data/tipo em vez de linha própria —
+        # medido via Playwright que até o pior caso plausível (série com "3 temps · 24
+        # eps · ~45 min/ep") cabe numa linha só na largura mínima garantida do card.
+        # duration-row fica reservada (subgrid) mas vazia.
         html = componentes.render_card(BASE_TITLE)
-        assert 'class="meta-row duration-row"' in html
-        assert "2h 26min" in html
-        assert "⏱" in html
+        assert '<div class="meta-row duration-row"></div>' in html
+        meta_line_pos = html.index('class="meta-row meta-line"')
+        meta_line_end = html.index("</div>", meta_line_pos)
+        assert "2h 26min" in html[meta_line_pos:meta_line_end]
+        assert "⏱" in html[meta_line_pos:meta_line_end]
+
+    def test_card_sem_poster_duracao_continua_em_linha_propria(self):
+        # Sem pôster a meta-line já carrega classificação etária + nota — testado que
+        # juntar duração ali nessas condições estoura a largura e quebra linha, então
+        # continua na própria linha só nesse caso.
+        html = componentes.render_card(TITLE_SEM_POSTER)
+        duration_row_pos = html.index('class="meta-row duration-row"')
+        duration_row_end = html.index("</div>", duration_row_pos)
+        assert "2h 26min" in html[duration_row_pos:duration_row_end]
+        assert "⏱" in html[duration_row_pos:duration_row_end]
 
     def test_card_sem_duracao_nao_gera_icone(self):
         t = {**BASE_TITLE, "duration": None}
@@ -576,13 +592,30 @@ class TestRenderCard:
         assert "★" not in html
         assert "meta-line" in html
 
-    def test_card_sem_data_tipo_nota_gera_meta_line_vazia(self):
+    def test_card_sem_data_tipo_nota_duracao_gera_meta_line_vazia(self):
         # A div continua existindo mesmo sem conteúdo — reserva a própria linha do subgrid
         # (ver principal.css) pra não deslocar as linhas seguintes só nesse card.
-        t = {**BASE_TITLE, "rating": None, "release_date": None, "year": "", "type": ""}
+        t = {
+            **BASE_TITLE,
+            "rating": None,
+            "release_date": None,
+            "year": "",
+            "type": "",
+            "duration": None,
+        }
         html = componentes.render_card(t)
         assert 'class="meta-row meta-line"' in html
         assert '<span class="meta-info"></span>' in html
+
+    def test_card_com_poster_duracao_sem_data_tipo_ainda_aparece_na_meta_line(self):
+        # Com pôster, duração é mostrada na meta-line mesmo sem data/tipo — o ícone ⏱
+        # rotula ela sozinho, .meta-info não fica vazio só porque falta o outro campo.
+        t = {**BASE_TITLE, "release_date": None, "year": "", "type": ""}
+        html = componentes.render_card(t)
+        assert "2h 26min" in html
+        meta_line_pos = html.index('class="meta-row meta-line"')
+        meta_line_end = html.index("</div>", meta_line_pos)
+        assert "⏱" in html[meta_line_pos:meta_line_end]
 
     def test_card_sem_duracao_gera_linha_vazia(self):
         # Mesma razão de meta-line acima: a div sempre existe, só fica sem texto dentro.
