@@ -6,7 +6,7 @@ Testa os 8 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `b
 
 O foco principal é o **contrato do payload/argumentos** enviado a cada serviço (Lambda ou Glue), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 95% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
 
-Dois bugs reais motivaram este módulo: `backfill_historico.py` enviava a chave `only_discover` e `backfill_referencias.py` enviava `skip_discover` — nenhuma das duas é lida por `app/lambda_api/main.py` (que só reconhece `only_annual_tables` e `skip_weekly`). Como uma chave de dict inexistente não gera erro, o bug só apareceria revisando logs de uma execução real de horas contra prod. Os testes de contrato de payload existem para travar exatamente esse tipo de regressão.
+Dois bugs reais motivaram este módulo: `backfill_historico.py` enviava a chave `only_discover` e `backfill_referencias.py` (antes de passar a rodar sem Lambda, ver seção própria abaixo) enviava `skip_discover` — nenhuma das duas era lida por `app/lambda_api/main.py` (que só reconhecia `only_annual_tables` e `skip_weekly`, este último removido do handler junto com o payload de `backfill_referencias.py`). Como uma chave de dict inexistente não gera erro, o bug só apareceria revisando logs de uma execução real de horas contra prod. Os testes de contrato de payload existem para travar esse tipo de regressão — `backfill_historico.py` continua sendo testado dessa forma (ver abaixo).
 
 Um terceiro bug real motivou a suíte de checkpoint/retomada: `backfill_enriquecimento.py::_start_glue_job` chamava `client.start_job_run(...)` sem o wrapper de log/re-raise de token expirado que o resto do script já tinha — foi exatamente esse ponto que derrubou um backfill de produção sem deixar rastro do progresso já feito. `test_expired_token_no_start_job_run_loga_e_repropaga` trava essa regressão.
 
@@ -83,14 +83,29 @@ Translate por intervalo de anos (ver `backfill_shared.apply_translate_cost_guard
 
 ## Casos de teste — `test_backfill_referencias.py`
 
+Estruturalmente diferente de `test_backfill_historico.py`: desde que
+`backfill_referencias.py` passou a rodar a coleta TMDB e a transformação
+(equivalente ao Glue ETL, via `read_from_sor`/`write_parquet_to_sot` de
+`app/glue_etl/src/utils.py`) diretamente no processo, sem payload de Lambda,
+os testes mockam as funções chamadas (`collect_genre_data`,
+`collect_configuration_data`, `collect_watch_providers_ref`,
+`read_from_sor`, `write_parquet_to_sot`, `trigger_glue_job`,
+`get_api_secret`), não mais um cliente `boto3` de Lambda — mesmo estilo de
+`test_backfill_changes.py`.
+
 | Teste | O que verifica |
 |---|---|
-| `test_envia_skip_weekly` | Payload contém `skip_weekly: True` |
-| `test_nao_envia_mais_a_chave_skip_discover` | Regressão: `skip_discover` não existe mais no payload |
-| `test_usa_ano_atual_em_start_year_e_end_year` | `start_year`/`end_year` usam o ano atual (independe de `BACKFILL_START_YEAR`) |
-| `test_invoca_lambda_uma_vez_para_movie_e_uma_para_tv` | 2 invocações, ordem `["movie", "tv"]` |
-| `test_pausa_apenas_entre_as_duas_invocacoes` | `time.sleep` chamado uma única vez |
-| `test_erro_da_lambda_interrompe_o_backfill` / `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | Mesmos contratos de erro do `backfill_historico.py` |
+| `test_coleta_genre_configuration_watch_providers_para_movie_e_tv` | As 3 coletas TMDB rodam para `movie` e `tv`, nessa ordem |
+| `test_busca_api_key_uma_unica_vez_fora_do_loop` | `get_api_secret` chamado exatamente uma vez |
+| `test_api_key_repassada_para_cada_coleta` | A chave buscada é repassada às 3 funções de coleta |
+| `test_grava_as_6_tabelas` | `write_parquet_to_sot` grava as 6 tabelas de referência (genre/configuration/watch_providers_ref × movie/tv) |
+| `test_database_correto_por_content_type` | `movie` grava em `GLUE_DATABASE_MOVIE`, `tv` em `GLUE_DATABASE_TV` |
+| `test_nenhuma_tabela_e_particionada` | Todas as 6 escritas usam `partition_cols=None`, `mode="overwrite"` |
+| `test_read_from_sor_recebe_table_type_correto_por_tabela` | `read_from_sor` é chamado com `(media_type, table_type)` correspondente para as 6 combinações |
+| `test_dispara_dq_uma_vez_por_tabela_gravada` | `trigger_glue_job` (Data Quality) é chamado 6 vezes, uma por tabela |
+| `test_erro_em_genre_aborta_o_backfill` | Exceção em `collect_genre_data` propaga e impede `collect_configuration_data` de rodar (mesmo formato de "abortar no primeiro erro" de antes, agora por propagação direta, sem `invoke_lambda_sync`) |
+| `test_http_error_em_watch_providers_ref_nao_aborta_mas_pula_a_escrita` | `HTTPError` em `collect_watch_providers_ref` é capturado — não aborta o script, mas a tabela correspondente não é escrita nem validada |
+| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` / `test_outro_erro_nao_gera_codigo_de_retomada` / `test_expired_token_gera_codigo_75` (parametrizado) | Mesmos contratos de erro/retomada dos demais scripts sem checkpoint (`backfill_changes.py`) |
 
 ## Casos de teste — `test_backfill_enriquecimento.py`
 

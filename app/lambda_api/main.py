@@ -125,18 +125,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf).
     # Cada flag ativa um "modo" de execução diferente:
     #
-    # Modo           | only_weekly | only_annual | only_monthly | skip_weekly | O que roda
-    # ---------------|-------------|-------------|--------------|-------------|-----------------------------
-    # Semanal        |    True     |    False    |    False     |    False    | discover + now_playing (sem referências)
-    # Mensal         |    False    |    False    |    True      |    False    | referências + discover do ano anterior
-    # Anual backfill |    False    |    True     |    False     |    False    | discover histórico (sem referências)
-    # Só referências |    False    |    False    |    False     |    True     | genre + config + watch_providers_ref
+    # Modo           | only_weekly | only_annual | only_monthly | O que roda
+    # ---------------|-------------|-------------|--------------|-----------------------------
+    # Semanal        |    True     |    False    |    False     | discover + now_playing (sem referências)
+    # Mensal         |    False    |    False    |    True      | referências + discover do ano anterior
+    # Anual backfill |    False    |    True     |    False     | discover histórico (sem referências)
     #
-    # Modo "Só referências": dispara os 3 Glue ETL de referência e retorna, sem esperar
-    # (trigger_glue_job é fire-and-forget) e sem acionar o Glue AGG — ele roda em agendamento
-    # próprio (aws_glue_trigger SCHEDULED, sábado e domingo às 08:00 BRT), independente do
-    # restante do pipeline (ver app/glue_agg/glue_agg.md). A atualização de referências chega à
-    # camada SPEC no próximo ciclo do AGG, não no mesmo dia.
+    # As referências (genre/configuration/watch_providers_ref) só via backfill manual
+    # (scripts/backfill_referencias.py) rodam diretamente no processo do backfill, sem passar
+    # por esta Lambda — ver app/lambda_api/lambda_api.md, seção "Backfill manual".
     #
     # only_changes_tables e only_rotation_refresh (tratados acima, antes desta tabela)
     # não combinam com as flags abaixo — saem cedo, direto para o Glue Details, sem
@@ -151,7 +148,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # app/glue_etl/main.py (table_type == "discover").
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
-    skip_weekly = event.get("skip_weekly", False)
     only_monthly_tables = event.get("only_monthly_tables", False)
     # Modos semanal e anual pulam referências porque elas mudam raramente (gêneros, idiomas, países)
     # e não precisam ser atualizadas a cada coleta de discover.
@@ -213,13 +209,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
     else:
         logger.info("skip_reference=True: pulando coleta de genre, configuration e watch_providers_ref.")
-
-    if skip_weekly:
-        logger.info("skip_weekly=True: pulando coleta de discover.")
-        return {
-            "statusCode": 200,
-            "body": f"Coleta de referência de '{content_type}' finalizada com sucesso.",
-        }
 
     logger.info(
         f"Iniciando coleta do TMDB ({content_type}) de {start_year} até {loop_end_year}..."
