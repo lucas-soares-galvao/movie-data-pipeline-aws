@@ -10,15 +10,19 @@
 #
 # Esta role cobre exatamente o que os scripts scripts/backfill_*.py usam:
 # invocar a Lambda API, iniciar/monitorar os jobs Glue Data Quality e AGG,
-# ler/gravar checkpoints no bucket TEMP, ler/gravar parquet no bucket SOT,
-# ler/gravar partições no Glue Data Catalog (usado implicitamente pelo
-# awswrangler em backfill_traducao.py), e consultar Athena + Secrets Manager
-# (backfill_enriquecimento.py, que roda a lógica de enriquecimento do Glue
-# Details diretamente no processo do backfill em vez de acionar esse job —
-# ver run_details_and_watch_providers_for_year em
+# ler/gravar checkpoints no bucket TEMP, ler/gravar JSON bruto no bucket SOR
+# e parquet no bucket SOT, ler/gravar partições no Glue Data Catalog (usado
+# implicitamente pelo awswrangler em backfill_traducao.py), e consultar
+# Athena + Secrets Manager (backfill_enriquecimento.py, que roda a lógica de
+# enriquecimento do Glue Details diretamente no processo do backfill em vez
+# de acionar esse job — ver run_details_and_watch_providers_for_year em
 # app/glue_details/src/utils.py — e backfill_changes.py, que aplica o mesmo
 # racional ao modo changes: coleta os IDs mudados e roda o enriquecimento
 # diretamente no processo, sem acionar Lambda nem o job Glue Details).
+# backfill_referencias.py aplica o mesmo racional à coleta de
+# genre/configuration/watch_providers_ref: chama a API do TMDB e grava
+# JSON no SOR + Parquet no SOT diretamente no processo, sem acionar a
+# Lambda nem o job Glue ETL.
 # =============================================================================
 
 locals {
@@ -64,11 +68,17 @@ resource "aws_iam_role" "backfill" {
 }
 
 # =============================================================================
-# POLICY 1 — Invoke Lambda (backfill_historico.py, backfill_referencias.py)
+# POLICY 1 — Invoke Lambda (backfill_historico.py)
 #
-# backfill_changes.py NÃO está mais entre os chamadores: passou a chamar
-# collect_changes_data diretamente no processo do backfill (mesmo racional de
-# backfill_enriquecimento.py para o Glue Details), sem mais invocar a Lambda.
+# backfill_changes.py e backfill_referencias.py NÃO estão mais entre os
+# chamadores: ambos passaram a chamar a lógica de coleta/transformação
+# diretamente no processo do backfill (mesmo racional de
+# backfill_enriquecimento.py para o Glue Details — ver
+# run_details_and_watch_providers_for_year em app/glue_details/src/utils.py,
+# collect_changes_data/process_changed_ids para o modo changes, e
+# collect_genre_data/collect_configuration_data/collect_watch_providers_ref +
+# read_from_sor/write_parquet_to_sot para referências), sem mais invocar a
+# Lambda.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_invoke_lambda" {
   name = "${local.tmdb_prefix}-backfill-invoke-lambda-${var.env}"
@@ -172,10 +182,13 @@ resource "aws_iam_role_policy" "backfill_secrets" {
 
 # =============================================================================
 # POLICY 5 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
-# backfill_referencias.py), tabelas discover/details movie/tv no bucket SOT
-# (backfill_traducao.py, via awswrangler) e tabelas details/watch_providers
-# movie/tv no bucket SOT (backfill_rename_colunas.py, via awswrangler —
-# details já coberto pela mesma resource de backfill_traducao.py acima)
+# backfill_referencias.py/backfill_changes.py), tabelas discover/details
+# movie/tv no bucket SOT (backfill_traducao.py, via awswrangler), tabelas
+# details/watch_providers movie/tv no bucket SOT (backfill_rename_colunas.py,
+# via awswrangler — details já coberto pela mesma resource de
+# backfill_traducao.py acima), JSON bruto no bucket SOR e as 6 tabelas de
+# referência no bucket SOT (backfill_referencias.py — ver comentários nos
+# statements abaixo)
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_s3" {
   name = "${local.tmdb_prefix}-backfill-s3-${var.env}"
@@ -201,6 +214,12 @@ resource "aws_iam_role_policy" "backfill_s3" {
               "tmdb/${aws_glue_catalog_table.tb_details_tv_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_genre_movie_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_genre_tv_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_configuration_languages_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_configuration_countries_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.name}/*",
+              "tmdb/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.name}/*",
             ]
           }
         }
@@ -227,15 +246,57 @@ resource "aws_iam_role_policy" "backfill_s3" {
         # Athena StartQueryExecution falha com "Unable to verify/create output bucket" ao
         # validar o bucket de output (S3_OUTPUT_LOCATION = bucket TEMP), e o awswrangler
         # (wr.s3.read_parquet/to_parquet contra discover/details/watch_providers no SOT,
-        # dentro de run_details_and_watch_providers_for_year) também depende dela para
+        # dentro de run_details_and_watch_providers_for_year, e contra as 6 tabelas de
+        # referência no SOT, dentro de backfill_referencias.py) também depende dela para
         # resolver o bucket antes de ler/escrever. Mesmo par de buckets (SOT + TEMP) já
         # concedido à role glue_details_role (infra/iam_policies.tf) para o mesmo código.
-        Sid    = "GetBucketLocationSotTemp"
+        Sid    = "GetBucketLocationSorSotTemp"
         Effect = "Allow"
         Action = "s3:GetBucketLocation"
         Resource = [
+          aws_s3_bucket.sor_bucket.arn,
           aws_s3_bucket.sot_bucket.arn,
           aws_s3_bucket.temporary_bucket.arn,
+        ]
+      },
+      {
+        # JSON bruto gravado por collect_genre_data/collect_configuration_data/
+        # collect_watch_providers_ref (backfill_referencias.py, chamadas diretamente no
+        # processo do backfill — mesmo código que a Lambda API usaria, ver
+        # app/lambda_api/src/utils.py). Só PutObject: o script sempre sobrescreve o
+        # arquivo único de cada tipo, nunca lista nem lê de volta o SOR.
+        Sid    = "WriteReferenceRawDataToSor"
+        Effect = "Allow"
+        Action = "s3:PutObject"
+        Resource = [
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/genre/movie/*",
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/genre/tv/*",
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/configuration/languages/*",
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/configuration/countries/*",
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/watch_providers_ref/movie/*",
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/watch_providers_ref/tv/*",
+        ]
+      },
+      {
+        # Parquet das 6 tabelas de referência gravado por write_parquet_to_sot
+        # (backfill_referencias.py — mesma função usada pelo Glue ETL real, ver
+        # app/glue_etl/src/utils.py). mode="overwrite" faz list+delete antes de escrever
+        # (ver ListScopedPrefixesSot acima), por isso também precisa de DeleteObject, não
+        # só GetObject/PutObject.
+        Sid    = "ReadWriteReferenceTablesInSot"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = [
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_genre_movie_tmdb.name}/*",
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_genre_tv_tmdb.name}/*",
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_configuration_languages_tmdb.name}/*",
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_configuration_countries_tmdb.name}/*",
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.name}/*",
+          "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.name}/*",
         ]
       },
       {
@@ -382,6 +443,33 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}/*",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}/*",
+        ]
+      },
+      {
+        # write_parquet_to_sot (backfill_referencias.py) grava as 6 tabelas de referência via
+        # wr.s3.to_parquet(..., database=..., table=...) — mesma função usada pelo Glue ETL
+        # real (app/glue_etl/src/utils.py). GetTable resolve o schema já existente (as 6
+        # tabelas já são criadas pelo Terraform, ver infra/glue_catalog.tf); UpdateTable cobre
+        # evolução de schema. Nenhuma delas é particionada (mode="overwrite"), por isso sem
+        # GetPartition(s)/BatchCreatePartition/BatchDeletePartition, diferente do statement
+        # acima (details/discover, particionados por ano).
+        Sid    = "ReferenceTablesCatalogAccess"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:UpdateTable",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_genre_movie_tmdb.database_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_genre_tv_tmdb.database_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_genre_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_genre_movie_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_genre_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_genre_tv_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_configuration_languages_tmdb.database_name}/${aws_glue_catalog_table.tb_configuration_languages_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_configuration_countries_tmdb.database_name}/${aws_glue_catalog_table.tb_configuration_countries_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.name}",
         ]
       },
     ]

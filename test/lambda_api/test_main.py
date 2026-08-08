@@ -219,57 +219,6 @@ class TestLambdaHandler:
             assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"
 
 
-class TestSkipWeekly:
-    """
-    Testa o flag skip_weekly que pula o loop de discover.
-
-    QUANDO USAR skip_weekly:
-      O EventBridge tem dois schedules: um semanal (only_weekly_tables) e um mensal (skip_weekly).
-      skip_weekly=True = "atualizo apenas os dados de referencia (generos, idiomas, paises,
-      plataformas de streaming), sem coletar o discover novamente este mes".
-      Isso economiza chamadas a API TMDB em execucoes onde os dados de discover nao precisam ser atualizados.
-    """
-
-    def test_skip_weekly_nao_chama_collect_discover(self):
-        mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
-        mocks["mock_discover"].assert_not_called()
-
-    def test_skip_weekly_ainda_coleta_genre_configuration_watch_providers(self):
-        mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
-        mocks["mock_genre"].assert_called_once()
-        mocks["mock_config"].assert_called_once()
-        mocks["mock_watch_ref"].assert_called_once()
-
-    def test_skip_weekly_glue_acionado_apenas_para_referencias(self):
-        mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
-        assert mocks["mock_trigger"].call_count == 3
-        table_types = [c[1].get("table_type") for c in mocks["mock_trigger"].call_args_list]
-        assert "discover" not in table_types
-
-    def test_skip_weekly_retorna_status_200(self):
-        mocks = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
-        assert mocks["result"]["statusCode"] == 200
-
-    # A lambda_glue_orchestrator foi removida (glue_agg roda em agendamento próprio,
-    # independente do restante do pipeline — ver app/glue_agg/glue_agg.md). As duas pernas
-    # (movie/tv) agora se comportam de forma idêntica em skip_weekly: disparam os 3 Glue ETL
-    # de referência e retornam, sem invocar nenhuma outra Lambda.
-
-    def test_skip_weekly_nao_invoca_nenhuma_lambda_para_movie_ou_tv(self):
-        mocks_movie = _run({**EVENTO_MOVIE, "skip_weekly": True}, year=2025)
-        mocks_tv = _run({**EVENTO_TV, "skip_weekly": True}, year=2025)
-        mocks_movie["mock_boto3"].client.return_value.invoke.assert_not_called()
-        mocks_tv["mock_boto3"].client.return_value.invoke.assert_not_called()
-        assert mocks_movie["result"] == {
-            "statusCode": 200,
-            "body": "Coleta de referência de 'movie' finalizada com sucesso.",
-        }
-        assert mocks_tv["result"] == {
-            "statusCode": 200,
-            "body": "Coleta de referência de 'tv' finalizada com sucesso.",
-        }
-
-
 class TestOnlyDiscover:
     """
     Testa o flag only_weekly_tables que pula as coletas de referencia.

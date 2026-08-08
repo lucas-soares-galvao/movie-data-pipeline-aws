@@ -12,7 +12,11 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #
 # Grupos de tabelas disponíveis:
 #   - discover              — gaps de anos via Lambda (ETL → DQ → Details → AGG)
-#   - referencias           — genre, configuration, watch_providers_ref via Lambda
+#   - referencias           — atualiza genre, configuration, watch_providers_ref rodando a coleta
+#                             TMDB e a transformação equivalente ao Glue ETL localmente neste
+#                             workflow (sem acionar Lambda nem o job Glue ETL — ver
+#                             scripts/backfill_referencias.py), disparando o Glue Data Quality uma
+#                             vez por tabela gravada
 #   - detalhes_e_providers  — re-enriquece details + watch_providers rodando a lógica do Glue
 #                             Details localmente neste workflow (sem acionar o job Glue — ver
 #                             scripts/backfill_enriquecimento.py), disparando o Glue Data Quality
@@ -138,7 +142,7 @@ jobs:
           # Formatter.converter de horário de São Paulo) — instalado sempre, não só
           # nos 2 table_group abaixo, para não depender da base IANA do runner.
           pip install boto3 tzdata
-          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ]; then
+          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ] || [ "${{ inputs.table_group }}" = "referencias" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -166,8 +170,9 @@ jobs:
           # lê direto o secret do repositório por ambiente (mesmo par usado em
           # 00_pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
           # de 02_terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Lido
-          # por backfill_enriquecimento.py e backfill_changes.py (via get_api_secret), que precisam da
-          # chave para chamar a API do TMDB fora do runtime do Glue/Lambda.
+          # por backfill_enriquecimento.py, backfill_changes.py e backfill_referencias.py (via
+          # get_api_secret), que precisam da chave para chamar a API do TMDB fora do runtime do
+          # Glue/Lambda.
           TMDB_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
 
           # Databases
@@ -176,8 +181,12 @@ jobs:
           GLUE_DATABASE_UNIFIED: db_${{ steps.project.outputs.project_prefix }}_unified_${{ steps.env.outputs.name }}
 
           # Buckets
-          # SOT: parquets reais de discover/details (só backfill_traducao.py)
+          # SOR: JSON bruto coletado do TMDB (só backfill_referencias.py, que escreve genre/
+          # configuration/watch_providers_ref no mesmo layout que a Lambda API usaria)
+          # SOT: parquets reais de discover/details (backfill_traducao.py) e das 6 tabelas de
+          # referência (backfill_referencias.py)
           # TEMP: checkpoint de retomada de todos os 4 scripts que iteram por ano
+          S3_BUCKET_SOR: lsg-sa-east-1-bucket-sor-${{ steps.env.outputs.name }}
           S3_BUCKET_SOT: lsg-sa-east-1-bucket-sot-${{ steps.env.outputs.name }}
           S3_BUCKET_TEMP: lsg-sa-east-1-bucket-temp-${{ steps.env.outputs.name }}
 
@@ -230,13 +239,12 @@ jobs:
             export AWS_SESSION_TOKEN=$(echo "$creds" | cut -f3)
           }
 
-          # Nota: backfill_referencias.py não itera por ano, não grava checkpoint e nunca
-          # sai com código 75 — para ele, este loop roda uma única vez e sai normalmente.
-          # backfill_changes.py também não itera por ano nem grava checkpoint (só 2
-          # unidades, movie/tv, e é idempotente), mas agora faz chamadas reais de
-          # Athena/S3/Secrets/TMDB no processo (não mais uma invocação curta de Lambda) e
-          # pode sair com código 75 se a credencial expirar no meio do run — esse loop
-          # genérico já cobre o retry, sem checkpoint: a próxima tentativa refaz do zero.
+          # Nota: backfill_referencias.py e backfill_changes.py não iteram por ano nem gravam
+          # checkpoint (poucas unidades — 6 e 2, respectivamente — ambos idempotentes). Fazem
+          # chamadas reais de S3/Secrets/TMDB (backfill_referencias.py) ou Athena/S3/Secrets/TMDB
+          # (backfill_changes.py) diretamente no processo (não mais uma invocação curta de
+          # Lambda) e podem sair com código 75 se a credencial expirar no meio do run — esse loop
+          # genérico já cobre o retry, sem checkpoint: a próxima tentativa refaz tudo do zero.
           # backfill_rename_colunas.py itera por tabela x ano (não por media_type) e usa
           # o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —

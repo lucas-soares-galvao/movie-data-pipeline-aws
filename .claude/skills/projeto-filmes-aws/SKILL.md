@@ -196,7 +196,7 @@ O evento JSON recebido pela Lambda deve conter (exemplo para filmes, semanal):
   "table_now_playing_movie": "tb_tmdb_now_playing_movie_{env}"
 }
 ```
-O EventBridge dispara a Lambda automaticamente no horário configurado. Para séries (`type: "tv"`), as chaves mudam para `table_discover_tv`, `table_genre_tv`, `table_configuration_countries`, `table_watch_providers_ref_tv`. Os flags opcionais de controle são: `only_weekly_tables` (semanal), `only_annual_tables` (backfill anual), `only_monthly_tables` (mensal), `skip_weekly` (apenas referências), `only_changes_tables` (semanal de changes — ver abaixo).
+O EventBridge dispara a Lambda automaticamente no horário configurado. Para séries (`type: "tv"`), as chaves mudam para `table_discover_tv`, `table_genre_tv`, `table_configuration_countries`, `table_watch_providers_ref_tv`. Os flags opcionais de controle são: `only_weekly_tables` (semanal), `only_annual_tables` (backfill anual), `only_monthly_tables` (mensal), `only_changes_tables` (semanal de changes — ver abaixo).
 
 ### Modo changes (`only_changes_tables=True`)
 

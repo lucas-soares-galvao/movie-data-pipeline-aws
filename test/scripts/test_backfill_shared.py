@@ -200,8 +200,8 @@ class TestBuildLambdaClient:
     def test_read_timeout_compativel_com_o_timeout_do_lambda(self):
         """O timeout do Lambda é 900s (infra/lambda_api.tf) — o read_timeout do
         cliente boto3 precisa ser maior, senão o cliente desiste antes do Lambda
-        responder numa invocação síncrona longa (ex.: skip_weekly/tv, que aguarda
-        os Glue ETL de referência antes do Glue AGG — ver app/lambda_api/main.py)."""
+        responder numa invocação síncrona longa (ver histórico do incidente real
+        em scripts/backfill_shared.py:LAMBDA_READ_TIMEOUT_SECONDS)."""
         with patch("backfill_shared.boto3") as mock_boto3:
             bs.build_lambda_client("sa-east-1")
         config = mock_boto3.client.call_args.kwargs["config"]
