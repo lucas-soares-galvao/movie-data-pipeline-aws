@@ -160,10 +160,13 @@ jobs:
           LAMBDA_FUNCTION_NAME: ${{ steps.project.outputs.project_prefix }}-lambda-api-${{ steps.env.outputs.name }}
 
           # Secret com a chave de API do TMDB — mesmo ARN usado por infra/glue_details.tf (argumento
-          # TMDB_SECRET_ARN do job real) e pelo terraform apply (secrets.aws-filmbot-secret-arn em
-          # .github/workflows/02_terraform.yml). Só lido por backfill_enriquecimento.py (via
-          # get_api_secret), que precisa da chave para chamar a API do TMDB fora do runtime do Glue.
-          TMDB_SECRET_ARN: ${{ secrets.aws-filmbot-secret-arn }}
+          # TMDB_SECRET_ARN do job real). Este workflow é workflow_dispatch (não workflow_call), então
+          # lê direto o secret do repositório por ambiente (mesmo par usado em
+          # 00_pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
+          # de 02_terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Só
+          # lido por backfill_enriquecimento.py (via get_api_secret), que precisa da chave para chamar
+          # a API do TMDB fora do runtime do Glue.
+          TMDB_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
 
           # Databases
           GLUE_DATABASE_MOVIE: db_${{ steps.project.outputs.project_prefix }}_movie_${{ steps.env.outputs.name }}
