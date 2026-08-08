@@ -351,7 +351,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         {meta_html}
         {duration_html}
         {cinema_html}
-        <div class="genres-container">{genres_icon_html}{genres_html}</div>
+        <div class="genres-container">{genres_icon_html}<span class="genre-badges">{genres_html}</span></div>
         {providers_block_html}
         <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
       </div>
