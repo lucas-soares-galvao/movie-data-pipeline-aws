@@ -644,21 +644,39 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    de mais respiro entre si pra não parecerem uma lista só; alternativa mais leve que dar
    cor própria a cada um (cor nesse design é reservada pra "preste atenção aqui" — nota,
    motivo, sinopse, em cartaz, classificação —, não pra diferenciar categoria). */
+/* Mesma estrutura de .providers-row/.provider-badges (2 níveis: ícone + span que quebra
+   linha por conta própria) — antes o ícone era só mais um item solto dentro do mesmo
+   flex-wrap dos badges, então ao quebrar linha o texto ficava rente à borda esquerda do
+   card (embaixo do ícone) em vez de alinhado com o primeiro badge, diferente de como
+   provedor já se comportava (badges numa coluna própria, à direita do ícone, que quebra
+   linha só entre si). align-items:flex-start (não center) mantém o ícone ancorado na
+   primeira linha mesmo com a quebra. Sem margin própria — respiro vem do gap de
+   .card-body. */
 .genres-container {
-  margin: 6px 0 16px;
   display: flex;
   align-items: flex-start;
-  flex-wrap: wrap;
+  gap: 6px;
 }
-.genres-container .meta-icon {
-  margin-right: 4px;
+.genre-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
+/* gap (não margin em cada campo) dá o respiro entre TODAS as seções do card (título,
+   motivo, informação, gêneros, provedores, sinopse...) de uma vez só, de forma uniforme —
+   funciona tanto no mobile (display:flex; flex-direction:column, gap vira espaço vertical
+   entre os itens empilhados) quanto no desktop (display:grid;grid-template-rows:subgrid
+   abaixo, gap vira espaço entre as linhas do subgrid). Substituiu as margens soltas que
+   cada campo tinha antes (ex.: .reason, .genres-container) — manter as duas fontes de
+   espaçamento ao mesmo tempo causava bug real (ver comentário em .reason, mais abaixo). */
 .card-body {
   padding: 16px;
   display: flex;
   flex-direction: column;
   flex: 1;
+  gap: 16px;
 }
 
 /* Alinhamento simétrico entre os 3 cards de uma fileira: no desktop, .grid-titles declara
@@ -704,16 +722,18 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    align-items:stretch, padrão, sem precisar declarar) — sem isso, um motivo de 1 linha ao
    lado de motivos de 2 linhas na mesma fileira deixa a caixa colorida visivelmente mais
    curta, com um vão vazio (fundo do card, sem cor) antes da próxima linha, mesmo a linha
-   do subgrid já estando alta o bastante pra acomodar o vizinho de 2 linhas. box-sizing:
-   border-box inclui o padding nesse 100%, senão o padding somaria por cima e a caixa
-   ficaria mais alta que a linha (empurrando o que vem depois). No mobile (sem subgrid,
-   .row-reason com altura automática) height:100% contra um pai de altura automática
-   simplesmente vira auto — comportamento igual ao de antes. */
+   do subgrid já estando alta o bastante pra acomodar o vizinho de 2 linhas. Sem margin
+   própria — o respiro antes/depois vem do gap uniforme de .card-body (acima). É proposital
+   não ter as duas fontes de espaçamento juntas: margin nunca entra no cálculo de
+   box-sizing, então height:100% + margin próprios faziam a caixa ultrapassar a altura de
+   .row-reason e sobrepor a linha seguinte (bug real, medido via Playwright antes desse
+   ajuste). box-sizing:border-box garante que padding/border entrem nesse 100%, não somem
+   por cima. No mobile (sem subgrid, .row-reason com altura automática) a % vira auto —
+   comportamento igual ao de antes. */
 .reason {
   color: #fdba74;
   font-size: 14px;
   font-style: italic;
-  margin: 6px 0 4px;
   padding: 6px 10px;
   background: rgba(249,115,22,0.05);
   border-left: 2px solid rgba(249,115,22,0.3);
@@ -723,11 +743,12 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   box-sizing: border-box;
 }
 
+/* Sem margin própria — o respiro entre uma .meta-row e a próxima (ou qualquer outra
+   seção) vem do gap uniforme de .card-body, não daqui (ver comentário lá). */
 .meta-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 2px 0;
 }
 
 /* display:inline-flex + align-items/justify-content:center (não line-height:1 +
@@ -782,7 +803,6 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   padding: 2px 8px;
   font-size: 12px;
   display: inline-block;
-  margin: 2px 2px 2px 0;
   border: 1px solid rgba(255,255,255,0.1);
 }
 
@@ -857,13 +877,15 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    trailer dividem a mesma linha — são as duas ações de "quero saber mais"
    do card, então não faz sentido o trailer competir com data/tipo lá em cima. */
 .synopsis-toggle { display: none; }
+/* Sem margin-top — respiro antes da linha vem do gap de .card-body, não daqui. row-gap
+   continua (papel diferente: espaço entre "Sinopse" e "Trailer" quando os dois quebram
+   pra linhas separadas dentro dessa mesma linha, não entre seções). */
 .synopsis-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   row-gap: 6px;
-  margin-top: 8px;
 }
 .synopsis-label {
   cursor: pointer;
