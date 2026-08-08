@@ -320,14 +320,3 @@ jobs:
           else
             echo "- não disparado (\`data_quality\` não escreve dado novo)" >> "$GITHUB_STEP_SUMMARY"
           fi
-
-          # Propaga o backfill à camada SPEC sem esperar o próximo ciclo agendado do
-          # AGG (sáb/dom 08:00 BRT). data_quality só valida, não escreve dado novo —
-          # não há o que propagar. Fire-and-forget: uma falha aqui não derruba o
-          # workflow, já que o trigger agendado continua cobrindo o caso.
-          if [ "${{ inputs.table_group }}" != "data_quality" ]; then
-            echo "Disparando glue_agg ($GLUE_AGG_JOB_NAME) para propagar o backfill à camada SPEC..."
-            if ! aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME" --region sa-east-1 > /dev/null; then
-              echo "::warning::Falha ao disparar glue_agg após o backfill — o trigger agendado (sáb/dom 08:00 BRT) ainda cobre este caso."
-            fi
-          fi
