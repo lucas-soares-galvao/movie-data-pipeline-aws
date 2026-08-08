@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -1214,6 +1215,141 @@ def collect_and_write_watch_providers(
         table=table_name,
     )
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
+
+
+def run_details_and_watch_providers_for_year(
+    *,
+    api_key: str,
+    database: str,
+    media_type: str,
+    year: str,
+    end_year: str,
+    s3_bucket_sot: str,
+    s3_bucket_temp: str,
+    table_discover: str,
+    table_details: str,
+    table_watch_providers: str,
+    dq_job_name: str,
+    force_refetch: bool = False,
+    translate_provider: str = "google",
+    trigger_dq: bool = True,
+) -> None:
+    """
+    Roda o ciclo completo de enriquecimento (details + watch providers) para um media_type/year:
+    calcula o delta contra o discover, busca na API TMDB, grava no SOT, dispara o Data Quality (se
+    trigger_dq) e repara duplicatas quando year == end_year.
+
+    Extraída de main.py para ser reutilizável fora do runtime do job Glue — ver
+    scripts/backfill_enriquecimento.py, que chama esta função diretamente (sem passar pelo
+    Glue Details) com trigger_dq=False, disparando o Data Quality uma única vez ao final de todo o
+    backfill em vez de por unidade.
+
+    Args:
+        api_key:               Chave de API do TMDB (buscada uma vez fora do loop pelo chamador).
+        database:               Nome do banco de dados no Glue Catalog.
+        media_type:             "movie" ou "tv".
+        year:                   Ano a processar (string).
+        end_year:               Último ano do ciclo — repair de duplicatas roda quando year == end_year.
+        s3_bucket_sot:          Bucket SOT de destino.
+        s3_bucket_temp:         Bucket TEMP para resultados temporários do Athena.
+        table_discover:         Tabela de discover (movie ou tv).
+        table_details:          Tabela de detalhes (movie ou tv).
+        table_watch_providers:  Tabela de watch providers (movie ou tv).
+        dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
+        force_refetch:          Se True, ignora o delta e re-busca todos os IDs do discover.
+        translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
+        trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
+                                 Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
+                                 passa False e dispara o DQ uma única vez ao final do backfill inteiro.
+    """
+    all_ids = fetch_ids_from_sot(
+        database=database,
+        table_discover=table_discover,
+        s3_bucket_temp=s3_bucket_temp,
+        year=year,
+    )
+
+    if force_refetch:
+        logger.info("FORCE_REFETCH=true — ignorando delta, re-buscando todos os IDs.")
+        new_ids = all_ids
+    else:
+        existing_ids = fetch_existing_ids_from_details(
+            database=database,
+            table_details=table_details,
+            s3_bucket_temp=s3_bucket_temp,
+        )
+        new_ids = list(set(all_ids) - set(existing_ids))
+
+    logger.info(
+        f"Details: {len(new_ids)} IDs a buscar de {len(all_ids)} no discover "
+        f"({media_type}, year={year})."
+    )
+    if new_ids:
+        collect_and_write_details(
+            api_key=api_key,
+            ids=new_ids,
+            content_type=media_type,
+            s3_bucket_sot=s3_bucket_sot,
+            table_name=table_details,
+            database=database,
+            translate_provider=translate_provider,
+        )
+
+    stale_ids = fetch_ids_stale_watch_providers(
+        database=database,
+        table_discover=table_discover,
+        table_watch_providers=table_watch_providers,
+        s3_bucket_temp=s3_bucket_temp,
+        year=year,
+    )
+
+    logger.info(
+        f"Watch providers: {len(stale_ids)} IDs para atualizar "
+        f"({media_type}, year={year})."
+    )
+    if stale_ids:
+        collect_and_write_watch_providers(
+            api_key=api_key,
+            ids=stale_ids,
+            content_type=media_type,
+            s3_bucket_sot=s3_bucket_sot,
+            table_name=table_watch_providers,
+            database=database,
+            year=year,
+        )
+
+    if trigger_dq:
+        trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=year)
+        time.sleep(5)
+        trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=year)
+
+    # Ao final do ciclo de cada media_type, remove duplicatas intra-partição nas três tabelas
+    # (movies e tvs reparados separadamente em seus respectivos runs de end_year).
+    # Deduplicação cross-year é feita pelo Glue AGG via ROW_NUMBER / DENSE_RANK.
+    if year == end_year:
+        logger.info(
+            f"Último run do ciclo ({media_type} + end_year) — "
+            "reparando duplicatas na partição atual de discover, watch_providers e details..."
+        )
+        repair_discover_duplicates(
+            database=database,
+            table_discover=table_discover,
+            s3_bucket_sot=s3_bucket_sot,
+            year=year,
+        )
+        repair_watch_providers_duplicates(
+            database=database,
+            table_watch_providers=table_watch_providers,
+            s3_bucket_sot=s3_bucket_sot,
+            year=year,
+        )
+        repair_details_duplicates(
+            database=database,
+            table_details=table_details,
+            s3_bucket_sot=s3_bucket_sot,
+            s3_bucket_temp=s3_bucket_temp,
+            year=year,
+        )
 
 
 # ── Modo changes (TMDB Changes API) ──────────────────────────────────────────

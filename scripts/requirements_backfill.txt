@@ -1,6 +1,7 @@
 boto3
 awswrangler
 pandas
+requests
 deep_translator
 langdetect
 tzdata
