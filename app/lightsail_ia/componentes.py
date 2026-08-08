@@ -253,10 +253,19 @@ def render_card(title: dict, idx: int = 0) -> str:
     # "quero saber mais" do card, em vez de disputar espaço com um fato objetivo.
     # meta-line e duration-row sempre geram a div (mesmo vazia) — reservam a própria linha
     # do subgrid, senão a ausência do campo desloca as linhas seguintes só nesse card.
+    # O ícone fica dentro de .meta-info (não como irmão solto de .meta-row) porque
+    # .meta-line usa justify-content:space-between pra separar meta-info/nota — um 3º
+    # filho direto do .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta
+    # direita, longe um do outro, em vez de ficarem juntos como "ícone + texto". Só aparece
+    # quando há data/tipo pra rotular — sem isso, .meta-info fica vazio (linha ainda
+    # reservada pelo subgrid, ver comentário abaixo) e um ícone sozinho, sem texto ao lado,
+    # não faria sentido.
+    meta_icon_html = '<span class="meta-icon">ℹ</span>' if meta_left else ""
     meta_right = "" if has_poster else rating_html
     meta_html = (
         f'<div class="meta-row meta-line">'
-        f'<span class="meta-info">{meta_left}</span>{meta_right}</div>'
+        f'<span class="meta-info">{meta_icon_html}{meta_left}</span>'
+        f'{meta_right}</div>'
     )
 
     duration_html = (
@@ -323,10 +332,10 @@ def render_card(title: dict, idx: int = 0) -> str:
         <strong class="card-title">{title_name}</strong>
         <div class="row-reason">{reason_html}</div>
         {meta_html}
-        <div class="genres-container">{genres_html}</div>
         {duration_html}
-        {providers_block_html}
         {cinema_html}
+        <div class="genres-container">{genres_html}</div>
+        {providers_block_html}
         <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
       </div>
     </article>
