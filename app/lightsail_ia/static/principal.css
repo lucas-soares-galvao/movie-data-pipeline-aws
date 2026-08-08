@@ -699,6 +699,16 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   .row-synopsis { grid-row: 8; }
 }
 
+/* height:100% faz o fundo acompanhar a altura de .row-reason, que por sua vez já estica
+   pra altura da linha do subgrid compartilhada com os vizinhos da fileira (grid
+   align-items:stretch, padrão, sem precisar declarar) — sem isso, um motivo de 1 linha ao
+   lado de motivos de 2 linhas na mesma fileira deixa a caixa colorida visivelmente mais
+   curta, com um vão vazio (fundo do card, sem cor) antes da próxima linha, mesmo a linha
+   do subgrid já estando alta o bastante pra acomodar o vizinho de 2 linhas. box-sizing:
+   border-box inclui o padding nesse 100%, senão o padding somaria por cima e a caixa
+   ficaria mais alta que a linha (empurrando o que vem depois). No mobile (sem subgrid,
+   .row-reason com altura automática) height:100% contra um pai de altura automática
+   simplesmente vira auto — comportamento igual ao de antes. */
 .reason {
   color: #fdba74;
   font-size: 14px;
@@ -709,6 +719,8 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   border-left: 2px solid rgba(249,115,22,0.3);
   border-radius: 4px;
   line-height: 1.4;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .meta-row {
@@ -718,12 +730,19 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin: 2px 0;
 }
 
+/* display:inline-flex + align-items/justify-content:center (não line-height:1 +
+   text-align:center) centraliza o glifo dentro de uma caixa de tamanho fixo — mais
+   confiável entre fontes/navegadores, já que emoji tem métricas de fonte (ascent/descent)
+   que variam bastante e deixam o glifo visualmente "flutuando" acima do centro real
+   quando centralizado só por line-height. */
 .meta-icon {
   font-size: 18px;
-  line-height: 1;
   flex-shrink: 0;
   width: 20px;
-  text-align: center;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* O "ℹ" da meta-line é texto puro (sem seletor de variação de emoji), não o glifo colorido
