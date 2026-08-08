@@ -34,7 +34,7 @@ Fluxo: `collect_changes_data()` calcula a janela `[domingo passado, sábado de o
 
 Cadência semanal (não diária) para economizar custo do Glue Details, que é acionado a cada execução.
 
-**Backfill manual**: `scripts/backfill_changes.py` dispara o mesmo modo sob demanda (`only_changes_tables=True`, sem parâmetros de data) — útil quando o cron semanal falha ou é pulado. A janela continua sendo sempre `[domingo passado, sábado de ontem]`, calculada por `collect_changes_data()` no momento da invocação; o script não escolhe uma janela histórica (ver `scripts/scripts.md`).
+**Backfill manual**: `scripts/backfill_changes.py` roda o mesmo fluxo sob demanda — útil quando o cron semanal falha ou é pulado — mas **sem invocar esta Lambda**: chama `collect_changes_data()` diretamente no processo do backfill (GitHub Actions), o mesmo padrão de reuso fora do runtime de nuvem já usado por `scripts/backfill_enriquecimento.py` para o Glue Details (ver `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"). A janela continua sendo sempre `[domingo passado, sábado de ontem]`, calculada por `collect_changes_data()` no momento da invocação; o script não escolhe uma janela histórica. Depois de coletar os IDs, o script também chama `fetch_ids_from_changes_file()`/`process_changed_ids()` diretamente (em vez de acionar o Glue Details como job) — ver `scripts/scripts.md`.
 
 ### Modo rotation refresh (catálogo antigo, 1 ano por vez)
 
