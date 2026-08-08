@@ -189,6 +189,15 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_substitui_locked_out_false` | O placeholder `__LOCKED_OUT__` é substituído por `false` quando `locked_out=False` |
 | `test_substitui_locked_out_true` | O placeholder `__LOCKED_OUT__` é substituído por `true` quando `locked_out=True` |
 
+### `TestMatchesHighlighted` — Predicado de match compartilhado por `_prioritize`/render de badges
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_termos_retorna_falso` | Lista de termos vazia → `False` |
+| `test_item_bate_com_termo` | Item que contém o termo → `True` |
+| `test_item_nao_bate_com_termo` | Item que não contém nenhum termo → `False` |
+| `test_case_insensitive` | Match funciona independente da caixa do termo/item |
+
 ### `TestPrioritize` — Reordenação de badges por termo destacado
 
 | Teste | O que verifica |
@@ -212,6 +221,7 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_logos_string_mais_curta_preenche_com_vazio` | Rede de segurança: `logos_raw` com menos posições que `names_raw` é completada com string vazia em vez de estourar índice |
 | `test_escapa_html_no_nome_e_na_url_da_logo` | Nome e URL da logo passam por `html.escape` (proteção XSS) |
 | `test_prioriza_provedor_destacado_mesmo_com_logo` | `highlighted` continua priorizando o provedor certo mesmo quando os badges são imagens, não texto |
+| `test_provedor_destacado_ganha_classe_highlighted` | Provedor destacado renderiza com a classe `.highlighted` (borda + texto laranja); os demais renderizam sem ela |
 
 ### `TestRenderCard` — Renderização de cards individuais
 
@@ -245,6 +255,9 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_genero_destacado_entra_nos_visiveis_alem_do_limite` | Gênero destacado originalmente na 6ª posição (cairia no "+1") aparece nas 5 badges visíveis, e outro gênero passa a ficar no "+1" |
 | `test_card_provedor_destacado_entra_nos_visiveis_alem_do_limite` | Mesmo cenário do teste acima, para provedores |
 | `test_card_multiplos_generos_destacados_mantem_ordem_entre_si` | Dois gêneros destacados aparecem antes dos demais, mantendo ordem relativa entre si |
+| `test_card_genero_destacado_ganha_classe_highlighted_e_nao_destacado_nao_ganha` | Gênero destacado renderiza com a classe `.highlighted`; gênero não destacado no mesmo card renderiza sem ela |
+| `test_card_provedor_destacado_ganha_classe_highlighted_e_nao_destacado_nao_ganha` | Mesmo cenário do teste acima, para provedores |
+| `test_card_multiplos_generos_destacados_ganham_highlighted_todos` | Dois gêneros destacados no mesmo card (`highlighted_genres` com 2 termos) ganham `.highlighted` cada um, não só o primeiro |
 | `test_card_generos_e_provedores_destacados_priorizam_fileiras_independentes` | `highlighted_genres` e `highlighted_providers` populados juntos no mesmo card → cada fileira de badges prioriza os seus, independentemente uma da outra |
 | `test_card_sem_chave_highlighted_ordem_permanece_igual` | Sem `highlighted_genres`/`highlighted_providers` no dict do título → ordem idêntica à anterior à feature (sem regressão) |
 | `test_card_highlighted_vazio_ordem_permanece_igual` | `highlighted_genres`/`highlighted_providers` presentes mas vazios → ordem idêntica à anterior à feature |
