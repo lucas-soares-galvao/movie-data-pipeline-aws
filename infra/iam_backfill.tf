@@ -263,11 +263,16 @@ resource "aws_iam_role_policy" "backfill_s3" {
         # JSON bruto gravado por collect_genre_data/collect_configuration_data/
         # collect_watch_providers_ref (backfill_referencias.py, chamadas diretamente no
         # processo do backfill — mesmo código que a Lambda API usaria, ver
-        # app/lambda_api/src/utils.py). Só PutObject: o script sempre sobrescreve o
-        # arquivo único de cada tipo, nunca lista nem lê de volta o SOR.
-        Sid    = "WriteReferenceRawDataToSor"
+        # app/lambda_api/src/utils.py) e lido de volta logo em seguida por read_from_sor
+        # (app/glue_etl/src/utils.py, _read_json_from_s3) para a transformação equivalente
+        # ao Glue ETL — mesmo par escrever-e-reler que o Glue ETL real faz entre a Lambda e
+        # o próprio job. GetObject além de PutObject, por isso.
+        Sid    = "ReadWriteReferenceRawDataInSor"
         Effect = "Allow"
-        Action = "s3:PutObject"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+        ]
         Resource = [
           "${aws_s3_bucket.sor_bucket.arn}/tmdb/genre/movie/*",
           "${aws_s3_bucket.sor_bucket.arn}/tmdb/genre/tv/*",
@@ -450,7 +455,11 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
         # wr.s3.to_parquet(..., database=..., table=...) — mesma função usada pelo Glue ETL
         # real (app/glue_etl/src/utils.py). GetTable resolve o schema já existente (as 6
         # tabelas já são criadas pelo Terraform, ver infra/glue_catalog.tf); UpdateTable cobre
-        # evolução de schema. Nenhuma delas é particionada (mode="overwrite"), por isso sem
+        # evolução de schema; CreateTable é exigido mesmo com a tabela já existente — a role
+        # do job Glue ETL real (glue_etl_catalog, Sid "WriteSOTTable" acima nesta mesma
+        # policy.tf) também concede CreateTable para o mesmo tipo de escrita, confirmando que
+        # o awswrangler aciona essa action independente de a tabela já existir no Catalog.
+        # Nenhuma das 6 é particionada (mode="overwrite"), por isso sem
         # GetPartition(s)/BatchCreatePartition/BatchDeletePartition, diferente do statement
         # acima (details/discover, particionados por ano).
         Sid    = "ReferenceTablesCatalogAccess"
@@ -458,6 +467,7 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
         Action = [
           "glue:GetDatabase",
           "glue:GetTable",
+          "glue:CreateTable",
           "glue:UpdateTable",
         ]
         Resource = [
