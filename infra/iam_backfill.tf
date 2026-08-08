@@ -211,6 +211,18 @@ resource "aws_iam_role_policy" "backfill_s3" {
         }
       },
       {
+        # GetBucketLocation é ação de bucket (sem sub-recurso e sem chave de condition
+        # "s3:prefix" no contexto da requisição), por isso não pode entrar no statement
+        # acima com Condition por prefixo — precisa de statement próprio. Sem ela, o
+        # Athena StartQueryExecution falha com "Unable to verify/create output bucket"
+        # ao tentar validar o bucket de output (S3_OUTPUT_LOCATION = bucket TEMP). Mesma
+        # permissão já concedida à role glue_details_role (infra/iam_policies.tf).
+        Sid      = "GetBucketLocationTemp"
+        Effect   = "Allow"
+        Action   = "s3:GetBucketLocation"
+        Resource = aws_s3_bucket.temporary_bucket.arn
+      },
+      {
         Sid    = "CheckpointReadWrite"
         Effect = "Allow"
         Action = [
