@@ -33,7 +33,7 @@ from shared_utils.traducao import (
     translate_text,
     translate_text_aws,
 )
-from shared_utils.triggers import trigger_glue_job  # noqa: F401
+from shared_utils.triggers import trigger_glue_job
 
 logger = logging.getLogger()
 
