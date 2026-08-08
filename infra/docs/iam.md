@@ -45,13 +45,13 @@ Além do polling do workflow (`aws iam list-attached-role-policies`, 12 tentativ
 
 ## Permissões do backfill manual (`iam_backfill.tf`)
 
-O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 5 scripts `scripts/backfill_*.py` usam:
+O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 7 scripts `scripts/backfill_*.py` usam:
 
 | Policy | Escopo |
 |---|---|
 | `tmdb-backfill-invoke-lambda-{env}` | `lambda:InvokeFunction` restrito à Lambda API (`backfill_historico.py`, `backfill_referencias.py`) |
-| `tmdb-backfill-glue-jobs-{env}` | `glue:StartJobRun`/`GetJobRun` restrito aos jobs Details e Data Quality (`backfill_enriquecimento.py`, `backfill_data_quality.py`) |
-| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `tmdb/backfill_checkpoints/*` no bucket TEMP (todos os scripts, exceto `backfill_referencias.py`) e às tabelas discover/details movie/tv (`backfill_traducao.py`) e details/watch_providers movie/tv (`backfill_rename_colunas.py`) no bucket SOT |
+| `tmdb-backfill-glue-jobs-{env}` | `glue:StartJobRun`/`GetJobRun` restrito aos jobs Details e Data Quality (`backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_changes.py`) |
+| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `tmdb/backfill_checkpoints/*` no bucket TEMP (todos os scripts, exceto `backfill_referencias.py`/`backfill_changes.py`), ao prefixo `tmdb/changes/*` no bucket TEMP (`backfill_changes.py` — lista de IDs mudados + logs de descartados/ambíguos) e às tabelas discover/details movie/tv (`backfill_traducao.py`) e details/watch_providers movie/tv (`backfill_rename_colunas.py`) no bucket SOT |
 | `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas details e watch_providers movie/tv — usado implicitamente pelo `awswrangler` em `backfill_traducao.py` e `backfill_rename_colunas.py` |
 
 Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token OIDC também por branch (`ref:refs/heads/develop` em dev, `ref:refs/heads/main` em prod, casando com a resolução de ambiente feita pelo próprio `05_backfill.yml`), não só por repositório — reforço de segurança possível porque é uma role nova, sem histórico de uso a preservar.

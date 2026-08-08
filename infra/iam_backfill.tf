@@ -16,7 +16,9 @@
 # (backfill_enriquecimento.py, que roda a lógica de enriquecimento do Glue
 # Details diretamente no processo do backfill em vez de acionar esse job —
 # ver run_details_and_watch_providers_for_year em
-# app/glue_details/src/utils.py).
+# app/glue_details/src/utils.py — e backfill_changes.py, que aplica o mesmo
+# racional ao modo changes: coleta os IDs mudados e roda o enriquecimento
+# diretamente no processo, sem acionar Lambda nem o job Glue Details).
 # =============================================================================
 
 locals {
@@ -63,6 +65,10 @@ resource "aws_iam_role" "backfill" {
 
 # =============================================================================
 # POLICY 1 — Invoke Lambda (backfill_historico.py, backfill_referencias.py)
+#
+# backfill_changes.py NÃO está mais entre os chamadores: passou a chamar
+# collect_changes_data diretamente no processo do backfill (mesmo racional de
+# backfill_enriquecimento.py para o Glue Details), sem mais invocar a Lambda.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_invoke_lambda" {
   name = "${local.tmdb_prefix}-backfill-invoke-lambda-${var.env}"
@@ -81,16 +87,17 @@ resource "aws_iam_role_policy" "backfill_invoke_lambda" {
 
 # =============================================================================
 # POLICY 2 — Glue Jobs Data Quality e AGG (disparo fire-and-forget do Data
-# Quality ao final de backfill_enriquecimento.py/backfill_data_quality.py, e o
-# disparo + polling do glue_agg ao final de qualquer grupo elegível — todos
-# exceto data_quality, ver step "Run backfill" em 05_backfill.yml). GetJobRun
-# também é usado para o AGG porque o workflow faz polling do estado até um
-# estado terminal, não é fire-and-forget.
+# Quality ao final de backfill_enriquecimento.py/backfill_data_quality.py/
+# backfill_changes.py, e o disparo + polling do glue_agg ao final de qualquer
+# grupo elegível — todos exceto data_quality, ver step "Run backfill" em
+# 05_backfill.yml). GetJobRun também é usado para o AGG porque o workflow faz
+# polling do estado até um estado terminal, não é fire-and-forget.
 #
 # details_job_pythonshell NÃO está mais no Resource: backfill_enriquecimento.py
-# passou a rodar a lógica de enriquecimento diretamente no processo do backfill
-# (ver run_details_and_watch_providers_for_year em app/glue_details/src/utils.py),
-# sem mais chamar start_job_run/get_job_run para o Glue Details.
+# e backfill_changes.py passaram a rodar a lógica de enriquecimento diretamente
+# no processo do backfill (ver run_details_and_watch_providers_for_year e
+# process_changed_ids em app/glue_details/src/utils.py), sem mais chamar
+# start_job_run/get_job_run para o Glue Details.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_glue_jobs" {
   name = "${local.tmdb_prefix}-backfill-glue-jobs-${var.env}"
@@ -116,9 +123,11 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
 # =============================================================================
 # POLICY 3 — Athena (backfill_enriquecimento.py, via
 # run_details_and_watch_providers_for_year → fetch_ids_from_sot/
-# fetch_existing_ids_from_details/fetch_ids_stale_watch_providers, que usam
-# wr.athena.read_sql_query). Mesmo shape de glue_details_athena
-# (infra/iam_policies.tf), já que é o mesmo código rodando fora do Glue.
+# fetch_existing_ids_from_details/fetch_ids_stale_watch_providers; e
+# backfill_changes.py, via resolve_matched_ids_for_changed_ids, que cruza os
+# IDs mudados com a tabela discover — ambas usam wr.athena.read_sql_query).
+# Mesmo shape de glue_details_athena (infra/iam_policies.tf), já que é o mesmo
+# código rodando fora do Glue.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_athena" {
   name = "${local.tmdb_prefix}-backfill-athena-${var.env}"
@@ -142,9 +151,9 @@ resource "aws_iam_role_policy" "backfill_athena" {
 }
 
 # =============================================================================
-# POLICY 4 — Secrets Manager (backfill_enriquecimento.py: get_api_secret busca
-# a chave de API do TMDB antes de chamar a API). Mesmo shape de
-# glue_details_secrets (infra/iam_policies.tf).
+# POLICY 4 — Secrets Manager (backfill_enriquecimento.py e backfill_changes.py:
+# get_api_secret busca a chave de API do TMDB antes de chamar a API). Mesmo
+# shape de glue_details_secrets (infra/iam_policies.tf).
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_secrets" {
   name = "${local.tmdb_prefix}-backfill-secrets-${var.env}"
@@ -206,6 +215,7 @@ resource "aws_iam_role_policy" "backfill_s3" {
             "s3:prefix" = [
               "tmdb/backfill_checkpoints/*",
               "tmdb/athena/glue_details/*",
+              "tmdb/changes/*",
             ]
           }
         }
@@ -253,6 +263,20 @@ resource "aws_iam_role_policy" "backfill_s3" {
         Resource = "${aws_s3_bucket.temporary_bucket.arn}/tmdb/athena/glue_details/*"
       },
       {
+        # Lista de IDs mudados gravada por collect_changes_data (agora chamada diretamente
+        # por backfill_changes.py, não mais pela Lambda) e os logs de descartados/ambíguos
+        # gravados por resolve_matched_ids_for_changed_ids — mesmo prefixo já usado pela
+        # lambda_api real (ver infra/iam_policies.tf) para o mesmo código.
+        Sid    = "ChangesS3Handoff"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = "${aws_s3_bucket.temporary_bucket.arn}/tmdb/changes/*"
+      },
+      {
         Sid    = "ReadDiscoverForTraducao"
         Effect = "Allow"
         Action = "s3:GetObject"
@@ -295,9 +319,10 @@ resource "aws_iam_role_policy" "backfill_s3" {
 # POLICY 6 — Glue Data Catalog (backfill_traducao.py e backfill_rename_colunas.py,
 # via chamadas implícitas do awswrangler: GetTable/GetPartition(s) ao ler,
 # BatchCreatePartition/BatchDeletePartition/UpdateTable ao escrever com
-# mode="overwrite_partitions"; e backfill_enriquecimento.py, cujo Athena
-# precisa de GetTable/GetPartition/GetPartitions nas tabelas de discover para
-# resolver fetch_ids_from_sot — GetPartition, no singular, é chamada
+# mode="overwrite_partitions"; backfill_enriquecimento.py, cujo Athena precisa
+# de GetTable/GetPartition/GetPartitions nas tabelas de discover para resolver
+# fetch_ids_from_sot; e backfill_changes.py, mesma necessidade via
+# resolve_matched_ids_for_changed_ids — GetPartition, no singular, é chamada
 # separadamente de GetPartitions pelo motor do Athena e precisa das duas,
 # mesmo padrão já usado por todas as policies de Glue Catalog em
 # infra/iam_policies.tf). Restrito às tabelas de discover, details e
@@ -340,7 +365,7 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 # =============================================================================
 # POLICY 7 — AWS Translate. Usado quando TRANSLATE_PROVIDER=aws é escolhido em
 # qualquer backfill manual (backfill_traducao.py, backfill_historico.py,
-# backfill_referencias.py, backfill_enriquecimento.py) — default é "google"
+# backfill_referencias.py, backfill_enriquecimento.py, backfill_changes.py) — default é "google"
 # (grátis); "aws" existe para testar um período menor sob demanda. Mesmo com
 # default "google", o AWS Translate também é acionado como fallback automático
 # quando o Google falha ou devolve o texto sem alteração (resolve_translate_fn
