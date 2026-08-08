@@ -8,21 +8,21 @@ from shared_utils.glue_helpers import configure_glue_logging, get_resolved_optio
 class TestGetResolvedOption:
     def test_delega_para_getResolvedOptions(self):
         mock_get = MagicMock(return_value={"FOO": "bar"})
-        with patch("shared_utils.glue_helpers.getResolvedOptions", mock_get):
+        with patch("awsglue.utils.getResolvedOptions", mock_get):
             result = get_resolved_option(["FOO"])
         mock_get.assert_called_once_with(sys.argv, ["FOO"])
         assert result == {"FOO": "bar"}
 
     def test_repassa_lista_vazia(self):
         mock_get = MagicMock(return_value={})
-        with patch("shared_utils.glue_helpers.getResolvedOptions", mock_get):
+        with patch("awsglue.utils.getResolvedOptions", mock_get):
             result = get_resolved_option([])
         mock_get.assert_called_once_with(sys.argv, [])
         assert result == {}
 
     def test_propaga_excecao_de_argumento_ausente(self):
         mock_get = MagicMock(side_effect=SystemExit(2))
-        with patch("shared_utils.glue_helpers.getResolvedOptions", mock_get):
+        with patch("awsglue.utils.getResolvedOptions", mock_get):
             try:
                 get_resolved_option(["AUSENTE"])
             except SystemExit:
