@@ -212,15 +212,21 @@ resource "aws_iam_role_policy" "backfill_s3" {
       },
       {
         # GetBucketLocation é ação de bucket (sem sub-recurso e sem chave de condition
-        # "s3:prefix" no contexto da requisição), por isso não pode entrar no statement
+        # "s3:prefix" no contexto da requisição), por isso não pode entrar nos statements
         # acima com Condition por prefixo — precisa de statement próprio. Sem ela, o
-        # Athena StartQueryExecution falha com "Unable to verify/create output bucket"
-        # ao tentar validar o bucket de output (S3_OUTPUT_LOCATION = bucket TEMP). Mesma
-        # permissão já concedida à role glue_details_role (infra/iam_policies.tf).
-        Sid      = "GetBucketLocationTemp"
-        Effect   = "Allow"
-        Action   = "s3:GetBucketLocation"
-        Resource = aws_s3_bucket.temporary_bucket.arn
+        # Athena StartQueryExecution falha com "Unable to verify/create output bucket" ao
+        # validar o bucket de output (S3_OUTPUT_LOCATION = bucket TEMP), e o awswrangler
+        # (wr.s3.read_parquet/to_parquet contra discover/details/watch_providers no SOT,
+        # dentro de run_details_and_watch_providers_for_year) também depende dela para
+        # resolver o bucket antes de ler/escrever. Mesmo par de buckets (SOT + TEMP) já
+        # concedido à role glue_details_role (infra/iam_policies.tf) para o mesmo código.
+        Sid    = "GetBucketLocationSotTemp"
+        Effect = "Allow"
+        Action = "s3:GetBucketLocation"
+        Resource = [
+          aws_s3_bucket.sot_bucket.arn,
+          aws_s3_bucket.temporary_bucket.arn,
+        ]
       },
       {
         Sid    = "CheckpointReadWrite"
@@ -287,11 +293,14 @@ resource "aws_iam_role_policy" "backfill_s3" {
 
 # =============================================================================
 # POLICY 6 — Glue Data Catalog (backfill_traducao.py e backfill_rename_colunas.py,
-# via chamadas implícitas do awswrangler: GetTable/GetPartitions ao ler,
+# via chamadas implícitas do awswrangler: GetTable/GetPartition(s) ao ler,
 # BatchCreatePartition/BatchDeletePartition/UpdateTable ao escrever com
 # mode="overwrite_partitions"; e backfill_enriquecimento.py, cujo Athena
-# precisa de GetTable/GetPartitions nas tabelas de discover para resolver
-# fetch_ids_from_sot). Restrito às tabelas de discover, details e
+# precisa de GetTable/GetPartition/GetPartitions nas tabelas de discover para
+# resolver fetch_ids_from_sot — GetPartition, no singular, é chamada
+# separadamente de GetPartitions pelo motor do Athena e precisa das duas,
+# mesmo padrão já usado por todas as policies de Glue Catalog em
+# infra/iam_policies.tf). Restrito às tabelas de discover, details e
 # watch_providers — mesmas databases (movie/tv), por isso sem ARNs de
 # database adicionais.
 # =============================================================================
@@ -308,6 +317,7 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
         "glue:GetDatabase",
         "glue:GetTable",
         "glue:UpdateTable",
+        "glue:GetPartition",
         "glue:GetPartitions",
         "glue:BatchCreatePartition",
         "glue:BatchDeletePartition",
