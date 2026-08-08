@@ -327,7 +327,9 @@ resource "aws_iam_role_policy" "backfill_s3" {
 # mesmo padrão já usado por todas as policies de Glue Catalog em
 # infra/iam_policies.tf). Restrito às tabelas de discover, details e
 # watch_providers — mesmas databases (movie/tv), por isso sem ARNs de
-# database adicionais.
+# database adicionais. Statement à parte (DeleteCtasTempTable) para
+# CreateTable/DeleteTable da tabela temporária de CTAS usada por
+# backfill_changes.py — ver comentário no statement.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_glue_catalog" {
   name = "${local.tmdb_prefix}-backfill-glue-catalog-${var.env}"
@@ -335,30 +337,54 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "TranslateDetailsCatalogAccess"
-      Effect = "Allow"
-      Action = [
-        "glue:GetDatabase",
-        "glue:GetTable",
-        "glue:UpdateTable",
-        "glue:GetPartition",
-        "glue:GetPartitions",
-        "glue:BatchCreatePartition",
-        "glue:BatchDeletePartition",
-      ]
-      Resource = [
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_movie_tmdb.name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_tv_tmdb.name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_details_movie_tmdb.name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_details_tv_tmdb.name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}",
-        "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}",
-      ]
-    }]
+    Statement = [
+      {
+        Sid    = "TranslateDetailsCatalogAccess"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:UpdateTable",
+          "glue:GetPartition",
+          "glue:GetPartitions",
+          "glue:BatchCreatePartition",
+          "glue:BatchDeletePartition",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_movie_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_tv_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_details_movie_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_details_tv_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}",
+        ]
+      },
+      {
+        # resolve_matched_ids_for_changed_ids (backfill_changes.py) usa ctas_approach=True
+        # (ARRAY_AGG exige CTAS). O awswrangler cria uma tabela temporária com nome gerado no
+        # Glue Catalog para a CTAS e a apaga logo em seguida — sem CreateTable/DeleteTable a
+        # limpeza falha com AccessDeniedException. Mesmo Sid, mesmo racional e mesmo escopo de
+        # recurso (wildcard table/{database}/* — o nome da tabela temp não é previsível) já
+        # usado por glue_details_catalog (infra/iam_policies.tf), restrito às databases
+        # movie/tv deste job.
+        Sid    = "DeleteCtasTempTable"
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTable",
+          "glue:DeleteTable",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_movie_tmdb.database_name}/*",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}/*",
+        ]
+      },
+    ]
   })
 }
 
