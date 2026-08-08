@@ -453,20 +453,29 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
       {
         # write_parquet_to_sot (backfill_referencias.py) grava as 6 tabelas de referência via
         # wr.s3.to_parquet(..., database=..., table=...) — mesma função usada pelo Glue ETL
-        # real (app/glue_etl/src/utils.py). GetTable resolve o schema já existente (as 6
-        # tabelas já são criadas pelo Terraform, ver infra/glue_catalog.tf); UpdateTable cobre
-        # evolução de schema; CreateTable é exigido mesmo com a tabela já existente — a role
-        # do job Glue ETL real (glue_etl_catalog, Sid "WriteSOTTable" acima nesta mesma
-        # policy.tf) também concede CreateTable para o mesmo tipo de escrita, confirmando que
-        # o awswrangler aciona essa action independente de a tabela já existir no Catalog.
-        # Nenhuma das 6 é particionada (mode="overwrite"), por isso sem
-        # GetPartition(s)/BatchCreatePartition/BatchDeletePartition, diferente do statement
-        # acima (details/discover, particionados por ano).
+        # real (app/glue_etl/src/utils.py). Sequência exata de chamadas Glue confirmada lendo
+        # o código-fonte instalado do awswrangler (catalog/_create.py:_create_table,
+        # catalog/_delete.py:delete_all_partitions), já que as 6 tabelas SEMPRE existem no
+        # Catalog (criadas pelo Terraform, ver infra/glue_catalog.tf) antes deste script
+        # rodar:
+        #   1. GetTable (catalog._get_table_input) — resolve o table_input existente.
+        #   2. Como a tabela já existe (table_exist=True) e mode="overwrite", GetPartitions
+        #      (delete_all_partitions → catalog._get_partitions) — mesmo sem nenhuma
+        #      tabela aqui ser particionada, essa chamada acontece incondicionalmente
+        #      (retorna lista vazia; BatchDeletePartition só seria chamado se houvesse
+        #      partições a apagar, o que nunca é o caso destas 6 tabelas).
+        #   3. UpdateTable — aplica o table_input (schema/localização) resolvido no passo 1.
+        # CreateTable é mantido mesmo não sendo exercido neste caminho específico (só
+        # rodaria se a tabela não existisse no Catalog) — mesma permissão que a role do job
+        # Glue ETL real (glue_etl_catalog, Sid "WriteSOTTable" acima nesta mesma policy.tf)
+        # já concede para o mesmo tipo de escrita, cobrindo o caso de a tabela ser recriada
+        # manualmente no futuro.
         Sid    = "ReferenceTablesCatalogAccess"
         Effect = "Allow"
         Action = [
           "glue:GetDatabase",
           "glue:GetTable",
+          "glue:GetPartitions",
           "glue:CreateTable",
           "glue:UpdateTable",
         ]
