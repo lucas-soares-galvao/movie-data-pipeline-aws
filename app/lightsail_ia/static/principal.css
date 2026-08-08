@@ -508,10 +508,6 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 @media (max-width: 768px) {
-  .grid-titles {
-    gap: 12px;
-  }
-
   /* Cabecalho: colunas ocupam 100% e empilham */
   div[data-testid="stHorizontalBlock"]:has(h1) > div {
     flex: 1 1 100% !important;
@@ -522,17 +518,47 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   }
 }
 
-@media (max-width: 768px) {
+/* Abaixo de 1200px (breakpoint "xl" do Bootstrap — convenção, não medição exata),
+   gêneros/provedores com nomes longos (ex. "Amazon Prime Video", "Ação & Aventura")
+   frequentemente não cabem numa linha só — como a linha é compartilhada entre os 3 cards
+   da fileira (subgrid abaixo), um card assim estufa a linha pros vizinhos também, deixando
+   um vão vazio perceptível. Por isso o fallback de 1 card por linha (que já existia só
+   para viewport de celular) passa a cobrir também essa faixa "desktop estreito". Medido
+   empiricamente (Playwright, nomes reais e longos do catálogo, numa fixture isolada sem o
+   padding/chrome real do Streamlit): o caso comum (até 4 gêneros/provedores) já cabe numa
+   linha a partir de ~373px de largura de card, bem próximo do que 1200px de janela
+   costuma render — sem folga extra pro overhead real do Streamlit, então vale reconferir
+   no app de verdade se aparecer wrap bem na borda do breakpoint. O teto máximo de 6
+   gêneros/6 provedores simultâneos (caso raro) continua quebrando linha mesmo em larguras
+   bem maiores — nomes demais pra caber em qualquer card, não dá pra resolver só com
+   breakpoint (ver `especialista-streamlit-filmbot` se isso incomodar na prática). */
+@media (max-width: 1200px) {
   .grid-titles {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
   .grid-titles img { aspect-ratio: 16 / 9; }
 
-  /* No mobile os cards empilham 1 por linha — o subgrid de alinhamento entre irmãos (ver
-     bloco desktop abaixo) não faz sentido aqui. O style inline injetado por render_card()/
-     render_grid() (grid-row/grid-column do card, grid-template-rows do wrapper) só vale
-     pro layout desktop; precisa de !important pra vencer a especificidade do style inline
-     e não deixar o card carregando posicionamento de grid desktop enquanto empilhado. */
+  /* Sem isso o único card da fileira esticaria pra largura inteira do container — em
+     janelas largas (ex. 1000-1200px, onde cabe folga mas não os 3 lado a lado) o pôster
+     (16:9, width:100%) ficaria desproporcionalmente grande. max-width trava o card num
+     tamanho "normal" (mesma ordem de grandeza que ele já tem lado a lado no desktop) e
+     justify-items centraliza — em celular real (viewport mais estreito que isso) não muda
+     nada, o card já ocupa a largura toda disponível de qualquer forma. */
+  .grid-titles {
+    justify-items: center;
+  }
+  .card {
+    width: 100%;
+    max-width: 460px;
+  }
+
+  /* No mobile/fallback os cards empilham 1 por linha — o subgrid de alinhamento entre
+     irmãos (ver bloco desktop abaixo) não faz sentido aqui. O style inline injetado por
+     render_card()/render_grid() (grid-row/grid-column do card, grid-template-rows do
+     wrapper) só vale pro layout desktop; precisa de !important pra vencer a especificidade
+     do style inline e não deixar o card carregando posicionamento de grid desktop enquanto
+     empilhado. */
   .grid-titles {
     grid-template-rows: none !important;
   }
@@ -625,9 +651,9 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    por render_card()) — .card-body faz subgrid de novo, um nível abaixo, pra repassar essas
    mesmas linhas aos campos (título, motivo, gêneros...). Como cada linha tem altura "auto",
    ela se ajusta automaticamente ao maior conteúdo entre os 3 cards da fileira, sem truncar
-   nada — nenhum campo precisa de clamp manual. No mobile os cards empilham 1 por linha
-   (reset em @media max-width:768px acima) e não há subgrid nenhum. */
-@media (min-width: 769px) {
+   nada — nenhum campo precisa de clamp manual. Abaixo de 1200px os cards empilham 1 por
+   linha (reset em @media max-width:1200px acima) e não há subgrid nenhum. */
+@media (min-width: 1201px) {
   /* Precisa repetir o seletor "article.card" (não só ".card") pra igualar a especificidade
      da regra base (532) — só ".card" tem especificidade menor que "article.card" e o
      display:flex de lá venceria mesmo dentro do media query, já que especificidade decide
@@ -646,11 +672,14 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   .card-media { grid-row: 1; }
   .card-title { grid-row: 1; }
   .row-reason { grid-row: 2; }
+  /* Ordem: informação (data/tipo) → duração → em cartaz → gênero → provedor — agrupa os
+     3 fatos rápidos/compactos do título (quando, quanto dura, ainda tá em cartaz) antes
+     dos campos com mais badges (gênero, provedor), mais perto do rodapé de ações. */
   .meta-line { grid-row: 3; }
-  .genres-container { grid-row: 4; }
-  .duration-row { grid-row: 5; }
-  .providers-row { grid-row: 6; }
-  .cinema-row { grid-row: 7; }
+  .duration-row { grid-row: 4; }
+  .cinema-row { grid-row: 5; }
+  .genres-container { grid-row: 6; }
+  .providers-row { grid-row: 7; }
   .row-synopsis { grid-row: 8; }
 }
 
@@ -679,6 +708,15 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   flex-shrink: 0;
   width: 20px;
   text-align: center;
+}
+
+/* O "ℹ" da meta-line é texto puro (sem seletor de variação de emoji), não o glifo colorido
+   — por isso `color` funciona aqui, diferente do 🎬 de "Em cartaz" (emoji nativo, sempre
+   colorido, ignora `color` do CSS). Cinza pra combinar com o resto do texto da linha —
+   um azul de ícone de sistema soltaria destoando da paleta do card (laranja = destaque,
+   cinza = fato neutro, amarelo = "em cartaz", cores da classificação = convenção externa). */
+.meta-line .meta-icon {
+  color: #a3a3a3;
 }
 
 .meta-line {
