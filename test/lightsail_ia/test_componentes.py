@@ -345,11 +345,20 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE)
         assert "Netflix" in html
 
+    def test_card_provedor_tem_icone(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "📺" in html
+
     def test_card_sem_streaming_providers_nao_exibe_rotulo(self):
         t = {**BASE_TITLE, "streaming_providers": None}
         html = componentes.render_card(t)
         assert "Onde assistir" not in html
         assert "providers-label" not in html
+
+    def test_card_sem_provedor_nao_gera_icone(self):
+        t = {**BASE_TITLE, "streaming_providers": None}
+        html = componentes.render_card(t)
+        assert "📺" not in html
 
     def test_card_ignora_campo_de_logo_do_provedor(self):
         """streaming_provider_logos/rent_buy_provider_logos não são mais buscados nem
@@ -391,6 +400,15 @@ class TestRenderCard:
         assert '<span class="genre">Terror</span>' in html
         assert '<span class="genre">Drama</span>' in html
         assert '<span class="genre">Suspense</span>' in html
+
+    def test_card_generos_tem_icone(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "🎭" in html
+
+    def test_card_sem_generos_nao_gera_icone(self):
+        t = {**BASE_TITLE, "genres": []}
+        html = componentes.render_card(t)
+        assert "🎭" not in html
 
     def test_card_generos_acima_do_limite_trunca_sem_indicador(self):
         t = {
@@ -545,6 +563,11 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE)
         assert 'class="meta-row duration-row"' in html
         assert "2h 26min" in html
+        assert "⏱" in html
+
+    def test_card_sem_duracao_nao_gera_icone(self):
+        t = {**BASE_TITLE, "duration": None}
+        html = componentes.render_card(t)
         assert "⏱" not in html
 
     def test_card_meta_line_omite_nota_ausente(self):
