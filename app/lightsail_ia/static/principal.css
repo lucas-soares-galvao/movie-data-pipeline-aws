@@ -634,8 +634,24 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   font-weight: 600;
 }
 
+/* display:flex (não bloco simples) pra caber o ícone 🎭 antes dos badges — align-items
+   flex-start (não center) pra ele ficar alinhado com a primeira linha mesmo quando os
+   badges quebram pra 2ª/3ª linha, em vez de centralizado no meio do bloco todo. Sem
+   gap — os badges já têm margin própria (.genre) pra espaçamento entre si; um gap aqui
+   somaria em cima disso e mudaria o respiro que já existe. margin-bottom maior (16px, em
+   vez dos mesmos 6px do topo) separa visualmente gênero de provedor — os dois usam badge
+   cinza neutro e ficam adjacentes na ordem atual (ver seção "Interface"), então precisam
+   de mais respiro entre si pra não parecerem uma lista só; alternativa mais leve que dar
+   cor própria a cada um (cor nesse design é reservada pra "preste atenção aqui" — nota,
+   motivo, sinopse, em cartaz, classificação —, não pra diferenciar categoria). */
 .genres-container {
-  margin: 6px 0;
+  margin: 6px 0 16px;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.genres-container .meta-icon {
+  margin-right: 4px;
 }
 
 .card-body {
@@ -776,6 +792,13 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .duration-row {
   color: #a3a3a3;
   font-size: 13px;
+}
+
+/* flex-start (não o align-items:center herdado de .meta-row) — o ícone 📺 precisa ficar
+   alinhado com a primeira linha de badges, não centralizado no meio do bloco quando os
+   provedores quebram pra 2ª/3ª linha. */
+.providers-row {
+  align-items: flex-start;
 }
 
 .provider-badges {
