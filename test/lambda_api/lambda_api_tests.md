@@ -28,7 +28,7 @@ assert mocks["result"]["statusCode"] == 200
 assert mocks["mock_discover"].call_count == 2
 ```
 
-Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`, `mock_boto3` (usado em `TestSkipWeekly` para confirmar que nenhuma outra Lambda é invocada).
+Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `mock_config`, `mock_watch_ref`, `mock_now_playing`, `mock_changes`, `mock_dt`, `mock_boto3`.
 
 `TestOnlyRotationRefresh` não usa `_run()` — tem seu próprio helper `_run_rotation()`, porque esse modo chama `boto3.client("ssm")` (não coberto pelos mocks de `_run()`). `_run_rotation()` mocka `main.boto3` inteiro e configura `get_parameter`/`put_parameter` do cliente SSM retornado.
 
@@ -52,16 +52,6 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_glue_discover_recebe_end_year` | Todas as chamadas de discover repassam `end_year` |
 | `test_translate_provider_default_aws_quando_ausente_do_evento` | Sem `translate_provider` no evento (payload real do EventBridge), todas as chamadas ao Glue recebem `TRANSLATE_PROVIDER="aws"` |
 | `test_translate_provider_repassado_quando_informado_no_evento` | `translate_provider` no evento (backfills manuais) é repassado como `TRANSLATE_PROVIDER` a todas as chamadas ao Glue |
-
-### `TestSkipWeekly` — flag `skip_weekly=True`
-
-| Teste | O que verifica |
-|---|---|
-| `test_skip_weekly_nao_chama_collect_discover` | `collect_discover_data` não é chamado |
-| `test_skip_weekly_ainda_coleta_genre_configuration_watch_providers` | Coleta de referências continua normalmente |
-| `test_skip_weekly_glue_acionado_apenas_para_referencias` | Glue é acionado 3 vezes (genre, configuration, watch_providers_ref), sem discover |
-| `test_skip_weekly_retorna_status_200` | Handler retorna 200 mesmo com skip_weekly |
-| `test_skip_weekly_nao_invoca_nenhuma_lambda_para_movie_ou_tv` | `boto3.client("lambda").invoke` não é chamado em nenhuma das duas pernas (`movie`/`tv`), e a resposta segue o mesmo formato (`statusCode=200`, `body` só diferindo pelo `content_type`) — a lambda_glue_orchestrator foi removida, o Glue AGG roda em agendamento próprio |
 
 ### `TestOnlyDiscover` — flag `only_weekly_tables=True`
 

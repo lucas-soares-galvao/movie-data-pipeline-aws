@@ -67,24 +67,27 @@ logger = logging.getLogger()
 RETRYABLE_EXIT_CODE = 75
 
 # > timeout do Lambda (900s, ver infra/lambda_api.tf). O default do boto3 (read_timeout=60s) já
-# não bastava mesmo antes: skip_weekly na perna tv aguarda (get_job_run) os Glue ETL de
-# referência terminarem antes de acionar o Glue AGG (ver app/lambda_api/main.py), o que pode
-# passar de 60s. Sem esse ajuste, o boto3 desiste (ReadTimeoutError) achando que a invocação
-# falhou, mas a Lambda continua rodando "órfã" em background na AWS.
+# não bastava mesmo antes: a extinta flag skip_weekly (removida de app/lambda_api/main.py —
+# a coleta de referências que ela cobria roda hoje diretamente no processo do backfill, ver
+# scripts/backfill_referencias.py) chegou a esperar (get_job_run) os Glue ETL de referência
+# terminarem antes de acionar o Glue AGG, o que podia passar de 60s. Sem esse ajuste, o boto3
+# desiste (ReadTimeoutError) achando que a invocação falhou, mas a Lambda continua rodando
+# "órfã" em background na AWS.
 #
 # Pior: por padrão o botocore RETENTA automaticamente uma requisição que sofreu
 # ReadTimeoutError (visível na stack trace passando por retryhandler.py antes de propagar).
 # `lambda:Invoke` não é idempotente — não existe token de idempotência para essa API — então
 # cada retry automático do botocore dispara uma execução da Lambda inteiramente nova e
 # concorrente com a anterior (ainda rodando em background), não uma "nova tentativa" no sentido
-# usual. Incidente real: uma única chamada client.invoke() gerou 5 execuções órfãs da Lambda
-# (perna tv, skip_weekly), cada uma dessas triggando seu próprio Glue AGG e reacionando os 3
-# Glue ETL de referência em paralelo — causa de uma corrida de escrita/leitura no S3 (Glue Data
-# Quality lendo um parquet que uma execução concorrente acabou de sobrescrever). Por isso,
-# além do read_timeout alto, max_attempts=1 desliga esse retry automático — uma falha aqui deve
-# terminar o script (o workflow trata isso normalmente, sem retry automático para
-# backfill_referencias.py/backfill_changes.py — ver .github/workflows/05_backfill.yml) em vez
-# de silenciosamente multiplicar execuções de uma operação não-idempotente.
+# usual. Incidente real (histórico, sob a extinta skip_weekly): uma única chamada
+# client.invoke() gerou 5 execuções órfãs da Lambda (perna tv), cada uma dessas triggando seu
+# próprio Glue AGG e reacionando os 3 Glue ETL de referência em paralelo — causa de uma corrida
+# de escrita/leitura no S3 (Glue Data Quality lendo um parquet que uma execução concorrente
+# acabou de sobrescrever). Por isso, além do read_timeout alto, max_attempts=1 desliga esse
+# retry automático — uma falha aqui deve terminar o script (o workflow trata isso normalmente,
+# sem retry automático para backfill_historico.py, hoje o único chamador de
+# invoke_lambda_sync — ver .github/workflows/05_backfill.yml) em vez de silenciosamente
+# multiplicar execuções de uma operação não-idempotente.
 LAMBDA_READ_TIMEOUT_SECONDS = 910
 
 # ExpiredTokenException é o código retornado pelo STS (ex.: Lambda, Glue).

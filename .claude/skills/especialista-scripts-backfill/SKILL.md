@@ -81,7 +81,11 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
      `invoke_lambda_sync` levanta `RuntimeError` se a Lambda retornar `FunctionError`
      (`scripts/backfill_shared.py:94-95`); qualquer exceção não tratada como token expirado propaga até o
      processo, que sai com código `!= 0` e traceback. Faz sentido quando a chamada é síncrona e uma falha indica
-     um problema que provavelmente se repetirá nas próximas unidades.
+     um problema que provavelmente se repetirá nas próximas unidades. `backfill_referencias.py` segue o mesmo
+     padrão sem Lambda no meio: uma falha em `collect_genre_data`/`collect_configuration_data` (ou na escrita
+     Parquet equivalente ao Glue ETL) propaga direto e aborta o script — só `collect_watch_providers_ref` tem
+     tratamento especial (`HTTPError` capturado e ignorado, réplica do mesmo `try/except` de
+     `app/lambda_api/main.py`), não os 3 padrões descritos aqui.
   2. **Soft-fail-continue** (`backfill_enriquecimento.py:150-182`): aguarda o Glue job terminar (`_wait_for_job`)
      e, se o estado final não for `SUCCEEDED`, loga o erro, adiciona a unidade à lista `failures` e continua para
      a próxima — só marca `completed` (e só salva checkpoint) no ramo de sucesso (`:167-168`). O checkpoint fica

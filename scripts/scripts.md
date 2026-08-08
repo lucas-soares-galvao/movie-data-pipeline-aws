@@ -13,7 +13,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
 | `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda — cada invocação aciona Glue ETL → Glue Details, que traduzem via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
-| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv via Lambda; não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`) — ver `app/lambda_api/lambda_api.md` (`skip_weekly`) | Lambda | — |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma vez por tabela gravada | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** dispara o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
@@ -93,9 +93,19 @@ como os demais.
 adicionalmente, `TABLE_WATCH_PROVIDERS_MOVIE`/`TABLE_WATCH_PROVIDERS_TV` (além
 de `TABLE_DETAILS_MOVIE`/`TABLE_DETAILS_TV`, já usadas por `backfill_traducao.py`).
 
-Todos os backfills que traduzem (`backfill_historico.py` e
-`backfill_referencias.py`, via `backfill_shared.build_base_payloads()`;
-`backfill_enriquecimento.py`, `backfill_traducao.py` e `backfill_changes.py`,
+`backfill_referencias.py` exige `AWS_REGION`, `S3_BUCKET_SOR`, `S3_BUCKET_SOT`,
+`GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`, `TABLE_GENRE_MOVIE`/`TABLE_GENRE_TV`,
+`TABLE_CONFIGURATION_LANGUAGES`/`TABLE_CONFIGURATION_COUNTRIES`,
+`TABLE_WATCH_PROVIDERS_REF_MOVIE`/`TABLE_WATCH_PROVIDERS_REF_TV`,
+`TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` e, opcionalmente,
+`TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (não grava checkpoint, mesmo motivo
+de `backfill_changes.py`: poucas unidades, sem dependência de ano).
+`S3_BUCKET_SOR` é exclusivo deste script — nenhum outro grava JSON bruto
+diretamente (os demais só leem/escrevem parquet no SOT).
+
+Todos os backfills que traduzem (`backfill_historico.py`, via
+`backfill_shared.build_base_payloads()`; `backfill_enriquecimento.py`,
+`backfill_referencias.py`, `backfill_traducao.py` e `backfill_changes.py`,
 via env var própria) aceitam opcionalmente `TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
 instável sob alto volume; `"aws"` usa AWS Translate, pago por caractere, útil
 para testar um período menor via `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) —
@@ -108,17 +118,18 @@ orçamento de caracteres (é pago por caractere). `TRANSLATE_PROVIDER` também
 determina o detector de idioma primário (`resolve_detect_language_fn` em
 `shared_utils.idioma`): `"google"` usa `langdetect` primeiro com Comprehend como
 fallback capado por caracteres; `"aws"` usa Comprehend primeiro (sem cap) com
-`langdetect` como fallback. Em `backfill_historico.py`/`backfill_referencias.py`
-(via Lambda), cada partição ano+tipo é uma invocação separada da Lambda, então
-"por execução" já equivale a "por partição". `backfill_enriquecimento.py`,
+`langdetect` como fallback. Em `backfill_historico.py` (via Lambda), cada
+partição ano+tipo é uma invocação separada da Lambda, então "por execução" já
+equivale a "por partição". `backfill_enriquecimento.py`, `backfill_referencias.py`,
 `backfill_traducao.py` e `backfill_changes.py` rodam todas as partições dentro
 do mesmo processo Python — em todos, `resolve_translate_fn`/`resolve_detect_language_fn`
 (ou, no caso de `backfill_enriquecimento.py`/`backfill_changes.py`, o
 `translate_provider` recebido por `collect_and_write_details` dentro de
 `run_details_and_watch_providers_for_year`/`process_changed_ids`)
 são resolvidos a cada partição ano+tipo (ou content_type, no caso de
-`backfill_changes.py`), para que a primeira partição processada não esgote
-sozinha o orçamento de fallback ao AWS Translate de todo o backfill.
+`backfill_referencias.py`/`backfill_changes.py`), para que a primeira
+partição processada não esgote sozinha o orçamento de fallback ao AWS
+Translate de todo o backfill.
 
 **Proteção de custo por intervalo de anos:** nos 3 backfills que iteram por
 ano e dependem disso (`backfill_historico.py`, `backfill_enriquecimento.py`,
@@ -153,13 +164,14 @@ até 6 tentativas (alinhado ao timeout de 360min do job / ~1h por sessão AWS).
 Como o script relê o checkpoint no início, ele pula direto
 para as unidades ainda pendentes em vez de recomeçar do `BACKFILL_START_YEAR`.
 
-`backfill_changes.py` também sai com exit code 75 em caso de token expirado
-(faz chamadas reais de Athena/S3/Secrets Manager/TMDB API no processo, não
-mais uma única invocação curta de Lambda) e é retomado pelo mesmo loop
-genérico do workflow — mas **sem checkpoint**: só 2 unidades (movie, tv), e
-`collect_changes_data`/`process_changed_ids` são idempotentes, então a
-retomada simplesmente refaz o content_type do zero em vez de pular direto
-para o pendente.
+`backfill_changes.py` e `backfill_referencias.py` também saem com exit code
+75 em caso de token expirado (fazem chamadas reais de S3/Secrets Manager/TMDB
+API — e Athena, no caso de `backfill_changes.py` — no processo, não mais uma
+única invocação curta de Lambda) e são retomados pelo mesmo loop genérico do
+workflow — mas **sem checkpoint**: poucas unidades (2 em `backfill_changes.py`,
+6 em `backfill_referencias.py`), e as funções chamadas em ambos são
+idempotentes, então a retomada simplesmente refaz tudo do zero em vez de
+pular direto para o pendente.
 
 Qualquer outro tipo de erro (não relacionado a token expirado) continua
 falhando o job normalmente, sem retry automático. O checkpoint só é apagado
