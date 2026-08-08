@@ -22,10 +22,12 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - rename_colunas        — migra dt_processamento/dt_atualizacao para
 #                             processed_date/updated_date nos parquets já gravados
 #                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
-#   - changes               — dispara sob demanda o mesmo modo changes que o cron
-#                             semanal de domingo já aciona automaticamente (janela
-#                             fixa de 8 dias, sem start_year/end_year — ver
-#                             scripts/backfill_changes.py)
+#   - changes               — dispara sob demanda o mesmo modo changes que o cron semanal de
+#                             domingo já aciona automaticamente (janela fixa de 7 dias, sem
+#                             start_year/end_year), rodando a coleta de IDs mudados e o
+#                             enriquecimento localmente neste workflow (sem acionar Lambda nem
+#                             o job Glue Details — ver scripts/backfill_changes.py), disparando
+#                             o Glue Data Quality uma única vez ao final por tabela
 #
 # translate_provider escolhe o serviço de tradução usado por qualquer um dos grupos
 # acima que traduz (discover, referencias, detalhes_e_providers, traducao, changes) —
@@ -136,7 +138,7 @@ jobs:
           # Formatter.converter de horário de São Paulo) — instalado sempre, não só
           # nos 2 table_group abaixo, para não depender da base IANA do runner.
           pip install boto3 tzdata
-          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ]; then
+          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -163,9 +165,9 @@ jobs:
           # TMDB_SECRET_ARN do job real). Este workflow é workflow_dispatch (não workflow_call), então
           # lê direto o secret do repositório por ambiente (mesmo par usado em
           # 00_pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
-          # de 02_terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Só
-          # lido por backfill_enriquecimento.py (via get_api_secret), que precisa da chave para chamar
-          # a API do TMDB fora do runtime do Glue.
+          # de 02_terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Lido
+          # por backfill_enriquecimento.py e backfill_changes.py (via get_api_secret), que precisam da
+          # chave para chamar a API do TMDB fora do runtime do Glue/Lambda.
           TMDB_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
 
           # Databases
@@ -228,9 +230,13 @@ jobs:
             export AWS_SESSION_TOKEN=$(echo "$creds" | cut -f3)
           }
 
-          # Nota: backfill_referencias.py e backfill_changes.py não iteram por ano, não
-          # gravam checkpoint e nunca saem com código 75 — para eles, este loop roda uma
-          # única vez e sai normalmente.
+          # Nota: backfill_referencias.py não itera por ano, não grava checkpoint e nunca
+          # sai com código 75 — para ele, este loop roda uma única vez e sai normalmente.
+          # backfill_changes.py também não itera por ano nem grava checkpoint (só 2
+          # unidades, movie/tv, e é idempotente), mas agora faz chamadas reais de
+          # Athena/S3/Secrets/TMDB no processo (não mais uma invocação curta de Lambda) e
+          # pode sair com código 75 se a credencial expirar no meio do run — esse loop
+          # genérico já cobre o retry, sem checkpoint: a próxima tentativa refaz do zero.
           # backfill_rename_colunas.py itera por tabela x ano (não por media_type) e usa
           # o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
