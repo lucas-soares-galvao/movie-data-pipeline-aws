@@ -664,19 +664,43 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   gap: 4px;
 }
 
-/* gap (não margin em cada campo) dá o respiro entre TODAS as seções do card (título,
-   motivo, informação, gêneros, provedores, sinopse...) de uma vez só, de forma uniforme —
-   funciona tanto no mobile (display:flex; flex-direction:column, gap vira espaço vertical
-   entre os itens empilhados) quanto no desktop (display:grid;grid-template-rows:subgrid
-   abaixo, gap vira espaço entre as linhas do subgrid). Substituiu as margens soltas que
-   cada campo tinha antes (ex.: .reason, .genres-container) — manter as duas fontes de
-   espaçamento ao mesmo tempo causava bug real (ver comentário em .reason, mais abaixo). */
 .card-body {
   padding: 16px;
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 16px;
+}
+
+/* Respiro entre seções via margin-top no início de cada seção (não gap uniforme no
+   .card-body, e não margin-bottom em cada linha que a precede) — motivo: duration-row e
+   cinema-row são reservadas mas ficam vazias na maioria dos títulos (duração só tem
+   conteúdo próprio sem pôster; "em cartaz" só em lançamento recente de cinema). Com gap
+   uniforme, cada linha vazia entre duas seções de verdade ainda soma seu próprio gap —
+   2 linhas vazias em sequência (duração+em cartaz, caso comum com pôster e fora de
+   cartaz) somavam 32px de vão, o dobro do pretendido, entre informação e gênero. Colocar
+   o respiro como margin-top só de quem SEMPRE tem conteúdo (motivo, informação, gênero,
+   provedor, sinopse) resolve isso: não importa quantas linhas vazias existam antes, só
+   entra um respiro de cada vez, na entrada da próxima seção visível. duration-row/
+   cinema-row ficam com um respiro pequeno (não zero, pro caso raro em que têm conteúdo
+   não ficar colado) em vez do respiro grande de seção. */
+.row-reason {
+  margin-top: 16px;
+}
+.meta-line {
+  margin-top: 16px;
+}
+.duration-row,
+.cinema-row {
+  margin-top: 4px;
+}
+.genres-container {
+  margin-top: 16px;
+}
+.providers-row {
+  margin-top: 16px;
+}
+.row-synopsis {
+  margin-top: 16px;
 }
 
 /* Alinhamento simétrico entre os 3 cards de uma fileira: no desktop, .grid-titles declara
@@ -734,6 +758,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   color: #fdba74;
   font-size: 14px;
   font-style: italic;
+  margin: 0;
   padding: 6px 10px;
   background: rgba(249,115,22,0.05);
   border-left: 2px solid rgba(249,115,22,0.3);
@@ -907,7 +932,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   display: none;
   color: #d4d4d4;
   font-size: 14px;
-  margin-top: 6px;
+  margin: 6px 0 0;
   line-height: 1.5;
 }
 .synopsis-toggle:checked ~ .synopsis-text { display: block; }
