@@ -1,6 +1,6 @@
 import json
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 import src.utils as u
@@ -1462,6 +1462,195 @@ class TestCollectAndWriteWatchProviders:
             u.collect_and_write_watch_providers("key", [1], "movie", "sot", "tb_wp_movie", "db", "2023")
             df_written = mock_write.call_args.kwargs["df"]
             assert df_written.iloc[0]["year"] == "2023"
+
+
+# ---------------------------------------------------------------------------
+# run_details_and_watch_providers_for_year
+# ---------------------------------------------------------------------------
+
+
+class TestRunDetailsAndWatchProvidersForYear:
+    """Orquestração extraída de main.py — delta, coleta, DQ (se trigger_dq) e
+    repair de duplicatas em year == end_year. Reutilizada por main.py (job Glue
+    real, trigger_dq=True) e por scripts/backfill_enriquecimento.py (fora do
+    Glue, trigger_dq=False)."""
+
+    _IDS = [1, 2]
+
+    def _kwargs(self, **overrides):
+        base = dict(
+            api_key="key-123",
+            database="db_tmdb_movie_dev",
+            media_type="movie",
+            year="2025",
+            end_year="2025",
+            s3_bucket_sot="my-sot",
+            s3_bucket_temp="my-temp",
+            table_discover="tb_tmdb_discover_movie_dev",
+            table_details="tb_tmdb_details_movie_dev",
+            table_watch_providers="tb_tmdb_watch_providers_movie_dev",
+            dq_job_name="dq-job",
+        )
+        base.update(overrides)
+        return base
+
+    def test_fetches_ids_using_discover_table(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS) as mock_ids,
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+            mock_ids.assert_called_once_with(
+                database="db_tmdb_movie_dev",
+                table_discover="tb_tmdb_discover_movie_dev",
+                s3_bucket_temp="my-temp",
+                year="2025",
+            )
+
+    def test_collect_details_called_with_delta_ids(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+            assert mock_collect.call_count == 1
+            call_kw = mock_collect.call_args
+            assert call_kw.kwargs["content_type"] == "movie"
+            assert set(call_kw.kwargs["ids"]) == set(self._IDS)
+            assert call_kw.kwargs["table_name"] == "tb_tmdb_details_movie_dev"
+
+    def test_force_refetch_skips_existing_ids_check(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details") as mock_existing,
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs(force_refetch=True))
+            mock_existing.assert_not_called()
+            assert set(mock_collect.call_args.kwargs["ids"]) == set(self._IDS)
+
+    def test_skip_collect_details_when_no_new_ids(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=self._IDS),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+            mock_collect.assert_not_called()
+
+    def test_collect_watch_providers_called_with_stale_ids(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+            mock_wp.assert_called_once()
+            call_kw = mock_wp.call_args
+            assert call_kw.kwargs["content_type"] == "movie"
+            assert call_kw.kwargs["ids"] == self._IDS
+            assert call_kw.kwargs["table_name"] == "tb_tmdb_watch_providers_movie_dev"
+            assert call_kw.kwargs["year"] == "2025"
+
+    def test_skip_collect_watch_providers_when_no_stale_ids(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=[]),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+            mock_wp.assert_not_called()
+
+    def test_triggers_data_quality_twice_by_default(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job") as mock_trigger,
+            patch("src.utils.time.sleep"),
+        ):
+            # year != end_year evita o repair de duplicatas de fim de ciclo — irrelevante
+            # para o comportamento de DQ testado aqui.
+            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025"))
+            dq_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "dq-job"]
+            assert len(dq_calls) == 2
+            assert call("dq-job", TABLE_NAME="tb_tmdb_details_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2024") in dq_calls
+            assert call("dq-job", TABLE_NAME="tb_tmdb_watch_providers_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2024") in dq_calls
+
+    def test_does_not_trigger_data_quality_when_trigger_dq_false(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job") as mock_trigger,
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025", trigger_dq=False))
+            mock_trigger.assert_not_called()
+
+    def test_repair_called_in_order_at_last_year(self):
+        call_order = []
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+            patch("src.utils.time.sleep"),
+            patch("src.utils.repair_discover_duplicates", side_effect=lambda **_: call_order.append("repair_discover")),
+            patch("src.utils.repair_watch_providers_duplicates", side_effect=lambda **_: call_order.append("repair_wp")),
+            patch("src.utils.repair_details_duplicates", side_effect=lambda **_: call_order.append("repair_details")) as mock_repair,
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+        mock_repair.assert_called_once_with(
+            database="db_tmdb_movie_dev",
+            table_details="tb_tmdb_details_movie_dev",
+            s3_bucket_sot="my-sot",
+            s3_bucket_temp="my-temp",
+            year="2025",
+        )
+        assert call_order == ["repair_discover", "repair_wp", "repair_details"]
+
+    def test_repair_not_called_when_not_last_year(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
+            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details"),
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+            patch("src.utils.repair_discover_duplicates") as mock_repair_discover,
+            patch("src.utils.repair_watch_providers_duplicates") as mock_repair_wp,
+            patch("src.utils.repair_details_duplicates") as mock_repair_details,
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025"))
+            mock_repair_discover.assert_not_called()
+            mock_repair_wp.assert_not_called()
+            mock_repair_details.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

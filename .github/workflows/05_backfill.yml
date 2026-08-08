@@ -13,7 +13,10 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 # Grupos de tabelas disponíveis:
 #   - discover              — gaps de anos via Lambda (ETL → DQ → Details → AGG)
 #   - referencias           — genre, configuration, watch_providers_ref via Lambda
-#   - detalhes_e_providers  — re-enriquece details + watch_providers via Glue Details
+#   - detalhes_e_providers  — re-enriquece details + watch_providers rodando a lógica do Glue
+#                             Details localmente neste workflow (sem acionar o job Glue — ver
+#                             scripts/backfill_enriquecimento.py), disparando o Glue Data Quality
+#                             uma única vez ao final, cobrindo todo o range de anos processado
 #   - data_quality          — re-executa DQ via Glue
 #   - traducao              — adiciona overview_pt nos details (sem API TMDB)
 #   - rename_colunas        — migra dt_processamento/dt_atualizacao para
@@ -133,7 +136,7 @@ jobs:
           # Formatter.converter de horário de São Paulo) — instalado sempre, não só
           # nos 2 table_group abaixo, para não depender da base IANA do runner.
           pip install boto3 tzdata
-          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ]; then
+          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -148,10 +151,19 @@ jobs:
           ROLE_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_PROD || secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_DEV }}
 
           # Jobs
-          GLUE_DETAILS_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-details-${{ steps.env.outputs.name }}
+          # GLUE_DETAILS_JOB_NAME não é mais passada: backfill_enriquecimento.py roda a lógica de
+          # enriquecimento diretamente no processo do backfill (ver
+          # run_details_and_watch_providers_for_year em app/glue_details/src/utils.py), sem mais
+          # acionar o Glue Details como job.
           GLUE_DATA_QUALITY_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-data-quality-${{ steps.env.outputs.name }}
           GLUE_AGG_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-agg-${{ steps.env.outputs.name }}
           LAMBDA_FUNCTION_NAME: ${{ steps.project.outputs.project_prefix }}-lambda-api-${{ steps.env.outputs.name }}
+
+          # Secret com a chave de API do TMDB — mesmo ARN usado por infra/glue_details.tf (argumento
+          # TMDB_SECRET_ARN do job real) e pelo terraform apply (secrets.aws-filmbot-secret-arn em
+          # .github/workflows/02_terraform.yml). Só lido por backfill_enriquecimento.py (via
+          # get_api_secret), que precisa da chave para chamar a API do TMDB fora do runtime do Glue.
+          TMDB_SECRET_ARN: ${{ secrets.aws-filmbot-secret-arn }}
 
           # Databases
           GLUE_DATABASE_MOVIE: db_${{ steps.project.outputs.project_prefix }}_movie_${{ steps.env.outputs.name }}
