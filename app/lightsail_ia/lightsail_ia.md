@@ -180,17 +180,22 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     (linha 2 alinhada embaixo do primeiro badge, não da borda esquerda do card) e o ícone permanece ancorado na
     primeira linha, sem ficar centralizado no meio do bloco todo. Antes o ícone era só mais um item solto no
     mesmo `flex-wrap` dos badges, e a quebra ficava rente à borda esquerda do card (embaixo do ícone) — diferente
-    de como provedor já se comportava, por essa mesma estrutura em 2 níveis já existir lá. Um gênero mencionado
-    explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()` o move
-    para o início da lista antes do corte, então ele nunca fica de fora se estiver presente no título
+    de como provedor já se comportava, por essa mesma estrutura em 2 níveis já existir lá. Fundo/borda em cinza
+    neutro mais sutil que o de provedor (dois degraus diferentes da mesma escala neutra, sem matiz própria —
+    `.genre`/`.provider-badge` em `principal.css`), só pra dar pra distinguir os dois grupos sem depender só do
+    ícone. Todo gênero mencionado explicitamente pelo usuário (ex: "filmes de terror e comédia") é priorizado —
+    `componentes.py::_prioritize()` move todos os que baterem para o início da lista antes do corte, então
+    nenhum fica de fora se estiver presente no título — e ganha destaque visual (borda + texto laranja, classe
+    `.highlighted`, mesmo `#fdba74` do motivo da IA) via `componentes.py::_matches_highlighted()`
   - Provedores sempre sozinhos numa linha própria (com ou sem imagem) — ícone 📺, badges de texto, streaming e
     aluguel/compra combinados num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`),
     sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do provedor sempre visível como texto (sem logo — a
     query em `agent.py` traz apenas `streaming_providers`/`rent_buy_providers`, os nomes). Mostra até 6 badges
     direto, sem badge "+N": a linha se ajusta ao card com mais provedores na mesma fileira via subgrid, então
     colapsar atrás de um clique deixou de ser necessário só por alinhamento — acima do teto de 6, trunca
-    silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` garante que um provedor
-    mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte
+    silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` (todos os provedores
+    que baterem, não só o primeiro) e mesmo destaque visual `.highlighted` de gênero garantem que um provedor
+    mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte nem passa despercebido
   - Sinopse e trailer dividem a última linha do card — as duas são ações de "quero saber mais" sobre o título,
     então ficam juntas em vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox
     hack em CSS, já que `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando
@@ -236,9 +241,10 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `app.py` | `_seconds_until_available(history, ip, window_seconds)` | Calcula quantos segundos faltam até o evento mais antigo do IP expirar, na janela de tempo informada |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
 | `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
-| `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges de texto (gêneros ou nomes de provedores) colocando primeiro os que contêm algum termo destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo |
+| `componentes.py` | `_matches_highlighted(item, terms)` | Diz se `item` contém (case-insensitive) algum termo da lista `terms` (`highlighted_genres`/`highlighted_providers`). Compartilhada por `_prioritize()` (ordena) e pelo render de badges (decide a classe `.highlighted`), pra garantir que os dois concordem sobre o que é destaque |
+| `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges de texto (gêneros ou nomes de provedores) colocando primeiro **todos** os que contêm algum termo destacado (case-insensitive, via `_matches_highlighted()`), preservando a ordem relativa dentro de cada grupo — não só o primeiro match, se o usuário pediu mais de um termo |
 | `componentes.py` | `_parse_provider_names(names_raw)` | Faz o parsing de um grupo de provedores (streaming ou aluguel/compra) a partir da string comma-joined vinda de `glue_agg` |
-| `componentes.py` | `_render_provider_badges(names, highlighted)` | Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` o provedor mencionado pelo usuário. Mostra até 6 badges direto, sem toggle — acima do teto trunca silenciosamente (a linha se ajusta ao card com mais provedores na mesma fileira via subgrid, ver seção "Interface") |
+| `componentes.py` | `_render_provider_badges(names, highlighted)` | Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` o(s) provedor(es) mencionado(s) pelo usuário e marca cada um com a classe `.highlighted` (borda + texto laranja). Mostra até 6 badges direto, sem toggle — acima do teto trunca silenciosamente (a linha se ajusta ao card com mais provedores na mesma fileira via subgrid, ver seção "Interface") |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência + habilitar/desabilitar "Recomendar" | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador e o `disabled` do botão "Recomendar" a cada tecla digitada (exceto quando `rate_limited`) |
