@@ -262,17 +262,30 @@ def render_card(title: dict, idx: int = 0) -> str:
     # reservada pelo subgrid, ver comentário abaixo) e um ícone sozinho, sem texto ao lado,
     # não faria sentido.
     meta_icon_html = '<span class="meta-icon">ℹ</span>' if meta_left else ""
+    duration_escaped = html.escape(duration) if duration else ""
+
+    # Com pôster, duração entra na mesma linha de data/tipo (medido via Playwright: mesmo
+    # o pior caso plausível — série com "3 temps · 24 eps · ~45 min/ep" — cabe numa linha
+    # só na largura mínima hoje garantida pro card, ~373px). Sem pôster essa linha já
+    # carrega classificação (meta_left) e nota (meta_right) — testado e esse extra
+    # transborda e quebra linha, então duração continua na própria linha só nesse caso.
+    duration_in_meta_line = has_poster and duration
+    meta_duration_html = (
+        f'<span class="meta-icon">⏱</span>{duration_escaped}' if duration_in_meta_line else ""
+    )
     meta_right = "" if has_poster else rating_html
     meta_html = (
         f'<div class="meta-row meta-line">'
-        f'<span class="meta-info">{meta_icon_html}{meta_left}</span>'
+        f'<span class="meta-info">{meta_icon_html}{meta_left}{meta_duration_html}</span>'
         f'{meta_right}</div>'
     )
 
-    duration_icon_html = '<span class="meta-icon">⏱</span>' if duration else ""
+    duration_icon_html = (
+        '<span class="meta-icon">⏱</span>' if duration and not duration_in_meta_line else ""
+    )
     duration_html = (
         f'<div class="meta-row duration-row">{duration_icon_html}'
-        f'{html.escape(duration) if duration else ""}</div>'
+        f'{duration_escaped if not duration_in_meta_line else ""}</div>'
     )
 
     provider_names = _parse_provider_names(streaming_providers)

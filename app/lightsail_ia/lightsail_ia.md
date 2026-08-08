@@ -131,23 +131,31 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     alinha a linha do motivo entre os 3 cards da fileira automaticamente, ajustando a altura ao maior motivo
     entre eles, então o texto completo sempre aparece direto (motivo raramente varia muito de tamanho: o prompt
     do LLM, `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres)
-  - Linha única de metadados: ícone ℹ️ (`.meta-icon`, mesmo padrão do 🎬 de "Em cartaz" mais abaixo) seguido de
+  - Linha única de metadados: ícone ℹ (`.meta-icon`, mesmo padrão do 🎬 de "Em cartaz" mais abaixo) seguido de
     data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série). O ícone fica **dentro**
     de `.meta-info` junto do texto (não como irmão direto de `.meta-row`) — `.meta-line` usa
     `justify-content:space-between` pra separar texto/nota, então um 3º filho solto empurraria o ícone pra ponta
     esquerda e o texto pra ponta direita, longe um do outro. Só aparece quando há data/tipo pra rotular (sem
     isso, `.meta-info` fica vazio, e ícone sozinho sem texto ao lado não faria sentido). **Com imagem**, o resto
-    da linha é só texto — nota e classificação já foram pra imagem. **Sem imagem**, o lado direito volta a ser a
-    nota (★) e a classificação entra junto de data/tipo à esquerda, como antes. O link ▶ Trailer **não** fica
-    nessa linha em nenhum dos dois casos (ver bullet da sinopse, mais abaixo) — misturar uma ação (trailer) com
-    um fato objetivo (data/tipo) não fazia sentido. Gênero, duração e provedor (bullets abaixo) também têm ícone
-    próprio (`.meta-icon`, mesma classe) — todos vinham de um design mais antigo (ver histórico do git, commits
-    "menos poluição visual") que os removeu; foram trazidos de volta pedido a pedido, ao contrário do ícone ℹ da
-    linha de data/tipo, que é novo. Diferente do ℹ (texto monocromático, sem seletor de variação de emoji — só
-    ele precisa de `color` explícito porque é o único que não tem forma colorida por padrão), os ícones abaixo
-    são emoji pictográficos nativos (sem equivalente monocromático) e mantêm a cor original, mesmo padrão que o
-    🎬 de "Em cartaz" já usava
-  - Duração/temporadas em linha própria, logo abaixo de data/tipo — ícone ⏱
+    da linha é só texto — nota e classificação já foram pra imagem — **e a duração entra na mesma linha**, com
+    seu próprio ícone ⏱ dentro do mesmo `.meta-info` (ex.: "ℹ Mai de 2004 · filme  ⏱ 2h 15min"), economizando
+    uma linha inteira do subgrid; medido via Playwright que até o pior caso plausível (série com "3 temps · 24
+    eps · ~45 min/ep") cabe numa linha só na largura mínima hoje garantida pro card (~373px, ver breakpoint de
+    1200px na seção do grid). **Sem imagem**, o lado direito volta a ser a nota (★) e a classificação entra
+    junto de data/tipo à esquerda, como antes — nesse caso a duração **não** entra na meta-line e continua na
+    própria linha (bullet abaixo): medido que juntar as duas nessa condição (classificação + nota já ocupando a
+    linha) estoura a largura e quebra — `duration_in_meta_line = has_poster and duration` em `render_card()`
+    decide isso. O link ▶ Trailer **não** fica nessa linha em nenhum dos casos (ver bullet da sinopse, mais
+    abaixo) — misturar uma ação (trailer) com um fato objetivo (data/tipo) não fazia sentido. Gênero, duração e
+    provedor (bullets abaixo) também têm ícone próprio (`.meta-icon`, mesma classe) — todos vinham de um design
+    mais antigo (ver histórico do git, commits "menos poluição visual") que os removeu; foram trazidos de volta
+    pedido a pedido, ao contrário do ícone ℹ da linha de data/tipo, que é novo. Diferente do ℹ (texto
+    monocromático, sem seletor de variação de emoji — só ele precisa de `color` explícito porque é o único que
+    não tem forma colorida por padrão), os ícones abaixo são emoji pictográficos nativos (sem equivalente
+    monocromático) e mantêm a cor original, mesmo padrão que o 🎬 de "Em cartaz" já usava
+  - Duração/temporadas — **com imagem**, entra na linha de data/tipo acima (bullet anterior). **Sem imagem**,
+    fica em linha própria logo abaixo de data/tipo — ícone ⏱, div sempre reservada pelo subgrid mesmo quando
+    vazia (com imagem, ou quando não há duração)
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
