@@ -185,6 +185,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     genres_clean = [html.escape(g) for g in genres_raw]
     visible_genres = genres_clean[:_MAX_VISIBLE_GENRES]
     genres_html = "".join(f'<span class="genre">{g}</span>' for g in visible_genres)
+    genres_icon_html = '<span class="meta-icon">🎭</span>' if genres_html else ""
 
     # Sempre gera a div, vazia quando não está em cartaz — reserva a linha própria do
     # subgrid (ver principal.css) pra não deslocar o que vem depois só nesse card.
@@ -268,8 +269,10 @@ def render_card(title: dict, idx: int = 0) -> str:
         f'{meta_right}</div>'
     )
 
+    duration_icon_html = '<span class="meta-icon">⏱</span>' if duration else ""
     duration_html = (
-        f'<div class="meta-row duration-row">{html.escape(duration) if duration else ""}</div>'
+        f'<div class="meta-row duration-row">{duration_icon_html}'
+        f'{html.escape(duration) if duration else ""}</div>'
     )
 
     provider_names = _parse_provider_names(streaming_providers)
@@ -289,9 +292,10 @@ def render_card(title: dict, idx: int = 0) -> str:
     # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
     # provedores agora, com ou sem pôster. Sempre gera a div (mesmo vazia), mesma razão de
     # meta-line/duration-row acima.
+    providers_icon_html = '<span class="meta-icon">📺</span>' if provider_badges_html else ""
     providers_block_html = (
         f'<div class="meta-row providers-row">'
-        f'<span class="provider-badges">{provider_badges_html}</span></div>'
+        f'{providers_icon_html}<span class="provider-badges">{provider_badges_html}</span></div>'
     )
 
     # Sinopse e trailer são as duas ações de "quero saber mais" do card, então dividem a
@@ -334,7 +338,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         {meta_html}
         {duration_html}
         {cinema_html}
-        <div class="genres-container">{genres_html}</div>
+        <div class="genres-container">{genres_icon_html}{genres_html}</div>
         {providers_block_html}
         <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
       </div>
