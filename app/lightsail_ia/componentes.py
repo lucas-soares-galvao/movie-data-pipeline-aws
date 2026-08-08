@@ -121,20 +121,27 @@ def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
     )
 
 
+def _matches_highlighted(item: str, terms: list[str]) -> bool:
+    """True se item contém (case-insensitive) algum dos termos destacados pela busca do
+    usuário. Compartilhada por `_prioritize` (ordena) e pelo render de badges (decide o
+    estilo "highlighted") pra garantir que os dois concordem sobre o que é destaque —
+    um item que vem primeiro na lista sempre tem o mesmo item que ganha a borda laranja."""
+    if not terms:
+        return False
+    item_lower = item.lower()
+    return any(t.lower() in item_lower for t in terms if t)
+
+
 def _prioritize(items: list[str], terms: list[str]) -> list[str]:
     """Reordena items colocando primeiro os que contêm algum termo destacado (case-insensitive),
     preservando a ordem relativa dentro de cada grupo. Usado para que um gênero/provedor
-    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N"."""
+    mencionado explicitamente pelo usuário nunca fique escondido no badge "+N". Se o usuário
+    pediu mais de um termo (ex: "ação e comédia"), todos os itens que baterem com algum deles
+    vêm primeiro, não só o primeiro match."""
     if not terms:
         return items
-    lowered = [t.lower() for t in terms if t]
-
-    def _matches(item: str) -> bool:
-        item_lower = item.lower()
-        return any(t in item_lower for t in lowered)
-
-    matched = [i for i in items if _matches(i)]
-    unmatched = [i for i in items if not _matches(i)]
+    matched = [i for i in items if _matches_highlighted(i, terms)]
+    unmatched = [i for i in items if not _matches_highlighted(i, terms)]
     return matched + unmatched
 
 
@@ -146,12 +153,18 @@ def _parse_provider_names(names_raw: str) -> list[str]:
 
 def _render_provider_badges(names: list[str], highlighted: list[str]) -> str:
     """Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e
-    deduplicados por `render_card`), priorizando via `_prioritize` o provedor mencionado
-    pelo usuário. Mostra até `_MAX_VISIBLE_PROVIDER_BADGES` badges direto — o restante trunca
-    silenciosamente, mesmo padrão que gêneros já usam, já que a linha de provedores se
-    ajusta automaticamente ao card com mais badges na mesma fileira (grid da .card-body)."""
+    deduplicados por `render_card`), priorizando via `_prioritize` o(s) provedor(es)
+    mencionado(s) pelo usuário e marcando cada um com a classe "highlighted" (borda laranja,
+    ver principal.css) — não só o primeiro, todo provedor que bateu com a busca. Mostra até
+    `_MAX_VISIBLE_PROVIDER_BADGES` badges direto — o restante trunca silenciosamente, mesmo
+    padrão que gêneros já usam, já que a linha de provedores se ajusta automaticamente ao
+    card com mais badges na mesma fileira (grid da .card-body)."""
     prioritized = _prioritize(names, highlighted)[:_MAX_VISIBLE_PROVIDER_BADGES]
-    return "".join(f'<span class="provider-badge">{html.escape(name)}</span>' for name in prioritized)
+    return "".join(
+        f'<span class="provider-badge{" highlighted" if _matches_highlighted(name, highlighted) else ""}">'
+        f"{html.escape(name)}</span>"
+        for name in prioritized
+    )
 
 
 def render_card(title: dict, idx: int = 0) -> str:
@@ -179,12 +192,16 @@ def render_card(title: dict, idx: int = 0) -> str:
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
 
-    genres_raw = _prioritize(
-        [g.strip() for g in genres if g.strip()], title.get("highlighted_genres") or []
+    highlighted_genres = title.get("highlighted_genres") or []
+    genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
+    visible_genres_raw = genres_raw[:_MAX_VISIBLE_GENRES]
+    # Todo gênero que bateu com a busca do usuário ganha "highlighted" (borda laranja, ver
+    # principal.css) — não só o primeiro, mesmo padrão de _render_provider_badges.
+    genres_html = "".join(
+        f'<span class="genre{" highlighted" if _matches_highlighted(g, highlighted_genres) else ""}">'
+        f"{html.escape(g)}</span>"
+        for g in visible_genres_raw
     )
-    genres_clean = [html.escape(g) for g in genres_raw]
-    visible_genres = genres_clean[:_MAX_VISIBLE_GENRES]
-    genres_html = "".join(f'<span class="genre">{g}</span>' for g in visible_genres)
     genres_icon_html = '<span class="meta-icon">🎭</span>' if genres_html else ""
 
     # Sempre gera a div, vazia quando não está em cartaz — reserva a linha própria do

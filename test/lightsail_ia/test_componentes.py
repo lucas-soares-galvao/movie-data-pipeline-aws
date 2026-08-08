@@ -182,6 +182,24 @@ class TestLoadLoginButtonToggleScript:
         assert "const lockedOut = true;" in captured["content"]
 
 
+class TestMatchesHighlighted:
+    """_matches_highlighted() diz se um item contém (case-insensitive) algum termo
+    destacado pela busca do usuário — usada tanto por _prioritize() (ordena) quanto pelo
+    render de badges (decide a classe "highlighted")."""
+
+    def test_sem_termos_retorna_falso(self):
+        assert componentes._matches_highlighted("Terror", []) is False
+
+    def test_item_bate_com_termo(self):
+        assert componentes._matches_highlighted("Terror", ["terror"]) is True
+
+    def test_item_nao_bate_com_termo(self):
+        assert componentes._matches_highlighted("Drama", ["terror"]) is False
+
+    def test_case_insensitive(self):
+        assert componentes._matches_highlighted("Terror", ["TERROR"]) is True
+
+
 class TestPrioritize:
     """_prioritize() reordena badges colocando primeiro os que casam com algum termo
     destacado (case-insensitive), preservando a ordem relativa dentro de cada grupo."""
@@ -253,6 +271,11 @@ class TestRenderProviderBadges:
     def test_prioriza_provedor_destacado(self):
         html = componentes._render_provider_badges(["Netflix", "Crunchyroll"], ["crunchyroll"])
         assert html.index("Crunchyroll") < html.index("Netflix")
+
+    def test_provedor_destacado_ganha_classe_highlighted(self):
+        html = componentes._render_provider_badges(["Netflix", "Crunchyroll"], ["crunchyroll"])
+        assert '<span class="provider-badge highlighted">Crunchyroll</span>' in html
+        assert '<span class="provider-badge">Netflix</span>' in html
 
     def test_corta_no_limite_de_provedores_visiveis(self):
         # Sem toggle "+N": acima do teto, trunca silenciosamente — a linha de provedores se
@@ -443,7 +466,7 @@ class TestRenderCard:
             "highlighted_genres": ["terror"],
         }
         html = componentes.render_card(t)
-        assert '<span class="genre">Terror</span>' in html
+        assert '<span class="genre highlighted">Terror</span>' in html
         assert "Comédia" not in html
 
     def test_card_provedor_destacado_entra_nos_visiveis_alem_do_limite(self):
@@ -455,8 +478,39 @@ class TestRenderCard:
             "highlighted_providers": ["crunchyroll"],
         }
         html = componentes.render_card(t)
-        assert '<span class="provider-badge">Crunchyroll</span>' in html
+        assert '<span class="provider-badge highlighted">Crunchyroll</span>' in html
         assert "Globoplay" not in html
+
+    def test_card_genero_destacado_ganha_classe_highlighted_e_nao_destacado_nao_ganha(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Drama", "Terror"],
+            "highlighted_genres": ["terror"],
+        }
+        html = componentes.render_card(t)
+        assert '<span class="genre highlighted">Terror</span>' in html
+        assert '<span class="genre">Drama</span>' in html
+
+    def test_card_provedor_destacado_ganha_classe_highlighted_e_nao_destacado_nao_ganha(self):
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": "Netflix,Crunchyroll",
+            "highlighted_providers": ["crunchyroll"],
+        }
+        html = componentes.render_card(t)
+        assert '<span class="provider-badge highlighted">Crunchyroll</span>' in html
+        assert '<span class="provider-badge">Netflix</span>' in html
+
+    def test_card_multiplos_generos_destacados_ganham_highlighted_todos(self):
+        t = {
+            **BASE_TITLE,
+            "genres": ["Drama", "Terror", "Comédia"],
+            "highlighted_genres": ["terror", "comédia"],
+        }
+        html = componentes.render_card(t)
+        assert '<span class="genre highlighted">Terror</span>' in html
+        assert '<span class="genre highlighted">Comédia</span>' in html
+        assert '<span class="genre">Drama</span>' in html
 
     def test_card_multiplos_generos_destacados_mantem_ordem_entre_si(self):
         t = {

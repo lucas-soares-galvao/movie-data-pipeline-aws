@@ -821,14 +821,18 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 .vital-rating { color: #f97316; font-weight: bold; font-size: 15px; }
 
+/* Fundo/borda mais sutis que .provider-badge (0.04/0.08 vs. 0.12/0.16) — os dois usam a
+   mesma escala de cinza neutro do design system (sem matiz própria, reservada pra pontos
+   de atenção como nota/motivo/"em cartaz"), só em dois degraus diferentes, pra dar pra
+   distinguir gênero de provedor sem depender só do ícone 🎭/📺. */
 .genre {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.04);
   color: #d4d4d4;
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 12px;
   display: inline-block;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .certification-badge {
@@ -872,14 +876,27 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   gap: 4px;
 }
 
+/* Fundo/borda mais claros que .genre (0.12/0.16 vs. 0.04/0.08) — ver comentário lá. */
 .provider-badge {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.12);
   color: #d4d4d4;
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 11px;
   display: inline-block;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.16);
+}
+
+/* Gênero/provedor que o usuário mencionou explicitamente na busca (componentes.py::
+   _matches_highlighted) — só borda + texto laranja, sem mudar o fundo, pra não competir
+   com elementos sólidos em laranja do mesmo card (nota, "em cartaz"). Reaproveita o mesmo
+   #fdba74 de .reason (motivo da IA) em vez de outro tom, já que os dois são "por que este
+   título" — motivo em texto corrido, aqui em badge. Se o usuário pediu mais de um termo
+   (ex: "ação e comédia"), todo item que bateu fica destacado, não só o primeiro. */
+.genre.highlighted,
+.provider-badge.highlighted {
+  border-color: rgba(249,115,22,0.5);
+  color: #fdba74;
 }
 
 .cinema-badge {
