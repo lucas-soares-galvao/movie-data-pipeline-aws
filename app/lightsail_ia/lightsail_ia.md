@@ -100,7 +100,19 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   nenhum campo. `render_grid()`/`render_card()` (`componentes.py`) calculam o total de
   linhas por fileira e a posição (`grid-row`/`grid-column`) de cada card via `style` inline;
   abaixo do breakpoint esse posicionamento é neutralizado (`!important` em `principal.css`)
-  e os cards voltam a empilhar em fluxo natural, sem subgrid
+  e os cards voltam a empilhar em fluxo natural, sem subgrid. **Respiro entre seções:**
+  `.card-body` tem `gap: 16px`, que dá o espaçamento entre todas as seções do card (título,
+  motivo, informação, gêneros, provedores, sinopse...) de uma vez só, de forma uniforme —
+  funciona tanto no mobile (`display:flex; flex-direction:column`, gap vira espaço vertical
+  entre os itens empilhados) quanto no desktop (`display:grid; grid-template-rows:subgrid`,
+  gap vira espaço entre as linhas do subgrid). Substituiu margens soltas que cada campo
+  tinha antes (`.reason`, `.genres-container`, `.meta-row`, `.synopsis-row`) — manter as
+  duas fontes de espaçamento ao mesmo tempo já causou um bug real: `.reason` tem
+  `height:100%` (pra o fundo colorido acompanhar a altura da linha do subgrid, ver bullet
+  abaixo) e margin nunca entra no cálculo de `box-sizing`, então `height:100%` + margin
+  próprios faziam a caixa ultrapassar a altura de `.row-reason` e sobrepor a linha
+  seguinte — medido via Playwright (-4px de sobreposição) antes de mover esse respiro pro
+  `gap` do `.card-body`
 - **Largura do rodapé (`render_footer()`):** antes de pesquisar, o rodapé fica com a mesma largura do hero (640px, centralizado, `.footer { max-width: 640px; margin: auto }`). `.grid-titles` (resultados) não tem largura própria — ocupa a largura natural do `block-container`. Quando há resultado na tela, `body:has(.grid-titles) .footer { max-width: none }` destrava o rodapé pra acompanhar essa largura maior, em vez de ficar preso nos 640px do hero
 - **Cabeçalho (`st.container(key="header-row")`):** ícone 🎬 maior (`.header-icon`, 34px) à esquerda, com título "FilmBot" (28px, `!important` — ver nota abaixo) + subtítulo (13px, `!important`) empilhados à direita dele sem nenhuma das duas linhas passar por baixo do ícone (`.header-brand` flex row + `.header-text` flex column, dentro de um único `st.markdown`) — substitui `st.title`/`st.caption`, que rendem um `<h1>` grande demais pra esse contexto de topo de página, mesmo padrão de markdown customizado já usado em `.login-title`/`.login-subtitle` na tela de login. **`!important` no `font-size` de `.header-title`/`.header-subtitle`:** o Streamlit aplica um `font-size` próprio no `<p>` via seletor com especificidade maior que a classe sozinha — sem o `!important`, o valor definido aqui é ignorado e o texto renderiza sempre em 16px, confirmado via inspeção real do DOM (Playwright). Botão "Sair" (`key="btn_sair"`) estilizado como pill discreto (`#3f3f3f`, cinza neutro). A coluna do título cresce (`flex:1 1 auto`) pra preencher o espaço extra e empurrar a coluna do botão (`flex:0 0 auto`) pra ponta direita — necessário porque a regra genérica "Colunas dos botoes se ajustam ao conteudo" (mais acima em `principal.css`) exclui explicitamente linhas com `<h1>`; sem esse `<h1>` (trocado por markdown), as colunas do header passaram a encolher pro conteúdo, deixando um vão grande entre o botão e a borda direita real do hero — medido via inspeção real do DOM (Playwright). Alinhamento vertical do botão via `align-items:center` no `stHorizontalBlock` mais um nudge fino (`position:relative; top:8px`) — o wrapper interno que o Streamlit gera em volta de `st.markdown` reporta uma altura menor que a dos dois parágrafos reais (título+subtítulo), então o `align-items:center` sozinho centraliza o botão ~8px acima do centro visual verdadeiro; compensado diretamente após medir via inspeção real do DOM, já que a causa raiz da altura errada não pôde ser isolada/corrigida via CSS (`height`/`min-height`/`max-height:auto` não tiveram efeito). **Wrap natural (sem breakpoint fixo):** `flex-wrap:wrap` + `justify-content:space-between` no `stHorizontalBlock` — o botão fica lado a lado com o ícone+texto enquanto couber (como no desktop, em qualquer largura) e só quebra pra linha de baixo quando o espaço realmente não for suficiente; `justify-content:space-between` resolve o alinhamento nos dois cenários sozinho (título à esquerda/botão à direita quando cabem juntos; botão alinhado à esquerda quando quebra pra própria linha, já que não sobra "outro lado" pra empurrar), e o `gap:12px` do row garante um respiro mínimo tanto na horizontal quanto na vertical (quando quebra) — testado via Playwright em várias larguras (1280px a 320px)
 - **Rate limiting por IP:** máximo de 15 consultas por hora (janela deslizante). O contador ("Consultas restantes: N/15 por hora") é exibido abaixo do campo de texto, em cinza (`.query-counter-text`); quando restam 3 consultas ou menos, o texto muda para laranja em negrito (`.query-counter-low`, `principal.css`) para avisar a pessoa antes de o limite ser atingido. Ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS mostra quanto tempo falta em tempo real, decrementando a cada segundo — a caixa de aviso vem de `render_feedback()` (renderizada na página real, com CSS de `principal.css`) e só o `<span id="countdown">` é atualizado por `static/countdown.js` (injetado por `load_countdown_script()`, genérico — reusado também pelo bloqueio de login, ver abaixo), que acessa `window.parent.document` a partir do iframe do `st.components.v1.html` — mesmo padrão de `audio_timer.js`, sem duplicar CSS dentro do iframe. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
@@ -161,12 +173,16 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
     do rodapé de ações
   - Badges de gênero (máx. 6 visíveis, sem indicador para o restante — trunca silenciosamente, já que a linha se
-    ajusta ao card com mais badges na mesma fileira via subgrid) — ícone 🎭. `.genres-container` é `display:flex`
-    (não bloco simples) com `align-items:flex-start`, pra o ícone ficar ancorado na primeira linha mesmo quando
-    os badges quebram pra 2ª/3ª linha, em vez de centralizado no meio do bloco todo — mesmo tratamento em
-    `.providers-row` (abaixo) pelo mesmo motivo. Um gênero mencionado explicitamente pelo usuário (ex: "filmes
-    de terror") é priorizado — `componentes.py::_prioritize()` o move para o início da lista antes do corte,
-    então ele nunca fica de fora se estiver presente no título
+    ajusta ao card com mais badges na mesma fileira via subgrid) — ícone 🎭. Estrutura em 2 níveis, igual à de
+    provedor (abaixo): `.genres-container` (`display:flex; align-items:flex-start`) contém o ícone e um
+    `<span class="genre-badges">` próprio (`display:flex; flex-wrap:wrap; gap:4px`) que agrupa os badges — o
+    ícone fica **fora** desse span, então quando os badges quebram pra 2ª/3ª linha, a quebra fica só entre eles
+    (linha 2 alinhada embaixo do primeiro badge, não da borda esquerda do card) e o ícone permanece ancorado na
+    primeira linha, sem ficar centralizado no meio do bloco todo. Antes o ícone era só mais um item solto no
+    mesmo `flex-wrap` dos badges, e a quebra ficava rente à borda esquerda do card (embaixo do ícone) — diferente
+    de como provedor já se comportava, por essa mesma estrutura em 2 níveis já existir lá. Um gênero mencionado
+    explicitamente pelo usuário (ex: "filmes de terror") é priorizado — `componentes.py::_prioritize()` o move
+    para o início da lista antes do corte, então ele nunca fica de fora se estiver presente no título
   - Provedores sempre sozinhos numa linha própria (com ou sem imagem) — ícone 📺, badges de texto, streaming e
     aluguel/compra combinados num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`),
     sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do provedor sempre visível como texto (sem logo — a
