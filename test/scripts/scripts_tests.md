@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
+Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_historico.py`) + o módulo compartilhado `backfill_shared.py`, acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
 
 O foco principal é o **contrato dos argumentos** enviados a cada serviço (Glue) ou às funções internas replicadas no processo (coleta TMDB, transformação equivalente ao Glue ETL/Details), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 95% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
 
@@ -26,6 +26,7 @@ test/scripts/
 ├── test_backfill_traducao.py
 ├── test_backfill_rename_colunas.py
 ├── test_backfill_changes.py
+├── test_backfill_historico.py
 └── test_backfill_shared.py
 ```
 
@@ -89,7 +90,7 @@ custo por intervalo de anos de `backfill_enriquecimento.py`/`backfill_traducao.p
 |---|---|
 | `test_pula_unidades_ja_concluidas` | Unidades presentes no checkpoint não geram nova chamada a `collect_discover_data` |
 | `test_salva_checkpoint_apenas_para_unidades_com_sucesso` | `put_object` só reflete unidades concluídas com sucesso |
-| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` / `test_nao_limpa_checkpoint_quando_ha_falhas` | `delete_object` só é chamado quando não sobra nenhuma falha |
+| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` / `test_nao_limpa_checkpoint_quando_ha_falhas` | `delete_object` só é chamado quando não sobra nenhuma falha; `main()` retorna `True`/`False` de acordo (consumido por `backfill_historico.py`) |
 
 ### `TestDataQualityFinal`
 
@@ -174,8 +175,8 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 |---|---|
 | `test_pula_unidades_ja_concluidas` | Unidades presentes no checkpoint não geram novo `start_job_run` |
 | `test_salva_checkpoint_apenas_para_runs_com_sucesso` | Um run `FAILED` não entra no `completed` — continua pendente para a próxima retomada |
-| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado só quando não há falhas |
-| `test_nao_limpa_checkpoint_quando_ha_falhas` | Com alguma falha "soft", o checkpoint permanece (não chama `delete_object`) |
+| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado só quando não há falhas; `main()` retorna `True` |
+| `test_nao_limpa_checkpoint_quando_ha_falhas` | Com alguma falha "soft", o checkpoint permanece (não chama `delete_object`); `main()` retorna `False` (consumido por `backfill_historico.py`) |
 
 ## Casos de teste — `test_backfill_data_quality.py`
 
@@ -390,6 +391,53 @@ Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de dom
 |---|---|
 | `test_erro_da_lambda_interrompe_o_backfill` | `RuntimeError` (Lambda com erro) propaga e para o script |
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
+
+## Casos de teste — `test_backfill_historico.py`
+
+`backfill_historico.py` encadeia `backfill_discover.py` e `backfill_enriquecimento.py`, chamando o
+`main()` de cada um diretamente no processo. Os testes mockam os dois módulos inteiros
+(`backfill_historico.backfill_discover`/`backfill_historico.backfill_enriquecimento`) — a lógica
+interna de cada um já é coberta em `test_backfill_discover.py`/`test_backfill_enriquecimento.py`;
+aqui o foco é só a orquestração entre os dois: ordem, `TABLE_GROUP` definido antes de cada chamada,
+interrupção quando um estágio retorna `False`, e o checkpoint de estágio próprio (unidade = nome
+do estágio, não `tipo:ano`).
+
+### `TestOrdemDosEstagios`
+
+| Teste | O que verifica |
+|---|---|
+| `test_roda_discover_e_depois_enriquecimento` | Os dois `main()` são chamados, cada um exatamente uma vez |
+| `test_define_table_group_de_cada_estagio_antes_de_chamar` | `TABLE_GROUP` é `"discover"` no momento da primeira chamada e `"detalhes_e_providers"` na segunda |
+
+### `TestInterrupcaoPorFalha`
+
+| Teste | O que verifica |
+|---|---|
+| `test_nao_chama_enriquecimento_quando_discover_retorna_false` | `backfill_enriquecimento.main()` não é chamado se `backfill_discover.main()` retornar `False` |
+| `test_nao_salva_estagio_discover_no_checkpoint_quando_retorna_false` | Nenhum `put_object` no checkpoint de estágio quando `discover` falha |
+| `test_salva_discover_mas_nao_limpa_checkpoint_quando_enriquecimento_retorna_false` | `"discover"` é salvo no checkpoint de estágio, mas `delete_object` não é chamado |
+
+### `TestSucessoCompleto`
+
+| Teste | O que verifica |
+|---|---|
+| `test_salva_os_dois_estagios_e_limpa_checkpoint_ao_final` | 2 `put_object` (um por estágio) seguidos de `delete_object` |
+| `test_loga_conclusao_quando_tudo_sucede` | Log final "sem pendências" aparece quando os dois estágios sucedem |
+
+### `TestCheckpointDeEstagio`
+
+| Teste | O que verifica |
+|---|---|
+| `test_pula_discover_quando_ja_concluido_no_checkpoint` | Checkpoint de estágio já com `"discover"` pula direto para `backfill_enriquecimento.main()` |
+| `test_pula_ambos_quando_checkpoint_ja_tem_os_dois_estagios` | Nenhum `main()` chamado; só `clear_checkpoint` |
+
+### `TestErros`
+
+| Teste | O que verifica |
+|---|---|
+| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
+| `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
+| `test_token_expirado_no_estagio_discover_propaga_e_nao_chama_enriquecimento` (parametrizado) | Um `ClientError` de token expirado levantado dentro de `backfill_discover.main()` propaga através de `backfill_historico.main()` sem ser capturado como falha soft |
 
 ## Casos de teste — `test_backfill_shared.py`
 

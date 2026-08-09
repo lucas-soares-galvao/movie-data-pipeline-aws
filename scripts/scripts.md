@@ -2,7 +2,7 @@
 
 ## O que é
 
-Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 7 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (e o Glue AGG, disparado pelo workflow ao final).
+Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 8 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (e o Glue AGG, disparado pelo workflow ao final).
 
 ## Por que existe
 
@@ -19,14 +19,19 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 | `backfill_rename_colunas.py` | Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para `processed_date`/`updated_date` nos parquets de details/watch_providers já gravados no S3 — sem chamar a API do TMDB, cobre inclusive IDs que já saíram do discover atual | S3 (direto) | awswrangler, pandas |
 | `backfill_changes.py` | Dispara sob demanda o mesmo modo changes que o cron semanal de domingo já aciona automaticamente — 2 content_types (movie, tv), janela sempre `[domingo passado, sábado de ontem]` (não configurável); roda a coleta de IDs mudados e o enriquecimento diretamente no processo do script (sem acionar Lambda nem o job Glue Details — ver `collect_changes_data`/`process_changed_ids` em `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final por tabela (não por ano); útil quando o cron falha ou é pulado | Athena, Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
+| `backfill_historico.py` | Encadeia `backfill_discover.py` e, na sequência, `backfill_enriquecimento.py`, chamando o `main()` de cada um diretamente neste processo (nunca via subprocess) — simula fora do EventBridge o mesmo encadeamento `discover → detalhes/providers` do pipeline automático. Não introduz variável de ambiente nova (união das exigidas pelos dois) nem reimplementa nenhuma lógica de coleta/transformação — só orquestra a ordem. Mantém um checkpoint próprio (`TABLE_GROUP="historico"` interno, unidades `"discover"`/`"enriquecimento"`) por cima dos dois checkpoints internos, para não redigitar um estágio já concluído numa retomada. Se `discover` terminar com falha soft, `enriquecimento` não roda. Herda os 2 disparos de Glue Data Quality dos dois scripts (não dispara um terceiro consolidado) | Secrets Manager, Athena, TMDB API, S3 (direto), Glue Data Quality | mesmas de `backfill_discover.py` + `backfill_enriquecimento.py` |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
-por todos os 7 scripts acima: leitura de variável de ambiente obrigatória,
+por todos os 8 scripts acima: leitura de variável de ambiente obrigatória,
 setup de logging, leitura do range de anos, proteção de custo do AWS
 Translate por intervalo de anos (`apply_translate_cost_guard`), wrapper de
-retry do exit code 75 e, para os 5 scripts que iteram por ano (todos exceto
-`backfill_referencias.py` e `backfill_changes.py`), o checkpoint de retomada
-automática (ver seção "Retomada automática" abaixo).
+retry do exit code 75 e, para os 5 scripts que iteram por ano diretamente
+(todos exceto `backfill_referencias.py`, `backfill_changes.py` e
+`backfill_historico.py`), o checkpoint de retomada automática (ver seção
+"Retomada automática" abaixo). `backfill_historico.py` não itera por ano
+diretamente — delega essa iteração aos dois scripts que encadeia — mas
+também usa o checkpoint genérico de `backfill_shared.py`, só que com unidade
+"nome do estágio" (`discover`/`enriquecimento`) em vez de "ano+tipo".
 
 ## Pré-requisitos
 
@@ -99,6 +104,14 @@ como os demais.
 `backfill_rename_colunas.py` também exige `S3_BUCKET_SOT` (mesmo motivo) e,
 adicionalmente, `TABLE_WATCH_PROVIDERS_MOVIE`/`TABLE_WATCH_PROVIDERS_TV` (além
 de `TABLE_DETAILS_MOVIE`/`TABLE_DETAILS_TV`, já usadas por `backfill_traducao.py`).
+
+`backfill_historico.py` exige `AWS_REGION` e `S3_BUCKET_TEMP` diretamente (para
+o próprio checkpoint de estágio) e, indiretamente, todas as variáveis de
+`backfill_discover.py` e `backfill_enriquecimento.py` (lidas por cada `main()`
+quando chamado) — nenhuma variável nova. Diferente dos demais, **não** lê
+`TABLE_GROUP` do ambiente — define `"discover"` e depois
+`"detalhes_e_providers"` internamente antes de chamar cada estágio, então
+`TABLE_GROUP` não deve ser passada por quem chama este script.
 
 `backfill_referencias.py` exige `AWS_REGION`, `S3_BUCKET_SOR`, `S3_BUCKET_SOT`,
 `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`, `TABLE_GENRE_MOVIE`/`TABLE_GENRE_TV`,
@@ -181,6 +194,18 @@ workflow — mas **sem checkpoint**: poucas unidades (2 em `backfill_changes.py`
 idempotentes, então a retomada simplesmente refaz tudo do zero em vez de
 pular direto para o pendente.
 
+`backfill_historico.py` não grava checkpoint por ano/tipo — quem faz isso são
+`backfill_discover.py`/`backfill_enriquecimento.py`, chamados por ele. Mantém
+só um checkpoint de estágio próprio
+(`s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/historico.json`, unidades
+`"discover"`/`"enriquecimento"`), usado para pular um estágio inteiro que já
+terminou sem falhas (e por isso já limpou seu próprio checkpoint por
+ano/tipo) numa retomada — sem esse marcador, retomar depois de uma falha no
+segundo estágio reprocessaria o primeiro inteiro do zero. Um `ClientError` de
+token expirado levantado dentro de qualquer um dos dois estágios propaga
+normalmente até o `run_with_retry_exit` do próprio `backfill_historico.py`
+(exit code 75, mesmo contrato).
+
 Qualquer outro tipo de erro (não relacionado a token expirado) continua
 falhando o job normalmente, sem retry automático. O checkpoint só é apagado
 quando o backfill termina 100% sem falhas — se sobrarem falhas "soft" (ex.:
@@ -201,16 +226,19 @@ Depois que o loop de retry termina com sucesso (`exit 0`), o workflow
 GitHub Actions, nessa ordem:
 
 1. **"Backfill"** — o resumo real do que o script fez, extraído do log via
-   `grep` (todos os 7 scripts usam o mesmo formato de log,
+   `grep` (todos os 8 scripts usam o mesmo formato de log,
    `backfill_shared.py:58-63`: `"%(asctime)s %(levelname)s %(message)s"`, com
    `%(asctime)s` em horário de São Paulo (`DD/MM/YYYY HH:MM:SS`) via
    `Formatter.converter`/`datefmt` customizados em `backfill_shared.py`).
    Isso importa porque `exit 0` **não** garante que toda unidade teve
-   sucesso para 4 dos 7 scripts: `backfill_discover.py`,
+   sucesso para 5 dos 8 scripts: `backfill_discover.py`,
    `backfill_enriquecimento.py` e `backfill_changes.py` são soft-fail-continue
    (logam `ERROR` por unidade/content_type que falhou, mas nunca chamam
-   `sys.exit`) e `backfill_data_quality.py` é fire-and-forget ("submetido" ≠
-   "validado" — ver `especialista-scripts-backfill`). Se sobrar qualquer
+   `sys.exit`), `backfill_data_quality.py` é fire-and-forget ("submetido" ≠
+   "validado" — ver `especialista-scripts-backfill`), e `backfill_historico.py`
+   herda o soft-fail-continue de `backfill_discover.py`/
+   `backfill_enriquecimento.py` (interrompe entre estágios em caso de falha,
+   mas o processo em si sai com `exit 0`). Se sobrar qualquer
    linha `ERROR` no log, o step summary mostra "⚠️ Falhas parciais
    registradas" com as linhas encontradas, mesmo com o job do Actions
    terminando verde.

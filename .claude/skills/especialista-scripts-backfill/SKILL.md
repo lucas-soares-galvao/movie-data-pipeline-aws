@@ -1,6 +1,6 @@
 ---
 name: especialista-scripts-backfill
-description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 7 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, ou entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui o disparo do Glue AGG ao final, centralizado no workflow, não nos scripts). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
+description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), ou entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui o disparo do Glue AGG ao final, centralizado no workflow, não nos scripts). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
 ---
 
 # Especialista em Scripts de Backfill
@@ -9,24 +9,26 @@ description: Especialista no mecanismo de backfill manual em `scripts/` (checkpo
 
 Você avalia todo script de backfill pela pergunta: **"se isto for interrompido no meio (token expirado, falha de
 rede, um Ctrl+C acidental) e disparado de novo com o mesmo range de anos, ele retoma de onde parou sem reprocessar
-nem perder trabalho — e sem mentir sobre o que já terminou?"**. Os 7 scripts de `scripts/` + `backfill_shared.py`
+nem perder trabalho — e sem mentir sobre o que já terminou?"**. Os 8 scripts de `scripts/` + `backfill_shared.py`
 existem para reprocessar até 26 anos de histórico (2000–atual) dentro de sessões AWS de 1h (OIDC) — o checkpoint em
-S3 e o exit code 75 são o mecanismo que torna isso seguro de rodar por horas sem supervisão constante. Nenhum dos 7
+S3 e o exit code 75 são o mecanismo que torna isso seguro de rodar por horas sem supervisão constante. Nenhum dos 8
 scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details
-diretamente no processo do script, mantendo apenas o Glue Data Quality (e, via workflow, o Glue AGG) como job real.
+diretamente no processo do script (ou, no caso de `backfill_historico.py`, chamam o `main()` de dois outros scripts
+que já rodam essa lógica em processo — ver "Práticas já aplicadas"), mantendo apenas o Glue Data Quality (e, via
+workflow, o Glue AGG) como job real.
 `scripts/` também é estruturalmente diferente de `app/<modulo>/src/utils.py` +
 `main.py` (cada script concentra `main()` e helpers privados no próprio arquivo, sem pasta `src/`) — decisão
 deliberada, não descuido: são runbooks de operação manual fora do gate de cobertura de 95%, não código do pipeline
 deployado. Esta skill não descreve o que cada script faz linha a linha (isso é `scripts/scripts.md`) nem os testes
 (`test/scripts/scripts_tests.md`) — foca no racional de design: por que a unidade de checkpoint é o que é, por que
-existem 3 padrões diferentes de tratamento de erro entre os 7 scripts, e o que um script novo precisa reaproveitar
+existem 3 padrões diferentes de tratamento de erro entre os 8 scripts, e o que um script novo precisa reaproveitar
 de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 
 ## Fontes de verdade (ler antes de agir)
 
 | O quê | Onde |
 |---|---|
-| Descrição de cada um dos 7 scripts, variáveis de ambiente, como executar (workflow ou local) | `scripts/scripts.md` |
+| Descrição de cada um dos 8 scripts, variáveis de ambiente, como executar (workflow ou local) | `scripts/scripts.md` |
 | Casos de teste por script, os 4 bugs reais que motivaram a suíte | `test/scripts/scripts_tests.md` |
 | Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC, disparo do Glue AGG ao final | `especialista-workflows-github`, `.github/workflows/05_backfill.yml` |
 | Funções reaproveitadas dos jobs reais (`collect_discover_data` em `app/lambda_api/src/utils.py`; `read_from_sor`/`write_parquet_to_sot` em `app/glue_etl/src/utils.py`; `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`) | `especialista-engenharia-dados-app` |
@@ -46,6 +48,15 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   `tabela:ano`, porque essas duas iteram sobre uma lista de tabelas específicas (discover/details/watch_providers,
   movie e tv juntos), não sobre "tipo". Um script novo deve escolher a chave que corresponde à unidade de trabalho
   real que ele dispara — não copiar `tipo:ano` por padrão.
+- **`backfill_historico.py` usa uma terceira granularidade de `unit_id`: nome de estágio** (`"discover"`,
+  `"enriquecimento"`), nem `tipo:ano` nem `tabela:ano` — porque a unidade de trabalho real desse script não é uma
+  chamada TMDB nem uma tabela, é "rodar `backfill_discover.py` até o fim sem falhas" e "rodar
+  `backfill_enriquecimento.py` até o fim sem falhas". É um checkpoint de nível mais alto, por cima dos checkpoints
+  por ano/tipo que os dois scripts chamados já mantêm sozinhos (`TABLE_GROUP="discover"` e
+  `TABLE_GROUP="detalhes_e_providers"`) — existe só para não redigitar um estágio inteiro que já terminou sem
+  falhas (e por isso já limpou o próprio checkpoint) quando o estágio seguinte é interrompido por token expirado.
+  Um script que encadeia outros scripts existentes deve seguir esse padrão — checkpoint próprio com unidade =
+  "nome do que está sendo encadeado" — em vez de reimplementar a lógica interna de cada um.
 - **`save_checkpoint` é chamado a cada unidade concluída dentro do loop** (ex.
   `scripts/backfill_discover.py:203`, `scripts/backfill_data_quality.py:136`), nunca uma vez só no fim — grava no
   S3 uma vez por unidade (custo desprezível, poucas dezenas de `PutObject` por backfill) para que uma interrupção a
@@ -114,8 +125,9 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   AGG**: a saída do `executar_script` é gravada em `$RUNNER_TEMP/backfill_output.log` via `tee` (com
   `codigo=${PIPESTATUS[0]}`, não `$?`, para capturar o exit code do script e não do `tee`). Isso existe porque
   `codigo -eq 0` (a condição que já existia para decidir "backfill terminou") **não implica que toda unidade teve
-  sucesso** para os 4 scripts com tratamento de erro não-abortante (padrões 2 e 3 acima): se sobrar alguma linha
-  ` ERROR ` no log (mesmo formato em todos os 7 scripts, ver `backfill_shared.py:58-63`; `%(asctime)s` sai em
+  sucesso** para os 5 scripts com tratamento de erro não-abortante (padrões 2 e 3 acima, incluindo
+  `backfill_historico.py`, que herda o soft-fail-continue dos dois scripts que encadeia): se sobrar alguma linha
+  ` ERROR ` no log (mesmo formato em todos os 8 scripts, ver `backfill_shared.py:58-63`; `%(asctime)s` sai em
   horário de São Paulo, `DD/MM/YYYY HH:MM:SS`, via `Formatter.converter`/`datefmt` customizados, também em
   `backfill_shared.py`), o step summary mostra
   "Falhas parciais registradas" com as linhas encontradas, mesmo o job do Actions terminando verde. Um script novo
@@ -149,6 +161,14 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   script precisar coletar dados do TMDB ou transformar SOR→SOT, reaproveitar as funções puras que a Lambda/Glue ETL
   já usam (`app/lambda_api/src/utils.py`, `app/glue_etl/src/utils.py`) em vez de invocar esses recursos como job —
   nenhum script novo deve voltar a depender da Lambda API.
+- **Script que encadeia scripts existentes** (ex.: `backfill_historico.py` encadeando
+  `backfill_discover.py` + `backfill_enriquecimento.py`): chamar o `main()` de cada um diretamente no processo
+  (nunca `subprocess`) — preserva o retry de exit code 75 e o checkpoint interno de cada um sem nenhuma mudança
+  neles. Não reimplementar a lógica que já existe dentro dos scripts encadeados. Se algum deles não expõe hoje um
+  jeito de saber se terminou sem falhas pendentes, adicionar um retorno `bool` mínimo (`return not failures`) em vez
+  de inferir isso por efeito colateral (ex.: checar se o checkpoint interno foi limpo — ambíguo quando zero unidades
+  tiveram sucesso). Manter um checkpoint próprio de nível mais alto (unidade = nome do estágio, não `tipo:ano`) para
+  não redigitar um estágio já concluído numa retomada.
 - **Se o script novo itera por ano**: usar `load_checkpoint`/`save_checkpoint`/`clear_checkpoint` de
   `backfill_shared.py`, escolhendo o `unit_id` que corresponde à unidade de trabalho real (`tipo:ano` se a chamada
   é por `media_type`; `tabela:ano` se é por tabela específica) — não copiar `tipo:ano` por padrão sem checar qual

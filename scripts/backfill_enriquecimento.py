@@ -103,7 +103,7 @@ import backfill_shared as shared
 logger = shared.setup_logging()
 
 
-def main() -> None:
+def main() -> bool:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
 
@@ -230,6 +230,8 @@ def main() -> None:
             trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
             time.sleep(5)
         shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
+
+    return not failures
 
 
 if __name__ == "__main__":

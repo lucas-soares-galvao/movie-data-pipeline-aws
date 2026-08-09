@@ -117,7 +117,9 @@ proj-eng-dados-filmes-aws/
 │   ├── backfill_enriquecimento.py    # Popula tabelas details/watch_providers via Glue Details
 │   ├── backfill_data_quality.py      # Aciona o Glue Data Quality para tabelas de 2000 até o ano atual
 │   ├── backfill_traducao.py          # Adiciona title_pt/overview_pt a dados históricos no S3 SOT
-│   └── backfill_rename_colunas.py    # Migra dt_processamento/dt_atualizacao para nomes atuais (sem API TMDB)
+│   ├── backfill_rename_colunas.py    # Migra dt_processamento/dt_atualizacao para nomes atuais (sem API TMDB)
+│   ├── backfill_changes.py           # Dispara sob demanda o mesmo modo changes do cron semanal de domingo
+│   └── backfill_historico.py         # Encadeia backfill_discover.py + backfill_enriquecimento.py num único run
 └── test/
     ├── conftest.py                 # Fixtures globais
     ├── lambda_api/
@@ -188,7 +190,9 @@ proj-eng-dados-filmes-aws/
         ├── test_backfill_enriquecimento.py
         ├── test_backfill_data_quality.py
         ├── test_backfill_traducao.py
-        └── test_backfill_rename_colunas.py
+        ├── test_backfill_rename_colunas.py
+        ├── test_backfill_changes.py
+        └── test_backfill_historico.py
 ```
 
 ---
@@ -301,13 +305,13 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 **Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
-**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `translate_provider` (google | aws)
+**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `translate_provider` (google | aws)
 
-**Mapeamento `table_group` → script:** `discover` → `backfill_discover.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — migra `dt_processamento`/`dt_atualizacao` para os nomes atuais), `changes` → `backfill_changes.py` (dispara sob demanda o mesmo modo `only_changes_tables` do cron semanal)
+**Mapeamento `table_group` → script:** `discover` → `backfill_discover.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — migra `dt_processamento`/`dt_atualizacao` para os nomes atuais), `changes` → `backfill_changes.py` (dispara sob demanda o mesmo modo `only_changes_tables` do cron semanal), `historico` → `backfill_historico.py` (encadeia `backfill_discover.py` e `backfill_enriquecimento.py` no mesmo processo, nessa ordem, sem introduzir variável de ambiente nova)
 
 **Etapas:** Checkout → resolve ambiente pelo branch → lê `infra/config/project.json` (`project_prefix`, step "Read project configuration") → autenticação OIDC com `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` ou `AWS_ASSUME_ROLE_ARN_BACKFILL_PROD` conforme o ambiente resolvido (sessão padrão de 1h) → Setup Python 3.12 → instala `boto3` (+ `scripts/requirements_backfill.txt` só para `traducao`/`rename_colunas`) → executa o script correspondente dentro de um loop de retry (até 6 tentativas, renovando a credencial via OIDC a cada exit code 75), capturando a saída via `tee` em `$RUNNER_TEMP/backfill_output.log` → ao terminar com sucesso, escreve no step summary um resumo "Backfill" extraído do log (inclusive linhas `ERROR`, relevantes para os 2 scripts com tratamento de erro não-abortante) e, para todo `table_group` exceto `data_quality`, dispara `glue:StartJobRun` no `glue_agg` e faz polling (`glue:GetJobRun` a cada 30s) até um estado terminal, escrevendo o resultado numa seção "glue_agg" — propagando o backfill à camada SPEC sem esperar o próximo ciclo agendado (ver `especialista-scripts-backfill`, `app/glue_agg/glue_agg.md`). `timeout-minutes: 360`.
 
-**Retomada automática (ExpiredTokenException):** os 5 scripts que iteram por ano (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. O step "Run backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
+**Retomada automática (ExpiredTokenException):** os 5 scripts que iteram por ano diretamente (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. `historico` não itera por ano diretamente (delega isso aos dois scripts que encadeia), mas mantém seu próprio checkpoint de estágio (`tmdb/backfill_checkpoints/historico.json`, unidades `"discover"`/`"enriquecimento"`) para não redigitar um estágio já concluído numa retomada. O step "Run backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
 
 Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montados dinamicamente como `<project_prefix>-...-<ambiente>` / `<prefixo>_..._<ambiente>`, usando o prefixo lido de `infra/config/project.json` e o ambiente resolvido pelo branch — nenhum nome fica hardcoded no workflow (exceto `S3_BUCKET_SOT`/`S3_BUCKET_TEMP`, que usam o prefixo de bucket `lsg`, não o prefixo do projeto).
 
