@@ -2,7 +2,7 @@
 
 ## O que é
 
-A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em quatro agendamentos: semanal (discover do ano atual + now_playing), mensal (discover do ano anterior + dados de referência), semanal de changes (refresh de títulos já catalogados de qualquer ano, via Changes API do TMDB) e semanal de rotation refresh (refresh forçado de 1 ano do catálogo antigo por vez) — ver "Modo changes" e "Modo rotation refresh" abaixo. Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
+A Lambda API é o ponto de entrada do pipeline. É uma função serverless (sem servidor dedicado — você paga apenas pelo tempo em que ela roda) acionada automaticamente pelo **EventBridge** (serviço de agendamento da AWS, funciona como um cron) em cinco agendamentos: semanal (discover do ano atual + now_playing), mensal (discover do ano anterior + dados de referência), mensal de ano futuro (discover de `current_year + 1`, para título já anunciado pela TMDB mas ainda não catalogado — ver "Modo ano futuro" abaixo), semanal de changes (refresh de títulos já catalogados de qualquer ano, via Changes API do TMDB) e semanal de rotation refresh (refresh forçado de 1 ano do catálogo antigo por vez) — ver "Modo changes" e "Modo rotation refresh" abaixo. Ela busca dados de filmes e séries na API do TMDB, salva os resultados em S3 na camada **SOR** (dados brutos, sem transformação) e aciona o Glue ETL para cada lote.
 
 ## Por que existe
 
@@ -16,6 +16,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`only_weekly_tables=True`** (execução semanal): pula gêneros, idiomas, países e plataformas de referência.
    - **`only_annual_tables=True`** (backfill manual de múltiplos anos): mesmo efeito do `only_weekly_tables` — pula referências e roda apenas o discover.
    - **`only_monthly_tables=True`** (execução mensal): coleta referências e roda o discover apenas para `current_year - 1`, sem now_playing.
+   - **`only_future_year_tables=True`** (execução mensal de ano futuro, ver "Modo ano futuro" abaixo): pula referências (já cobertas pelo modo mensal) e roda o discover apenas para `current_year + 1`, sem now_playing.
    - **`only_changes_tables=True`** (execução semanal de changes, ver "Modo changes" abaixo): sai antes de qualquer coleta de referência/discover.
    - **`only_rotation_refresh=True`** (execução semanal de rotation refresh, ver "Modo rotation refresh" abaixo): sai antes de qualquer coleta de referência/discover.
    - Sem flags: coleta tudo.
@@ -39,6 +40,14 @@ Cadência semanal (não diária) para economizar custo do Glue Details, que é a
 
 **Backfill manual**: `scripts/backfill_changes.py` roda o mesmo fluxo sob demanda — útil quando o cron semanal falha ou é pulado — mas **sem invocar esta Lambda**: chama `collect_changes_data()` diretamente no processo do backfill (GitHub Actions), o mesmo padrão de reuso fora do runtime de nuvem já usado por `scripts/backfill_enriquecimento.py` para o Glue Details (ver `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"). A janela continua sendo sempre `[domingo passado, sábado de ontem]`, calculada por `collect_changes_data()` no momento da invocação; o script não escolhe uma janela histórica. Depois de coletar os IDs, o script também chama `fetch_ids_from_changes_file()`/`process_changed_ids()` diretamente (em vez de acionar o Glue Details como job) — ver `scripts/scripts.md`.
 
+### Modo ano futuro (título anunciado ainda não catalogado)
+
+Fecha um gap diferente dos demais modos: nenhum discover hoje aponta pra `current_year + 1`, então título anunciado pela TMDB (`status` `"Planned"`/`"In Production"`/`"Post Production"`, `release_date`/`first_air_date` futuro) pra o ano que vem só entraria no catálogo quando aquele ano virasse o `current_year`, meses depois de já existir na TMDB.
+
+Acionado por `only_future_year_tables=True` (regras EventBridge `lambda_api_movie_future_monthly`/`..._tv_future_monthly`, dia 1 do mês, 10:00/10:05 UTC — horário deslocado de todas as demais regras do pipeline, que ficam entre 09:00-09:35 UTC). Sobrescreve `start_year`/`end_year`/`loop_end_year` para `current_year + 1` e segue o mesmo fluxo `YEAR`/`END_YEAR` do modo mensal (item 5 acima) — não sai cedo como changes/rotation refresh, já que ainda passa por `/discover` e pelo Glue ETL normalmente.
+
+Sem referências (já cobertas pelo modo mensal) e sem `now_playing` (título ainda não lançado não está em cartaz nos cinemas). Uma vez que um título entra no catálogo por este modo, o **modo changes** (qualquer ano) já mantém ele atualizado sem depender deste modo rodar de novo — este modo só precisa capturar título **novo**, não manter frescor do que já foi capturado.
+
 ### Modo rotation refresh (catálogo antigo, 1 ano por vez)
 
 Fecha o gap de staleness no restante do catálogo (2000 até `current_year - 3`) sem reprocessar tudo de uma vez — dado que `details` quase não muda para títulos antigos, o refresh existe como rede de segurança contra o gap do `/changes`, não como atualização de dados voláteis. O ano corrente e o anterior não têm um modo forçado equivalente: já são refeitos naturalmente pelo cascade do discover semanal/mensal → Glue ETL → Glue Details (`app/glue_etl/main.py`, quando `table_type == "discover"`, sem `FORCE_REFETCH`) — a lógica de delta do Glue Details já refaz qualquer ID não tocado no mês calendário corrente, cobrindo os 2 anos mais recentes ~mensalmente de graça, sem custo adicional.
@@ -56,7 +65,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 
 | | Descrição |
 |---|---|
-| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `only_changes_tables`, `only_rotation_refresh`, `translate_provider`) |
+| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `only_future_year_tables`, `only_changes_tables`, `only_rotation_refresh`, `translate_provider`) |
 | **Leitura** | API TMDB (HTTP), Secrets Manager (chave de API), SSM Parameter Store (ponteiro do modo rotation refresh) |
 | **Escrita** | S3 SOR — `tmdb/discover/{movie\|tv}/year={ano}/`, `tmdb/{genre\|configuration\|watch_providers_ref}/{movie\|tv}/` e `tmdb/now_playing/movie/pagina_NNN.json`; S3 TEMP — `tmdb/changes/{movie\|tv}/{data}.json` (modo changes); SSM Parameter Store — `/tmdb-pipeline/rotation-year-pointer-{movie\|tv}` (modo rotation refresh) |
 | **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes); Glue Details diretamente nos modos changes e rotation refresh |

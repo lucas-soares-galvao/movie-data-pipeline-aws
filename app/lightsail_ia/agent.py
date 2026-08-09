@@ -393,7 +393,9 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
 
     O LLM gera a cláusula WHERE livremente com base no schema da tabela.
     O filtro fixo vote_count >= 50 é sempre aplicado automaticamente para
-    garantir qualidade dos dados (exclui títulos com poucos votos).
+    garantir qualidade dos dados (exclui títulos com poucos votos) — exceto
+    para título com air_date futuro (ainda não lançado), que nunca teve
+    chance de acumular voto e por isso passa sem essa exigência.
 
     Busca um pool de candidatos maior que `limit` (ordenado por popularidade,
     até _CANDIDATE_POOL_MAX) e sorteia um subconjunto de `limit` títulos desse
@@ -425,7 +427,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
                recommended_titles, similar_titles, alternative_titles,
                in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
-        WHERE vote_count >= 50 AND {where_clause}
+        WHERE (vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR)) AND {where_clause}
         ORDER BY popularity DESC
         LIMIT {pool_size}
     """

@@ -763,6 +763,101 @@ class TestExtractAlternativeTitles:
         assert u._extract_alternative_titles({}, "movie") is None
 
 
+class TestExtractNextEpisodeToAir:
+    def test_com_proximo_episodio(self):
+        detail = {
+            "next_episode_to_air": {
+                "air_date": "2026-09-01",
+                "episode_number": 3,
+                "season_number": 2,
+                "name": "Episódio 3",
+            }
+        }
+        assert u._extract_next_episode_to_air(detail) == {
+            "next_episode_air_date": "2026-09-01",
+            "next_episode_number": 3,
+            "next_episode_season_number": 2,
+            "next_episode_name": "Episódio 3",
+        }
+
+    def test_chave_ausente(self):
+        assert u._extract_next_episode_to_air({}) == {
+            "next_episode_air_date": None,
+            "next_episode_number": None,
+            "next_episode_season_number": None,
+            "next_episode_name": None,
+        }
+
+    def test_chave_none(self):
+        # A API retorna next_episode_to_air=None (não ausente) para série sem episódio futuro.
+        assert u._extract_next_episode_to_air({"next_episode_to_air": None}) == {
+            "next_episode_air_date": None,
+            "next_episode_number": None,
+            "next_episode_season_number": None,
+            "next_episode_name": None,
+        }
+
+    def test_campos_parciais(self):
+        detail = {"next_episode_to_air": {"air_date": "2026-10-15"}}
+        result = u._extract_next_episode_to_air(detail)
+        assert result["next_episode_air_date"] == "2026-10-15"
+        assert result["next_episode_number"] is None
+        assert result["next_episode_season_number"] is None
+        assert result["next_episode_name"] is None
+
+
+class TestExtractSeasons:
+    def test_lista_vazia(self):
+        assert u._extract_seasons({}) == {
+            "season_numbers": None,
+            "season_air_dates": None,
+            "season_episode_counts": None,
+            "season_names": None,
+        }
+
+    def test_uma_temporada(self):
+        detail = {
+            "seasons": [
+                {"season_number": 1, "air_date": "2020-01-01", "episode_count": 10, "name": "Temporada 1"},
+            ]
+        }
+        assert u._extract_seasons(detail) == {
+            "season_numbers": "1",
+            "season_air_dates": "2020-01-01",
+            "season_episode_counts": "10",
+            "season_names": "Temporada 1",
+        }
+
+    def test_multiplas_temporadas(self):
+        detail = {
+            "seasons": [
+                {"season_number": 1, "air_date": "2020-01-01", "episode_count": 10, "name": "Temporada 1"},
+                {"season_number": 2, "air_date": "2021-05-01", "episode_count": 8, "name": "Temporada 2"},
+            ]
+        }
+        result = u._extract_seasons(detail)
+        assert result["season_numbers"] == "1, 2"
+        assert result["season_air_dates"] == "2020-01-01, 2021-05-01"
+        assert result["season_episode_counts"] == "10, 8"
+        assert result["season_names"] == "Temporada 1, Temporada 2"
+
+    def test_temporada_futura_sem_data_preserva_alinhamento_posicional(self):
+        # Temporada anunciada sem air_date/episode_count ainda definidos: a posição
+        # fica vazia em vez de ser filtrada, pra manter season_numbers/season_air_dates
+        # alinhados índice a índice.
+        detail = {
+            "seasons": [
+                {"season_number": 1, "air_date": "2020-01-01", "episode_count": 10, "name": "Temporada 1"},
+                {"season_number": 2, "air_date": None, "episode_count": None, "name": "Temporada 2"},
+            ]
+        }
+        result = u._extract_seasons(detail)
+        assert result["season_numbers"] == "1, 2"
+        assert result["season_air_dates"] == "2020-01-01, "
+        assert result["season_episode_counts"] == "10, "
+        assert result["season_names"] == "Temporada 1, Temporada 2"
+
+
 # ---------------------------------------------------------------------------
 # fetch_ids_from_sot
 # ---------------------------------------------------------------------------
@@ -913,6 +1008,16 @@ class TestCollectAndWriteDetails:
             "in_production": True,
             "last_air_date": "2024-06-15",
             "type": "Scripted",
+            "next_episode_to_air": {
+                "air_date": "2026-09-01",
+                "episode_number": 1,
+                "season_number": 3,
+                "name": "Episódio 1",
+            },
+            "seasons": [
+                {"season_number": 1, "air_date": "2022-03-01", "episode_count": 10, "name": "Temporada 1"},
+                {"season_number": 2, "air_date": "2023-03-01", "episode_count": 10, "name": "Temporada 2"},
+            ],
             "credits": {
                 "cast": [{"name": "Ator X", "order": 0}],
                 "crew": [
@@ -1087,6 +1192,18 @@ class TestCollectAndWriteDetails:
             assert "keywords_translated_pt_br" not in df_written.columns
             assert df_written["recommended_ids"].iloc[0] == "903"
             assert df_written["similar_ids"].iloc[0] == "904"
+            assert "next_episode_air_date" in df_written.columns
+            assert "next_episode_number" in df_written.columns
+            assert "next_episode_season_number" in df_written.columns
+            assert "next_episode_name" in df_written.columns
+            assert "season_numbers" in df_written.columns
+            assert "season_air_dates" in df_written.columns
+            assert "season_episode_counts" in df_written.columns
+            assert "season_names" in df_written.columns
+            assert df_written["next_episode_air_date"].iloc[0] == "2026-09-01"
+            assert df_written["next_episode_season_number"].iloc[0] == 3
+            assert df_written["season_numbers"].iloc[0] == "1, 2"
+            assert df_written["season_air_dates"].iloc[0] == "2022-03-01, 2023-03-01"
 
     def test_skips_failed_ids_without_raising(self):
         import requests as req_lib

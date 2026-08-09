@@ -83,6 +83,16 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_only_monthly_table_glue_recebe_end_year_correto` | A chamada de discover ao Glue recebe `YEAR` e `END_YEAR` iguais a `current_year - 1` |
 | `test_only_monthly_table_retorna_status_200` | Handler retorna 200 com only_monthly_tables |
 
+### `TestApenasAnoFuturo` — flag `only_future_year_tables=True`
+
+| Teste | O que verifica |
+|---|---|
+| `test_only_future_year_table_nao_coleta_referencia` | `collect_genre_data`, `collect_configuration_data` e `collect_watch_providers_ref` **não** são chamados (diferente do modo mensal — já cobertos por ele) |
+| `test_only_future_year_table_discover_roda_para_ano_seguinte` | `collect_discover_data` é chamado uma única vez com `year=current_year + 1` |
+| `test_only_future_year_table_nao_coleta_now_playing` | `collect_now_playing_data` **não** é chamado, mesmo com `table_now_playing_movie` presente no evento |
+| `test_only_future_year_table_glue_recebe_end_year_correto` | A chamada de discover ao Glue recebe `YEAR` e `END_YEAR` iguais a `current_year + 1` |
+| `test_only_future_year_table_retorna_status_200` | Handler retorna 200 com only_future_year_tables |
+
 ### `TestNowPlaying` — coleta de filmes em cartaz
 
 | Teste | O que verifica |
