@@ -211,7 +211,7 @@ jobs:
 
           executar_script() {
             case "${{ inputs.table_group }}" in
-              discover)             python scripts/backfill_historico.py ;;
+              discover)             python scripts/backfill_discover.py ;;
               referencias)          python scripts/backfill_referencias.py ;;
               detalhes_e_providers) python scripts/backfill_enriquecimento.py ;;
               data_quality)         python scripts/backfill_data_quality.py ;;

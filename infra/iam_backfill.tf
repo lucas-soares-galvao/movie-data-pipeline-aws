@@ -9,20 +9,21 @@
 # buckets S3, Lightsail, etc., sem nenhuma necessidade real.
 #
 # Esta role cobre exatamente o que os scripts scripts/backfill_*.py usam:
-# invocar a Lambda API, iniciar/monitorar os jobs Glue Data Quality e AGG,
-# ler/gravar checkpoints no bucket TEMP, ler/gravar JSON bruto no bucket SOR
-# e parquet no bucket SOT, ler/gravar partições no Glue Data Catalog (usado
-# implicitamente pelo awswrangler em backfill_traducao.py), e consultar
-# Athena + Secrets Manager (backfill_enriquecimento.py, que roda a lógica de
-# enriquecimento do Glue Details diretamente no processo do backfill em vez
-# de acionar esse job — ver run_details_and_watch_providers_for_year em
+# iniciar/monitorar os jobs Glue Data Quality e AGG, ler/gravar checkpoints
+# no bucket TEMP, ler/gravar JSON bruto no bucket SOR e parquet no bucket
+# SOT, ler/gravar partições no Glue Data Catalog (usado implicitamente pelo
+# awswrangler em backfill_traducao.py), e consultar Athena + Secrets Manager
+# (backfill_enriquecimento.py, que roda a lógica de enriquecimento do Glue
+# Details diretamente no processo do backfill em vez de acionar esse job —
+# ver run_details_and_watch_providers_for_year em
 # app/glue_details/src/utils.py — e backfill_changes.py, que aplica o mesmo
 # racional ao modo changes: coleta os IDs mudados e roda o enriquecimento
 # diretamente no processo, sem acionar Lambda nem o job Glue Details).
-# backfill_referencias.py aplica o mesmo racional à coleta de
-# genre/configuration/watch_providers_ref: chama a API do TMDB e grava
-# JSON no SOR + Parquet no SOT diretamente no processo, sem acionar a
-# Lambda nem o job Glue ETL.
+# backfill_referencias.py e backfill_discover.py aplicam o mesmo racional à
+# coleta de genre/configuration/watch_providers_ref e discover,
+# respectivamente: chamam a API do TMDB e gravam JSON no SOR + Parquet no
+# SOT diretamente no processo, sem acionar a Lambda nem o job Glue ETL.
+# Nenhum dos 7 scripts invoca a Lambda API hoje.
 # =============================================================================
 
 locals {
@@ -68,46 +69,21 @@ resource "aws_iam_role" "backfill" {
 }
 
 # =============================================================================
-# POLICY 1 — Invoke Lambda (backfill_historico.py)
-#
-# backfill_changes.py e backfill_referencias.py NÃO estão mais entre os
-# chamadores: ambos passaram a chamar a lógica de coleta/transformação
-# diretamente no processo do backfill (mesmo racional de
-# backfill_enriquecimento.py para o Glue Details — ver
-# run_details_and_watch_providers_for_year em app/glue_details/src/utils.py,
-# collect_changes_data/process_changed_ids para o modo changes, e
-# collect_genre_data/collect_configuration_data/collect_watch_providers_ref +
-# read_from_sor/write_parquet_to_sot para referências), sem mais invocar a
-# Lambda.
-# =============================================================================
-resource "aws_iam_role_policy" "backfill_invoke_lambda" {
-  name = "${local.tmdb_prefix}-backfill-invoke-lambda-${var.env}"
-  role = aws_iam_role.backfill.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "InvokeLambdaApi"
-      Effect   = "Allow"
-      Action   = "lambda:InvokeFunction"
-      Resource = aws_lambda_function.simple_lambda.arn
-    }]
-  })
-}
-
-# =============================================================================
-# POLICY 2 — Glue Jobs Data Quality e AGG (disparo fire-and-forget do Data
-# Quality ao final de backfill_enriquecimento.py/backfill_data_quality.py/
-# backfill_changes.py, e o disparo + polling do glue_agg ao final de qualquer
-# grupo elegível — todos exceto data_quality, ver step "Run backfill" em
-# 05_backfill.yml). GetJobRun também é usado para o AGG porque o workflow faz
-# polling do estado até um estado terminal, não é fire-and-forget.
+# POLICY 1 — Glue Jobs Data Quality e AGG (disparo fire-and-forget do Data
+# Quality ao final de backfill_discover.py/backfill_enriquecimento.py/
+# backfill_data_quality.py/backfill_changes.py, e o disparo + polling do
+# glue_agg ao final de qualquer grupo elegível — todos exceto data_quality,
+# ver step "Run backfill" em 05_backfill.yml). GetJobRun também é usado para
+# o AGG porque o workflow faz polling do estado até um estado terminal, não
+# é fire-and-forget.
 #
 # details_job_pythonshell NÃO está mais no Resource: backfill_enriquecimento.py
 # e backfill_changes.py passaram a rodar a lógica de enriquecimento diretamente
 # no processo do backfill (ver run_details_and_watch_providers_for_year e
 # process_changed_ids em app/glue_details/src/utils.py), sem mais chamar
-# start_job_run/get_job_run para o Glue Details.
+# start_job_run/get_job_run para o Glue Details. glue_etl_job_pythonshell
+# também nunca esteve no Resource — backfill_discover.py sempre rodou (agora
+# in-process) a transformação equivalente ao Glue ETL sem acionar esse job.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_glue_jobs" {
   name = "${local.tmdb_prefix}-backfill-glue-jobs-${var.env}"
@@ -131,7 +107,7 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
 }
 
 # =============================================================================
-# POLICY 3 — Athena (backfill_enriquecimento.py, via
+# POLICY 2 — Athena (backfill_enriquecimento.py, via
 # run_details_and_watch_providers_for_year → fetch_ids_from_sot/
 # fetch_existing_ids_from_details/fetch_ids_stale_watch_providers; e
 # backfill_changes.py, via resolve_matched_ids_for_changed_ids, que cruza os
@@ -161,9 +137,9 @@ resource "aws_iam_role_policy" "backfill_athena" {
 }
 
 # =============================================================================
-# POLICY 4 — Secrets Manager (backfill_enriquecimento.py e backfill_changes.py:
-# get_api_secret busca a chave de API do TMDB antes de chamar a API). Mesmo
-# shape de glue_details_secrets (infra/iam_policies.tf).
+# POLICY 3 — Secrets Manager (backfill_discover.py, backfill_enriquecimento.py
+# e backfill_changes.py: get_api_secret busca a chave de API do TMDB antes de
+# chamar a API). Mesmo shape de glue_details_secrets (infra/iam_policies.tf).
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_secrets" {
   name = "${local.tmdb_prefix}-backfill-secrets-${var.env}"
@@ -181,14 +157,15 @@ resource "aws_iam_role_policy" "backfill_secrets" {
 }
 
 # =============================================================================
-# POLICY 5 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
+# POLICY 4 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
 # backfill_referencias.py/backfill_changes.py), tabelas discover/details
-# movie/tv no bucket SOT (backfill_traducao.py, via awswrangler), tabelas
-# details/watch_providers movie/tv no bucket SOT (backfill_rename_colunas.py,
-# via awswrangler — details já coberto pela mesma resource de
-# backfill_traducao.py acima), JSON bruto no bucket SOR e as 6 tabelas de
-# referência no bucket SOT (backfill_referencias.py — ver comentários nos
-# statements abaixo)
+# movie/tv no bucket SOT (backfill_traducao.py e backfill_discover.py, via
+# awswrangler), tabelas details/watch_providers movie/tv no bucket SOT
+# (backfill_rename_colunas.py, via awswrangler — details já coberto pela
+# mesma resource de backfill_traducao.py acima), JSON bruto no bucket SOR e
+# as 6 tabelas de referência no bucket SOT (backfill_referencias.py — ver
+# comentários nos statements abaixo), e JSON bruto de discover no bucket SOR
+# (backfill_discover.py — ver comentários nos statements abaixo)
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_s3" {
   name = "${local.tmdb_prefix}-backfill-s3-${var.env}"
@@ -240,6 +217,25 @@ resource "aws_iam_role_policy" "backfill_s3" {
         }
       },
       {
+        # read_from_sor para table_type="discover" (backfill_discover.py) lê uma pasta
+        # inteira via wr.s3.read_json (uma página por objeto, ver collect_discover_data em
+        # app/lambda_api/src/utils.py) — precisa listar objetos antes de ler, diferente de
+        # genre/configuration/watch_providers_ref (arquivo único, GetObject direto, sem
+        # ListBucket). Único ListBucket sobre o bucket SOR nesta policy.
+        Sid      = "ListScopedPrefixesSor"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.sor_bucket.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "tmdb/discover/movie/*",
+              "tmdb/discover/tv/*",
+            ]
+          }
+        }
+      },
+      {
         # GetBucketLocation é ação de bucket (sem sub-recurso e sem chave de condition
         # "s3:prefix" no contexto da requisição), por isso não pode entrar nos statements
         # acima com Condition por prefixo — precisa de statement próprio. Sem ela, o
@@ -280,6 +276,24 @@ resource "aws_iam_role_policy" "backfill_s3" {
           "${aws_s3_bucket.sor_bucket.arn}/tmdb/configuration/countries/*",
           "${aws_s3_bucket.sor_bucket.arn}/tmdb/watch_providers_ref/movie/*",
           "${aws_s3_bucket.sor_bucket.arn}/tmdb/watch_providers_ref/tv/*",
+        ]
+      },
+      {
+        # JSON bruto gravado por collect_discover_data (backfill_discover.py, chamada
+        # diretamente no processo do backfill — mesmo código que a Lambda API usaria, ver
+        # app/lambda_api/src/utils.py), uma página por objeto, e lido de volta por
+        # read_from_sor (app/glue_etl/src/utils.py, wr.s3.read_json) para a transformação
+        # equivalente ao Glue ETL. Mesmo par escrever-e-reler de ReadWriteReferenceRawDataInSor
+        # acima, para discover em vez de genre/configuration/watch_providers_ref.
+        Sid    = "ReadWriteDiscoverRawDataInSor"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+        ]
+        Resource = [
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/discover/movie/*",
+          "${aws_s3_bucket.sor_bucket.arn}/tmdb/discover/tv/*",
         ]
       },
       {
@@ -343,9 +357,18 @@ resource "aws_iam_role_policy" "backfill_s3" {
         Resource = "${aws_s3_bucket.temporary_bucket.arn}/tmdb/changes/*"
       },
       {
-        Sid    = "ReadDiscoverForTraducao"
+        # GetObject: backfill_traducao.py só lê as tabelas discover (não escreve). PutObject/
+        # DeleteObject: backfill_discover.py escreve write_parquet_to_sot(partition_cols=
+        # ["year"], mode="overwrite_partitions") — precisa apagar a partição do ano antes de
+        # regravar (BatchDeletePartition no Catalog, DeleteObject nos arquivos Parquet
+        # correspondentes), além de GetObject/PutObject para reler e escrever.
+        Sid    = "ReadWriteDiscoverSot"
         Effect = "Allow"
-        Action = "s3:GetObject"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
         Resource = [
           "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_movie_tmdb.name}/*",
           "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_tv_tmdb.name}/*",
@@ -382,7 +405,7 @@ resource "aws_iam_role_policy" "backfill_s3" {
 }
 
 # =============================================================================
-# POLICY 6 — Glue Data Catalog (backfill_traducao.py e backfill_rename_colunas.py,
+# POLICY 5 — Glue Data Catalog (backfill_traducao.py e backfill_rename_colunas.py,
 # via chamadas implícitas do awswrangler: GetTable/GetPartition(s) ao ler,
 # BatchCreatePartition/BatchDeletePartition/UpdateTable ao escrever com
 # mode="overwrite_partitions"; backfill_enriquecimento.py, cujo Athena precisa
@@ -496,8 +519,8 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 }
 
 # =============================================================================
-# POLICY 7 — AWS Translate. Usado quando TRANSLATE_PROVIDER=aws é escolhido em
-# qualquer backfill manual (backfill_traducao.py, backfill_historico.py,
+# POLICY 6 — AWS Translate. Usado quando TRANSLATE_PROVIDER=aws é escolhido em
+# qualquer backfill manual (backfill_traducao.py, backfill_discover.py,
 # backfill_referencias.py, backfill_enriquecimento.py, backfill_changes.py) — default é "google"
 # (grátis); "aws" existe para testar um período menor sob demanda. Mesmo com
 # default "google", o AWS Translate também é acionado como fallback automático

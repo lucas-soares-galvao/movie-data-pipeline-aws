@@ -112,7 +112,7 @@ proj-eng-dados-filmes-aws/
 ├── scripts/
 │   ├── scripts.md                    # Documentação dos scripts de backfill
 │   ├── backfill_shared.py            # Código comum aos scripts de backfill (env vars, logging, checkpoint em S3, retry)
-│   ├── backfill_historico.py         # Popula tabelas discover de 2000 até o ano atual via Lambda
+│   ├── backfill_discover.py          # Popula tabelas discover de 2000 até o ano atual
 │   ├── backfill_referencias.py       # Popula tabelas de referência (genre, configuration, watch_providers_ref)
 │   ├── backfill_enriquecimento.py    # Popula tabelas details/watch_providers via Glue Details
 │   ├── backfill_data_quality.py      # Aciona o Glue Data Quality para tabelas de 2000 até o ano atual
@@ -183,7 +183,7 @@ proj-eng-dados-filmes-aws/
         ├── requirements_tests.txt
         ├── scripts_tests.md
         ├── test_backfill_shared.py
-        ├── test_backfill_historico.py
+        ├── test_backfill_discover.py
         ├── test_backfill_referencias.py
         ├── test_backfill_enriquecimento.py
         ├── test_backfill_data_quality.py
@@ -303,7 +303,7 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 **Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `translate_provider` (google | aws)
 
-**Mapeamento `table_group` → script:** `discover` → `backfill_historico.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — migra `dt_processamento`/`dt_atualizacao` para os nomes atuais), `changes` → `backfill_changes.py` (dispara sob demanda o mesmo modo `only_changes_tables` do cron semanal)
+**Mapeamento `table_group` → script:** `discover` → `backfill_discover.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — migra `dt_processamento`/`dt_atualizacao` para os nomes atuais), `changes` → `backfill_changes.py` (dispara sob demanda o mesmo modo `only_changes_tables` do cron semanal)
 
 **Etapas:** Checkout → resolve ambiente pelo branch → lê `infra/config/project.json` (`project_prefix`, step "Read project configuration") → autenticação OIDC com `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` ou `AWS_ASSUME_ROLE_ARN_BACKFILL_PROD` conforme o ambiente resolvido (sessão padrão de 1h) → Setup Python 3.12 → instala `boto3` (+ `scripts/requirements_backfill.txt` só para `traducao`/`rename_colunas`) → executa o script correspondente dentro de um loop de retry (até 6 tentativas, renovando a credencial via OIDC a cada exit code 75), capturando a saída via `tee` em `$RUNNER_TEMP/backfill_output.log` → ao terminar com sucesso, escreve no step summary um resumo "Backfill" extraído do log (inclusive linhas `ERROR`, relevantes para os 2 scripts com tratamento de erro não-abortante) e, para todo `table_group` exceto `data_quality`, dispara `glue:StartJobRun` no `glue_agg` e faz polling (`glue:GetJobRun` a cada 30s) até um estado terminal, escrevendo o resultado numa seção "glue_agg" — propagando o backfill à camada SPEC sem esperar o próximo ciclo agendado (ver `especialista-scripts-backfill`, `app/glue_agg/glue_agg.md`). `timeout-minutes: 360`.
 
