@@ -31,9 +31,12 @@ Uso:
     python scripts/backfill_historico.py
 
 Variáveis de ambiente: união das exigidas por backfill_discover.py e backfill_enriquecimento.py
-(ver as docstrings dos dois) — nenhuma variável nova. TABLE_GROUP não deve ser definida por quem
-chama este script: cada estágio define o próprio valor ("discover", depois
-"detalhes_e_providers") em os.environ antes de chamar o main() correspondente.
+(ver as docstrings dos dois), mais GLUE_DATABASE_MOVIE, GLUE_DATABASE_TV,
+GLUE_DATA_QUALITY_JOB_NAME, S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED e
+ENVIRONMENT (usadas pelo disparo único ao Glue AGG, ver "Glue AGG" abaixo — as duas primeiras já
+são lidas pelos dois estágios também, mas este script as lê de novo para o disparo próprio).
+TABLE_GROUP não deve ser definida por quem chama este script: cada estágio define o próprio valor
+("discover", depois "detalhes_e_providers") em os.environ antes de chamar o main() correspondente.
 
 Data Quality:
     Não dispara Glue Data Quality diretamente — herda os disparos que backfill_discover.py (2
@@ -41,6 +44,15 @@ Data Quality:
     details_tv, watch_providers_movie, watch_providers_tv) já fazem sozinhos, cada um ao final do
     próprio estágio, só se esse estágio terminar sem falhas. Não existe um disparo único
     consolidando as 6 tabelas de uma vez.
+
+Glue AGG:
+    Diferente do Data Quality, o AGG É disparado uma única vez por este script, não herdado dos
+    dois estágios: backfill_discover.main() e backfill_enriquecimento.main() são chamados com
+    trigger_agg=False (suprimindo o disparo que cada um faria sozinho) e, se os dois estágios
+    terminarem sem pendências, backfill_historico.py roda o Glue AGG ele mesmo, uma única vez,
+    logo antes de limpar o checkpoint próprio — ver backfill_shared.trigger_agg_locally. Evita
+    rodar a query de unificação (cara — CTAS sobre o catálogo inteiro) duas vezes seguidas por
+    execução de "historico".
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken do S3) durante
@@ -69,6 +81,9 @@ def main() -> None:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
     s3_bucket_temp = shared.require_env("S3_BUCKET_TEMP")
+    db_movie    = shared.require_env("GLUE_DATABASE_MOVIE")
+    db_tv       = shared.require_env("GLUE_DATABASE_TV")
+    dq_job_name = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
     start_year, end_year = shared.read_year_range()
 
     s3_client = boto3.client("s3", region_name=region)
@@ -79,7 +94,7 @@ def main() -> None:
     if "discover" not in completed_stages:
         logger.info("=== Estágio 1/2 do backfill histórico: discover ===")
         os.environ["TABLE_GROUP"] = "discover"
-        if not backfill_discover.main():
+        if not backfill_discover.main(trigger_agg=False):
             logger.error(
                 "Estágio 'discover' terminou com unidades pendentes — backfill histórico "
                 "interrompido antes de 'enriquecimento'. Rode de novo para retomar."
@@ -95,7 +110,7 @@ def main() -> None:
     if "enriquecimento" not in completed_stages:
         logger.info("=== Estágio 2/2 do backfill histórico: enriquecimento ===")
         os.environ["TABLE_GROUP"] = "detalhes_e_providers"
-        if not backfill_enriquecimento.main():
+        if not backfill_enriquecimento.main(trigger_agg=False):
             logger.error("Estágio 'enriquecimento' terminou com unidades pendentes.")
             return
         completed_stages.add("enriquecimento")
@@ -105,6 +120,17 @@ def main() -> None:
     else:
         logger.info("Estágio 'enriquecimento' já concluído no checkpoint.")
 
+    shared.trigger_agg_locally(
+        s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+        s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+        s3_bucket_temp=s3_bucket_temp,
+        db_movie=db_movie,
+        db_tv=db_tv,
+        db_unified=shared.require_env("DB_UNIFIED"),
+        table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+        dq_job_name=dq_job_name,
+        environment=shared.require_env("ENVIRONMENT"),
+    )
     shared.clear_checkpoint(s3_client, s3_bucket_temp, _TABLE_GROUP_HISTORICO)
     logger.info("Backfill histórico concluído: discover + enriquecimento, sem pendências.")
 

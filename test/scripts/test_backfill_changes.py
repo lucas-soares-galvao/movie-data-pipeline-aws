@@ -31,6 +31,11 @@ ENV_BASE = {
     "S3_BUCKET_TEMP": "bucket-temp-test",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "S3_BUCKET_SPEC": "bucket-spec-test",
+    "S3_PREFIX_SPEC": "tmdb",
+    "DB_UNIFIED": "db_unified",
+    "TABLE_DISCOVER_UNIFIED": "tb_discover_unified",
+    "ENVIRONMENT": "dev",
 }
 
 
@@ -65,6 +70,7 @@ def _run_main(
         patch("backfill_changes.fetch_ids_from_changes_file") as mock_fetch,
         patch("backfill_changes.process_changed_ids") as mock_process,
         patch("backfill_changes.trigger_glue_job") as mock_trigger,
+        patch("backfill_changes.shared.trigger_agg_locally") as mock_agg,
     ):
         mock_boto3.client.return_value = MagicMock()
         mock_collect.side_effect = lambda api_key, s3_client, bucket, content_type: f"tmdb/changes/{content_type}/2026-01-01.json"
@@ -74,7 +80,7 @@ def _run_main(
         else:
             mock_process.side_effect = _default_process
         bc.main()
-    return mock_collect, mock_fetch, mock_process, mock_trigger, mock_secret
+    return mock_collect, mock_fetch, mock_process, mock_trigger, mock_secret, mock_agg
 
 
 class TestLoopPrincipal:
@@ -119,7 +125,7 @@ class TestLoopPrincipal:
         assert mock_process.call_count == 2
 
     def test_busca_api_key_uma_unica_vez_fora_do_loop(self, monkeypatch):
-        *_, mock_secret = _run_main(monkeypatch)
+        *_, mock_secret, _ = _run_main(monkeypatch)
         mock_secret.assert_called_once_with(
             "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb", "tmdb_api_key"
         )
@@ -142,7 +148,7 @@ class TestLoopPrincipal:
 
 class TestDataQualityFinal:
     def test_dispara_dq_uma_vez_por_tabela_cobrindo_todos_os_anos_afetados(self, monkeypatch):
-        _, _, _, mock_trigger, _ = _run_main(
+        _, _, _, mock_trigger, _, _ = _run_main(
             monkeypatch,
             affected_years_by_type={"movie": ["2020", "2021"], "tv": ["2023"]},
         )
@@ -153,7 +159,7 @@ class TestDataQualityFinal:
         assert call("dq-job", TABLE_NAME="tb_wp_tv", DATABASE="db_tv", YEAR="2023") in mock_trigger.call_args_list
 
     def test_nao_dispara_dq_para_tabela_sem_anos_afetados(self, monkeypatch):
-        _, _, _, mock_trigger, _ = _run_main(
+        _, _, _, mock_trigger, _, _ = _run_main(
             monkeypatch, affected_years_by_type={"movie": [], "tv": ["2023"]},
         )
         assert mock_trigger.call_count == 2
@@ -161,10 +167,30 @@ class TestDataQualityFinal:
         assert tabelas_disparadas == {"tb_details_tv", "tb_wp_tv"}
 
     def test_nao_dispara_dq_quando_ha_falhas(self, monkeypatch):
-        _, _, _, mock_trigger, _ = _run_main(
+        _, _, _, mock_trigger, _, _ = _run_main(
             monkeypatch, process_side_effect=[Exception("falhou"), []],
         )
         mock_trigger.assert_not_called()
+
+
+class TestGlueAgg:
+    def test_chamado_uma_vez_quando_sem_falhas(self, monkeypatch):
+        *_, mock_agg = _run_main(monkeypatch)
+        mock_agg.assert_called_once_with(
+            s3_bucket_spec="bucket-spec-test",
+            s3_prefix_spec="tmdb",
+            s3_bucket_temp="bucket-temp-test",
+            db_movie="db_movie",
+            db_tv="db_tv",
+            db_unified="db_unified",
+            table_name="tb_discover_unified",
+            dq_job_name="dq-job",
+            environment="dev",
+        )
+
+    def test_nao_chamado_quando_ha_falhas(self, monkeypatch):
+        *_, mock_agg = _run_main(monkeypatch, process_side_effect=[Exception("falhou"), []])
+        mock_agg.assert_not_called()
 
 
 class TestErros:

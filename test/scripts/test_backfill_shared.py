@@ -10,12 +10,23 @@ wrapper de retry e mensagem de progresso do checkpoint.
 
 import json
 import logging
+import sys
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import backfill_shared as bs
 import pytest
 from botocore.exceptions import ClientError
+
+# trigger_agg_locally importa app.glue_agg.src.utils dentro da própria função (import local —
+# ver docstring), inserindo app/glue_agg em sys.path antes (necessário por causa do "from
+# src.queries import ..." absoluto em app/glue_agg/src/utils.py). test/scripts/ não passa pelo
+# mecanismo de alias de test/conftest.py (só cobre os diretórios de suite Glue em
+# _SUITE_TO_APP) — sem este import antecipado, testar via patch("app.glue_agg.src.utils.X")
+# falharia com ModuleNotFoundError: No module named 'src' na primeira importação da suíte.
+sys.path.insert(0, str(bs._REPO_ROOT / "app" / "shared_src"))
+sys.path.insert(0, str(bs._REPO_ROOT / "app" / "glue_agg"))
+import app.glue_agg.src.utils as _glue_agg_utils
 
 
 def _client_error(codigo: str) -> ClientError:
@@ -250,6 +261,83 @@ class TestRunWithRetryExit:
         main_fn = MagicMock(side_effect=_client_error("ThrottlingException"))
         with pytest.raises(ClientError):
             bs.run_with_retry_exit(main_fn)
+
+
+class TestTriggerAggLocally:
+    """trigger_agg_locally importa run_athena_query/write_parquet_to_spec/trigger_glue_job de
+    app.glue_agg.src.utils dentro da própria função (import local, ver docstring) — por isso os
+    testes patcham os símbolos na origem (app.glue_agg.src.utils.*), não em backfill_shared.*.
+    """
+
+    _KWARGS = dict(
+        s3_bucket_spec="bucket-spec-test",
+        s3_prefix_spec="tmdb",
+        s3_bucket_temp="bucket-temp-test",
+        db_movie="db_movie",
+        db_tv="db_tv",
+        db_unified="db_unified",
+        table_name="tb_discover_unified",
+        dq_job_name="dq-job",
+        environment="dev",
+    )
+
+    def test_caminho_feliz_chama_query_escrita_e_dq_na_ordem_certa(self):
+        manager = MagicMock()
+        with (
+            patch.object(_glue_agg_utils, "run_athena_query", return_value="df-fake") as mock_query,
+            patch.object(_glue_agg_utils, "write_parquet_to_spec") as mock_write,
+            patch.object(_glue_agg_utils, "trigger_glue_job") as mock_trigger,
+        ):
+            manager.attach_mock(mock_query, "query")
+            manager.attach_mock(mock_write, "write")
+            manager.attach_mock(mock_trigger, "trigger")
+            bs.trigger_agg_locally(**self._KWARGS)
+
+        mock_query.assert_called_once_with(
+            db_movie="db_movie", db_tv="db_tv", db_unified="db_unified",
+            s3_bucket_temp="bucket-temp-test", env="dev",
+        )
+        mock_write.assert_called_once_with(
+            df="df-fake", s3_bucket_spec="bucket-spec-test", s3_prefix_spec="tmdb",
+            table_name="tb_discover_unified", database="db_unified",
+        )
+        mock_trigger.assert_called_once_with(
+            "dq-job", TABLE_NAME="tb_discover_unified", DATABASE="db_unified",
+        )
+        ordem = [c[0] for c in manager.mock_calls]
+        assert ordem == ["query", "write", "trigger"]
+
+    def test_client_error_nao_token_expirado_e_logado_e_nao_propaga(self, caplog):
+        with (
+            patch.object(_glue_agg_utils, "run_athena_query", side_effect=_client_error("ThrottlingException")),
+            caplog.at_level("ERROR", logger="backfill_shared"),
+        ):
+            bs.trigger_agg_locally(**self._KWARGS)
+
+        assert any("Falha ao rodar o Glue AGG localmente" in r.message for r in caplog.records)
+
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_client_error_token_expirado_propaga(self, codigo, caplog):
+        with (
+            patch.object(_glue_agg_utils, "run_athena_query", side_effect=_client_error(codigo)),
+            caplog.at_level("ERROR", logger="backfill_shared"),
+            pytest.raises(ClientError),
+        ):
+            bs.trigger_agg_locally(**self._KWARGS)
+
+        assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
+
+    def test_excecao_generica_e_logada_e_nao_propaga(self, caplog):
+        with (
+            patch.object(_glue_agg_utils, "run_athena_query", return_value="df-fake"),
+            patch.object(_glue_agg_utils, "write_parquet_to_spec", side_effect=RuntimeError("sem arquivos")),
+            patch.object(_glue_agg_utils, "trigger_glue_job") as mock_trigger,
+            caplog.at_level("ERROR", logger="backfill_shared"),
+        ):
+            bs.trigger_agg_locally(**self._KWARGS)
+
+        assert any("Falha ao rodar o Glue AGG localmente" in r.message for r in caplog.records)
+        mock_trigger.assert_not_called()
 
 
 class TestLogResumeProgress:

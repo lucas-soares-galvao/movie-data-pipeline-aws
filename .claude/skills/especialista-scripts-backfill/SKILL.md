@@ -1,6 +1,6 @@
 ---
 name: especialista-scripts-backfill
-description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), ou entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui o disparo do Glue AGG ao final, centralizado no workflow, não nos scripts). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
+description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), ou entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
 ---
 
 # Especialista em Scripts de Backfill
@@ -12,10 +12,10 @@ rede, um Ctrl+C acidental) e disparado de novo com o mesmo range de anos, ele re
 nem perder trabalho — e sem mentir sobre o que já terminou?"**. Os 8 scripts de `scripts/` + `backfill_shared.py`
 existem para reprocessar até 26 anos de histórico (2000–atual) dentro de sessões AWS de 1h (OIDC) — o checkpoint em
 S3 e o exit code 75 são o mecanismo que torna isso seguro de rodar por horas sem supervisão constante. Nenhum dos 8
-scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details
-diretamente no processo do script (ou, no caso de `backfill_historico.py`, chamam o `main()` de dois outros scripts
-que já rodam essa lógica em processo — ver "Práticas já aplicadas"), mantendo apenas o Glue Data Quality (e, via
-workflow, o Glue AGG) como job real.
+scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details/Glue
+AGG diretamente no processo do script (ou, no caso de `backfill_historico.py`, chamam o `main()` de dois outros scripts
+que já rodam essa lógica em processo — ver "Práticas já aplicadas"), mantendo apenas o Glue Data Quality como job real
+— o único caso que não pode ser internalizado, porque depende do motor `awsgluedq`, exclusivo do runtime Spark do Glue.
 `scripts/` também é estruturalmente diferente de `app/<modulo>/src/utils.py` +
 `main.py` (cada script concentra `main()` e helpers privados no próprio arquivo, sem pasta `src/`) — decisão
 deliberada, não descuido: são runbooks de operação manual fora do gate de cobertura de 95%, não código do pipeline
@@ -30,8 +30,8 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 |---|---|
 | Descrição de cada um dos 8 scripts, variáveis de ambiente, como executar (workflow ou local) | `scripts/scripts.md` |
 | Casos de teste por script, os 4 bugs reais que motivaram a suíte | `test/scripts/scripts_tests.md` |
-| Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC, disparo do Glue AGG ao final | `especialista-workflows-github`, `.github/workflows/05_backfill.yml` |
-| Funções reaproveitadas dos jobs reais (`collect_discover_data` em `app/lambda_api/src/utils.py`; `read_from_sor`/`write_parquet_to_sot` em `app/glue_etl/src/utils.py`; `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`) | `especialista-engenharia-dados-app` |
+| Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC | `especialista-workflows-github`, `.github/workflows/05_backfill.yml` |
+| Funções reaproveitadas dos jobs reais (`collect_discover_data` em `app/lambda_api/src/utils.py`; `read_from_sor`/`write_parquet_to_sot` em `app/glue_etl/src/utils.py`; `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`; `run_athena_query`/`write_parquet_to_spec` em `app/glue_agg/src/utils.py`, via `backfill_shared.trigger_agg_locally`) | `especialista-engenharia-dados-app` |
 | Padrões de mock específicos de `test/scripts/` (parametrização `ExpiredTokenException`/`ExpiredToken`) | `especialista-testes-app` |
 | Guard de custo do AWS Translate como decisão de FinOps | `especialista-finops-aws` |
 
@@ -108,21 +108,28 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
      nunca chamar `get_job_run` para confirmar que o job de fato terminou com sucesso. "Concluído" aqui significa
      "submetido", não "validado" — e `clear_checkpoint` roda incondicionalmente ao final (`:144`), diferente do
      padrão 2.
-- **O disparo do Glue AGG ao final de um backfill vive no workflow (`05_backfill.yml`), não em cada script**: logo
-  após o `break` do loop de retry (script terminou com `codigo -eq 0`), um bloco condicional
-  (`table_group != data_quality`) chama `aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME"` uma única vez e faz
-  polling do `JobRunId` (`aws glue get-job-run` a cada 30s, mesmo padrão de `_wait_for_job` em
-  `scripts/backfill_enriquecimento.py:95-112`) até um estado terminal. É via AWS CLI, não `shared_utils.triggers`,
-  porque os scripts em `scripts/` só têm `boto3` instalado no ambiente do workflow, não `shared_utils`. Centralizar
-  no workflow (em vez de replicar em cada um dos 6 scripts elegíveis) garante, por construção, que o disparo
-  aconteça exatamente uma vez por execução do workflow, mesmo quando o script precisou de retomada via exit code 75
-  (múltiplas tentativas dentro do mesmo loop bash). `backfill_data_quality.py` é o único `table_group` que não
-  dispara o AGG — não escreve dado novo, só valida. Nem falha ao disparar nem uma conclusão != `SUCCEEDED`
-  (`::warning::` no log + step summary) derrubam o workflow — o trigger agendado (`aws_glue_trigger.agg_weekly`,
+- **O Glue AGG roda em processo, dentro de cada script, uma única vez, via `backfill_shared.trigger_agg_locally`**
+  (chamada em todo script exceto `backfill_data_quality.py`, que não escreve dado novo) — não mais via
+  `aws glue start-job-run` centralizado no workflow. Viável porque `app/glue_agg/src/utils.py` é Python puro
+  (awswrangler + pandas, sem Spark/GlueContext) — diferente do Glue Data Quality. A chamada é síncrona (a query
+  Athena e a escrita Parquet já bloqueiam até terminar dentro do `awswrangler`), então não precisa de polling.
+  **Ponto de chamada**: sempre imediatamente ANTES de `clear_checkpoint`, nunca depois — se `trigger_agg_locally`
+  propagar token expirado, `run_with_retry_exit` traduz em exit 75 e o script inteiro é re-executado; se o
+  checkpoint já tivesse sido limpo, a reexecução reprocessaria todas as unidades do zero só para retentar o AGG.
+  Chamando antes, uma reexecução por token expirado encontra `pendentes=[]` (checkpoint intacto) e vai direto para
+  o AGG de novo. **Garantia de "exatamente uma vez"**: como esse ponto só é alcançado uma vez por execução
+  *bem-sucedida* do processo (tentativas que falham com exit 75 nunca chegam lá), a garantia que antes vinha de o
+  disparo estar fora do loop de retry do bash agora vem da posição da chamada dentro de `main()` — mesmo efeito,
+  mecanismo diferente. **`backfill_discover.py`/`backfill_enriquecimento.py` aceitam `trigger_agg: bool = True`**
+  em `main()`, usado por `backfill_historico.py` (que chama os dois com `trigger_agg=False`) para disparar o AGG
+  uma única vez, ele mesmo, depois que os dois estágios terminam sem pendências — evita 2 disparos por execução de
+  `historico` (a query de unificação é cara, CTAS sobre o catálogo inteiro). Uma falha na chamada é capturada e
+  logada como `ERROR` (mesmo padrão soft-fail já usado por unidade em discover/enriquecimento/changes) — não
+  derruba um backfill que já terminou com sucesso; o trigger agendado (`aws_glue_trigger.agg_weekly`,
   sábado/domingo 08:00 BRT) e o alarme SNS dedicado (`aws_cloudwatch_event_rule.glue_agg_failed`,
-  `infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso.
-- **O step summary também expõe o resumo real do próprio backfill, extraído do log via `grep`, antes da seção do
-  AGG**: a saída do `executar_script` é gravada em `$RUNNER_TEMP/backfill_output.log` via `tee` (com
+  `infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso. Token expirado propaga normalmente.
+- **O step summary também expõe o resumo real do próprio backfill, extraído do log via `grep`**: a saída do
+  `executar_script` é gravada em `$RUNNER_TEMP/backfill_output.log` via `tee` (com
   `codigo=${PIPESTATUS[0]}`, não `$?`, para capturar o exit code do script e não do `tee`). Isso existe porque
   `codigo -eq 0` (a condição que já existia para decidir "backfill terminou") **não implica que toda unidade teve
   sucesso** para os 5 scripts com tratamento de erro não-abortante (padrões 2 e 3 acima, incluindo

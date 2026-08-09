@@ -29,6 +29,11 @@ ENV_BASE = {
     "TABLE_DISCOVER_TV": "tb_discover_tv",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "S3_BUCKET_SPEC": "bucket-spec-test",
+    "S3_PREFIX_SPEC": "tmdb",
+    "DB_UNIFIED": "db_unified",
+    "TABLE_DISCOVER_UNIFIED": "tb_discover_unified",
+    "ENVIRONMENT": "dev",
 }
 
 
@@ -52,6 +57,8 @@ def _run_main(
     unit_side_effect=None,
     mock_s3: MagicMock | None = None,
     resultado: list | None = None,
+    trigger_agg: bool = True,
+    call_order: list | None = None,
 ):
     """Roda bd.main() com collect_discover_data/read_from_sor/write_parquet_to_sot mockados.
 
@@ -62,9 +69,15 @@ def _run_main(
 
     resultado (se passado) recebe o retorno bool de bd.main() — parâmetro à parte para não mudar
     a tupla de mocks já retornada por esta função (consumida por *_ em quase todo teste existente).
+
+    call_order (se passado) recebe, na ordem real de execução, "trigger_agg_locally" e
+    "clear_checkpoint" — usado para travar que o AGG roda antes do checkpoint ser limpo (ver
+    scripts/backfill_shared.py:trigger_agg_locally, decisão de design #1 do plano).
     """
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
+    if call_order is not None:
+        mock_s3.delete_object.side_effect = lambda *a, **k: call_order.append("clear_checkpoint")
 
     with (
         patch("backfill_discover.boto3") as mock_boto3,
@@ -74,14 +87,17 @@ def _run_main(
         patch("backfill_discover.read_from_sor", return_value="df-fake") as mock_read,
         patch("backfill_discover.write_parquet_to_sot") as mock_write,
         patch("backfill_discover.trigger_glue_job") as mock_trigger,
+        patch("backfill_discover.shared.trigger_agg_locally") as mock_agg,
     ):
         mock_boto3.client.return_value = mock_s3
         if unit_side_effect is not None:
             mock_collect.side_effect = unit_side_effect
-        sucesso = bd.main()
+        if call_order is not None:
+            mock_agg.side_effect = lambda *a, **k: call_order.append("trigger_agg_locally")
+        sucesso = bd.main(trigger_agg=trigger_agg)
         if resultado is not None:
             resultado.append(sucesso)
-    return mock_collect, mock_read, mock_write, mock_sleep, mock_s3, mock_secret, mock_trigger
+    return mock_collect, mock_read, mock_write, mock_sleep, mock_s3, mock_secret, mock_trigger, mock_agg
 
 
 class TestLoopPrincipal:
@@ -137,7 +153,7 @@ class TestLoopPrincipal:
         assert resumo == []
 
     def test_busca_api_key_uma_unica_vez_fora_do_loop(self, monkeypatch):
-        _, _, _, _, _, mock_secret, _ = _run_main(
+        _, _, _, _, _, mock_secret, _, _ = _run_main(
             monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"},
         )
         mock_secret.assert_called_once_with(
@@ -295,16 +311,53 @@ class TestCheckpoint:
 
 class TestDataQualityFinal:
     def test_dispara_dq_uma_vez_por_tabela_cobrindo_o_range_completo(self, monkeypatch):
-        *_, mock_trigger = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        *_, mock_trigger, mock_agg = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
 
         assert mock_trigger.call_count == 2
         assert call("dq-job", TABLE_NAME="tb_discover_movie", DATABASE="db_movie", YEAR="2020,2021") in mock_trigger.call_args_list
         assert call("dq-job", TABLE_NAME="tb_discover_tv", DATABASE="db_tv", YEAR="2020,2021") in mock_trigger.call_args_list
 
     def test_nao_dispara_dq_quando_ha_falhas(self, monkeypatch):
-        *_, mock_trigger = _run_main(
+        *_, mock_trigger, mock_agg = _run_main(
             monkeypatch,
             {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
             unit_side_effect=[Exception("falhou"), None],
         )
         mock_trigger.assert_not_called()
+
+
+class TestGlueAgg:
+    def test_chamado_uma_vez_quando_sem_falhas(self, monkeypatch):
+        *_, mock_agg = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mock_agg.assert_called_once_with(
+            s3_bucket_spec="bucket-spec-test",
+            s3_prefix_spec="tmdb",
+            s3_bucket_temp="bucket-temp-test",
+            db_movie="db_movie",
+            db_tv="db_tv",
+            db_unified="db_unified",
+            table_name="tb_discover_unified",
+            dq_job_name="dq-job",
+            environment="dev",
+        )
+
+    def test_nao_chamado_quando_ha_falhas(self, monkeypatch):
+        *_, mock_agg = _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            unit_side_effect=[Exception("falhou"), None],
+        )
+        mock_agg.assert_not_called()
+
+    def test_nao_chamado_quando_trigger_agg_false(self, monkeypatch):
+        *_, mock_agg = _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, trigger_agg=False,
+        )
+        mock_agg.assert_not_called()
+
+    def test_chamado_antes_de_clear_checkpoint(self, monkeypatch):
+        call_order: list = []
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, call_order=call_order,
+        )
+        assert call_order == ["trigger_agg_locally", "clear_checkpoint"]

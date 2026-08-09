@@ -31,6 +31,9 @@ Variáveis de ambiente obrigatórias:
     TABLE_WATCH_PROVIDERS_REF_TV
     TMDB_SECRET_ARN                 (ARN do secret com a chave de API do TMDB)
     GLUE_DATA_QUALITY_JOB_NAME      (disparado uma vez por tabela gravada, ver "Data Quality" abaixo)
+    S3_BUCKET_TEMP                  (área de resultados temporários do Athena usada pelo Glue AGG)
+    S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
+                                     (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
 Variáveis opcionais:
     TRANSLATE_PROVIDER (padrão: "google" — usado só por "configuration", que traduz
@@ -46,6 +49,14 @@ Data Quality:
     genre_tv, configuration_languages, configuration_countries, watch_providers_ref_movie,
     watch_providers_ref_tv), exceto se watch_providers_ref falhar com HTTPError (ver "Erros"
     abaixo), caso em que esse disparo específico é pulado.
+
+Glue AGG:
+    Ao final, se o script chegou até o fim sem exceção não tratada, roda o Glue AGG (query
+    Athena de unificação + escrita da tabela SPEC + disparo do Data Quality sobre a tabela
+    unificada) diretamente no processo — ver backfill_shared.trigger_agg_locally. Uma falha
+    nessa etapa é logada como ERROR mas não derruba o backfill (que já terminou com sucesso) —
+    o trigger agendado (sábado/domingo 08:00 BRT) e o alarme SNS de falha continuam cobrindo o
+    caso.
 
 Erros:
     genre e configuration: uma falha propaga e aborta o script (mesmo comportamento de sempre —
@@ -211,10 +222,11 @@ def _process_content_type(
 def main() -> None:
     region = shared.require_env("AWS_REGION")
 
-    s3_bucket_sor = shared.require_env("S3_BUCKET_SOR")
-    s3_bucket_sot = shared.require_env("S3_BUCKET_SOT")
-    db_movie      = shared.require_env("GLUE_DATABASE_MOVIE")
-    db_tv         = shared.require_env("GLUE_DATABASE_TV")
+    s3_bucket_sor  = shared.require_env("S3_BUCKET_SOR")
+    s3_bucket_sot  = shared.require_env("S3_BUCKET_SOT")
+    s3_bucket_temp = shared.require_env("S3_BUCKET_TEMP")
+    db_movie       = shared.require_env("GLUE_DATABASE_MOVIE")
+    db_tv          = shared.require_env("GLUE_DATABASE_TV")
 
     table_genre_movie               = shared.require_env("TABLE_GENRE_MOVIE")
     table_genre_tv                  = shared.require_env("TABLE_GENRE_TV")
@@ -259,6 +271,18 @@ def main() -> None:
         )
 
     logger.info("Referências atualizadas.")
+
+    shared.trigger_agg_locally(
+        s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+        s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+        s3_bucket_temp=s3_bucket_temp,
+        db_movie=db_movie,
+        db_tv=db_tv,
+        db_unified=shared.require_env("DB_UNIFIED"),
+        table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+        dq_job_name=dq_job_name,
+        environment=shared.require_env("ENVIRONMENT"),
+    )
 
 
 if __name__ == "__main__":

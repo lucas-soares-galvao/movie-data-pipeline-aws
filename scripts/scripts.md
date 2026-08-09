@@ -2,7 +2,7 @@
 
 ## O que é
 
-Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 8 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (e o Glue AGG, disparado pelo workflow ao final).
+Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 8 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details/Glue AGG rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (fire-and-forget, via `shared_utils.triggers.trigger_glue_job`, exclusivo do runtime Spark do Glue — não pode ser internalizado). O Glue AGG (query Athena de unificação + escrita da tabela SPEC) roda em processo, uma única vez, ao final de cada script exceto `backfill_data_quality.py` — ver `backfill_shared.trigger_agg_locally` e a seção "Glue AGG" abaixo.
 
 ## Por que existe
 
@@ -15,7 +15,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_discover.py` | Popula as tabelas discover de 2000 até o ano atual; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue ETL), usando `TRANSLATE_PROVIDER` (default `google`) só para o detector de idioma do overview. Não dispara o Glue Details — usar `backfill_enriquecimento.py` à parte para popular details/watch_providers. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, langdetect |
 | `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma vez por tabela gravada | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, deep_translator, langdetect |
-| `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** dispara o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
+| `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** roda o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB) | S3 (direto) | awswrangler, pandas, deep_translator |
 | `backfill_rename_colunas.py` | Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para `processed_date`/`updated_date` nos parquets de details/watch_providers já gravados no S3 — sem chamar a API do TMDB, cobre inclusive IDs que já saíram do discover atual | S3 (direto) | awswrangler, pandas |
 | `backfill_changes.py` | Dispara sob demanda o mesmo modo changes que o cron semanal de domingo já aciona automaticamente — 2 content_types (movie, tv), janela sempre `[domingo passado, sábado de ontem]` (não configurável); roda a coleta de IDs mudados e o enriquecimento diretamente no processo do script (sem acionar Lambda nem o job Glue Details — ver `collect_changes_data`/`process_changed_ids` em `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final por tabela (não por ano); útil quando o cron falha ou é pulado | Athena, Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
@@ -114,6 +114,8 @@ quando chamado) — nenhuma variável nova. Diferente dos demais, **não** lê
 `TABLE_GROUP` não deve ser passada por quem chama este script.
 
 `backfill_referencias.py` exige `AWS_REGION`, `S3_BUCKET_SOR`, `S3_BUCKET_SOT`,
+`S3_BUCKET_TEMP` (só usado como área de resultados temporários do Athena pela
+chamada ao Glue AGG — este script não tem checkpoint),
 `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`, `TABLE_GENRE_MOVIE`/`TABLE_GENRE_TV`,
 `TABLE_CONFIGURATION_LANGUAGES`/`TABLE_CONFIGURATION_COUNTRIES`,
 `TABLE_WATCH_PROVIDERS_REF_MOVIE`/`TABLE_WATCH_PROVIDERS_REF_TV`,
@@ -122,6 +124,13 @@ quando chamado) — nenhuma variável nova. Diferente dos demais, **não** lê
 de `backfill_changes.py`: poucas unidades, sem dependência de ano).
 `S3_BUCKET_SOR` é exclusivo deste script — nenhum outro grava JSON bruto
 diretamente (os demais só leem/escrevem parquet no SOT).
+
+Todo script exceto `backfill_data_quality.py` exige adicionalmente as 5
+variáveis da chamada ao Glue AGG (`S3_BUCKET_SPEC`, `S3_PREFIX_SPEC`,
+`DB_UNIFIED`, `TABLE_DISCOVER_UNIFIED`, `ENVIRONMENT`) — ver seção "Glue AGG"
+abaixo. `backfill_traducao.py` e `backfill_rename_colunas.py` também passam a
+exigir `GLUE_DATA_QUALITY_JOB_NAME` por causa disso (nenhum dos dois disparava
+DQ antes; a chamada ao AGG dispara o DQ sobre a tabela unificada ao final).
 
 Todos os backfills que traduzem ou detectam idioma (`backfill_discover.py`,
 `backfill_enriquecimento.py`, `backfill_referencias.py`, `backfill_traducao.py`
@@ -219,42 +228,62 @@ unidades pendentes não é validado até ser reprocessado com sucesso
 (`backfill_changes.py` não tem checkpoint, então "reprocessado" aqui
 significa disparar o workflow de novo do zero, não retomar de onde parou).
 
-## Step summary: resumo do backfill e disparo do Glue AGG ao final
+## Glue AGG: roda em processo, uma única vez, ao final
+
+O Glue AGG (`app/glue_agg/main.py`: query Athena de unificação + escrita da
+tabela SPEC + disparo do Glue Data Quality sobre a tabela unificada) roda em
+agendamento próprio (sábado e domingo às 08:00 BRT — ver
+`app/glue_agg/glue_agg.md`), desacoplado do pipeline automático. Para um
+backfill manual, essa espera (até 6 dias) é indesejada — por isso cada script
+de backfill, exceto `backfill_data_quality.py` (que só valida, não escreve
+dado novo), roda a lógica do AGG diretamente no processo, uma única vez, logo
+antes de limpar o próprio checkpoint (ver `backfill_shared.trigger_agg_locally`
+e a seção "Glue AGG" na docstring de cada script). Viável porque
+`app/glue_agg/src/utils.py` é Python puro (awswrangler + pandas, sem
+Spark/GlueContext) — diferente do Glue Data Quality, que depende do motor
+`awsgluedq`, exclusivo do runtime Spark e por isso não internalizável.
+
+A chamada é síncrona (a query Athena e a escrita Parquet já bloqueiam até
+terminar dentro do `awswrangler`) — não precisa de polling, diferente do
+antigo disparo via `aws glue start-job-run` que o workflow fazia. Uma falha
+nessa etapa é capturada e logada como `ERROR` (mesmo padrão soft-fail já
+usado por unidade em `backfill_discover.py`/`backfill_enriquecimento.py`) —
+não derruba um backfill que já terminou com sucesso; o trigger agendado do
+fim de semana e o alarme SNS dedicado (`aws_cloudwatch_event_rule.glue_agg_failed`,
+`infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso. Token expirado
+propaga normalmente (mesmo contrato de exit code 75 dos demais erros AWS do
+backfill).
+
+`backfill_discover.py` e `backfill_enriquecimento.py` aceitam um parâmetro
+`trigger_agg: bool = True` em `main()`, usado por `backfill_historico.py` para
+suprimir o disparo de cada estágio (`trigger_agg=False`) e rodar o AGG uma
+única vez, ele mesmo, depois que os dois estágios encadeados terminam sem
+pendências — evita rodar a query de unificação (cara, CTAS sobre o catálogo
+inteiro) duas vezes seguidas.
+
+Variáveis de ambiente exigidas pela chamada ao AGG em todo script elegível:
+`S3_BUCKET_SPEC`, `S3_PREFIX_SPEC`, `DB_UNIFIED`, `TABLE_DISCOVER_UNIFIED` e
+`ENVIRONMENT` — nenhuma exige output novo do Terraform, todas seguem o mesmo
+padrão de nomenclatura (`${project_prefix}_${sufixo}_${env}`) já usado pelas
+demais variáveis do workflow.
+
+## Step summary: resumo do backfill ao final
 
 Depois que o loop de retry termina com sucesso (`exit 0`), o workflow
-(`.github/workflows/05_backfill.yml`) escreve duas seções no step summary do
-GitHub Actions, nessa ordem:
-
-1. **"Backfill"** — o resumo real do que o script fez, extraído do log via
-   `grep` (todos os 8 scripts usam o mesmo formato de log,
-   `backfill_shared.py:58-63`: `"%(asctime)s %(levelname)s %(message)s"`, com
-   `%(asctime)s` em horário de São Paulo (`DD/MM/YYYY HH:MM:SS`) via
-   `Formatter.converter`/`datefmt` customizados em `backfill_shared.py`).
-   Isso importa porque `exit 0` **não** garante que toda unidade teve
-   sucesso para 5 dos 8 scripts: `backfill_discover.py`,
-   `backfill_enriquecimento.py` e `backfill_changes.py` são soft-fail-continue
-   (logam `ERROR` por unidade/content_type que falhou, mas nunca chamam
-   `sys.exit`), `backfill_data_quality.py` é fire-and-forget ("submetido" ≠
-   "validado" — ver `especialista-scripts-backfill`), e `backfill_historico.py`
-   herda o soft-fail-continue de `backfill_discover.py`/
-   `backfill_enriquecimento.py` (interrompe entre estágios em caso de falha,
-   mas o processo em si sai com `exit 0`). Se sobrar qualquer
-   linha `ERROR` no log, o step summary mostra "⚠️ Falhas parciais
-   registradas" com as linhas encontradas, mesmo com o job do Actions
-   terminando verde.
-2. **"glue_agg"** — o AGG roda em agendamento próprio (sábado e domingo às
-   08:00 BRT — ver `app/glue_agg/glue_agg.md`), desacoplado do pipeline
-   automático. Para o backfill manual, essa espera (até 6 dias) é
-   indesejada: o workflow dispara `glue:StartJobRun` uma única vez para
-   **todo `table_group` exceto `data_quality`** (que não escreve dado novo)
-   e faz polling do `JobRunId` (`glue:GetJobRun` a cada 30s) até um estado
-   terminal, escrevendo `SUCCEEDED`/`FAILED`/`STOPPED`/`ERROR`/`TIMEOUT` no
-   step summary.
-
-O disparo/polling do AGG é centralizado no workflow, não em cada script,
-para garantir que rode exatamente uma vez por execução mesmo quando o
-script precisou de retomada via exit code 75. Nem uma falha ao disparar nem
-uma conclusão diferente de `SUCCEEDED` derrubam o workflow — loga um
-`::warning::` e segue: o trigger agendado do fim de semana e o alarme SNS
-dedicado (`aws_cloudwatch_event_rule.glue_agg_failed`,
-`infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso.
+(`.github/workflows/05_backfill.yml`) escreve no step summary do GitHub
+Actions o resumo real do que o script fez, extraído do log via `grep` (todos
+os 8 scripts usam o mesmo formato de log, `backfill_shared.py:58-63`:
+`"%(asctime)s %(levelname)s %(message)s"`, com `%(asctime)s` em horário de
+São Paulo (`DD/MM/YYYY HH:MM:SS`) via `Formatter.converter`/`datefmt`
+customizados em `backfill_shared.py`). Isso importa porque `exit 0` **não**
+garante que toda unidade teve sucesso para 5 dos 8 scripts:
+`backfill_discover.py`, `backfill_enriquecimento.py` e `backfill_changes.py`
+são soft-fail-continue (logam `ERROR` por unidade/content_type que falhou,
+mas nunca chamam `sys.exit`), `backfill_data_quality.py` é fire-and-forget
+("submetido" ≠ "validado" — ver `especialista-scripts-backfill`), e
+`backfill_historico.py` herda o soft-fail-continue de `backfill_discover.py`/
+`backfill_enriquecimento.py` (interrompe entre estágios em caso de falha, mas
+o processo em si sai com `exit 0`). Se sobrar qualquer linha `ERROR` no log
+— inclusive uma falha do Glue AGG, que loga pelo mesmo logger — o step
+summary mostra "⚠️ Falhas parciais registradas" com as linhas encontradas,
+mesmo com o job do Actions terminando verde.
