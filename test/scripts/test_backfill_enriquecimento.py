@@ -5,9 +5,9 @@ get_api_secret/trigger_glue_job mockados (nenhuma chamada real à AWS/TMDB).
 Foco: a lógica de negócio de enriquecimento em si é testada em
 test/glue_details/test_utils.py::TestRunDetailsAndWatchProvidersForYear — aqui o foco é
 a orquestração do backfill: quais unidades são processadas, o contrato "erro em uma
-unidade não aborta o backfill inteiro" (soft-fail-continue, diferente de
-backfill_historico.py, que interrompe tudo no primeiro erro), o checkpoint, e o disparo
-único do Glue Data Quality ao final cobrindo todo o range de anos.
+unidade não aborta o backfill inteiro" (soft-fail-continue, mesmo padrão de
+backfill_discover.py/backfill_changes.py), o checkpoint, e o disparo único do Glue Data
+Quality ao final cobrindo todo o range de anos.
 """
 
 import json
@@ -93,7 +93,8 @@ class TestLoopPrincipal:
             assert c.kwargs["trigger_dq"] is False
 
     def test_falha_em_uma_unidade_nao_interrompe_o_backfill(self, monkeypatch):
-        """Diferente de backfill_historico.py: uma exceção aqui só é logada, não aborta o loop."""
+        """Mesmo padrão soft-fail-continue de backfill_discover.py/backfill_changes.py: uma
+        exceção aqui só é logada, não aborta o loop."""
         mock_run, *_ = _run_main(
             monkeypatch,
             {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"},

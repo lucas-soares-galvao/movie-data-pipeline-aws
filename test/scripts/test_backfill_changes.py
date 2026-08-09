@@ -113,7 +113,8 @@ class TestLoopPrincipal:
             assert c.kwargs["changed_ids"] == [1, 2, 3]
 
     def test_falha_em_um_content_type_nao_impede_o_outro(self, monkeypatch):
-        """Diferente de backfill_historico.py: uma exceção aqui só é logada, não aborta o loop."""
+        """Mesmo padrão soft-fail-continue de backfill_discover.py/backfill_enriquecimento.py:
+        uma exceção aqui só é logada, não aborta o loop."""
         _, _, mock_process, *_ = _run_main(monkeypatch, process_side_effect=[Exception("boom"), []])
         assert mock_process.call_count == 2
 

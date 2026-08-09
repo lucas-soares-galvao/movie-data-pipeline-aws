@@ -1,14 +1,12 @@
 """
 backfill_shared.py — Código comum aos scripts de backfill manual em scripts/.
 
-Reúne o que hoje se repetia, byte-a-byte ou quase, em backfill_historico.py,
+Reúne o que hoje se repetia, byte-a-byte ou quase, em backfill_discover.py,
 backfill_referencias.py, backfill_traducao.py, backfill_data_quality.py e
 backfill_enriquecimento.py:
 
   - leitura de variável de ambiente obrigatória (`require_env`)
   - setup de logging (`setup_logging`)
-  - invocação síncrona da Lambda API (`invoke_lambda_sync`)
-  - payloads base de movie/tv para a Lambda API (`build_base_payloads`)
   - leitura do range de anos do backfill (`read_year_range`)
   - wrapper de exit code 75 para retomada automática (`run_with_retry_exit`)
   - mensagem de log de progresso do checkpoint (`log_resume_progress`)
@@ -17,7 +15,7 @@ backfill_enriquecimento.py:
 
 Checkpoint em S3
 ----------------
-Usado pelos scripts que iteram por ano (backfill_historico.py,
+Usado pelos scripts que iteram por ano (backfill_discover.py,
 backfill_enriquecimento.py, backfill_data_quality.py, backfill_traducao.py)
 para persistir, a cada unidade de trabalho concluída (ex.: "movie:2020"),
 o progresso em s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{table_group}.json.
@@ -33,11 +31,9 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-import boto3
-from botocore.config import Config
 from botocore.exceptions import ClientError
 
 _SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
@@ -66,30 +62,6 @@ logger = logging.getLogger()
 
 RETRYABLE_EXIT_CODE = 75
 
-# > timeout do Lambda (900s, ver infra/lambda_api.tf). O default do boto3 (read_timeout=60s) já
-# não bastava mesmo antes: a extinta flag skip_weekly (removida de app/lambda_api/main.py —
-# a coleta de referências que ela cobria roda hoje diretamente no processo do backfill, ver
-# scripts/backfill_referencias.py) chegou a esperar (get_job_run) os Glue ETL de referência
-# terminarem antes de acionar o Glue AGG, o que podia passar de 60s. Sem esse ajuste, o boto3
-# desiste (ReadTimeoutError) achando que a invocação falhou, mas a Lambda continua rodando
-# "órfã" em background na AWS.
-#
-# Pior: por padrão o botocore RETENTA automaticamente uma requisição que sofreu
-# ReadTimeoutError (visível na stack trace passando por retryhandler.py antes de propagar).
-# `lambda:Invoke` não é idempotente — não existe token de idempotência para essa API — então
-# cada retry automático do botocore dispara uma execução da Lambda inteiramente nova e
-# concorrente com a anterior (ainda rodando em background), não uma "nova tentativa" no sentido
-# usual. Incidente real (histórico, sob a extinta skip_weekly): uma única chamada
-# client.invoke() gerou 5 execuções órfãs da Lambda (perna tv), cada uma dessas triggando seu
-# próprio Glue AGG e reacionando os 3 Glue ETL de referência em paralelo — causa de uma corrida
-# de escrita/leitura no S3 (Glue Data Quality lendo um parquet que uma execução concorrente
-# acabou de sobrescrever). Por isso, além do read_timeout alto, max_attempts=1 desliga esse
-# retry automático — uma falha aqui deve terminar o script (o workflow trata isso normalmente,
-# sem retry automático para backfill_historico.py, hoje o único chamador de
-# invoke_lambda_sync — ver .github/workflows/05_backfill.yml) em vez de silenciosamente
-# multiplicar execuções de uma operação não-idempotente.
-LAMBDA_READ_TIMEOUT_SECONDS = 910
-
 # ExpiredTokenException é o código retornado pelo STS (ex.: Lambda, Glue).
 # ExpiredToken é o código equivalente retornado pelo S3 (ex.: ListObjectsV2
 # via awswrangler, get_object/put_object/delete_object). Ambos indicam a
@@ -109,45 +81,6 @@ def require_env(name: str) -> str:
     if not value:
         raise EnvironmentError(f"Variável de ambiente obrigatória não definida: {name}")
     return value
-
-
-def build_lambda_client(region: str) -> Any:
-    """Cliente boto3 da Lambda com read_timeout alto e retry automático desligado.
-
-    Usar sempre no lugar de `boto3.client("lambda", region_name=region)` direto — ver
-    LAMBDA_READ_TIMEOUT_SECONDS para o racional. `max_attempts=1` desliga o retry automático do
-    botocore: como `lambda:Invoke` não é idempotente, um retry silencioso após timeout dispara
-    uma execução nova e concorrente da Lambda em vez de reenviar a mesma chamada com segurança.
-    """
-    return boto3.client(
-        "lambda",
-        region_name=region,
-        config=Config(
-            read_timeout=LAMBDA_READ_TIMEOUT_SECONDS,
-            connect_timeout=10,
-            retries={"max_attempts": 1},
-        ),
-    )
-
-
-def invoke_lambda_sync(client: Any, function_name: str, payload: dict[str, Any]) -> None:
-    """Invoca a Lambda de forma síncrona e lança exceção se falhar."""
-    try:
-        response = client.invoke(
-            FunctionName=function_name,
-            InvocationType="RequestResponse",
-            Payload=json.dumps(payload).encode(),
-        )
-    except ClientError as exc:
-        log_expired_token(exc, f"invocação da Lambda '{function_name}'")
-        raise
-    status = response["StatusCode"]
-    body = json.loads(response["Payload"].read())
-
-    if status != 200 or "FunctionError" in response:
-        raise RuntimeError(f"Lambda retornou erro: {body}")
-
-    logger.info("Lambda OK: %s", body.get("body", body))
 
 
 def apply_translate_cost_guard(translate_provider: str, start_year: int, end_year: int) -> str:
@@ -178,55 +111,6 @@ def apply_translate_cost_guard(translate_provider: str, start_year: int, end_yea
         )
         return "google"
     return translate_provider
-
-
-def build_base_payloads(
-    start_year: Optional[int] = None, end_year: Optional[int] = None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Monta os payloads base de movie/tv enviados à Lambda API.
-
-    Espelha exatamente o que o EventBridge envia (eventbridge_lambda_api.tf), com um
-    campo a mais: "translate_provider" (opcional via env TRANSLATE_PROVIDER, default
-    "google" — mesmo default do caminho automático via EventBridge desde que o Glue
-    ETL/Details passou a usar Google como primário e AWS Translate como fallback
-    automático). Ver shared_utils.traducao.resolve_translate_fn.
-
-    Se start_year/end_year forem informados, aplica apply_translate_cost_guard antes
-    de montar os payloads — usado por backfill_historico.py, que itera por ano.
-    backfill_referencias.py não informa esses parâmetros (não depende de ano, então o
-    guard não se aplica).
-
-    Args:
-        start_year: Ano inicial do backfill, ou None se não depender de ano.
-        end_year:   Ano final do backfill, ou None se não depender de ano.
-    """
-    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
-    if start_year is not None and end_year is not None:
-        translate_provider = apply_translate_cost_guard(translate_provider, start_year, end_year)
-
-    base_movie = {
-        "type":                            "movie",
-        "database":                        require_env("GLUE_DATABASE_MOVIE"),
-        "database_unified":                require_env("GLUE_DATABASE_UNIFIED"),
-        "table_discover_movie":            require_env("TABLE_DISCOVER_MOVIE"),
-        "table_genre_movie":               require_env("TABLE_GENRE_MOVIE"),
-        "table_configuration_languages":   require_env("TABLE_CONFIGURATION_LANGUAGES"),
-        "table_watch_providers_ref_movie": require_env("TABLE_WATCH_PROVIDERS_REF_MOVIE"),
-        "translate_provider":              translate_provider,
-    }
-
-    base_tv = {
-        "type":                          "tv",
-        "database":                      require_env("GLUE_DATABASE_TV"),
-        "database_unified":              require_env("GLUE_DATABASE_UNIFIED"),
-        "table_discover_tv":             require_env("TABLE_DISCOVER_TV"),
-        "table_genre_tv":                require_env("TABLE_GENRE_TV"),
-        "table_configuration_countries": require_env("TABLE_CONFIGURATION_COUNTRIES"),
-        "table_watch_providers_ref_tv":  require_env("TABLE_WATCH_PROVIDERS_REF_TV"),
-        "translate_provider":            translate_provider,
-    }
-
-    return base_movie, base_tv
 
 
 def read_year_range(
