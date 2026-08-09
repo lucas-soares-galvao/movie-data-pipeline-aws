@@ -58,6 +58,11 @@ Glue AGG:
     o trigger agendado (sábado/domingo 08:00 BRT) e o alarme SNS de falha continuam cobrindo o
     caso.
 
+Notificação:
+    Ao final, publica no tópico SNS de sucesso do backfill (SNS_TOPIC_ARN_BACKFILL_SUCCESS,
+    opcional) — ver backfill_shared.notify_backfill_success. Uma falha em genre/configuration
+    aborta o script antes desse ponto (ver "Erros" abaixo), então não há notificação nesse caso.
+
 Erros:
     genre e configuration: uma falha propaga e aborta o script (mesmo comportamento de sempre —
     antes, uma falha na Lambda abortava antes da segunda invocação; agora, uma falha em
@@ -282,6 +287,11 @@ def main() -> None:
         table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
         dq_job_name=dq_job_name,
         environment=shared.require_env("ENVIRONMENT"),
+    )
+    shared.notify_backfill_success(
+        "referencias",
+        "Backfill de referências concluído: genre, configuration e watch_providers_ref "
+        "atualizadas (movie e tv), Data Quality e Glue AGG disparados.",
     )
 
 

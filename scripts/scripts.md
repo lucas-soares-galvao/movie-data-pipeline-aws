@@ -2,7 +2,7 @@
 
 ## O que é
 
-Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 8 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details/Glue AGG rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (fire-and-forget, via `shared_utils.triggers.trigger_glue_job`, exclusivo do runtime Spark do Glue — não pode ser internalizado). O Glue AGG (query Athena de unificação + escrita da tabela SPEC) roda em processo, uma única vez, ao final de cada script exceto `backfill_data_quality.py` — ver `backfill_shared.trigger_agg_locally` e a seção "Glue AGG" abaixo.
+Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 8 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details/Glue AGG rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (fire-and-forget, via `shared_utils.triggers.trigger_glue_job`, exclusivo do runtime Spark do Glue — não pode ser internalizado). O Glue AGG (query Athena de unificação + escrita da tabela SPEC) roda em processo, uma única vez, ao final de cada script exceto `backfill_data_quality.py` — ver `backfill_shared.trigger_agg_locally` e a seção "Glue AGG" abaixo. Todos os 8 scripts também notificam por e-mail (SNS) quando terminam com sucesso total — ver `backfill_shared.notify_backfill_success` e a seção "Notificação de sucesso" abaixo.
 
 ## Por que existe
 
@@ -25,13 +25,15 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 por todos os 8 scripts acima: leitura de variável de ambiente obrigatória,
 setup de logging, leitura do range de anos, proteção de custo do AWS
 Translate por intervalo de anos (`apply_translate_cost_guard`), wrapper de
-retry do exit code 75 e, para os 5 scripts que iteram por ano diretamente
-(todos exceto `backfill_referencias.py`, `backfill_changes.py` e
-`backfill_historico.py`), o checkpoint de retomada automática (ver seção
-"Retomada automática" abaixo). `backfill_historico.py` não itera por ano
-diretamente — delega essa iteração aos dois scripts que encadeia — mas
-também usa o checkpoint genérico de `backfill_shared.py`, só que com unidade
-"nome do estágio" (`discover`/`enriquecimento`) em vez de "ano+tipo".
+retry do exit code 75, notificação por e-mail de sucesso
+(`notify_backfill_success`, ver seção "Notificação de sucesso" abaixo) e,
+para os 5 scripts que iteram por ano diretamente (todos exceto
+`backfill_referencias.py`, `backfill_changes.py` e `backfill_historico.py`),
+o checkpoint de retomada automática (ver seção "Retomada automática"
+abaixo). `backfill_historico.py` não itera por ano diretamente — delega essa
+iteração aos dois scripts que encadeia — mas também usa o checkpoint
+genérico de `backfill_shared.py`, só que com unidade "nome do estágio"
+(`discover`/`enriquecimento`) em vez de "ano+tipo".
 
 ## Pré-requisitos
 
@@ -172,6 +174,10 @@ de escolher `"aws"` para testar um período curto e esquecer de voltar para
 `backfill_referencias.py` fica fora dessa proteção por não depender de ano
 (volume sempre pequeno, ~250 itens).
 
+Todos os 8 scripts aceitam opcionalmente `SNS_TOPIC_ARN_BACKFILL_SUCCESS` —
+ver seção "Notificação de sucesso" abaixo. Ausente, o script só loga um
+`WARNING` e segue normalmente (não é obrigatória).
+
 Cada script possui variáveis adicionais documentadas em sua docstring.
 
 ## Retomada automática (token expirado)
@@ -266,6 +272,41 @@ Variáveis de ambiente exigidas pela chamada ao AGG em todo script elegível:
 `ENVIRONMENT` — nenhuma exige output novo do Terraform, todas seguem o mesmo
 padrão de nomenclatura (`${project_prefix}_${sufixo}_${env}`) já usado pelas
 demais variáveis do workflow.
+
+## Notificação de sucesso: e-mail via SNS ao final
+
+Todos os 8 scripts publicam no tópico SNS `backfill-success-notifications`
+(`infra/sns_topics.tf`, e-mail configurado por `var.backfill_notification_email`)
+quando terminam com sucesso total — via `backfill_shared.notify_backfill_success`,
+chamada direta de `boto3.client("sns").publish(...)` (sem EventBridge no meio,
+diferente dos demais tópicos deste projeto — não existe um "Job State Change"
+nativo para um processo Python rodando fora do Glue; mesmo racional do tópico de
+métricas do Glue Data Quality, publicado por `notify_failed_outcomes` em
+`app/glue_data_quality/src/utils.py`). O workflow
+(`.github/workflows/05_backfill.yml`) monta o ARN do tópico
+(`SNS_TOPIC_ARN_BACKFILL_SUCCESS`) em runtime, extraindo o `account_id` de
+`ROLE_ARN` (já disponível no mesmo step) — sem depender de um output novo do
+Terraform.
+
+Sempre chamada no MESMO ponto onde cada script já considera o backfill
+"sucesso total" — depois de `trigger_agg_locally`/`clear_checkpoint`, nunca
+antes de uma falha propagar ou de um `return` antecipado (`backfill_discover.py`/
+`backfill_enriquecimento.py`/`backfill_changes.py`/`backfill_historico.py` só
+notificam no ramo sem `failures`; `backfill_referencias.py`/
+`backfill_traducao.py`/`backfill_rename_colunas.py`/`backfill_data_quality.py`
+abortam antes desse ponto se algo propagar). `backfill_discover.py` e
+`backfill_enriquecimento.py` também têm a notificação suprimida junto com
+`trigger_agg=False` (chamada de `backfill_historico.py`) — só o `historico`
+notifica, uma única vez, ao final dos dois estágios, evitando 3 e-mails
+redundantes na mesma execução.
+
+`SNS_TOPIC_ARN_BACKFILL_SUCCESS` é opcional: se ausente (ex.: rodando um
+script localmente sem configurá-la), `notify_backfill_success` só loga um
+`WARNING` e segue — não aborta o script nem força reprocessamento. Qualquer
+falha ao publicar (erro do SNS, permissão, etc.) também é só logada como
+`ERROR`, nunca propagada — é a última etapa de um backfill que já terminou
+com sucesso, uma falha de notificação não deve custar um reprocessamento
+completo.
 
 ## Step summary: resumo do backfill ao final
 
