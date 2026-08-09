@@ -22,6 +22,14 @@ ENV_BASE = {
     "S3_BUCKET_TEMP": "bucket-temp-test",
     "BACKFILL_START_YEAR": "2020",
     "BACKFILL_END_YEAR": "2021",
+    "GLUE_DATABASE_MOVIE": "db_movie",
+    "GLUE_DATABASE_TV": "db_tv",
+    "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "S3_BUCKET_SPEC": "bucket-spec-test",
+    "S3_PREFIX_SPEC": "tmdb",
+    "DB_UNIFIED": "db_unified",
+    "TABLE_DISCOVER_UNIFIED": "tb_discover_unified",
+    "ENVIRONMENT": "dev",
 }
 
 
@@ -67,13 +75,13 @@ def _run_main(
 
     table_groups_no_momento_da_chamada: list[str | None] = []
 
-    def _discover_main():
+    def _discover_main(trigger_agg: bool = True):
         table_groups_no_momento_da_chamada.append(os.environ.get("TABLE_GROUP"))
         if discover_side_effect is not None:
             raise discover_side_effect
         return discover_result
 
-    def _enriquecimento_main():
+    def _enriquecimento_main(trigger_agg: bool = True):
         table_groups_no_momento_da_chamada.append(os.environ.get("TABLE_GROUP"))
         return enriquecimento_result
 
@@ -81,12 +89,13 @@ def _run_main(
         patch("backfill_historico.boto3") as mock_boto3,
         patch("backfill_historico.backfill_discover") as mock_discover,
         patch("backfill_historico.backfill_enriquecimento") as mock_enriquecimento,
+        patch("backfill_historico.shared.trigger_agg_locally") as mock_agg,
     ):
         mock_boto3.client.return_value = mock_s3
         mock_discover.main.side_effect = _discover_main
         mock_enriquecimento.main.side_effect = _enriquecimento_main
         bh.main()
-    return mock_discover, mock_enriquecimento, mock_s3, table_groups_no_momento_da_chamada
+    return mock_discover, mock_enriquecimento, mock_s3, table_groups_no_momento_da_chamada, mock_agg
 
 
 class TestOrdemDosEstagios:
@@ -96,7 +105,7 @@ class TestOrdemDosEstagios:
         mock_enriquecimento.main.assert_called_once()
 
     def test_define_table_group_de_cada_estagio_antes_de_chamar(self, monkeypatch):
-        *_, table_groups = _run_main(monkeypatch)
+        *_, table_groups, _ = _run_main(monkeypatch)
         assert table_groups == ["discover", "detalhes_e_providers"]
 
 
@@ -153,6 +162,42 @@ class TestCheckpointDeEstagio:
         mock_discover.main.assert_not_called()
         mock_enriquecimento.main.assert_not_called()
         mock_s3.delete_object.assert_called_once()
+
+
+class TestGlueAgg:
+    def test_estagios_chamados_com_trigger_agg_false(self, monkeypatch):
+        mock_discover, mock_enriquecimento, *_ = _run_main(monkeypatch)
+        mock_discover.main.assert_called_once_with(trigger_agg=False)
+        mock_enriquecimento.main.assert_called_once_with(trigger_agg=False)
+
+    def test_chamado_exatamente_uma_vez_quando_ambos_estagios_sucedem(self, monkeypatch):
+        *_, mock_agg = _run_main(monkeypatch)
+        mock_agg.assert_called_once_with(
+            s3_bucket_spec="bucket-spec-test",
+            s3_prefix_spec="tmdb",
+            s3_bucket_temp="bucket-temp-test",
+            db_movie="db_movie",
+            db_tv="db_tv",
+            db_unified="db_unified",
+            table_name="tb_discover_unified",
+            dq_job_name="dq-job",
+            environment="dev",
+        )
+
+    def test_nao_chamado_quando_discover_retorna_false(self, monkeypatch):
+        *_, mock_agg = _run_main(monkeypatch, discover_result=False)
+        mock_agg.assert_not_called()
+
+    def test_nao_chamado_quando_enriquecimento_retorna_false(self, monkeypatch):
+        *_, mock_agg = _run_main(monkeypatch, enriquecimento_result=False)
+        mock_agg.assert_not_called()
+
+    def test_chamado_uma_unica_vez_mesmo_quando_ambos_estagios_ja_estavam_no_checkpoint(self, monkeypatch):
+        """Retomada: os dois estágios são pulados (já concluídos), mas o AGG ainda deve
+        rodar (ainda não tinha sido disparado se a interrupção anterior ocorreu antes dele)."""
+        mock_s3 = _s3_client_com_checkpoint(["discover", "enriquecimento"])
+        *_, mock_agg = _run_main(monkeypatch, mock_s3=mock_s3)
+        mock_agg.assert_called_once()
 
 
 class TestErros:

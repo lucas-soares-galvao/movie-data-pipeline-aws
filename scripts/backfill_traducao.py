@@ -50,6 +50,9 @@ Variáveis de ambiente obrigatórias:
     GLUE_DATABASE_TV
     TABLE_DETAILS_MOVIE
     TABLE_DETAILS_TV
+    GLUE_DATA_QUALITY_JOB_NAME (usada pela chamada local ao Glue AGG ao final, ver "Glue AGG" abaixo)
+    S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
+                                (idem, ver "Glue AGG" abaixo)
 
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
@@ -71,6 +74,14 @@ Variáveis opcionais:
                             como fallback capado; "aws" usa Comprehend primeiro (sem
                             cap) com langdetect como fallback — ver
                             shared_utils.idioma.resolve_detect_language_fn)
+
+Glue AGG:
+    Ao final, antes de limpar o checkpoint, roda o Glue AGG (query Athena de unificação +
+    escrita da tabela SPEC + disparo do Data Quality sobre a tabela unificada) diretamente no
+    processo — ver backfill_shared.trigger_agg_locally. Faz sentido aqui porque overview_pt/
+    tagline_pt/keywords_pt entram na tabela SPEC final. Uma falha nessa etapa é logada como
+    ERROR mas não derruba o backfill (que já terminou com sucesso) — o trigger agendado
+    (sábado/domingo 08:00 BRT) e o alarme SNS de falha continuam cobrindo o caso.
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -275,6 +286,7 @@ def main() -> None:
     db_tv                 = shared.require_env("GLUE_DATABASE_TV")
     table_details_movie   = shared.require_env("TABLE_DETAILS_MOVIE")
     table_details_tv      = shared.require_env("TABLE_DETAILS_TV")
+    dq_job_name            = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 30))
@@ -332,6 +344,17 @@ def main() -> None:
             logger.info("Aguardando %d segundos antes da próxima invocação...", wait_seconds)
             time.sleep(wait_seconds)
 
+    shared.trigger_agg_locally(
+        s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+        s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+        s3_bucket_temp=s3_bucket_temp,
+        db_movie=db_movie,
+        db_tv=db_tv,
+        db_unified=shared.require_env("DB_UNIFIED"),
+        table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+        dq_job_name=dq_job_name,
+        environment=shared.require_env("ENVIRONMENT"),
+    )
     shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
     logger.info(
         "Backfill de tradução concluído: %d até %d | %d campos traduzidos com sucesso "

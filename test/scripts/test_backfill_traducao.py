@@ -25,6 +25,12 @@ ENV_BASE = {
     "GLUE_DATABASE_TV": "db_tv",
     "TABLE_DETAILS_MOVIE": "details_movie",
     "TABLE_DETAILS_TV": "details_tv",
+    "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "S3_BUCKET_SPEC": "bucket-spec-test",
+    "S3_PREFIX_SPEC": "tmdb",
+    "DB_UNIFIED": "db_unified",
+    "TABLE_DISCOVER_UNIFIED": "tb_discover_unified",
+    "ENVIRONMENT": "dev",
 }
 
 
@@ -435,25 +441,26 @@ def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mo
         patch("backfill_traducao._backfill_year") as mock_backfill,
         patch("backfill_traducao.time.sleep") as mock_sleep,
         patch("backfill_traducao.boto3") as mock_boto3,
+        patch("backfill_traducao.shared.trigger_agg_locally") as mock_agg,
     ):
         mock_backfill.return_value = (True, 1)  # translated_count > 0: comportamento padrão de pausa entre partições
         mock_boto3.client.return_value = mock_s3
         bt.main()
-    return mock_backfill, mock_sleep, mock_s3
+    return mock_backfill, mock_sleep, mock_s3, mock_agg
 
 
 class TestMain:
     def test_backfill_year_chamado_para_cada_ano_e_tipo(self, monkeypatch):
-        mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
+        mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         assert mock_backfill.call_count == 6  # 3 anos x 2 tipos
 
     def test_alterna_movie_e_tv_por_ano(self, monkeypatch):
-        mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         databases = [c.kwargs["database"] for c in mock_backfill.call_args_list]
         assert databases == ["db_movie", "db_tv"]
 
     def test_nao_pausa_apos_ultima_chamada(self, monkeypatch):
-        mock_backfill, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        mock_backfill, mock_sleep, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_sleep.call_count == mock_backfill.call_count - 1
 
     def test_nao_pausa_quando_particao_nao_traduziu_nada(self, monkeypatch):
@@ -464,6 +471,7 @@ class TestMain:
             patch("backfill_traducao._backfill_year") as mock_backfill,
             patch("backfill_traducao.time.sleep") as mock_sleep,
             patch("backfill_traducao.boto3") as mock_boto3,
+            patch("backfill_traducao.shared.trigger_agg_locally"),
         ):
             _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
             mock_backfill.return_value = (False, 0)
@@ -479,6 +487,7 @@ class TestMain:
             patch("backfill_traducao._backfill_year") as mock_backfill,
             patch("backfill_traducao.time.sleep") as mock_sleep,
             patch("backfill_traducao.boto3") as mock_boto3,
+            patch("backfill_traducao.shared.trigger_agg_locally"),
         ):
             _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
             # movie:2020 traduz, tv:2020 vazio, movie:2021 traduz, tv:2021 (última) traduz
@@ -496,7 +505,7 @@ class TestMain:
             patch("backfill_traducao.translate_text", side_effect=lambda t: f"[G]{t}"),
             patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
         ):
-            mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         translate_fn = mock_backfill.call_args_list[0].kwargs["translate_fn"]
         assert translate_fn("Hello") == "[G]Hello"
 
@@ -507,7 +516,7 @@ class TestMain:
             patch("backfill_traducao.translate_text", side_effect=lambda t: f"[G]{t}"),
             patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
         ):
-            mock_backfill, _, _ = _run_main(
+            mock_backfill, _, _, _ = _run_main(
                 monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
             )
         translate_fn = mock_backfill.call_args_list[0].kwargs["translate_fn"]
@@ -522,7 +531,7 @@ class TestMain:
             patch("backfill_traducao.translate_text", side_effect=lambda t: f"[G]{t}"),
             patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
         ):
-            mock_backfill, _, _ = _run_main(
+            mock_backfill, _, _, _ = _run_main(
                 monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "TRANSLATE_PROVIDER": "aws"}
             )
         translate_fn = mock_backfill.call_args_list[0].kwargs["translate_fn"]
@@ -537,7 +546,7 @@ class TestMain:
             patch("backfill_traducao.translate_text", side_effect=lambda t: t),  # google sempre "falha"
             patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
         ):
-            mock_backfill, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
             translate_fn_movie = mock_backfill.call_args_list[0].kwargs["translate_fn"]
             translate_fn_tv = mock_backfill.call_args_list[1].kwargs["translate_fn"]
 
@@ -555,6 +564,7 @@ class TestMain:
             patch("backfill_traducao._backfill_year") as mock_backfill,
             patch("backfill_traducao.time.sleep"),
             patch("backfill_traducao.boto3") as mock_boto3,
+            patch("backfill_traducao.shared.trigger_agg_locally"),
         ):
             _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
             mock_backfill.side_effect = [(True, 7), (False, 0)]  # movie:2020 traduz 7, tv:2020 sem dados
@@ -594,7 +604,7 @@ class TestCheckpoint:
             ).encode()))
         }
 
-        mock_backfill, _, _ = _run_main(
+        mock_backfill, _, _, _ = _run_main(
             monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"}, mock_s3=mock_s3,
         )
 
@@ -647,3 +657,34 @@ class TestCheckpoint:
         assert mock_s3.put_object.call_count == 1
         body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
         assert body["completed"] == ["movie:2020"]
+
+
+class TestGlueAgg:
+    def test_chamado_antes_de_clear_checkpoint(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+        call_order: list = []
+        mock_s3.delete_object.side_effect = lambda *a, **k: call_order.append("clear_checkpoint")
+
+        with (
+            patch("backfill_traducao._backfill_year", return_value=(True, 1)),
+            patch("backfill_traducao.time.sleep"),
+            patch("backfill_traducao.boto3") as mock_boto3,
+            patch("backfill_traducao.shared.trigger_agg_locally") as mock_agg,
+        ):
+            _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            mock_agg.side_effect = lambda *a, **k: call_order.append("trigger_agg_locally")
+            mock_boto3.client.return_value = mock_s3
+            bt.main()
+
+        assert call_order == ["trigger_agg_locally", "clear_checkpoint"]
+        mock_agg.assert_called_once_with(
+            s3_bucket_spec="bucket-spec-test",
+            s3_prefix_spec="tmdb",
+            s3_bucket_temp="bucket-temp-test",
+            db_movie="db_movie",
+            db_tv="db_tv",
+            db_unified="db_unified",
+            table_name="tb_discover_unified",
+            dq_job_name="dq-job",
+            environment="dev",
+        )

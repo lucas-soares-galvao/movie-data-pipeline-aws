@@ -26,6 +26,12 @@ ENV_BASE = {
     "TABLE_DETAILS_TV": "details_tv",
     "TABLE_WATCH_PROVIDERS_MOVIE": "watch_providers_movie",
     "TABLE_WATCH_PROVIDERS_TV": "watch_providers_tv",
+    "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "S3_BUCKET_SPEC": "bucket-spec-test",
+    "S3_PREFIX_SPEC": "tmdb",
+    "DB_UNIFIED": "db_unified",
+    "TABLE_DISCOVER_UNIFIED": "tb_discover_unified",
+    "ENVIRONMENT": "dev",
 }
 
 
@@ -174,20 +180,21 @@ def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mo
     with (
         patch("backfill_rename_colunas._rename_partition_column") as mock_rename,
         patch("backfill_rename_colunas.boto3") as mock_boto3,
+        patch("backfill_rename_colunas.shared.trigger_agg_locally") as mock_agg,
     ):
         mock_rename.return_value = True
         mock_boto3.client.return_value = mock_s3
         brc.main()
-    return mock_rename, mock_s3
+    return mock_rename, mock_s3, mock_agg
 
 
 class TestMain:
     def test_chama_rename_para_cada_tabela_e_ano(self, monkeypatch):
-        mock_rename, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
+        mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
         assert mock_rename.call_count == 8  # 2 anos x 4 tabelas
 
     def test_percorre_as_quatro_tabelas_com_as_colunas_corretas_dentro_de_cada_ano(self, monkeypatch):
-        mock_rename, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         chamadas = [
             (c.kwargs["table_name"], c.kwargs["old_column"], c.kwargs["new_column"])
             for c in mock_rename.call_args_list
@@ -201,13 +208,14 @@ class TestMain:
 
     def test_usa_ano_atual_como_default_de_end_year(self, monkeypatch):
         from datetime import datetime
-        mock_rename, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": str(datetime.now().year)})  # noqa: DTZ005 — espelha o datetime.now() naive de scripts/backfill_shared.py
+        mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": str(datetime.now().year)})  # noqa: DTZ005 — espelha o datetime.now() naive de scripts/backfill_shared.py
         assert mock_rename.call_count == 4  # 1 ano x 4 tabelas
 
     def test_loga_total_de_particoes_regravadas(self, monkeypatch, caplog):
         with (
             patch("backfill_rename_colunas._rename_partition_column") as mock_rename,
             patch("backfill_rename_colunas.boto3") as mock_boto3,
+            patch("backfill_rename_colunas.shared.trigger_agg_locally"),
         ):
             _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
             mock_rename.side_effect = [True, True, False, True]  # 1 tabela já migrada (watch_providers_movie)
@@ -248,7 +256,7 @@ class TestCheckpoint:
             }).encode()))
         }
 
-        mock_rename, _ = _run_main(
+        mock_rename, _, _ = _run_main(
             monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3,
         )
 
@@ -267,6 +275,7 @@ class TestCheckpoint:
         with (
             patch("backfill_rename_colunas._rename_partition_column", return_value=False),
             patch("backfill_rename_colunas.boto3") as mock_boto3,
+            patch("backfill_rename_colunas.shared.trigger_agg_locally"),
         ):
             _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
             mock_boto3.client.return_value = mock_s3
@@ -300,3 +309,33 @@ class TestCheckpoint:
         assert mock_s3.put_object.call_count == 1
         body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
         assert body["completed"] == ["details_movie:2020"]
+
+
+class TestGlueAgg:
+    def test_chamado_antes_de_clear_checkpoint(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+        call_order: list = []
+        mock_s3.delete_object.side_effect = lambda *a, **k: call_order.append("clear_checkpoint")
+
+        with (
+            patch("backfill_rename_colunas._rename_partition_column", return_value=True),
+            patch("backfill_rename_colunas.boto3") as mock_boto3,
+            patch("backfill_rename_colunas.shared.trigger_agg_locally") as mock_agg,
+        ):
+            _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            mock_agg.side_effect = lambda *a, **k: call_order.append("trigger_agg_locally")
+            mock_boto3.client.return_value = mock_s3
+            brc.main()
+
+        assert call_order == ["trigger_agg_locally", "clear_checkpoint"]
+        mock_agg.assert_called_once_with(
+            s3_bucket_spec="bucket-spec-test",
+            s3_prefix_spec="tmdb",
+            s3_bucket_temp="bucket-temp-test",
+            db_movie="db_movie",
+            db_tv="db_tv",
+            db_unified="db_unified",
+            table_name="tb_discover_unified",
+            dq_job_name="dq-job",
+            environment="dev",
+        )

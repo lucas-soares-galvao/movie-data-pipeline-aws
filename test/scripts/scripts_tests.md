@@ -99,6 +99,18 @@ custo por intervalo de anos de `backfill_enriquecimento.py`/`backfill_traducao.p
 | `test_dispara_dq_uma_vez_por_tabela_cobrindo_o_range_completo` | 2 disparos (`TABLE_DISCOVER_MOVIE`, `TABLE_DISCOVER_TV`) com `YEAR` cobrindo todo o range, não por unidade |
 | `test_nao_dispara_dq_quando_ha_falhas` | Nenhum disparo de DQ quando sobra alguma unidade com falha |
 
+### `TestGlueAgg`
+
+`shared.trigger_agg_locally` mockado (ver `test_backfill_shared.py::TestTriggerAggLocally` para o
+teste da função em si).
+
+| Teste | O que verifica |
+|---|---|
+| `test_chamado_uma_vez_quando_sem_falhas` | `trigger_agg_locally` chamado uma vez, com os argumentos corretos (env vars `S3_BUCKET_SPEC`/`S3_PREFIX_SPEC`/`DB_UNIFIED`/`TABLE_DISCOVER_UNIFIED`/`ENVIRONMENT`) |
+| `test_nao_chamado_quando_ha_falhas` | Não chamado quando sobra alguma unidade com falha (mesma condição do DQ) |
+| `test_nao_chamado_quando_trigger_agg_false` | `main(trigger_agg=False)` suprime a chamada — usado por `backfill_historico.py` |
+| `test_chamado_antes_de_clear_checkpoint` | Ordem: `trigger_agg_locally` roda antes de `clear_checkpoint` (evita reprocessar tudo numa retomada por token expirado só para retentar o AGG) |
+
 ## Casos de teste — `test_backfill_referencias.py`
 
 Mesmo estilo de `test_backfill_discover.py`/`test_backfill_changes.py`: desde que
@@ -123,6 +135,12 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | `test_erro_em_genre_aborta_o_backfill` | Exceção em `collect_genre_data` propaga e impede `collect_configuration_data` de rodar (mesmo formato de "abortar no primeiro erro" de antes, agora por propagação direta, sem `invoke_lambda_sync`) |
 | `test_http_error_em_watch_providers_ref_nao_aborta_mas_pula_a_escrita` | `HTTPError` em `collect_watch_providers_ref` é capturado — não aborta o script, mas a tabela correspondente não é escrita nem validada |
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` / `test_outro_erro_nao_gera_codigo_de_retomada` / `test_expired_token_gera_codigo_75` (parametrizado) | Mesmos contratos de erro/retomada dos demais scripts sem checkpoint (`backfill_changes.py`) |
+
+### `TestGlueAgg`
+
+| Teste | O que verifica |
+|---|---|
+| `test_chamado_uma_vez_ao_final` | `trigger_agg_locally` chamado uma vez ao final de `main()`, com os argumentos corretos — este script não tem `failures`/checkpoint; "sem falhas" = chegou ao fim sem exceção |
 
 ## Casos de teste — `test_backfill_enriquecimento.py`
 
@@ -178,6 +196,18 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado só quando não há falhas; `main()` retorna `True` |
 | `test_nao_limpa_checkpoint_quando_ha_falhas` | Com alguma falha "soft", o checkpoint permanece (não chama `delete_object`); `main()` retorna `False` (consumido por `backfill_historico.py`) |
 
+### `TestGlueAgg`
+
+Mesmo padrão de `test_backfill_discover.py::TestGlueAgg` (`trigger_agg_locally` mockado, condicionado
+a `not failures` e a `trigger_agg=True`, chamado antes de `clear_checkpoint`).
+
+| Teste | O que verifica |
+|---|---|
+| `test_chamado_uma_vez_quando_sem_falhas` | `trigger_agg_locally` chamado uma vez, com os argumentos corretos |
+| `test_nao_chamado_quando_ha_falhas` | Não chamado quando sobra alguma unidade com falha |
+| `test_nao_chamado_quando_trigger_agg_false` | `main(trigger_agg=False)` suprime a chamada — usado por `backfill_historico.py` |
+| `test_chamado_antes_de_clear_checkpoint` | Ordem: `trigger_agg_locally` roda antes de `clear_checkpoint` |
+
 ## Casos de teste — `test_backfill_data_quality.py`
 
 ### `TestTriggerDqJob`
@@ -211,6 +241,9 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | `test_salva_checkpoint_apos_cada_submissao` | `put_object` chamado a cada submissão (submissão bem-sucedida já conta como concluída, fire-and-forget) |
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
 | `test_nao_pausa_quando_ano_inteiro_ja_esta_no_checkpoint` | Sem `time.sleep` quando nenhuma tabela do ano precisou ser submetida |
+
+Nenhum teste aqui cobre `trigger_agg_locally` — `backfill_data_quality.py` é o único script que não
+chama o Glue AGG (não escreve dado novo, só valida).
 
 ## Casos de teste — `test_backfill_traducao.py`
 
@@ -316,6 +349,12 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
 | `test_checkpoint_reflete_progresso_parcial_quando_interrompido` | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
 
+### `TestGlueAgg`
+
+| Teste | O que verifica |
+|---|---|
+| `test_chamado_antes_de_clear_checkpoint` | `trigger_agg_locally` chamado (com `GLUE_DATA_QUALITY_JOB_NAME`, novo para este script) antes de `clear_checkpoint`, com os argumentos corretos |
+
 ## Casos de teste — `test_backfill_rename_colunas.py`
 
 Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para
@@ -364,6 +403,12 @@ reprocessado).
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
 | `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado) | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
 
+### `TestGlueAgg`
+
+| Teste | O que verifica |
+|---|---|
+| `test_chamado_antes_de_clear_checkpoint` | `trigger_agg_locally` chamado (com `GLUE_DATA_QUALITY_JOB_NAME`, novo para este script) antes de `clear_checkpoint` — é o gatilho mais importante na prática, já que a query do AGG usa `processed_date`, coluna que só existe depois deste rename |
+
 ## Casos de teste — `test_backfill_changes.py`
 
 Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — sem checkpoint nem parâmetros de data, estruturalmente igual a `test_backfill_referencias.py`. A janela `[domingo passado, sábado de ontem]` é sempre resolvida dentro de `collect_changes_data` (`app/lambda_api`), fora do escopo deste script.
@@ -391,6 +436,20 @@ Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de dom
 |---|---|
 | `test_erro_da_lambda_interrompe_o_backfill` | `RuntimeError` (Lambda com erro) propaga e para o script |
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
+
+> Nota: as seções `TestContratoDoPayload`/`TestInvocacoes` acima descrevem o payload de invocação
+> da Lambda API (`only_changes_tables`) de uma versão anterior do script — `backfill_changes.py`
+> hoje não invoca mais a Lambda, roda `collect_changes_data`/`process_changed_ids` diretamente no
+> processo (ver docstring do script e `TestLoopPrincipal`/`TestDataQualityFinal` no arquivo de
+> teste real). Ver `test/scripts/test_backfill_changes.py` como fonte de verdade até esta seção
+> ser reescrita.
+
+### `TestGlueAgg` (`test_backfill_changes.py`)
+
+| Teste | O que verifica |
+|---|---|
+| `test_chamado_uma_vez_quando_sem_falhas` | `trigger_agg_locally` chamado uma vez ao final, com os argumentos corretos |
+| `test_nao_chamado_quando_ha_falhas` | Não chamado quando algum `content_type` falha (`if failures: return` já teria saído antes) |
 
 ## Casos de teste — `test_backfill_historico.py`
 
@@ -439,6 +498,18 @@ do estágio, não `tipo:ano`).
 | `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
 | `test_token_expirado_no_estagio_discover_propaga_e_nao_chama_enriquecimento` (parametrizado) | Um `ClientError` de token expirado levantado dentro de `backfill_discover.main()` propaga através de `backfill_historico.main()` sem ser capturado como falha soft |
 
+### `TestGlueAgg`
+
+Caso crítico da internalização do AGG: evitar 2 disparos por execução de `historico` (um por
+estágio encadeado).
+
+| Teste | O que verifica |
+|---|---|
+| `test_estagios_chamados_com_trigger_agg_false` | `backfill_discover.main`/`backfill_enriquecimento.main` são chamados com `trigger_agg=False` — suprime o disparo que cada um faria sozinho |
+| `test_chamado_exatamente_uma_vez_quando_ambos_estagios_sucedem` | `trigger_agg_locally` chamado exatamente 1 vez, no nível do próprio `historico`, com os argumentos corretos |
+| `test_nao_chamado_quando_discover_retorna_false` / `test_nao_chamado_quando_enriquecimento_retorna_false` | Não chamado se qualquer estágio retornar `False` |
+| `test_chamado_uma_unica_vez_mesmo_quando_ambos_estagios_ja_estavam_no_checkpoint` | Retomada: os dois estágios são pulados (já concluídos), mas o AGG ainda roda 1 vez (pode não ter sido disparado antes de uma interrupção anterior) |
+
 ## Casos de teste — `test_backfill_shared.py`
 
 ### Checkpoint (`load_checkpoint`/`save_checkpoint`/`clear_checkpoint`)
@@ -454,6 +525,22 @@ do estágio, não `tipo:ano`).
 | `test_chama_delete_object_com_a_chave_correta` | `clear_checkpoint` remove exatamente `tmdb/backfill_checkpoints/{table_group}.json` |
 | `test_codigos_de_token_expirado_retornam_true` / `test_outros_codigos_retornam_false` (parametrizados) | `is_expired_token_error` reconhece `ExpiredTokenException` (STS) e `ExpiredToken` (S3); rejeita outros códigos |
 | `test_expired_token_retorna_codigo_retomavel` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para token expirado |
+
+### `TestTriggerAggLocally`
+
+`run_athena_query`/`write_parquet_to_spec`/`trigger_glue_job` mockados na origem
+(`app.glue_agg.src.utils.*`, não em `backfill_shared.*` — a função importa esses símbolos
+localmente dentro dela mesma, ver docstring de `trigger_agg_locally`). O arquivo de teste importa
+`app.glue_agg.src.utils` antecipadamente (com o mesmo `sys.path.insert` de `app/glue_agg` que a
+função faz em runtime) porque `test/scripts/` não passa pelo mecanismo de alias de suíte Glue de
+`test/conftest.py`.
+
+| Teste | O que verifica |
+|---|---|
+| `test_caminho_feliz_chama_query_escrita_e_dq_na_ordem_certa` | `run_athena_query` → `write_parquet_to_spec` → `trigger_glue_job`, nessa ordem, com os argumentos corretos (réplica de `app/glue_agg/main.py`) |
+| `test_client_error_nao_token_expirado_e_logado_e_nao_propaga` | `ClientError` que não é token expirado é capturado e logado como `ERROR` — não propaga (não deve derrubar um backfill que já terminou) |
+| `test_client_error_token_expirado_propaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Token expirado propaga (recuperável via exit 75) |
+| `test_excecao_generica_e_logada_e_nao_propaga` | Qualquer outra exceção (ex.: `RuntimeError` de `write_parquet_to_spec`) também é capturada e logada, sem propagar |
 
 ### Helpers comuns (`require_env`, `apply_translate_cost_guard`, `read_year_range`, `run_with_retry_exit`, `log_resume_progress`)
 
