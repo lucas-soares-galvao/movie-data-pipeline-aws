@@ -276,6 +276,14 @@ jobs:
           # o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
           # se o timeout mudar, ajustar aqui também.
+          # ARN do tópico SNS de sucesso do backfill (scripts/backfill_shared.py:
+          # notify_backfill_success) — nome derivado do mesmo padrão de nomenclatura
+          # (project_prefix + ambiente) já usado acima; account_id extraído de ROLE_ARN (já
+          # disponível no env: deste step) em vez de aws sts get-caller-identity (chamada AWS
+          # extra) ou de um output novo do Terraform.
+          account_id=$(echo "$ROLE_ARN" | cut -d: -f5)
+          export SNS_TOPIC_ARN_BACKFILL_SUCCESS="arn:aws:sns:sa-east-1:${account_id}:${{ steps.project.outputs.project_prefix }}-backfill-success-notifications-${{ steps.env.outputs.name }}"
+
           LOG_FILE="$RUNNER_TEMP/backfill_output.log"
           : > "$LOG_FILE"
 

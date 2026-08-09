@@ -59,6 +59,7 @@ def _run_main(
     resultado: list | None = None,
     trigger_agg: bool = True,
     call_order: list | None = None,
+    notify_capture: list | None = None,
 ):
     """Roda bd.main() com collect_discover_data/read_from_sor/write_parquet_to_sot mockados.
 
@@ -73,6 +74,9 @@ def _run_main(
     call_order (se passado) recebe, na ordem real de execução, "trigger_agg_locally" e
     "clear_checkpoint" — usado para travar que o AGG roda antes do checkpoint ser limpo (ver
     scripts/backfill_shared.py:trigger_agg_locally, decisão de design #1 do plano).
+
+    notify_capture (se passado) recebe o mock de shared.notify_backfill_success — mesmo padrão
+    de resultado/call_order, para não mudar a tupla de mocks já retornada por esta função.
     """
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
@@ -88,6 +92,7 @@ def _run_main(
         patch("backfill_discover.write_parquet_to_sot") as mock_write,
         patch("backfill_discover.trigger_glue_job") as mock_trigger,
         patch("backfill_discover.shared.trigger_agg_locally") as mock_agg,
+        patch("backfill_discover.shared.notify_backfill_success") as mock_notify,
     ):
         mock_boto3.client.return_value = mock_s3
         if unit_side_effect is not None:
@@ -97,6 +102,8 @@ def _run_main(
         sucesso = bd.main(trigger_agg=trigger_agg)
         if resultado is not None:
             resultado.append(sucesso)
+        if notify_capture is not None:
+            notify_capture.append(mock_notify)
     return mock_collect, mock_read, mock_write, mock_sleep, mock_s3, mock_secret, mock_trigger, mock_agg
 
 
@@ -361,3 +368,39 @@ class TestGlueAgg:
             monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, call_order=call_order,
         )
         assert call_order == ["trigger_agg_locally", "clear_checkpoint"]
+
+
+class TestNotificacaoSucesso:
+    def test_chamado_uma_vez_quando_sem_falhas_e_trigger_agg_true(self, monkeypatch):
+        notify_capture: list = []
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, notify_capture=notify_capture,
+        )
+        mock_notify = notify_capture[0]
+        mock_notify.assert_called_once_with(
+            "discover",
+            "Backfill de discover concluído sem pendências: 2 unidade(s) processada(s) "
+            "(2020-2020), Data Quality e Glue AGG disparados.",
+        )
+
+    def test_nao_chamado_quando_ha_falhas(self, monkeypatch):
+        notify_capture: list = []
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            unit_side_effect=[Exception("falhou"), None],
+            notify_capture=notify_capture,
+        )
+        mock_notify = notify_capture[0]
+        mock_notify.assert_not_called()
+
+    def test_nao_chamado_quando_trigger_agg_false(self, monkeypatch):
+        notify_capture: list = []
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            trigger_agg=False,
+            notify_capture=notify_capture,
+        )
+        mock_notify = notify_capture[0]
+        mock_notify.assert_not_called()

@@ -68,7 +68,15 @@ class TestTriggerDqJob:
         assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
 
 
-def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mock_s3: MagicMock | None = None):
+def _run_main(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict | None = None,
+    mock_s3: MagicMock | None = None,
+    notify_capture: list | None = None,
+):
+    """notify_capture (se passado) recebe o mock de shared.notify_backfill_success — não muda
+    a tupla de mocks já retornada por esta função (consumida por unpacking fixo em quase todo
+    teste existente)."""
     _set_env(monkeypatch, overrides)
     mock_glue = MagicMock()
     mock_glue.start_job_run.side_effect = [{"JobRunId": f"run-{i}"} for i in range(1000)]
@@ -80,9 +88,12 @@ def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mo
     with (
         patch("backfill_data_quality.boto3") as mock_boto3,
         patch("backfill_data_quality.time.sleep") as mock_sleep,
+        patch("backfill_data_quality.shared.notify_backfill_success") as mock_notify,
     ):
         mock_boto3.client.side_effect = _client_factory
         bdq.main()
+        if notify_capture is not None:
+            notify_capture.append(mock_notify)
     return mock_glue, mock_sleep, mock_s3
 
 
@@ -180,3 +191,41 @@ class TestCheckpoint:
         _, mock_sleep, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"}, mock_s3=mock_s3)
 
         mock_sleep.assert_not_called()
+
+
+class TestNotificacaoSucesso:
+    def test_chamado_ao_final_com_table_group_e_contagem_corretos(self, monkeypatch):
+        notify_capture: list = []
+
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, notify_capture=notify_capture,
+        )
+
+        mock_notify = notify_capture[0]
+        mock_notify.assert_called_once_with(
+            "data_quality", "Backfill DQ concluído: 6 execução(ões) submetida(s) (2020-2020).",
+        )
+
+    def test_nao_chamado_quando_start_job_run_levanta_client_error_nao_relacionado_a_token_expirado(self, monkeypatch):
+        """Erro não relacionado a token expirado propaga e aborta o script antes do log/notificação
+        final — mesmo contrato de _trigger_dq_job (ver TestTriggerDqJob)."""
+        _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mock_glue = MagicMock()
+        mock_glue.start_job_run.side_effect = ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "x"}}, "StartJobRun",
+        )
+        mock_s3 = _s3_client_sem_checkpoint()
+
+        def _client_factory(service_name, **kwargs):
+            return {"glue": mock_glue, "s3": mock_s3}[service_name]
+
+        with (
+            patch("backfill_data_quality.boto3") as mock_boto3,
+            patch("backfill_data_quality.time.sleep"),
+            patch("backfill_data_quality.shared.notify_backfill_success") as mock_notify,
+        ):
+            mock_boto3.client.side_effect = _client_factory
+            with pytest.raises(ClientError):
+                bdq.main()
+
+        mock_notify.assert_not_called()

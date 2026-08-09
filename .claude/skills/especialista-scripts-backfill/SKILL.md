@@ -1,6 +1,6 @@
 ---
 name: especialista-scripts-backfill
-description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), ou entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
+description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`), ou a notificação de sucesso por e-mail (`backfill_shared.notify_backfill_success`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
 ---
 
 # Especialista em Scripts de Backfill
@@ -128,6 +128,23 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   derruba um backfill que já terminou com sucesso; o trigger agendado (`aws_glue_trigger.agg_weekly`,
   sábado/domingo 08:00 BRT) e o alarme SNS dedicado (`aws_cloudwatch_event_rule.glue_agg_failed`,
   `infra/cloudwatch_glue_alarms.tf`) continuam cobrindo o caso. Token expirado propaga normalmente.
+- **Notificação de sucesso via `backfill_shared.notify_backfill_success`** — publicação SNS direta por
+  código (boto3), sem EventBridge no meio, mesmo racional do tópico de métricas do Glue Data Quality
+  (`notify_failed_outcomes` em `app/glue_data_quality/src/utils.py`): não existe um "Job State Change"
+  nativo para um processo Python rodando fora do Glue. Chamada no mesmo ponto de código que já
+  representa "sucesso total" em cada script — regra prática: se o script já chama `clear_checkpoint`
+  ou `trigger_agg_locally` sem exceção, é ali que a notificação também deve ir; nunca antes de um
+  `return` antecipado por falha soft (`backfill_discover.py`/`backfill_enriquecimento.py`/
+  `backfill_changes.py`/`backfill_historico.py`) nem depois de um ponto que uma exceção não tratada já
+  teria abortado (padrão 1 acima). **Nunca propaga exceção** (nem token expirado) — diferente de
+  `trigger_agg_locally`, roda depois do `clear_checkpoint`, então deixar propagar forçaria
+  `run_with_retry_exit` a reprocessar o backfill inteiro só por uma falha de observabilidade; e o ARN do
+  tópico (`SNS_TOPIC_ARN_BACKFILL_SUCCESS`) é lido como opcional (`os.environ.get`, não `require_env`)
+  pelo mesmo motivo — a ausência da variável não pode abortar um backfill já concluído. **Suprimida
+  junto com `trigger_agg=False`** em `backfill_discover.py`/`backfill_enriquecimento.py`: quando
+  `backfill_historico.py` os encadeia, só ele notifica ao final dos dois estágios, não cada um
+  individualmente — evita 3 e-mails redundantes por execução de `historico`, mesmo racional já usado
+  para suprimir o disparo duplicado do Glue AGG.
 - **O step summary também expõe o resumo real do próprio backfill, extraído do log via `grep`**: a saída do
   `executar_script` é gravada em `$RUNNER_TEMP/backfill_output.log` via `tee` (com
   `codigo=${PIPESTATUS[0]}`, não `$?`, para capturar o exit code do script e não do `tee`). Isso existe porque
@@ -194,3 +211,8 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 - **Guard de custo de tradução**: se o script novo aceitar `TRANSLATE_PROVIDER` e depender de range de anos, chamar
   `apply_translate_cost_guard` explicitamente antes de resolver `translate_fn`/`detect_fn` — não assumir que o
   operador vai lembrar de usar `"google"` para backfills longos.
+- **Script de backfill novo deve chamar `shared.notify_backfill_success(table_group, summary)`** no mesmo ponto em
+  que já considera o backfill "sucesso total" (junto de `clear_checkpoint`/`trigger_agg_locally`, nunca antes de uma
+  falha propagar ou de um `return` antecipado) — não reimplementar publicação SNS própria nem inventar um tópico
+  novo. Se o script encadear outro que aceita `trigger_agg: bool`, replicar o mesmo gating para a notificação
+  (suprimir no script encadeado, notificar uma única vez no orquestrador).

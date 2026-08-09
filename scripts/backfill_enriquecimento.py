@@ -76,6 +76,12 @@ Glue AGG:
     terminou com sucesso) — o trigger agendado (sábado/domingo 08:00 BRT) e o alarme SNS de
     falha continuam cobrindo o caso.
 
+Notificação:
+    Se nenhuma unidade falhou e trigger_agg=True, publica no tópico SNS de sucesso do
+    backfill (SNS_TOPIC_ARN_BACKFILL_SUCCESS, opcional) — ver
+    backfill_shared.notify_backfill_success. Suprimida junto com trigger_agg=False (chamado
+    por backfill_historico.py), que notifica uma única vez ao final dos dois estágios.
+
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
     do S3/Athena/Secrets Manager), o script sai com exit code 75
@@ -252,6 +258,12 @@ def main(trigger_agg: bool = True) -> bool:
                 table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
                 dq_job_name=dq_job_name,
                 environment=shared.require_env("ENVIRONMENT"),
+            )
+            shared.notify_backfill_success(
+                table_group,
+                f"Backfill de enriquecimento concluído sem pendências: {len(pendentes)} "
+                f"unidade(s) processada(s) ({start_year}-{end_year}), Data Quality e Glue "
+                f"AGG disparados.",
             )
         shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 

@@ -53,6 +53,10 @@ Glue AGG:
     logada como ERROR mas não derruba o backfill (que já terminou com sucesso) — o trigger
     agendado (sábado/domingo 08:00 BRT) e o alarme SNS de falha continuam cobrindo o caso.
 
+Notificação:
+    Mesma condição do Glue AGG: só notifica se nenhum content_type falhou (ver
+    backfill_shared.notify_backfill_success).
+
 Retomada automática:
     Diferente da invocação síncrona e curta da Lambda que este script fazia antes, agora ele faz
     chamadas reais de Athena/S3/Secrets Manager/TMDB API no próprio processo — mais exposto a
@@ -191,6 +195,9 @@ def main() -> None:
         table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
         dq_job_name=dq_job_name,
         environment=shared.require_env("ENVIRONMENT"),
+    )
+    shared.notify_backfill_success(
+        "changes", "Changes disparado com sucesso para movie e tv, Data Quality e Glue AGG disparados.",
     )
 
 

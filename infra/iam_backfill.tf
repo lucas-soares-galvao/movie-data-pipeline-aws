@@ -653,6 +653,29 @@ resource "aws_iam_role_policy" "backfill_translate" {
   })
 }
 
+# =============================================================================
+# POLICY 7 — SNS (todos os 8 scripts, via scripts/backfill_shared.py:
+# notify_backfill_success, chamada uma única vez ao final de cada script, só no
+# caminho de sucesso total). Publicação direta por código (boto3), sem
+# EventBridge no meio — mesmo racional de glue_dq_sns_publish
+# (infra/iam_policies.tf), já que não existe um "Job State Change" nativo para
+# um processo Python rodando fora do Glue.
+# =============================================================================
+resource "aws_iam_role_policy" "backfill_sns_publish" {
+  name = "${local.tmdb_prefix}-backfill-sns-publish-${var.env}"
+  role = aws_iam_role.backfill.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "PublishBackfillSuccess"
+      Effect   = "Allow"
+      Action   = "sns:Publish"
+      Resource = aws_sns_topic.backfill_success_notifications.arn
+    }]
+  })
+}
+
 output "backfill_role_arn" {
   description = "ARN da role de backfill manual (usar como valor da secret AWS_ASSUME_ROLE_ARN_BACKFILL_{DEV|PROD})"
   value       = aws_iam_role.backfill.arn

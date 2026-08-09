@@ -12,6 +12,7 @@ backfill_enriquecimento.py:
   - mensagem de log de progresso do checkpoint (`log_resume_progress`)
   - checkpoint em S3 para retomada automática de backfills (`load_checkpoint`,
     `save_checkpoint`, `clear_checkpoint` e helpers de token expirado)
+  - notificação por e-mail (SNS) de sucesso total do backfill (`notify_backfill_success`)
 
 Checkpoint em S3
 ----------------
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+import boto3
 from botocore.exceptions import ClientError
 
 _SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
@@ -388,3 +390,44 @@ def trigger_agg_locally(
             "Glue AGG (local) processado com sucesso — tabela unificada gravada e Data "
             "Quality acionado."
         )
+
+
+def notify_backfill_success(table_group: str, summary: str) -> None:
+    """Publica no SNS de sucesso do backfill — última etapa de um script já concluído.
+
+    ARN lido de SNS_TOPIC_ARN_BACKFILL_SUCCESS (opcional, não require_env): sem ela,
+    loga WARNING e não publica, em vez de abortar — a ausência de uma variável só de
+    notificação não pode derrubar um backfill que já terminou com sucesso, e isso
+    também permite rodar os scripts localmente (fora do workflow) sem configurá-la.
+
+    Nunca propaga exceção (nem token expirado): diferente de trigger_agg_locally, esta
+    função roda depois de clear_checkpoint — deixar propagar forçaria run_with_retry_exit
+    a sinalizar exit 75 e reprocessar o backfill inteiro do zero só por causa de uma
+    falha de observabilidade.
+
+    Args:
+        table_group: identifica o backfill no corpo/logs (o assunto do email é fixo,
+            sem table_group — quem identifica o backfill é o corpo da mensagem, que já
+            nomeia o tipo em todos os 8 scripts, ex.: "Backfill de discover concluído...").
+        summary: corpo da mensagem — reaproveita a mesma string já logada como
+            "concluído" pelo script chamador.
+    """
+    topic_arn = os.environ.get("SNS_TOPIC_ARN_BACKFILL_SUCCESS")
+    if not topic_arn:
+        logger.warning(
+            "SNS_TOPIC_ARN_BACKFILL_SUCCESS não definida — notificação de sucesso do "
+            "backfill '%s' não enviada.", table_group,
+        )
+        return
+
+    environment = os.environ.get("ENVIRONMENT", "?").upper()
+    try:
+        boto3.client("sns").publish(
+            TopicArn=topic_arn,
+            Subject=f"[{environment}] BACKFILL - SUCESSO",
+            Message=summary,
+        )
+    except Exception as exc:  # noqa: BLE001 — falha ao notificar não deve afetar um backfill já concluído
+        logger.error("Falha ao publicar notificação de sucesso do backfill '%s': %s", table_group, exc)
+    else:
+        logger.info("Notificação de sucesso do backfill '%s' enviada via SNS.", table_group)

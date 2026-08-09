@@ -35,6 +35,12 @@ Retomada automática:
     e roda o script de novo — como o progresso é lido do checkpoint em S3
     (s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json), as
     execuções (tabela+ano) já submetidas são puladas.
+
+Notificação:
+    Ao final, publica no tópico SNS de sucesso do backfill (SNS_TOPIC_ARN_BACKFILL_SUCCESS,
+    opcional) — ver backfill_shared.notify_backfill_success. "Submetido" não garante que o job
+    DQ terminou com sucesso (disparo assíncrono, fire-and-forget) — a notificação cobre apenas a
+    submissão, não o resultado de cada execução.
 """
 
 import os
@@ -143,6 +149,10 @@ def main() -> None:
 
     shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
     logger.info("Backfill DQ concluído: %d execuções submetidas.", submitted)
+    shared.notify_backfill_success(
+        table_group,
+        f"Backfill DQ concluído: {submitted} execução(ões) submetida(s) ({start_year}-{end_year}).",
+    )
 
 
 if __name__ == "__main__":
