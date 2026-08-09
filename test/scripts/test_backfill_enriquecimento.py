@@ -54,11 +54,15 @@ def _run_main(
     overrides: dict | None = None,
     unit_side_effect=None,
     mock_s3: MagicMock | None = None,
+    resultado: list | None = None,
 ):
     """Roda be.main() com run_details_and_watch_providers_for_year/trigger_glue_job mockados.
 
     unit_side_effect define o comportamento de run_details_and_watch_providers_for_year por
     unidade — lista de exceções/None (na ordem das unidades pendentes) ou uma função.
+
+    resultado (se passado) recebe o retorno bool de be.main() — parâmetro à parte para não mudar
+    a tupla de mocks já retornada por esta função (consumida por *_ em quase todo teste existente).
     """
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
@@ -73,7 +77,9 @@ def _run_main(
         mock_boto3.client.return_value = mock_s3
         if unit_side_effect is not None:
             mock_run.side_effect = unit_side_effect
-        be.main()
+        sucesso = be.main()
+        if resultado is not None:
+            resultado.append(sucesso)
     return mock_run, mock_sleep, mock_s3, mock_secret, mock_trigger
 
 
@@ -229,22 +235,30 @@ class TestCheckpoint:
 
     def test_limpa_checkpoint_ao_concluir_tudo_com_sucesso(self, monkeypatch):
         mock_s3 = _s3_client_sem_checkpoint()
+        resultado: list = []
 
-        _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3)
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            mock_s3=mock_s3, resultado=resultado,
+        )
 
         mock_s3.delete_object.assert_called_once()
+        assert resultado == [True]
 
     def test_nao_limpa_checkpoint_quando_ha_falhas(self, monkeypatch):
         mock_s3 = _s3_client_sem_checkpoint()
+        resultado: list = []
 
         _run_main(
             monkeypatch,
             {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
             unit_side_effect=[Exception("falhou"), None],
             mock_s3=mock_s3,
+            resultado=resultado,
         )
 
         mock_s3.delete_object.assert_not_called()
+        assert resultado == [False]
 
 
 class TestDataQualityFinal:
