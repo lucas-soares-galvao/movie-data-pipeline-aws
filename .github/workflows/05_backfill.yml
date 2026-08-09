@@ -11,7 +11,11 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - qualquer outro branch → falha (ver step "Resolve environment from branch")
 #
 # Grupos de tabelas disponíveis:
-#   - discover              — gaps de anos via Lambda (ETL → DQ → Details → AGG)
+#   - discover              — popula as tabelas discover rodando a coleta TMDB e a transformação
+#                             equivalente ao Glue ETL localmente neste workflow (sem acionar Lambda
+#                             nem o job Glue ETL — ver scripts/backfill_discover.py), disparando o
+#                             Glue Data Quality uma única vez ao final, cobrindo todo o range de
+#                             anos processado
 #   - referencias           — atualiza genre, configuration, watch_providers_ref rodando a coleta
 #                             TMDB e a transformação equivalente ao Glue ETL localmente neste
 #                             workflow (sem acionar Lambda nem o job Glue ETL — ver
@@ -142,7 +146,7 @@ jobs:
           # Formatter.converter de horário de São Paulo) — instalado sempre, não só
           # nos 2 table_group abaixo, para não depender da base IANA do runner.
           pip install boto3 tzdata
-          if [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ] || [ "${{ inputs.table_group }}" = "referencias" ]; then
+          if [ "${{ inputs.table_group }}" = "discover" ] || [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ] || [ "${{ inputs.table_group }}" = "referencias" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -163,29 +167,28 @@ jobs:
           # acionar o Glue Details como job.
           GLUE_DATA_QUALITY_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-data-quality-${{ steps.env.outputs.name }}
           GLUE_AGG_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-agg-${{ steps.env.outputs.name }}
-          LAMBDA_FUNCTION_NAME: ${{ steps.project.outputs.project_prefix }}-lambda-api-${{ steps.env.outputs.name }}
 
           # Secret com a chave de API do TMDB — mesmo ARN usado por infra/glue_details.tf (argumento
           # TMDB_SECRET_ARN do job real). Este workflow é workflow_dispatch (não workflow_call), então
           # lê direto o secret do repositório por ambiente (mesmo par usado em
           # 00_pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
           # de 02_terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Lido
-          # por backfill_enriquecimento.py, backfill_changes.py e backfill_referencias.py (via
-          # get_api_secret), que precisam da chave para chamar a API do TMDB fora do runtime do
-          # Glue/Lambda.
+          # por backfill_discover.py, backfill_enriquecimento.py, backfill_changes.py e
+          # backfill_referencias.py (via get_api_secret), que precisam da chave para chamar a API
+          # do TMDB fora do runtime do Glue/Lambda.
           TMDB_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
 
           # Databases
           GLUE_DATABASE_MOVIE: db_${{ steps.project.outputs.project_prefix }}_movie_${{ steps.env.outputs.name }}
           GLUE_DATABASE_TV: db_${{ steps.project.outputs.project_prefix }}_tv_${{ steps.env.outputs.name }}
-          GLUE_DATABASE_UNIFIED: db_${{ steps.project.outputs.project_prefix }}_unified_${{ steps.env.outputs.name }}
 
           # Buckets
-          # SOR: JSON bruto coletado do TMDB (só backfill_referencias.py, que escreve genre/
-          # configuration/watch_providers_ref no mesmo layout que a Lambda API usaria)
-          # SOT: parquets reais de discover/details (backfill_traducao.py) e das 6 tabelas de
-          # referência (backfill_referencias.py)
-          # TEMP: checkpoint de retomada de todos os 4 scripts que iteram por ano
+          # SOR: JSON bruto coletado do TMDB (backfill_discover.py, que escreve discover, e
+          # backfill_referencias.py, que escreve genre/configuration/watch_providers_ref — ambos no
+          # mesmo layout que a Lambda API usaria)
+          # SOT: parquets reais de discover (backfill_discover.py e backfill_traducao.py),
+          # details (backfill_traducao.py) e das 6 tabelas de referência (backfill_referencias.py)
+          # TEMP: checkpoint de retomada dos scripts que iteram por ano
           S3_BUCKET_SOR: lsg-sa-east-1-bucket-sor-${{ steps.env.outputs.name }}
           S3_BUCKET_SOT: lsg-sa-east-1-bucket-sot-${{ steps.env.outputs.name }}
           S3_BUCKET_TEMP: lsg-sa-east-1-bucket-temp-${{ steps.env.outputs.name }}
