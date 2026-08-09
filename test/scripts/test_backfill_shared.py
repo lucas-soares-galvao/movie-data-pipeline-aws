@@ -26,7 +26,7 @@ from botocore.exceptions import ClientError
 # falharia com ModuleNotFoundError: No module named 'src' na primeira importação da suíte.
 sys.path.insert(0, str(bs._REPO_ROOT / "app" / "shared_src"))
 sys.path.insert(0, str(bs._REPO_ROOT / "app" / "glue_agg"))
-import app.glue_agg.src.utils as _glue_agg_utils  # noqa: E402
+import app.glue_agg.src.utils as _glue_agg_utils
 
 
 def _client_error(codigo: str) -> ClientError:
