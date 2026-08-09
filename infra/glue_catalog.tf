@@ -792,6 +792,38 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "string"
     }
     columns {
+      name = "next_episode_air_date"
+      type = "string"
+    }
+    columns {
+      name = "next_episode_number"
+      type = "int"
+    }
+    columns {
+      name = "next_episode_season_number"
+      type = "int"
+    }
+    columns {
+      name = "next_episode_name"
+      type = "string"
+    }
+    columns {
+      name = "season_numbers"
+      type = "string"
+    }
+    columns {
+      name = "season_air_dates"
+      type = "string"
+    }
+    columns {
+      name = "season_episode_counts"
+      type = "string"
+    }
+    columns {
+      name = "season_names"
+      type = "string"
+    }
+    columns {
       name = "trailer_url"
       type = "string"
     }

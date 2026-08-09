@@ -539,6 +539,37 @@ def _extract_alternative_titles(alternative_titles: dict, content_type: str) -> 
     return ", ".join(names) if names else None
 
 
+def _extract_next_episode_to_air(detail: dict) -> dict:
+    """Campos escalares do próximo episódio agendado (None quando a série não tem episódio futuro confirmado)."""
+    next_ep = detail.get("next_episode_to_air") or {}  # a API retorna a chave com valor None, não ausente
+    return {
+        "next_episode_air_date":      next_ep.get("air_date"),
+        "next_episode_number":        next_ep.get("episode_number"),
+        "next_episode_season_number": next_ep.get("season_number"),
+        "next_episode_name":          next_ep.get("name"),
+    }
+
+
+def _extract_seasons(detail: dict) -> dict:
+    """Colunas paralelas (comma-separated) com número, data de estreia, qtd. de episódios e nome de cada temporada.
+
+    Sem filtro por coluna (diferente de _extract_recommended_titles/_extract_recommended_ids):
+    season_air_dates pode ter posição vazia mesmo com season_numbers preenchido na mesma posição
+    (temporada futura anunciada sem data ainda) — preservar o alinhamento posicional é obrigatório.
+    """
+    seasons = detail.get("seasons") or []
+    numbers = [str(s["season_number"]) if s.get("season_number") is not None else "" for s in seasons]
+    air_dates = [s.get("air_date") or "" for s in seasons]
+    episode_counts = [str(s["episode_count"]) if s.get("episode_count") is not None else "" for s in seasons]
+    names = [s.get("name") or "" for s in seasons]
+    return {
+        "season_numbers":        ", ".join(numbers) if numbers else None,
+        "season_air_dates":      ", ".join(air_dates) if air_dates else None,
+        "season_episode_counts": ", ".join(episode_counts) if episode_counts else None,
+        "season_names":          ", ".join(names) if names else None,
+    }
+
+
 # ── Montagem do registro final ────────────────────────────────────────────────
 # As três funções abaixo separam os campos em: comuns a ambos os tipos, exclusivos
 # de filmes e exclusivos de séries. _parse_detail() combina os três em um dict final.
@@ -611,6 +642,8 @@ def _tv_fields(detail: dict) -> dict:
         "last_air_date":      detail.get("last_air_date"),
         "tv_type":            detail.get("type"),
         "certification":      _extract_certification_br_tv(detail.get("content_ratings", {})),
+        **_extract_next_episode_to_air(detail),
+        **_extract_seasons(detail),
     }
 
 
