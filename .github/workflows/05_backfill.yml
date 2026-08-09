@@ -52,12 +52,15 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 # Ao final de qualquer execução bem-sucedida (exit 0), o workflow escreve no step
 # summary um resumo real do que o script de backfill fez (não só "sucesso" pelo exit
 # code — para detalhes_e_providers/data_quality, exit 0 não garante que toda unidade
-# teve sucesso, ver scripts/scripts.md). Em seguida, para todo grupo EXCETO
-# data_quality (que só valida, não escreve dado novo), dispara o glue_agg uma única
-# vez, como última etapa, e aguarda sua conclusão (polling) para propagar o backfill
-# à camada SPEC sem esperar o próximo ciclo agendado (sábado/domingo 08:00 BRT — ver
-# aws_glue_trigger.agg_weekly em infra/glue_agg.tf). Nem a falha ao disparar nem uma
-# conclusão != SUCCEEDED do glue_agg derrubam o workflow — o trigger agendado e o
+# teve sucesso, ver scripts/scripts.md). Cada table_group EXCETO data_quality (que só
+# valida, não escreve dado novo) roda a lógica do Glue AGG (query Athena de unificação
+# + escrita da tabela SPEC + disparo do Data Quality sobre a tabela unificada) dentro
+# do próprio processo do script, uma única vez, no mesmo ponto em que hoje já limpa o
+# checkpoint — ver scripts/backfill_shared.py:trigger_agg_locally e as docstrings de
+# cada script ("Glue AGG"). Chamada síncrona (awswrangler bloqueia até terminar), sem
+# precisar de polling via AWS CLI como antes. Uma falha nessa etapa é logada como
+# ERROR mas não derruba o backfill (que já terminou com sucesso) — o trigger agendado
+# (sábado/domingo 08:00 BRT, aws_glue_trigger.agg_weekly em infra/glue_agg.tf) e o
 # alarme SNS de falha (infra/cloudwatch_glue_alarms.tf) continuam cobrindo o caso.
 #
 # Todas as variáveis de ambiente dos recursos AWS são derivadas automaticamente
@@ -172,9 +175,21 @@ jobs:
           # GLUE_DETAILS_JOB_NAME não é mais passada: backfill_enriquecimento.py roda a lógica de
           # enriquecimento diretamente no processo do backfill (ver
           # run_details_and_watch_providers_for_year em app/glue_details/src/utils.py), sem mais
-          # acionar o Glue Details como job.
+          # acionar o Glue Details como job. GLUE_AGG_JOB_NAME também não é mais passada pelo
+          # mesmo motivo: cada script roda o Glue AGG em processo (ver
+          # scripts/backfill_shared.py:trigger_agg_locally) — sem acionar `aws glue
+          # start-job-run` para o AGG.
           GLUE_DATA_QUALITY_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-data-quality-${{ steps.env.outputs.name }}
-          GLUE_AGG_JOB_NAME: ${{ steps.project.outputs.project_prefix }}-glue-agg-${{ steps.env.outputs.name }}
+
+          # Glue AGG (executado dentro do próprio script de backfill, ver "Glue AGG" no
+          # comentário de topo deste arquivo) — nomes derivados do mesmo padrão de nomenclatura
+          # já usado acima (project_prefix + ambiente), sem precisar de novo output do Terraform.
+          # Não usado por data_quality (único table_group que não roda o AGG).
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+          S3_PREFIX_SPEC: ${{ steps.project.outputs.project_prefix }}
+          S3_BUCKET_SPEC: lsg-sa-east-1-bucket-spec-${{ steps.env.outputs.name }}
+          DB_UNIFIED: db_${{ steps.project.outputs.project_prefix }}_unified_${{ steps.env.outputs.name }}
+          TABLE_DISCOVER_UNIFIED: tb_${{ steps.project.outputs.project_prefix }}_discover_unified_${{ steps.env.outputs.name }}
 
           # Secret com a chave de API do TMDB — mesmo ARN usado por infra/glue_details.tf (argumento
           # TMDB_SECRET_ARN do job real). Este workflow é workflow_dispatch (não workflow_call), então
@@ -316,33 +331,14 @@ jobs:
             echo "- ✅ Sem erros registrados no log." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          # --- glue_agg: dispara e aguarda conclusão (exceto data_quality) ---
+          # --- glue_agg: agora executado dentro do próprio script de backfill ---
+          # A query Athena e a escrita Parquet já são síncronas (awswrangler bloqueia até
+          # terminar) — sem polling necessário, diferente do antigo `aws glue start-job-run`.
+          # Erros/sucesso do AGG aparecem como linhas de log normais (mesmo $LOG_FILE, ver seção
+          # "Backfill" acima) — ver scripts/backfill_shared.py:trigger_agg_locally.
           echo "## glue_agg" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ inputs.table_group }}" != "data_quality" ]; then
-            echo "Disparando glue_agg ($GLUE_AGG_JOB_NAME) para propagar o backfill à camada SPEC..."
-            run_id=$(aws glue start-job-run --job-name "$GLUE_AGG_JOB_NAME" --region sa-east-1 \
-              --query 'JobRunId' --output text 2>&1) || run_id=""
-
-            if [ -z "$run_id" ]; then
-              echo "::warning::Falha ao disparar glue_agg após o backfill — o trigger agendado (sáb/dom 08:00 BRT) ainda cobre este caso."
-              echo "- ⚠️ Falha ao disparar" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "glue_agg disparado (run_id=$run_id) — aguardando conclusão..."
-              estado="RUNNING"
-              while [ "$estado" = "RUNNING" ] || [ "$estado" = "STARTING" ] || [ "$estado" = "WAITING" ]; do
-                sleep 30
-                estado=$(aws glue get-job-run --job-name "$GLUE_AGG_JOB_NAME" --run-id "$run_id" \
-                  --region sa-east-1 --query 'JobRun.JobRunState' --output text 2>&1) || estado="ERROR"
-              done
-
-              echo "glue_agg finalizado com estado: $estado"
-              if [ "$estado" = "SUCCEEDED" ]; then
-                echo "- ✅ Sucesso (run_id=$run_id)" >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "::warning::glue_agg terminou em estado $estado (run_id=$run_id) — ver Glue Console / notificação SNS de falha."
-                echo "- ❌ Falha — estado \`$estado\` (run_id=$run_id)" >> "$GITHUB_STEP_SUMMARY"
-              fi
-            fi
+            echo "- Executado dentro do próprio script de backfill (sem job Glue separado) — ver seção \"Backfill\" acima para erros/sucesso." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- não disparado (\`data_quality\` não escreve dado novo)" >> "$GITHUB_STEP_SUMMARY"
           fi

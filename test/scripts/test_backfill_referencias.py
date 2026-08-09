@@ -23,6 +23,7 @@ ENV_BASE = {
     "AWS_REGION": "sa-east-1",
     "S3_BUCKET_SOR": "bucket-sor-test",
     "S3_BUCKET_SOT": "bucket-sot-test",
+    "S3_BUCKET_TEMP": "bucket-temp-test",
     "GLUE_DATABASE_MOVIE": "db_movie",
     "GLUE_DATABASE_TV": "db_tv",
     "TABLE_GENRE_MOVIE": "tb_genre_movie",
@@ -33,6 +34,11 @@ ENV_BASE = {
     "TABLE_WATCH_PROVIDERS_REF_TV": "tb_wp_ref_tv",
     "TMDB_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
+    "S3_BUCKET_SPEC": "bucket-spec-test",
+    "S3_PREFIX_SPEC": "tmdb",
+    "DB_UNIFIED": "db_unified",
+    "TABLE_DISCOVER_UNIFIED": "tb_discover_unified",
+    "ENVIRONMENT": "dev",
 }
 
 
@@ -59,6 +65,7 @@ def _run_main(
         patch("backfill_referencias.read_from_sor", return_value="df-fake") as mock_read,
         patch("backfill_referencias.write_parquet_to_sot") as mock_write,
         patch("backfill_referencias.trigger_glue_job") as mock_trigger,
+        patch("backfill_referencias.shared.trigger_agg_locally") as mock_agg,
     ):
         mock_boto3.client.return_value = MagicMock()
         if collect_watch_providers_side_effect is not None:
@@ -73,6 +80,7 @@ def _run_main(
         "read": mock_read,
         "write": mock_write,
         "trigger": mock_trigger,
+        "agg": mock_agg,
     }
 
 
@@ -139,6 +147,22 @@ class TestDataQuality:
         assert call("dq-job", TABLE_NAME="tb_wp_ref_tv", DATABASE="db_tv") in mocks["trigger"].call_args_list
 
 
+class TestGlueAgg:
+    def test_chamado_uma_vez_ao_final(self, monkeypatch):
+        mocks = _run_main(monkeypatch)
+        mocks["agg"].assert_called_once_with(
+            s3_bucket_spec="bucket-spec-test",
+            s3_prefix_spec="tmdb",
+            s3_bucket_temp="bucket-temp-test",
+            db_movie="db_movie",
+            db_tv="db_tv",
+            db_unified="db_unified",
+            table_name="tb_discover_unified",
+            dq_job_name="dq-job",
+            environment="dev",
+        )
+
+
 class TestErros:
     def test_erro_em_genre_aborta_o_backfill(self, monkeypatch):
         _set_env(monkeypatch)
@@ -150,11 +174,13 @@ class TestErros:
             patch("backfill_referencias.read_from_sor"),
             patch("backfill_referencias.write_parquet_to_sot"),
             patch("backfill_referencias.trigger_glue_job"),
+            patch("backfill_referencias.shared.trigger_agg_locally") as mock_agg,
             pytest.raises(RuntimeError),
         ):
             mock_boto3.client.return_value = MagicMock()
             br.main()
         mock_config.assert_not_called()
+        mock_agg.assert_not_called()
 
     def test_http_error_em_watch_providers_ref_nao_aborta_mas_pula_a_escrita(self, monkeypatch):
         mocks = _run_main(

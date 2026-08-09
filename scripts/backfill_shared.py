@@ -31,12 +31,14 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from botocore.exceptions import ClientError
 
 _SAO_PAULO_TZ = ZoneInfo("America/Sao_Paulo")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _sao_paulo_converter(timestamp: float) -> time.struct_time:
@@ -277,3 +279,112 @@ def clear_checkpoint(s3_client: Any, bucket: str, table_group: str) -> None:
         log_expired_token(exc, f"remoção do checkpoint '{key}'")
         raise
     logger.info("Checkpoint '%s' removido — backfill concluído sem pendências.", key)
+
+
+def trigger_agg_locally(
+    *,
+    s3_bucket_spec: str,
+    s3_prefix_spec: str,
+    s3_bucket_temp: str,
+    db_movie: str,
+    db_tv: str,
+    db_unified: str,
+    table_name: str,
+    dq_job_name: str,
+    environment: str,
+) -> None:
+    """Roda o Glue AGG dentro do processo do backfill, sem acioná-lo como job Glue.
+
+    Réplica direta de app/glue_agg/main.py: run_athena_query -> write_parquet_to_spec ->
+    trigger_glue_job (dispara o Glue Data Quality sobre a tabela unificada, fire-and-forget,
+    mesmo padrão já usado pelos demais scripts). Viável porque app/glue_agg/src/utils.py é
+    Python puro (awswrangler + pandas, sem Spark/GlueContext) — só get_parameters_glue()
+    dependeria do runtime do Glue (awsglue.utils.getResolvedOptions), e não é usada aqui.
+
+    Import local (não no topo do módulo) com um sys.path.insert extra para app/glue_agg:
+    diferente de app/glue_etl/src/utils.py e app/glue_details/src/utils.py (que só importam de
+    shared_utils), app/glue_agg/src/utils.py faz `from src.queries import
+    _DISCOVER_UNIFIED_QUERY` — import absoluto de um pacote top-level literal "src", herdado de
+    como o wheel do job real é empacotado (ver infra/scripts/build_glue_wheel.py). Sem inserir
+    app/glue_agg (não só a raiz do repo) em sys.path antes deste import,
+    `from app.glue_agg.src.utils import ...` levanta `ModuleNotFoundError: No module named 'src'`.
+
+    Chamar SEMPRE antes de clear_checkpoint, nunca depois: se este helper propagar token
+    expirado, run_with_retry_exit traduz em exit 75 e o script inteiro é re-executado — se o
+    checkpoint já tivesse sido limpo, a reexecução reprocessaria todas as unidades do zero só
+    para retentar o AGG. Chamando antes, uma reexecução por token expirado encontra
+    `pendentes=[]` (checkpoint intacto) e vai direto para o AGG de novo.
+
+    Erros que não são token expirado são capturados e logados como ERROR — uma falha aqui não
+    deve derrubar um backfill que já terminou com sucesso: o trigger agendado (sábado/domingo
+    08:00 BRT, aws_glue_trigger.agg_weekly) e o alarme SNS de falha
+    (infra/cloudwatch_glue_alarms.tf) continuam cobrindo o caso, mesma garantia que o
+    `::warning::` do workflow dava antes desta função existir. Token expirado propaga — é
+    recuperável, e run_with_retry_exit precisa vê-lo para traduzir em exit code 75.
+
+    Args:
+        s3_bucket_spec: Bucket S3 SPEC de destino da tabela unificada.
+        s3_prefix_spec: Prefixo do caminho S3 dentro do bucket SPEC (= project_prefix, "tmdb").
+        s3_bucket_temp: Bucket S3 TEMP usado como área de resultados temporários do Athena.
+        db_movie:       Banco de dados de filmes no Glue Catalog.
+        db_tv:          Banco de dados de séries no Glue Catalog.
+        db_unified:     Banco de dados unificado no Glue Catalog.
+        table_name:     Nome da tabela unificada de destino (tb_..._discover_unified_<env>).
+        dq_job_name:    Nome do job Glue Data Quality a disparar sobre a tabela unificada.
+        environment:    "dev" ou "prod" — usado para construir os nomes das tabelas de origem.
+
+    Returns:
+        None. Nunca levanta exceção, exceto ClientError de token expirado.
+    """
+    sys.path.insert(0, str(_REPO_ROOT))
+    sys.path.insert(0, str(_REPO_ROOT / "app" / "shared_src"))
+    sys.path.insert(0, str(_REPO_ROOT / "app" / "glue_agg"))
+    from app.glue_agg.src.utils import (
+        run_athena_query,
+        trigger_glue_job,
+        write_parquet_to_spec,
+    )
+
+    logger.info(
+        "Rodando Glue AGG localmente (sem acionar job) para propagar o backfill à camada SPEC..."
+    )
+    try:
+        df = run_athena_query(
+            db_movie=db_movie,
+            db_tv=db_tv,
+            db_unified=db_unified,
+            s3_bucket_temp=s3_bucket_temp,
+            env=environment,
+        )
+        write_parquet_to_spec(
+            df=df,
+            s3_bucket_spec=s3_bucket_spec,
+            s3_prefix_spec=s3_prefix_spec,
+            table_name=table_name,
+            database=db_unified,
+        )
+        trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=db_unified)
+    except ClientError as exc:
+        if is_expired_token_error(exc):
+            log_expired_token(exc, "execução local do Glue AGG")
+            raise
+        logger.error(
+            "Falha ao rodar o Glue AGG localmente: %s. O backfill principal já terminou; o "
+            "trigger agendado (sáb/dom 08:00 BRT) e o alarme SNS de falha continuam cobrindo "
+            "este caso.", exc,
+        )
+    except Exception as exc:  # noqa: BLE001 — falha do AGG não deve derrubar o backfill já concluído
+        logger.error(
+            "Falha ao rodar o Glue AGG localmente: %s. O backfill principal já terminou; o "
+            "trigger agendado (sáb/dom 08:00 BRT) e o alarme SNS de falha continuam cobrindo "
+            "este caso.", exc,
+        )
+    else:
+        # Fraseado deliberadamente para NÃO bater com a regex do workflow que extrai o
+        # "resumo real" do log (grep -E "conclu[ií]d|atualizadas|disparado com sucesso|
+        # submetidas" | tail -1) — se batesse, essa linha substituiria o resumo do
+        # backfill em si no step summary, já que é a última linha cronologicamente.
+        logger.info(
+            "Glue AGG (local) processado com sucesso — tabela unificada gravada e Data "
+            "Quality acionado."
+        )

@@ -69,13 +69,21 @@ resource "aws_iam_role" "backfill" {
 }
 
 # =============================================================================
-# POLICY 1 — Glue Jobs Data Quality e AGG (disparo fire-and-forget do Data
-# Quality ao final de backfill_discover.py/backfill_enriquecimento.py/
-# backfill_data_quality.py/backfill_changes.py, e o disparo + polling do
-# glue_agg ao final de qualquer grupo elegível — todos exceto data_quality,
-# ver step "Run backfill" em 05_backfill.yml). GetJobRun também é usado para
-# o AGG porque o workflow faz polling do estado até um estado terminal, não
-# é fire-and-forget.
+# POLICY 1 — Glue Job Data Quality (disparo fire-and-forget ao final de
+# backfill_discover.py/backfill_referencias.py/backfill_enriquecimento.py/
+# backfill_changes.py/backfill_traducao.py/backfill_rename_colunas.py/
+# backfill_historico.py — via scripts/backfill_shared.py:trigger_agg_locally —
+# e do próprio backfill_data_quality.py, via _trigger_dq_job). Sem GetJobRun:
+# nenhum caminho de backfill espera o job terminar (fire-and-forget em todos,
+# ver especialista-scripts-backfill).
+#
+# agg_job_pythonshell e glue:GetJobRun NÃO estão mais no Resource/Action:
+# desde que o Glue AGG passou a rodar em processo (query Athena + escrita
+# Parquet via scripts/backfill_shared.py:trigger_agg_locally, ver POLICY 4/5
+# abaixo), a role de backfill não aciona mais esse job via API — o
+# glue:StartJobRun/GetJobRun sobre agg_job_pythonshell.arn ficou sem uso e foi
+# removido (privilégio mínimo). O job real continua existindo, só passou a
+# ser disparado apenas pelo trigger agendado (aws_glue_trigger.agg_weekly).
 #
 # details_job_pythonshell NÃO está mais no Resource: backfill_enriquecimento.py
 # e backfill_changes.py passaram a rodar a lógica de enriquecimento diretamente
@@ -92,16 +100,10 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "StartAndMonitorBackfillJobs"
-      Effect = "Allow"
-      Action = [
-        "glue:StartJobRun",
-        "glue:GetJobRun",
-      ]
-      Resource = [
-        aws_glue_job.data_quality_job.arn,
-        aws_glue_job.agg_job_pythonshell.arn,
-      ]
+      Sid      = "StartDataQualityJob"
+      Effect   = "Allow"
+      Action   = "glue:StartJobRun"
+      Resource = aws_glue_job.data_quality_job.arn
     }]
   })
 }
@@ -165,7 +167,12 @@ resource "aws_iam_role_policy" "backfill_secrets" {
 # mesma resource de backfill_traducao.py acima), JSON bruto no bucket SOR e
 # as 6 tabelas de referência no bucket SOT (backfill_referencias.py — ver
 # comentários nos statements abaixo), e JSON bruto de discover no bucket SOR
-# (backfill_discover.py — ver comentários nos statements abaixo)
+# (backfill_discover.py — ver comentários nos statements abaixo). Também
+# cobre o que a chamada local ao Glue AGG (trigger_agg_locally, ver POLICY 5
+# abaixo) precisa: resultados temporários da query de unificação, a tabela
+# SPEC final e now_playing_movie (única tabela lida pela query de unificação
+# que nenhum outro script de backfill lia antes) — mesmo shape de
+# glue_agg_s3 (infra/iam_policies.tf), role do job Glue AGG real.
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_s3" {
   name = "${local.tmdb_prefix}-backfill-s3-${var.env}"
@@ -197,6 +204,10 @@ resource "aws_iam_role_policy" "backfill_s3" {
               "tmdb/${aws_glue_catalog_table.tb_configuration_countries_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.name}/*",
               "tmdb/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.name}/*",
+              # Lida via Athena pela query de unificação do Glue AGG (LEFT JOIN, ver
+              # app/glue_agg/src/queries.py) dentro de trigger_agg_locally — nenhum outro
+              # script de backfill lia esta tabela antes.
+              "tmdb/${aws_glue_catalog_table.tb_now_playing_movie_tmdb.name}/*",
             ]
           }
         }
@@ -211,7 +222,21 @@ resource "aws_iam_role_policy" "backfill_s3" {
             "s3:prefix" = [
               "tmdb/backfill_checkpoints/*",
               "tmdb/athena/glue_details/*",
+              "tmdb/athena/glue_agg/*",
               "tmdb/changes/*",
+            ]
+          }
+        }
+      },
+      {
+        Sid      = "ListScopedPrefixSpec"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.spec_bucket.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "tmdb/${local.envs.glue_catalog_tb_discover_unified}/*",
             ]
           }
         }
@@ -243,16 +268,18 @@ resource "aws_iam_role_policy" "backfill_s3" {
         # validar o bucket de output (S3_OUTPUT_LOCATION = bucket TEMP), e o awswrangler
         # (wr.s3.read_parquet/to_parquet contra discover/details/watch_providers no SOT,
         # dentro de run_details_and_watch_providers_for_year, e contra as 6 tabelas de
-        # referência no SOT, dentro de backfill_referencias.py) também depende dela para
-        # resolver o bucket antes de ler/escrever. Mesmo par de buckets (SOT + TEMP) já
-        # concedido à role glue_details_role (infra/iam_policies.tf) para o mesmo código.
-        Sid    = "GetBucketLocationSorSotTemp"
+        # referência no SOT, dentro de backfill_referencias.py; e write_parquet_to_spec
+        # contra o bucket SPEC, dentro de trigger_agg_locally) também depende dela para
+        # resolver o bucket antes de ler/escrever. Mesmo conjunto de buckets já concedido
+        # à role glue_details_role/glue_agg_role (infra/iam_policies.tf) para o mesmo código.
+        Sid    = "GetBucketLocationSorSotTempSpec"
         Effect = "Allow"
         Action = "s3:GetBucketLocation"
         Resource = [
           aws_s3_bucket.sor_bucket.arn,
           aws_s3_bucket.sot_bucket.arn,
           aws_s3_bucket.temporary_bucket.arn,
+          aws_s3_bucket.spec_bucket.arn,
         ]
       },
       {
@@ -343,6 +370,46 @@ resource "aws_iam_role_policy" "backfill_s3" {
         Resource = "${aws_s3_bucket.temporary_bucket.arn}/tmdb/athena/glue_details/*"
       },
       {
+        # Resultados temporários da query de unificação (run_athena_query, chamada por
+        # trigger_agg_locally) — path hardcoded em app/glue_agg/src/utils.py
+        # (s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_agg/"). Mesmo prefixo já
+        # concedido à role glue_agg_role (Sid "AthenaTemp" em infra/iam_policies.tf).
+        Sid    = "AthenaResultsGlueAgg"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = "${aws_s3_bucket.temporary_bucket.arn}/tmdb/athena/glue_agg/*"
+      },
+      {
+        # now_playing_movie: única tabela lida pela query de unificação do Glue AGG (LEFT
+        # JOIN, ver app/glue_agg/src/queries.py) que nenhum outro script de backfill lia
+        # antes — snapshot semanal sem partição por ano, por isso só GetObject (sem
+        # DeleteObject: este script nunca escreve nela).
+        Sid      = "ReadNowPlayingForAgg"
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.sot_bucket.arn}/tmdb/${aws_glue_catalog_table.tb_now_playing_movie_tmdb.name}/*"
+      },
+      {
+        # Tabela SPEC final (tb_discover_unified), gravada por write_parquet_to_spec dentro
+        # de trigger_agg_locally (mode="overwrite" — por isso também DeleteObject, mesmo
+        # racional de ReadWriteReferenceTablesInSot acima). Mesmo shape de "WriteSpec" em
+        # glue_agg_s3 (infra/iam_policies.tf), restrito ao prefixo da tabela (o real usa o
+        # bucket inteiro como Resource porque só ele escreve lá; aqui restringimos ao
+        # prefixo, já que a role de backfill também lê/escreve outros buckets).
+        Sid    = "WriteSpecTable"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = "${aws_s3_bucket.spec_bucket.arn}/tmdb/${local.envs.glue_catalog_tb_discover_unified}/*"
+      },
+      {
         # Lista de IDs mudados gravada por collect_changes_data (agora chamada diretamente
         # por backfill_changes.py, não mais pela Lambda) e os logs de descartados/ambíguos
         # gravados por resolve_matched_ids_for_changed_ids — mesmo prefixo já usado pela
@@ -418,7 +485,10 @@ resource "aws_iam_role_policy" "backfill_s3" {
 # watch_providers — mesmas databases (movie/tv), por isso sem ARNs de
 # database adicionais. Statement à parte (DeleteCtasTempTable) para
 # CreateTable/DeleteTable da tabela temporária de CTAS usada por
-# backfill_changes.py — ver comentário no statement.
+# backfill_changes.py — ver comentário no statement. Statement à parte
+# (UnifiedCatalogAccessForAgg) para o database unificado (db_unified),
+# usado pela chamada local ao Glue AGG (trigger_agg_locally) — mesmo shape
+# de glue_agg_catalog (infra/iam_policies.tf).
 # =============================================================================
 resource "aws_iam_role_policy" "backfill_glue_catalog" {
   name = "${local.tmdb_prefix}-backfill-glue-catalog-${var.env}"
@@ -449,6 +519,10 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_details_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_details_tv_tmdb.name}",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_movie_tmdb.name}",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_tv_tmdb.name}",
+          # Lida via Athena pela query de unificação do Glue AGG (LEFT JOIN, ver
+          # app/glue_agg/src/queries.py) dentro de trigger_agg_locally — mesma database
+          # (db_movie) já concedida acima, só falta o ARN da tabela em si.
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_now_playing_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_now_playing_movie_tmdb.name}",
         ]
       },
       {
@@ -512,6 +586,38 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_configuration_countries_tmdb.database_name}/${aws_glue_catalog_table.tb_configuration_countries_tmdb.name}",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_ref_movie_tmdb.name}",
           "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.database_name}/${aws_glue_catalog_table.tb_watch_providers_ref_tv_tmdb.name}",
+        ]
+      },
+      {
+        # Glue Catalog do banco unificado (db_unified) — lido pela query de unificação
+        # (run_athena_query, ctas_approach=True cria uma tabela temporária dentro deste
+        # database) e escrito pela tabela SPEC final (tb_discover_unified,
+        # write_parquet_to_spec). tb_discover_unified nunca existiu como
+        # aws_glue_catalog_table no Terraform (é criada dinamicamente pelo awswrangler —
+        # db_unified só tem as tabelas de Data Quality definidas estaticamente, ver
+        # infra/glue_catalog.tf), por isso o Resource usa o nome via local.envs em vez de
+        # aws_glue_catalog_table.X, e o wildcard table/${db_unified}/* (mesmo motivo do
+        # wildcard em DeleteCtasTempTable acima: o nome da tabela temporária de CTAS
+        # também não é previsível). Mesmo shape de glue_agg_catalog (ReadCatalog +
+        # WriteSpecTable, infra/iam_policies.tf), role do job Glue AGG real.
+        Sid    = "UnifiedCatalogAccessForAgg"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetPartition",
+          "glue:GetPartitions",
+          "glue:CreateTable",
+          "glue:UpdateTable",
+          "glue:DeleteTable",
+          "glue:BatchCreatePartition",
+          "glue:BatchDeletePartition",
+          "glue:CreatePartition",
+        ]
+        Resource = [
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:database/${local.envs.glue_catalog_db_unified}",
+          "arn:aws:glue:sa-east-1:${data.aws_caller_identity.current.account_id}:table/${local.envs.glue_catalog_db_unified}/*",
         ]
       },
     ]

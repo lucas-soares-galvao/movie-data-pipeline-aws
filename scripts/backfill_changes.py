@@ -30,6 +30,8 @@ Variáveis de ambiente obrigatórias:
     S3_BUCKET_TEMP                 (lista de IDs mudados + resultados temporários do Athena)
     TMDB_SECRET_ARN                (ARN do secret com a chave de API do TMDB)
     GLUE_DATA_QUALITY_JOB_NAME     (disparado uma única vez ao final por tabela, ver "Data Quality" abaixo)
+    S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
+                                    (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
 Variáveis opcionais:
     TRANSLATE_PROVIDER (padrão: "google")
@@ -42,6 +44,14 @@ Data Quality:
     total (details_movie, details_tv, watch_providers_movie, watch_providers_tv), cada um só se
     houve algum ano afetado. Se movie ou tv falhar, nenhum DQ é disparado, para não validar dado
     possivelmente incompleto.
+
+Glue AGG:
+    Mesma condição do Data Quality: só roda se nenhum content_type falhou (o `if failures: return`
+    acima já teria interrompido o script antes). Roda o Glue AGG (query Athena de unificação +
+    escrita da tabela SPEC + disparo do Data Quality sobre a tabela unificada) diretamente no
+    processo, uma única vez — ver backfill_shared.trigger_agg_locally. Uma falha nessa etapa é
+    logada como ERROR mas não derruba o backfill (que já terminou com sucesso) — o trigger
+    agendado (sábado/domingo 08:00 BRT) e o alarme SNS de falha continuam cobrindo o caso.
 
 Retomada automática:
     Diferente da invocação síncrona e curta da Lambda que este script fazia antes, agora ele faz
@@ -170,6 +180,18 @@ def main() -> None:
             continue
         years_arg = ",".join(affected_years)
         trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
+
+    shared.trigger_agg_locally(
+        s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+        s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+        s3_bucket_temp=s3_bucket_temp,
+        db_movie=db_movie,
+        db_tv=db_tv,
+        db_unified=shared.require_env("DB_UNIFIED"),
+        table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+        dq_job_name=dq_job_name,
+        environment=shared.require_env("ENVIRONMENT"),
+    )
 
 
 if __name__ == "__main__":

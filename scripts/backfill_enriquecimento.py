@@ -37,6 +37,8 @@ Variáveis de ambiente obrigatórias:
     TABLE_WATCH_PROVIDERS_TV
     TMDB_SECRET_ARN                (ARN do secret com a chave de API do TMDB)
     GLUE_DATA_QUALITY_JOB_NAME     (disparado uma única vez ao final, ver "Data Quality" abaixo)
+    S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
+                                   (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
@@ -63,6 +65,16 @@ Data Quality:
     app/glue_details/main.py). Só dispara se nenhuma unidade falhou (mesma condição que hoje
     limpa o checkpoint) — se houver falhas, nem o DQ é disparado nem o checkpoint é limpo, para
     não validar um range com dados possivelmente incompletos.
+
+Glue AGG:
+    Se nenhuma unidade falhou, roda o Glue AGG (query Athena de unificação + escrita da tabela
+    SPEC + disparo do Data Quality sobre a tabela unificada) diretamente no processo, uma única
+    vez, logo antes de limpar o checkpoint — ver backfill_shared.trigger_agg_locally. main()
+    aceita trigger_agg=False para suprimir esse disparo quando chamado por
+    backfill_historico.py (que dispara o AGG ele mesmo, uma única vez, depois dos dois estágios
+    que encadeia). Uma falha nessa etapa é logada como ERROR mas não derruba o backfill (que já
+    terminou com sucesso) — o trigger agendado (sábado/domingo 08:00 BRT) e o alarme SNS de
+    falha continuam cobrindo o caso.
 
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
@@ -103,7 +115,7 @@ import backfill_shared as shared
 logger = shared.setup_logging()
 
 
-def main() -> bool:
+def main(trigger_agg: bool = True) -> bool:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
 
@@ -229,6 +241,18 @@ def main() -> bool:
         ):
             trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
             time.sleep(5)
+        if trigger_agg:
+            shared.trigger_agg_locally(
+                s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+                s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+                s3_bucket_temp=s3_bucket_temp,
+                db_movie=db_movie,
+                db_tv=db_tv,
+                db_unified=shared.require_env("DB_UNIFIED"),
+                table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+                dq_job_name=dq_job_name,
+                environment=shared.require_env("ENVIRONMENT"),
+            )
         shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
     return not failures
