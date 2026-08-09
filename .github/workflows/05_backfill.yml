@@ -36,6 +36,13 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #                             enriquecimento localmente neste workflow (sem acionar Lambda nem
 #                             o job Glue Details — ver scripts/backfill_changes.py), disparando
 #                             o Glue Data Quality uma única vez ao final por tabela
+#   - historico             — encadeia discover e detalhes_e_providers num único run (ver
+#                             scripts/backfill_historico.py), chamando os dois scripts acima em
+#                             sequência no mesmo processo; mantém um checkpoint próprio por
+#                             estágio (além do checkpoint por ano/tipo de cada um) para não
+#                             redigitar um estágio já concluído numa retomada; herda os 2
+#                             disparos de Glue Data Quality dos dois scripts (não dispara um
+#                             terceiro consolidado)
 #
 # translate_provider escolhe o serviço de tradução usado por qualquer um dos grupos
 # acima que traduz (discover, referencias, detalhes_e_providers, traducao, changes) —
@@ -72,6 +79,7 @@ on:
           - traducao
           - rename_colunas
           - changes
+          - historico
       start_year:
         description: "Ano inicial (ignorado para referencias e changes)"
         required: true
@@ -142,11 +150,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # tzdata é do backfill_shared.py (compartilhado pelos 7 scripts, ver
+          # tzdata é do backfill_shared.py (compartilhado pelos 8 scripts, ver
           # Formatter.converter de horário de São Paulo) — instalado sempre, não só
           # nos 2 table_group abaixo, para não depender da base IANA do runner.
           pip install boto3 tzdata
-          if [ "${{ inputs.table_group }}" = "discover" ] || [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ] || [ "${{ inputs.table_group }}" = "referencias" ]; then
+          if [ "${{ inputs.table_group }}" = "discover" ] || [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ] || [ "${{ inputs.table_group }}" = "referencias" ] || [ "${{ inputs.table_group }}" = "historico" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -221,6 +229,7 @@ jobs:
               traducao)             python scripts/backfill_traducao.py ;;
               rename_colunas)       python scripts/backfill_rename_colunas.py ;;
               changes)              python scripts/backfill_changes.py ;;
+              historico)            python scripts/backfill_historico.py ;;
             esac
           }
 
@@ -284,7 +293,7 @@ jobs:
           # --- Backfill: resumo real extraído do log, antes da seção do glue_agg ---
           # Todos os scripts usam o mesmo formato de log (backfill_shared.py:
           # "%(asctime)s %(levelname)s %(message)s"), então isso funciona igual para os
-          # 7 scripts sem lógica por table_group. Importante para detalhes_e_providers
+          # 8 scripts sem lógica por table_group. Importante para detalhes_e_providers
           # (soft-fail-continue) e data_quality (fire-and-forget): "exit 0" não garante
           # que toda unidade teve sucesso — ver scripts/scripts.md.
           echo "## Backfill (\`${{ inputs.table_group }}\`)" >> "$GITHUB_STEP_SUMMARY"

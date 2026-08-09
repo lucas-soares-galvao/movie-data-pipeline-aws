@@ -45,12 +45,16 @@ Além do polling do workflow (`aws iam list-attached-role-policies`, 12 tentativ
 
 ## Permissões do backfill manual (`iam_backfill.tf`)
 
-O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 7 scripts `scripts/backfill_*.py` usam:
+O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 8 scripts `scripts/backfill_*.py` usam:
 
-Nenhum dos 7 scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação
+Nenhum dos 8 scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação
 equivalente ao Glue ETL/Glue Details diretamente no processo do script, então não existe (nem
 nunca precisou existir a partir do momento em que `backfill_discover.py`, o último a depender de
 Lambda, passou a rodar in-process) uma policy `lambda:InvokeFunction` para esta role.
+`backfill_historico.py` não aparece nas linhas da tabela abaixo por chamada própria — ele só
+encadeia `backfill_discover.py`/`backfill_enriquecimento.py` (chama o `main()` de cada um no
+mesmo processo), então usa exatamente a união das permissões que os dois já têm, sem exigir
+nenhuma policy nova.
 
 | Policy | Escopo |
 |---|---|

@@ -124,14 +124,17 @@ def read_year_range(
     return start_year, end_year
 
 
-def run_with_retry_exit(main_fn: Callable[[], None]) -> None:
+def run_with_retry_exit(main_fn: Callable[[], object]) -> None:
     """Roda main_fn() e traduz token expirado no exit code 75 (retomável).
 
     Chamado explicitamente pelo bloco `if __name__ == "__main__":` de cada
     script que usa checkpoint. O workflow (.github/workflows/05_backfill.yml)
     reconhece o exit code 75, renova a credencial e roda o script de novo —
     como o progresso é lido do checkpoint em S3, as unidades já concluídas
-    são puladas.
+    são puladas. `main_fn` pode retornar `None` (maioria dos scripts) ou
+    `bool` (`backfill_discover.py`/`backfill_enriquecimento.py`, sinalizando
+    se o backfill terminou sem falhas pendentes, consumido por
+    `backfill_historico.py`) — o retorno é sempre ignorado aqui.
     """
     try:
         main_fn()

@@ -51,6 +51,7 @@ def _run_main(
     overrides: dict | None = None,
     unit_side_effect=None,
     mock_s3: MagicMock | None = None,
+    resultado: list | None = None,
 ):
     """Roda bd.main() com collect_discover_data/read_from_sor/write_parquet_to_sot mockados.
 
@@ -58,6 +59,9 @@ def _run_main(
     exceções/None (na ordem das unidades pendentes) ou uma função. Como collect_discover_data
     roda antes de read_from_sor/write_parquet_to_sot dentro do mesmo bloco try, uma falha ali
     já é suficiente para simular a falha da unidade inteira.
+
+    resultado (se passado) recebe o retorno bool de bd.main() — parâmetro à parte para não mudar
+    a tupla de mocks já retornada por esta função (consumida por *_ em quase todo teste existente).
     """
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
@@ -74,7 +78,9 @@ def _run_main(
         mock_boto3.client.return_value = mock_s3
         if unit_side_effect is not None:
             mock_collect.side_effect = unit_side_effect
-        bd.main()
+        sucesso = bd.main()
+        if resultado is not None:
+            resultado.append(sucesso)
     return mock_collect, mock_read, mock_write, mock_sleep, mock_s3, mock_secret, mock_trigger
 
 
@@ -261,22 +267,30 @@ class TestCheckpoint:
 
     def test_limpa_checkpoint_ao_concluir_tudo_com_sucesso(self, monkeypatch):
         mock_s3 = _s3_client_sem_checkpoint()
+        resultado: list = []
 
-        _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3)
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            mock_s3=mock_s3, resultado=resultado,
+        )
 
         mock_s3.delete_object.assert_called_once()
+        assert resultado == [True]
 
     def test_nao_limpa_checkpoint_quando_ha_falhas(self, monkeypatch):
         mock_s3 = _s3_client_sem_checkpoint()
+        resultado: list = []
 
         _run_main(
             monkeypatch,
             {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
             unit_side_effect=[Exception("falhou"), None],
             mock_s3=mock_s3,
+            resultado=resultado,
         )
 
         mock_s3.delete_object.assert_not_called()
+        assert resultado == [False]
 
 
 class TestDataQualityFinal:
