@@ -356,3 +356,98 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_monthly" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_monthly.arn
 }
+
+# =============================================================================
+# REGRAS MENSAIS — Discover do Ano Futuro (current_year + 1)
+# =============================================================================
+# Captura título anunciado pela TMDB pra um ano ainda não coberto pelo discover
+# semanal (current_year) nem mensal (current_year - 1) — ex: filme/série já
+# catalogado na TMDB com release_date/first_air_date do ano que vem, mas que a
+# Lambda nunca buscou porque nenhum modo hoje aponta pra current_year + 1.
+#
+# Sem referências (genre/configuration/watch_providers_ref) — já cobertas pelo
+# modo mensal — e sem now_playing (título ainda não lançado não está em cartaz).
+# Uma vez catalogado, o modo changes (qualquer ano) mantém o título atualizado
+# sem depender dessa regra rodar de novo.
+#
+# Horário deslocado das demais rules de EventBridge do pipeline (todas entre
+# 09:00-09:35 UTC) para não colidir com nenhuma execução existente.
+# "only_future_year_tables: true" = discover do current_year + 1, sem referências, sem now_playing.
+# =============================================================================
+
+resource "aws_cloudwatch_event_rule" "lambda_api_movie_future_monthly" {
+  name                = "${local.tmdb_prefix}-lambda-api-movie-future-monthly-${var.env}"
+  description         = "Dispara a Lambda para filmes anunciados para o próximo ano (mensal, dia 1)"
+  schedule_expression = "cron(00 10 1 * ? *)" # Todo dia 1 do mês às 10:00 UTC / 07:00 BRT
+  state               = local.eventbridge_schedule_state
+  tags                = local.component_tags.eventbridge
+}
+
+resource "aws_cloudwatch_event_rule" "lambda_api_tv_future_monthly" {
+  name                = "${local.tmdb_prefix}-lambda-api-tv-future-monthly-${var.env}"
+  description         = "Dispara a Lambda para séries anunciadas para o próximo ano (mensal, dia 1)"
+  schedule_expression = "cron(05 10 1 * ? *)" # Todo dia 1 do mês às 10:05 UTC / 07:05 BRT
+  state               = local.eventbridge_schedule_state
+  tags                = local.component_tags.eventbridge
+}
+
+resource "aws_cloudwatch_event_target" "lambda_api_movie_future_monthly_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_movie_future_monthly.name
+  target_id = "lambda-api-movie-future-monthly"
+  arn       = aws_lambda_function.simple_lambda.arn
+
+  # As chaves de referência (table_genre_movie etc.) entram mesmo não sendo usadas
+  # neste modo (skip_reference=True) — main.py acessa event["table_genre_movie"] etc.
+  # incondicionalmente antes de checar qualquer flag, mesmo padrão do payload semanal.
+  input = jsonencode({
+    type                            = "movie",
+    only_future_year_tables         = true,
+    database                        = local.envs.glue_catalog_db_movie,
+    database_unified                = local.envs.glue_catalog_db_unified,
+    table_discover_movie            = local.envs.glue_catalog_tb_discover_movie,
+    table_genre_movie               = local.envs.glue_catalog_tb_genre_movie,
+    table_configuration_languages   = local.envs.glue_catalog_tb_configuration_languages,
+    table_watch_providers_ref_movie = local.envs.glue_catalog_tb_watch_providers_ref_movie
+  })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
+}
+
+resource "aws_cloudwatch_event_target" "lambda_api_tv_future_monthly_target" {
+  rule      = aws_cloudwatch_event_rule.lambda_api_tv_future_monthly.name
+  target_id = "lambda-api-tv-future-monthly"
+  arn       = aws_lambda_function.simple_lambda.arn
+
+  input = jsonencode({
+    type                          = "tv",
+    only_future_year_tables       = true,
+    database                      = local.envs.glue_catalog_db_tv,
+    database_unified              = local.envs.glue_catalog_db_unified,
+    table_discover_tv             = local.envs.glue_catalog_tb_discover_tv,
+    table_genre_tv                = local.envs.glue_catalog_tb_genre_tv,
+    table_configuration_countries = local.envs.glue_catalog_tb_configuration_countries,
+    table_watch_providers_ref_tv  = local.envs.glue_catalog_tb_watch_providers_ref_tv
+  })
+
+  dead_letter_config {
+    arn = aws_sqs_queue.eventbridge_dlq.arn
+  }
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_movie_future_monthly" {
+  statement_id  = "AllowEventBridgeMovieFutureMonthlyExecution"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.simple_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_movie_future_monthly.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_tv_future_monthly" {
+  statement_id  = "AllowEventBridgeTvFutureMonthlyExecution"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.simple_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.lambda_api_tv_future_monthly.arn
+}

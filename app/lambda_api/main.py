@@ -125,11 +125,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf).
     # Cada flag ativa um "modo" de execução diferente:
     #
-    # Modo           | only_weekly | only_annual | only_monthly | O que roda
-    # ---------------|-------------|-------------|--------------|-----------------------------
-    # Semanal        |    True     |    False    |    False     | discover + now_playing (sem referências)
-    # Mensal         |    False    |    False    |    True      | referências + discover do ano anterior
-    # Anual backfill |    False    |    True     |    False     | discover histórico (sem referências)
+    # Modo           | only_weekly | only_annual | only_monthly | only_future_year | O que roda
+    # ---------------|-------------|-------------|--------------|------------------|-----------------------------
+    # Semanal        |    True     |    False    |    False     |      False       | discover + now_playing (sem referências)
+    # Mensal         |    False    |    False    |    True      |      False       | referências + discover do ano anterior
+    # Anual backfill |    False    |    True     |    False     |      False       | discover histórico (sem referências)
+    # Ano futuro     |    False    |    False    |    False     |      True        | discover do current_year+1 (sem referências, sem now_playing)
     #
     # As referências (genre/configuration/watch_providers_ref) só via backfill manual
     # (scripts/backfill_referencias.py) rodam diretamente no processo do backfill, sem passar
@@ -149,9 +150,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
     only_monthly_tables = event.get("only_monthly_tables", False)
-    # Modos semanal e anual pulam referências porque elas mudam raramente (gêneros, idiomas, países)
-    # e não precisam ser atualizadas a cada coleta de discover.
-    skip_reference = only_weekly_tables or only_annual_tables
+    only_future_year_tables = event.get("only_future_year_tables", False)
+    # Modos semanal, anual e ano futuro pulam referências porque elas mudam raramente
+    # (gêneros, idiomas, países) e já são cobertas pelo modo mensal.
+    skip_reference = only_weekly_tables or only_annual_tables or only_future_year_tables
 
     # Busca a API key uma vez antes do loop — Secrets Manager tem custo por chamada.
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
@@ -170,6 +172,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         start_year = current_year - 1
         end_year = current_year - 1
         loop_end_year = current_year - 1
+    elif only_future_year_tables:
+        start_year = current_year + 1
+        end_year = current_year + 1
+        loop_end_year = current_year + 1
 
     if not skip_reference:
         logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
@@ -238,7 +244,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             **glue_base_args,
         )
 
-    if content_type == "movie" and table_now_playing and not only_monthly_tables:
+    if content_type == "movie" and table_now_playing and not only_monthly_tables and not only_future_year_tables:
         logger.info("Coletando filmes em cartaz nos cinemas...")
         collect_now_playing_data(api_key, s3_client, S3_BUCKET_SOR)
         logger.info("Acionando Glue ETL para tabela de now_playing...")

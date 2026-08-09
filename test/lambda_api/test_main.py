@@ -322,6 +322,48 @@ class TestApenasAnoAnterior:
         assert mocks["result"]["statusCode"] == 200
 
 
+class TestApenasAnoFuturo:
+    """
+    Testa o flag only_future_year_tables que roda o discover do ano seguinte.
+
+    QUANDO USAR only_future_year_tables:
+      O EventBridge mensal de ano futuro usa only_future_year_tables=True. Roda o
+      discover para current_year + 1 (título anunciado pela TMDB que ainda não
+      está catalogado). Diferente do modo mensal, NÃO coleta referência (já
+      coberta pelo modo mensal) nem now_playing (título ainda não lançado).
+    """
+
+    def test_only_future_year_table_nao_coleta_referencia(self):
+        mocks = _run({**EVENTO_MOVIE, "only_future_year_tables": True}, year=2026)
+        mocks["mock_genre"].assert_not_called()
+        mocks["mock_config"].assert_not_called()
+        mocks["mock_watch_ref"].assert_not_called()
+
+    def test_only_future_year_table_discover_roda_para_ano_seguinte(self):
+        mocks = _run({**EVENTO_MOVIE, "only_future_year_tables": True}, year=2026)
+        mocks["mock_discover"].assert_called_once()
+        kwargs = mocks["mock_discover"].call_args[1]
+        assert kwargs["year"] == 2027
+
+    def test_only_future_year_table_nao_coleta_now_playing(self):
+        mocks = _run({**EVENTO_NOW_PLAYING, "only_future_year_tables": True}, year=2026)
+        mocks["mock_now_playing"].assert_not_called()
+
+    def test_only_future_year_table_glue_recebe_end_year_correto(self):
+        mocks = _run({**EVENTO_MOVIE, "only_future_year_tables": True}, year=2026)
+        chamadas_discover = [
+            c for c in mocks["mock_trigger"].call_args_list
+            if c[1].get("TABLE_TYPE") == "discover"
+        ]
+        assert len(chamadas_discover) == 1
+        assert chamadas_discover[0][1].get("YEAR") == 2027
+        assert chamadas_discover[0][1].get("END_YEAR") == 2027
+
+    def test_only_future_year_table_retorna_status_200(self):
+        mocks = _run({**EVENTO_MOVIE, "only_future_year_tables": True}, year=2026)
+        assert mocks["result"]["statusCode"] == 200
+
+
 class TestNowPlaying:
     """Testa o bloco condicional de coleta de filmes em cartaz."""
 

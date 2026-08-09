@@ -81,6 +81,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_retorna_registros_como_lista_de_dicts` | Converte corretamente rows do Athena em lista de dicts |
 | `test_filtro_where_incluido_na_query` | WHERE inclui a cláusula gerada pelo LLM na query |
 | `test_vote_count_fixo_sempre_presente` | Filtro fixo `vote_count >= 50` está sempre presente na query |
+| `test_titulo_futuro_ignora_vote_count` | WHERE inclui `(vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR))` — título com `air_date` futuro passa sem exigir voto |
 | `test_filtro_idioma_na_query` | WHERE inclui `original_language = 'ko'` para filtro de idioma |
 | `test_filtro_duracao_na_query` | WHERE inclui `runtime_minutes <= 90` para filtro de duração |
 | `test_filtro_temporadas_na_query` | WHERE inclui `number_of_seasons = 1` para filtro de temporadas |

@@ -166,6 +166,8 @@ tv_details_ranked AS (
         producer, cinematographer, editor,
         keywords, keywords_pt, certification, trailer_url, imdb_id,
         recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
+        next_episode_air_date, next_episode_number, next_episode_season_number, next_episode_name,
+        season_numbers, season_air_dates, season_episode_counts, season_names,
         ROW_NUMBER() OVER (PARTITION BY id ORDER BY processed_date DESC) AS rn
     FROM {db_tv}.{tb_details_tv}
 ),
@@ -180,7 +182,9 @@ tv_details AS (
            actor_names, director, screenplay, music_composer,
            producer, cinematographer, editor,
            keywords, keywords_pt, certification, trailer_url, imdb_id,
-           recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles
+           recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
+           next_episode_air_date, next_episode_number, next_episode_season_number, next_episode_name,
+           season_numbers, season_air_dates, season_episode_counts, season_names
     FROM tv_details_ranked
     WHERE rn = 1
 ),
@@ -211,7 +215,15 @@ details AS (
            NULL AS networks,
            CAST(NULL AS BOOLEAN) AS in_production,
            NULL AS last_air_date,
-           NULL AS tv_type
+           NULL AS tv_type,
+           NULL AS next_episode_air_date,
+           CAST(NULL AS BIGINT) AS next_episode_number,
+           CAST(NULL AS BIGINT) AS next_episode_season_number,
+           NULL AS next_episode_name,
+           NULL AS season_numbers,
+           NULL AS season_air_dates,
+           NULL AS season_episode_counts,
+           NULL AS season_names
     FROM movie_details
     UNION ALL
     SELECT id, 'tv' AS media_type,
@@ -227,7 +239,9 @@ details AS (
            keywords, keywords_pt, certification, trailer_url, imdb_id,
            CAST(NULL AS ARRAY<VARCHAR>) AS origin_country,
            recommended_titles, recommended_ids, similar_titles, similar_ids, alternative_titles,
-           created_by, networks, in_production, last_air_date, tv_type
+           created_by, networks, in_production, last_air_date, tv_type,
+           next_episode_air_date, next_episode_number, next_episode_season_number, next_episode_name,
+           season_numbers, season_air_dates, season_episode_counts, season_names
     FROM tv_details
 ),
 
@@ -621,6 +635,14 @@ spec_raw AS (
         d.networks,
         d.in_production,
         d.last_air_date,
+        d.next_episode_air_date,
+        d.next_episode_number,
+        d.next_episode_season_number,
+        d.next_episode_name,
+        d.season_numbers,
+        d.season_air_dates,
+        d.season_episode_counts,
+        d.season_names,
         CASE
             WHEN d.tv_type = 'Documentary' THEN 'Documentário'
             WHEN d.tv_type = 'Miniseries' THEN 'Minissérie'
@@ -690,6 +712,8 @@ SELECT
     trailer_url, imdb_id,
     recommended_titles, similar_titles, alternative_titles,
     created_by, networks, in_production, last_air_date, tv_type,
+    next_episode_air_date, next_episode_number, next_episode_season_number, next_episode_name,
+    season_numbers, season_air_dates, season_episode_counts, season_names,
     streaming_providers, streaming_provider_logos,
     rent_buy_providers, rent_buy_provider_logos,
     in_theaters, theater_start_date, theater_end_date

@@ -286,6 +286,16 @@ class TestSearchTitlesSpec:
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
         assert "vote_count >= 50" in executed_sql
 
+    def test_titulo_futuro_ignora_vote_count(self):
+        """Título com air_date futuro (ainda sem votos) passa sem exigir vote_count >= 50."""
+        with patch("agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("media_type = 'movie'")
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "air_date > CAST(CURRENT_DATE AS VARCHAR)" in executed_sql
+        assert "(vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR))" in executed_sql
+
     def test_filtro_idioma_na_query(self):
         with patch("agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
