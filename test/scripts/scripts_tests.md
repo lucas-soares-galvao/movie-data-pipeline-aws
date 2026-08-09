@@ -2,11 +2,11 @@
 
 ## O que é testado
 
-Testa os 8 scripts de backfill manual em `scripts/` (`backfill_historico.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
+Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_shared.py`), acionados pelo workflow `5. Backfill` (`.github/workflows/05_backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
 
-O foco principal é o **contrato do payload/argumentos** enviado a cada serviço (Lambda ou Glue), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 95% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
+O foco principal é o **contrato dos argumentos** enviados a cada serviço (Glue) ou às funções internas replicadas no processo (coleta TMDB, transformação equivalente ao Glue ETL/Details), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado, e por isso ficam fora do gate de cobertura de 95% (`pytest --cov=app`, que mede só `app/`). Ainda assim, os testes rodam e bloqueiam o CI como qualquer outro teste da suíte (ver "Como executar").
 
-Dois bugs reais motivaram este módulo: `backfill_historico.py` enviava a chave `only_discover` e `backfill_referencias.py` (antes de passar a rodar sem Lambda, ver seção própria abaixo) enviava `skip_discover` — nenhuma das duas era lida por `app/lambda_api/main.py` (que só reconhecia `only_annual_tables` e `skip_weekly`, este último removido do handler junto com o payload de `backfill_referencias.py`). Como uma chave de dict inexistente não gera erro, o bug só apareceria revisando logs de uma execução real de horas contra prod. Os testes de contrato de payload existem para travar esse tipo de regressão — `backfill_historico.py` continua sendo testado dessa forma (ver abaixo).
+Dois bugs reais motivaram este módulo, ambos numa época em que `backfill_discover.py` e `backfill_referencias.py` ainda montavam um payload de Lambda (nenhum dos dois invoca mais a Lambda API hoje, ver seções próprias abaixo): `backfill_discover.py` enviava a chave `only_discover` e `backfill_referencias.py` enviava `skip_discover` — nenhuma das duas era lida por `app/lambda_api/main.py` (que só reconhecia `only_annual_tables` e `skip_weekly`, este último removido do handler junto com o payload de `backfill_referencias.py`). Como uma chave de dict inexistente não gera erro, o bug só apareceria revisando logs de uma execução real de horas contra prod.
 
 Um terceiro bug real motivou a suíte de checkpoint/retomada: `backfill_enriquecimento.py::_start_glue_job` chamava `client.start_job_run(...)` sem o wrapper de log/re-raise de token expirado que o resto do script já tinha — foi exatamente esse ponto que derrubou um backfill de produção sem deixar rastro do progresso já feito. `test_expired_token_no_start_job_run_loga_e_repropaga` trava essa regressão.
 
@@ -19,7 +19,7 @@ test/scripts/
 ├── __init__.py
 ├── conftest.py                        # scripts/ já está no pythonpath (pytest.ini); sem fixtures adicionais
 ├── requirements_tests.txt             # boto3, awswrangler, pandas, deep_translator
-├── test_backfill_historico.py
+├── test_backfill_discover.py
 ├── test_backfill_referencias.py
 ├── test_backfill_enriquecimento.py
 ├── test_backfill_data_quality.py
@@ -29,69 +29,85 @@ test/scripts/
 └── test_backfill_shared.py
 ```
 
-Import direto por nome de módulo (`import backfill_historico`), sem pacote — `scripts` foi adicionado a `pythonpath` em `pytest.ini`.
+Import direto por nome de módulo (`import backfill_discover`), sem pacote — `scripts` foi adicionado a `pythonpath` em `pytest.ini`.
 
-## Casos de teste — `test_backfill_historico.py`
+## Casos de teste — `test_backfill_discover.py`
 
-### `TestContratoDoPayload`
+Mesmo estilo de `test_backfill_enriquecimento.py`: `backfill_discover.py` roda a coleta TMDB
+(`collect_discover_data`, de `app/lambda_api/src/utils.py`) e a transformação equivalente ao
+Glue ETL (`read_from_sor`/`write_parquet_to_sot`, de `app/glue_etl/src/utils.py`) diretamente no
+processo, sem invocar Lambda nem acionar o job Glue ETL — os testes mockam essas funções
+(`collect_discover_data`, `read_from_sor`, `write_parquet_to_sot`, `get_api_secret`,
+`trigger_glue_job`), não mais um cliente `boto3` de Lambda.
 
-| Teste | O que verifica |
-|---|---|
-| `test_envia_only_annual_tables` | Payload enviado à Lambda contém `only_annual_tables: True` |
-| `test_nao_envia_mais_a_chave_only_discover` | Regressão: `only_discover` não existe mais no payload |
-| `test_inclui_tabelas_de_referencia_exigidas_pelo_lambda_handler` | `table_genre_movie`, `table_configuration_languages`, `table_watch_providers_ref_movie` continuam no payload (lambda_handler os lê sem `.get()`) |
-| `test_start_year_igual_loop_end_year_uma_particao_por_invocacao` | Cada invocação cobre exatamente um ano |
-
-### `TestLoopDeAnos`
+### `TestLoopPrincipal`
 
 | Teste | O que verifica |
 |---|---|
-| `test_invoca_lambda_duas_vezes_por_ano_movie_e_tv` | Total de invocações = anos × 2 |
-| `test_alterna_movie_e_tv_na_ordem_por_ano` | Ordem de tipos é `["movie", "tv"]` dentro de cada ano |
-| `test_usa_ano_atual_como_default_de_end_year` | `BACKFILL_END_YEAR` ausente usa o ano atual (mockado via `datetime`) |
+| `test_total_de_unidades_e_anos_vezes_dois_tipos` | Total de chamadas a `collect_discover_data` = anos × 2 |
+| `test_intercala_movie_e_tv_por_ano` | Ordem de tipos alterna `["movie", "tv", "movie", "tv", ...]` dentro de cada ano |
+| `test_falha_em_uma_unidade_nao_interrompe_o_backfill` | Soft-fail-continue: uma exceção numa unidade é logada mas não aborta o loop |
+| `test_read_e_write_pulados_quando_a_coleta_falha` | `read_from_sor`/`write_parquet_to_sot` não são chamados para a unidade cuja coleta falhou (mesmo bloco `try`) |
+| `test_nao_pausa_apos_ultima_unidade` | `time.sleep` não é chamado após a última unidade, mas é chamado no disparo final de DQ (uma vez por tabela) |
+| `test_loga_resumo_das_falhas_ao_final` / `test_nao_loga_resumo_quando_tudo_sucede` | Resumo de falhas só aparece no log quando alguma unidade falhou |
+| `test_busca_api_key_uma_unica_vez_fora_do_loop` | `get_api_secret` chamado uma única vez, antes do loop |
+| `test_api_key_repassada_para_cada_unidade` | `api_key` resolvida uma vez é repassada a cada chamada de `collect_discover_data` |
+
+### `TestPipelineDiscover`
+
+| Teste | O que verifica |
+|---|---|
+| `test_collect_discover_data_recebe_folder_e_bucket_corretos` | `bucket`/`folder`/`year` batem com `S3_BUCKET_SOR`/`tmdb/discover/{media_type}` |
+| `test_read_from_sor_recebe_table_type_discover` | Terceiro argumento posicional de `read_from_sor` é `"discover"` |
+| `test_write_parquet_particiona_por_ano_com_overwrite_partitions` | `partition_cols=["year"]`, `mode="overwrite_partitions"` — mesma config de `app/glue_etl/main.py:_TABLE_CONFIG["discover"]` |
+| `test_write_parquet_usa_tabela_e_database_do_media_type` | `table_name`/`database` batem com `TABLE_DISCOVER_MOVIE`/`GLUE_DATABASE_MOVIE` (e o par tv) |
 
 ### `TestTranslateProviderGuard`
 
-`build_base_payloads` recebe `start_year`/`end_year` aqui (diferente de
-`backfill_referencias.py`, que não depende de ano) — proteção de custo do AWS
-Translate por intervalo de anos (ver `backfill_shared.apply_translate_cost_guard`).
+`TRANSLATE_PROVIDER` aqui não traduz nada — só escolhe o serviço primário do detector de idioma
+do overview via `resolve_detect_language_fn` (mockado nestes testes), com a mesma proteção de
+custo por intervalo de anos de `backfill_enriquecimento.py`/`backfill_traducao.py` (ver
+`backfill_shared.apply_translate_cost_guard`).
 
 | Teste | O que verifica |
 |---|---|
-| `test_mantem_aws_para_intervalo_de_1_ano` | `TRANSLATE_PROVIDER=aws` com `start_year == end_year` chega como `"aws"` no payload |
-| `test_rebaixa_aws_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com `end_year > start_year` é rebaixado para `"google"` no payload |
+| `test_translate_provider_default_google_propagado` | `resolve_detect_language_fn` recebe `provider="google"` por padrão |
+| `test_translate_provider_aws_propagado_para_intervalo_de_1_ano` | `TRANSLATE_PROVIDER=aws` com `start_year == end_year` chega como `"aws"` |
+| `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com `end_year > start_year` é rebaixado para `"google"` |
 
-### `TestPausaEntreInvocacoes` / `TestErros` / `TestAssertSingleYear`
+### `TestErros`
 
 | Teste | O que verifica |
 |---|---|
-| `test_nao_pausa_apos_ultima_invocacao` | `time.sleep` não é chamado após a última invocação do loop |
-| `test_erro_da_lambda_interrompe_o_backfill` | `RuntimeError` (Lambda com erro) propaga e para o script |
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
-| `test_expired_token_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | `shared.invoke_lambda_sync` loga aviso de credenciais e repropaga erro de token expirado |
-| `test_expired_token_no_topo_sai_com_codigo_75` (parametrizado) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado (retomável) de outros erros |
-| `test_lanca_erro_quando_anos_diferentes` / `test_nao_lanca_erro_quando_anos_iguais` | `_assert_single_year` valida `start_year == loop_end_year` |
+| `test_expired_token_gera_codigo_75` (parametrizado) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado (retomável) de outros erros |
+| `test_token_expirado_em_uma_unidade_propaga_sem_ser_capturado_como_falha_soft` (parametrizado) | Token expirado numa unidade propaga (para `run_with_retry_exit` tratar como exit 75), não vira falha soft-fail-continue |
 
 ### `TestCheckpoint`
 
 | Teste | O que verifica |
 |---|---|
-| `test_pula_unidades_ja_concluidas` | Unidades presentes no checkpoint não geram nova invocação da Lambda |
-| `test_salva_checkpoint_apos_cada_unidade` | `put_object` chamado a cada unidade concluída |
-| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado quando o loop termina sem erro |
-| `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Uma exceção no meio do loop ainda deixa o checkpoint com as unidades já concluídas |
+| `test_pula_unidades_ja_concluidas` | Unidades presentes no checkpoint não geram nova chamada a `collect_discover_data` |
+| `test_salva_checkpoint_apenas_para_unidades_com_sucesso` | `put_object` só reflete unidades concluídas com sucesso |
+| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` / `test_nao_limpa_checkpoint_quando_ha_falhas` | `delete_object` só é chamado quando não sobra nenhuma falha |
+
+### `TestDataQualityFinal`
+
+| Teste | O que verifica |
+|---|---|
+| `test_dispara_dq_uma_vez_por_tabela_cobrindo_o_range_completo` | 2 disparos (`TABLE_DISCOVER_MOVIE`, `TABLE_DISCOVER_TV`) com `YEAR` cobrindo todo o range, não por unidade |
+| `test_nao_dispara_dq_quando_ha_falhas` | Nenhum disparo de DQ quando sobra alguma unidade com falha |
 
 ## Casos de teste — `test_backfill_referencias.py`
 
-Estruturalmente diferente de `test_backfill_historico.py`: desde que
+Mesmo estilo de `test_backfill_discover.py`/`test_backfill_changes.py`: desde que
 `backfill_referencias.py` passou a rodar a coleta TMDB e a transformação
 (equivalente ao Glue ETL, via `read_from_sor`/`write_parquet_to_sot` de
 `app/glue_etl/src/utils.py`) diretamente no processo, sem payload de Lambda,
 os testes mockam as funções chamadas (`collect_genre_data`,
 `collect_configuration_data`, `collect_watch_providers_ref`,
 `read_from_sor`, `write_parquet_to_sot`, `trigger_glue_job`,
-`get_api_secret`), não mais um cliente `boto3` de Lambda — mesmo estilo de
-`test_backfill_changes.py`.
+`get_api_secret`), não mais um cliente `boto3` de Lambda.
 
 | Teste | O que verifica |
 |---|---|
@@ -131,8 +147,8 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | Teste | O que verifica |
 |---|---|
 | `test_total_de_runs_e_anos_vezes_dois_tipos` | Total de runs = anos × 2 |
-| `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_historico.py` |
-| `test_falha_em_um_run_nao_interrompe_o_backfill` | Um estado `FAILED` é logado mas **não** aborta o loop (diferente de `backfill_historico.py`, que aborta no primeiro erro) |
+| `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_discover.py` |
+| `test_falha_em_um_run_nao_interrompe_o_backfill` | Um estado `FAILED` é logado mas **não** aborta o loop (diferente de `backfill_discover.py`, que aborta no primeiro erro) |
 | `test_nao_pausa_apos_ultimo_run` | Sem `time.sleep` após o último run |
 | `test_loga_resumo_das_falhas_ao_final` | Ao final, loga um resumo único com todas as unidades (`media_type`/`year`/`state`) que falharam |
 | `test_nao_loga_resumo_quando_tudo_sucede` | Nenhum log de resumo de falhas quando todos os runs sucedem |
@@ -391,13 +407,11 @@ Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de dom
 | `test_codigos_de_token_expirado_retornam_true` / `test_outros_codigos_retornam_false` (parametrizados) | `is_expired_token_error` reconhece `ExpiredTokenException` (STS) e `ExpiredToken` (S3); rejeita outros códigos |
 | `test_expired_token_retorna_codigo_retomavel` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para token expirado |
 
-### Helpers comuns (`require_env`, `invoke_lambda_sync`, `build_base_payloads`, `read_year_range`, `run_with_retry_exit`, `log_resume_progress`)
+### Helpers comuns (`require_env`, `apply_translate_cost_guard`, `read_year_range`, `run_with_retry_exit`, `log_resume_progress`)
 
 | Teste | O que verifica |
 |---|---|
 | `TestRequireEnv` | Retorna o valor quando a env var existe; lança `EnvironmentError` quando ausente ou vazia |
-| `TestInvokeLambdaSync` | Sucesso não lança erro; `StatusCode != 200` lança `RuntimeError`; token expirado loga e repropaga |
-| `TestBuildBasePayloads` | Monta `base_movie`/`base_tv` com os campos esperados; env var ausente lança `EnvironmentError`; `translate_provider` default `"google"` quando `TRANSLATE_PROVIDER` ausente, sobrescrevível via env var (cobre `backfill_historico.py`/`backfill_referencias.py`); sem `start_year`/`end_year` (uso de `backfill_referencias.py`) o guard de custo não se aplica; com `start_year`/`end_year` (uso de `backfill_historico.py`), `apply_translate_cost_guard` é aplicado antes de montar os payloads |
 | `TestApplyTranslateCostGuard` | Mantém `"aws"` para intervalo de 1 ano; rebaixa para `"google"` quando o intervalo cobre mais de 1 ano; não mexe quando já é `"google"`; loga aviso quando rebaixa |
 | `TestReadYearRange` | Usa `2000`/ano atual como default; lê `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`; aceita nomes de env var customizados |
 | `TestRunWithRetryExit` | Sucesso não sai do processo; token expirado sai com `SystemExit(75)`; outro `ClientError` repropaga |

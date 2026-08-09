@@ -2,7 +2,7 @@
 
 ## O que é
 
-Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline, invocando os mesmos recursos AWS (Lambda, Glue) que o pipeline automático utiliza.
+Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 7 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (e o Glue AGG, disparado pelo workflow ao final).
 
 ## Por que existe
 
@@ -12,7 +12,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
-| `backfill_historico.py` | Popula discovers de 2000 até o ano atual via Lambda — cada invocação aciona Glue ETL → Glue Details, que traduzem via `TRANSLATE_PROVIDER` (default `google`) | Lambda | — |
+| `backfill_discover.py` | Popula as tabelas discover de 2000 até o ano atual; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue ETL), usando `TRANSLATE_PROVIDER` (default `google`) só para o detector de idioma do overview. Não dispara o Glue Details — usar `backfill_enriquecimento.py` à parte para popular details/watch_providers. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, langdetect |
 | `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma vez por tabela gravada | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** dispara o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
@@ -22,10 +22,9 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
 por todos os 7 scripts acima: leitura de variável de ambiente obrigatória,
-setup de logging, invocação síncrona da Lambda API, payloads base de
-movie/tv, leitura do range de anos, proteção de custo do AWS Translate por
-intervalo de anos (`apply_translate_cost_guard`), wrapper de retry do exit
-code 75 e, para os 5 scripts que iteram por ano (todos exceto
+setup de logging, leitura do range de anos, proteção de custo do AWS
+Translate por intervalo de anos (`apply_translate_cost_guard`), wrapper de
+retry do exit code 75 e, para os 5 scripts que iteram por ano (todos exceto
 `backfill_referencias.py` e `backfill_changes.py`), o checkpoint de retomada
 automática (ver seção "Retomada automática" abaixo).
 
@@ -63,13 +62,21 @@ Todos os scripts aceitam, **exceto `backfill_referencias.py` e `backfill_changes
 | `BACKFILL_START_YEAR` | `2000` | Ano inicial do backfill |
 | `BACKFILL_END_YEAR` | ano atual | Ano final do backfill |
 
-Os 5 scripts que iteram por ano (`backfill_historico.py`, `backfill_enriquecimento.py`,
+Os 5 scripts que iteram por ano (`backfill_discover.py`, `backfill_enriquecimento.py`,
 `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`) também exigem:
 
 | Variável | Descrição |
 |---|---|
 | `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas`) |
 | `S3_BUCKET_TEMP` | Bucket onde o checkpoint é armazenado (dados temporários, não os dados reais do pipeline) |
+
+`backfill_discover.py` exige adicionalmente `S3_BUCKET_SOR` (JSON bruto de
+discover, mesmo bucket usado por `backfill_referencias.py` para as tabelas de
+referência), `S3_BUCKET_SOT` (parquets das tabelas discover),
+`TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV`, `TMDB_SECRET_ARN` e
+`GLUE_DATA_QUALITY_JOB_NAME` — mesmo padrão de variáveis extras de
+`backfill_enriquecimento.py`, já que ambos rodam a coleta/transformação
+diretamente no processo em vez de delegar a um recurso gerenciado.
 
 `backfill_changes.py` exige `AWS_REGION`, `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`,
 `TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV`, `TABLE_DETAILS_MOVIE`/`TABLE_DETAILS_TV`,
@@ -103,10 +110,10 @@ de `backfill_changes.py`: poucas unidades, sem dependência de ano).
 `S3_BUCKET_SOR` é exclusivo deste script — nenhum outro grava JSON bruto
 diretamente (os demais só leem/escrevem parquet no SOT).
 
-Todos os backfills que traduzem (`backfill_historico.py`, via
-`backfill_shared.build_base_payloads()`; `backfill_enriquecimento.py`,
-`backfill_referencias.py`, `backfill_traducao.py` e `backfill_changes.py`,
-via env var própria) aceitam opcionalmente `TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
+Todos os backfills que traduzem ou detectam idioma (`backfill_discover.py`,
+`backfill_enriquecimento.py`, `backfill_referencias.py`, `backfill_traducao.py`
+e `backfill_changes.py`, todos via env var própria) aceitam opcionalmente
+`TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
 instável sob alto volume; `"aws"` usa AWS Translate, pago por caractere, útil
 para testar um período menor via `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) —
 exposto no workflow como o input `translate_provider`. `"google"` também é o
@@ -118,21 +125,22 @@ orçamento de caracteres (é pago por caractere). `TRANSLATE_PROVIDER` também
 determina o detector de idioma primário (`resolve_detect_language_fn` em
 `shared_utils.idioma`): `"google"` usa `langdetect` primeiro com Comprehend como
 fallback capado por caracteres; `"aws"` usa Comprehend primeiro (sem cap) com
-`langdetect` como fallback. Em `backfill_historico.py` (via Lambda), cada
-partição ano+tipo é uma invocação separada da Lambda, então "por execução" já
-equivale a "por partição". `backfill_enriquecimento.py`, `backfill_referencias.py`,
-`backfill_traducao.py` e `backfill_changes.py` rodam todas as partições dentro
-do mesmo processo Python — em todos, `resolve_translate_fn`/`resolve_detect_language_fn`
-(ou, no caso de `backfill_enriquecimento.py`/`backfill_changes.py`, o
-`translate_provider` recebido por `collect_and_write_details` dentro de
-`run_details_and_watch_providers_for_year`/`process_changed_ids`)
-são resolvidos a cada partição ano+tipo (ou content_type, no caso de
+`langdetect` como fallback. `backfill_discover.py` resolve `detect_fn` uma
+única vez antes do loop (não traduz nenhum campo — só sinaliza o idioma do
+overview), enquanto `backfill_enriquecimento.py`, `backfill_referencias.py`,
+`backfill_traducao.py` e `backfill_changes.py` resolvem
+`resolve_translate_fn`/`resolve_detect_language_fn` (ou, no caso de
+`backfill_enriquecimento.py`/`backfill_changes.py`, o `translate_provider`
+recebido por `collect_and_write_details` dentro de
+`run_details_and_watch_providers_for_year`/`process_changed_ids`) a cada
+partição ano+tipo (ou content_type, no caso de
 `backfill_referencias.py`/`backfill_changes.py`), para que a primeira
 partição processada não esgote sozinha o orçamento de fallback ao AWS
-Translate de todo o backfill.
+Translate de todo o backfill. Todos rodam suas partições dentro do mesmo
+processo Python — nenhum invoca a Lambda API.
 
 **Proteção de custo por intervalo de anos:** nos 3 backfills que iteram por
-ano e dependem disso (`backfill_historico.py`, `backfill_enriquecimento.py`,
+ano e dependem disso (`backfill_discover.py`, `backfill_enriquecimento.py`,
 `backfill_traducao.py`), se `TRANSLATE_PROVIDER=aws` for escolhido mas o
 intervalo (`BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) cobrir mais de 1 ano, o
 provider é rebaixado automaticamente para `"google"` (com um aviso no log) —
@@ -176,15 +184,15 @@ pular direto para o pendente.
 Qualquer outro tipo de erro (não relacionado a token expirado) continua
 falhando o job normalmente, sem retry automático. O checkpoint só é apagado
 quando o backfill termina 100% sem falhas — se sobrarem falhas "soft" (ex.:
-uma exceção não fatal ao enriquecer uma unidade em
+uma exceção não fatal ao processar uma unidade em `backfill_discover.py`/
 `backfill_enriquecimento.py`), o checkpoint permanece, então disparar o
 workflow de novo com o mesmo range de anos re-tenta só as unidades que
-faltaram. Em `backfill_enriquecimento.py` e `backfill_changes.py`, o Glue
-Data Quality também só é disparado (uma vez, ao final, por tabela) quando não
-sobra nenhuma falha — um range/content_type com unidades pendentes não é
-validado até ser reprocessado com sucesso (`backfill_changes.py` não tem
-checkpoint, então "reprocessado" aqui significa disparar o workflow de novo
-do zero, não retomar de onde parou).
+faltaram. Em `backfill_discover.py`, `backfill_enriquecimento.py` e
+`backfill_changes.py`, o Glue Data Quality também só é disparado (uma vez, ao
+final, por tabela) quando não sobra nenhuma falha — um range/content_type com
+unidades pendentes não é validado até ser reprocessado com sucesso
+(`backfill_changes.py` não tem checkpoint, então "reprocessado" aqui
+significa disparar o workflow de novo do zero, não retomar de onde parou).
 
 ## Step summary: resumo do backfill e disparo do Glue AGG ao final
 
@@ -198,10 +206,10 @@ GitHub Actions, nessa ordem:
    `%(asctime)s` em horário de São Paulo (`DD/MM/YYYY HH:MM:SS`) via
    `Formatter.converter`/`datefmt` customizados em `backfill_shared.py`).
    Isso importa porque `exit 0` **não** garante que toda unidade teve
-   sucesso para 3 dos 7 scripts: `backfill_enriquecimento.py` e
-   `backfill_changes.py` são soft-fail-continue (logam `ERROR` por
-   unidade/content_type que falhou, mas nunca chamam `sys.exit`) e
-   `backfill_data_quality.py` é fire-and-forget ("submetido" ≠
+   sucesso para 4 dos 7 scripts: `backfill_discover.py`,
+   `backfill_enriquecimento.py` e `backfill_changes.py` são soft-fail-continue
+   (logam `ERROR` por unidade/content_type que falhou, mas nunca chamam
+   `sys.exit`) e `backfill_data_quality.py` é fire-and-forget ("submetido" ≠
    "validado" — ver `especialista-scripts-backfill`). Se sobrar qualquer
    linha `ERROR` no log, o step summary mostra "⚠️ Falhas parciais
    registradas" com as linhas encontradas, mesmo com o job do Actions

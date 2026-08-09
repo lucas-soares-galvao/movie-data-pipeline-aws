@@ -11,7 +11,7 @@
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP restrito a `tmdb/athena/glue_details/*` e `tmdb/changes/*` — modo changes), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
 | `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |
 | `tmdb-filmbot-agent-{env}` (user) | Lightsail FilmBot | Athena, S3 (SPEC, TEMP), Glue Catalog, CloudWatch Logs, Secrets Manager |
-| `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`05_backfill.yml`) | `lambda:InvokeFunction` (Lambda API), `glue:StartJobRun`/`GetJobRun` (jobs Details e Data Quality), S3 (checkpoints + tabelas discover/details movie/tv no SOT), Glue Catalog (tabelas details movie/tv) |
+| `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`05_backfill.yml`) | `glue:StartJobRun`/`GetJobRun` (jobs Data Quality e AGG), Athena, Secrets Manager, S3 (checkpoints + tabelas discover/details/referência movie/tv no SOT + JSON bruto no SOR), Glue Catalog (tabelas discover/details/referência movie/tv), Translate/Comprehend |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
@@ -47,12 +47,19 @@ Além do polling do workflow (`aws iam list-attached-role-policies`, 12 tentativ
 
 O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 7 scripts `scripts/backfill_*.py` usam:
 
+Nenhum dos 7 scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação
+equivalente ao Glue ETL/Glue Details diretamente no processo do script, então não existe (nem
+nunca precisou existir a partir do momento em que `backfill_discover.py`, o último a depender de
+Lambda, passou a rodar in-process) uma policy `lambda:InvokeFunction` para esta role.
+
 | Policy | Escopo |
 |---|---|
-| `tmdb-backfill-invoke-lambda-{env}` | `lambda:InvokeFunction` restrito à Lambda API (`backfill_historico.py`, `backfill_referencias.py`) |
-| `tmdb-backfill-glue-jobs-{env}` | `glue:StartJobRun`/`GetJobRun` restrito aos jobs Details e Data Quality (`backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_changes.py`) |
-| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `tmdb/backfill_checkpoints/*` no bucket TEMP (todos os scripts, exceto `backfill_referencias.py`/`backfill_changes.py`), ao prefixo `tmdb/changes/*` no bucket TEMP (`backfill_changes.py` — lista de IDs mudados + logs de descartados/ambíguos) e às tabelas discover/details movie/tv (`backfill_traducao.py`) e details/watch_providers movie/tv (`backfill_rename_colunas.py`) no bucket SOT |
-| `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas details e watch_providers movie/tv — usado implicitamente pelo `awswrangler` em `backfill_traducao.py` e `backfill_rename_colunas.py` — mais `CreateTable`/`DeleteTable` (statement `DeleteCtasTempTable`) restrito a `table/{database}/*` nas databases movie/tv, para a tabela temporária que o Athena CTAS (`ctas_approach=True`) cria e apaga em `resolve_matched_ids_for_changed_ids` (`backfill_changes.py`) — mesmo padrão de `glue_details_catalog` em `iam_policies.tf` |
+| `tmdb-backfill-glue-jobs-{env}` | `glue:StartJobRun`/`GetJobRun` restrito aos jobs Data Quality e AGG — disparo fire-and-forget do Data Quality ao final de `backfill_discover.py`/`backfill_enriquecimento.py`/`backfill_data_quality.py`/`backfill_changes.py`, e disparo + polling do AGG pelo workflow ao final de qualquer `table_group` exceto `data_quality` |
+| `tmdb-backfill-athena-{env}` | `athena:StartQueryExecution`/`GetQueryExecution`/`GetQueryResults`/`StopQueryExecution`/`GetWorkGroup` restrito ao workgroup `primary` (`backfill_enriquecimento.py`, `backfill_changes.py`) |
+| `tmdb-backfill-secrets-{env}` | `secretsmanager:GetSecretValue` restrito ao secret do TMDB (`backfill_discover.py`, `backfill_enriquecimento.py`, `backfill_changes.py`) |
+| `tmdb-backfill-s3-{env}` | CRUD restrito ao prefixo `tmdb/backfill_checkpoints/*` no bucket TEMP (todos os scripts, exceto `backfill_referencias.py`/`backfill_changes.py`), ao prefixo `tmdb/changes/*` no bucket TEMP (`backfill_changes.py`), a JSON bruto de discover/genre/configuration/watch_providers_ref no bucket SOR (`backfill_discover.py`, `backfill_referencias.py`) e às tabelas discover/details/referência movie/tv (`backfill_discover.py`, `backfill_referencias.py`, `backfill_traducao.py`) e details/watch_providers movie/tv (`backfill_rename_colunas.py`) no bucket SOT |
+| `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas discover, details, watch_providers e referência movie/tv — usado implicitamente pelo `awswrangler` em `backfill_discover.py`, `backfill_referencias.py`, `backfill_traducao.py` e `backfill_rename_colunas.py` — mais `CreateTable`/`DeleteTable` (statement `DeleteCtasTempTable`) restrito a `table/{database}/*` nas databases movie/tv, para a tabela temporária que o Athena CTAS (`ctas_approach=True`) cria e apaga em `resolve_matched_ids_for_changed_ids` (`backfill_changes.py`) — mesmo padrão de `glue_details_catalog` em `iam_policies.tf` |
+| `tmdb-backfill-translate-{env}` | `translate:TranslateText`/`comprehend:DetectDominantLanguage` (sem restrição de recurso) — usado quando `TRANSLATE_PROVIDER=aws` é escolhido, e como fallback automático mesmo com o default `"google"` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_traducao.py`, `backfill_changes.py`) |
 
 Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token OIDC também por branch (`ref:refs/heads/develop` em dev, `ref:refs/heads/main` em prod, casando com a resolução de ambiente feita pelo próprio `05_backfill.yml`), não só por repositório — reforço de segurança possível porque é uma role nova, sem histórico de uso a preservar.
 

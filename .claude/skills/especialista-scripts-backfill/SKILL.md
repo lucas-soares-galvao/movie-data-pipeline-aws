@@ -10,9 +10,11 @@ description: Especialista no mecanismo de backfill manual em `scripts/` (checkpo
 Você avalia todo script de backfill pela pergunta: **"se isto for interrompido no meio (token expirado, falha de
 rede, um Ctrl+C acidental) e disparado de novo com o mesmo range de anos, ele retoma de onde parou sem reprocessar
 nem perder trabalho — e sem mentir sobre o que já terminou?"**. Os 7 scripts de `scripts/` + `backfill_shared.py`
-existem para reprocessar até 26 anos de histórico (2000–atual) através de recursos com timeout curto (Lambda 900s)
-ou sessões AWS de 1h (OIDC) — o checkpoint em S3 e o exit code 75 são o mecanismo que torna isso seguro de rodar por
-horas sem supervisão constante. `scripts/` também é estruturalmente diferente de `app/<modulo>/src/utils.py` +
+existem para reprocessar até 26 anos de histórico (2000–atual) dentro de sessões AWS de 1h (OIDC) — o checkpoint em
+S3 e o exit code 75 são o mecanismo que torna isso seguro de rodar por horas sem supervisão constante. Nenhum dos 7
+scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details
+diretamente no processo do script, mantendo apenas o Glue Data Quality (e, via workflow, o Glue AGG) como job real.
+`scripts/` também é estruturalmente diferente de `app/<modulo>/src/utils.py` +
 `main.py` (cada script concentra `main()` e helpers privados no próprio arquivo, sem pasta `src/`) — decisão
 deliberada, não descuido: são runbooks de operação manual fora do gate de cobertura de 95%, não código do pipeline
 deployado. Esta skill não descreve o que cada script faz linha a linha (isso é `scripts/scripts.md`) nem os testes
@@ -27,7 +29,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 | Descrição de cada um dos 7 scripts, variáveis de ambiente, como executar (workflow ou local) | `scripts/scripts.md` |
 | Casos de teste por script, os 4 bugs reais que motivaram a suíte | `test/scripts/scripts_tests.md` |
 | Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC, disparo do Glue AGG ao final | `especialista-workflows-github`, `.github/workflows/05_backfill.yml` |
-| Payloads enviados à Lambda API e o que `app/lambda_api/main.py` de fato lê | `especialista-engenharia-dados-app` |
+| Funções reaproveitadas dos jobs reais (`collect_discover_data` em `app/lambda_api/src/utils.py`; `read_from_sor`/`write_parquet_to_sot` em `app/glue_etl/src/utils.py`; `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`) | `especialista-engenharia-dados-app` |
 | Padrões de mock específicos de `test/scripts/` (parametrização `ExpiredTokenException`/`ExpiredToken`) | `especialista-testes-app` |
 | Guard de custo do AWS Translate como decisão de FinOps | `especialista-finops-aws` |
 
@@ -36,8 +38,8 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 - **`unit_id` é uma chave textual `"tipo:ano"` ou `"tabela:ano"` guardada num `set`**, nunca um índice numérico ou
   um booleano por ano — permite granularidade sub-ano (ex.: `movie:2020` concluído, `tv:2020` pendente) sem
   estrutura de dados adicional. Ver `load_checkpoint` (`scripts/backfill_shared.py:272-310`) e o filtro
-  `pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]` em `scripts/backfill_historico.py:95`.
-- **A granularidade do `unit_id` varia por script deliberadamente, não por descuido**: `backfill_historico.py`
+  `pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]` em `scripts/backfill_discover.py:151`.
+- **A granularidade do `unit_id` varia por script deliberadamente, não por descuido**: `backfill_discover.py`
   (`:95`), `backfill_enriquecimento.py` (`:147`) e `backfill_traducao.py` usam `tipo:ano` (a chamada real é por
   `media_type`), enquanto `backfill_data_quality.py` (`scripts/backfill_data_quality.py:128`:
   `f"{table_name}:{year}"`) e `backfill_rename_colunas.py` (`scripts/backfill_rename_colunas.py:203`) usam
@@ -45,13 +47,12 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   movie e tv juntos), não sobre "tipo". Um script novo deve escolher a chave que corresponde à unidade de trabalho
   real que ele dispara — não copiar `tipo:ano` por padrão.
 - **`save_checkpoint` é chamado a cada unidade concluída dentro do loop** (ex.
-  `scripts/backfill_historico.py:103`, `scripts/backfill_data_quality.py:136`), nunca uma vez só no fim — grava no
+  `scripts/backfill_discover.py:203`, `scripts/backfill_data_quality.py:136`), nunca uma vez só no fim — grava no
   S3 uma vez por unidade (custo desprezível, poucas dezenas de `PutObject` por backfill) para que uma interrupção a
   qualquer momento perca no máximo a unidade em andamento, não o batch inteiro.
 - **`clear_checkpoint` (`scripts/backfill_shared.py:331-339`) só é chamado quando o backfill termina sem falhas
-  pendentes**: `backfill_historico.py:108` chama sempre, porque qualquer falha já teria abortado o processo antes
-  (padrão 1 abaixo); `backfill_enriquecimento.py:175-182` só chama no ramo `else` (sem `failures`), preservando o
-  checkpoint parcial quando sobra alguma unidade `FAILED`/`STOPPED`/`ERROR`/`TIMEOUT`.
+  pendentes**: `backfill_discover.py:228` e `backfill_enriquecimento.py:232` só chamam no ramo sem `failures`,
+  preservando o checkpoint parcial quando sobra alguma unidade que falhou (padrão 2 abaixo).
 - **`load_checkpoint` ignora — não apaga — um checkpoint cujo `start_year`/`end_year` salvos não batem com o range
   do run atual** (`scripts/backfill_shared.py:300-306`) — protege contra reaproveitar por engano o progresso de um
   backfill de outro intervalo de anos, mas preserva o arquivo antigo, caso o operador tenha trocado o range por
@@ -65,31 +66,32 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   dos dois itera por ano nem grava checkpoint (não dependem de `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`), então não
   há progresso a retomar.
 - **`is_expired_token_error` reconhece dois códigos de erro distintos para a mesma causa raiz**
-  (`scripts/backfill_shared.py:49-54, 227-239`): `ExpiredTokenException` (STS — Lambda/Glue) e `ExpiredToken` (S3 —
-  `ListObjectsV2`/`get_object`/`put_object`/`delete_object`) — correção de um bug real de produção (bug #4 em
-  `test/scripts/scripts_tests.md`) em que só o primeiro código era reconhecido e um backfill de tradução caiu sem
-  acionar o retry automático.
-- **`apply_translate_cost_guard` (`scripts/backfill_shared.py:100-127`) rebaixa `TRANSLATE_PROVIDER=aws` para
+  (`scripts/backfill_shared.py:49-54, 227-239`): `ExpiredTokenException` (STS — Glue, Athena, Secrets Manager) e
+  `ExpiredToken` (S3 — `ListObjectsV2`/`get_object`/`put_object`/`delete_object`) — correção de um bug real de
+  produção (bug #4 em `test/scripts/scripts_tests.md`) em que só o primeiro código era reconhecido e um backfill de
+  tradução caiu sem acionar o retry automático.
+- **`apply_translate_cost_guard` (`scripts/backfill_shared.py:87-114`) rebaixa `TRANSLATE_PROVIDER=aws` para
   `google` automaticamente quando o intervalo de anos pedido é maior que 1** — proteção contra o operador esquecer
   de voltar para `google` (grátis) depois de testar `aws` (pago por caractere) num intervalo curto, antes de
-  disparar um backfill do catálogo histórico inteiro. Chamado tanto dentro de `build_base_payloads`
-  (`scripts/backfill_shared.py:150-152`, usado por historico/referencias) quanto explicitamente por
-  `backfill_enriquecimento.py:126-128` e `backfill_traducao.py` (que não passam por `build_base_payloads` para
-  essa variável).
+  disparar um backfill do catálogo histórico inteiro. Chamado explicitamente pelos 3 scripts que iteram por ano e
+  dependem de tradução/detecção de idioma: `backfill_discover.py`, `backfill_enriquecimento.py:129-131` e
+  `backfill_traducao.py` — não existe mais um wrapper comum tipo `build_base_payloads` (removido junto com
+  `invoke_lambda_sync`, ver histórico do módulo); cada script chama o guard diretamente antes de resolver
+  `translate_fn`/`detect_fn`.
 - **3 padrões de tratamento de erro coexistem deliberadamente**, cada um adequado ao tipo de chamada AWS por trás:
-  1. **Abortar no primeiro erro** (`backfill_historico.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`):
-     `invoke_lambda_sync` levanta `RuntimeError` se a Lambda retornar `FunctionError`
-     (`scripts/backfill_shared.py:94-95`); qualquer exceção não tratada como token expirado propaga até o
-     processo, que sai com código `!= 0` e traceback. Faz sentido quando a chamada é síncrona e uma falha indica
-     um problema que provavelmente se repetirá nas próximas unidades. `backfill_referencias.py` segue o mesmo
-     padrão sem Lambda no meio: uma falha em `collect_genre_data`/`collect_configuration_data` (ou na escrita
-     Parquet equivalente ao Glue ETL) propaga direto e aborta o script — só `collect_watch_providers_ref` tem
-     tratamento especial (`HTTPError` capturado e ignorado, réplica do mesmo `try/except` de
-     `app/lambda_api/main.py`), não os 3 padrões descritos aqui.
-  2. **Soft-fail-continue** (`backfill_enriquecimento.py:150-182`): aguarda o Glue job terminar (`_wait_for_job`)
-     e, se o estado final não for `SUCCEEDED`, loga o erro, adiciona a unidade à lista `failures` e continua para
-     a próxima — só marca `completed` (e só salva checkpoint) no ramo de sucesso (`:167-168`). O checkpoint fica
-     permanentemente incompleto até um re-run.
+  1. **Abortar no primeiro erro** (`backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_referencias.py`):
+     qualquer exceção não tratada como token expirado propaga até o processo, que sai com código `!= 0` e
+     traceback. Faz sentido quando a unidade de trabalho é pequena/idempotente e uma falha indica um problema que
+     provavelmente se repetirá nas próximas unidades. Em `backfill_referencias.py`, uma falha em
+     `collect_genre_data`/`collect_configuration_data` (ou na escrita Parquet equivalente ao Glue ETL) propaga
+     direto e aborta o script — só `collect_watch_providers_ref` tem tratamento especial (`HTTPError` capturado e
+     ignorado, réplica do mesmo `try/except` de `app/lambda_api/main.py`), não os 3 padrões descritos aqui.
+  2. **Soft-fail-continue** (`backfill_discover.py:186-213`, `backfill_enriquecimento.py:150-182`,
+     `backfill_changes.py`): cada unidade roda dentro de um `try/except` que distingue token expirado (propaga,
+     para o `run_with_retry_exit` traduzir em exit 75) de qualquer outra exceção (loga o erro, adiciona a unidade à
+     lista `failures` e continua para a próxima) — só marca `completed` (e só salva checkpoint) no ramo de sucesso.
+     O checkpoint fica permanentemente incompleto até um re-run, e o Glue Data Quality (disparado uma vez ao final,
+     não por unidade, nesses 3 scripts) só roda se `failures` estiver vazia.
   3. **Fire-and-forget** (`backfill_data_quality.py:122-144`): dispara `start_job_run` de forma assíncrona e marca
      a unidade como `completed` (e salva checkpoint) imediatamente após o disparo ter sido aceito pela API — sem
      nunca chamar `get_job_run` para confirmar que o job de fato terminou com sucesso. "Concluído" aqui significa
@@ -112,7 +114,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   AGG**: a saída do `executar_script` é gravada em `$RUNNER_TEMP/backfill_output.log` via `tee` (com
   `codigo=${PIPESTATUS[0]}`, não `$?`, para capturar o exit code do script e não do `tee`). Isso existe porque
   `codigo -eq 0` (a condição que já existia para decidir "backfill terminou") **não implica que toda unidade teve
-  sucesso** para os 2 scripts com tratamento de erro não-abortante (padrões 2 e 3 abaixo): se sobrar alguma linha
+  sucesso** para os 4 scripts com tratamento de erro não-abortante (padrões 2 e 3 acima): se sobrar alguma linha
   ` ERROR ` no log (mesmo formato em todos os 7 scripts, ver `backfill_shared.py:58-63`; `%(asctime)s` sai em
   horário de São Paulo, `DD/MM/YYYY HH:MM:SS`, via `Formatter.converter`/`datefmt` customizados, também em
   `backfill_shared.py`), o step summary mostra
@@ -141,9 +143,12 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 
 ## Regras práticas ao escrever/revisar mudança nova
 
-- **Script de backfill novo**: sempre reaproveitar `require_env`, `setup_logging`, `invoke_lambda_sync` ou o padrão
-  `_start_glue_job`/`_wait_for_job` (conforme o serviço AWS), `read_year_range` e o bloco
-  `if __name__ == "__main__": shared.run_with_retry_exit(main)` — nunca reimplementar retry/exit code do zero.
+- **Script de backfill novo**: sempre reaproveitar `require_env`, `setup_logging`, o padrão `_start_glue_job`/
+  `_wait_for_job` (ou `trigger_glue_job` fire-and-forget, conforme o caso), `read_year_range` e o bloco
+  `if __name__ == "__main__": shared.run_with_retry_exit(main)` — nunca reimplementar retry/exit code do zero. Se o
+  script precisar coletar dados do TMDB ou transformar SOR→SOT, reaproveitar as funções puras que a Lambda/Glue ETL
+  já usam (`app/lambda_api/src/utils.py`, `app/glue_etl/src/utils.py`) em vez de invocar esses recursos como job —
+  nenhum script novo deve voltar a depender da Lambda API.
 - **Se o script novo itera por ano**: usar `load_checkpoint`/`save_checkpoint`/`clear_checkpoint` de
   `backfill_shared.py`, escolhendo o `unit_id` que corresponde à unidade de trabalho real (`tipo:ano` se a chamada
   é por `media_type`; `tabela:ano` se é por tabela específica) — não copiar `tipo:ano` por padrão sem checar qual
@@ -160,5 +165,5 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 - **`table_group` novo**: adicionar nas 3 pontas (choices do `workflow_dispatch`, `case` do bash, docstring do
   script) mais `scripts/scripts.md` no mesmo PR — nada valida a string em runtime hoje (ver "Lacunas encontradas").
 - **Guard de custo de tradução**: se o script novo aceitar `TRANSLATE_PROVIDER` e depender de range de anos, chamar
-  `apply_translate_cost_guard` explicitamente (ou via `build_base_payloads`, se aplicável) antes de montar
-  qualquer payload/argumento — não assumir que o operador vai lembrar de usar `"google"` para backfills longos.
+  `apply_translate_cost_guard` explicitamente antes de resolver `translate_fn`/`detect_fn` — não assumir que o
+  operador vai lembrar de usar `"google"` para backfills longos.
