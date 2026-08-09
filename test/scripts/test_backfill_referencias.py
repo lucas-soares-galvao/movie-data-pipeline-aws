@@ -66,6 +66,7 @@ def _run_main(
         patch("backfill_referencias.write_parquet_to_sot") as mock_write,
         patch("backfill_referencias.trigger_glue_job") as mock_trigger,
         patch("backfill_referencias.shared.trigger_agg_locally") as mock_agg,
+        patch("backfill_referencias.shared.notify_backfill_success") as mock_notify,
     ):
         mock_boto3.client.return_value = MagicMock()
         if collect_watch_providers_side_effect is not None:
@@ -81,6 +82,7 @@ def _run_main(
         "write": mock_write,
         "trigger": mock_trigger,
         "agg": mock_agg,
+        "notify": mock_notify,
     }
 
 
@@ -161,6 +163,52 @@ class TestGlueAgg:
             dq_job_name="dq-job",
             environment="dev",
         )
+
+
+class TestNotificacaoSucesso:
+    def test_chamado_ao_final_de_um_main_bem_sucedido(self, monkeypatch):
+        mocks = _run_main(monkeypatch)
+        mocks["notify"].assert_called_once_with(
+            "referencias",
+            "Backfill de referências concluído: genre, configuration e watch_providers_ref "
+            "atualizadas (movie e tv), Data Quality e Glue AGG disparados.",
+        )
+
+    def test_nao_chamado_quando_erro_em_genre_aborta_o_script(self, monkeypatch):
+        _set_env(monkeypatch)
+        with (
+            patch("backfill_referencias.boto3") as mock_boto3,
+            patch("backfill_referencias.get_api_secret", return_value="tmdb-key"),
+            patch("backfill_referencias.collect_genre_data", side_effect=RuntimeError("boom")),
+            patch("backfill_referencias.collect_configuration_data"),
+            patch("backfill_referencias.read_from_sor"),
+            patch("backfill_referencias.write_parquet_to_sot"),
+            patch("backfill_referencias.trigger_glue_job"),
+            patch("backfill_referencias.shared.trigger_agg_locally"),
+            patch("backfill_referencias.shared.notify_backfill_success") as mock_notify,
+            pytest.raises(RuntimeError),
+        ):
+            mock_boto3.client.return_value = MagicMock()
+            br.main()
+        mock_notify.assert_not_called()
+
+    def test_nao_chamado_quando_erro_em_configuration_aborta_o_script(self, monkeypatch):
+        _set_env(monkeypatch)
+        with (
+            patch("backfill_referencias.boto3") as mock_boto3,
+            patch("backfill_referencias.get_api_secret", return_value="tmdb-key"),
+            patch("backfill_referencias.collect_genre_data"),
+            patch("backfill_referencias.collect_configuration_data", side_effect=RuntimeError("boom")),
+            patch("backfill_referencias.read_from_sor"),
+            patch("backfill_referencias.write_parquet_to_sot"),
+            patch("backfill_referencias.trigger_glue_job"),
+            patch("backfill_referencias.shared.trigger_agg_locally"),
+            patch("backfill_referencias.shared.notify_backfill_success") as mock_notify,
+            pytest.raises(RuntimeError),
+        ):
+            mock_boto3.client.return_value = MagicMock()
+            br.main()
+        mock_notify.assert_not_called()
 
 
 class TestErros:

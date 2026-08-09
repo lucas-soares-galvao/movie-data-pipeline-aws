@@ -90,12 +90,13 @@ def _run_main(
         patch("backfill_historico.backfill_discover") as mock_discover,
         patch("backfill_historico.backfill_enriquecimento") as mock_enriquecimento,
         patch("backfill_historico.shared.trigger_agg_locally") as mock_agg,
+        patch("backfill_historico.shared.notify_backfill_success") as mock_notify,
     ):
         mock_boto3.client.return_value = mock_s3
         mock_discover.main.side_effect = _discover_main
         mock_enriquecimento.main.side_effect = _enriquecimento_main
         bh.main()
-    return mock_discover, mock_enriquecimento, mock_s3, table_groups_no_momento_da_chamada, mock_agg
+    return mock_discover, mock_enriquecimento, mock_s3, table_groups_no_momento_da_chamada, mock_agg, mock_notify
 
 
 class TestOrdemDosEstagios:
@@ -105,7 +106,7 @@ class TestOrdemDosEstagios:
         mock_enriquecimento.main.assert_called_once()
 
     def test_define_table_group_de_cada_estagio_antes_de_chamar(self, monkeypatch):
-        *_, table_groups, _ = _run_main(monkeypatch)
+        *_, table_groups, _, _ = _run_main(monkeypatch)
         assert table_groups == ["discover", "detalhes_e_providers"]
 
 
@@ -171,7 +172,7 @@ class TestGlueAgg:
         mock_enriquecimento.main.assert_called_once_with(trigger_agg=False)
 
     def test_chamado_exatamente_uma_vez_quando_ambos_estagios_sucedem(self, monkeypatch):
-        *_, mock_agg = _run_main(monkeypatch)
+        *_, mock_agg, _ = _run_main(monkeypatch)
         mock_agg.assert_called_once_with(
             s3_bucket_spec="bucket-spec-test",
             s3_prefix_spec="tmdb",
@@ -185,18 +186,18 @@ class TestGlueAgg:
         )
 
     def test_nao_chamado_quando_discover_retorna_false(self, monkeypatch):
-        *_, mock_agg = _run_main(monkeypatch, discover_result=False)
+        *_, mock_agg, _ = _run_main(monkeypatch, discover_result=False)
         mock_agg.assert_not_called()
 
     def test_nao_chamado_quando_enriquecimento_retorna_false(self, monkeypatch):
-        *_, mock_agg = _run_main(monkeypatch, enriquecimento_result=False)
+        *_, mock_agg, _ = _run_main(monkeypatch, enriquecimento_result=False)
         mock_agg.assert_not_called()
 
     def test_chamado_uma_unica_vez_mesmo_quando_ambos_estagios_ja_estavam_no_checkpoint(self, monkeypatch):
         """Retomada: os dois estágios são pulados (já concluídos), mas o AGG ainda deve
         rodar (ainda não tinha sido disparado se a interrupção anterior ocorreu antes dele)."""
         mock_s3 = _s3_client_com_checkpoint(["discover", "enriquecimento"])
-        *_, mock_agg = _run_main(monkeypatch, mock_s3=mock_s3)
+        *_, mock_agg, _ = _run_main(monkeypatch, mock_s3=mock_s3)
         mock_agg.assert_called_once()
 
 
@@ -221,3 +222,19 @@ class TestErros:
         exc = ClientError({"Error": {"Code": codigo, "Message": "expired"}}, "GetObject")
         with pytest.raises(ClientError):
             _run_main(monkeypatch, discover_side_effect=exc)
+
+
+class TestNotificacaoSucesso:
+    def test_chamado_uma_vez_quando_ambos_estagios_sucedem(self, monkeypatch):
+        *_, mock_notify = _run_main(monkeypatch)
+        mock_notify.assert_called_once_with(
+            "historico", "Backfill histórico concluído: discover + enriquecimento, sem pendências.",
+        )
+
+    def test_nao_chamado_quando_discover_retorna_false(self, monkeypatch):
+        *_, mock_notify = _run_main(monkeypatch, discover_result=False)
+        mock_notify.assert_not_called()
+
+    def test_nao_chamado_quando_enriquecimento_retorna_false(self, monkeypatch):
+        *_, mock_notify = _run_main(monkeypatch, enriquecimento_result=False)
+        mock_notify.assert_not_called()

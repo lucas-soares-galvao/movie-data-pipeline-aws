@@ -79,6 +79,11 @@ variable "eventbridge_notification_email" {
   type        = string
 }
 
+variable "backfill_notification_email" {
+  description = "E-mail para receber notificações de sucesso dos backfills manuais (scripts/backfill_*.py)"
+  type        = string
+}
+
 # =============================================================================
 # BUCKETS S3 — ARQUITETURA MEDALHÃO
 # =============================================================================

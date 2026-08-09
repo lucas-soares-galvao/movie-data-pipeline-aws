@@ -340,6 +340,66 @@ class TestTriggerAggLocally:
         mock_trigger.assert_not_called()
 
 
+class TestNotifyBackfillSuccess:
+    """notify_backfill_success é a última etapa de um script já concluído com sucesso — por
+    isso nunca propaga exceção (nem token expirado, diferente de trigger_agg_locally): deixar
+    propagar forçaria run_with_retry_exit a sinalizar exit 75 e reprocessar o backfill inteiro
+    do zero só por causa de uma falha de observabilidade (ver docstring da função)."""
+
+    def test_publica_com_topic_arn_subject_e_message_corretos(self, monkeypatch):
+        monkeypatch.setenv("SNS_TOPIC_ARN_BACKFILL_SUCCESS", "arn:aws:sns:sa-east-1:123456789:backfill-success")
+        monkeypatch.setenv("ENVIRONMENT", "dev")
+        with patch("backfill_shared.boto3") as mock_boto3:
+            mock_sns = MagicMock()
+            mock_boto3.client.return_value = mock_sns
+
+            bs.notify_backfill_success("discover", "resumo do backfill")
+
+        mock_boto3.client.assert_called_once_with("sns")
+        mock_sns.publish.assert_called_once_with(
+            TopicArn="arn:aws:sns:sa-east-1:123456789:backfill-success",
+            Subject="[DEV] BACKFILL - SUCESSO",
+            Message="resumo do backfill",
+        )
+
+    def test_loga_warning_e_nao_publica_quando_env_var_ausente(self, monkeypatch, caplog):
+        monkeypatch.delenv("SNS_TOPIC_ARN_BACKFILL_SUCCESS", raising=False)
+        with patch("backfill_shared.boto3") as mock_boto3:
+            with caplog.at_level("WARNING", logger="backfill_shared"):
+                bs.notify_backfill_success("discover", "resumo do backfill")
+
+        mock_boto3.client.assert_not_called()
+        assert any("não enviada" in r.message for r in caplog.records)
+
+    def test_engole_excecao_generica_do_publish_sem_propagar(self, monkeypatch, caplog):
+        monkeypatch.setenv("SNS_TOPIC_ARN_BACKFILL_SUCCESS", "arn:aws:sns:sa-east-1:123456789:backfill-success")
+        with patch("backfill_shared.boto3") as mock_boto3:
+            mock_sns = MagicMock()
+            mock_sns.publish.side_effect = RuntimeError("sns indisponível")
+            mock_boto3.client.return_value = mock_sns
+
+            with caplog.at_level("ERROR", logger="backfill_shared"):
+                bs.notify_backfill_success("discover", "resumo do backfill")  # não deve levantar
+
+        assert any("Falha ao publicar notificação" in r.message for r in caplog.records)
+
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_engole_client_error_de_token_expirado_sem_propagar(self, monkeypatch, caplog, codigo):
+        """Diferente das demais chamadas AWS do backfill (que repropagam token expirado para
+        run_with_retry_exit traduzir em exit 75), aqui até token expirado é engolido — esta
+        função roda depois de clear_checkpoint na maioria dos scripts."""
+        monkeypatch.setenv("SNS_TOPIC_ARN_BACKFILL_SUCCESS", "arn:aws:sns:sa-east-1:123456789:backfill-success")
+        with patch("backfill_shared.boto3") as mock_boto3:
+            mock_sns = MagicMock()
+            mock_sns.publish.side_effect = _client_error(codigo)
+            mock_boto3.client.return_value = mock_sns
+
+            with caplog.at_level("ERROR", logger="backfill_shared"):
+                bs.notify_backfill_success("discover", "resumo do backfill")  # não deve levantar
+
+        assert any("Falha ao publicar notificação" in r.message for r in caplog.records)
+
+
 class TestLogResumeProgress:
     def test_loga_quando_ha_unidades_ja_concluidas(self, caplog):
         logger = logging.getLogger("test_log_resume_progress")

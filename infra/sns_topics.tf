@@ -2,7 +2,8 @@
 # sns_topics.tf — Tópicos SNS para notificações por email (um por componente)
 #
 # Tópicos: glue_data_quality_failure/metrics, glue_etl_failure, lambda_failure,
-#          eventbridge_failure, glue_agg_success/failure, glue_details_failure
+#          eventbridge_failure, glue_agg_success/failure, glue_details_failure,
+#          backfill_success
 # =============================================================================
 
 # =============================================================================
@@ -140,4 +141,25 @@ resource "aws_sns_topic_subscription" "glue_details_failure_email" {
   topic_arn = aws_sns_topic.glue_details_failure_notifications.arn
   protocol  = "email"
   endpoint  = var.glue_details_notification_email
+}
+
+# =============================================================================
+# TÓPICO 9: Sucesso dos backfills manuais (scripts/backfill_*.py)
+# =============================================================================
+# Notifica quando um backfill manual (disparado via .github/workflows/05_backfill.yml)
+# termina com sucesso total (sem unidades pendentes). Publicado diretamente por
+# scripts/backfill_shared.py:notify_backfill_success via boto3 — não há EventBridge no
+# meio, já que não existe um "Job State Change" nativo para um processo Python rodando
+# fora do Glue (mesmo racional do tópico de métricas do Glue Data Quality, publicado
+# por notify_failed_outcomes em app/glue_data_quality/src/utils.py).
+resource "aws_sns_topic" "backfill_success_notifications" {
+  name         = "${local.tmdb_prefix}-backfill-success-notifications-${var.env}"
+  display_name = "[${upper(var.env)}] BACKFILL - SUCESSO"
+  tags         = local.component_tags.shared
+}
+
+resource "aws_sns_topic_subscription" "backfill_success_email" {
+  topic_arn = aws_sns_topic.backfill_success_notifications.arn
+  protocol  = "email"
+  endpoint  = var.backfill_notification_email
 }

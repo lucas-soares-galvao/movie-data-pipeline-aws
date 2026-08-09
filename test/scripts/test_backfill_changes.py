@@ -49,6 +49,7 @@ def _run_main(
     overrides: dict | None = None,
     process_side_effect=None,
     affected_years_by_type: dict | None = None,
+    notify_capture: list | None = None,
 ):
     """Roda bc.main() com collect_changes_data/fetch_ids_from_changes_file/process_changed_ids/
     trigger_glue_job mockados.
@@ -56,6 +57,9 @@ def _run_main(
     process_side_effect define o comportamento de process_changed_ids por content_type — lista de
     exceções/valores (na ordem movie, tv) ou uma função. affected_years_by_type sobrescreve o
     retorno padrão (lista vazia) por content_type quando process_side_effect não é informado.
+
+    notify_capture (se passado) recebe o mock de shared.notify_backfill_success — não muda a
+    tupla de mocks já retornada por esta função (consumida por unpacking fixo em alguns testes).
     """
     _set_env(monkeypatch, overrides)
     affected_years_by_type = affected_years_by_type or {}
@@ -71,6 +75,7 @@ def _run_main(
         patch("backfill_changes.process_changed_ids") as mock_process,
         patch("backfill_changes.trigger_glue_job") as mock_trigger,
         patch("backfill_changes.shared.trigger_agg_locally") as mock_agg,
+        patch("backfill_changes.shared.notify_backfill_success") as mock_notify,
     ):
         mock_boto3.client.return_value = MagicMock()
         mock_collect.side_effect = lambda api_key, s3_client, bucket, content_type: f"tmdb/changes/{content_type}/2026-01-01.json"
@@ -80,6 +85,8 @@ def _run_main(
         else:
             mock_process.side_effect = _default_process
         bc.main()
+        if notify_capture is not None:
+            notify_capture.append(mock_notify)
     return mock_collect, mock_fetch, mock_process, mock_trigger, mock_secret, mock_agg
 
 
@@ -191,6 +198,22 @@ class TestGlueAgg:
     def test_nao_chamado_quando_ha_falhas(self, monkeypatch):
         *_, mock_agg = _run_main(monkeypatch, process_side_effect=[Exception("falhou"), []])
         mock_agg.assert_not_called()
+
+
+class TestNotificacaoSucesso:
+    def test_chamado_quando_nao_ha_falhas(self, monkeypatch):
+        notify_capture: list = []
+        _run_main(monkeypatch, notify_capture=notify_capture)
+        mock_notify = notify_capture[0]
+        mock_notify.assert_called_once_with(
+            "changes", "Changes disparado com sucesso para movie e tv, Data Quality e Glue AGG disparados.",
+        )
+
+    def test_nao_chamado_quando_ha_falhas(self, monkeypatch):
+        notify_capture: list = []
+        _run_main(monkeypatch, process_side_effect=[Exception("falhou"), []], notify_capture=notify_capture)
+        mock_notify = notify_capture[0]
+        mock_notify.assert_not_called()
 
 
 class TestErros:

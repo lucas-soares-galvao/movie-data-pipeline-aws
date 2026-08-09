@@ -434,7 +434,15 @@ class TestBackfillYear:
         assert df_escrito.loc[0, "keywords_pt"] == "space, alien_PT"
 
 
-def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mock_s3: MagicMock | None = None):
+def _run_main(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict | None = None,
+    mock_s3: MagicMock | None = None,
+    notify_capture: list | None = None,
+):
+    """notify_capture (se passado) recebe o mock de shared.notify_backfill_success — não muda
+    a tupla de mocks já retornada por esta função (consumida por unpacking fixo em quase todo
+    teste existente)."""
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
     with (
@@ -442,10 +450,13 @@ def _run_main(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None, mo
         patch("backfill_traducao.time.sleep") as mock_sleep,
         patch("backfill_traducao.boto3") as mock_boto3,
         patch("backfill_traducao.shared.trigger_agg_locally") as mock_agg,
+        patch("backfill_traducao.shared.notify_backfill_success") as mock_notify,
     ):
         mock_backfill.return_value = (True, 1)  # translated_count > 0: comportamento padrão de pausa entre partições
         mock_boto3.client.return_value = mock_s3
         bt.main()
+        if notify_capture is not None:
+            notify_capture.append(mock_notify)
     return mock_backfill, mock_sleep, mock_s3, mock_agg
 
 
@@ -687,4 +698,20 @@ class TestGlueAgg:
             table_name="tb_discover_unified",
             dq_job_name="dq-job",
             environment="dev",
+        )
+
+
+class TestNotificacaoSucesso:
+    def test_chamado_ao_final_de_um_main_bem_sucedido(self, monkeypatch):
+        notify_capture: list = []
+
+        _run_main(
+            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, notify_capture=notify_capture,
+        )
+
+        mock_notify = notify_capture[0]
+        mock_notify.assert_called_once_with(
+            "traducao",
+            "Backfill de tradução concluído: 2020 até 2020 | 2 campos traduzidos com sucesso "
+            "(overview_pt + tagline_pt + keywords_pt)",
         )

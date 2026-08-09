@@ -532,6 +532,26 @@ resource "aws_sns_topic_policy" "glue_data_quality_metrics_topic_policy" {
   policy = data.aws_iam_policy_document.glue_data_quality_metrics_topic_policy.json
 }
 
+data "aws_iam_policy_document" "backfill_success_topic_policy" {
+  statement {
+    sid    = "AllowBackfillRolePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.backfill.arn]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.backfill_success_notifications.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "backfill_success_topic_policy" {
+  arn    = aws_sns_topic.backfill_success_notifications.arn
+  policy = data.aws_iam_policy_document.backfill_success_topic_policy.json
+}
+
 data "aws_iam_policy_document" "lambda_failure_topic_policy" {
   statement {
     sid    = "AllowEventBridgePublish"

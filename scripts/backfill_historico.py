@@ -54,6 +54,12 @@ Glue AGG:
     rodar a query de unificação (cara — CTAS sobre o catálogo inteiro) duas vezes seguidas por
     execução de "historico".
 
+Notificação:
+    Mesma lógica do AGG: notifica uma única vez, ao final, no tópico SNS de sucesso do backfill
+    (SNS_TOPIC_ARN_BACKFILL_SUCCESS, opcional — ver backfill_shared.notify_backfill_success), e
+    não nos dois estágios internos (chamados com trigger_agg=False, que também suprime a
+    notificação de cada um) — evita 3 e-mails redundantes na mesma execução.
+
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken do S3) durante
     qualquer um dos dois estágios, a exceção propaga naturalmente através deste script até
@@ -132,7 +138,9 @@ def main() -> None:
         environment=shared.require_env("ENVIRONMENT"),
     )
     shared.clear_checkpoint(s3_client, s3_bucket_temp, _TABLE_GROUP_HISTORICO)
-    logger.info("Backfill histórico concluído: discover + enriquecimento, sem pendências.")
+    summary = "Backfill histórico concluído: discover + enriquecimento, sem pendências."
+    logger.info(summary)
+    shared.notify_backfill_success(_TABLE_GROUP_HISTORICO, summary)
 
 
 if __name__ == "__main__":

@@ -83,6 +83,10 @@ Glue AGG:
     ERROR mas não derruba o backfill (que já terminou com sucesso) — o trigger agendado
     (sábado/domingo 08:00 BRT) e o alarme SNS de falha continuam cobrindo o caso.
 
+Notificação:
+    Ao final, publica no tópico SNS de sucesso do backfill (SNS_TOPIC_ARN_BACKFILL_SUCCESS,
+    opcional) — ver backfill_shared.notify_backfill_success.
+
 Retomada automática:
     Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken
     do S3), o script sai com exit code 75
@@ -356,11 +360,12 @@ def main() -> None:
         environment=shared.require_env("ENVIRONMENT"),
     )
     shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
-    logger.info(
-        "Backfill de tradução concluído: %d até %d | %d campos traduzidos com sucesso "
-        "(overview_pt + tagline_pt + keywords_pt)",
-        start_year, end_year, total_translated,
+    summary = (
+        f"Backfill de tradução concluído: {start_year} até {end_year} | {total_translated} "
+        f"campos traduzidos com sucesso (overview_pt + tagline_pt + keywords_pt)"
     )
+    logger.info(summary)
+    shared.notify_backfill_success(table_group, summary)
 
 
 if __name__ == "__main__":
