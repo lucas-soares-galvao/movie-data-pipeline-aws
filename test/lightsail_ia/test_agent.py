@@ -57,6 +57,7 @@ COLUMNS = [
     "vote_average", "poster_url", "backdrop_url",
     "runtime_minutes", "number_of_seasons",
     "number_of_episodes", "episode_runtime_minutes",
+    "next_episode_air_date", "next_episode_number", "next_episode_season_number",
     "tagline", "actor_names", "director", "screenplay", "music_composer",
     "producer", "cinematographer", "editor",
     "keywords_pt", "certification", "trailer_url", "collection_name",
@@ -319,6 +320,24 @@ class TestSearchTitlesSpec:
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
         assert "number_of_seasons = 1" in executed_sql
+
+    def test_select_inclui_campos_de_proximo_episodio(self):
+        with patch("agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("media_type = 'tv'")
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "next_episode_air_date" in executed_sql
+        assert "next_episode_number" in executed_sql
+        assert "next_episode_season_number" in executed_sql
+
+    def test_filtro_proximo_episodio_na_query(self):
+        with patch("agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("next_episode_air_date IS NOT NULL AND media_type = 'tv'")
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "next_episode_air_date IS NOT NULL" in executed_sql
 
     def test_filtro_em_cartaz_na_query(self):
         with patch("agent.boto3") as mock_boto3:

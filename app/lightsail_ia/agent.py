@@ -286,6 +286,9 @@ _SYSTEM_PROMPT = (
     "- networks (string): redes de TV originais (ex: 'HBO, Netflix'). Apenas séries. Use lower() + LIKE.\n"
     "- in_production (boolean): se a série ainda está em produção. Apenas séries.\n"
     "- last_air_date (string): data do último episódio exibido (séries). Formato 'YYYY-MM-DD'.\n"
+    "- next_episode_air_date (string): data do próximo episódio agendado (séries). Formato 'YYYY-MM-DD'. NULL quando não há episódio futuro confirmado.\n"
+    "- next_episode_number (int): número do próximo episódio agendado (séries).\n"
+    "- next_episode_season_number (int): número da temporada do próximo episódio agendado (séries). Quando maior que number_of_seasons, indica temporada nova ainda não lançada.\n"
     "- tv_type (string): tipo de série ('Roteirizada', 'Reality Show', 'Documentário', 'Minissérie', 'Notícias', 'Talk Show', 'Vídeo'). Apenas séries.\n"
     "- streaming_providers (string): plataformas de streaming por assinatura no Brasil (ex: 'Netflix, Amazon Prime Video'). Use lower() + LIKE.\n"
     "- rent_buy_providers (string): plataformas de aluguel/compra no Brasil (ex: 'Apple TV, Google Play'). Use lower() + LIKE.\n"
@@ -419,6 +422,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
                vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
+               next_episode_air_date, next_episode_number, next_episode_season_number,
                tagline, actor_names, director, screenplay, music_composer,
                producer, cinematographer, editor,
                keywords_pt, certification, trailer_url, collection_name,
@@ -602,7 +606,8 @@ def recommend(preference: str) -> list[dict]:
     Returns:
         Lista de dicionários, cada um com: title, type, year, genres, overview,
         rating, poster_url, backdrop_url, duration, streaming_providers,
-        in_theaters, theater_end_date, reason, highlighted_genres, highlighted_providers.
+        in_theaters, theater_end_date, next_episode_season_number, next_episode_number,
+        next_episode_date, reason, highlighted_genres, highlighted_providers.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
     """
 

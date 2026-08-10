@@ -117,6 +117,20 @@ class TestFormatTheaterEndDate:
         assert formatacao._format_theater_end_date(None, True) is None
 
 
+class TestFormatNextEpisodeDate:
+    def test_data_valida(self):
+        assert formatacao._format_next_episode_date("2026-09-15") == "15/09"
+
+    def test_data_none(self):
+        assert formatacao._format_next_episode_date(None) is None
+
+    def test_data_vazia(self):
+        assert formatacao._format_next_episode_date("") is None
+
+    def test_data_malformada(self):
+        assert formatacao._format_next_episode_date("2026-09") is None
+
+
 class TestFormatRating:
     def test_float_valido(self):
         assert formatacao._format_rating(8.4) == 8.4
@@ -199,6 +213,32 @@ class TestFormatRecord:
         assert result["recommended"] == "Interstellar, The Prestige"
         assert result["similar"] == "Inception, Tenet"
         assert result["alternative_titles"] == "Seven, Se7en"
+
+    def test_registro_serie_com_proximo_episodio(self):
+        record = {
+            **FAKE_TITLE,
+            "media_type": "tv",
+            "next_episode_season_number": "3",
+            "next_episode_number": "1",
+            "next_episode_air_date": "2026-09-15",
+        }
+        result = formatacao.format_record(record)
+        assert result["next_episode_season_number"] == 3
+        assert result["next_episode_number"] == 1
+        assert result["next_episode_date"] == "15/09"
+
+    def test_registro_serie_sem_proximo_episodio(self):
+        record = {
+            **FAKE_TITLE,
+            "media_type": "tv",
+            "next_episode_season_number": None,
+            "next_episode_number": None,
+            "next_episode_air_date": None,
+        }
+        result = formatacao.format_record(record)
+        assert result["next_episode_season_number"] is None
+        assert result["next_episode_number"] is None
+        assert result["next_episode_date"] is None
 
     def test_novos_campos_nulos(self):
         result = formatacao.format_record(FAKE_TITLE)
