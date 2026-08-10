@@ -21,10 +21,10 @@ _MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
 
 # Linhas locais do subgrid de cada card (pôster, título, motivo, data/tipo/nota, gêneros,
-# duração, provedores, "em cartaz", sinopse/trailer) — ver render_grid()/render_card() e a
-# regra .grid-titles em principal.css, que precisam concordar com esse número pro
+# duração, provedores, "em cartaz", sinopse/trailer, pessoas) — ver render_grid()/render_card()
+# e a regra .grid-titles em principal.css, que precisam concordar com esse número pro
 # alinhamento entre os 3 cards de uma fileira funcionar.
-_CARD_GRID_ROWS = 9
+_CARD_GRID_ROWS = 10
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -194,6 +194,9 @@ def render_card(title: dict, idx: int = 0) -> str:
     next_episode_date = html.escape(title.get("next_episode_date") or "")
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
+    cast = title.get("cast") or ""
+    # Série sem diretor de episódio agregado no crew: cai pro(s) criador(es) da série.
+    director = title.get("director") or title.get("creators") or ""
 
     highlighted_genres = title.get("highlighted_genres") or []
     genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
@@ -363,6 +366,32 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
         )
 
+    # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), em linha própria do
+    # subgrid — diretor/elenco são os dois papéis que o público reconhece e busca, os demais
+    # campos de ficha técnica (roteiro, trilha sonora, produção, fotografia, montagem) já
+    # chegam formatados em `title` mas ficam fora do card por ora.
+    people_toggle_id = f"people-toggle-{idx}"
+    people_toggle_html = ""
+    people_row_html = ""
+    people_text_html = ""
+    if director or cast:
+        people_toggle_html = (
+            f'<input type="checkbox" id="{people_toggle_id}" class="people-toggle" hidden>'
+        )
+        people_row_html = (
+            f'<div class="meta-row people-row">'
+            f'<label for="{people_toggle_id}" class="people-label">'
+            f'<span class="people-arrow-closed">▸</span>'
+            f'<span class="people-arrow-open">▾</span> Pessoas</label>'
+            f'</div>'
+        )
+        people_lines = []
+        if director:
+            people_lines.append(f"Diretor: {html.escape(director)}")
+        if cast:
+            people_lines.append(f"Elenco: {html.escape(cast)}")
+        people_text_html = f'<p class="people-text">{"<br>".join(people_lines)}</p>'
+
     # Posição do card no subgrid compartilhado da fileira: cada card ocupa um bloco de
     # _CARD_GRID_ROWS linhas (mais 1 linha de respiro entre fileiras, ver render_grid) na
     # coluna correspondente ao seu índice dentro do grupo de 3. Ver principal.css pra como
@@ -383,6 +412,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         <div class="genres-container">{genres_icon_html}<span class="genre-badges">{genres_html}</span></div>
         {providers_block_html}
         <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
+        <div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>
       </div>
     </article>
     """
