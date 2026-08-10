@@ -21,9 +21,9 @@ _MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
 
 # Linhas locais do subgrid de cada card (pôster, título, motivo, data/tipo/nota, gêneros,
-# duração, provedores, "em cartaz", sinopse/trailer, pessoas) — ver render_grid()/render_card()
-# e a regra .grid-titles em principal.css, que precisam concordar com esse número pro
-# alinhamento entre os 3 cards de uma fileira funcionar.
+# duração, provedores, "em cartaz", ficha técnica, sinopse/trailer) — ver
+# render_grid()/render_card() e a regra .grid-titles em principal.css, que precisam
+# concordar com esse número pro alinhamento entre os 3 cards de uma fileira funcionar.
 _CARD_GRID_ROWS = 10
 
 _YT_IMG = (
@@ -195,8 +195,13 @@ def render_card(title: dict, idx: int = 0) -> str:
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
     cast = title.get("cast") or ""
-    # Série sem diretor de episódio agregado no crew: cai pro(s) criador(es) da série.
-    director = title.get("director") or title.get("creators") or ""
+    director = title.get("director") or ""
+    creators = title.get("creators") or ""
+    writers = title.get("writers") or ""
+    composer = title.get("composer") or ""
+    producer = title.get("producer") or ""
+    cinematographer = title.get("cinematographer") or ""
+    editor = title.get("editor") or ""
 
     highlighted_genres = title.get("highlighted_genres") or []
     genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
@@ -367,30 +372,41 @@ def render_card(title: dict, idx: int = 0) -> str:
         )
 
     # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), em linha própria do
-    # subgrid — diretor/elenco são os dois papéis que o público reconhece e busca, os demais
-    # campos de ficha técnica (roteiro, trilha sonora, produção, fotografia, montagem) já
-    # chegam formatados em `title` mas ficam fora do card por ora.
+    # subgrid, posicionada ANTES da sinopse (ver principal.css) — todo o elenco/equipe
+    # técnica já formatado em `title` aparece aqui, um bullet por papel, com o rótulo em
+    # negrito pra escanear rápido.
     people_toggle_id = f"people-toggle-{idx}"
     people_toggle_html = ""
     people_row_html = ""
     people_text_html = ""
-    if director or cast:
+    people_fields = [
+        ("Diretor", director),
+        ("Criador(es)", creators),
+        ("Elenco", cast),
+        ("Roteiro", writers),
+        ("Trilha sonora", composer),
+        ("Produção", producer),
+        ("Fotografia", cinematographer),
+        ("Montagem", editor),
+    ]
+    if any(value for _, value in people_fields):
         people_toggle_html = (
             f'<input type="checkbox" id="{people_toggle_id}" class="people-toggle" hidden>'
         )
         people_row_html = (
             f'<div class="meta-row people-row">'
             f'<label for="{people_toggle_id}" class="people-label">'
+            f'<span class="people-icon">👥</span>'
             f'<span class="people-arrow-closed">▸</span>'
-            f'<span class="people-arrow-open">▾</span> Pessoas</label>'
+            f'<span class="people-arrow-open">▾</span> Ficha Técnica</label>'
             f'</div>'
         )
-        people_lines = []
-        if director:
-            people_lines.append(f"Diretor: {html.escape(director)}")
-        if cast:
-            people_lines.append(f"Elenco: {html.escape(cast)}")
-        people_text_html = f'<p class="people-text">{"<br>".join(people_lines)}</p>'
+        people_items = "".join(
+            f"<li><strong>{label}:</strong> {html.escape(value)}</li>"
+            for label, value in people_fields
+            if value
+        )
+        people_text_html = f'<ul class="people-list">{people_items}</ul>'
 
     # Posição do card no subgrid compartilhado da fileira: cada card ocupa um bloco de
     # _CARD_GRID_ROWS linhas (mais 1 linha de respiro entre fileiras, ver render_grid) na
@@ -411,8 +427,8 @@ def render_card(title: dict, idx: int = 0) -> str:
         {cinema_html}
         <div class="genres-container">{genres_icon_html}<span class="genre-badges">{genres_html}</span></div>
         {providers_block_html}
-        <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
         <div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>
+        <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
       </div>
     </article>
     """
