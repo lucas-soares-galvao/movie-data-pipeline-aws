@@ -741,8 +741,8 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   .cinema-row { grid-row: 5; }
   .genres-container { grid-row: 6; }
   .providers-row { grid-row: 7; }
-  .row-synopsis { grid-row: 8; }
-  .row-people { grid-row: 9; }
+  .row-people { grid-row: 8; }
+  .row-synopsis { grid-row: 9; }
 }
 
 /* height:100% faz o fundo acompanhar a altura de .row-reason, que por sua vez já estica
@@ -958,17 +958,24 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 .synopsis-toggle:checked ~ .synopsis-text { display: block; }
 
-/* Pessoas (diretor/elenco) recolhida por padrão — mesmo mecanismo de checkbox hack da
-   Sinopse acima, em linha própria do subgrid (não divide linha com Sinopse/Trailer). */
+/* Ficha técnica (diretor, elenco, roteiro, trilha sonora, produção, fotografia, montagem,
+   criador(es)) recolhida por padrão — mesmo mecanismo de checkbox hack da Sinopse acima,
+   em linha própria do subgrid, posicionada ANTES da sinopse (ver grid-row acima). Rótulo
+   em branco (não laranja como "Sinopse") — o laranja fica reservado pra nota, motivo e
+   sinopse, os pontos que pedem destaque; aqui é só mais um bloco de conteúdo informativo. */
 .people-toggle { display: none; }
 .people-row {
   display: flex;
   justify-content: flex-start;
   align-items: center;
 }
+.people-icon {
+  font-size: 13px;
+  margin-right: 2px;
+}
 .people-label {
   cursor: pointer;
-  color: #fb923c;
+  color: #fff;
   font-size: 13px;
   display: inline-flex;
   align-items: center;
@@ -977,14 +984,23 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .people-arrow-open { display: none; }
 .people-toggle:checked ~ .people-row .people-arrow-closed { display: none; }
 .people-toggle:checked ~ .people-row .people-arrow-open { display: inline; }
-.people-text {
+/* Bullets (um por papel) em vez do parágrafo único da sinopse — cada <li> tem o rótulo em
+   <strong> (branco, mesmo tom do texto) seguido do(s) nome(s). */
+.people-list {
   display: none;
+  margin: 6px 0 0;
+  padding-left: 18px;
   color: #d4d4d4;
   font-size: 14px;
-  margin: 6px 0 0;
   line-height: 1.5;
 }
-.people-toggle:checked ~ .people-text { display: block; }
+.people-list li {
+  margin-top: 2px;
+}
+.people-list strong {
+  color: #fff;
+}
+.people-toggle:checked ~ .people-list { display: block; }
 
 /* Cancelar vermelho — so aplica quando ha um botao primary desabilitado (estado de busca) */
 :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled) {

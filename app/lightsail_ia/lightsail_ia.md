@@ -24,7 +24,7 @@ Essa abordagem "livre" permite que qualquer combinação de filtros seja usada s
 
 **Destaque de gênero/provedor nas badges:** `_extract_highlighted_terms()` extrai por regex os valores de `lower(genre_names) LIKE '%valor%'` e `lower(streaming_providers) LIKE '%valor%'` de volta da própria `where_clause` gerada pelo LLM — reaproveita uma decisão que o LLM já tomou no Passo 1, sem chamada extra de LLM. Cláusulas `NOT LIKE` são ignoradas (o usuário não quer aquele valor, não deve ser destacado). O resultado é anexado a cada registro formatado como `highlighted_genres`/`highlighted_providers` e usado por `componentes.py::_prioritize()` (ver seção "Interface") para colocar o gênero/provedor mencionado primeiro nas badges do card.
 
-O schema informado ao LLM inclui colunas de ficha técnica como `director` e `actor_names` (além de `screenplay`, `music_composer`, `producer`, `cinematographer`, `editor`), permitindo buscas como "filmes do Christopher Nolan" ou "filmes com Tom Hanks". `director`/`actor_names` também são exibidos no card, na seção "Pessoas" (ver seção "Interface"); os demais campos de ficha técnica (`screenplay`, `music_composer`, `producer`, `cinematographer`, `editor`) continuam fora do card, só disponíveis para busca.
+O schema informado ao LLM inclui colunas de ficha técnica como `director` e `actor_names` (além de `screenplay`, `music_composer`, `producer`, `cinematographer`, `editor`), permitindo buscas como "filmes do Christopher Nolan" ou "filmes com Tom Hanks" — todos esses campos também são exibidos no card, na seção "Ficha Técnica" (ver seção "Interface").
 
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit. Como o destaque de gênero/provedor (`_extract_highlighted_terms()`) é derivado da mesma `where_clause` cacheada, um cache hit reproduz exatamente o mesmo destaque de uma chamada fresca ao LLM.
 
@@ -44,14 +44,12 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
 - `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string `DD/MM` sem ano, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio futuro confirmado
-- `cast` (top 5 atores) e `director` (filmes e séries, com fallback para `creators` em série sem diretor de episódio agregado no crew) são renderizados no card, na seção "Pessoas" (ver seção "Interface")
-- `tagline` — campo formatado mas atualmente não renderizado por `render_card()` (`componentes.py`), junto com `collection`, `networks`, `producer`, `cinematographer`, `editor`
-- `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora)
-- `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia), `editor` (editor/montador)
+- `cast` (top 5 atores), `director` (filmes e séries), `creators` (apenas séries), `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora), `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia) e `editor` (editor/montador) são renderizados no card, na seção "Ficha Técnica" (ver seção "Interface") — um bullet por papel presente
+- `tagline` — campo formatado mas atualmente não renderizado por `render_card()` (`componentes.py`), junto com `collection` e `networks`
 - `keywords` (tags temáticas em português), `certification` (classificação indicativa BR: L/10/12/14/16/18)
 - `trailer_url` (link do YouTube), `collection` (saga/franquia, apenas filmes)
 - `production_companies` (estúdios), `production_countries` (países de produção, diferente de país de origem)
-- `networks` (redes originais, apenas séries), `creators` (apenas séries)
+- `networks` (redes originais, apenas séries)
 - `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
@@ -96,8 +94,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   teto) isso não muda nada, o card já ocupa a largura disponível de qualquer forma. No
   desktop (acima do breakpoint), cada `.card`/`.card-body` usa CSS Grid `subgrid`
   (`grid-template-rows: subgrid`, encadeado em 2 níveis a partir de `.grid-titles`) pra
-  alinhar título, motivo, gêneros, duração, provedores, "Em cartaz", sinopse/trailer e
-  pessoas entre os 3 cards de uma mesma fileira — cada campo ocupa uma linha nomeada compartilhada, cuja
+  alinhar título, motivo, gêneros, duração, provedores, "Em cartaz", ficha técnica e
+  sinopse/trailer entre os 3 cards de uma mesma fileira — cada campo ocupa uma linha nomeada compartilhada, cuja
   altura se ajusta automaticamente ao maior conteúdo entre os 3 cards, sem truncar texto em
   nenhum campo. `render_grid()`/`render_card()` (`componentes.py`) calculam o total de
   linhas por fileira e a posição (`grid-row`/`grid-column`) de cada card via `style` inline;
@@ -201,6 +199,19 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` (todos os provedores
     que baterem, não só o primeiro) e mesmo destaque visual `.highlighted` de gênero garantem que um provedor
     mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte nem passa despercebido
+  - "Ficha Técnica" (ícone 👥, grupo de pessoas), penúltima linha do card, logo **acima** da Sinopse: mesmo
+    mecanismo de accordion "▸" (checkbox hack em CSS, sem JS) da Sinopse abaixo, em linha própria — não divide
+    espaço com Sinopse/Trailer. Ao contrário da rodada anterior (que só trazia diretor+elenco), traz **todos**
+    os campos de elenco/equipe técnica já formatados em `formatacao.py`: Diretor, Criador(es) (`creators`, só
+    séries — aparece como bullet independente do Diretor, sem fallback entre os dois; um título pode mostrar os
+    dois ao mesmo tempo), Elenco (`cast`, top 5 atores), Roteiro (`writers`), Trilha sonora (`composer`),
+    Produção (`producer`), Fotografia (`cinematographer`) e Montagem (`editor`) — um `<li>` por papel presente,
+    dentro de um `<ul class="people-list">` revelado ao expandir. O rótulo de cada papel vai em `<strong>`
+    (branco, mesmo tom do valor — destaque só por peso de fonte, não por cor) para escanear rápido quais papéis
+    o título tem. O rótulo da seção ("Ficha Técnica") é branco, não laranja como "Sinopse" — o laranja continua
+    reservado pra nota/motivo/sinopse, os pontos que pedem destaque visual; aqui é conteúdo informativo neutro.
+    Se nenhum papel estiver presente, a linha fica vazia (mesma razão de reserva de linha do subgrid do bullet
+    de "Em cartaz" acima)
   - Sinopse e trailer dividem a última linha do card — as duas são ações de "quero saber mais" sobre o título,
     então ficam juntas em vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox
     hack em CSS, já que `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando
@@ -208,16 +219,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     equivalentes. Clicar no label expande o texto completo da sinopse e troca a seta para "▾", independente do
     tamanho do texto. Se não houver sinopse mas houver trailer, a linha aparece só com o link; se não houver
     nenhum dos dois, a linha fica vazia (mas a div continua existindo, reservando a própria linha do subgrid —
-    mesma razão da linha de metadados/duração/provedores/"Em cartaz" abaixo)
-  - "Pessoas" (diretor + elenco), última linha do card: mesmo mecanismo de accordion "▸ Sinopse" (checkbox hack
-    em CSS, sem JS), em linha própria — não divide espaço com Sinopse/Trailer, pra não sobrecarregar aquela
-    linha com uma terceira ação. Mostra `Diretor: {nome}` e `Elenco: {nomes}` (top 5 atores, já vem assim de
-    `actor_names`), cada um em sua própria linha dentro do texto expandido. Para série sem diretor de episódio
-    agregado no `crew` do TMDB, cai pro(s) criador(es) da série (`creators`/`created_by`) no lugar de "Diretor".
-    Só os dois papéis mais reconhecíveis pelo público (diretor/elenco) aparecem no card — os demais campos de
-    ficha técnica já formatados em `formatacao.py` (roteiro, trilha sonora, produção, fotografia, montagem)
-    ficam de fora por ora, decisão de escopo consciente pra manter o painel curto. Se não houver diretor nem
-    elenco, a linha fica vazia (mesma razão de reserva de linha do subgrid do bullet acima)
+    mesma razão da linha de metadados/duração/provedores/"Em cartaz" acima)
 
 ## Entradas e saídas
 

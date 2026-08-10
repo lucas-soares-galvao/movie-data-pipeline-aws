@@ -320,10 +320,10 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "The Shining Collection" not in html
 
-    def test_card_ignora_criadores(self):
+    def test_card_exibe_criadores_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "creators": "Vince Gilligan"}
         html = componentes.render_card(t)
-        assert "Criado por:" not in html
+        assert "<strong>Criador(es):</strong> Vince Gilligan" in html
 
     def test_card_ignora_redes_tv(self):
         t = {**BASE_TITLE, "networks": "HBO"}
@@ -371,20 +371,20 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "estreia em" not in html
 
-    def test_card_nao_exibe_produtor(self):
+    def test_card_exibe_produtor_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "producer": "Kevin Feige"}
         html = componentes.render_card(t)
-        assert "Produtor:" not in html
+        assert "<strong>Produção:</strong> Kevin Feige" in html
 
-    def test_card_nao_exibe_cinematografo(self):
+    def test_card_exibe_fotografia_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "cinematographer": "Roger Deakins"}
         html = componentes.render_card(t)
-        assert "Cinematógrafo:" not in html
+        assert "<strong>Fotografia:</strong> Roger Deakins" in html
 
-    def test_card_nao_exibe_montador(self):
+    def test_card_exibe_montagem_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "editor": "Thelma Schoonmaker"}
         html = componentes.render_card(t)
-        assert "Montador:" not in html
+        assert "<strong>Montagem:</strong> Thelma Schoonmaker" in html
 
     def test_card_com_streaming_providers(self):
         html = componentes.render_card(BASE_TITLE)
@@ -757,37 +757,80 @@ class TestRenderCard:
         assert 'id="synopsis-toggle-3"' in html
         assert 'for="synopsis-toggle-3"' in html
 
-    def test_card_pessoas_fica_recolhida_por_padrao(self):
+    def test_card_ficha_tecnica_fica_recolhida_por_padrao(self):
         t = {**BASE_TITLE, "director": "Stanley Kubrick", "cast": "Jack Nicholson, Shelley Duvall"}
         html = componentes.render_card(t)
-        assert "Pessoas" in html
+        assert "Ficha Técnica" in html
         assert 'class="people-toggle"' in html
-        assert "Diretor: Stanley Kubrick" in html
-        assert "Elenco: Jack Nicholson, Shelley Duvall" in html
+        assert "<strong>Diretor:</strong> Stanley Kubrick" in html
+        assert "<strong>Elenco:</strong> Jack Nicholson, Shelley Duvall" in html
 
-    def test_card_pessoas_so_com_diretor(self):
+    def test_card_ficha_tecnica_tem_icone_de_grupo(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
+        html = componentes.render_card(t)
+        assert 'class="people-icon">👥</span>' in html
+
+    def test_card_ficha_tecnica_so_com_diretor(self):
         t = {**BASE_TITLE, "director": "Stanley Kubrick", "cast": None}
         html = componentes.render_card(t)
-        assert "Pessoas" in html
-        assert "Diretor: Stanley Kubrick" in html
+        assert "Ficha Técnica" in html
+        assert "<strong>Diretor:</strong> Stanley Kubrick" in html
         assert "Elenco:" not in html
 
-    def test_card_pessoas_so_com_elenco(self):
+    def test_card_ficha_tecnica_so_com_elenco(self):
         t = {**BASE_TITLE, "director": None, "cast": "Jack Nicholson, Shelley Duvall"}
         html = componentes.render_card(t)
-        assert "Pessoas" in html
+        assert "Ficha Técnica" in html
         assert "Diretor:" not in html
-        assert "Elenco: Jack Nicholson, Shelley Duvall" in html
+        assert "<strong>Elenco:</strong> Jack Nicholson, Shelley Duvall" in html
 
-    def test_card_serie_sem_diretor_usa_criadores(self):
-        t = {**BASE_TITLE, "director": None, "creators": "Duffer Brothers", "cast": None}
+    def test_card_ficha_tecnica_traz_todos_os_papeis(self):
+        t = {
+            **BASE_TITLE,
+            "director": "Stanley Kubrick",
+            "cast": "Jack Nicholson, Shelley Duvall",
+            "writers": "Diane Johnson",
+            "composer": "Wendy Carlos",
+            "producer": "Stanley Kubrick",
+            "cinematographer": "John Alcott",
+            "editor": "Ray Lovejoy",
+            "creators": None,
+        }
         html = componentes.render_card(t)
-        assert "Diretor: Duffer Brothers" in html
+        assert "<strong>Diretor:</strong> Stanley Kubrick" in html
+        assert "<strong>Elenco:</strong> Jack Nicholson, Shelley Duvall" in html
+        assert "<strong>Roteiro:</strong> Diane Johnson" in html
+        assert "<strong>Trilha sonora:</strong> Wendy Carlos" in html
+        assert "<strong>Produção:</strong> Stanley Kubrick" in html
+        assert "<strong>Fotografia:</strong> John Alcott" in html
+        assert "<strong>Montagem:</strong> Ray Lovejoy" in html
 
-    def test_card_pessoas_ausente_nao_gera_accordion(self):
-        t = {**BASE_TITLE, "director": None, "cast": None, "creators": None}
+    def test_card_ficha_tecnica_so_com_roteiro_gera_accordion(self):
+        t = {**BASE_TITLE, "director": None, "cast": None, "writers": "Diane Johnson"}
         html = componentes.render_card(t)
-        assert "Pessoas" not in html
+        assert "Ficha Técnica" in html
+        assert "<strong>Roteiro:</strong> Diane Johnson" in html
+
+    def test_card_diretor_e_criadores_aparecem_como_bullets_separados(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick", "creators": "Duffer Brothers", "cast": None}
+        html = componentes.render_card(t)
+        assert "<strong>Diretor:</strong> Stanley Kubrick" in html
+        assert "<strong>Criador(es):</strong> Duffer Brothers" in html
+
+    def test_card_ficha_tecnica_ausente_nao_gera_accordion(self):
+        t = {
+            **BASE_TITLE,
+            "director": None,
+            "cast": None,
+            "creators": None,
+            "writers": None,
+            "composer": None,
+            "producer": None,
+            "cinematographer": None,
+            "editor": None,
+        }
+        html = componentes.render_card(t)
+        assert "Ficha Técnica" not in html
         assert "people-toggle" not in html
 
     def test_card_people_toggle_id_usa_indice(self):
@@ -796,11 +839,18 @@ class TestRenderCard:
         assert 'id="people-toggle-3"' in html
         assert 'for="people-toggle-3"' in html
 
-    def test_card_pessoas_escapa_xss(self):
+    def test_card_ficha_tecnica_escapa_xss(self):
         t = {**BASE_TITLE, "director": '<script>alert("xss")</script>'}
         html = componentes.render_card(t)
         assert "<script>alert" not in html
         assert "&lt;script&gt;" in html
+
+    def test_card_ficha_tecnica_fica_antes_da_sinopse(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
+        html = componentes.render_card(t)
+        people_pos = html.index('class="row-people"')
+        synopsis_pos = html.index('class="row-synopsis"')
+        assert people_pos < synopsis_pos
 
 
 class TestRenderCardComPoster:
