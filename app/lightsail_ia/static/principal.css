@@ -702,6 +702,9 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .row-synopsis {
   margin-top: 16px;
 }
+.row-people {
+  margin-top: 16px;
+}
 
 /* Alinhamento simétrico entre os 3 cards de uma fileira: no desktop, .grid-titles declara
    explicitamente um bloco de linhas por fileira (ver render_grid() em componentes.py) e
@@ -725,7 +728,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   .card-body {
     display: grid;
     grid-template-rows: subgrid;
-    grid-row: 2 / span 8;
+    grid-row: 2 / span 9;
   }
   .card-media { grid-row: 1; }
   .card-title { grid-row: 1; }
@@ -739,6 +742,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   .genres-container { grid-row: 6; }
   .providers-row { grid-row: 7; }
   .row-synopsis { grid-row: 8; }
+  .row-people { grid-row: 9; }
 }
 
 /* height:100% faz o fundo acompanhar a altura de .row-reason, que por sua vez já estica
@@ -953,6 +957,34 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   line-height: 1.5;
 }
 .synopsis-toggle:checked ~ .synopsis-text { display: block; }
+
+/* Pessoas (diretor/elenco) recolhida por padrão — mesmo mecanismo de checkbox hack da
+   Sinopse acima, em linha própria do subgrid (não divide linha com Sinopse/Trailer). */
+.people-toggle { display: none; }
+.people-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+}
+.people-label {
+  cursor: pointer;
+  color: #fb923c;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.people-arrow-open { display: none; }
+.people-toggle:checked ~ .people-row .people-arrow-closed { display: none; }
+.people-toggle:checked ~ .people-row .people-arrow-open { display: inline; }
+.people-text {
+  display: none;
+  color: #d4d4d4;
+  font-size: 14px;
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+.people-toggle:checked ~ .people-text { display: block; }
 
 /* Cancelar vermelho — so aplica quando ha um botao primary desabilitado (estado de busca) */
 :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled) {
