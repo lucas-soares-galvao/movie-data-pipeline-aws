@@ -302,16 +302,6 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "Uma frase marcante" not in html
 
-    def test_card_nao_exibe_elenco(self):
-        t = {**BASE_TITLE, "cast": "Jack Nicholson, Shelley Duvall"}
-        html = componentes.render_card(t)
-        assert "Elenco:" not in html
-
-    def test_card_nao_exibe_diretor(self):
-        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
-        html = componentes.render_card(t)
-        assert "Diretor:" not in html
-
     def test_card_com_certificacao(self):
         t = {**BASE_TITLE, "certification": "16"}
         html = componentes.render_card(t)
@@ -767,6 +757,51 @@ class TestRenderCard:
         assert 'id="synopsis-toggle-3"' in html
         assert 'for="synopsis-toggle-3"' in html
 
+    def test_card_pessoas_fica_recolhida_por_padrao(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick", "cast": "Jack Nicholson, Shelley Duvall"}
+        html = componentes.render_card(t)
+        assert "Pessoas" in html
+        assert 'class="people-toggle"' in html
+        assert "Diretor: Stanley Kubrick" in html
+        assert "Elenco: Jack Nicholson, Shelley Duvall" in html
+
+    def test_card_pessoas_so_com_diretor(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick", "cast": None}
+        html = componentes.render_card(t)
+        assert "Pessoas" in html
+        assert "Diretor: Stanley Kubrick" in html
+        assert "Elenco:" not in html
+
+    def test_card_pessoas_so_com_elenco(self):
+        t = {**BASE_TITLE, "director": None, "cast": "Jack Nicholson, Shelley Duvall"}
+        html = componentes.render_card(t)
+        assert "Pessoas" in html
+        assert "Diretor:" not in html
+        assert "Elenco: Jack Nicholson, Shelley Duvall" in html
+
+    def test_card_serie_sem_diretor_usa_criadores(self):
+        t = {**BASE_TITLE, "director": None, "creators": "Duffer Brothers", "cast": None}
+        html = componentes.render_card(t)
+        assert "Diretor: Duffer Brothers" in html
+
+    def test_card_pessoas_ausente_nao_gera_accordion(self):
+        t = {**BASE_TITLE, "director": None, "cast": None, "creators": None}
+        html = componentes.render_card(t)
+        assert "Pessoas" not in html
+        assert "people-toggle" not in html
+
+    def test_card_people_toggle_id_usa_indice(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
+        html = componentes.render_card(t, idx=3)
+        assert 'id="people-toggle-3"' in html
+        assert 'for="people-toggle-3"' in html
+
+    def test_card_pessoas_escapa_xss(self):
+        t = {**BASE_TITLE, "director": '<script>alert("xss")</script>'}
+        html = componentes.render_card(t)
+        assert "<script>alert" not in html
+        assert "&lt;script&gt;" in html
+
 
 class TestRenderCardComPoster:
     """Com pôster (backdrop_url/poster_url), nota e classificação etária ficam sobrepostas
@@ -843,13 +878,19 @@ class TestRenderGrid:
         assert "synopsis-toggle-0" in html
         assert "synopsis-toggle-1" in html
 
+    def test_grid_gera_ids_de_people_toggle_unicos_por_indice(self):
+        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
+        html = componentes.render_grid([t, t])
+        assert "people-toggle-0" in html
+        assert "people-toggle-1" in html
+
     def test_grid_posiciona_cards_em_linha_coluna_do_subgrid(self):
         html = componentes.render_grid([BASE_TITLE] * 4)
-        # Grupo 0 (cards 0-2): linha 1, colunas 1-3. Grupo 1 (card 3): linha 11 (9 linhas de
+        # Grupo 0 (cards 0-2): linha 1, colunas 1-3. Grupo 1 (card 3): linha 12 (10 linhas de
         # conteúdo + 1 de respiro depois do grupo 0), coluna 1.
-        assert "grid-row:1 / span 9;grid-column:1" in html
-        assert "grid-row:1 / span 9;grid-column:3" in html
-        assert "grid-row:11 / span 9;grid-column:1" in html
+        assert "grid-row:1 / span 10;grid-column:1" in html
+        assert "grid-row:1 / span 10;grid-column:3" in html
+        assert "grid-row:12 / span 10;grid-column:1" in html
 
     def test_grid_declara_grid_template_rows_proporcional_ao_numero_de_fileiras(self):
         html_uma_fileira = componentes.render_grid([BASE_TITLE] * 3)
