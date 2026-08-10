@@ -67,6 +67,17 @@ def _format_theater_end_date(theater_end_date: str | None, in_theaters: bool) ->
         return None
 
 
+def _format_next_episode_date(next_episode_air_date: str | None) -> str | None:
+    """Converte data ISO 'YYYY-MM-DD' do próximo episódio para 'DD/MM' (sem ano)."""
+    if not next_episode_air_date:
+        return None
+    try:
+        _, month, day = next_episode_air_date.split("-")
+        return f"{day}/{month}"
+    except ValueError:
+        return None
+
+
 def _format_rating(vote_average: object) -> float | None:
     """Converte nota (str, int ou float) para float, retornando None se inválida."""
     if vote_average is None or vote_average == "":
@@ -96,6 +107,13 @@ def format_record(record: dict) -> dict:
         "theater_end_date": _format_theater_end_date(
             record.get("theater_end_date"), in_theaters
         ),
+        "next_episode_season_number": (
+            int(record["next_episode_season_number"]) if record.get("next_episode_season_number") else None
+        ),
+        "next_episode_number": (
+            int(record["next_episode_number"]) if record.get("next_episode_number") else None
+        ),
+        "next_episode_date": _format_next_episode_date(record.get("next_episode_air_date")),
         "tagline": record.get("tagline") or None,
         "cast": record.get("actor_names") or None,
         "director": record.get("director") or None,

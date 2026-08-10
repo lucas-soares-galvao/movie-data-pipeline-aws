@@ -43,6 +43,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
+- `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string `DD/MM` sem ano, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio futuro confirmado
 - `tagline`, `cast` (top 5 atores), `director` (filmes e séries) — campos formatados mas atualmente não renderizados por `render_card()` (`componentes.py`), junto com `collection`, `creators`, `networks`, `producer`, `cinematographer`, `editor`
 - `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora)
 - `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia), `editor` (editor/montador)
@@ -171,7 +172,10 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
-    do rodapé de ações
+    do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** exibe 📅 "T{temporada}E{episódio}
+    estreia em DD/MM" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
+    preenchidos — `in_theaters` (filme) e `next_episode_*` (série) nunca coexistem no mesmo registro, então o
+    slot é reaproveitado sem precisar de uma linha nova no subgrid nem checar `media_type` explicitamente
   - Badges de gênero (máx. 6 visíveis, sem indicador para o restante — trunca silenciosamente, já que a linha se
     ajusta ao card com mais badges na mesma fileira via subgrid) — ícone 🎭. Estrutura em 2 níveis, igual à de
     provedor (abaixo): `.genres-container` (`display:flex; align-items:flex-start`) contém o ícone e um
