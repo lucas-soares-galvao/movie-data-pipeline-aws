@@ -189,6 +189,9 @@ def render_card(title: dict, idx: int = 0) -> str:
     rent_buy_providers = title.get("rent_buy_providers") or ""
     in_theaters = title.get("in_theaters") or False
     theater_end_date = html.escape(title.get("theater_end_date") or "")
+    next_episode_season_number = title.get("next_episode_season_number")
+    next_episode_number = title.get("next_episode_number")
+    next_episode_date = html.escape(title.get("next_episode_date") or "")
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
 
@@ -204,13 +207,22 @@ def render_card(title: dict, idx: int = 0) -> str:
     )
     genres_icon_html = '<span class="meta-icon">🎭</span>' if genres_html else ""
 
-    # Sempre gera a div, vazia quando não está em cartaz — reserva a linha própria do
+    # Sempre gera a div, vazia quando não aplicável — reserva a linha própria do
     # subgrid (ver principal.css) pra não deslocar o que vem depois só nesse card.
+    # Filme (in_theaters) e série (next_episode_*) nunca preenchem os dois ao mesmo
+    # tempo — por isso a mesma linha/classe serve pros dois badges, sem checar
+    # media_type explicitamente.
     cinema_content = ""
     if in_theaters:
         label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
         cinema_content = (
             f'<span class="meta-icon">🎬</span>'
+            f'<span class="cinema-badge">{html.escape(label)}</span>'
+        )
+    elif next_episode_season_number is not None and next_episode_number is not None and next_episode_date:
+        label = f"T{next_episode_season_number}E{next_episode_number} estreia em {next_episode_date}"
+        cinema_content = (
+            f'<span class="meta-icon">📅</span>'
             f'<span class="cinema-badge">{html.escape(label)}</span>'
         )
     cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>'

@@ -15,6 +15,9 @@ BASE_TITLE = {
     "streaming_providers": "Netflix",
     "in_theaters": False,
     "theater_end_date": None,
+    "next_episode_season_number": None,
+    "next_episode_number": None,
+    "next_episode_date": None,
     "tagline": None,
     "cast": None,
     "director": None,
@@ -348,6 +351,35 @@ class TestRenderCard:
         t = {**BASE_TITLE, "in_theaters": True, "theater_end_date": "15/07/2025"}
         html = componentes.render_card(t)
         assert "Em cartaz até 15/07/2025" in html
+
+    def test_card_proximo_episodio_serie(self):
+        t = {
+            **BASE_TITLE,
+            "type": "Série",
+            "next_episode_season_number": 3,
+            "next_episode_number": 1,
+            "next_episode_date": "15/09",
+        }
+        html = componentes.render_card(t)
+        assert "T3E1 estreia em 15/09" in html
+
+    def test_card_em_cartaz_tem_prioridade_sobre_proximo_episodio(self):
+        t = {
+            **BASE_TITLE,
+            "in_theaters": True,
+            "theater_end_date": "15/07/2025",
+            "next_episode_season_number": 3,
+            "next_episode_number": 1,
+            "next_episode_date": "15/09",
+        }
+        html = componentes.render_card(t)
+        assert "Em cartaz até 15/07/2025" in html
+        assert "estreia em" not in html
+
+    def test_card_sem_proximo_episodio_nao_exibe_badge(self):
+        t = {**BASE_TITLE, "type": "Série"}
+        html = componentes.render_card(t)
+        assert "estreia em" not in html
 
     def test_card_nao_exibe_produtor(self):
         t = {**BASE_TITLE, "producer": "Kevin Feige"}
