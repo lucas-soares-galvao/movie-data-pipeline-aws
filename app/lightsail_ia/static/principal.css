@@ -668,13 +668,14 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 /* Respiro entre seções via margin-top no início de cada seção (não gap uniforme no
-   .card-body, e não margin-bottom em cada linha que a precede) — cada seção só existe no
-   HTML quando tem conteúdo (ver componentes.py: duration-row/cinema-row/row-people só são
-   emitidas quando há duração/"em cartaz"/ficha técnica), então o respiro certo já vem
-   naturalmente do primeiro elemento realmente presente, sem precisar somar/descontar linhas
-   vazias. duration-row/cinema-row ficam com um respiro menor (4px, não zero) que as demais
-   seções (16px) — quando aparecem, ficam mais coladas na meta-line, como continuação do
-   mesmo bloco de "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
+   .card-body, e não margin-bottom em cada linha que a precede) — toda seção do card (ver
+   componentes.py: row-reason/meta-line/duration-row/cinema-row/genres-container/
+   providers-row/row-people/row-synopsis) só existe no HTML quando tem conteúdo real, então
+   o respiro certo já vem naturalmente do primeiro elemento realmente presente, sem precisar
+   somar/descontar linhas vazias — nenhuma seção fica "reservada" vazia. duration-row/
+   cinema-row ficam com um respiro menor (4px, não zero) que as demais seções (16px) —
+   quando aparecem, ficam mais coladas na meta-line, como continuação do mesmo bloco de
+   "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
 .row-reason {
   margin-top: 16px;
 }
