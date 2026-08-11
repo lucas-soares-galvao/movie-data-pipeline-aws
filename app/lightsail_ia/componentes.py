@@ -185,6 +185,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     next_episode_season_number = title.get("next_episode_season_number")
     next_episode_number = title.get("next_episode_number")
     next_episode_date = html.escape(title.get("next_episode_date") or "")
+    upcoming_date = html.escape(title.get("upcoming_date") or "")
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
     cast = title.get("cast") or ""
@@ -216,10 +217,12 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<span class="genre-badges">{genres_html}</span></div>'
         )
 
-    # Filme (in_theaters) e série (next_episode_*) nunca preenchem os dois ao mesmo tempo — por
-    # isso a mesma linha/classe serve pros dois badges, sem checar media_type explicitamente. Sem
-    # nenhum dos dois, não emite a div — o card fica com essa linha a menos (meio solto, ver
-    # principal.css).
+    # Filme (in_theaters), série (next_episode_*) e título ainda não lançado (upcoming_date)
+    # nunca preenchem mais de um ao mesmo tempo (upcoming_date só existe pra air_date futuro —
+    # incompatível com estar em cartaz ou ter próximo episódio de uma série já no ar) — por
+    # isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
+    # Sem nenhum dos três, não emite a div — o card fica com essa linha a menos (meio solto,
+    # ver principal.css).
     cinema_content = ""
     if in_theaters:
         label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
@@ -231,6 +234,12 @@ def render_card(title: dict, idx: int = 0) -> str:
         label = f"T{next_episode_season_number} E{next_episode_number} estreia em {next_episode_date}"
         cinema_content = (
             f'<span class="meta-icon">📅</span>'
+            f'<span class="cinema-badge">{html.escape(label)}</span>'
+        )
+    elif upcoming_date:
+        label = f"Em breve · {upcoming_date}"
+        cinema_content = (
+            f'<span class="meta-icon">🔜</span>'
             f'<span class="cinema-badge">{html.escape(label)}</span>'
         )
     cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""

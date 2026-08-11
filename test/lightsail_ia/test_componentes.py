@@ -18,6 +18,7 @@ BASE_TITLE = {
     "next_episode_season_number": None,
     "next_episode_number": None,
     "next_episode_date": None,
+    "upcoming_date": None,
     "tagline": None,
     "cast": None,
     "director": None,
@@ -338,9 +339,9 @@ class TestRenderCard:
         assert "Criado por:" not in html
 
     def test_card_cinema_em_cartaz(self):
-        t = {**BASE_TITLE, "in_theaters": True, "theater_end_date": "15/07/2025"}
+        t = {**BASE_TITLE, "in_theaters": True, "theater_end_date": "15/07"}
         html = componentes.render_card(t)
-        assert "Em cartaz até 15/07/2025" in html
+        assert "Em cartaz até 15/07" in html
 
     def test_card_proximo_episodio_serie(self):
         t = {
@@ -348,22 +349,22 @@ class TestRenderCard:
             "type": "Série",
             "next_episode_season_number": 3,
             "next_episode_number": 1,
-            "next_episode_date": "15/09/2026",
+            "next_episode_date": "15/09",
         }
         html = componentes.render_card(t)
-        assert "T3 E1 estreia em 15/09/2026" in html
+        assert "T3 E1 estreia em 15/09" in html
 
     def test_card_em_cartaz_tem_prioridade_sobre_proximo_episodio(self):
         t = {
             **BASE_TITLE,
             "in_theaters": True,
-            "theater_end_date": "15/07/2025",
+            "theater_end_date": "15/07",
             "next_episode_season_number": 3,
             "next_episode_number": 1,
             "next_episode_date": "15/09",
         }
         html = componentes.render_card(t)
-        assert "Em cartaz até 15/07/2025" in html
+        assert "Em cartaz até 15/07" in html
         assert "estreia em" not in html
 
     def test_card_sem_proximo_episodio_nao_exibe_badge(self):
@@ -371,8 +372,41 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "estreia em" not in html
 
-    def test_card_sem_em_cartaz_nem_proximo_episodio_nao_gera_cinema_row(self):
-        # Sem conteúdo pra nenhum dos dois badges, a div nem é gerada (meio solto, ver
+    def test_card_lancamento_futuro_exibe_badge_em_breve(self):
+        t = {**BASE_TITLE, "upcoming_date": "Set de 2026"}
+        html = componentes.render_card(t)
+        assert "Em breve · Set de 2026" in html
+
+    def test_card_sem_lancamento_futuro_nao_exibe_badge_em_breve(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "Em breve" not in html
+
+    def test_card_em_cartaz_tem_prioridade_sobre_em_breve(self):
+        t = {
+            **BASE_TITLE,
+            "in_theaters": True,
+            "theater_end_date": "15/07",
+            "upcoming_date": "Set de 2026",
+        }
+        html = componentes.render_card(t)
+        assert "Em cartaz até 15/07" in html
+        assert "Em breve" not in html
+
+    def test_card_proximo_episodio_tem_prioridade_sobre_em_breve(self):
+        t = {
+            **BASE_TITLE,
+            "type": "Série",
+            "next_episode_season_number": 3,
+            "next_episode_number": 1,
+            "next_episode_date": "15/09",
+            "upcoming_date": "Set de 2026",
+        }
+        html = componentes.render_card(t)
+        assert "T3 E1 estreia em 15/09" in html
+        assert "Em breve" not in html
+
+    def test_card_sem_em_cartaz_proximo_episodio_nem_lancamento_futuro_nao_gera_cinema_row(self):
+        # Sem conteúdo pra nenhum dos três badges, a div nem é gerada (meio solto, ver
         # principal.css).
         html = componentes.render_card(BASE_TITLE)
         assert "cinema-row" not in html
