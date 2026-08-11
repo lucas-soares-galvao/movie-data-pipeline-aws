@@ -42,16 +42,23 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temps · 36 eps · ~45 min/ep"`)
 - `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
-- `in_theaters` (boolean), `theater_end_date` (string `DD/MM` sem ano, ou `null`) — horizonte curto
-  (dias a poucas semanas), ano quase sempre óbvio/redundante
+- **Formatação adaptativa de data** (`formatacao.py::_format_adaptive_date()`, compartilhada por
+  `theater_end_date`, `next_episode_date` e `upcoming_date` abaixo): `DD/MM` quando a data está a até
+  `_ADAPTIVE_DATE_THRESHOLD_DAYS` (90) dias de hoje, ou "Mês de Ano" (mesmo formato de `release_date`, via
+  `_format_release_date()`) quando está mais distante. Critério é só a distância em dias — não olha se cruza o
+  ano-calendário — evitando o caso estranho de uma data a 10 meses de distância (mas ainda "esse ano") ganhar dia
+  exato enquanto outra a 4 meses (já "ano que vem") não ganhasse. Motivo: dia exato só é confiável/relevante perto
+  da data — datas bem mais distantes (lançamento anunciado com muita antecedência, ou próximo episódio depois de
+  uma pausa longa de temporada) costumam ter só mês/ano confirmado no TMDB, com o dia sendo um placeholder que
+  muda depois. `format_record()` aceita um `today` opcional (repassado a essa função e a `_is_upcoming()`) só pra
+  testes determinísticos — em produção nunca é passado
+- `in_theaters` (boolean), `theater_end_date` (string formatada conforme acima, ou `null`)
 - `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string
-  `DD/MM` sem ano, derivada de `next_episode_air_date`, mesma razão de `theater_end_date` acima) — `null`/`None`
-  quando a série não tem episódio futuro confirmado
-- `upcoming_date` (mesmo texto "Mês de Ano" de `release_date` — reaproveita `_format_release_date()` —, `null`/
-  `None` caso contrário) — só preenchido quando `air_date` é estritamente futuro (título ainda não lançado,
-  `formatacao.py::_is_upcoming()`); usa o mesmo formato do `release_date` (sem dia) em vez de `DD/MM` como
-  `theater_end_date`/`next_episode_date` acima, já que o dia exato costuma ser só um placeholder provisório do
-  TMDB pra títulos anunciados com muita antecedência — usado pro badge "Em breve" (ver seção "Interface")
+  formatada conforme acima, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio
+  futuro confirmado
+- `upcoming_date` (string formatada conforme acima, `null`/`None` caso contrário) — só preenchido quando
+  `air_date` é estritamente futuro (título ainda não lançado, `formatacao.py::_is_upcoming()`) — usado pro badge
+  "Em breve" (ver seção "Interface")
 - `cast` (top 5 atores), `director` (filmes e séries), `creators` (apenas séries), `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora), `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia) e `editor` (editor/montador) são renderizados no card, na seção "Ficha Técnica" (ver seção "Interface") — um bullet por papel presente
 - `tagline` — campo formatado mas atualmente não renderizado por `render_card()` (`componentes.py`), junto com `collection` e `networks`
 - `keywords` (tags temáticas em português), `certification` (classificação indicativa BR: L/10/12/14/16/18)
@@ -176,15 +183,16 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Duração/temporadas — **com imagem**, entra na linha de data/tipo acima (bullet anterior). **Sem imagem**,
     fica em linha própria logo abaixo de data/tipo — ícone ⏱; a div só é gerada quando há duração pra mostrar
     nessa condição (com imagem, ou sem duração, a linha nem é emitida — faz parte do meio solto)
-  - Badge amarelo 🎬 "Em cartaz até DD/MM" quando `in_theaters=true`, logo abaixo da duração — informação,
+  - Badge amarelo 🎬 "Em cartaz até {data}" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
     do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** cobre três estados mutuamente
-    exclusivos do título: 🎬 "Em cartaz até DD/MM" (`in_theaters`), 📅 "T{temporada} E{episódio} estreia em
-    DD/MM" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
-    preenchidos, ou 🔜 "Em breve · Mês de Ano" (mesmo texto do `release_date`, sem dia) quando `upcoming_date`
-    está preenchido (título ainda não lançado — `air_date` no futuro, ver
-    `formatacao.py::_is_upcoming()`/`_format_release_date()`) — os três nunca coexistem no mesmo
+    exclusivos do título: 🎬 "Em cartaz até {data}" (`in_theaters`), 📅 "T{temporada} E{episódio} estreia em
+    {data}" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
+    preenchidos, ou 🔜 "Em breve · {data}" quando `upcoming_date` está preenchido (título ainda não lançado —
+    `air_date` no futuro, ver `formatacao.py::_is_upcoming()`). Nos três, `{data}` já vem formatada por
+    `_format_adaptive_date()` (bullet "Formatação adaptativa de data" acima) — `DD/MM` perto de hoje, "Mês de
+    Ano" quando distante. Os três nunca coexistem no mesmo
     registro (um título não lançado não pode estar em cartaz nem ter próximo episódio de série já no ar), então
     o slot é reaproveitado sem checar `media_type` explicitamente. Prioridade quando mais de um bater ao mesmo
     tempo por inconsistência de dados: em cartaz > próximo episódio > em breve. Sem nenhum dos três, a div nem é
@@ -266,7 +274,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `agent.py` | `_audio_duration_seconds(audio_bytes)` | Calcula a duração de um áudio WAV via módulo padrão `wave` |
 | `agent.py` | `_load_transcription_api_key()` | Busca `transcription_api_key` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou `TRANSCRIPTION_API_KEY` do `.env` em desenvolvimento; retorna `None` (não quebra o app) se ausente |
 | `formatacao.py` | `format_record(record)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
-| `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_theater_end_date()`, `_format_next_episode_date()`, `_is_upcoming()`, `_format_rating()` | Funções puras de formatação de campos individuais |
+| `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_adaptive_date()`, `_is_upcoming()`, `_format_rating()` | Funções puras de formatação de campos individuais |
 | `app.py` | `_load_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
 | `app.py` | `_create_ip_history()`, `_create_audio_ip_history()`, `_create_login_attempt_history()` | Factories `@st.cache_resource` que criam os dicts compartilhados `_ip_history` (recomendações), `_audio_ip_history` (transcrições) e `_login_attempt_history` (tentativas de login incorretas), garantindo que os históricos de rate limiting sobrevivam a reruns e resetem apenas no restart do processo |
 | `app.py` | `_setup_cloudwatch_logging()` | `@st.cache_resource` que registra o `CloudWatchLogHandler` no root logger uma única vez por processo — sem isso, cada rerun do Streamlit acumularia um handler novo (vazamento de memória + logs duplicados) |
