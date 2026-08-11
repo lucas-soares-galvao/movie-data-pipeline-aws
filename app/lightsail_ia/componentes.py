@@ -359,14 +359,14 @@ def render_card(title: dict, idx: int = 0) -> str:
         synopsis_row_html = (
             f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
         )
-    # Sinopse/trailer são o rodapé fixo do card (ver .card-footer em principal.css, que usa
-    # margin-top:auto pra empurrar essa linha pra mesma borda inferior nos 3 cards da
-    # fileira) — só emite o wrapper quando há de fato sinopse ou trailer pra mostrar.
+    # Sinopse/trailer fazem parte do meio solto do card (ver principal.css), sem sincronia
+    # de altura com os vizinhos da fileira — só emite a div quando há de fato sinopse ou
+    # trailer pra mostrar.
     synopsis_html = ""
     if synopsis_toggle_html or synopsis_row_html:
         synopsis_html = (
-            f'<div class="card-footer"><div class="row-synopsis">'
-            f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div></div>'
+            f'<div class="row-synopsis">'
+            f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>'
         )
 
     # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), posicionada ANTES da

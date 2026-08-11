@@ -617,10 +617,17 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   padding: 2px 8px;
 }
 
+/* line-height explícito: sem isso, herda o "normal" do navegador pra fonte "Bricolage
+   Grotesque", cujas métricas internas (ascent/descent/line-gap do arquivo da fonte) sobram
+   bem mais alto que o texto realmente ocupa — mesma família de bug que já exigiu
+   `.header-subtitle { margin: -8px 0 0 }` em outro lugar deste arquivo. Esse espaço
+   "invisível" abaixo do título somava com o margin-top:16px de `.row-reason` (logo abaixo)
+   e lia como um vão bem maior que 16px entre título e motivo. */
 .card-title {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 18px;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 /* display:flex (não bloco simples) pra caber o ícone 🎭 antes dos badges — align-items
@@ -691,21 +698,16 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin-top: 16px;
 }
 
-/* Alinhamento entre os 3 cards de uma fileira, só nas duas pontas do card — topo (pôster) e
-   rodapé (sinopse/trailer), com o meio (título, motivo, meta, duração, "em cartaz", gêneros,
-   provedores, ficha técnica) de altura livre por card:
-   - .grid-titles é grid de 3 colunas com align-items:stretch (abaixo) — isso já estica cada
-     card até a altura do maior vizinho da fileira, sem precisar de subgrid nem de
-     posicionamento explícito de linha/coluna.
+/* Alinhamento entre os 3 cards de uma fileira, só no topo do card (pôster) — todo o resto
+   (título, motivo, meta, duração, "em cartaz", gêneros, provedores, ficha técnica,
+   sinopse/trailer) tem altura livre por card, sem nenhuma sincronia com os vizinhos:
+   - .grid-titles é grid de 3 colunas com align-items:stretch (abaixo) — isso estica cada
+     card até a altura do maior vizinho da fileira (o fundo/borda do card acompanham), sem
+     precisar de subgrid nem de posicionamento explícito de linha/coluna.
    - .card-media (pôster) fica alinhado "de graça": aspect-ratio:16/9 + colunas de largura
-     igual garantem a mesma altura de pôster nos 3 cards.
-   - .card-footer (envolve .row-synopsis, ver componentes.py) tem margin-top:auto — como o
-     card já foi esticado até a altura do maior vizinho, essa margem automática absorve toda
-     a sobra como um único vão acima do rodapé, empurrando "Sinopse"/Trailer pra mesma borda
-     inferior nos 3 cards. */
-.card-footer {
-  margin-top: auto;
-}
+     igual garantem a mesma altura de pôster nos 3 cards. Nenhum outro campo do card tem
+     mecanismo de alinhamento entre siblings — cada um só ocupa a altura que o próprio
+     conteúdo pede. */
 
 /* Sem height:100%/box-sizing: sem subgrid, .row-reason não compartilha altura de linha com
    os vizinhos (faz parte do meio solto) — o fundo colorido já acompanha a altura natural do
@@ -723,7 +725,8 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 /* Sem margin própria — o respiro entre uma .meta-row e a próxima (ou qualquer outra
-   seção) vem do gap uniforme de .card-body, não daqui (ver comentário lá). */
+   seção) vem do margin-top de cada wrapper de seção (.meta-line, .row-people, ...), não
+   daqui (ver bloco "Respiro entre seções" acima). */
 .meta-row {
   display: flex;
   align-items: center;
@@ -873,9 +876,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    trailer dividem a mesma linha — são as duas ações de "quero saber mais"
    do card, então não faz sentido o trailer competir com data/tipo lá em cima. */
 .synopsis-toggle { display: none; }
-/* Sem margin-top — respiro antes da linha vem do gap de .card-body, não daqui. row-gap
-   continua (papel diferente: espaço entre "Sinopse" e "Trailer" quando os dois quebram
-   pra linhas separadas dentro dessa mesma linha, não entre seções). */
+/* .synopsis-row (o meta-row interno) não tem margin-top próprio — o respiro antes da seção
+   inteira vem do margin-top:16px de .row-synopsis (ver bloco "Respiro entre seções" acima).
+   row-gap aqui tem papel diferente: espaço entre "Sinopse" e "Trailer" quando os dois
+   quebram pra linhas separadas dentro dessa mesma linha, não entre seções. */
 .synopsis-row {
   display: flex;
   justify-content: space-between;
@@ -910,10 +914,9 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 /* Ficha técnica (diretor, elenco, roteiro, trilha sonora, produção, fotografia, montagem,
    criador(es)) recolhida por padrão — mesmo mecanismo de checkbox hack da Sinopse acima,
-   posicionada ANTES da sinopse, no meio solto do card (não faz parte do rodapé fixo — ver
-   .card-footer). Rótulo em branco (não laranja como "Sinopse") — o laranja fica reservado
-   pra nota, motivo e sinopse, os pontos que pedem destaque; aqui é só mais um bloco de
-   conteúdo informativo. */
+   posicionada ANTES da sinopse, no meio solto do card. Rótulo em branco (não laranja como
+   "Sinopse") — o laranja fica reservado pra nota, motivo e sinopse, os pontos que pedem
+   destaque; aqui é só mais um bloco de conteúdo informativo. */
 .people-toggle { display: none; }
 .people-row {
   display: flex;

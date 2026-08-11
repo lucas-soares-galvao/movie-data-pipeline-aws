@@ -91,25 +91,23 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   único card da fileira esticaria pra largura inteira do container, deixando o pôster (16:9,
   `width:100%`) desproporcionalmente grande; em celular real (viewport mais estreito que o
   teto) isso não muda nada, o card já ocupa a largura disponível de qualquer forma. **Alinhamento
-  entre os 3 cards da fileira, só nas duas pontas:** `.grid-titles` é grid de 3 colunas com
-  `align-items: stretch` — isso já estica cada card até a altura do maior vizinho da fileira,
-  sem precisar de nenhum posicionamento explícito de linha/coluna. O **topo** (pôster,
-  `.card-media`) fica alinhado "de graça": `aspect-ratio:16/9` + colunas de largura igual
-  garantem a mesma altura de pôster nos 3 cards. O **meio** (título, motivo, meta-line,
-  duração, "Em cartaz", gêneros, provedores, Ficha Técnica) tem altura livre por card — cada
-  um ocupa só o que o próprio conteúdo pede, sem sincronia com os vizinhos (é justamente aí
-  que o conteúdo mais varia entre títulos, então soltar essa faixa evita vãos vazios). O
-  **rodapé** (linha de Sinopse/Trailer) fica dentro de um wrapper `.card-footer` com
-  `margin-top: auto` — como o card já foi esticado até a altura do maior vizinho, essa margem
-  automática absorve toda a sobra como um único vão acima do rodapé, empurrando
-  "Sinopse"/Trailer pra mesma borda inferior nos 3 cards. Abaixo do breakpoint os cards
-  empilham 1 por linha e esse alinhamento entre vizinhos deixa de fazer sentido (cada card já
-  ocupa a largura toda sozinho) — não precisa de nenhum reset, já que nada depende de
-  posicionamento explícito. **Respiro entre seções:** `.card-body` tem `gap: 16px`, que dá o
-  espaçamento entre a maioria das seções do card de uma vez só (motivo, meta-line, gêneros,
-  provedores...); `duration-row`/`cinema-row` (que só existem quando têm conteúdo, ver mais
-  abaixo) usam um respiro menor (`margin-top: 4px`) por ficarem mais coladas na meta-line, como
-  continuação do mesmo bloco de "fatos rápidos".
+  entre os 3 cards da fileira, só no topo:** `.grid-titles` é grid de 3 colunas com
+  `align-items: stretch` — isso estica cada card (fundo/borda) até a altura do maior vizinho da
+  fileira, sem precisar de nenhum posicionamento explícito de linha/coluna. Só o **topo**
+  (pôster, `.card-media`) fica de fato alinhado entre os 3 cards, e isso "de graça":
+  `aspect-ratio:16/9` + colunas de largura igual garantem a mesma altura de pôster nos 3 cards.
+  Todo o resto do card (título, motivo, meta-line, duração, "Em cartaz", gêneros, provedores,
+  Ficha Técnica, Sinopse/Trailer) tem altura livre por card, sem nenhum mecanismo de sincronia
+  com os vizinhos — cada um ocupa só o que o próprio conteúdo pede (é justamente nessa faixa que
+  o conteúdo mais varia entre títulos, então soltar tudo ali evita vãos vazios). Abaixo do
+  breakpoint os cards empilham 1 por linha e esse alinhamento de pôster entre vizinhos deixa de
+  fazer sentido (cada card já ocupa a largura toda sozinho) — não precisa de nenhum reset, já que
+  nada depende de posicionamento explícito. **Respiro entre seções:** via `margin-top` no início
+  de cada seção do card (`.row-reason`, `.meta-line`, `.genres-container`, `.providers-row`,
+  `.row-people`, `.row-synopsis` — todas com 16px), não um `gap` uniforme em `.card-body`;
+  `duration-row`/`cinema-row` (que só existem quando têm conteúdo) usam um respiro menor
+  (`margin-top: 4px`) por ficarem mais coladas na meta-line, como continuação do mesmo bloco de
+  "fatos rápidos".
 - **Largura do rodapé (`render_footer()`):** antes de pesquisar, o rodapé fica com a mesma largura do hero (640px, centralizado, `.footer { max-width: 640px; margin: auto }`). `.grid-titles` (resultados) não tem largura própria — ocupa a largura natural do `block-container`. Quando há resultado na tela, `body:has(.grid-titles) .footer { max-width: none }` destrava o rodapé pra acompanhar essa largura maior, em vez de ficar preso nos 640px do hero
 - **Cabeçalho (`st.container(key="header-row")`):** ícone 🎬 maior (`.header-icon`, 34px) à esquerda, com título "FilmBot" (28px, `!important` — ver nota abaixo) + subtítulo (13px, `!important`) empilhados à direita dele sem nenhuma das duas linhas passar por baixo do ícone (`.header-brand` flex row + `.header-text` flex column, dentro de um único `st.markdown`) — substitui `st.title`/`st.caption`, que rendem um `<h1>` grande demais pra esse contexto de topo de página, mesmo padrão de markdown customizado já usado em `.login-title`/`.login-subtitle` na tela de login. **`!important` no `font-size` de `.header-title`/`.header-subtitle`:** o Streamlit aplica um `font-size` próprio no `<p>` via seletor com especificidade maior que a classe sozinha — sem o `!important`, o valor definido aqui é ignorado e o texto renderiza sempre em 16px, confirmado via inspeção real do DOM (Playwright). Botão "Sair" (`key="btn_sair"`) estilizado como pill discreto (`#3f3f3f`, cinza neutro). A coluna do título cresce (`flex:1 1 auto`) pra preencher o espaço extra e empurrar a coluna do botão (`flex:0 0 auto`) pra ponta direita — necessário porque a regra genérica "Colunas dos botoes se ajustam ao conteudo" (mais acima em `principal.css`) exclui explicitamente linhas com `<h1>`; sem esse `<h1>` (trocado por markdown), as colunas do header passaram a encolher pro conteúdo, deixando um vão grande entre o botão e a borda direita real do hero — medido via inspeção real do DOM (Playwright). Alinhamento vertical do botão via `align-items:center` no `stHorizontalBlock` mais um nudge fino (`position:relative; top:8px`) — o wrapper interno que o Streamlit gera em volta de `st.markdown` reporta uma altura menor que a dos dois parágrafos reais (título+subtítulo), então o `align-items:center` sozinho centraliza o botão ~8px acima do centro visual verdadeiro; compensado diretamente após medir via inspeção real do DOM, já que a causa raiz da altura errada não pôde ser isolada/corrigida via CSS (`height`/`min-height`/`max-height:auto` não tiveram efeito). **Wrap natural (sem breakpoint fixo):** `flex-wrap:wrap` + `justify-content:space-between` no `stHorizontalBlock` — o botão fica lado a lado com o ícone+texto enquanto couber (como no desktop, em qualquer largura) e só quebra pra linha de baixo quando o espaço realmente não for suficiente; `justify-content:space-between` resolve o alinhamento nos dois cenários sozinho (título à esquerda/botão à direita quando cabem juntos; botão alinhado à esquerda quando quebra pra própria linha, já que não sobra "outro lado" pra empurrar), e o `gap:12px` do row garante um respiro mínimo tanto na horizontal quanto na vertical (quando quebra) — testado via Playwright em várias larguras (1280px a 320px)
 - **Rate limiting por IP:** máximo de 15 consultas por hora (janela deslizante). O contador ("Consultas restantes: N/15 por hora") é exibido abaixo do campo de texto, em cinza (`.query-counter-text`); quando restam 3 consultas ou menos, o texto muda para laranja em negrito (`.query-counter-low`, `principal.css`) para avisar a pessoa antes de o limite ser atingido. Ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS mostra quanto tempo falta em tempo real, decrementando a cada segundo — a caixa de aviso vem de `render_feedback()` (renderizada na página real, com CSS de `principal.css`) e só o `<span id="countdown">` é atualizado por `static/countdown.js` (injetado por `load_countdown_script()`, genérico — reusado também pelo bloqueio de login, ver abaixo), que acessa `window.parent.document` a partir do iframe do `st.components.v1.html` — mesmo padrão de `audio_timer.js`, sem duplicar CSS dentro do iframe. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
@@ -198,9 +196,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte nem passa despercebido
   - "Ficha Técnica" (ícone 👥, grupo de pessoas), logo **acima** da Sinopse: mesmo mecanismo de accordion "▸"
     (checkbox hack em CSS, sem JS) da Sinopse abaixo, em linha própria — não divide espaço com Sinopse/Trailer.
-    Faz parte do meio solto do card (ver bullet do grid acima), **não** entra no rodapé fixo (`.card-footer`) —
-    só Sinopse/Trailer ficam ancorados na mesma borda inferior entre os 3 cards da fileira. Ao contrário da
-    rodada anterior (que só trazia diretor+elenco), traz **todos** os campos de elenco/equipe técnica já
+    Faz parte do meio solto do card (ver bullet do grid acima), como todo o resto abaixo do pôster. Ao contrário
+    da rodada anterior (que só trazia diretor+elenco), traz **todos** os campos de elenco/equipe técnica já
     formatados em `formatacao.py`: Diretor, Criador(es) (`creators`, só séries — aparece como bullet
     independente do Diretor, sem fallback entre os dois; um título pode mostrar os dois ao mesmo tempo), Elenco
     (`cast`, top 5 atores), Roteiro (`writers`), Trilha sonora (`composer`), Produção (`producer`), Fotografia
@@ -210,14 +207,14 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     rótulo da seção ("Ficha Técnica") é branco, não laranja como "Sinopse" — o laranja continua reservado pra
     nota/motivo/sinopse, os pontos que pedem destaque visual; aqui é conteúdo informativo neutro. Se nenhum
     papel estiver presente, a div nem é gerada (meio solto)
-  - Sinopse e trailer dividem a última linha do card, dentro do rodapé fixo `.card-footer` (`margin-top: auto`,
-    ver bullet do grid acima) — as duas são ações de "quero saber mais" sobre o título, então ficam juntas em
+  - Sinopse e trailer dividem a última linha do card, também no meio solto (não ancorada em nenhuma borda fixa
+    entre os 3 cards da fileira) — as duas são ações de "quero saber mais" sobre o título, então ficam juntas em
     vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox hack em CSS, já que
     `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando disponível) à
     direita na mesma linha, mesmo `font-size` do label "Sinopse" pros dois ficarem visualmente equivalentes.
     Clicar no label expande o texto completo da sinopse e troca a seta para "▾", independente do tamanho do
     texto. Se não houver sinopse mas houver trailer, a linha aparece só com o link; se não houver nenhum dos
-    dois, o `.card-footer` inteiro nem é gerado nesse card
+    dois, a div nem é gerada nesse card (meio solto)
 
 ## Entradas e saídas
 

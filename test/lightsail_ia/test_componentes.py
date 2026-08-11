@@ -860,21 +860,12 @@ class TestRenderCard:
         synopsis_pos = html.index('class="row-synopsis"')
         assert people_pos < synopsis_pos
 
-    def test_card_sinopse_fica_dentro_do_card_footer(self):
-        # .card-footer (margin-top:auto, ver principal.css) empurra sinopse/trailer pra
-        # mesma borda inferior nos 3 cards da fileira — só a sinopse entra nesse rodapé
-        # fixo, a Ficha Técnica fica fora (faz parte do meio solto, sempre antes do rodapé
-        # no HTML).
-        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
-        html = componentes.render_card(t)
-        footer_pos = html.index('class="card-footer"')
-        assert "row-synopsis" in html[footer_pos:]
-        assert "row-people" not in html[footer_pos:]
-
-    def test_card_sem_sinopse_nem_trailer_nao_gera_card_footer(self):
+    def test_card_sem_sinopse_nem_trailer_nao_gera_row_synopsis(self):
+        # Sem conteúdo pra nenhum dos dois, a div nem é gerada (meio solto, ver
+        # principal.css) — mesmo padrão de row-people/duration-row/cinema-row.
         t = {**BASE_TITLE, "overview": None, "trailer_url": None}
         html = componentes.render_card(t)
-        assert "card-footer" not in html
+        assert "row-synopsis" not in html
 
 
 class TestRenderCardComPoster:
