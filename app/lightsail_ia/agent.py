@@ -16,7 +16,9 @@ Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
 
   PASSO 2 — Consulta real no data lake (AWS Athena):
     A cláusula WHERE gerada pelo LLM é validada (segurança) e executada no Athena.
-    O filtro fixo vote_count >= 50 é sempre aplicado automaticamente.
+    Sem filtro fixo de qualidade (ex: vote_count) — a ordenação por popularidade
+    (ORDER BY popularity DESC) já é o sinal de relevância, e inclui títulos ainda
+    não lançados (que nunca tiveram chance de acumular voto).
     O Athena retorna títulos reais que passaram pelo pipeline completo de ETL.
     Em seguida, funções em formatacao.py convertem cada registro em campos
     prontos para o card da interface (sem usar LLM).
@@ -255,7 +257,7 @@ _SYSTEM_PROMPT = (
     "- year (string): ano de lançamento. Use BETWEEN para faixas, = para ano exato.\n"
     "- air_date (string): data de lançamento no formato 'YYYY-MM-DD'\n"
     "- vote_average (double): nota média de 0 a 10\n"
-    "- vote_count (int): número de votos (filtro fixo >= 50 já aplicado; use para exigir mais votos)\n"
+    "- vote_count (int): número de votos (sem filtro automático; use pra exigir mais votos, ex: títulos consagrados/bem avaliados)\n"
     "- popularity (double): score de popularidade do TMDB\n"
     "- origin_country (array<string>): códigos ISO 3166-1 do país de origem (ex: 'US', 'BR', 'KR'). Use contains() para filtrar.\n"
     "- origin_country_name (string): nome do país de origem (ex: 'Brasil', 'United States', '대한민국')\n"
@@ -394,11 +396,12 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
     """
     Consulta a tabela SPEC no Athena e retorna os títulos que correspondem aos filtros.
 
-    O LLM gera a cláusula WHERE livremente com base no schema da tabela.
-    O filtro fixo vote_count >= 50 é sempre aplicado automaticamente para
-    garantir qualidade dos dados (exclui títulos com poucos votos) — exceto
-    para título com air_date futuro (ainda não lançado), que nunca teve
-    chance de acumular voto e por isso passa sem essa exigência.
+    O LLM gera a cláusula WHERE livremente com base no schema da tabela. Sem filtro fixo de
+    qualidade por vote_count — a relevância vem só do ORDER BY popularity DESC (que já
+    naturalmente prioriza títulos com mais dados/reconhecimento) e do pool+sorteio abaixo.
+    Isso também inclui títulos com air_date futuro (ainda não lançados, badge "Em breve" no
+    card — ver render_card() em componentes.py), que nunca tiveram chance de acumular voto e
+    antes ficavam de fora sem um bypass explícito no WHERE.
 
     Busca um pool de candidatos maior que `limit` (ordenado por popularidade,
     até _CANDIDATE_POOL_MAX) e sorteia um subconjunto de `limit` títulos desse
@@ -431,7 +434,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
                recommended_titles, similar_titles, alternative_titles,
                in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
-        WHERE (vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR)) AND {where_clause}
+        WHERE {where_clause}
         ORDER BY popularity DESC
         LIMIT {pool_size}
     """

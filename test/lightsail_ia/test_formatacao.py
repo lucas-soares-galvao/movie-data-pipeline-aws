@@ -1,3 +1,5 @@
+from datetime import date
+
 import formatacao
 
 FAKE_TITLE = {
@@ -108,7 +110,7 @@ class TestFormatReleaseDate:
 
 class TestFormatTheaterEndDate:
     def test_em_cartaz_com_data(self):
-        assert formatacao._format_theater_end_date("2025-07-15", True) == "15/07/2025"
+        assert formatacao._format_theater_end_date("2025-07-15", True) == "15/07"
 
     def test_fora_de_cartaz(self):
         assert formatacao._format_theater_end_date("2025-07-15", False) is None
@@ -119,7 +121,7 @@ class TestFormatTheaterEndDate:
 
 class TestFormatNextEpisodeDate:
     def test_data_valida(self):
-        assert formatacao._format_next_episode_date("2026-09-15") == "15/09/2026"
+        assert formatacao._format_next_episode_date("2026-09-15") == "15/09"
 
     def test_data_none(self):
         assert formatacao._format_next_episode_date(None) is None
@@ -129,6 +131,34 @@ class TestFormatNextEpisodeDate:
 
     def test_data_malformada(self):
         assert formatacao._format_next_episode_date("2026-09") is None
+
+
+class TestIsUpcoming:
+    _HOJE = date(2026, 1, 1)
+
+    def test_data_futura_retorna_true(self):
+        assert formatacao._is_upcoming("2026-09-15", today=self._HOJE) is True
+
+    def test_data_passada_retorna_false(self):
+        assert formatacao._is_upcoming("2020-01-01", today=self._HOJE) is False
+
+    def test_data_igual_a_hoje_retorna_false(self):
+        # Lançado exatamente hoje já conta como lançado, não "em breve".
+        assert formatacao._is_upcoming("2026-01-01", today=self._HOJE) is False
+
+    def test_data_none(self):
+        assert formatacao._is_upcoming(None, today=self._HOJE) is False
+
+    def test_data_vazia(self):
+        assert formatacao._is_upcoming("", today=self._HOJE) is False
+
+    def test_data_malformada(self):
+        assert formatacao._is_upcoming("2026-09", today=self._HOJE) is False
+
+    def test_sem_today_usa_data_real_do_sistema(self):
+        # Sem injetar `today`, cai na data real (UTC) — uma data bem distante no futuro
+        # (ano 9999) sempre bate como "em breve" independente de quando o teste rodar.
+        assert formatacao._is_upcoming("9999-12-31") is True
 
 
 class TestFormatRating:
@@ -158,6 +188,7 @@ class TestFormatRecord:
         assert result["backdrop_url"] is None
         assert result["duration"] == "2h 26min"
         assert result["release_date"] == "Mai de 1980"
+        assert result["upcoming_date"] is None  # air_date de 1980, já lançado
         assert result["streaming_providers"] == "Netflix"
         assert result["in_theaters"] is False
         assert result["theater_end_date"] is None
@@ -225,7 +256,7 @@ class TestFormatRecord:
         result = formatacao.format_record(record)
         assert result["next_episode_season_number"] == 3
         assert result["next_episode_number"] == 1
-        assert result["next_episode_date"] == "15/09/2026"
+        assert result["next_episode_date"] == "15/09"
 
     def test_registro_serie_sem_proximo_episodio(self):
         record = {
@@ -239,6 +270,15 @@ class TestFormatRecord:
         assert result["next_episode_season_number"] is None
         assert result["next_episode_number"] is None
         assert result["next_episode_date"] is None
+
+    def test_registro_com_lancamento_futuro(self):
+        # Data bem distante no futuro (ano 9999) evita flakiness — sempre "em breve"
+        # independente de quando o teste rodar (mesma técnica de
+        # TestIsUpcoming.test_sem_today_usa_data_real_do_sistema). Mesmo texto de
+        # release_date (formato "Mês de Ano", sem dia — ver _is_upcoming()).
+        record = {**FAKE_TITLE, "air_date": "9999-12-31"}
+        result = formatacao.format_record(record)
+        assert result["upcoming_date"] == "Dez de 9999"
 
     def test_novos_campos_nulos(self):
         result = formatacao.format_record(FAKE_TITLE)
