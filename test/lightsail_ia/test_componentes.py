@@ -281,9 +281,9 @@ class TestRenderProviderBadges:
         assert '<span class="provider-badge">Netflix</span>' in html
 
     def test_corta_no_limite_de_provedores_visiveis(self):
-        # Sem toggle "+N": acima do teto, trunca silenciosamente — a linha de provedores se
-        # ajusta automaticamente ao card com mais badges na mesma fileira (subgrid), então
-        # colapsar atrás de um clique deixou de ser necessário só por alinhamento.
+        # Sem toggle "+N": acima do teto, trunca silenciosamente — saber exatamente quantos
+        # badges couberam antes de quebrar linha exigiria JS medindo o DOM real, o que esse
+        # componente não tem (risco aceito conscientemente, ver lightsail_ia.md).
         nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES + 2)]
         html = componentes._render_provider_badges(nomes, [])
         assert "Provedor0" in html
@@ -370,6 +370,12 @@ class TestRenderCard:
         t = {**BASE_TITLE, "type": "Série"}
         html = componentes.render_card(t)
         assert "estreia em" not in html
+
+    def test_card_sem_em_cartaz_nem_proximo_episodio_nao_gera_cinema_row(self):
+        # Sem conteúdo pra nenhum dos dois badges, a div nem é gerada (meio solto, ver
+        # principal.css) — diferente de meta-line, que é sempre emitida mesmo vazia.
+        html = componentes.render_card(BASE_TITLE)
+        assert "cinema-row" not in html
 
     def test_card_exibe_produtor_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "producer": "Kevin Feige"}
@@ -639,9 +645,9 @@ class TestRenderCard:
         # Com pôster, duração entra na mesma linha de data/tipo em vez de linha própria —
         # medido via Playwright que até o pior caso plausível (série com "3 temps · 24
         # eps · ~45 min/ep") cabe numa linha só na largura mínima garantida do card.
-        # duration-row fica reservada (subgrid) mas vazia.
+        # duration-row nem chega a ser gerada nesse caso (meio solto, ver principal.css).
         html = componentes.render_card(BASE_TITLE)
-        assert '<div class="meta-row duration-row"></div>' in html
+        assert "duration-row" not in html
         meta_line_pos = html.index('class="meta-row meta-line"')
         meta_line_end = html.index("</div>", meta_line_pos)
         assert "2h 26min" in html[meta_line_pos:meta_line_end]
@@ -669,8 +675,8 @@ class TestRenderCard:
         assert "meta-line" in html
 
     def test_card_sem_data_tipo_nota_duracao_gera_meta_line_vazia(self):
-        # A div continua existindo mesmo sem conteúdo — reserva a própria linha do subgrid
-        # (ver principal.css) pra não deslocar as linhas seguintes só nesse card.
+        # A div de meta-line continua existindo mesmo sem conteúdo (diferente de
+        # duration-row/cinema-row/row-people, que só aparecem quando têm o que mostrar).
         t = {
             **BASE_TITLE,
             "rating": None,
@@ -693,11 +699,12 @@ class TestRenderCard:
         meta_line_end = html.index("</div>", meta_line_pos)
         assert "⏱" in html[meta_line_pos:meta_line_end]
 
-    def test_card_sem_duracao_gera_linha_vazia(self):
-        # Mesma razão de meta-line acima: a div sempre existe, só fica sem texto dentro.
+    def test_card_sem_duracao_nao_gera_duration_row(self):
+        # Sem duração, a div nem é gerada (meio solto, ver principal.css) — diferente de
+        # meta-line, que é sempre emitida mesmo vazia.
         t = {**BASE_TITLE, "duration": None}
         html = componentes.render_card(t)
-        assert 'class="meta-row duration-row"></div>' in html
+        assert "duration-row" not in html
 
     def test_card_exibe_motivo(self):
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
@@ -710,9 +717,9 @@ class TestRenderCard:
         assert 'class="reason"' not in html
 
     def test_card_motivo_sem_toggle(self):
-        # Motivo é limitado a 90 caracteres na origem (prompt do agente) e o subgrid entre
-        # os cards da fileira já resolve o alinhamento — sem clamp, sem checkbox hack de
-        # "Ver mais/Ver menos" (diferente de sinopse, que continua com accordion próprio).
+        # Motivo é limitado a 90 caracteres na origem (prompt do agente), cabendo sem clamp
+        # — sem checkbox hack de "Ver mais/Ver menos" (diferente de sinopse, que continua
+        # com accordion próprio).
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
         html = componentes.render_card(t)
         assert "reason-toggle" not in html
@@ -832,6 +839,7 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "Ficha Técnica" not in html
         assert "people-toggle" not in html
+        assert "row-people" not in html
 
     def test_card_people_toggle_id_usa_indice(self):
         t = {**BASE_TITLE, "director": "Stanley Kubrick"}
@@ -851,6 +859,22 @@ class TestRenderCard:
         people_pos = html.index('class="row-people"')
         synopsis_pos = html.index('class="row-synopsis"')
         assert people_pos < synopsis_pos
+
+    def test_card_sinopse_fica_dentro_do_card_footer(self):
+        # .card-footer (margin-top:auto, ver principal.css) empurra sinopse/trailer pra
+        # mesma borda inferior nos 3 cards da fileira — só a sinopse entra nesse rodapé
+        # fixo, a Ficha Técnica fica fora (faz parte do meio solto, sempre antes do rodapé
+        # no HTML).
+        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
+        html = componentes.render_card(t)
+        footer_pos = html.index('class="card-footer"')
+        assert "row-synopsis" in html[footer_pos:]
+        assert "row-people" not in html[footer_pos:]
+
+    def test_card_sem_sinopse_nem_trailer_nao_gera_card_footer(self):
+        t = {**BASE_TITLE, "overview": None, "trailer_url": None}
+        html = componentes.render_card(t)
+        assert "card-footer" not in html
 
 
 class TestRenderCardComPoster:
@@ -934,20 +958,14 @@ class TestRenderGrid:
         assert "people-toggle-0" in html
         assert "people-toggle-1" in html
 
-    def test_grid_posiciona_cards_em_linha_coluna_do_subgrid(self):
+    def test_grid_nao_gera_posicionamento_inline_de_linha_coluna(self):
+        # Sem subgrid, os cards não precisam de grid-row/grid-column inline — o grid de 3
+        # colunas (.grid-titles, ver principal.css) forma as fileiras sozinho via
+        # auto-placement, e align-items:stretch cuida do alinhamento entre eles.
         html = componentes.render_grid([BASE_TITLE] * 4)
-        # Grupo 0 (cards 0-2): linha 1, colunas 1-3. Grupo 1 (card 3): linha 12 (10 linhas de
-        # conteúdo + 1 de respiro depois do grupo 0), coluna 1.
-        assert "grid-row:1 / span 10;grid-column:1" in html
-        assert "grid-row:1 / span 10;grid-column:3" in html
-        assert "grid-row:12 / span 10;grid-column:1" in html
+        assert "grid-row" not in html
+        assert "grid-column" not in html
 
-    def test_grid_declara_grid_template_rows_proporcional_ao_numero_de_fileiras(self):
-        html_uma_fileira = componentes.render_grid([BASE_TITLE] * 3)
-        html_duas_fileiras = componentes.render_grid([BASE_TITLE] * 4)
-        assert "repeat(1," in html_uma_fileira
-        assert "repeat(2," in html_duas_fileiras
-
-    def test_grid_vazio_nao_declara_grid_template_rows(self):
-        html = componentes.render_grid([])
+    def test_grid_nao_declara_grid_template_rows(self):
+        html = componentes.render_grid([BASE_TITLE] * 4)
         assert "grid-template-rows" not in html
