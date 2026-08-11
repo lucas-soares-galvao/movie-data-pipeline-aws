@@ -496,7 +496,9 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   align-items: stretch;
-  column-gap: 16px;
+  /* row-gap reproduz a linha de respiro de 16px que antes vinha do grid-template-rows
+     explícito (subgrid, removido) entre cada fileira de 3 cards. */
+  gap: 16px;
 }
 
 /* Impede scroll horizontal em qualquer viewport */
@@ -520,10 +522,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 /* Abaixo de 1200px (breakpoint "xl" do Bootstrap — convenção, não medição exata),
    gêneros/provedores com nomes longos (ex. "Amazon Prime Video", "Ação & Aventura")
-   frequentemente não cabem numa linha só — como a linha é compartilhada entre os 3 cards
-   da fileira (subgrid abaixo), um card assim estufa a linha pros vizinhos também, deixando
-   um vão vazio perceptível. Por isso o fallback de 1 card por linha (que já existia só
-   para viewport de celular) passa a cobrir também essa faixa "desktop estreito". Medido
+   frequentemente não cabem numa linha só e quebram pra 2ª/3ª linha dentro do próprio card
+   — largura insuficiente pro card, não relacionado ao vizinho da fileira. Por isso o
+   fallback de 1 card por linha (que já existia só para viewport de celular) passa a cobrir
+   também essa faixa "desktop estreito", dando mais largura pra cada card. Medido
    empiricamente (Playwright, nomes reais e longos do catálogo, numa fixture isolada sem o
    padding/chrome real do Streamlit): o caso comum (até 4 gêneros/provedores) já cabe numa
    linha a partir de ~373px de largura de card, bem próximo do que 1200px de janela
@@ -553,19 +555,6 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
     max-width: 460px;
   }
 
-  /* No mobile/fallback os cards empilham 1 por linha — o subgrid de alinhamento entre
-     irmãos (ver bloco desktop abaixo) não faz sentido aqui. O style inline injetado por
-     render_card()/render_grid() (grid-row/grid-column do card, grid-template-rows do
-     wrapper) só vale pro layout desktop; precisa de !important pra vencer a especificidade
-     do style inline e não deixar o card carregando posicionamento de grid desktop enquanto
-     empilhado. */
-  .grid-titles {
-    grid-template-rows: none !important;
-  }
-  .card {
-    grid-row: auto !important;
-    grid-column: auto !important;
-  }
 }
 
 .card, article.card {
@@ -672,17 +661,13 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 }
 
 /* Respiro entre seções via margin-top no início de cada seção (não gap uniforme no
-   .card-body, e não margin-bottom em cada linha que a precede) — motivo: duration-row e
-   cinema-row são reservadas mas ficam vazias na maioria dos títulos (duração só tem
-   conteúdo próprio sem pôster; "em cartaz" só em lançamento recente de cinema). Com gap
-   uniforme, cada linha vazia entre duas seções de verdade ainda soma seu próprio gap —
-   2 linhas vazias em sequência (duração+em cartaz, caso comum com pôster e fora de
-   cartaz) somavam 32px de vão, o dobro do pretendido, entre informação e gênero. Colocar
-   o respiro como margin-top só de quem SEMPRE tem conteúdo (motivo, informação, gênero,
-   provedor, sinopse) resolve isso: não importa quantas linhas vazias existam antes, só
-   entra um respiro de cada vez, na entrada da próxima seção visível. duration-row/
-   cinema-row ficam com um respiro pequeno (não zero, pro caso raro em que têm conteúdo
-   não ficar colado) em vez do respiro grande de seção. */
+   .card-body, e não margin-bottom em cada linha que a precede) — cada seção só existe no
+   HTML quando tem conteúdo (ver componentes.py: duration-row/cinema-row/row-people só são
+   emitidas quando há duração/"em cartaz"/ficha técnica), então o respiro certo já vem
+   naturalmente do primeiro elemento realmente presente, sem precisar somar/descontar linhas
+   vazias. duration-row/cinema-row ficam com um respiro menor (4px, não zero) que as demais
+   seções (16px) — quando aparecem, ficam mais coladas na meta-line, como continuação do
+   mesmo bloco de "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
 .row-reason {
   margin-top: 16px;
 }
@@ -706,58 +691,25 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin-top: 16px;
 }
 
-/* Alinhamento simétrico entre os 3 cards de uma fileira: no desktop, .grid-titles declara
-   explicitamente um bloco de linhas por fileira (ver render_grid() em componentes.py) e
-   cada .card faz subgrid dessas linhas (grid-row/grid-column vêm do style inline injetado
-   por render_card()) — .card-body faz subgrid de novo, um nível abaixo, pra repassar essas
-   mesmas linhas aos campos (título, motivo, gêneros...). Como cada linha tem altura "auto",
-   ela se ajusta automaticamente ao maior conteúdo entre os 3 cards da fileira, sem truncar
-   nada — nenhum campo precisa de clamp manual. Abaixo de 1200px os cards empilham 1 por
-   linha (reset em @media max-width:1200px acima) e não há subgrid nenhum. */
-@media (min-width: 1201px) {
-  /* Precisa repetir o seletor "article.card" (não só ".card") pra igualar a especificidade
-     da regra base (532) — só ".card" tem especificidade menor que "article.card" e o
-     display:flex de lá venceria mesmo dentro do media query, já que especificidade decide
-     antes da ordem no arquivo quando nenhuma das duas usa !important. */
-  .card, article.card {
-    display: grid;
-    grid-template-rows: subgrid;
-    /* grid-row (linha inicial + span) vem do style inline injetado por render_card() —
-       cada card precisa do próprio bloco de linhas dentro de .grid-titles. */
-  }
-  .card-body {
-    display: grid;
-    grid-template-rows: subgrid;
-    grid-row: 2 / span 9;
-  }
-  .card-media { grid-row: 1; }
-  .card-title { grid-row: 1; }
-  .row-reason { grid-row: 2; }
-  /* Ordem: informação (data/tipo) → duração → em cartaz → gênero → provedor — agrupa os
-     3 fatos rápidos/compactos do título (quando, quanto dura, ainda tá em cartaz) antes
-     dos campos com mais badges (gênero, provedor), mais perto do rodapé de ações. */
-  .meta-line { grid-row: 3; }
-  .duration-row { grid-row: 4; }
-  .cinema-row { grid-row: 5; }
-  .genres-container { grid-row: 6; }
-  .providers-row { grid-row: 7; }
-  .row-people { grid-row: 8; }
-  .row-synopsis { grid-row: 9; }
+/* Alinhamento entre os 3 cards de uma fileira, só nas duas pontas do card — topo (pôster) e
+   rodapé (sinopse/trailer), com o meio (título, motivo, meta, duração, "em cartaz", gêneros,
+   provedores, ficha técnica) de altura livre por card:
+   - .grid-titles é grid de 3 colunas com align-items:stretch (abaixo) — isso já estica cada
+     card até a altura do maior vizinho da fileira, sem precisar de subgrid nem de
+     posicionamento explícito de linha/coluna.
+   - .card-media (pôster) fica alinhado "de graça": aspect-ratio:16/9 + colunas de largura
+     igual garantem a mesma altura de pôster nos 3 cards.
+   - .card-footer (envolve .row-synopsis, ver componentes.py) tem margin-top:auto — como o
+     card já foi esticado até a altura do maior vizinho, essa margem automática absorve toda
+     a sobra como um único vão acima do rodapé, empurrando "Sinopse"/Trailer pra mesma borda
+     inferior nos 3 cards. */
+.card-footer {
+  margin-top: auto;
 }
 
-/* height:100% faz o fundo acompanhar a altura de .row-reason, que por sua vez já estica
-   pra altura da linha do subgrid compartilhada com os vizinhos da fileira (grid
-   align-items:stretch, padrão, sem precisar declarar) — sem isso, um motivo de 1 linha ao
-   lado de motivos de 2 linhas na mesma fileira deixa a caixa colorida visivelmente mais
-   curta, com um vão vazio (fundo do card, sem cor) antes da próxima linha, mesmo a linha
-   do subgrid já estando alta o bastante pra acomodar o vizinho de 2 linhas. Sem margin
-   própria — o respiro antes/depois vem do gap uniforme de .card-body (acima). É proposital
-   não ter as duas fontes de espaçamento juntas: margin nunca entra no cálculo de
-   box-sizing, então height:100% + margin próprios faziam a caixa ultrapassar a altura de
-   .row-reason e sobrepor a linha seguinte (bug real, medido via Playwright antes desse
-   ajuste). box-sizing:border-box garante que padding/border entrem nesse 100%, não somem
-   por cima. No mobile (sem subgrid, .row-reason com altura automática) a % vira auto —
-   comportamento igual ao de antes. */
+/* Sem height:100%/box-sizing: sem subgrid, .row-reason não compartilha altura de linha com
+   os vizinhos (faz parte do meio solto) — o fundo colorido já acompanha a altura natural do
+   próprio texto. */
 .reason {
   color: #fdba74;
   font-size: 14px;
@@ -768,8 +720,6 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   border-left: 2px solid rgba(249,115,22,0.3);
   border-radius: 4px;
   line-height: 1.4;
-  height: 100%;
-  box-sizing: border-box;
 }
 
 /* Sem margin própria — o respiro entre uma .meta-row e a próxima (ou qualquer outra
@@ -960,9 +910,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 /* Ficha técnica (diretor, elenco, roteiro, trilha sonora, produção, fotografia, montagem,
    criador(es)) recolhida por padrão — mesmo mecanismo de checkbox hack da Sinopse acima,
-   em linha própria do subgrid, posicionada ANTES da sinopse (ver grid-row acima). Rótulo
-   em branco (não laranja como "Sinopse") — o laranja fica reservado pra nota, motivo e
-   sinopse, os pontos que pedem destaque; aqui é só mais um bloco de conteúdo informativo. */
+   posicionada ANTES da sinopse, no meio solto do card (não faz parte do rodapé fixo — ver
+   .card-footer). Rótulo em branco (não laranja como "Sinopse") — o laranja fica reservado
+   pra nota, motivo e sinopse, os pontos que pedem destaque; aqui é só mais um bloco de
+   conteúdo informativo. */
 .people-toggle { display: none; }
 .people-row {
   display: flex;

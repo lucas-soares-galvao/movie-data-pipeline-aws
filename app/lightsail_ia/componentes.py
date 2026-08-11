@@ -1,7 +1,6 @@
 """componentes.py — Funções auxiliares de renderização para o FilmBot."""
 
 import html
-import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,12 +18,6 @@ _CERTIFICATION_DESCRIPTIONS = {
 
 _MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
-
-# Linhas locais do subgrid de cada card (pôster, título, motivo, data/tipo/nota, gêneros,
-# duração, provedores, "em cartaz", ficha técnica, sinopse/trailer) — ver
-# render_grid()/render_card() e a regra .grid-titles em principal.css, que precisam
-# concordar com esse número pro alinhamento entre os 3 cards de uma fileira funcionar.
-_CARD_GRID_ROWS = 10
 
 _YT_IMG = (
     '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
@@ -215,11 +208,10 @@ def render_card(title: dict, idx: int = 0) -> str:
     )
     genres_icon_html = '<span class="meta-icon">🎭</span>' if genres_html else ""
 
-    # Sempre gera a div, vazia quando não aplicável — reserva a linha própria do
-    # subgrid (ver principal.css) pra não deslocar o que vem depois só nesse card.
-    # Filme (in_theaters) e série (next_episode_*) nunca preenchem os dois ao mesmo
-    # tempo — por isso a mesma linha/classe serve pros dois badges, sem checar
-    # media_type explicitamente.
+    # Filme (in_theaters) e série (next_episode_*) nunca preenchem os dois ao mesmo tempo — por
+    # isso a mesma linha/classe serve pros dois badges, sem checar media_type explicitamente. Sem
+    # nenhum dos dois, não emite a div — o card fica com essa linha a menos (meio solto, ver
+    # principal.css).
     cinema_content = ""
     if in_theaters:
         label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
@@ -233,7 +225,7 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<span class="meta-icon">📅</span>'
             f'<span class="cinema-badge">{html.escape(label)}</span>'
         )
-    cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>'
+    cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""
 
     certification_title = html.escape(_CERTIFICATION_DESCRIPTIONS.get(certification, certification))
     certification_html = (
@@ -259,10 +251,9 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'</div>'
         )
 
-    # Motivo é limitado a 90 caracteres na origem (prompt do agente), então a variação de
-    # altura entre os 3 cards da mesma fileira é pequena — sem clamp nem toggle, o subgrid
-    # de .card-body (ver principal.css) já alinha a linha do motivo sozinho, ajustando a
-    # altura ao maior motivo entre os cards da fileira.
+    # Motivo é limitado a 90 caracteres na origem (prompt do agente) — cabe sem clamp nem
+    # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
+    # sincronia de altura com os vizinhos da fileira, ver principal.css).
     reason_html = f'<p class="reason">{reason}</p>' if reason else ""
 
     date_type_parts = []
@@ -289,15 +280,13 @@ def render_card(title: dict, idx: int = 0) -> str:
     # pôster a nota continua no slot direito, como sempre foi. O trailer não entra mais
     # aqui — fica na linha da sinopse (ver synopsis_row_html), junto da outra ação de
     # "quero saber mais" do card, em vez de disputar espaço com um fato objetivo.
-    # meta-line e duration-row sempre geram a div (mesmo vazia) — reservam a própria linha
-    # do subgrid, senão a ausência do campo desloca as linhas seguintes só nesse card.
-    # O ícone fica dentro de .meta-info (não como irmão solto de .meta-row) porque
-    # .meta-line usa justify-content:space-between pra separar meta-info/nota — um 3º
-    # filho direto do .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta
-    # direita, longe um do outro, em vez de ficarem juntos como "ícone + texto". Só aparece
-    # quando há data/tipo pra rotular — sem isso, .meta-info fica vazio (linha ainda
-    # reservada pelo subgrid, ver comentário abaixo) e um ícone sozinho, sem texto ao lado,
-    # não faria sentido.
+    # meta-line sempre gera a div (quase sempre tem conteúdo). O ícone fica dentro de
+    # .meta-info (não como irmão solto de .meta-row) porque .meta-line usa
+    # justify-content:space-between pra separar meta-info/nota — um 3º filho direto do
+    # .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta direita, longe um
+    # do outro, em vez de ficarem juntos como "ícone + texto". Só aparece quando há
+    # data/tipo pra rotular — sem isso, .meta-info fica vazio e um ícone sozinho, sem texto
+    # ao lado, não faria sentido.
     meta_icon_html = '<span class="meta-icon">ℹ</span>' if meta_left else ""
     duration_escaped = html.escape(duration) if duration else ""
 
@@ -317,13 +306,12 @@ def render_card(title: dict, idx: int = 0) -> str:
         f'{meta_right}</div>'
     )
 
-    duration_icon_html = (
-        '<span class="meta-icon">⏱</span>' if duration and not duration_in_meta_line else ""
-    )
-    duration_html = (
-        f'<div class="meta-row duration-row">{duration_icon_html}'
-        f'{duration_escaped if not duration_in_meta_line else ""}</div>'
-    )
+    # Linha própria só quando há duração e ela não coube na meta-line (ver
+    # duration_in_meta_line acima) — sem isso, não emite a div (meio solto, ver
+    # principal.css).
+    duration_html = ""
+    if duration and not duration_in_meta_line:
+        duration_html = f'<div class="meta-row duration-row"><span class="meta-icon">⏱</span>{duration_escaped}</div>'
 
     provider_names = _parse_provider_names(streaming_providers)
     provider_names += _parse_provider_names(rent_buy_providers)
@@ -340,8 +328,9 @@ def render_card(title: dict, idx: int = 0) -> str:
     )
 
     # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
-    # provedores agora, com ou sem pôster. Sempre gera a div (mesmo vazia), mesma razão de
-    # meta-line/duration-row acima.
+    # provedores agora, com ou sem pôster. Sempre gera a div (mesmo vazia quando não há
+    # provedor nenhum) — diferente de duration-row/cinema-row, esse campo é comum o
+    # suficiente pra não valer a pena condicionar.
     providers_icon_html = '<span class="meta-icon">📺</span>' if provider_badges_html else ""
     providers_block_html = (
         f'<div class="meta-row providers-row">'
@@ -370,15 +359,22 @@ def render_card(title: dict, idx: int = 0) -> str:
         synopsis_row_html = (
             f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
         )
+    # Sinopse/trailer são o rodapé fixo do card (ver .card-footer em principal.css, que usa
+    # margin-top:auto pra empurrar essa linha pra mesma borda inferior nos 3 cards da
+    # fileira) — só emite o wrapper quando há de fato sinopse ou trailer pra mostrar.
+    synopsis_html = ""
+    if synopsis_toggle_html or synopsis_row_html:
+        synopsis_html = (
+            f'<div class="card-footer"><div class="row-synopsis">'
+            f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div></div>'
+        )
 
-    # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), em linha própria do
-    # subgrid, posicionada ANTES da sinopse (ver principal.css) — todo o elenco/equipe
-    # técnica já formatado em `title` aparece aqui, um bullet por papel, com o rótulo em
-    # negrito pra escanear rápido.
+    # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), posicionada ANTES da
+    # sinopse — todo o elenco/equipe técnica já formatado em `title` aparece aqui, um bullet
+    # por papel, com o rótulo em negrito pra escanear rápido. Faz parte do "meio solto" do
+    # card (ver principal.css) — só emite a div quando há algum campo preenchido.
     people_toggle_id = f"people-toggle-{idx}"
-    people_toggle_html = ""
-    people_row_html = ""
-    people_text_html = ""
+    people_html = ""
     people_fields = [
         ("Diretor", director),
         ("Criador(es)", creators),
@@ -407,17 +403,10 @@ def render_card(title: dict, idx: int = 0) -> str:
             if value
         )
         people_text_html = f'<ul class="people-list">{people_items}</ul>'
-
-    # Posição do card no subgrid compartilhado da fileira: cada card ocupa um bloco de
-    # _CARD_GRID_ROWS linhas (mais 1 linha de respiro entre fileiras, ver render_grid) na
-    # coluna correspondente ao seu índice dentro do grupo de 3. Ver principal.css pra como
-    # cada campo (título, motivo, gêneros...) se posiciona dentro desse bloco.
-    row_start = (idx // 3) * (_CARD_GRID_ROWS + 1) + 1
-    column = (idx % 3) + 1
-    card_style = f"grid-row:{row_start} / span {_CARD_GRID_ROWS};grid-column:{column}"
+        people_html = f'<div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>'
 
     return f"""
-    <article class="card" style="{card_style}">
+    <article class="card">
       {img_html}
       <div class="card-body">
         <strong class="card-title">{title_name}</strong>
@@ -427,8 +416,8 @@ def render_card(title: dict, idx: int = 0) -> str:
         {cinema_html}
         <div class="genres-container">{genres_icon_html}<span class="genre-badges">{genres_html}</span></div>
         {providers_block_html}
-        <div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>
-        <div class="row-synopsis">{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>
+        {people_html}
+        {synopsis_html}
       </div>
     </article>
     """
@@ -437,19 +426,13 @@ def render_card(title: dict, idx: int = 0) -> str:
 def render_grid(titles: list[dict]) -> str:
     """Monta o HTML completo do grid de cards.
 
-    O subgrid de cada card (ver render_card()/principal.css) exige que .grid-titles declare
-    o total de linhas explicitamente — um bloco de _CARD_GRID_ROWS linhas de conteúdo mais 1
-    linha de respiro (16px) por fileira de até 3 títulos. CSS não permite aninhar repeat()
-    dentro de repeat(), por isso as _CARD_GRID_ROWS linhas "auto" são escritas por extenso
-    dentro do padrão repetido, em vez de um repeat() aninhado.
+    Cada card estica pra altura do maior vizinho da fileira (`.grid-titles` com
+    `align-items: stretch`, ver principal.css) — não precisa de nenhum posicionamento
+    explícito de linha/coluna, o grid de 3 colunas com `repeat(3, 1fr)` já forma fileiras
+    implícitas de 3 cards sozinho.
     """
     cards = [render_card(t, idx) for idx, t in enumerate(titles)]
-    n_groups = math.ceil(len(titles) / 3) if titles else 0
-    style_attr = ""
-    if n_groups:
-        group_pattern = " ".join(["auto"] * _CARD_GRID_ROWS) + " 16px"
-        style_attr = f' style="grid-template-rows: repeat({n_groups}, {group_pattern})"'
-    return f'<div class="grid-titles"{style_attr}>' + "".join(cards) + "</div>"
+    return '<div class="grid-titles">' + "".join(cards) + "</div>"
 
 
 def render_footer() -> None:
