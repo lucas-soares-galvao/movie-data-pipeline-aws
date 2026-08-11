@@ -348,10 +348,10 @@ class TestRenderCard:
             "type": "Série",
             "next_episode_season_number": 3,
             "next_episode_number": 1,
-            "next_episode_date": "15/09",
+            "next_episode_date": "15/09/2026",
         }
         html = componentes.render_card(t)
-        assert "T3E1 estreia em 15/09" in html
+        assert "T3 E1 estreia em 15/09/2026" in html
 
     def test_card_em_cartaz_tem_prioridade_sobre_proximo_episodio(self):
         t = {
@@ -373,7 +373,7 @@ class TestRenderCard:
 
     def test_card_sem_em_cartaz_nem_proximo_episodio_nao_gera_cinema_row(self):
         # Sem conteúdo pra nenhum dos dois badges, a div nem é gerada (meio solto, ver
-        # principal.css) — diferente de meta-line, que é sempre emitida mesmo vazia.
+        # principal.css).
         html = componentes.render_card(BASE_TITLE)
         assert "cinema-row" not in html
 
@@ -410,6 +410,13 @@ class TestRenderCard:
         t = {**BASE_TITLE, "streaming_providers": None}
         html = componentes.render_card(t)
         assert "📺" not in html
+
+    def test_card_sem_provedor_nenhum_nao_gera_providers_row(self):
+        # Sem streaming nem aluguel/compra, a div nem é gerada (meio solto, ver
+        # principal.css) — mesmo padrão de duration-row/cinema-row/row-people/row-synopsis.
+        t = {**BASE_TITLE, "streaming_providers": None}
+        html = componentes.render_card(t)
+        assert "providers-row" not in html
 
     def test_card_ignora_campo_de_logo_do_provedor(self):
         """streaming_provider_logos/rent_buy_provider_logos não são mais buscados nem
@@ -460,6 +467,13 @@ class TestRenderCard:
         t = {**BASE_TITLE, "genres": []}
         html = componentes.render_card(t)
         assert "🎭" not in html
+
+    def test_card_sem_generos_nao_gera_genres_container(self):
+        # Sem gêneros, a div nem é gerada (meio solto, ver principal.css) — mesmo padrão de
+        # duration-row/cinema-row/providers-row/row-people/row-synopsis.
+        t = {**BASE_TITLE, "genres": []}
+        html = componentes.render_card(t)
+        assert "genres-container" not in html
 
     def test_card_generos_acima_do_limite_trunca_sem_indicador(self):
         t = {
@@ -674,9 +688,9 @@ class TestRenderCard:
         assert "★" not in html
         assert "meta-line" in html
 
-    def test_card_sem_data_tipo_nota_duracao_gera_meta_line_vazia(self):
-        # A div de meta-line continua existindo mesmo sem conteúdo (diferente de
-        # duration-row/cinema-row/row-people, que só aparecem quando têm o que mostrar).
+    def test_card_sem_data_tipo_nota_duracao_nao_gera_meta_line(self):
+        # Sem nada pra mostrar em lugar nenhum da linha, a div nem é gerada (meio solto, ver
+        # principal.css) — mesmo padrão de duration-row/cinema-row/row-people.
         t = {
             **BASE_TITLE,
             "rating": None,
@@ -686,8 +700,7 @@ class TestRenderCard:
             "duration": None,
         }
         html = componentes.render_card(t)
-        assert 'class="meta-row meta-line"' in html
-        assert '<span class="meta-info"></span>' in html
+        assert "meta-line" not in html
 
     def test_card_com_poster_duracao_sem_data_tipo_ainda_aparece_na_meta_line(self):
         # Com pôster, duração é mostrada na meta-line mesmo sem data/tipo — o ícone ⏱
@@ -700,8 +713,7 @@ class TestRenderCard:
         assert "⏱" in html[meta_line_pos:meta_line_end]
 
     def test_card_sem_duracao_nao_gera_duration_row(self):
-        # Sem duração, a div nem é gerada (meio solto, ver principal.css) — diferente de
-        # meta-line, que é sempre emitida mesmo vazia.
+        # Sem duração, a div nem é gerada (meio solto, ver principal.css).
         t = {**BASE_TITLE, "duration": None}
         html = componentes.render_card(t)
         assert "duration-row" not in html
@@ -715,6 +727,12 @@ class TestRenderCard:
     def test_card_sem_motivo_nao_gera_paragrafo_vazio(self):
         html = componentes.render_card(BASE_TITLE)
         assert 'class="reason"' not in html
+
+    def test_card_sem_motivo_nao_gera_row_reason(self):
+        # Sem motivo, a div nem é gerada (meio solto, ver principal.css) — mesmo padrão de
+        # duration-row/cinema-row/genres-container/providers-row/row-people/row-synopsis.
+        html = componentes.render_card(BASE_TITLE)
+        assert "row-reason" not in html
 
     def test_card_motivo_sem_toggle(self):
         # Motivo é limitado a 90 caracteres na origem (prompt do agente), cabendo sem clamp
@@ -860,21 +878,12 @@ class TestRenderCard:
         synopsis_pos = html.index('class="row-synopsis"')
         assert people_pos < synopsis_pos
 
-    def test_card_sinopse_fica_dentro_do_card_footer(self):
-        # .card-footer (margin-top:auto, ver principal.css) empurra sinopse/trailer pra
-        # mesma borda inferior nos 3 cards da fileira — só a sinopse entra nesse rodapé
-        # fixo, a Ficha Técnica fica fora (faz parte do meio solto, sempre antes do rodapé
-        # no HTML).
-        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
-        html = componentes.render_card(t)
-        footer_pos = html.index('class="card-footer"')
-        assert "row-synopsis" in html[footer_pos:]
-        assert "row-people" not in html[footer_pos:]
-
-    def test_card_sem_sinopse_nem_trailer_nao_gera_card_footer(self):
+    def test_card_sem_sinopse_nem_trailer_nao_gera_row_synopsis(self):
+        # Sem conteúdo pra nenhum dos dois, a div nem é gerada (meio solto, ver
+        # principal.css) — mesmo padrão de row-people/duration-row/cinema-row.
         t = {**BASE_TITLE, "overview": None, "trailer_url": None}
         html = componentes.render_card(t)
-        assert "card-footer" not in html
+        assert "row-synopsis" not in html
 
 
 class TestRenderCardComPoster:

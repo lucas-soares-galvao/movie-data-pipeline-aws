@@ -68,12 +68,12 @@ def _format_theater_end_date(theater_end_date: str | None, in_theaters: bool) ->
 
 
 def _format_next_episode_date(next_episode_air_date: str | None) -> str | None:
-    """Converte data ISO 'YYYY-MM-DD' do próximo episódio para 'DD/MM' (sem ano)."""
+    """Converte data ISO 'YYYY-MM-DD' do próximo episódio para 'DD/MM/AAAA'."""
     if not next_episode_air_date:
         return None
     try:
-        _, month, day = next_episode_air_date.split("-")
-        return f"{day}/{month}"
+        year, month, day = next_episode_air_date.split("-")
+        return f"{day}/{month}/{year}"
     except ValueError:
         return None
 

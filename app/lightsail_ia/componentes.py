@@ -206,7 +206,15 @@ def render_card(title: dict, idx: int = 0) -> str:
         f"{html.escape(g)}</span>"
         for g in visible_genres_raw
     )
-    genres_icon_html = '<span class="meta-icon">🎭</span>' if genres_html else ""
+    # Faz parte do meio solto do card (ver principal.css) — só emite a div quando há algum
+    # gênero pra mostrar.
+    genres_block_html = ""
+    if genres_html:
+        genres_block_html = (
+            f'<div class="genres-container">'
+            f'<span class="meta-icon">🎭</span>'
+            f'<span class="genre-badges">{genres_html}</span></div>'
+        )
 
     # Filme (in_theaters) e série (next_episode_*) nunca preenchem os dois ao mesmo tempo — por
     # isso a mesma linha/classe serve pros dois badges, sem checar media_type explicitamente. Sem
@@ -220,7 +228,7 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'<span class="cinema-badge">{html.escape(label)}</span>'
         )
     elif next_episode_season_number is not None and next_episode_number is not None and next_episode_date:
-        label = f"T{next_episode_season_number}E{next_episode_number} estreia em {next_episode_date}"
+        label = f"T{next_episode_season_number} E{next_episode_number} estreia em {next_episode_date}"
         cinema_content = (
             f'<span class="meta-icon">📅</span>'
             f'<span class="cinema-badge">{html.escape(label)}</span>'
@@ -253,8 +261,10 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     # Motivo é limitado a 90 caracteres na origem (prompt do agente) — cabe sem clamp nem
     # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
-    # sincronia de altura com os vizinhos da fileira, ver principal.css).
-    reason_html = f'<p class="reason">{reason}</p>' if reason else ""
+    # sincronia de altura com os vizinhos da fileira, ver principal.css). Sem motivo, a div
+    # nem é gerada (meio solto) — caso comum, não só borda: `reason` costuma vir vazio fora
+    # do fluxo de recomendação da IA.
+    reason_block_html = f'<div class="row-reason"><p class="reason">{reason}</p></div>' if reason else ""
 
     date_type_parts = []
     if release_date:
@@ -280,13 +290,12 @@ def render_card(title: dict, idx: int = 0) -> str:
     # pôster a nota continua no slot direito, como sempre foi. O trailer não entra mais
     # aqui — fica na linha da sinopse (ver synopsis_row_html), junto da outra ação de
     # "quero saber mais" do card, em vez de disputar espaço com um fato objetivo.
-    # meta-line sempre gera a div (quase sempre tem conteúdo). O ícone fica dentro de
-    # .meta-info (não como irmão solto de .meta-row) porque .meta-line usa
+    # Faz parte do meio solto do card (ver principal.css) — só emite a div quando há
+    # data/tipo, duração (com pôster) ou nota (sem pôster) pra mostrar. O ícone fica dentro
+    # de .meta-info (não como irmão solto de .meta-row) porque .meta-line usa
     # justify-content:space-between pra separar meta-info/nota — um 3º filho direto do
     # .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta direita, longe um
-    # do outro, em vez de ficarem juntos como "ícone + texto". Só aparece quando há
-    # data/tipo pra rotular — sem isso, .meta-info fica vazio e um ícone sozinho, sem texto
-    # ao lado, não faria sentido.
+    # do outro, em vez de ficarem juntos como "ícone + texto".
     meta_icon_html = '<span class="meta-icon">ℹ</span>' if meta_left else ""
     duration_escaped = html.escape(duration) if duration else ""
 
@@ -300,11 +309,13 @@ def render_card(title: dict, idx: int = 0) -> str:
         f'<span class="meta-icon">⏱</span>{duration_escaped}' if duration_in_meta_line else ""
     )
     meta_right = "" if has_poster else rating_html
-    meta_html = (
-        f'<div class="meta-row meta-line">'
-        f'<span class="meta-info">{meta_icon_html}{meta_left}{meta_duration_html}</span>'
-        f'{meta_right}</div>'
-    )
+    meta_html = ""
+    if meta_left or meta_duration_html or meta_right:
+        meta_html = (
+            f'<div class="meta-row meta-line">'
+            f'<span class="meta-info">{meta_icon_html}{meta_left}{meta_duration_html}</span>'
+            f'{meta_right}</div>'
+        )
 
     # Linha própria só quando há duração e ela não coube na meta-line (ver
     # duration_in_meta_line acima) — sem isso, não emite a div (meio solto, ver
@@ -328,14 +339,15 @@ def render_card(title: dict, idx: int = 0) -> str:
     )
 
     # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
-    # provedores agora, com ou sem pôster. Sempre gera a div (mesmo vazia quando não há
-    # provedor nenhum) — diferente de duration-row/cinema-row, esse campo é comum o
-    # suficiente pra não valer a pena condicionar.
-    providers_icon_html = '<span class="meta-icon">📺</span>' if provider_badges_html else ""
-    providers_block_html = (
-        f'<div class="meta-row providers-row">'
-        f'{providers_icon_html}<span class="provider-badges">{provider_badges_html}</span></div>'
-    )
+    # provedores agora, com ou sem pôster. Faz parte do meio solto do card (ver
+    # principal.css) — só emite a div quando há algum provedor pra mostrar.
+    providers_block_html = ""
+    if provider_badges_html:
+        providers_block_html = (
+            f'<div class="meta-row providers-row">'
+            f'<span class="meta-icon">📺</span>'
+            f'<span class="provider-badges">{provider_badges_html}</span></div>'
+        )
 
     # Sinopse e trailer são as duas ações de "quero saber mais" do card, então dividem a
     # mesma linha (checkbox fica fora da .synopsis-row, como sibling direto de
@@ -359,14 +371,14 @@ def render_card(title: dict, idx: int = 0) -> str:
         synopsis_row_html = (
             f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
         )
-    # Sinopse/trailer são o rodapé fixo do card (ver .card-footer em principal.css, que usa
-    # margin-top:auto pra empurrar essa linha pra mesma borda inferior nos 3 cards da
-    # fileira) — só emite o wrapper quando há de fato sinopse ou trailer pra mostrar.
+    # Sinopse/trailer fazem parte do meio solto do card (ver principal.css), sem sincronia
+    # de altura com os vizinhos da fileira — só emite a div quando há de fato sinopse ou
+    # trailer pra mostrar.
     synopsis_html = ""
     if synopsis_toggle_html or synopsis_row_html:
         synopsis_html = (
-            f'<div class="card-footer"><div class="row-synopsis">'
-            f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div></div>'
+            f'<div class="row-synopsis">'
+            f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>'
         )
 
     # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), posicionada ANTES da
@@ -410,11 +422,11 @@ def render_card(title: dict, idx: int = 0) -> str:
       {img_html}
       <div class="card-body">
         <strong class="card-title">{title_name}</strong>
-        <div class="row-reason">{reason_html}</div>
+        {reason_block_html}
         {meta_html}
         {duration_html}
         {cinema_html}
-        <div class="genres-container">{genres_icon_html}<span class="genre-badges">{genres_html}</span></div>
+        {genres_block_html}
         {providers_block_html}
         {people_html}
         {synopsis_html}

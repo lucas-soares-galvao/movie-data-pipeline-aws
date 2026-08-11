@@ -119,7 +119,7 @@ class TestFormatTheaterEndDate:
 
 class TestFormatNextEpisodeDate:
     def test_data_valida(self):
-        assert formatacao._format_next_episode_date("2026-09-15") == "15/09"
+        assert formatacao._format_next_episode_date("2026-09-15") == "15/09/2026"
 
     def test_data_none(self):
         assert formatacao._format_next_episode_date(None) is None
@@ -225,7 +225,7 @@ class TestFormatRecord:
         result = formatacao.format_record(record)
         assert result["next_episode_season_number"] == 3
         assert result["next_episode_number"] == 1
-        assert result["next_episode_date"] == "15/09"
+        assert result["next_episode_date"] == "15/09/2026"
 
     def test_registro_serie_sem_proximo_episodio(self):
         record = {
