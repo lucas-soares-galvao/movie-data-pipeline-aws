@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import formatacao
 
@@ -108,29 +108,50 @@ class TestFormatReleaseDate:
         assert formatacao._format_release_date("1980") is None
 
 
-class TestFormatTheaterEndDate:
-    def test_em_cartaz_com_data(self):
-        assert formatacao._format_theater_end_date("2025-07-15", True) == "15/07"
+class TestFormatAdaptiveDate:
+    """Cobre a formatação compartilhada por theater_end_date, next_episode_date e
+    upcoming_date (ver format_record()) — DD/MM perto de hoje, Mês de Ano quando distante."""
 
-    def test_fora_de_cartaz(self):
-        assert formatacao._format_theater_end_date("2025-07-15", False) is None
+    _HOJE = date(2026, 1, 1)
 
-    def test_em_cartaz_sem_data(self):
-        assert formatacao._format_theater_end_date(None, True) is None
+    def test_dentro_do_threshold_no_futuro_retorna_dd_mm(self):
+        alvo = self._HOJE + timedelta(days=30)
+        assert formatacao._format_adaptive_date(alvo.isoformat(), today=self._HOJE) == alvo.strftime("%d/%m")
 
+    def test_no_limite_exato_do_threshold_retorna_dd_mm(self):
+        alvo = self._HOJE + timedelta(days=formatacao._ADAPTIVE_DATE_THRESHOLD_DAYS)
+        assert formatacao._format_adaptive_date(alvo.isoformat(), today=self._HOJE) == alvo.strftime("%d/%m")
 
-class TestFormatNextEpisodeDate:
-    def test_data_valida(self):
-        assert formatacao._format_next_episode_date("2026-09-15") == "15/09"
+    def test_um_dia_alem_do_threshold_retorna_mes_de_ano(self):
+        alvo = self._HOJE + timedelta(days=formatacao._ADAPTIVE_DATE_THRESHOLD_DAYS + 1)
+        esperado = f"{formatacao._MONTHS[alvo.month]} de {alvo.year}"
+        assert formatacao._format_adaptive_date(alvo.isoformat(), today=self._HOJE) == esperado
+
+    def test_bem_distante_no_futuro_retorna_mes_de_ano(self):
+        assert formatacao._format_adaptive_date("2027-06-15", today=self._HOJE) == "Jun de 2027"
+
+    def test_dentro_do_threshold_no_passado_retorna_dd_mm(self):
+        # theater_end_date/next_episode_date na prática nunca vêm no passado, mas a função é
+        # simétrica (abs()) por robustez.
+        alvo = self._HOJE - timedelta(days=30)
+        assert formatacao._format_adaptive_date(alvo.isoformat(), today=self._HOJE) == alvo.strftime("%d/%m")
+
+    def test_bem_distante_no_passado_retorna_mes_de_ano(self):
+        assert formatacao._format_adaptive_date("2020-01-01", today=self._HOJE) == "Jan de 2020"
 
     def test_data_none(self):
-        assert formatacao._format_next_episode_date(None) is None
+        assert formatacao._format_adaptive_date(None, today=self._HOJE) is None
 
     def test_data_vazia(self):
-        assert formatacao._format_next_episode_date("") is None
+        assert formatacao._format_adaptive_date("", today=self._HOJE) is None
 
     def test_data_malformada(self):
-        assert formatacao._format_next_episode_date("2026-09") is None
+        assert formatacao._format_adaptive_date("2026-09", today=self._HOJE) is None
+
+    def test_sem_today_usa_data_real_do_sistema(self):
+        # Sem injetar `today`, cai na data real (UTC) — uma data bem distante no futuro
+        # (ano 9999) sempre bate como "Mês de Ano" independente de quando o teste rodar.
+        assert formatacao._format_adaptive_date("9999-12-31") == "Dez de 9999"
 
 
 class TestIsUpcoming:
@@ -246,6 +267,8 @@ class TestFormatRecord:
         assert result["alternative_titles"] == "Seven, Se7en"
 
     def test_registro_serie_com_proximo_episodio(self):
+        # `today` injetado (ver TestFormatAdaptiveDate) pra manter a data dentro do threshold
+        # de forma determinística, independente de quando o teste rodar.
         record = {
             **FAKE_TITLE,
             "media_type": "tv",
@@ -253,10 +276,34 @@ class TestFormatRecord:
             "next_episode_number": "1",
             "next_episode_air_date": "2026-09-15",
         }
-        result = formatacao.format_record(record)
+        result = formatacao.format_record(record, today=date(2026, 9, 1))
         assert result["next_episode_season_number"] == 3
         assert result["next_episode_number"] == 1
         assert result["next_episode_date"] == "15/09"
+
+    def test_registro_serie_com_proximo_episodio_distante(self):
+        # Fora do threshold de _format_adaptive_date: vira "Mês de Ano", sem dia.
+        record = {
+            **FAKE_TITLE,
+            "media_type": "tv",
+            "next_episode_season_number": "3",
+            "next_episode_number": "1",
+            "next_episode_air_date": "2026-09-15",
+        }
+        result = formatacao.format_record(record, today=date(2026, 1, 1))
+        assert result["next_episode_date"] == "Set de 2026"
+
+    def test_registro_filme_em_cartaz(self):
+        # `theater_end_date` também passa por _format_adaptive_date — dentro do threshold
+        # (data injetada), vira "DD/MM".
+        record = {
+            **FAKE_TITLE,
+            "in_theaters": "true",
+            "theater_end_date": "2026-02-01",
+        }
+        result = formatacao.format_record(record, today=date(2026, 1, 1))
+        assert result["in_theaters"] is True
+        assert result["theater_end_date"] == "01/02"
 
     def test_registro_serie_sem_proximo_episodio(self):
         record = {
