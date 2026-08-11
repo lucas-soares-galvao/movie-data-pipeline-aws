@@ -29,7 +29,7 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit. Como o destaque de gênero/provedor (`_extract_highlighted_terms()`) é derivado da mesma `where_clause` cacheada, um cache hit reproduz exatamente o mesmo destaque de uma chamada fresca ao LLM.
 
 ### Etapa 2 — Consulta ao Athena
-A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC). O filtro fixo `vote_count ≥ 50` é sempre aplicado automaticamente, **exceto** para título com `air_date` futuro (ainda não lançado) — `(vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR))` — já que título não lançado nunca teve chance de acumular voto; assim que a data passa, a exceção deixa de valer e o filtro de voto volta a se aplicar normalmente, sem lógica extra de transição.
+A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC), sem nenhum filtro fixo de qualidade por `vote_count` — a relevância vem só de `ORDER BY popularity DESC` (abaixo) e do pool+sorteio. Isso inclui de graça títulos com `air_date` futuro (ainda não lançados, badge "Em breve" no card — ver seção "Interface"), que nunca tiveram chance de acumular voto; antes existia um filtro fixo `vote_count >= 50` com um bypass explícito só pra esse caso (`vote_count >= 50 OR air_date > CURRENT_DATE`), removido por ser redundante com a ordenação por popularidade — o LLM ainda pode usar `vote_count` na própria `where_clause` quando o pedido do usuário pedir explicitamente por títulos bem votados/consagrados.
 
 **Pool de candidatos + sorteio (variedade entre buscas):** a query busca um pool maior que o `limit` pedido — `min(limit * _CANDIDATE_POOL_MULTIPLIER, _CANDIDATE_POOL_MAX)` títulos, ordenados por popularidade (padrão: multiplicador 3x, teto de 30) — e `search_titles_spec()` sorteia um subconjunto de `limit` títulos desse pool, preservando a ordem de popularidade entre os escolhidos. Sem isso, a mesma pergunta (ou uma parecida, já que o LLM tende a gerar a mesma `where_clause`) sempre devolveria exatamente o mesmo top-N por popularidade — a ordenação fixa da query, não só o cache, é que causava a repetição. Como a Etapa 2 roda em toda busca (mesmo em cache hit do Passo 1 — só a cláusula WHERE é cacheada, não os títulos), a variedade acontece sempre, sem custo adicional de LLM. **Valores conservadores de propósito:** a instância Lightsail de produção tem só 1 GB de RAM (bundle `micro_3_0`) — cada linha a mais do pool aumenta proporcionalmente o payload de boto3 carregado na memória por busca, então o teto fica bem abaixo do que daria pra buscar sem problema numa instância maior.
 
@@ -42,8 +42,16 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temps · 36 eps · ~45 min/ep"`)
 - `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
-- `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
-- `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string `DD/MM/AAAA`, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio futuro confirmado
+- `in_theaters` (boolean), `theater_end_date` (string `DD/MM` sem ano, ou `null`) — horizonte curto
+  (dias a poucas semanas), ano quase sempre óbvio/redundante
+- `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string
+  `DD/MM` sem ano, derivada de `next_episode_air_date`, mesma razão de `theater_end_date` acima) — `null`/`None`
+  quando a série não tem episódio futuro confirmado
+- `upcoming_date` (mesmo texto "Mês de Ano" de `release_date` — reaproveita `_format_release_date()` —, `null`/
+  `None` caso contrário) — só preenchido quando `air_date` é estritamente futuro (título ainda não lançado,
+  `formatacao.py::_is_upcoming()`); usa o mesmo formato do `release_date` (sem dia) em vez de `DD/MM` como
+  `theater_end_date`/`next_episode_date` acima, já que o dia exato costuma ser só um placeholder provisório do
+  TMDB pra títulos anunciados com muita antecedência — usado pro badge "Em breve" (ver seção "Interface")
 - `cast` (top 5 atores), `director` (filmes e séries), `creators` (apenas séries), `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora), `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia) e `editor` (editor/montador) são renderizados no card, na seção "Ficha Técnica" (ver seção "Interface") — um bullet por papel presente
 - `tagline` — campo formatado mas atualmente não renderizado por `render_card()` (`componentes.py`), junto com `collection` e `networks`
 - `keywords` (tags temáticas em português), `certification` (classificação indicativa BR: L/10/12/14/16/18)
@@ -168,14 +176,19 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Duração/temporadas — **com imagem**, entra na linha de data/tipo acima (bullet anterior). **Sem imagem**,
     fica em linha própria logo abaixo de data/tipo — ícone ⏱; a div só é gerada quando há duração pra mostrar
     nessa condição (com imagem, ou sem duração, a linha nem é emitida — faz parte do meio solto)
-  - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`, logo abaixo da duração — informação,
+  - Badge amarelo 🎬 "Em cartaz até DD/MM" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
-    do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** exibe 📅 "T{temporada} E{episódio}
-    estreia em DD/MM/AAAA" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
-    preenchidos — `in_theaters` (filme) e `next_episode_*` (série) nunca coexistem no mesmo registro, então o
-    slot é reaproveitado sem checar `media_type` explicitamente. Sem nenhum dos dois, a div nem é gerada (meio
-    solto)
+    do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** cobre três estados mutuamente
+    exclusivos do título: 🎬 "Em cartaz até DD/MM" (`in_theaters`), 📅 "T{temporada} E{episódio} estreia em
+    DD/MM" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
+    preenchidos, ou 🔜 "Em breve · Mês de Ano" (mesmo texto do `release_date`, sem dia) quando `upcoming_date`
+    está preenchido (título ainda não lançado — `air_date` no futuro, ver
+    `formatacao.py::_is_upcoming()`/`_format_release_date()`) — os três nunca coexistem no mesmo
+    registro (um título não lançado não pode estar em cartaz nem ter próximo episódio de série já no ar), então
+    o slot é reaproveitado sem checar `media_type` explicitamente. Prioridade quando mais de um bater ao mesmo
+    tempo por inconsistência de dados: em cartaz > próximo episódio > em breve. Sem nenhum dos três, a div nem é
+    gerada (meio solto)
   - Badges de gênero, quando há pelo menos um (sem nenhum gênero a div nem é gerada — meio solto, mesmo padrão
     de duration-row/cinema-row/providers-row/row-people/row-synopsis) — máx. 6 visíveis, sem indicador para o
     restante (trunca silenciosamente; cada card quebra linha de forma independente, sem sincronia com os
@@ -253,7 +266,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `agent.py` | `_audio_duration_seconds(audio_bytes)` | Calcula a duração de um áudio WAV via módulo padrão `wave` |
 | `agent.py` | `_load_transcription_api_key()` | Busca `transcription_api_key` no Secrets Manager (via `FILMBOT_SECRET_ARN`) em produção, ou `TRANSCRIPTION_API_KEY` do `.env` em desenvolvimento; retorna `None` (não quebra o app) se ausente |
 | `formatacao.py` | `format_record(record)` | Converte um registro bruto do Athena em dict formatado para o card (tipo, gêneros, duração, data, nota, etc.) |
-| `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_theater_end_date()`, `_format_rating()` | Funções puras de formatação de campos individuais |
+| `formatacao.py` | `_format_type()`, `_format_genres()`, `_format_title_duration()`, `_format_release_date()`, `_format_theater_end_date()`, `_format_next_episode_date()`, `_is_upcoming()`, `_format_rating()` | Funções puras de formatação de campos individuais |
 | `app.py` | `_load_filmbot_password()` | Busca `filmbot_password` no Secrets Manager (via `FILMBOT_SECRET_ARN`) e grava `.streamlit/secrets.toml` (chmod 600) para a autenticação do Streamlit; não faz nada se o arquivo já existir |
 | `app.py` | `_create_ip_history()`, `_create_audio_ip_history()`, `_create_login_attempt_history()` | Factories `@st.cache_resource` que criam os dicts compartilhados `_ip_history` (recomendações), `_audio_ip_history` (transcrições) e `_login_attempt_history` (tentativas de login incorretas), garantindo que os históricos de rate limiting sobrevivam a reruns e resetem apenas no restart do processo |
 | `app.py` | `_setup_cloudwatch_logging()` | `@st.cache_resource` que registra o `CloudWatchLogHandler` no root logger uma única vez por processo — sem isso, cada rerun do Streamlit acumularia um handler novo (vazamento de memória + logs duplicados) |

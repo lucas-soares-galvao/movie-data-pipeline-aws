@@ -1,5 +1,7 @@
 """formatacao.py — Formatação determinística de registros do Athena para cards do FilmBot."""
 
+from datetime import date, datetime, timezone
+
 _MONTHS = {
     1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
     5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
@@ -57,25 +59,44 @@ def _format_release_date(air_date: str | None) -> str | None:
 
 
 def _format_theater_end_date(theater_end_date: str | None, in_theaters: bool) -> str | None:
-    """Converte data ISO para 'DD/MM/AAAA' se o título estiver em cartaz."""
+    """Converte data ISO para 'DD/MM' se o título estiver em cartaz. Sem ano — horizonte
+    curto (dias a poucas semanas), então o ano quase sempre é o atual e só agrega ruído."""
     if not in_theaters or not theater_end_date:
         return None
     try:
-        year, month, day = theater_end_date.split("-")
-        return f"{day}/{month}/{year}"
+        _, month, day = theater_end_date.split("-")
+        return f"{day}/{month}"
     except ValueError:
         return None
 
 
 def _format_next_episode_date(next_episode_air_date: str | None) -> str | None:
-    """Converte data ISO 'YYYY-MM-DD' do próximo episódio para 'DD/MM/AAAA'."""
+    """Converte data ISO 'YYYY-MM-DD' do próximo episódio para 'DD/MM'. Sem ano — mesma razão
+    de _format_theater_end_date: horizonte curto, ano quase sempre óbvio/redundante."""
     if not next_episode_air_date:
         return None
     try:
-        year, month, day = next_episode_air_date.split("-")
-        return f"{day}/{month}/{year}"
+        _, month, day = next_episode_air_date.split("-")
+        return f"{day}/{month}"
     except ValueError:
         return None
+
+
+def _is_upcoming(air_date: str | None, today: date | None = None) -> bool:
+    """True quando `air_date` é estritamente futuro (título ainda não lançado) — usado só pra
+    decidir se o badge "Em breve" aparece (ver render_card() em componentes.py); o texto do
+    badge reaproveita o mesmo `_format_release_date()` já usado no `release_date` do card
+    (formato "Mês de Ano", sem dia — precisão condizente com a data provisória que títulos
+    anunciados com antecedência costumam ter no TMDB). `today` é injetável pra testes
+    determinísticos; em produção usa a data real em UTC."""
+    if not air_date:
+        return False
+    try:
+        year, month, day = air_date.split("-")
+        parsed = date(int(year), int(month), int(day))
+    except ValueError:
+        return False
+    return parsed > (today or datetime.now(tz=timezone.utc).date())
 
 
 def _format_rating(vote_average: object) -> float | None:
@@ -102,6 +123,11 @@ def format_record(record: dict) -> dict:
         "backdrop_url": record.get("backdrop_url") or None,
         "duration": _format_title_duration(record),
         "release_date": _format_release_date(record.get("air_date")),
+        "upcoming_date": (
+            _format_release_date(record.get("air_date"))
+            if _is_upcoming(record.get("air_date"))
+            else None
+        ),
         "streaming_providers": record.get("streaming_providers") or None,
         "in_theaters": in_theaters,
         "theater_end_date": _format_theater_end_date(
