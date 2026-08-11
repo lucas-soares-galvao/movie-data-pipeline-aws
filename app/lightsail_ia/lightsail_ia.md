@@ -43,7 +43,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
 - `streaming_providers` (cópia direta — onde assistir no Brasil)
 - `in_theaters` (boolean), `theater_end_date` (string `DD/MM/YYYY` ou `null`)
-- `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string `DD/MM` sem ano, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio futuro confirmado
+- `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string `DD/MM/AAAA`, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio futuro confirmado
 - `cast` (top 5 atores), `director` (filmes e séries), `creators` (apenas séries), `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora), `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia) e `editor` (editor/montador) são renderizados no card, na seção "Ficha Técnica" (ver seção "Interface") — um bullet por papel presente
 - `tagline` — campo formatado mas atualmente não renderizado por `render_card()` (`componentes.py`), junto com `collection` e `networks`
 - `keywords` (tags temáticas em português), `certification` (classificação indicativa BR: L/10/12/14/16/18)
@@ -91,25 +91,26 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   único card da fileira esticaria pra largura inteira do container, deixando o pôster (16:9,
   `width:100%`) desproporcionalmente grande; em celular real (viewport mais estreito que o
   teto) isso não muda nada, o card já ocupa a largura disponível de qualquer forma. **Alinhamento
-  entre os 3 cards da fileira, só nas duas pontas:** `.grid-titles` é grid de 3 colunas com
-  `align-items: stretch` — isso já estica cada card até a altura do maior vizinho da fileira,
-  sem precisar de nenhum posicionamento explícito de linha/coluna. O **topo** (pôster,
-  `.card-media`) fica alinhado "de graça": `aspect-ratio:16/9` + colunas de largura igual
-  garantem a mesma altura de pôster nos 3 cards. O **meio** (título, motivo, meta-line,
-  duração, "Em cartaz", gêneros, provedores, Ficha Técnica) tem altura livre por card — cada
-  um ocupa só o que o próprio conteúdo pede, sem sincronia com os vizinhos (é justamente aí
-  que o conteúdo mais varia entre títulos, então soltar essa faixa evita vãos vazios). O
-  **rodapé** (linha de Sinopse/Trailer) fica dentro de um wrapper `.card-footer` com
-  `margin-top: auto` — como o card já foi esticado até a altura do maior vizinho, essa margem
-  automática absorve toda a sobra como um único vão acima do rodapé, empurrando
-  "Sinopse"/Trailer pra mesma borda inferior nos 3 cards. Abaixo do breakpoint os cards
-  empilham 1 por linha e esse alinhamento entre vizinhos deixa de fazer sentido (cada card já
-  ocupa a largura toda sozinho) — não precisa de nenhum reset, já que nada depende de
-  posicionamento explícito. **Respiro entre seções:** `.card-body` tem `gap: 16px`, que dá o
-  espaçamento entre a maioria das seções do card de uma vez só (motivo, meta-line, gêneros,
-  provedores...); `duration-row`/`cinema-row` (que só existem quando têm conteúdo, ver mais
-  abaixo) usam um respiro menor (`margin-top: 4px`) por ficarem mais coladas na meta-line, como
-  continuação do mesmo bloco de "fatos rápidos".
+  entre os 3 cards da fileira, só no topo:** `.grid-titles` é grid de 3 colunas com
+  `align-items: stretch` — isso estica cada card (fundo/borda) até a altura do maior vizinho da
+  fileira, sem precisar de nenhum posicionamento explícito de linha/coluna. Só o **topo**
+  (pôster, `.card-media`) fica de fato alinhado entre os 3 cards, e isso "de graça":
+  `aspect-ratio:16/9` + colunas de largura igual garantem a mesma altura de pôster nos 3 cards.
+  Todo o resto do card (título, motivo, meta-line, duração, "Em cartaz", gêneros, provedores,
+  Ficha Técnica, Sinopse/Trailer) tem altura livre por card, sem nenhum mecanismo de sincronia
+  com os vizinhos — cada um ocupa só o que o próprio conteúdo pede (é justamente nessa faixa que
+  o conteúdo mais varia entre títulos, então soltar tudo ali evita vãos vazios). Abaixo do
+  breakpoint os cards empilham 1 por linha e esse alinhamento de pôster entre vizinhos deixa de
+  fazer sentido (cada card já ocupa a largura toda sozinho) — não precisa de nenhum reset, já que
+  nada depende de posicionamento explícito. **Respiro entre seções:** via `margin-top` no início
+  de cada seção do card (`.row-reason`, `.meta-line`, `.genres-container`, `.providers-row`,
+  `.row-people`, `.row-synopsis` — todas com 16px), não um `gap` uniforme em `.card-body`. Toda
+  seção do card, sem exceção, só existe no HTML quando tem conteúdo real (`render_card()`,
+  `componentes.py`) — sem `reason` a `.row-reason` nem é gerada, sem data/tipo/nota/duração a
+  `.meta-line` nem é gerada, e assim por diante — então nenhuma seção ausente fica "reservada"
+  vazia contribuindo `margin-top` à toa; o respiro sempre vem do primeiro elemento realmente
+  presente. `duration-row`/`cinema-row` usam um respiro menor (`margin-top: 4px`) por ficarem
+  mais coladas na meta-line, como continuação do mesmo bloco de "fatos rápidos".
 - **Largura do rodapé (`render_footer()`):** antes de pesquisar, o rodapé fica com a mesma largura do hero (640px, centralizado, `.footer { max-width: 640px; margin: auto }`). `.grid-titles` (resultados) não tem largura própria — ocupa a largura natural do `block-container`. Quando há resultado na tela, `body:has(.grid-titles) .footer { max-width: none }` destrava o rodapé pra acompanhar essa largura maior, em vez de ficar preso nos 640px do hero
 - **Cabeçalho (`st.container(key="header-row")`):** ícone 🎬 maior (`.header-icon`, 34px) à esquerda, com título "FilmBot" (28px, `!important` — ver nota abaixo) + subtítulo (13px, `!important`) empilhados à direita dele sem nenhuma das duas linhas passar por baixo do ícone (`.header-brand` flex row + `.header-text` flex column, dentro de um único `st.markdown`) — substitui `st.title`/`st.caption`, que rendem um `<h1>` grande demais pra esse contexto de topo de página, mesmo padrão de markdown customizado já usado em `.login-title`/`.login-subtitle` na tela de login. **`!important` no `font-size` de `.header-title`/`.header-subtitle`:** o Streamlit aplica um `font-size` próprio no `<p>` via seletor com especificidade maior que a classe sozinha — sem o `!important`, o valor definido aqui é ignorado e o texto renderiza sempre em 16px, confirmado via inspeção real do DOM (Playwright). Botão "Sair" (`key="btn_sair"`) estilizado como pill discreto (`#3f3f3f`, cinza neutro). A coluna do título cresce (`flex:1 1 auto`) pra preencher o espaço extra e empurrar a coluna do botão (`flex:0 0 auto`) pra ponta direita — necessário porque a regra genérica "Colunas dos botoes se ajustam ao conteudo" (mais acima em `principal.css`) exclui explicitamente linhas com `<h1>`; sem esse `<h1>` (trocado por markdown), as colunas do header passaram a encolher pro conteúdo, deixando um vão grande entre o botão e a borda direita real do hero — medido via inspeção real do DOM (Playwright). Alinhamento vertical do botão via `align-items:center` no `stHorizontalBlock` mais um nudge fino (`position:relative; top:8px`) — o wrapper interno que o Streamlit gera em volta de `st.markdown` reporta uma altura menor que a dos dois parágrafos reais (título+subtítulo), então o `align-items:center` sozinho centraliza o botão ~8px acima do centro visual verdadeiro; compensado diretamente após medir via inspeção real do DOM, já que a causa raiz da altura errada não pôde ser isolada/corrigida via CSS (`height`/`min-height`/`max-height:auto` não tiveram efeito). **Wrap natural (sem breakpoint fixo):** `flex-wrap:wrap` + `justify-content:space-between` no `stHorizontalBlock` — o botão fica lado a lado com o ícone+texto enquanto couber (como no desktop, em qualquer largura) e só quebra pra linha de baixo quando o espaço realmente não for suficiente; `justify-content:space-between` resolve o alinhamento nos dois cenários sozinho (título à esquerda/botão à direita quando cabem juntos; botão alinhado à esquerda quando quebra pra própria linha, já que não sobra "outro lado" pra empurrar), e o `gap:12px` do row garante um respiro mínimo tanto na horizontal quanto na vertical (quando quebra) — testado via Playwright em várias larguras (1280px a 320px)
 - **Rate limiting por IP:** máximo de 15 consultas por hora (janela deslizante). O contador ("Consultas restantes: N/15 por hora") é exibido abaixo do campo de texto, em cinza (`.query-counter-text`); quando restam 3 consultas ou menos, o texto muda para laranja em negrito (`.query-counter-low`, `principal.css`) para avisar a pessoa antes de o limite ser atingido. Ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS mostra quanto tempo falta em tempo real, decrementando a cada segundo — a caixa de aviso vem de `render_feedback()` (renderizada na página real, com CSS de `principal.css`) e só o `<span id="countdown">` é atualizado por `static/countdown.js` (injetado por `load_countdown_script()`, genérico — reusado também pelo bloqueio de login, ver abaixo), que acessa `window.parent.document` a partir do iframe do `st.components.v1.html` — mesmo padrão de `audio_timer.js`, sem duplicar CSS dentro do iframe. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
@@ -138,13 +139,16 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     realce visual (mais suave que os demais elementos, mas ainda o segundo ponto de maior destaque do card depois
     do título). Sem `min-height`/`max-height`/toggle — faz parte do meio solto do card (ver item do grid, acima),
     sem sincronia de altura com os vizinhos da fileira, então o texto completo sempre aparece direto (motivo
-    raramente varia muito de tamanho: o prompt do LLM, `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres)
+    raramente varia muito de tamanho: o prompt do LLM, `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres).
+    Sem `reason` (título fora do fluxo de recomendação da IA), a div nem é gerada — caso comum, não só borda
   - Linha única de metadados: ícone ℹ (`.meta-icon`, mesmo padrão do 🎬 de "Em cartaz" mais abaixo) seguido de
     data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série). O ícone fica **dentro**
     de `.meta-info` junto do texto (não como irmão direto de `.meta-row`) — `.meta-line` usa
     `justify-content:space-between` pra separar texto/nota, então um 3º filho solto empurraria o ícone pra ponta
-    esquerda e o texto pra ponta direita, longe um do outro. Só aparece quando há data/tipo pra rotular (sem
-    isso, `.meta-info` fica vazio, e ícone sozinho sem texto ao lado não faria sentido). **Com imagem**, o resto
+    esquerda e o texto pra ponta direita, longe um do outro. O ícone só aparece quando há data/tipo pra rotular
+    (sem isso, `.meta-info` fica só com o resto do conteúdo — duração/nota — sem ícone solto sem texto ao lado).
+    Se não sobrar nada pra mostrar em lugar nenhum da linha (sem data/tipo, sem duração aplicável, sem nota), a
+    `.meta-line` inteira nem é gerada — meio solto, mesmo padrão das demais seções do card. **Com imagem**, o resto
     da linha é só texto — nota e classificação já foram pra imagem — **e a duração entra na mesma linha**, com
     seu próprio ícone ⏱ dentro do mesmo `.meta-info` (ex.: "ℹ Mai de 2004 · filme  ⏱ 2h 15min"), economizando
     uma linha inteira do card; medido via Playwright que até o pior caso plausível (série com "3 temps · 24
@@ -167,13 +171,15 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Badge amarelo 🎬 "Em cartaz até DD/MM/YYYY" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
-    do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** exibe 📅 "T{temporada}E{episódio}
-    estreia em DD/MM" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
+    do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** exibe 📅 "T{temporada} E{episódio}
+    estreia em DD/MM/AAAA" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
     preenchidos — `in_theaters` (filme) e `next_episode_*` (série) nunca coexistem no mesmo registro, então o
     slot é reaproveitado sem checar `media_type` explicitamente. Sem nenhum dos dois, a div nem é gerada (meio
     solto)
-  - Badges de gênero (máx. 6 visíveis, sem indicador para o restante — trunca silenciosamente; cada card quebra
-    linha de forma independente, sem sincronia com os vizinhos da fileira, ver bullet do grid acima) — ícone 🎭. Estrutura em 2 níveis, igual à de
+  - Badges de gênero, quando há pelo menos um (sem nenhum gênero a div nem é gerada — meio solto, mesmo padrão
+    de duration-row/cinema-row/providers-row/row-people/row-synopsis) — máx. 6 visíveis, sem indicador para o
+    restante (trunca silenciosamente; cada card quebra linha de forma independente, sem sincronia com os
+    vizinhos da fileira, ver bullet do grid acima) — ícone 🎭. Estrutura em 2 níveis, igual à de
     provedor (abaixo): `.genres-container` (`display:flex; align-items:flex-start`) contém o ícone e um
     `<span class="genre-badges">` próprio (`display:flex; flex-wrap:wrap; gap:4px`) que agrupa os badges — o
     ícone fica **fora** desse span, então quando os badges quebram pra 2ª/3ª linha, a quebra fica só entre eles
@@ -187,10 +193,12 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     `componentes.py::_prioritize()` move todos os que baterem para o início da lista antes do corte, então
     nenhum fica de fora se estiver presente no título — e ganha destaque visual (borda + texto laranja, classe
     `.highlighted`, mesmo `#fdba74` do motivo da IA) via `componentes.py::_matches_highlighted()`
-  - Provedores sempre sozinhos numa linha própria (com ou sem imagem) — ícone 📺, badges de texto, streaming e
-    aluguel/compra combinados num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`),
-    sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do provedor sempre visível como texto (sem logo — a
-    query em `agent.py` traz apenas `streaming_providers`/`rent_buy_providers`, os nomes). Mostra até 6 badges
+  - Provedores sempre sozinhos numa linha própria (com ou sem imagem), quando há pelo menos um — sem nenhum
+    provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/row-synopsis) —
+    ícone 📺, badges de texto, streaming e aluguel/compra combinados num único grupo e deduplicados por nome
+    (`componentes.py::_render_provider_badges()`), sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do
+    provedor sempre visível como texto (sem logo — a query em `agent.py` traz apenas
+    `streaming_providers`/`rent_buy_providers`, os nomes). Mostra até 6 badges
     direto, sem badge "+N" (saber exatamente quantos couberam antes de quebrar linha exigiria JS medindo o DOM
     real, risco aceito conscientemente — ver bullet do breakpoint acima): acima do teto de 6, trunca
     silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` (todos os provedores
@@ -198,9 +206,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte nem passa despercebido
   - "Ficha Técnica" (ícone 👥, grupo de pessoas), logo **acima** da Sinopse: mesmo mecanismo de accordion "▸"
     (checkbox hack em CSS, sem JS) da Sinopse abaixo, em linha própria — não divide espaço com Sinopse/Trailer.
-    Faz parte do meio solto do card (ver bullet do grid acima), **não** entra no rodapé fixo (`.card-footer`) —
-    só Sinopse/Trailer ficam ancorados na mesma borda inferior entre os 3 cards da fileira. Ao contrário da
-    rodada anterior (que só trazia diretor+elenco), traz **todos** os campos de elenco/equipe técnica já
+    Faz parte do meio solto do card (ver bullet do grid acima), como todo o resto abaixo do pôster. Ao contrário
+    da rodada anterior (que só trazia diretor+elenco), traz **todos** os campos de elenco/equipe técnica já
     formatados em `formatacao.py`: Diretor, Criador(es) (`creators`, só séries — aparece como bullet
     independente do Diretor, sem fallback entre os dois; um título pode mostrar os dois ao mesmo tempo), Elenco
     (`cast`, top 5 atores), Roteiro (`writers`), Trilha sonora (`composer`), Produção (`producer`), Fotografia
@@ -210,14 +217,14 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     rótulo da seção ("Ficha Técnica") é branco, não laranja como "Sinopse" — o laranja continua reservado pra
     nota/motivo/sinopse, os pontos que pedem destaque visual; aqui é conteúdo informativo neutro. Se nenhum
     papel estiver presente, a div nem é gerada (meio solto)
-  - Sinopse e trailer dividem a última linha do card, dentro do rodapé fixo `.card-footer` (`margin-top: auto`,
-    ver bullet do grid acima) — as duas são ações de "quero saber mais" sobre o título, então ficam juntas em
+  - Sinopse e trailer dividem a última linha do card, também no meio solto (não ancorada em nenhuma borda fixa
+    entre os 3 cards da fileira) — as duas são ações de "quero saber mais" sobre o título, então ficam juntas em
     vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox hack em CSS, já que
     `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando disponível) à
     direita na mesma linha, mesmo `font-size` do label "Sinopse" pros dois ficarem visualmente equivalentes.
     Clicar no label expande o texto completo da sinopse e troca a seta para "▾", independente do tamanho do
     texto. Se não houver sinopse mas houver trailer, a linha aparece só com o link; se não houver nenhum dos
-    dois, o `.card-footer` inteiro nem é gerado nesse card
+    dois, a div nem é gerada nesse card (meio solto)
 
 ## Entradas e saídas
 
