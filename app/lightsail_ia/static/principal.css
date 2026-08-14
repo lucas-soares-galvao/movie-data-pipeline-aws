@@ -713,6 +713,13 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 /* Sem height:100%/box-sizing: sem subgrid, .row-reason não compartilha altura de linha com
    os vizinhos (faz parte do meio solto) — o fundo colorido já acompanha a altura natural do
    próprio texto. */
+.reason-label {
+  display: block;
+  color: #fdba74;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
 .reason {
   color: #fdba74;
   font-size: 14px;
@@ -815,16 +822,32 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 .certification-badge[data-rating="16"] { background: #d21920; }
 .certification-badge[data-rating="18"] { background: #1d1815; }
 
+/* justify-content:space-between só entra em jogo quando o Trailer soma na linha (sem
+   pôster, ver componentes.py) — com um único filho (só a duração), o space-between não
+   muda nada. flex-wrap evita overflow em telas bem estreitas. */
 .duration-row {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 6px;
   color: #a3a3a3;
   font-size: 13px;
 }
 
-/* flex-start (não o align-items:center herdado de .meta-row) — o ícone 📺 precisa ficar
-   alinhado com a primeira linha de badges, não centralizado no meio do bloco quando os
-   provedores quebram pra 2ª/3ª linha. */
+/* Coluna (não mais uma única linha) — rótulo "Onde assistir" em cima, badges embaixo,
+   mesmo princípio visual de .row-reason (rótulo acima do conteúdo). */
 .providers-row {
-  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.providers-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.providers-label {
+  color: #a3a3a3;
+  font-size: 13px;
 }
 
 .provider-badges {
@@ -834,15 +857,25 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   gap: 4px;
 }
 
-/* Fundo/borda mais claros que .genre (0.12/0.16 vs. 0.04/0.08) — ver comentário lá. */
+/* Fundo/borda mais claros que .genre (0.12/0.16 vs. 0.04/0.08) — ver comentário lá.
+   inline-flex (não inline-block) pra logo (.provider-logo) e nome ficarem alinhados
+   verticalmente quando a logo existe. */
 .provider-badge {
   background: rgba(255,255,255,0.12);
   color: #d4d4d4;
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 11px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   border: 1px solid rgba(255,255,255,0.16);
+}
+.provider-logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  margin-right: 4px;
+  object-fit: cover;
 }
 
 /* Gênero/provedor que o usuário mencionou explicitamente na busca (componentes.py::
@@ -870,34 +903,40 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 /* Sinopse recolhida por padrão: checkbox hack (sem JS — st.html não executa
    <script>). O label aponta para o checkbox oculto; marcar/desmarcar alterna
-   :checked, que revela o texto e troca a seta ▸/▾ — mesmo princípio do antigo
+   :checked, que revela o texto e troca o chevron ⌄/⌃ — mesmo princípio do antigo
    "ver mais"/"ver menos", só que fechado por padrão em vez de mostrar um
    trecho truncado. O checkbox fica fora de .synopsis-row (sibling direto de
-   .synopsis-text) só pra o seletor ~ continuar enxergando os dois. Sinopse e
-   trailer dividem a mesma linha — são as duas ações de "quero saber mais"
-   do card, então não faz sentido o trailer competir com data/tipo lá em cima. */
+   .synopsis-text) só pra o seletor ~ continuar enxergando os dois. */
 .synopsis-toggle { display: none; }
 /* .synopsis-row (o meta-row interno) não tem margin-top próprio — o respiro antes da seção
    inteira vem do margin-top:16px de .row-synopsis (ver bloco "Respiro entre seções" acima).
-   row-gap aqui tem papel diferente: espaço entre "Sinopse" e "Trailer" quando os dois
-   quebram pra linhas separadas dentro dessa mesma linha, não entre seções. */
+   O Trailer não divide mais esta linha (subiu pra duration-row/meta-line, ver
+   componentes.py) — a linha agora só contém o label do accordion. */
 .synopsis-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  row-gap: 6px;
 }
+/* Ícone+texto à esquerda, chevron ⌄/⌃ na ponta direita (justify-content:space-between +
+   width:100% no próprio <label>, que preenche a linha toda) — mesmo padrão visual de
+   .people-label (Ficha Técnica) logo abaixo. Cor branca (não mais laranja): o laranja
+   fica reservado só pra nota e "Insight do FilmBot" (.reason/.reason-label). */
 .synopsis-label {
   cursor: pointer;
-  color: #fb923c;
+  color: #fff;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+.synopsis-icon-text {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-/* Mesmo font-size do rótulo "Sinopse" acima — sem isso ".vital" (sem font-size próprio)
-   herda o tamanho ambiente e "Trailer" fica visualmente maior que "Sinopse" na mesma linha. */
+/* Mesmo font-size do rótulo "Sinopse"/"Ficha Técnica" — sem isso ".vital" (sem font-size
+   próprio) herda o tamanho ambiente e "Trailer" fica visualmente maior que o resto do
+   texto na mesma linha (duration-row/meta-line, ver componentes.py). */
 .vital-trailer {
   font-size: 13px;
 }
@@ -915,26 +954,33 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 
 /* Ficha técnica (diretor, elenco, roteiro, trilha sonora, produção, fotografia, montagem,
    criador(es)) recolhida por padrão — mesmo mecanismo de checkbox hack da Sinopse acima,
-   posicionada ANTES da sinopse, no meio solto do card. Rótulo em branco (não laranja como
-   "Sinopse") — o laranja fica reservado pra nota, motivo e sinopse, os pontos que pedem
+   posicionada ANTES da sinopse, no meio solto do card. Rótulo em branco — o laranja fica
+   reservado pra nota e "Insight do FilmBot" (.reason/.reason-label), os pontos que pedem
    destaque; aqui é só mais um bloco de conteúdo informativo. */
 .people-toggle { display: none; }
 .people-row {
   display: flex;
-  justify-content: flex-start;
-  align-items: center;
 }
 .people-icon {
   font-size: 13px;
-  margin-right: 2px;
+}
+/* Ícone+texto à esquerda, chevron ⌄/⌃ na ponta direita — mesmo padrão de .synopsis-label
+   acima (justify-content:space-between + width:100% no <label>, que preenche a linha
+   toda). */
+.people-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .people-label {
   cursor: pointer;
   color: #fff;
   font-size: 13px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
 }
 .people-arrow-open { display: none; }
 .people-toggle:checked ~ .people-row .people-arrow-closed { display: none; }
