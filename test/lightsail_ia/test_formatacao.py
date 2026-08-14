@@ -64,7 +64,7 @@ class TestFormatTitleDuration:
             "number_of_episodes": 36,
             "episode_runtime_minutes": 45,
         }
-        assert formatacao._format_title_duration(record) == "3 temps · 36 eps · ~45 min/ep"
+        assert formatacao._format_title_duration(record) == "3 temporadas · 36 episódios · ~45 min/ep"
 
     def test_serie_sem_episode_runtime(self):
         record = {
@@ -73,16 +73,16 @@ class TestFormatTitleDuration:
             "number_of_episodes": 20,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._format_title_duration(record) == "2 temps · 20 eps"
+        assert formatacao._format_title_duration(record) == "2 temporadas · 20 episódios"
 
-    def test_serie_uma_temporada(self):
+    def test_serie_uma_temporada_um_episodio(self):
         record = {
             "media_type": "tv",
             "number_of_seasons": 1,
-            "number_of_episodes": 10,
+            "number_of_episodes": 1,
             "episode_runtime_minutes": None,
         }
-        assert formatacao._format_title_duration(record) == "1 temp · 10 eps"
+        assert formatacao._format_title_duration(record) == "1 temporada · 1 episódio"
 
     def test_serie_sem_dados(self):
         record = {
@@ -96,7 +96,7 @@ class TestFormatTitleDuration:
 
 class TestFormatReleaseDate:
     def test_data_valida(self):
-        assert formatacao._format_release_date("1980-05-23") == "Mai de 1980"
+        assert formatacao._format_release_date("1980-05-23") == "Maio de 1980"
 
     def test_data_none(self):
         assert formatacao._format_release_date(None) is None
@@ -128,7 +128,7 @@ class TestFormatAdaptiveDate:
         assert formatacao._format_adaptive_date(alvo.isoformat(), today=self._HOJE) == esperado
 
     def test_bem_distante_no_futuro_retorna_mes_de_ano(self):
-        assert formatacao._format_adaptive_date("2027-06-15", today=self._HOJE) == "Jun de 2027"
+        assert formatacao._format_adaptive_date("2027-06-15", today=self._HOJE) == "Junho de 2027"
 
     def test_dentro_do_threshold_no_passado_retorna_dd_mm(self):
         # theater_end_date/next_episode_date na prática nunca vêm no passado, mas a função é
@@ -137,7 +137,7 @@ class TestFormatAdaptiveDate:
         assert formatacao._format_adaptive_date(alvo.isoformat(), today=self._HOJE) == alvo.strftime("%d/%m")
 
     def test_bem_distante_no_passado_retorna_mes_de_ano(self):
-        assert formatacao._format_adaptive_date("2020-01-01", today=self._HOJE) == "Jan de 2020"
+        assert formatacao._format_adaptive_date("2020-01-01", today=self._HOJE) == "Janeiro de 2020"
 
     def test_data_none(self):
         assert formatacao._format_adaptive_date(None, today=self._HOJE) is None
@@ -151,7 +151,7 @@ class TestFormatAdaptiveDate:
     def test_sem_today_usa_data_real_do_sistema(self):
         # Sem injetar `today`, cai na data real (UTC) — uma data bem distante no futuro
         # (ano 9999) sempre bate como "Mês de Ano" independente de quando o teste rodar.
-        assert formatacao._format_adaptive_date("9999-12-31") == "Dez de 9999"
+        assert formatacao._format_adaptive_date("9999-12-31") == "Dezembro de 9999"
 
 
 class TestIsUpcoming:
@@ -208,7 +208,7 @@ class TestFormatRecord:
         assert result["poster_url"] == "https://example.com/poster.jpg"
         assert result["backdrop_url"] is None
         assert result["duration"] == "2h 26min"
-        assert result["release_date"] == "Mai de 1980"
+        assert result["release_date"] == "Maio de 1980"
         assert result["upcoming_date"] is None  # air_date de 1980, já lançado
         assert result["streaming_providers"] == "Netflix"
         assert result["in_theaters"] is False
@@ -266,6 +266,26 @@ class TestFormatRecord:
         assert result["similar"] == "Inception, Tenet"
         assert result["alternative_titles"] == "Seven, Se7en"
 
+    def test_logos_de_provedor(self):
+        # streaming_provider_logos/rent_buy_provider_logos são posicionalmente alinhadas a
+        # streaming_providers/rent_buy_providers (comma-joined, vindas de glue_agg) — aqui só
+        # confirma que format_record() copia os dois campos sem transformação.
+        record = {
+            **FAKE_TITLE,
+            "streaming_providers": "Netflix, Crunchyroll",
+            "streaming_provider_logos": "https://image.tmdb.org/t/p/w45/netflix.jpg,",
+            "rent_buy_providers": "Apple TV",
+            "rent_buy_provider_logos": "https://image.tmdb.org/t/p/w45/appletv.jpg",
+        }
+        result = formatacao.format_record(record)
+        assert result["streaming_provider_logos"] == "https://image.tmdb.org/t/p/w45/netflix.jpg,"
+        assert result["rent_buy_provider_logos"] == "https://image.tmdb.org/t/p/w45/appletv.jpg"
+
+    def test_logos_de_provedor_ausentes_viram_none(self):
+        result = formatacao.format_record(FAKE_TITLE)
+        assert result["streaming_provider_logos"] is None
+        assert result["rent_buy_provider_logos"] is None
+
     def test_registro_serie_com_proximo_episodio(self):
         # `today` injetado (ver TestFormatAdaptiveDate) pra manter a data dentro do threshold
         # de forma determinística, independente de quando o teste rodar.
@@ -291,7 +311,7 @@ class TestFormatRecord:
             "next_episode_air_date": "2026-09-15",
         }
         result = formatacao.format_record(record, today=date(2026, 1, 1))
-        assert result["next_episode_date"] == "Set de 2026"
+        assert result["next_episode_date"] == "Setembro de 2026"
 
     def test_registro_filme_em_cartaz(self):
         # `theater_end_date` também passa por _format_adaptive_date — dentro do threshold
@@ -325,7 +345,7 @@ class TestFormatRecord:
         # release_date (formato "Mês de Ano", sem dia — ver _is_upcoming()).
         record = {**FAKE_TITLE, "air_date": "9999-12-31"}
         result = formatacao.format_record(record)
-        assert result["upcoming_date"] == "Dez de 9999"
+        assert result["upcoming_date"] == "Dezembro de 9999"
 
     def test_novos_campos_nulos(self):
         result = formatacao.format_record(FAKE_TITLE)
@@ -339,6 +359,8 @@ class TestFormatRecord:
         assert result["editor"] is None
         assert result["production_countries"] is None
         assert result["rent_buy_providers"] is None
+        assert result["streaming_provider_logos"] is None
+        assert result["rent_buy_provider_logos"] is None
         assert result["recommended"] is None
         assert result["similar"] is None
         assert result["alternative_titles"] is None
@@ -364,4 +386,4 @@ class TestFormatRecord:
         }
         result = formatacao.format_record(tv_show)
         assert result["type"] == "Série"
-        assert result["duration"] == "4 temps · 34 eps · ~50 min/ep"
+        assert result["duration"] == "4 temporadas · 34 episódios · ~50 min/ep"

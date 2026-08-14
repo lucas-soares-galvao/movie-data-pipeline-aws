@@ -430,7 +430,8 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
                producer, cinematographer, editor,
                keywords_pt, certification, trailer_url, collection_name,
                production_companies, production_countries, networks, created_by,
-               streaming_providers, rent_buy_providers,
+               streaming_providers, streaming_provider_logos,
+               rent_buy_providers, rent_buy_provider_logos,
                recommended_titles, similar_titles, alternative_titles,
                in_theaters, theater_end_date
         FROM {os.getenv('SPEC_TABLE', 'tb_tmdb_discover_unified_prod')}
@@ -609,6 +610,7 @@ def recommend(preference: str) -> list[dict]:
     Returns:
         Lista de dicionários, cada um com: title, type, year, genres, overview,
         rating, poster_url, backdrop_url, duration, streaming_providers,
+        streaming_provider_logos, rent_buy_providers, rent_buy_provider_logos,
         in_theaters, theater_end_date, next_episode_season_number, next_episode_number,
         next_episode_date, reason, highlighted_genres, highlighted_providers.
         Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.

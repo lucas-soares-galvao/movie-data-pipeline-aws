@@ -256,28 +256,70 @@ class TestParseProviderNames:
         assert componentes._parse_provider_names(None) == []
 
 
+class TestParseProviderLogos:
+    """_parse_provider_logos() faz o parsing da string de logos comma-joined, posicionalmente
+    alinhada aos nomes de _parse_provider_names — ao contrário dela, não filtra vazios."""
+
+    def test_separa_urls_por_virgula(self):
+        logos = componentes._parse_provider_logos("https://a.com/1.png,https://a.com/2.png")
+        assert logos == ["https://a.com/1.png", "https://a.com/2.png"]
+
+    def test_remove_espacos_em_volta_de_cada_url(self):
+        logos = componentes._parse_provider_logos(" https://a.com/1.png , https://a.com/2.png ")
+        assert logos == ["https://a.com/1.png", "https://a.com/2.png"]
+
+    def test_preserva_entrada_vazia_no_meio(self):
+        # Provedor sem logo vira string vazia na origem (ver glue_agg/queries.py) — não pode
+        # ser filtrada, ou a posição dos itens seguintes desalinha com os nomes.
+        logos = componentes._parse_provider_logos("https://a.com/1.png,,https://a.com/3.png")
+        assert logos == ["https://a.com/1.png", "", "https://a.com/3.png"]
+
+    def test_logos_vazio_retorna_lista_de_um_item_vazio(self):
+        assert componentes._parse_provider_logos("") == [""]
+
+    def test_none_retorna_lista_de_um_item_vazio(self):
+        assert componentes._parse_provider_logos(None) == [""]
+
+
 class TestRenderProviderBadges:
-    """_render_provider_badges() monta os badges de texto de provedor."""
+    """_render_provider_badges() monta os badges de provedor (nome + logo, pareados
+    posicionalmente por render_card() antes de chegar aqui)."""
 
     def test_renderiza_nome_como_texto_visivel(self):
-        html = componentes._render_provider_badges(["Netflix"], [])
+        html = componentes._render_provider_badges([("Netflix", "")], [])
         assert '<span class="provider-badge">Netflix</span>' in html
 
-    def test_nao_renderiza_imagem(self):
-        html = componentes._render_provider_badges(["Netflix"], [])
+    def test_sem_logo_cai_para_badge_so_texto(self):
+        html = componentes._render_provider_badges([("Netflix", "")], [])
         assert "<img" not in html
 
+    def test_renderiza_logo_quando_disponivel(self):
+        logo_url = "https://image.tmdb.org/t/p/w45/netflix.png"
+        html = componentes._render_provider_badges([("Netflix", logo_url)], [])
+        assert f'<img src="{logo_url}" class="provider-logo" alt="" />' in html
+        assert html.index("<img") < html.index("Netflix")
+
     def test_escapa_html_no_nome(self):
-        html = componentes._render_provider_badges(["<b>X</b>"], [])
+        html = componentes._render_provider_badges([("<b>X</b>", "")], [])
         assert "<script>" not in html
         assert "&lt;b&gt;X&lt;/b&gt;" in html
 
+    def test_escapa_html_na_url_da_logo(self):
+        html = componentes._render_provider_badges(
+            [("Netflix", '"><script>alert(1)</script>')], []
+        )
+        assert "<script>alert" not in html
+
     def test_prioriza_provedor_destacado(self):
-        html = componentes._render_provider_badges(["Netflix", "Crunchyroll"], ["crunchyroll"])
+        html = componentes._render_provider_badges(
+            [("Netflix", ""), ("Crunchyroll", "")], ["crunchyroll"]
+        )
         assert html.index("Crunchyroll") < html.index("Netflix")
 
     def test_provedor_destacado_ganha_classe_highlighted(self):
-        html = componentes._render_provider_badges(["Netflix", "Crunchyroll"], ["crunchyroll"])
+        html = componentes._render_provider_badges(
+            [("Netflix", ""), ("Crunchyroll", "")], ["crunchyroll"]
+        )
         assert '<span class="provider-badge highlighted">Crunchyroll</span>' in html
         assert '<span class="provider-badge">Netflix</span>' in html
 
@@ -285,8 +327,10 @@ class TestRenderProviderBadges:
         # Sem toggle "+N": acima do teto, trunca silenciosamente — saber exatamente quantos
         # badges couberam antes de quebrar linha exigiria JS medindo o DOM real, o que esse
         # componente não tem (risco aceito conscientemente, ver lightsail_ia.md).
-        nomes = [f"Provedor{i}" for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES + 2)]
-        html = componentes._render_provider_badges(nomes, [])
+        providers = [
+            (f"Provedor{i}", "") for i in range(componentes._MAX_VISIBLE_PROVIDER_BADGES + 2)
+        ]
+        html = componentes._render_provider_badges(providers, [])
         assert "Provedor0" in html
         assert f"Provedor{componentes._MAX_VISIBLE_PROVIDER_BADGES}" not in html
         assert "provider-badge-more" not in html
@@ -430,6 +474,15 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE)
         assert "Netflix" in html
 
+    def test_card_com_streaming_providers_exibe_rotulo_onde_assistir(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "Onde assistir" in html
+        assert 'class="providers-label"' in html
+        # Rótulo fica em linha própria, acima dos badges — não espremido ao lado deles.
+        label_row_pos = html.index('class="providers-label-row"')
+        badges_pos = html.index('class="provider-badges"')
+        assert label_row_pos < badges_pos
+
     def test_card_provedor_tem_icone(self):
         html = componentes.render_card(BASE_TITLE)
         assert "📺" in html
@@ -452,18 +505,36 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "providers-row" not in html
 
-    def test_card_ignora_campo_de_logo_do_provedor(self):
-        """streaming_provider_logos/rent_buy_provider_logos não são mais buscados nem
-        formatados — se aparecerem no dict do card por algum outro motivo, o card
-        continua ignorando-os e renderiza o nome do provedor só como texto."""
+    def test_card_exibe_logo_real_do_provedor(self):
         t = {
             **BASE_TITLE,
             "streaming_providers": "Netflix",
             "streaming_provider_logos": "https://image.tmdb.org/t/p/w45/netflix.png",
         }
         html = componentes.render_card(t)
+        assert 'class="provider-logo"' in html
+        assert "netflix.png" in html
+        assert "Netflix" in html
+
+    def test_card_provedor_sem_logo_cai_para_badge_so_texto(self):
+        # streaming_provider_logos ausente: badge de provedor sem <img>, só o nome.
+        html = componentes.render_card(BASE_TITLE)
         assert '<span class="provider-badge">Netflix</span>' in html
-        assert "netflix.png" not in html
+        assert 'class="provider-logo"' not in html
+
+    def test_card_logo_nao_duplica_quando_provedor_esta_em_streaming_e_rent_buy(self):
+        # Mesmo provedor nos dois grupos — dedup por nome (já existente) carrega a logo
+        # junto, então só uma logo aparece pra "Apple TV", não duas.
+        t = {
+            **BASE_TITLE,
+            "streaming_providers": "Apple TV",
+            "streaming_provider_logos": "https://image.tmdb.org/t/p/w45/appletv.png",
+            "rent_buy_providers": "Apple TV",
+            "rent_buy_provider_logos": "https://image.tmdb.org/t/p/w45/appletv-outra.png",
+        }
+        html = componentes.render_card(t)
+        assert html.count('class="provider-logo"') == 1
+        assert html.count("Apple TV") == 1
 
     def test_card_sem_rent_buy_providers_nao_exibe_bloco(self):
         html = componentes.render_card(BASE_TITLE)
@@ -640,42 +711,56 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "(1980) · filme" in html
 
-    def test_card_trailer_fica_na_linha_da_sinopse_nao_na_meta_line(self):
-        # Trailer e sinopse são as duas ações de "quero saber mais" do card — dividem a
-        # mesma linha em vez do trailer competir com data/tipo na meta-line.
-        t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}
-        html = componentes.render_card(t)
-        meta_line_pos = html.index('class="meta-row meta-line"')
-        meta_line_end = html.index("</div>", meta_line_pos)
-        assert "vital-trailer" not in html[meta_line_pos:meta_line_end]
-        synopsis_row_pos = html.index('class="meta-row synopsis-row"')
-        trailer_pos = html.index("vital-trailer")
-        assert synopsis_row_pos < trailer_pos
+    def test_card_trailer_fica_na_duration_row_nao_na_sinopse(self):
+        # Duração e Trailer sempre dividem uma linha própria (duration-row), com ou sem
+        # pôster — juntar os dois na meta-line de data/tipo transborda e quebra em 3 linhas
+        # na largura mínima do card (medido via Playwright), então a linha fica separada
+        # mesmo com pôster (bate com o mockup, que já mostra as duas linhas separadas).
+        for t in (
+            {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"},
+            {**TITLE_SEM_POSTER, "trailer_url": "https://youtube.com/watch?v=abc123"},
+        ):
+            html = componentes.render_card(t)
+            duration_row_pos = html.index('class="meta-row duration-row"')
+            duration_row_end = html.index("</div>", duration_row_pos)
+            assert "vital-trailer" in html[duration_row_pos:duration_row_end]
+            assert html.count("vital-trailer") == 1
+            meta_line_pos = html.index('class="meta-row meta-line"')
+            meta_line_end = html.index("</div>", meta_line_pos)
+            assert "vital-trailer" not in html[meta_line_pos:meta_line_end]
+            assert html.index("vital-trailer") < html.index('class="row-synopsis"')
 
-    def test_card_trailer_e_sinopse_ficam_na_mesma_linha(self):
+    def test_card_sinopse_nao_gera_mais_linha_compartilhada_com_trailer(self):
+        # synopsis-row agora só contém o label do accordion — sem o Trailer, que subiu pra
+        # duration-row (ver teste acima).
         t = {**BASE_TITLE, "trailer_url": "https://youtube.com/watch?v=abc123"}
         html = componentes.render_card(t)
-        assert 'class="meta-row synopsis-row"' in html
         synopsis_row_pos = html.index('class="meta-row synopsis-row"')
         synopsis_row_end = html.index("</div>", synopsis_row_pos)
         row = html[synopsis_row_pos:synopsis_row_end]
         assert "synopsis-label" in row
-        assert "vital-trailer" in row
-        label_pos = row.index("synopsis-label")
-        trailer_pos = row.index("vital-trailer")
-        assert label_pos < trailer_pos  # sinopse à esquerda, trailer à direita
+        assert "vital-trailer" not in row
 
-    def test_card_trailer_sem_sinopse_ainda_gera_linha(self):
-        # overview ausente: sem label/accordion de sinopse, mas o trailer não pode sumir
-        t = {
-            **BASE_TITLE,
-            "overview": None,
-            "trailer_url": "https://youtube.com/watch?v=abc123",
-        }
-        html = componentes.render_card(t)
-        assert "synopsis-toggle" not in html
-        assert 'class="meta-row synopsis-row"' in html
-        assert "vital-trailer" in html
+    def test_card_trailer_sem_duracao_ainda_gera_duration_row_so_com_trailer(self):
+        # Sem duração mas com trailer (ex.: runtime ainda não confirmado no TMDB), a linha
+        # ainda é gerada só pra não perder o link — não fica condicionada só à duração, com
+        # ou sem pôster.
+        for t in (
+            {**BASE_TITLE, "duration": None, "trailer_url": "https://youtube.com/watch?v=abc123"},
+            {**TITLE_SEM_POSTER, "duration": None, "trailer_url": "https://youtube.com/watch?v=abc123"},
+        ):
+            html = componentes.render_card(t)
+            assert 'class="meta-row duration-row"' in html
+            assert "vital-trailer" in html
+            assert "⏱" not in html
+
+    def test_card_sem_trailer_nem_duracao_nao_gera_duration_row(self):
+        for t in (
+            {**BASE_TITLE, "duration": None, "trailer_url": None},
+            {**TITLE_SEM_POSTER, "duration": None, "trailer_url": None},
+        ):
+            html = componentes.render_card(t)
+            assert "duration-row" not in html
 
     def test_card_providers_row_nunca_contem_trailer(self):
         for t in (
@@ -683,33 +768,24 @@ class TestRenderCard:
             {**TITLE_SEM_POSTER, "trailer_url": "https://youtube.com/watch?v=abc123"},
         ):
             html = componentes.render_card(t)
-            assert "trailer-providers-row" not in html
-            providers_row_pos = html.index('class="meta-row providers-row"')
-            providers_row_end = html.index("</div>", providers_row_pos)
-            assert "vital-trailer" not in html[providers_row_pos:providers_row_end]
+            badges_pos = html.index('class="provider-badges"')
+            badges_end = html.index("</div>", badges_pos)
+            assert "vital-trailer" not in html[badges_pos:badges_end]
             assert '<span class="provider-badge">Netflix</span>' in html
 
-    def test_card_com_poster_duracao_fica_na_meta_line(self):
-        # Com pôster, duração entra na mesma linha de data/tipo em vez de linha própria —
-        # medido via Playwright que até o pior caso plausível (série com "3 temps · 24
-        # eps · ~45 min/ep") cabe numa linha só na largura mínima garantida do card.
-        # duration-row nem chega a ser gerada nesse caso (meio solto, ver principal.css).
-        html = componentes.render_card(BASE_TITLE)
-        assert "duration-row" not in html
-        meta_line_pos = html.index('class="meta-row meta-line"')
-        meta_line_end = html.index("</div>", meta_line_pos)
-        assert "2h 26min" in html[meta_line_pos:meta_line_end]
-        assert "⏱" in html[meta_line_pos:meta_line_end]
-
-    def test_card_sem_poster_duracao_continua_em_linha_propria(self):
-        # Sem pôster a meta-line já carrega classificação etária + nota — testado que
-        # juntar duração ali nessas condições estoura a largura e quebra linha, então
-        # continua na própria linha só nesse caso.
-        html = componentes.render_card(TITLE_SEM_POSTER)
-        duration_row_pos = html.index('class="meta-row duration-row"')
-        duration_row_end = html.index("</div>", duration_row_pos)
-        assert "2h 26min" in html[duration_row_pos:duration_row_end]
-        assert "⏱" in html[duration_row_pos:duration_row_end]
+    def test_card_duracao_fica_em_linha_propria_nao_na_meta_line(self):
+        # Duração sempre fica em duration-row própria, separada da meta-line de data/tipo —
+        # com ou sem pôster (juntar as duas transborda a largura mínima do card, ver
+        # comentário em render_card()).
+        for t in (BASE_TITLE, TITLE_SEM_POSTER):
+            html = componentes.render_card(t)
+            duration_row_pos = html.index('class="meta-row duration-row"')
+            duration_row_end = html.index("</div>", duration_row_pos)
+            assert "2h 26min" in html[duration_row_pos:duration_row_end]
+            assert "⏱" in html[duration_row_pos:duration_row_end]
+            meta_line_pos = html.index('class="meta-row meta-line"')
+            meta_line_end = html.index("</div>", meta_line_pos)
+            assert "2h 26min" not in html[meta_line_pos:meta_line_end]
 
     def test_card_sem_duracao_nao_gera_icone(self):
         t = {**BASE_TITLE, "duration": None}
@@ -736,15 +812,13 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "meta-line" not in html
 
-    def test_card_com_poster_duracao_sem_data_tipo_ainda_aparece_na_meta_line(self):
-        # Com pôster, duração é mostrada na meta-line mesmo sem data/tipo — o ícone ⏱
-        # rotula ela sozinho, .meta-info não fica vazio só porque falta o outro campo.
+    def test_card_duracao_aparece_mesmo_sem_data_tipo(self):
+        # duration-row independe da meta-line de data/tipo — sem release_date/year/type
+        # (meta-line nem chega a ser gerada, ver teste abaixo), a duração ainda aparece.
         t = {**BASE_TITLE, "release_date": None, "year": "", "type": ""}
         html = componentes.render_card(t)
         assert "2h 26min" in html
-        meta_line_pos = html.index('class="meta-row meta-line"')
-        meta_line_end = html.index("</div>", meta_line_pos)
-        assert "⏱" in html[meta_line_pos:meta_line_end]
+        assert 'class="meta-row duration-row"' in html
 
     def test_card_sem_duracao_nao_gera_duration_row(self):
         # Sem duração, a div nem é gerada (meio solto, ver principal.css).
@@ -757,6 +831,25 @@ class TestRenderCard:
         html = componentes.render_card(t)
         assert "Nota alta e mesmo gênero pedido." in html
         assert 'class="reason"' in html
+
+    def test_card_motivo_exibe_rotulo_insight_do_filmbot(self):
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_card(t)
+        assert 'class="reason-label"' in html
+        assert "Insight do FilmBot" in html
+        label_pos = html.index('class="reason-label"')
+        reason_pos = html.index('class="reason"')
+        assert label_pos < reason_pos
+
+    def test_card_motivo_fica_depois_dos_generos_e_antes_dos_provedores(self):
+        # Insight do FilmBot não fica mais logo abaixo do título — vem depois dos gêneros e
+        # antes de "Onde assistir" (ver mockup mais recente).
+        t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
+        html = componentes.render_card(t)
+        genres_pos = html.index('class="genres-container"')
+        reason_pos = html.index('class="row-reason"')
+        providers_pos = html.index('class="providers-row"')
+        assert genres_pos < reason_pos < providers_pos
 
     def test_card_sem_motivo_nao_gera_paragrafo_vazio(self):
         html = componentes.render_card(BASE_TITLE)
@@ -815,6 +908,23 @@ class TestRenderCard:
         html = componentes.render_card(BASE_TITLE, idx=3)
         assert 'id="synopsis-toggle-3"' in html
         assert 'for="synopsis-toggle-3"' in html
+
+    def test_card_sinopse_tem_icone(self):
+        html = componentes.render_card(BASE_TITLE)
+        assert "📄" in html
+
+    def test_card_sinopse_chevron_fica_depois_do_texto(self):
+        # Ícone+texto à esquerda, chevron ⌄/⌃ na ponta direita — antes a seta ficava antes
+        # do texto (mockup mais recente inverteu a posição).
+        html = componentes.render_card(BASE_TITLE)
+        label_pos = html.index('class="synopsis-label"')
+        label_end = html.index("</label>", label_pos)
+        label_html = html[label_pos:label_end]
+        text_pos = label_html.index("Sinopse")
+        arrow_pos = label_html.index("synopsis-arrow-closed")
+        assert text_pos < arrow_pos
+        assert "⌄" in label_html
+        assert "⌃" in label_html
 
     def test_card_ficha_tecnica_fica_recolhida_por_padrao(self):
         t = {**BASE_TITLE, "director": "Stanley Kubrick", "cast": "Jack Nicholson, Shelley Duvall"}
@@ -898,6 +1008,19 @@ class TestRenderCard:
         html = componentes.render_card(t, idx=3)
         assert 'id="people-toggle-3"' in html
         assert 'for="people-toggle-3"' in html
+
+    def test_card_ficha_tecnica_chevron_fica_depois_do_texto(self):
+        # Mesmo padrão visual da Sinopse: ícone+texto à esquerda, chevron ⌄/⌃ à direita.
+        t = {**BASE_TITLE, "director": "Stanley Kubrick"}
+        html = componentes.render_card(t)
+        label_pos = html.index('class="people-label"')
+        label_end = html.index("</label>", label_pos)
+        label_html = html[label_pos:label_end]
+        text_pos = label_html.index("Ficha Técnica")
+        arrow_pos = label_html.index("people-arrow-closed")
+        assert text_pos < arrow_pos
+        assert "⌄" in label_html
+        assert "⌃" in label_html
 
     def test_card_ficha_tecnica_escapa_xss(self):
         t = {**BASE_TITLE, "director": '<script>alert("xss")</script>'}

@@ -2,6 +2,7 @@
 
 import html
 from datetime import datetime, timezone
+from itertools import zip_longest
 from pathlib import Path
 
 import streamlit as st
@@ -144,29 +145,49 @@ def _parse_provider_names(names_raw: str) -> list[str]:
     return [p.strip() for p in (names_raw or "").split(",") if p.strip()]
 
 
-def _render_provider_badges(names: list[str], highlighted: list[str]) -> str:
-    """Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e
-    deduplicados por `render_card`), priorizando via `_prioritize` o(s) provedor(es)
-    mencionado(s) pelo usuário e marcando cada um com a classe "highlighted" (borda laranja,
-    ver principal.css) — não só o primeiro, todo provedor que bateu com a busca. Mostra até
-    `_MAX_VISIBLE_PROVIDER_BADGES` badges direto — o restante trunca silenciosamente, mesmo
-    padrão que gêneros já usam, já que a linha de provedores se ajusta automaticamente ao
-    card com mais badges na mesma fileira (grid da .card-body)."""
+def _parse_provider_logos(logos_raw: str) -> list[str]:
+    """Faz o parsing da string de logos comma-joined vinda de glue_agg (`streaming_provider_
+    logos`/`rent_buy_provider_logos`), posicionalmente alinhada aos nomes de
+    `_parse_provider_names` — ao contrário dela, não filtra entradas vazias (provedor sem
+    logo no TMDB vira string vazia na origem, ver `queries.py`), pra não deslocar a posição
+    dos itens seguintes."""
+    return [p.strip() for p in (logos_raw or "").split(",")]
+
+
+def _render_provider_badges(providers: list[tuple[str, str]], highlighted: list[str]) -> str:
+    """Monta os badges de provedor (streaming e aluguel/compra já combinados, pareados com
+    logo via zip posicional, e deduplicados por nome por `render_card`), priorizando via
+    `_prioritize` o(s) provedor(es) mencionado(s) pelo usuário e marcando cada um com a
+    classe "highlighted" (borda laranja, ver principal.css) — não só o primeiro, todo
+    provedor que bateu com a busca. Cada badge mostra a logo real do TMDB antes do nome
+    quando disponível (`.provider-logo`); sem logo, cai de volta pro badge só-texto. Mostra
+    até `_MAX_VISIBLE_PROVIDER_BADGES` badges direto — o restante trunca silenciosamente,
+    mesmo padrão que gêneros já usam, já que a linha de provedores se ajusta automaticamente
+    ao card com mais badges na mesma fileira (grid da .card-body)."""
+    logo_by_name = dict(providers)
+    names = [name for name, _ in providers]
     prioritized = _prioritize(names, highlighted)[:_MAX_VISIBLE_PROVIDER_BADGES]
-    return "".join(
-        f'<span class="provider-badge{" highlighted" if _matches_highlighted(name, highlighted) else ""}">'
-        f"{html.escape(name)}</span>"
-        for name in prioritized
-    )
+    badges = []
+    for name in prioritized:
+        logo_url = logo_by_name.get(name, "")
+        logo_html = (
+            f'<img src="{html.escape(logo_url)}" class="provider-logo" alt="" />' if logo_url else ""
+        )
+        highlighted_class = " highlighted" if _matches_highlighted(name, highlighted) else ""
+        badges.append(
+            f'<span class="provider-badge{highlighted_class}">{logo_html}{html.escape(name)}</span>'
+        )
+    return "".join(badges)
 
 
 def render_card(title: dict, idx: int = 0) -> str:
     """Monta o HTML de um card de título com escape contra XSS.
 
     Com pôster (`backdrop_url`/`poster_url`), nota e classificação etária ficam sobrepostas
-    na imagem e o trailer sobe para a meta-line — layout "at a glance" estilo
-    Netflix/JustWatch. Sem pôster não há onde sobrepor, então o card cai no layout anterior:
-    nota/classificação na meta-row, trailer e provedores na mesma linha."""
+    na imagem — layout "at a glance" estilo Netflix/JustWatch. Sem pôster não há onde
+    sobrepor, então nota/classificação ficam na meta-row. Em ambos os casos, duração e
+    Trailer sempre dividem uma linha própria (duration-row), separada da meta-line de
+    data/tipo."""
     poster = title.get("backdrop_url") or title.get("poster_url") or ""
     has_poster = bool(poster)
     title_name = html.escape(title.get("title", ""))
@@ -179,7 +200,9 @@ def render_card(title: dict, idx: int = 0) -> str:
     duration = title.get("duration") or ""
     release_date = html.escape(title.get("release_date") or "")
     streaming_providers = title.get("streaming_providers") or ""
+    streaming_provider_logos = title.get("streaming_provider_logos") or ""
     rent_buy_providers = title.get("rent_buy_providers") or ""
+    rent_buy_provider_logos = title.get("rent_buy_provider_logos") or ""
     in_theaters = title.get("in_theaters") or False
     theater_end_date = html.escape(title.get("theater_end_date") or "")
     next_episode_season_number = title.get("next_episode_season_number")
@@ -272,8 +295,15 @@ def render_card(title: dict, idx: int = 0) -> str:
     # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
     # sincronia de altura com os vizinhos da fileira, ver principal.css). Sem motivo, a div
     # nem é gerada (meio solto) — caso comum, não só borda: `reason` costuma vir vazio fora
-    # do fluxo de recomendação da IA.
-    reason_block_html = f'<div class="row-reason"><p class="reason">{reason}</p></div>' if reason else ""
+    # do fluxo de recomendação da IA. Rótulo "✨ Insight do FilmBot" acima do texto, mesmo
+    # princípio do rótulo "Onde assistir" acima dos badges de provedor — a seção agora vem
+    # depois dos gêneros (ver return, mais abaixo), não mais logo após o título.
+    reason_block_html = (
+        f'<div class="row-reason"><span class="reason-label">✨ Insight do FilmBot</span>'
+        f'<p class="reason">{reason}</p></div>'
+        if reason
+        else ""
+    )
 
     date_type_parts = []
     if release_date:
@@ -296,71 +326,89 @@ def render_card(title: dict, idx: int = 0) -> str:
         )
 
     # Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo; sem
-    # pôster a nota continua no slot direito, como sempre foi. O trailer não entra mais
-    # aqui — fica na linha da sinopse (ver synopsis_row_html), junto da outra ação de
-    # "quero saber mais" do card, em vez de disputar espaço com um fato objetivo.
-    # Faz parte do meio solto do card (ver principal.css) — só emite a div quando há
-    # data/tipo, duração (com pôster) ou nota (sem pôster) pra mostrar. O ícone fica dentro
-    # de .meta-info (não como irmão solto de .meta-row) porque .meta-line usa
-    # justify-content:space-between pra separar meta-info/nota — um 3º filho direto do
-    # .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta direita, longe um
-    # do outro, em vez de ficarem juntos como "ícone + texto".
+    # pôster a nota continua no slot direito, como sempre foi. Faz parte do meio solto do
+    # card (ver principal.css) — só emite a div quando há data/tipo ou nota (sem pôster) pra
+    # mostrar. O ícone fica dentro de .meta-info (não como irmão solto de .meta-row) porque
+    # .meta-line usa justify-content:space-between pra separar meta-info/nota — um 3º filho
+    # direto do .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta direita,
+    # longe um do outro, em vez de ficarem juntos como "ícone + texto".
     meta_icon_html = '<span class="meta-icon">ℹ</span>' if meta_left else ""
     duration_escaped = html.escape(duration) if duration else ""
 
-    # Com pôster, duração entra na mesma linha de data/tipo (medido via Playwright: mesmo
-    # o pior caso plausível — série com "3 temps · 24 eps · ~45 min/ep" — cabe numa linha
-    # só na largura mínima hoje garantida pro card, ~373px). Sem pôster essa linha já
-    # carrega classificação (meta_left) e nota (meta_right) — testado e esse extra
-    # transborda e quebra linha, então duração continua na própria linha só nesse caso.
-    duration_in_meta_line = has_poster and duration
-    meta_duration_html = (
-        f'<span class="meta-icon">⏱</span>{duration_escaped}' if duration_in_meta_line else ""
-    )
     meta_right = "" if has_poster else rating_html
     meta_html = ""
-    if meta_left or meta_duration_html or meta_right:
+    if meta_left or meta_right:
         meta_html = (
             f'<div class="meta-row meta-line">'
-            f'<span class="meta-info">{meta_icon_html}{meta_left}{meta_duration_html}</span>'
+            f'<span class="meta-info">{meta_icon_html}{meta_left}</span>'
             f'{meta_right}</div>'
         )
 
-    # Linha própria só quando há duração e ela não coube na meta-line (ver
-    # duration_in_meta_line acima) — sem isso, não emite a div (meio solto, ver
-    # principal.css).
+    # Duração e Trailer sempre dividem uma linha própria, com ou sem pôster — medido via
+    # Playwright que juntar os dois na mesma linha de data/tipo (pra "economizar" uma linha)
+    # transborda e quebra em 3 linhas feias na largura mínima do card (~355-373px) com o
+    # pior caso plausível (série com "3 temporadas · 61 episódios · ~24 min/ep" + Trailer) —
+    # abrir mão dessa otimização de espaço bate com o próprio mockup, que já mostra duração e
+    # data/tipo em linhas separadas mesmo com pôster. Emite quando há duração OU trailer pra
+    # mostrar (não só duração) — sem isso, um título sem duração mas com trailer (ex.:
+    # runtime ainda não confirmado no TMDB) perderia o link. Sem nenhum dos dois, a div nem é
+    # gerada (meio solto, ver principal.css).
     duration_html = ""
-    if duration and not duration_in_meta_line:
-        duration_html = f'<div class="meta-row duration-row"><span class="meta-icon">⏱</span>{duration_escaped}</div>'
+    if duration or trailer_html:
+        duration_info_html = (
+            f'<span class="meta-info"><span class="meta-icon">⏱</span>{duration_escaped}</span>'
+            if duration
+            else ""
+        )
+        duration_html = f'<div class="meta-row duration-row">{duration_info_html}{trailer_html}</div>'
 
-    provider_names = _parse_provider_names(streaming_providers)
-    provider_names += _parse_provider_names(rent_buy_providers)
+    # Nome e logo são pareados posicionalmente (zip_longest com fillvalue vazio — a logo
+    # pode faltar/estar desalinhada em dados legados sem quebrar o pareamento) antes da
+    # deduplicação por nome, que já existia — assim uma logo nunca duplica quando o mesmo
+    # provedor aparece em streaming e aluguel/compra ao mesmo tempo, mesmo esquema que já
+    # deduplicava os nomes.
+    provider_pairs = list(
+        zip_longest(_parse_provider_names(streaming_providers), _parse_provider_logos(streaming_provider_logos), fillvalue="")
+    )
+    provider_pairs += list(
+        zip_longest(_parse_provider_names(rent_buy_providers), _parse_provider_logos(rent_buy_provider_logos), fillvalue="")
+    )
     seen_providers: set[str] = set()
-    deduped_names = []
-    for name in provider_names:
+    deduped_providers: list[tuple[str, str]] = []
+    for name, logo_url in provider_pairs:
+        if not name:
+            continue
         key = name.lower()
         if key in seen_providers:
             continue
         seen_providers.add(key)
-        deduped_names.append(name)
+        deduped_providers.append((name, logo_url))
     provider_badges_html = _render_provider_badges(
-        deduped_names, title.get("highlighted_providers") or []
+        deduped_providers, title.get("highlighted_providers") or []
     )
 
     # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
-    # provedores agora, com ou sem pôster. Faz parte do meio solto do card (ver
+    # provedores agora, com ou sem pôster. Rótulo "Onde assistir" fica em linha própria,
+    # acima dos badges (não espremido ao lado deles) — mesmo princípio do rótulo "✨
+    # Insight do FilmBot" acima de `.reason`. Faz parte do meio solto do card (ver
     # principal.css) — só emite a div quando há algum provedor pra mostrar.
     providers_block_html = ""
     if provider_badges_html:
         providers_block_html = (
-            f'<div class="meta-row providers-row">'
+            f'<div class="providers-row">'
+            f'<div class="providers-label-row">'
             f'<span class="meta-icon">📺</span>'
-            f'<span class="provider-badges">{provider_badges_html}</span></div>'
+            f'<span class="providers-label">Onde assistir</span></div>'
+            f'<div class="provider-badges">{provider_badges_html}</div>'
+            f'</div>'
         )
 
-    # Sinopse e trailer são as duas ações de "quero saber mais" do card, então dividem a
-    # mesma linha (checkbox fica fora da .synopsis-row, como sibling direto de
-    # .synopsis-text, pra o seletor CSS ~ continuar funcionando).
+    # Sinopse não divide mais linha com o Trailer (que subiu pra linha de duração — ver
+    # meta_right/duration_html acima) — vira uma linha só com o label do accordion.
+    # Checkbox fica fora da .synopsis-row, como sibling direto de .synopsis-text, pra o
+    # seletor CSS ~ continuar funcionando. Ícone+texto ficam à esquerda e o chevron ⌄/⌃ na
+    # ponta direita do label (`justify-content:space-between` em `.synopsis-label`, ver
+    # principal.css) — mesmo padrão visual de `.people-label` (Ficha Técnica) abaixo.
     toggle_id = f"synopsis-toggle-{idx}"
     synopsis_toggle_html = ""
     synopsis_label_html = ""
@@ -370,19 +418,17 @@ def render_card(title: dict, idx: int = 0) -> str:
         synopsis_toggle_html = f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
         synopsis_label_html = (
             f'<label for="{toggle_id}" class="synopsis-label">'
-            f'<span class="synopsis-arrow-closed">▸</span>'
-            f'<span class="synopsis-arrow-open">▾</span> Sinopse</label>'
+            f'<span class="synopsis-icon-text"><span class="synopsis-icon">📄</span> Sinopse</span>'
+            f'<span class="synopsis-arrow-closed">⌄</span>'
+            f'<span class="synopsis-arrow-open">⌃</span></label>'
         )
         synopsis_text_html = f'<p class="synopsis-text">{overview_escaped}</p>'
 
-    synopsis_row_html = ""
-    if synopsis_label_html or trailer_html:
-        synopsis_row_html = (
-            f'<div class="meta-row synopsis-row">{synopsis_label_html}{trailer_html}</div>'
-        )
-    # Sinopse/trailer fazem parte do meio solto do card (ver principal.css), sem sincronia
-    # de altura com os vizinhos da fileira — só emite a div quando há de fato sinopse ou
-    # trailer pra mostrar.
+    synopsis_row_html = (
+        f'<div class="meta-row synopsis-row">{synopsis_label_html}</div>' if synopsis_label_html else ""
+    )
+    # Sinopse faz parte do meio solto do card (ver principal.css), sem sincronia de altura
+    # com os vizinhos da fileira — só emite a div quando há de fato sinopse pra mostrar.
     synopsis_html = ""
     if synopsis_toggle_html or synopsis_row_html:
         synopsis_html = (
@@ -393,7 +439,8 @@ def render_card(title: dict, idx: int = 0) -> str:
     # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), posicionada ANTES da
     # sinopse — todo o elenco/equipe técnica já formatado em `title` aparece aqui, um bullet
     # por papel, com o rótulo em negrito pra escanear rápido. Faz parte do "meio solto" do
-    # card (ver principal.css) — só emite a div quando há algum campo preenchido.
+    # card (ver principal.css) — só emite a div quando há algum campo preenchido. Ícone+texto
+    # à esquerda, chevron ⌄/⌃ na ponta direita, mesmo padrão de `.synopsis-label` acima.
     people_toggle_id = f"people-toggle-{idx}"
     people_html = ""
     people_fields = [
@@ -413,9 +460,10 @@ def render_card(title: dict, idx: int = 0) -> str:
         people_row_html = (
             f'<div class="meta-row people-row">'
             f'<label for="{people_toggle_id}" class="people-label">'
-            f'<span class="people-icon">👥</span>'
-            f'<span class="people-arrow-closed">▸</span>'
-            f'<span class="people-arrow-open">▾</span> Ficha Técnica</label>'
+            f'<span class="people-icon-text"><span class="people-icon">👥</span> Ficha Técnica</span>'
+            f'<span class="people-arrow-closed">⌄</span>'
+            f'<span class="people-arrow-open">⌃</span>'
+            f'</label>'
             f'</div>'
         )
         people_items = "".join(
@@ -431,11 +479,11 @@ def render_card(title: dict, idx: int = 0) -> str:
       {img_html}
       <div class="card-body">
         <strong class="card-title">{title_name}</strong>
-        {reason_block_html}
         {meta_html}
         {duration_html}
         {cinema_html}
         {genres_block_html}
+        {reason_block_html}
         {providers_block_html}
         {people_html}
         {synopsis_html}
