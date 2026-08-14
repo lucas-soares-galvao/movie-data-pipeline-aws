@@ -39,9 +39,9 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `year` (inteiro), `genres` (lista de strings a partir de `genre_names`)
 - `overview` (cópia de `overview` — já vem em pt-BR do pipeline via `COALESCE(overview, overview_pt, overview_en)`)
 - `rating` (float), `poster_url`, `backdrop_url`
-- `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries: `"3 temps · 36 eps · ~45 min/ep"`)
-- `release_date` (mês abreviado + ano em PT derivado de `air_date`, ex: `"Mai de 1980"`)
-- `streaming_providers` (cópia direta — onde assistir no Brasil)
+- `duration` (runtime formatado para filmes: `"2h 26min"`; temporadas/episódios para séries, por extenso — só `min/ep` fica abreviado: `"3 temporadas · 36 episódios · ~45 min/ep"`)
+- `release_date` (mês por extenso + ano em PT derivado de `air_date`, ex: `"Maio de 1980"`)
+- `streaming_providers` (cópia direta — onde assistir no Brasil), `streaming_provider_logos` (URLs de logo do TMDB, comma-joined e **posicionalmente alinhadas** a `streaming_providers` — item vazio quando aquele provedor não tem logo na origem, ver `glue_agg/src/queries.py`)
 - **Formatação adaptativa de data** (`formatacao.py::_format_adaptive_date()`, compartilhada por
   `theater_end_date`, `next_episode_date` e `upcoming_date` abaixo): `DD/MM` quando a data está a até
   `_ADAPTIVE_DATE_THRESHOLD_DAYS` (90) dias de hoje, ou "Mês de Ano" (mesmo formato de `release_date`, via
@@ -65,7 +65,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatacao.py`
 - `trailer_url` (link do YouTube), `collection` (saga/franquia, apenas filmes)
 - `production_companies` (estúdios), `production_countries` (países de produção, diferente de país de origem)
 - `networks` (redes originais, apenas séries)
-- `rent_buy_providers` (plataformas de aluguel/compra no Brasil)
+- `rent_buy_providers` (plataformas de aluguel/compra no Brasil), `rent_buy_provider_logos` (mesmo esquema de `streaming_provider_logos` acima)
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
 ### Etapa 3 — Geração do motivo (LLM)
@@ -141,48 +141,40 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 - Logging de erros: exceções na busca são registradas via `logging.exception()` e enviadas ao CloudWatch Logs (quando `CLOUDWATCH_LOG_GROUP` está configurada) para diagnóstico em produção
 - Retry automático nas chamadas ao LLM: `_call_llm_step1` e `_call_llm_step3` (`agent.py`) passam `num_retries=_LLM_NUM_RETRIES` (3) para `litellm.completion()`, que reenvia a chamada internamente (via tenacity) quando o provedor responde com `APIError`, `TimeoutError` ou `ServiceUnavailableError` — cobre indisponibilidades transitórias do provedor (ex.: erro 503 "service too busy"), que sem isso já eram tratadas como falha definitiva na primeira tentativa. Se todas as tentativas falharem, a exceção ainda propaga normalmente para `app.py`, que trata como qualquer outro erro de busca (ver item acima). Diferente da transcrição de áudio (que não tem retry nem fallback de modelo, por design — ver seção de transcrição)
 - Cada card exibe, de cima para baixo (layout enxuto, poucos rótulos de texto — `componentes.py::render_card()`).
-  Badges de cor são neutros (cinza) por padrão — laranja fica reservado pra nota, motivo e o link de sinopse, os
-  três pontos que realmente pedem destaque. **O layout muda conforme há ou não imagem** (`backdrop_url`/
-  `poster_url`):
+  Badges de cor são neutros (cinza) por padrão — laranja fica reservado pra nota e pro "Insight do FilmBot", os
+  dois pontos que realmente pedem destaque (a Sinopse deixou de ser laranja — ver bullet abaixo). **O layout muda
+  conforme há ou não imagem** (`backdrop_url`/`poster_url`):
   - **Imagem** (backdrop preferido sobre poster), quando existe: nota (★, em chip translúcido) e badge de
     classificação indicativa (L/10/12/14/16/18) ficam sobrepostos no canto superior da própria imagem — sobre um
     leve gradiente escuro (scrim) que garante legibilidade em qualquer pôster — em vez de disputar espaço com o
     texto do corpo do card. **Sem imagem**, não há onde sobrepor: os dois caem de volta pra dentro da linha de
     metadados (ver abaixo), como no layout anterior
   - Título
-  - Motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), logo abaixo do título — itálico, com leve
-    realce visual (mais suave que os demais elementos, mas ainda o segundo ponto de maior destaque do card depois
-    do título). Sem `min-height`/`max-height`/toggle — faz parte do meio solto do card (ver item do grid, acima),
-    sem sincronia de altura com os vizinhos da fileira, então o texto completo sempre aparece direto (motivo
-    raramente varia muito de tamanho: o prompt do LLM, `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres).
-    Sem `reason` (título fora do fluxo de recomendação da IA), a div nem é gerada — caso comum, não só borda
   - Linha única de metadados: ícone ℹ (`.meta-icon`, mesmo padrão do 🎬 de "Em cartaz" mais abaixo) seguido de
     data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série). O ícone fica **dentro**
     de `.meta-info` junto do texto (não como irmão direto de `.meta-row`) — `.meta-line` usa
     `justify-content:space-between` pra separar texto/nota, então um 3º filho solto empurraria o ícone pra ponta
     esquerda e o texto pra ponta direita, longe um do outro. O ícone só aparece quando há data/tipo pra rotular
-    (sem isso, `.meta-info` fica só com o resto do conteúdo — duração/nota — sem ícone solto sem texto ao lado).
-    Se não sobrar nada pra mostrar em lugar nenhum da linha (sem data/tipo, sem duração aplicável, sem nota), a
-    `.meta-line` inteira nem é gerada — meio solto, mesmo padrão das demais seções do card. **Com imagem**, o resto
-    da linha é só texto — nota e classificação já foram pra imagem — **e a duração entra na mesma linha**, com
-    seu próprio ícone ⏱ dentro do mesmo `.meta-info` (ex.: "ℹ Mai de 2004 · filme  ⏱ 2h 15min"), economizando
-    uma linha inteira do card; medido via Playwright que até o pior caso plausível (série com "3 temps · 24
-    eps · ~45 min/ep") cabe numa linha só na largura mínima hoje garantida pro card (~373px, ver breakpoint de
-    1200px na seção do grid). **Sem imagem**, o lado direito volta a ser a nota (★) e a classificação entra
-    junto de data/tipo à esquerda, como antes — nesse caso a duração **não** entra na meta-line e continua na
-    própria linha (bullet abaixo): medido que juntar as duas nessa condição (classificação + nota já ocupando a
-    linha) estoura a largura e quebra — `duration_in_meta_line = has_poster and duration` em `render_card()`
-    decide isso. O link ▶ Trailer **não** fica nessa linha em nenhum dos casos (ver bullet da sinopse, mais
-    abaixo) — misturar uma ação (trailer) com um fato objetivo (data/tipo) não fazia sentido. Gênero, duração e
-    provedor (bullets abaixo) também têm ícone próprio (`.meta-icon`, mesma classe) — todos vinham de um design
+    (sem isso, `.meta-info` fica só com o resto do conteúdo — sem ícone solto sem texto ao lado). Se não sobrar
+    nada pra mostrar em lugar nenhum da linha (sem data/tipo, sem nota), a `.meta-line` inteira nem é gerada —
+    meio solto, mesmo padrão das demais seções do card. **Com imagem**, o lado direito fica vazio — nota e
+    classificação já foram pra imagem. **Sem imagem**, o lado direito volta a ser a nota (★) e a classificação
+    entra junto de data/tipo à esquerda, como antes. Duração e Trailer **não** entram mais nessa linha em nenhum
+    dos dois casos (ver bullet seguinte) — medido via Playwright que juntar os três (data/tipo + duração +
+    Trailer) transborda a largura mínima do card (~355-373px) e quebra em 3 linhas feias, mesmo com imagem; a
+    "economia" de uma linha que existia antes de trazer o Trailer pra cá deixou de valer a pena. Gênero, duração
+    e provedor (bullets abaixo) também têm ícone próprio (`.meta-icon`, mesma classe) — todos vinham de um design
     mais antigo (ver histórico do git, commits "menos poluição visual") que os removeu; foram trazidos de volta
     pedido a pedido, ao contrário do ícone ℹ da linha de data/tipo, que é novo. Diferente do ℹ (texto
     monocromático, sem seletor de variação de emoji — só ele precisa de `color` explícito porque é o único que
     não tem forma colorida por padrão), os ícones abaixo são emoji pictográficos nativos (sem equivalente
     monocromático) e mantêm a cor original, mesmo padrão que o 🎬 de "Em cartaz" já usava
-  - Duração/temporadas — **com imagem**, entra na linha de data/tipo acima (bullet anterior). **Sem imagem**,
-    fica em linha própria logo abaixo de data/tipo — ícone ⏱; a div só é gerada quando há duração pra mostrar
-    nessa condição (com imagem, ou sem duração, a linha nem é emitida — faz parte do meio solto)
+  - Duração + Trailer sempre dividem uma linha própria (`.duration-row`, `justify-content:space-between`) — com
+    ou sem imagem, logo abaixo da linha de data/tipo. Ícone ⏱ + duração à esquerda, link ▶ Trailer (quando
+    disponível) à direita. A div só é gerada quando há duração **ou** trailer pra mostrar — um título sem duração
+    confirmada mas com trailer (ex.: runtime ainda não publicado no TMDB) não perde o link só por faltar a
+    duração; sem nenhum dos dois, a div nem é gerada (meio solto). Isso bate com o mockup mais recente, que já
+    mostra essa linha separada da de data/tipo mesmo em títulos com pôster
   - Badge amarelo 🎬 "Em cartaz até {data}" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
@@ -214,38 +206,53 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     `componentes.py::_prioritize()` move todos os que baterem para o início da lista antes do corte, então
     nenhum fica de fora se estiver presente no título — e ganha destaque visual (borda + texto laranja, classe
     `.highlighted`, mesmo `#fdba74` do motivo da IA) via `componentes.py::_matches_highlighted()`
-  - Provedores sempre sozinhos numa linha própria (com ou sem imagem), quando há pelo menos um — sem nenhum
-    provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/row-synopsis) —
-    ícone 📺, badges de texto, streaming e aluguel/compra combinados num único grupo e deduplicados por nome
-    (`componentes.py::_render_provider_badges()`), sem rótulo "Onde assistir"/"Aluguel/Compra", com o nome do
-    provedor sempre visível como texto (sem logo — a query em `agent.py` traz apenas
-    `streaming_providers`/`rent_buy_providers`, os nomes). Mostra até 6 badges
-    direto, sem badge "+N" (saber exatamente quantos couberam antes de quebrar linha exigiria JS medindo o DOM
-    real, risco aceito conscientemente — ver bullet do breakpoint acima): acima do teto de 6, trunca
+  - "✨ Insight do FilmBot" — motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), com rótulo laranja
+    próprio (`.reason-label`) acima do texto em itálico (`.reason`). Vem **depois dos gêneros**, não mais logo
+    abaixo do título — junto de "Onde assistir" (bullet seguinte), fecha o bloco "por que te recomendei isso ·
+    onde assistir" no fim do card, antes das seções colapsáveis. Sem `min-height`/`max-height`/toggle — faz parte
+    do meio solto do card (ver item do grid, acima), sem sincronia de altura com os vizinhos da fileira, então o
+    texto completo sempre aparece direto (motivo raramente varia muito de tamanho: o prompt do LLM,
+    `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres). Sem `reason` (título fora do fluxo de
+    recomendação da IA), a div nem é gerada — caso comum, não só borda
+  - "📺 Onde assistir" sempre sozinho numa linha própria (com ou sem imagem), quando há pelo menos um provedor —
+    sem nenhum provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/
+    row-synopsis). Rótulo em linha própria acima dos badges (`.providers-label-row`), não mais espremido ao lado
+    deles — mesmo princípio visual do rótulo "✨ Insight do FilmBot" acima. Streaming e aluguel/compra combinados
+    num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`), sem badge separado
+    "Aluguel/Compra". Cada badge mostra a **logo real do TMDB** (`.provider-logo`, ~14px, `streaming_provider_
+    logos`/`rent_buy_provider_logos` — colunas já existentes na tabela SPEC, agora selecionadas por `agent.py` e
+    mapeadas por `formatacao.py::format_record()`) antes do nome, quando disponível; sem logo pra aquele provedor
+    (`logo_path` nulo na origem — ver `glue_agg/src/queries.py`), cai de volta pro badge só-texto. Nome e logo são
+    pareados **posicionalmente** (`componentes.py::_parse_provider_logos()` + `zip_longest`) e a **mesma
+    deduplicação por nome** que já existia (`name.lower()`) agora carrega a logo junto — garante que uma logo
+    nunca duplica quando o mesmo provedor aparece em streaming e aluguel/compra ao mesmo tempo. Mostra até 6
+    badges direto, sem badge "+N" (saber exatamente quantos couberam antes de quebrar linha exigiria JS medindo o
+    DOM real, risco aceito conscientemente — ver bullet do breakpoint acima): acima do teto de 6, trunca
     silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` (todos os provedores
     que baterem, não só o primeiro) e mesmo destaque visual `.highlighted` de gênero garantem que um provedor
     mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte nem passa despercebido
-  - "Ficha Técnica" (ícone 👥, grupo de pessoas), logo **acima** da Sinopse: mesmo mecanismo de accordion "▸"
-    (checkbox hack em CSS, sem JS) da Sinopse abaixo, em linha própria — não divide espaço com Sinopse/Trailer.
-    Faz parte do meio solto do card (ver bullet do grid acima), como todo o resto abaixo do pôster. Ao contrário
-    da rodada anterior (que só trazia diretor+elenco), traz **todos** os campos de elenco/equipe técnica já
-    formatados em `formatacao.py`: Diretor, Criador(es) (`creators`, só séries — aparece como bullet
-    independente do Diretor, sem fallback entre os dois; um título pode mostrar os dois ao mesmo tempo), Elenco
-    (`cast`, top 5 atores), Roteiro (`writers`), Trilha sonora (`composer`), Produção (`producer`), Fotografia
-    (`cinematographer`) e Montagem (`editor`) — um `<li>` por papel presente, dentro de um
-    `<ul class="people-list">` revelado ao expandir. O rótulo de cada papel vai em `<strong>` (branco, mesmo tom
-    do valor — destaque só por peso de fonte, não por cor) para escanear rápido quais papéis o título tem. O
-    rótulo da seção ("Ficha Técnica") é branco, não laranja como "Sinopse" — o laranja continua reservado pra
-    nota/motivo/sinopse, os pontos que pedem destaque visual; aqui é conteúdo informativo neutro. Se nenhum
-    papel estiver presente, a div nem é gerada (meio solto)
-  - Sinopse e trailer dividem a última linha do card, também no meio solto (não ancorada em nenhuma borda fixa
-    entre os 3 cards da fileira) — as duas são ações de "quero saber mais" sobre o título, então ficam juntas em
-    vez de o trailer competir com data/tipo lá em cima: accordion "▸ Sinopse" (checkbox hack em CSS, já que
-    `st.html` não executa `<script>`) recolhido por padrão à esquerda, link ▶ Trailer (quando disponível) à
-    direita na mesma linha, mesmo `font-size` do label "Sinopse" pros dois ficarem visualmente equivalentes.
-    Clicar no label expande o texto completo da sinopse e troca a seta para "▾", independente do tamanho do
-    texto. Se não houver sinopse mas houver trailer, a linha aparece só com o link; se não houver nenhum dos
-    dois, a div nem é gerada nesse card (meio solto)
+  - "Ficha Técnica" (ícone 👥, grupo de pessoas), logo **acima** da Sinopse: mesmo mecanismo de accordion (checkbox
+    hack em CSS, sem JS) da Sinopse abaixo, em linha própria. Faz parte do meio solto do card (ver bullet do grid
+    acima), como todo o resto abaixo do pôster. Traz **todos** os campos de elenco/equipe técnica já formatados em
+    `formatacao.py`: Diretor, Criador(es) (`creators`, só séries — aparece como bullet independente do Diretor,
+    sem fallback entre os dois; um título pode mostrar os dois ao mesmo tempo), Elenco (`cast`, top 5 atores),
+    Roteiro (`writers`), Trilha sonora (`composer`), Produção (`producer`), Fotografia (`cinematographer`) e
+    Montagem (`editor`) — um `<li>` por papel presente, dentro de um `<ul class="people-list">` revelado ao
+    expandir. O rótulo de cada papel vai em `<strong>` (branco, mesmo tom do valor — destaque só por peso de
+    fonte, não por cor) para escanear rápido quais papéis o título tem. O rótulo da seção ("Ficha Técnica") é
+    branco — o laranja fica reservado pra nota e "Insight do FilmBot"; aqui é conteúdo informativo neutro. Ícone
+    + texto ficam à esquerda do label e o chevron ⌄ (fechado) / ⌃ (aberto) na ponta direita da linha
+    (`justify-content:space-between` + `width:100%` no `<label>`, ver `principal.css`) — antes a seta ficava
+    **antes** do texto; foi pro lado oposto pra bater com o mockup mais recente. Se nenhum papel estiver presente,
+    a div nem é gerada (meio solto)
+  - Sinopse, na última linha do card, também no meio solto (não ancorada em nenhuma borda fixa entre os 3 cards
+    da fileira): accordion "Sinopse" (checkbox hack em CSS, já que `st.html` não executa `<script>`) recolhido
+    por padrão, com um ícone 📄 antes do texto e o mesmo chevron ⌄/⌃ na ponta direita da linha que "Ficha
+    Técnica" usa (mesmo motivo — bater com o mockup). O rótulo é **branco**, não mais laranja: o Trailer não
+    divide mais essa linha (subiu pra linha de duração/meta-line — ver bullets acima), então não sobrava mais
+    motivo pra "Sinopse" reter destaque de cor — o laranja ficou reservado só pra nota e "Insight do FilmBot".
+    Clicar no label expande o texto completo da sinopse e troca o chevron pra "⌃", independente do tamanho do
+    texto. Sem sinopse, a div nem é gerada nesse card (meio solto)
 
 ## Entradas e saídas
 
@@ -286,7 +293,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `componentes.py` | `_matches_highlighted(item, terms)` | Diz se `item` contém (case-insensitive) algum termo da lista `terms` (`highlighted_genres`/`highlighted_providers`). Compartilhada por `_prioritize()` (ordena) e pelo render de badges (decide a classe `.highlighted`), pra garantir que os dois concordem sobre o que é destaque |
 | `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges de texto (gêneros ou nomes de provedores) colocando primeiro **todos** os que contêm algum termo destacado (case-insensitive, via `_matches_highlighted()`), preservando a ordem relativa dentro de cada grupo — não só o primeiro match, se o usuário pediu mais de um termo |
 | `componentes.py` | `_parse_provider_names(names_raw)` | Faz o parsing de um grupo de provedores (streaming ou aluguel/compra) a partir da string comma-joined vinda de `glue_agg` |
-| `componentes.py` | `_render_provider_badges(names, highlighted)` | Monta os badges de texto de provedor (streaming e aluguel/compra já combinados e deduplicados por `render_card()`), prioriza via `_prioritize()` o(s) provedor(es) mencionado(s) pelo usuário e marca cada um com a classe `.highlighted` (borda + texto laranja). Mostra até 6 badges direto, sem toggle — acima do teto trunca silenciosamente (ver seção "Interface") |
+| `componentes.py` | `_parse_provider_logos(logos_raw)` | Faz o parsing da string de logos comma-joined (`streaming_provider_logos`/`rent_buy_provider_logos`), posicionalmente alinhada aos nomes — ao contrário de `_parse_provider_names()`, não filtra entradas vazias, pra não deslocar a posição dos itens seguintes |
+| `componentes.py` | `_render_provider_badges(providers, highlighted)` | Monta os badges de provedor (streaming e aluguel/compra já combinados, pareados nome+logo por `render_card()` e deduplicados por nome), prioriza via `_prioritize()` o(s) provedor(es) mencionado(s) pelo usuário e marca cada um com a classe `.highlighted` (borda + texto laranja). Renderiza a logo real do TMDB (`.provider-logo`) antes do nome quando disponível. Mostra até 6 badges direto, sem toggle — acima do teto trunca silenciosamente (ver seção "Interface") |
 | `static/login.css` | CSS da tela de login | Estilos específicos da tela de autenticação |
 | `static/principal.css` | CSS da página principal | Estilos do grid, cards e layout responsivo |
 | `static/contador_caracteres.js` | Script do contador dinâmico do campo de preferência + habilitar/desabilitar "Recomendar" | Observa a textarea via `data-testid="stTextArea"` e atualiza o contador e o `disabled` do botão "Recomendar" a cada tecla digitada (exceto quando `rate_limited`) |

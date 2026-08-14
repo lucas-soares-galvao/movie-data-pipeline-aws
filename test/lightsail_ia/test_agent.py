@@ -62,7 +62,8 @@ COLUMNS = [
     "producer", "cinematographer", "editor",
     "keywords_pt", "certification", "trailer_url", "collection_name",
     "production_companies", "production_countries", "networks", "created_by",
-    "streaming_providers", "rent_buy_providers",
+    "streaming_providers", "streaming_provider_logos",
+    "rent_buy_providers", "rent_buy_provider_logos",
     "recommended_titles", "similar_titles", "alternative_titles",
     "in_theaters", "theater_end_date",
 ]
@@ -323,6 +324,15 @@ class TestSearchTitlesSpec:
         assert "next_episode_number" in executed_sql
         assert "next_episode_season_number" in executed_sql
 
+    def test_select_inclui_logos_de_provedor(self):
+        with patch("agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("media_type = 'movie'")
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "streaming_provider_logos" in executed_sql
+        assert "rent_buy_provider_logos" in executed_sql
+
     def test_filtro_proximo_episodio_na_query(self):
         with patch("agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
@@ -532,7 +542,7 @@ class TestRecommend:
             result = agent.recommend("filmes de terror")
 
         assert "release_date" in result[0]
-        assert result[0]["release_date"] == "Mai de 1980"
+        assert result[0]["release_date"] == "Maio de 1980"
 
     def test_campos_formatados_pelo_python(self):
         with (

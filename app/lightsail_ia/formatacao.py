@@ -3,9 +3,9 @@
 from datetime import date, datetime, timezone
 
 _MONTHS = {
-    1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
-    5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
-    9: "Set", 10: "Out", 11: "Nov", 12: "Dez",
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
 }
 
 # Distância (em dias, pra qualquer lado) até a qual uma data ainda ganha dia exato
@@ -26,7 +26,8 @@ def _format_genres(genre_names: str | None) -> list[str]:
 
 
 def _format_title_duration(record: dict) -> str | None:
-    """Formata duração: '2h 15min' para filmes, '3 temps · 24 eps' para séries."""
+    """Formata duração: '2h 15min' para filmes, '3 temporadas · 24 episódios · ~45 min/ep'
+    para séries (só `min/ep` fica abreviado — o resto vai por extenso)."""
     if record.get("media_type") == "movie":
         raw = record.get("runtime_minutes")
         if not raw:
@@ -41,16 +42,17 @@ def _format_title_duration(record: dict) -> str | None:
     ep_runtime = record.get("episode_runtime_minutes")
     if seasons:
         n = int(seasons)
-        parts.append(f"{n} temp{'s' if n != 1 else ''}")
+        parts.append(f"{n} temporada{'s' if n != 1 else ''}")
     if episodes:
-        parts.append(f"{int(episodes)} eps")
+        n = int(episodes)
+        parts.append(f"{n} episódio{'s' if n != 1 else ''}")
     if ep_runtime:
         parts.append(f"~{int(ep_runtime)} min/ep")
     return " · ".join(parts) if parts else None
 
 
 def _format_release_date(air_date: str | None) -> str | None:
-    """Converte data ISO 'YYYY-MM-DD' para 'Mês abreviado de Ano' em português."""
+    """Converte data ISO 'YYYY-MM-DD' para 'Mês de Ano' (nome do mês por extenso) em português."""
     if not air_date or len(air_date) < 7:
         return None
     try:
@@ -134,6 +136,7 @@ def format_record(record: dict, today: date | None = None) -> dict:
             else None
         ),
         "streaming_providers": record.get("streaming_providers") or None,
+        "streaming_provider_logos": record.get("streaming_provider_logos") or None,
         "in_theaters": in_theaters,
         "theater_end_date": (
             _format_adaptive_date(record.get("theater_end_date"), today=today) if in_theaters else None
@@ -162,6 +165,7 @@ def format_record(record: dict, today: date | None = None) -> dict:
         "networks": record.get("networks") or None,
         "creators": record.get("created_by") or None,
         "rent_buy_providers": record.get("rent_buy_providers") or None,
+        "rent_buy_provider_logos": record.get("rent_buy_provider_logos") or None,
         "recommended": record.get("recommended_titles") or None,
         "similar": record.get("similar_titles") or None,
         "alternative_titles": record.get("alternative_titles") or None,
