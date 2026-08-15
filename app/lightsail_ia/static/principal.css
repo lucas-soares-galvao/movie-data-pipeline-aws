@@ -86,10 +86,19 @@ button[data-testid="stBaseButton-secondary"] {
   align-items: center;
   gap: 12px;
 }
-.header-icon {
-  font-size: 34px;
-  line-height: 1;
+/* Badge quadrado arredondado laranja atrás do ícone (antes era só o emoji 🎬 solto, sem
+   fundo) — o ícone em si é o SVG Lucide "clapperboard" (via componentes.py::icon()), branco
+   por padrão via .icon, sem CSS extra aqui. border-radius:10px casa com o do botão "Sair"
+   (.st-key-btn_sair), mesma linha do header. */
+.header-icon-badge {
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
+  background: #f97316;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 /* Itens flex têm min-width:auto por padrão, travando a largura mínima no
    conteúdo sem quebra — o subtítulo inteiro numa linha só. Isso empurra a
@@ -183,6 +192,13 @@ button[data-testid="stBaseButton-secondary"] {
   font-size: 40px;
   color: #fff;
   margin: 0 0 4px;
+  /* Sem isso, "O que você quer assistir hoje?" quebra deixando "hoje?" sozinho na 2ª linha
+     (quebra padrão do navegador dentro dos ~616px úteis de .st-key-hero-section) —
+     text-wrap:balance distribui o texto de forma mais equilibrada entre as linhas.
+     Navegadores sem suporte (fora do Chrome 114+/Firefox 121+/Safari 17.5+) ignoram a
+     propriedade e mantêm a quebra padrão de hoje — progressive enhancement, não quebra
+     nada. */
+  text-wrap: balance;
 }
 .accent-gradient-text {
   color: #f97316;
@@ -640,13 +656,8 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    de mais respiro entre si pra não parecerem uma lista só; alternativa mais leve que dar
    cor própria a cada um (cor nesse design é reservada pra "preste atenção aqui" — nota,
    motivo, sinopse, em cartaz, classificação —, não pra diferenciar categoria). */
-/* Mesma estrutura de .providers-row/.provider-badges (2 níveis: ícone + span que quebra
-   linha por conta própria) — antes o ícone era só mais um item solto dentro do mesmo
-   flex-wrap dos badges, então ao quebrar linha o texto ficava rente à borda esquerda do
-   card (embaixo do ícone) em vez de alinhado com o primeiro badge, diferente de como
-   provedor já se comportava (badges numa coluna própria, à direita do ícone, que quebra
-   linha só entre si). align-items:flex-start (não center) mantém o ícone ancorado na
-   primeira linha mesmo com a quebra. Sem margin própria — respiro vem do gap de
+/* Sem ícone (removido) — wrapper só existe pra receber o margin-top de seção (ver bloco
+   "Respiro entre seções" abaixo). Sem margin própria além desse — respiro vem do gap de
    .card-body. */
 .genres-container {
   display: flex;
@@ -678,6 +689,8 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
    "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
 .row-reason {
   margin-top: 16px;
+  border-left: 3px solid #f97316;
+  padding-left: 12px;
 }
 .meta-line {
   margin-top: 16px;
@@ -711,8 +724,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
      conteúdo pede. */
 
 /* Sem height:100%/box-sizing: sem subgrid, .row-reason não compartilha altura de linha com
-   os vizinhos (faz parte do meio solto) — o fundo colorido já acompanha a altura natural do
-   próprio texto. */
+   os vizinhos (faz parte do meio solto). Sem fundo colorido — só uma barra de acento à
+   esquerda (border-left, ver .row-reason acima), estilo blockquote, cobrindo rótulo e
+   texto de uma vez por estar no wrapper pai. O rótulo (.reason-label) fica laranja, o
+   texto do motivo (.reason) é neutro, mesmo tom de .synopsis-text/.people-list. */
 .reason-label {
   display: block;
   color: #fdba74;
@@ -721,14 +736,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   margin-bottom: 4px;
 }
 .reason {
-  color: #fdba74;
+  color: #d4d4d4;
   font-size: 14px;
   font-style: italic;
   margin: 0;
-  padding: 6px 10px;
-  background: rgba(249,115,22,0.05);
-  border-left: 2px solid rgba(249,115,22,0.3);
-  border-radius: 4px;
   line-height: 1.4;
 }
 
@@ -741,13 +752,10 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   gap: 6px;
 }
 
-/* display:inline-flex + align-items/justify-content:center (não line-height:1 +
-   text-align:center) centraliza o glifo dentro de uma caixa de tamanho fixo — mais
-   confiável entre fontes/navegadores, já que emoji tem métricas de fonte (ascent/descent)
-   que variam bastante e deixam o glifo visualmente "flutuando" acima do centro real
-   quando centralizado só por line-height. */
+/* display:inline-flex + align-items/justify-content:center centraliza o ícone (SVG Lucide,
+   ver .icon abaixo) dentro de uma caixa de tamanho fixo, independente de estado
+   (ℹ/⏱/calendário/tv). */
 .meta-icon {
-  font-size: 18px;
   flex-shrink: 0;
   width: 20px;
   height: 20px;
@@ -756,13 +764,23 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
   justify-content: center;
 }
 
-/* O "ℹ" da meta-line é texto puro (sem seletor de variação de emoji), não o glifo colorido
-   — por isso `color` funciona aqui, diferente do 🎬 de "Em cartaz" (emoji nativo, sempre
-   colorido, ignora `color` do CSS). Cinza pra combinar com o resto do texto da linha —
-   um azul de ícone de sistema soltaria destoando da paleta do card (laranja = destaque,
-   cinza = fato neutro, amarelo = "em cartaz", cores da classificação = convenção externa). */
-.meta-line .meta-icon {
-  color: #a3a3a3;
+/* Ícones Lucide (outline, stroke="currentColor" no SVG — ver _icon() em componentes.py):
+   brancos por padrão, independente do contexto (mesmo dentro de .meta-line/.providers-label,
+   que são cinza) — `color` declarado direto no próprio elemento sempre vence o herdado do
+   ancestral, então não precisa mexer nessas regras. */
+.icon {
+  color: #fff;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* Única exceção à regra "ícone sempre branco": o "sparkles" do Insight do FilmBot
+   acompanha a cor do rótulo/barra de acento (mesma família de laranja do design system,
+   ver .reason-label/.row-reason acima) — seletor descendente vence `.icon` sozinho por
+   especificidade, sem precisar de !important nem depender da ordem no arquivo. */
+.reason-label .icon {
+  color: #fdba74;
 }
 
 .meta-line {
@@ -789,7 +807,7 @@ div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
 /* Fundo/borda mais sutis que .provider-badge (0.04/0.08 vs. 0.12/0.16) — os dois usam a
    mesma escala de cinza neutro do design system (sem matiz própria, reservada pra pontos
    de atenção como nota/motivo/"em cartaz"), só em dois degraus diferentes, pra dar pra
-   distinguir gênero de provedor sem depender só do ícone 🎭/📺. */
+   distinguir gênero de provedor mesmo sem ícone (nenhum dos dois grupos tem mais). */
 .genre {
   background: rgba(255,255,255,0.04);
   color: #d4d4d4;

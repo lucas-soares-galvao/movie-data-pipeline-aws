@@ -20,10 +20,58 @@ _CERTIFICATION_DESCRIPTIONS = {
 _MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
 
-_YT_IMG = (
-    '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJyZWQiPjxwYXRoIGQ9Ik0yMy40OTggNi4xODZhMy4wMTYgMy4wMTYgMCAwIDAtMi4xMjItMi4xMzZDMTkuNTA1IDMuNTQ2IDEyIDMuNTQ2IDEyIDMuNTQ2cy03LjUwNSAwLTkuMzc3LjUwNEEzLjAxNyAzLjAxNyAwIDAgMCAuNTAyIDYuMTg2QzAgOC4wNyAwIDEyIDAgMTJzMCAzLjkzLjUwMiA1LjgxNGEzLjAxNiAzLjAxNiAwIDAgMCAyLjEyMiAyLjEzNmMxLjg3MS41MDQgOS4zNzYuNTA0IDkuMzc2LjUwNHM3LjUwNSAwIDkuMzc3LS41MDRhMy4wMTUgMy4wMTUgMCAwIDAgMi4xMjItMi4xMzZDMjQgMTUuOTMgMjQgMTIgMjQgMTJzMC0zLjkzLS41MDItNS44MTR6TTkuNTQ1IDE1LjU2OFY4LjQzMkwxNS44MTggMTJsLTYuMjczIDMuNTY4eiIvPjwvc3ZnPg=="'
-    ' width="20" height="20" alt="YouTube" style="display:inline-block;vertical-align:middle;" />'
-)
+# Ícones outline do design system "Luminous" (Lucide, stroke-only, brancos via .icon em
+# principal.css) — paths oficiais do pacote lucide-static, viewBox 24x24. Embutidos como
+# <svg> inline (não <img> base64, como o antigo ícone de marca do YouTube que isso
+# substituiu) porque só assim `stroke="currentColor"` consegue herdar cor via CSS. Públicos
+# (sem prefixo `_`) porque `app.py` também usa pra montar o badge do ícone do cabeçalho, não
+# só `render_card()` aqui dentro.
+ICON_PATHS = {
+    "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    "clock": '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    "play": '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
+    "calendar": (
+        '<path d="M8 2v3"/><path d="M16 2v3"/>'
+        '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/>'
+    ),
+    "tv": '<path d="m17 2-5 5-5-5"/><rect width="20" height="15" x="2" y="7" rx="2"/>',
+    "file-text": (
+        '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588'
+        'A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>'
+        '<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>'
+    ),
+    "sparkles": (
+        '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 '
+        '1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 '
+        '1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-'
+        '1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/>'
+        '<circle cx="4" cy="20" r="2"/>'
+    ),
+    "users": (
+        '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>'
+        '<path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>'
+        '<circle cx="9" cy="7" r="4"/>'
+    ),
+    "clapperboard": (
+        '<path d="m12.296 3.464 3.02 3.956"/>'
+        '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z"/>'
+        '<path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
+        '<path d="m6.18 5.276 3.1 3.899"/>'
+    ),
+}
+
+
+def icon(name: str, size: int = 16) -> str:
+    """Monta um ícone Lucide inline (outline, `stroke="currentColor"` — cor vem da classe
+    `.icon` em principal.css, branca por padrão; o ícone "sparkles" do Insight do FilmBot é
+    a única exceção, laranja via `.reason-label .icon`). Usada por `render_card()` aqui
+    dentro e pelo badge do ícone do cabeçalho em `app.py`."""
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"'
+        f' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+        f' stroke-linecap="round" stroke-linejoin="round" class="icon icon-{name}"'
+        f' aria-hidden="true">{ICON_PATHS[name]}</svg>'
+    )
 
 
 def _inject_css(file_name: str) -> None:
@@ -108,9 +156,9 @@ def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
     extra_html: HTML bruto adicional anexado ao final, não escapado — usado só pelo
     countdown de rate limit de busca, para injetar o <span id="countdown"> vazio.
     """
-    icon = "❌" if kind == "error" else "⚠️"
+    icon_char = "❌" if kind == "error" else "⚠️"
     st.markdown(
-        f'<div class="msg-{kind}">{icon} {html.escape(message)}{extra_html}</div>',
+        f'<div class="msg-{kind}">{icon_char} {html.escape(message)}{extra_html}</div>',
         unsafe_allow_html=True,
     )
 
@@ -236,7 +284,6 @@ def render_card(title: dict, idx: int = 0) -> str:
     if genres_html:
         genres_block_html = (
             f'<div class="genres-container">'
-            f'<span class="meta-icon">🎭</span>'
             f'<span class="genre-badges">{genres_html}</span></div>'
         )
 
@@ -244,26 +291,25 @@ def render_card(title: dict, idx: int = 0) -> str:
     # nunca preenchem mais de um ao mesmo tempo (upcoming_date só existe pra air_date futuro —
     # incompatível com estar em cartaz ou ter próximo episódio de uma série já no ar) — por
     # isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
-    # Sem nenhum dos três, não emite a div — o card fica com essa linha a menos (meio solto,
-    # ver principal.css).
+    # Os três usam o mesmo ícone de calendário (antes eram emoji diferentes por estado —
+    # 🎬/📅/🔜 —, unificados num só ícone Lucide). Sem nenhum dos três, não emite a div — o
+    # card fica com essa linha a menos (meio solto, ver principal.css).
+    cinema_icon_html = f'<span class="meta-icon">{icon("calendar")}</span>'
     cinema_content = ""
     if in_theaters:
         label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
         cinema_content = (
-            f'<span class="meta-icon">🎬</span>'
-            f'<span class="cinema-badge">{html.escape(label)}</span>'
+            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
         )
     elif next_episode_season_number is not None and next_episode_number is not None and next_episode_date:
         label = f"T{next_episode_season_number} E{next_episode_number} estreia em {next_episode_date}"
         cinema_content = (
-            f'<span class="meta-icon">📅</span>'
-            f'<span class="cinema-badge">{html.escape(label)}</span>'
+            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
         )
     elif upcoming_date:
         label = f"Em breve · {upcoming_date}"
         cinema_content = (
-            f'<span class="meta-icon">🔜</span>'
-            f'<span class="cinema-badge">{html.escape(label)}</span>'
+            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
         )
     cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""
 
@@ -299,19 +345,19 @@ def render_card(title: dict, idx: int = 0) -> str:
     # princípio do rótulo "Onde assistir" acima dos badges de provedor — a seção agora vem
     # depois dos gêneros (ver return, mais abaixo), não mais logo após o título.
     reason_block_html = (
-        f'<div class="row-reason"><span class="reason-label">✨ Insight do FilmBot</span>'
+        f'<div class="row-reason"><span class="reason-label">{icon("sparkles")} Insight do FilmBot</span>'
         f'<p class="reason">{reason}</p></div>'
         if reason
         else ""
     )
 
     date_type_parts = []
+    if title_type:
+        date_type_parts.append(title_type)
     if release_date:
         date_type_parts.append(release_date)
     elif year:
         date_type_parts.append(f"({year})")
-    if title_type:
-        date_type_parts.append(title_type)
     meta_left = " · ".join(date_type_parts)
     if not has_poster and certification_html:
         meta_left = f"{meta_left} {certification_html}" if meta_left else certification_html
@@ -320,47 +366,40 @@ def render_card(title: dict, idx: int = 0) -> str:
     if trailer_url:
         safe_url = html.escape(trailer_url)
         trailer_html = (
-            f'<span class="vital vital-trailer">{_YT_IMG}'
+            f'<span class="vital vital-trailer">{icon("play")}'
             f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
             f'Trailer</a></span>'
         )
 
-    # Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo; sem
-    # pôster a nota continua no slot direito, como sempre foi. Faz parte do meio solto do
-    # card (ver principal.css) — só emite a div quando há data/tipo ou nota (sem pôster) pra
-    # mostrar. O ícone fica dentro de .meta-info (não como irmão solto de .meta-row) porque
-    # .meta-line usa justify-content:space-between pra separar meta-info/nota — um 3º filho
-    # direto do .meta-row empurraria o ícone pra ponta esquerda e o texto pra ponta direita,
-    # longe um do outro, em vez de ficarem juntos como "ícone + texto".
-    meta_icon_html = '<span class="meta-icon">ℹ</span>' if meta_left else ""
+    # Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo (+
+    # Trailer); sem pôster a nota continua no slot direito, como sempre foi. Faz parte do
+    # meio solto do card (ver principal.css) — só emite a div quando há data/tipo, Trailer ou
+    # nota (sem pôster) pra mostrar. Ícone e Trailer ficam dentro de .meta-info (não como
+    # irmãos soltos de .meta-row) porque .meta-line usa justify-content:space-between pra
+    # separar meta-info/nota — um filho a mais direto do .meta-row empurraria pra ponta
+    # esquerda/direita, longe do resto do grupo, em vez de ficarem juntos à esquerda.
+    meta_icon_html = f'<span class="meta-icon">{icon("info")}</span>' if meta_left else ""
     duration_escaped = html.escape(duration) if duration else ""
 
     meta_right = "" if has_poster else rating_html
     meta_html = ""
-    if meta_left or meta_right:
+    if meta_left or trailer_html or meta_right:
         meta_html = (
             f'<div class="meta-row meta-line">'
-            f'<span class="meta-info">{meta_icon_html}{meta_left}</span>'
+            f'<span class="meta-info">{meta_icon_html}{meta_left}{trailer_html}</span>'
             f'{meta_right}</div>'
         )
 
-    # Duração e Trailer sempre dividem uma linha própria, com ou sem pôster — medido via
-    # Playwright que juntar os dois na mesma linha de data/tipo (pra "economizar" uma linha)
-    # transborda e quebra em 3 linhas feias na largura mínima do card (~355-373px) com o
-    # pior caso plausível (série com "3 temporadas · 61 episódios · ~24 min/ep" + Trailer) —
-    # abrir mão dessa otimização de espaço bate com o próprio mockup, que já mostra duração e
-    # data/tipo em linhas separadas mesmo com pôster. Emite quando há duração OU trailer pra
-    # mostrar (não só duração) — sem isso, um título sem duração mas com trailer (ex.:
-    # runtime ainda não confirmado no TMDB) perderia o link. Sem nenhum dos dois, a div nem é
-    # gerada (meio solto, ver principal.css).
+    # Duração em linha própria — só quando há duração pra mostrar (o Trailer não entra mais
+    # aqui, subiu pra meta-line acima, do lado esquerdo, junto de data/tipo). Faz parte do
+    # meio solto do card (ver principal.css) — sem duração, a div nem é gerada.
     duration_html = ""
-    if duration or trailer_html:
-        duration_info_html = (
-            f'<span class="meta-info"><span class="meta-icon">⏱</span>{duration_escaped}</span>'
-            if duration
-            else ""
+    if duration:
+        duration_html = (
+            f'<div class="meta-row duration-row">'
+            f'<span class="meta-info"><span class="meta-icon">{icon("clock")}</span>'
+            f'{duration_escaped}</span></div>'
         )
-        duration_html = f'<div class="meta-row duration-row">{duration_info_html}{trailer_html}</div>'
 
     # Nome e logo são pareados posicionalmente (zip_longest com fillvalue vazio — a logo
     # pode faltar/estar desalinhada em dados legados sem quebrar o pareamento) antes da
@@ -397,7 +436,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         providers_block_html = (
             f'<div class="providers-row">'
             f'<div class="providers-label-row">'
-            f'<span class="meta-icon">📺</span>'
+            f'<span class="meta-icon">{icon("tv")}</span>'
             f'<span class="providers-label">Onde assistir</span></div>'
             f'<div class="provider-badges">{provider_badges_html}</div>'
             f'</div>'
@@ -418,7 +457,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         synopsis_toggle_html = f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
         synopsis_label_html = (
             f'<label for="{toggle_id}" class="synopsis-label">'
-            f'<span class="synopsis-icon-text"><span class="synopsis-icon">📄</span> Sinopse</span>'
+            f'<span class="synopsis-icon-text"><span class="synopsis-icon">{icon("file-text")}</span> Sinopse</span>'
             f'<span class="synopsis-arrow-closed">⌄</span>'
             f'<span class="synopsis-arrow-open">⌃</span></label>'
         )
@@ -460,7 +499,7 @@ def render_card(title: dict, idx: int = 0) -> str:
         people_row_html = (
             f'<div class="meta-row people-row">'
             f'<label for="{people_toggle_id}" class="people-label">'
-            f'<span class="people-icon-text"><span class="people-icon">👥</span> Ficha Técnica</span>'
+            f'<span class="people-icon-text"><span class="people-icon">{icon("users")}</span> Ficha Técnica</span>'
             f'<span class="people-arrow-closed">⌄</span>'
             f'<span class="people-arrow-open">⌃</span>'
             f'</label>'
