@@ -127,9 +127,11 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   presente. `duration-row`/`cinema-row` usam um respiro menor (`margin-top: 4px`) por ficarem
   mais coladas na meta-line, como continuação do mesmo bloco de "fatos rápidos".
 - **Largura do rodapé (`render_footer()`):** antes de pesquisar, o rodapé fica com a mesma largura do hero (640px, centralizado, `.footer { max-width: 640px; margin: auto }`). `.grid-titles` (resultados) não tem largura própria — ocupa a largura natural do `block-container`. Quando há resultado na tela, `body:has(.grid-titles) .footer { max-width: none }` destrava o rodapé pra acompanhar essa largura maior, em vez de ficar preso nos 640px do hero
-- **Cabeçalho (`st.container(key="header-row")`):** ícone 🎬 maior (`.header-icon`, 34px) à esquerda, com título "FilmBot" (28px, `!important` — ver nota abaixo) + subtítulo (13px, `!important`) empilhados à direita dele sem nenhuma das duas linhas passar por baixo do ícone (`.header-brand` flex row + `.header-text` flex column, dentro de um único `st.markdown`) — substitui `st.title`/`st.caption`, que rendem um `<h1>` grande demais pra esse contexto de topo de página, mesmo padrão de markdown customizado já usado em `.login-title`/`.login-subtitle` na tela de login. **`!important` no `font-size` de `.header-title`/`.header-subtitle`:** o Streamlit aplica um `font-size` próprio no `<p>` via seletor com especificidade maior que a classe sozinha — sem o `!important`, o valor definido aqui é ignorado e o texto renderiza sempre em 16px, confirmado via inspeção real do DOM (Playwright). Botão "Sair" (`key="btn_sair"`) estilizado como pill discreto (`#3f3f3f`, cinza neutro). A coluna do título cresce (`flex:1 1 auto`) pra preencher o espaço extra e empurrar a coluna do botão (`flex:0 0 auto`) pra ponta direita — necessário porque a regra genérica "Colunas dos botoes se ajustam ao conteudo" (mais acima em `principal.css`) exclui explicitamente linhas com `<h1>`; sem esse `<h1>` (trocado por markdown), as colunas do header passaram a encolher pro conteúdo, deixando um vão grande entre o botão e a borda direita real do hero — medido via inspeção real do DOM (Playwright). Alinhamento vertical do botão via `align-items:center` no `stHorizontalBlock` mais um nudge fino (`position:relative; top:8px`) — o wrapper interno que o Streamlit gera em volta de `st.markdown` reporta uma altura menor que a dos dois parágrafos reais (título+subtítulo), então o `align-items:center` sozinho centraliza o botão ~8px acima do centro visual verdadeiro; compensado diretamente após medir via inspeção real do DOM, já que a causa raiz da altura errada não pôde ser isolada/corrigida via CSS (`height`/`min-height`/`max-height:auto` não tiveram efeito). **Wrap natural (sem breakpoint fixo):** `flex-wrap:wrap` + `justify-content:space-between` no `stHorizontalBlock` — o botão fica lado a lado com o ícone+texto enquanto couber (como no desktop, em qualquer largura) e só quebra pra linha de baixo quando o espaço realmente não for suficiente; `justify-content:space-between` resolve o alinhamento nos dois cenários sozinho (título à esquerda/botão à direita quando cabem juntos; botão alinhado à esquerda quando quebra pra própria linha, já que não sobra "outro lado" pra empurrar), e o `gap:12px` do row garante um respiro mínimo tanto na horizontal quanto na vertical (quando quebra) — testado via Playwright em várias larguras (1280px a 320px)
+- **Cabeçalho (`st.container(key="header-row")`):** badge quadrado arredondado laranja (`.header-icon-badge`, 40x40px, `border-radius:10px` — mesmo valor do botão "Sair" logo ao lado) com o ícone Lucide outline "clapperboard" branco dentro (`componentes.py::icon("clapperboard", size=20)`, mesmo sistema de ícones do card de recomendação — trocou o emoji 🎬 solto que existia antes, sem fundo) à esquerda, com título "FilmBot" (28px, `!important` — ver nota abaixo) + subtítulo (13px, `!important`) empilhados à direita dele sem nenhuma das duas linhas passar por baixo do ícone (`.header-brand` flex row + `.header-text` flex column, dentro de um único `st.markdown`) — substitui `st.title`/`st.caption`, que rendem um `<h1>` grande demais pra esse contexto de topo de página, mesmo padrão de markdown customizado já usado em `.login-title`/`.login-subtitle` na tela de login. **`!important` no `font-size` de `.header-title`/`.header-subtitle`:** o Streamlit aplica um `font-size` próprio no `<p>` via seletor com especificidade maior que a classe sozinha — sem o `!important`, o valor definido aqui é ignorado e o texto renderiza sempre em 16px, confirmado via inspeção real do DOM (Playwright). Botão "Sair" (`key="btn_sair"`) estilizado como pill discreto (`#3f3f3f`, cinza neutro). A coluna do título cresce (`flex:1 1 auto`) pra preencher o espaço extra e empurrar a coluna do botão (`flex:0 0 auto`) pra ponta direita — necessário porque a regra genérica "Colunas dos botoes se ajustam ao conteudo" (mais acima em `principal.css`) exclui explicitamente linhas com `<h1>`; sem esse `<h1>` (trocado por markdown), as colunas do header passaram a encolher pro conteúdo, deixando um vão grande entre o botão e a borda direita real do hero — medido via inspeção real do DOM (Playwright). Alinhamento vertical do botão via `align-items:center` no `stHorizontalBlock` mais um nudge fino (`position:relative; top:8px`) — o wrapper interno que o Streamlit gera em volta de `st.markdown` reporta uma altura menor que a dos dois parágrafos reais (título+subtítulo), então o `align-items:center` sozinho centraliza o botão ~8px acima do centro visual verdadeiro; compensado diretamente após medir via inspeção real do DOM, já que a causa raiz da altura errada não pôde ser isolada/corrigida via CSS (`height`/`min-height`/`max-height:auto` não tiveram efeito). **Wrap natural (sem breakpoint fixo):** `flex-wrap:wrap` + `justify-content:space-between` no `stHorizontalBlock` — o botão fica lado a lado com o ícone+texto enquanto couber (como no desktop, em qualquer largura) e só quebra pra linha de baixo quando o espaço realmente não for suficiente; `justify-content:space-between` resolve o alinhamento nos dois cenários sozinho (título à esquerda/botão à direita quando cabem juntos; botão alinhado à esquerda quando quebra pra própria linha, já que não sobra "outro lado" pra empurrar), e o `gap:12px` do row garante um respiro mínimo tanto na horizontal quanto na vertical (quando quebra) — testado via Playwright em várias larguras (1280px a 320px)
+- **Tela de login (`login-card`, `static/login.css`):** mesmo ícone "clapperboard" do cabeçalho principal, mas com as cores invertidas — badge escuro (`.login-icon-badge`, `#1a1a1a`, `border-radius:10px`, 36x36px) com o ícone laranja (`.login-icon-badge .icon { color:#f97316 }`, já que `.icon` branca de `principal.css` não é carregada nesta tela — cada tela injeta o próprio CSS de forma independente) dentro de `.login-brand` (`display:flex`, mesmo princípio de `.header-brand`), ao lado do título "FilmBot" — branco (`.login-title`, sem `.accent-gradient-text`, removida do login: reservada só pra "assistir" no hero). Subtítulo, divisor laranja (`.login-divider`) e botão "Entrar →" abaixo continuam como já estavam
+- **Título do hero (`st.container(key="hero-section")`):** "O que você quer **assistir** hoje?" (`.hero-heading`, 40px, `font-weight:300`, a palavra "assistir" em laranja via `.accent-gradient-text`) — `text-wrap: balance` evita que "hoje?" quebre sozinho numa 2ª linha (comportamento padrão do navegador dentro dos ~616px úteis de `.st-key-hero-section`, sem essa propriedade); navegadores sem suporte (fora do Chrome 114+/Firefox 121+/Safari 17.5+) simplesmente ignoram a regra e mantêm a quebra padrão de antes, sem quebrar nada. Botão "Recomendar" sem emoji no rótulo (só o texto, igual ao estado desabilitado que já não tinha)
 - **Rate limiting por IP:** máximo de 15 consultas por hora (janela deslizante). O contador ("Consultas restantes: N/15 por hora") é exibido abaixo do campo de texto, em cinza (`.query-counter-text`); quando restam 3 consultas ou menos, o texto muda para laranja em negrito (`.query-counter-low`, `principal.css`) para avisar a pessoa antes de o limite ser atingido. Ao atingir o limite, o botão "Recomendar" é desabilitado e um countdown dinâmico MM:SS mostra quanto tempo falta em tempo real, decrementando a cada segundo — a caixa de aviso vem de `render_feedback()` (renderizada na página real, com CSS de `principal.css`) e só o `<span id="countdown">` é atualizado por `static/countdown.js` (injetado por `load_countdown_script()`, genérico — reusado também pelo bloqueio de login, ver abaixo), que acessa `window.parent.document` a partir do iframe do `st.components.v1.html` — mesmo padrão de `audio_timer.js`, sem duplicar CSS dentro do iframe. Ao chegar em 00:00, a página recarrega automaticamente. O histórico de timestamps é mantido em dict no nível do módulo (`_ip_history`), indexado pelo IP do cliente via `X-Forwarded-For` — sobrevive a reloads da página (reseta apenas no restart do processo Streamlit, ex: deploy)
-- **Mensagens de erro/aviso padronizadas (`render_feedback()`, `componentes.py`):** todo feedback de erro/aviso do app — senha incorreta no login, os 5 avisos de transcrição, rate limit de busca, erro ao buscar recomendações e busca sem resultado — usa o mesmo componente: uma caixa `.msg-error`/`.msg-warning` com ícone (❌/⚠️), em vez da mistura anterior de `st.caption()` cru (sem caixa) e `components.html()` com CSS duplicado num iframe. A tela de login duplica `.msg-error`/`.msg-warning` em `login.css` (mesmo motivo de `.accent-gradient-text`: cada tela injeta seu próprio CSS de forma independente). Os blocos de "erro ao buscar"/"sem resultado" — antes soltos fora de qualquer container com largura travada, o que deixava a caixa desproporcional em relação ao resto do hero — agora ficam dentro de `st.container(key="results-messages")`, incluído na mesma regra de `max-width: 640px` de `hero-section`/`hero-actions`/`header-row` (`principal.css`)
+- **Mensagens de erro/aviso padronizadas (`render_feedback()`, `componentes.py`):** todo feedback de erro/aviso do app — senha incorreta no login, os 5 avisos de transcrição, rate limit de busca, erro ao buscar recomendações e busca sem resultado — usa o mesmo componente: uma caixa `.msg-error`/`.msg-warning` com ícone (❌/⚠️), em vez da mistura anterior de `st.caption()` cru (sem caixa) e `components.html()` com CSS duplicado num iframe. A tela de login duplica `.msg-error`/`.msg-warning` em `login.css` — cada tela injeta seu próprio CSS de forma independente, então uma classe usada nas duas precisa existir fisicamente nos dois arquivos. Os blocos de "erro ao buscar"/"sem resultado" — antes soltos fora de qualquer container com largura travada, o que deixava a caixa desproporcional em relação ao resto do hero — agora ficam dentro de `st.container(key="results-messages")`, incluído na mesma regra de `max-width: 640px` de `hero-section`/`hero-actions`/`header-row` (`principal.css`)
 - **Botão "Recomendar" desabilitado sem texto:** `disabled=_remaining <= 0 or not preference` — além do rate limit, o botão já nasce desabilitado (opacidade 0.5, `.st-key-btn_recomendar button:disabled` em `principal.css`) enquanto o campo de preferência estiver vazio, sem precisar clicar pra descobrir que não digitou nada
 - **Botão "Entrar" do login desabilitado sem senha, em tempo real:** `disabled=_locked_out or not password` no `st.button(key="btn_entrar")`, com `[data-testid="stButton"] > button:disabled { opacity: 0.5; box-shadow: none }` em `login.css`. Habilita/desabilita a cada tecla digitada no campo de senha — não só no próximo rerun do Streamlit (que só ocorre ao perder o foco/Enter) — via `static/login_button_toggle.js` (injetado por `load_login_button_toggle_script(_locked_out)`), mesmo padrão de `contador_caracteres.js`/`window.parent.document` já usado pelo botão "Recomendar"; a flag `locked_out` é passada pro script pro mesmo motivo de `rate_limited` em `contador_caracteres.js` — o JS nunca reabilita um botão que a Python travou por bloqueio de tentativas
 - **Bloqueio temporário de login por tentativas incorretas:** após `_MAX_LOGIN_ATTEMPTS` (3) senhas erradas em `_LOGIN_LOCKOUT_SECONDS` (60s), o botão "Entrar" fica desabilitado e a mesma caixa de aviso + countdown do rate limit de busca aparece no lugar da mensagem de erro (`render_feedback("warning", ...)` + `load_countdown_script()`), reaproveitando `_events_in_window()`/`_seconds_until_available()` com uma janela de 60s em vez de 1h. O histórico de tentativas incorretas é mantido em `_login_attempt_history` (mesmo padrão `@st.cache_resource` de `_ip_history`/`_audio_ip_history`, indexado pelo IP via `_get_client_ip()`) — como é uma janela deslizante, não há reset explícito: tentativas antigas simplesmente saem da contagem conforme o tempo passa. O bloqueio é reavaliado no servidor a cada rerun (não só via o atributo `disabled` do botão no HTML), então não pode ser burlado manipulando o DOM no navegador — mesmo um clique forjado com `submit=True` durante o bloqueio cai no primeiro `if _locked_out` do fluxo e nunca chega a comparar a senha
@@ -150,38 +152,50 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     texto do corpo do card. **Sem imagem**, não há onde sobrepor: os dois caem de volta pra dentro da linha de
     metadados (ver abaixo), como no layout anterior
   - Título
-  - Linha única de metadados: ícone ℹ (`.meta-icon`, mesmo padrão do 🎬 de "Em cartaz" mais abaixo) seguido de
-    data de lançamento (ou ano, quando a data não está disponível) · tipo (Filme/Série). O ícone fica **dentro**
-    de `.meta-info` junto do texto (não como irmão direto de `.meta-row`) — `.meta-line` usa
-    `justify-content:space-between` pra separar texto/nota, então um 3º filho solto empurraria o ícone pra ponta
-    esquerda e o texto pra ponta direita, longe um do outro. O ícone só aparece quando há data/tipo pra rotular
-    (sem isso, `.meta-info` fica só com o resto do conteúdo — sem ícone solto sem texto ao lado). Se não sobrar
-    nada pra mostrar em lugar nenhum da linha (sem data/tipo, sem nota), a `.meta-line` inteira nem é gerada —
-    meio solto, mesmo padrão das demais seções do card. **Com imagem**, o lado direito fica vazio — nota e
-    classificação já foram pra imagem. **Sem imagem**, o lado direito volta a ser a nota (★) e a classificação
-    entra junto de data/tipo à esquerda, como antes. Duração e Trailer **não** entram mais nessa linha em nenhum
-    dos dois casos (ver bullet seguinte) — medido via Playwright que juntar os três (data/tipo + duração +
-    Trailer) transborda a largura mínima do card (~355-373px) e quebra em 3 linhas feias, mesmo com imagem; a
-    "economia" de uma linha que existia antes de trazer o Trailer pra cá deixou de valer a pena. Gênero, duração
-    e provedor (bullets abaixo) também têm ícone próprio (`.meta-icon`, mesma classe) — todos vinham de um design
-    mais antigo (ver histórico do git, commits "menos poluição visual") que os removeu; foram trazidos de volta
-    pedido a pedido, ao contrário do ícone ℹ da linha de data/tipo, que é novo. Diferente do ℹ (texto
-    monocromático, sem seletor de variação de emoji — só ele precisa de `color` explícito porque é o único que
-    não tem forma colorida por padrão), os ícones abaixo são emoji pictográficos nativos (sem equivalente
-    monocromático) e mantêm a cor original, mesmo padrão que o 🎬 de "Em cartaz" já usava
-  - Duração + Trailer sempre dividem uma linha própria (`.duration-row`, `justify-content:space-between`) — com
-    ou sem imagem, logo abaixo da linha de data/tipo. Ícone ⏱ + duração à esquerda, link ▶ Trailer (quando
-    disponível) à direita. A div só é gerada quando há duração **ou** trailer pra mostrar — um título sem duração
-    confirmada mas com trailer (ex.: runtime ainda não publicado no TMDB) não perde o link só por faltar a
-    duração; sem nenhum dos dois, a div nem é gerada (meio solto). Isso bate com o mockup mais recente, que já
-    mostra essa linha separada da de data/tipo mesmo em títulos com pôster
-  - Badge amarelo 🎬 "Em cartaz até {data}" quando `in_theaters=true`, logo abaixo da duração — informação,
+  - Linha única de metadados: ícone outline "info" (`.meta-icon`, mesmo padrão dos ícones de duração/"em cartaz"
+    mais abaixo — ver nota geral sobre ícones Lucide no fim deste bullet) seguido de tipo (Filme/Série) · data de
+    lançamento (ou ano, quando a data não está disponível) — tipo
+    vem **antes** da data, mês sempre abreviado (`Jan`, `Fev`, ... — `formatacao.py::_MONTHS`). O link ▶ Trailer
+    (quando disponível) mora nessa mesma linha, à esquerda, logo depois do texto de tipo/data, dentro do mesmo
+    `<span class="meta-info">` — não na `duration-row` nem do lado direito da linha (as duas alternativas foram
+    tentadas antes e descartadas). Ícone e Trailer ficam dentro de `.meta-info` (não como irmãos soltos de
+    `.meta-row`) porque `.meta-line` usa `justify-content:space-between` pra separar texto/nota — um filho a mais
+    direto do `.meta-row` empurraria pra ponta esquerda/direita, longe do resto do grupo. O ícone só aparece
+    quando há tipo/data pra rotular. Se não sobrar nada pra mostrar em lugar nenhum da linha (sem tipo/data, sem
+    Trailer, sem nota), a `.meta-line` inteira nem é gerada — meio solto, mesmo padrão das demais seções do card.
+    **Com imagem**, o lado direito fica vazio — nota e classificação já foram pra imagem. **Sem imagem**, o lado
+    direito volta a ser a nota (★) e a classificação entra junto de tipo/data à esquerda, como antes. Duração
+    **não** entra mais nessa linha (ver bullet seguinte) — como ela vive numa linha própria, a combinação
+    tipo+data+Trailer aqui é sempre curta o bastante pra caber na largura mínima do card (~355-373px), sem
+    precisar de regra condicional por tipo de título (uma tentativa nesse sentido foi cogitada e descartada).
+    **Ícones do card**: todos os ícones (meta-line, duração, Trailer, "em cartaz"/calendário, "Onde assistir",
+    Sinopse, "Insight do FilmBot", "Ficha Técnica") são ícones outline do conjunto **Lucide**
+    (`componentes.py::icon()`/`ICON_PATHS`, SVG inline 16x16, `stroke="currentColor"` — públicos, sem prefixo `_`,
+    porque `app.py` também usa pra montar o badge do ícone do cabeçalho, ver bullet do cabeçalho acima) — trocaram
+    os emoji nativos que o card usava antes (ℹ/⏱/🎬/📅/🔜/📄/✨/👥, e o ícone de marca do YouTube em vermelho no
+    Trailer), seguindo o conjunto de ícones que o design system "Luminous" já declarava (`.claude/skills/
+    especialista-streamlit-filmbot/SKILL.md`). Todos brancos via a classe `.icon` em `principal.css`, **com uma
+    exceção**: o ícone "sparkles" do "Insight do FilmBot" é laranja (`#fdba74`, via `.reason-label .icon`,
+    mais específico que `.icon` sozinho) — acompanha a cor do rótulo e da barra de acento à esquerda (ver bullet
+    do Insight mais abaixo), em vez do branco padrão. Gênero continua sem ícone (removido por pedido do
+    usuário numa rodada anterior)
+  - Duração em linha própria (`.duration-row`), logo abaixo da linha de tipo/data, com ou sem imagem — ícone
+    outline "clock" + texto, sem Trailer (que mora na meta-line acima, ver bullet anterior). A div só é gerada quando há duração
+    pra mostrar; sem duração, nem é gerada (meio solto). Formato depende do tipo (`formatacao.py::
+    _format_title_duration()`), tudo abreviado: **filme** com 1h ou mais mostra as duas formas —
+    `"1h 30min (90min)"`, hora/minuto seguido do total em minutos entre parênteses, pra dar mais peso visual à
+    linha (que senão ficaria bem mais curta que a de série) — abaixo de 1h só `"45min"` (o parêntese seria
+    redundante, mesmo valor nos dois formatos); **série** mostra `"N temp · M ep · ~K min/ep"`, sempre abreviado e
+    sem plural (nunca `temporadas`/`episódios`/`temps`/`eps`)
+  - Badge amarelo "Em cartaz até {data}" quando `in_theaters=true`, logo abaixo da duração — informação,
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
     do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** cobre três estados mutuamente
-    exclusivos do título: 🎬 "Em cartaz até {data}" (`in_theaters`), 📅 "T{temporada} E{episódio} estreia em
-    {data}" quando a série tem `next_episode_season_number`/`next_episode_number`/`next_episode_date`
-    preenchidos, ou 🔜 "Em breve · {data}" quando `upcoming_date` está preenchido (título ainda não lançado —
+    exclusivos do título, todos com o mesmo ícone outline "calendar" (antes eram 3 emoji diferentes por estado —
+    🎬/📅/🔜 —, unificados num só ícone Lucide, ver nota geral sobre ícones acima): "Em cartaz até {data}"
+    (`in_theaters`), "T{temporada} E{episódio} estreia em {data}" quando a série tem
+    `next_episode_season_number`/`next_episode_number`/`next_episode_date`
+    preenchidos, ou "Em breve · {data}" quando `upcoming_date` está preenchido (título ainda não lançado —
     `air_date` no futuro, ver `formatacao.py::_is_upcoming()`). Nos três, `{data}` já vem formatada por
     `_format_adaptive_date()` (bullet "Formatação adaptativa de data" acima) — `DD/MM` perto de hoje, "Mês de
     Ano" quando distante. Os três nunca coexistem no mesmo
@@ -192,33 +206,36 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
   - Badges de gênero, quando há pelo menos um (sem nenhum gênero a div nem é gerada — meio solto, mesmo padrão
     de duration-row/cinema-row/providers-row/row-people/row-synopsis) — máx. 6 visíveis, sem indicador para o
     restante (trunca silenciosamente; cada card quebra linha de forma independente, sem sincronia com os
-    vizinhos da fileira, ver bullet do grid acima) — ícone 🎭. Estrutura em 2 níveis, igual à de
-    provedor (abaixo): `.genres-container` (`display:flex; align-items:flex-start`) contém o ícone e um
-    `<span class="genre-badges">` próprio (`display:flex; flex-wrap:wrap; gap:4px`) que agrupa os badges — o
-    ícone fica **fora** desse span, então quando os badges quebram pra 2ª/3ª linha, a quebra fica só entre eles
-    (linha 2 alinhada embaixo do primeiro badge, não da borda esquerda do card) e o ícone permanece ancorado na
-    primeira linha, sem ficar centralizado no meio do bloco todo. Antes o ícone era só mais um item solto no
-    mesmo `flex-wrap` dos badges, e a quebra ficava rente à borda esquerda do card (embaixo do ícone) — diferente
-    de como provedor já se comportava, por essa mesma estrutura em 2 níveis já existir lá. Fundo/borda em cinza
-    neutro mais sutil que o de provedor (dois degraus diferentes da mesma escala neutra, sem matiz própria —
-    `.genre`/`.provider-badge` em `principal.css`), só pra dar pra distinguir os dois grupos sem depender só do
-    ícone. Todo gênero mencionado explicitamente pelo usuário (ex: "filmes de terror e comédia") é priorizado —
+    vizinhos da fileira, ver bullet do grid acima). Sem ícone (removido por pedido do usuário) —
+    `.genres-container` (`display:flex; align-items:flex-start`) hoje só existe pra receber o `margin-top` de
+    seção, envolvendo direto o `<span class="genre-badges">` (`display:flex; flex-wrap:wrap; gap:4px`) que
+    agrupa os badges. Fundo/borda em cinza neutro mais sutil que o de provedor (dois degraus diferentes da mesma
+    escala neutra, sem matiz própria — `.genre`/`.provider-badge` em `principal.css`), único jeito de distinguir
+    os dois grupos agora que nenhum tem mais ícone. Todo gênero mencionado explicitamente pelo usuário (ex:
+    "filmes de terror e comédia") é priorizado —
     `componentes.py::_prioritize()` move todos os que baterem para o início da lista antes do corte, então
     nenhum fica de fora se estiver presente no título — e ganha destaque visual (borda + texto laranja, classe
     `.highlighted`, mesmo `#fdba74` do motivo da IA) via `componentes.py::_matches_highlighted()`
   - "✨ Insight do FilmBot" — motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), com rótulo laranja
-    próprio (`.reason-label`) acima do texto em itálico (`.reason`). Vem **depois dos gêneros**, não mais logo
-    abaixo do título — junto de "Onde assistir" (bullet seguinte), fecha o bloco "por que te recomendei isso ·
-    onde assistir" no fim do card, antes das seções colapsáveis. Sem `min-height`/`max-height`/toggle — faz parte
+    próprio (`.reason-label`) acima do texto em itálico (`.reason`). Uma barra de acento laranja (`border-left:
+    3px solid #f97316` em `.row-reason`, estilo blockquote) cobre rótulo e texto de uma vez, com `padding-left`
+    afastando o conteúdo da barra — sem fundo/caixa colorida atrás do texto (removida numa rodada anterior a
+    pedido do usuário; só a barra voltou, não o fundo). O texto do motivo é neutro, mesmo tom de
+    `.synopsis-text`/`.people-list` (`#d4d4d4`). Vem **depois dos
+    gêneros**, não mais logo abaixo do título — junto de "Onde assistir" (bullet seguinte), fecha o bloco "por
+    que te recomendei isso · onde assistir" no fim do card, antes das seções colapsáveis. Sem
+    `min-height`/`max-height`/toggle — faz parte
     do meio solto do card (ver item do grid, acima), sem sincronia de altura com os vizinhos da fileira, então o
     texto completo sempre aparece direto (motivo raramente varia muito de tamanho: o prompt do LLM,
     `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres). Sem `reason` (título fora do fluxo de
     recomendação da IA), a div nem é gerada — caso comum, não só borda
-  - "📺 Onde assistir" sempre sozinho numa linha própria (com ou sem imagem), quando há pelo menos um provedor —
+  - "Onde assistir" sempre sozinho numa linha própria (com ou sem imagem), quando há pelo menos um provedor —
     sem nenhum provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/
-    row-synopsis). Rótulo em linha própria acima dos badges (`.providers-label-row`), não mais espremido ao lado
-    deles — mesmo princípio visual do rótulo "✨ Insight do FilmBot" acima. Streaming e aluguel/compra combinados
-    num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`), sem badge separado
+    row-synopsis). Rótulo em linha própria acima dos badges (`.providers-label-row`), com o ícone outline "tv"
+    ao lado do texto (removido numa rodada anterior por ser emoji, reintroduzido nesta como ícone Lucide — ver
+    nota geral sobre ícones acima) — mesmo princípio visual do rótulo "✨ Insight do FilmBot" acima. Streaming e
+    aluguel/compra
+    combinados num único grupo e deduplicados por nome (`componentes.py::_render_provider_badges()`), sem badge separado
     "Aluguel/Compra". Cada badge mostra a **logo real do TMDB** (`.provider-logo`, ~14px, `streaming_provider_
     logos`/`rent_buy_provider_logos` — colunas já existentes na tabela SPEC, agora selecionadas por `agent.py` e
     mapeadas por `formatacao.py::format_record()`) antes do nome, quando disponível; sem logo pra aquele provedor
@@ -231,7 +248,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     silenciosamente, mesmo padrão que gênero já usa. Mesma priorização de `_prioritize()` (todos os provedores
     que baterem, não só o primeiro) e mesmo destaque visual `.highlighted` de gênero garantem que um provedor
     mencionado explicitamente (ex: "animações da Crunchyroll") nunca fica de fora do corte nem passa despercebido
-  - "Ficha Técnica" (ícone 👥, grupo de pessoas), logo **acima** da Sinopse: mesmo mecanismo de accordion (checkbox
+  - "Ficha Técnica" (ícone outline "users", grupo de pessoas — ver nota geral sobre ícones acima), logo
+    **acima** da Sinopse: mesmo mecanismo de accordion (checkbox
     hack em CSS, sem JS) da Sinopse abaixo, em linha própria. Faz parte do meio solto do card (ver bullet do grid
     acima), como todo o resto abaixo do pôster. Traz **todos** os campos de elenco/equipe técnica já formatados em
     `formatacao.py`: Diretor, Criador(es) (`creators`, só séries — aparece como bullet independente do Diretor,
@@ -247,7 +265,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
     a div nem é gerada (meio solto)
   - Sinopse, na última linha do card, também no meio solto (não ancorada em nenhuma borda fixa entre os 3 cards
     da fileira): accordion "Sinopse" (checkbox hack em CSS, já que `st.html` não executa `<script>`) recolhido
-    por padrão, com um ícone 📄 antes do texto e o mesmo chevron ⌄/⌃ na ponta direita da linha que "Ficha
+    por padrão, com o ícone outline "file-text" antes do texto (ver nota geral sobre ícones acima) e o mesmo
+    chevron ⌄/⌃ na ponta direita da linha que "Ficha
     Técnica" usa (mesmo motivo — bater com o mockup). O rótulo é **branco**, não mais laranja: o Trailer não
     divide mais essa linha (subiu pra linha de duração/meta-line — ver bullets acima), então não sobrava mais
     motivo pra "Sinopse" reter destaque de cor — o laranja ficou reservado só pra nota e "Insight do FilmBot".
@@ -289,7 +308,8 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 | `app.py` | `_events_in_window(history, ip, window_seconds)` | Conta eventos dentro da janela de tempo informada (janela deslizante) para o IP no histórico informado e limpa registros expirados. Reusada para recomendações (`_ip_history`, janela de 1h), transcrições (`_audio_ip_history`, janela de 1h) e tentativas de login incorretas (`_login_attempt_history`, janela de `_LOGIN_LOCKOUT_SECONDS`) |
 | `app.py` | `_seconds_until_available(history, ip, window_seconds)` | Calcula quantos segundos faltam até o evento mais antigo do IP expirar, na janela de tempo informada |
 | `app.py` | Interface Streamlit | Orquestra a UI: autenticação, gravação/transcrição de áudio, rate limiting, busca assíncrona e exibição de resultados |
-| `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()` | Helpers de renderização HTML com escape contra XSS |
+| `componentes.py` | `load_login_css()`, `load_main_css()`, `load_preference_counter_script()`, `load_audio_cancel_script()`, `load_audio_timer_script()`, `load_textarea_autogrow_script()`, `load_countdown_script()`, `load_login_button_toggle_script()`, `render_card()`, `render_grid()`, `render_feedback()`, `render_footer()`, `render_login_footer()`, `icon()` | Helpers de renderização HTML com escape contra XSS |
+| `componentes.py` | `icon(name, size=16)` | Monta um ícone Lucide inline (`<svg>`, outline, `stroke="currentColor"`) a partir de `ICON_PATHS`. Pública (sem prefixo `_`) porque `app.py` também usa pra montar o badge do ícone do cabeçalho, não só `render_card()` |
 | `componentes.py` | `_matches_highlighted(item, terms)` | Diz se `item` contém (case-insensitive) algum termo da lista `terms` (`highlighted_genres`/`highlighted_providers`). Compartilhada por `_prioritize()` (ordena) e pelo render de badges (decide a classe `.highlighted`), pra garantir que os dois concordem sobre o que é destaque |
 | `componentes.py` | `_prioritize(items, terms)` | Reordena uma lista de badges de texto (gêneros ou nomes de provedores) colocando primeiro **todos** os que contêm algum termo destacado (case-insensitive, via `_matches_highlighted()`), preservando a ordem relativa dentro de cada grupo — não só o primeiro match, se o usuário pediu mais de um termo |
 | `componentes.py` | `_parse_provider_names(names_raw)` | Faz o parsing de um grupo de provedores (streaming ou aluguel/compra) a partir da string comma-joined vinda de `glue_agg` |
