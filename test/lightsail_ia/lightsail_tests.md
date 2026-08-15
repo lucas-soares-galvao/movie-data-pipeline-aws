@@ -106,7 +106,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | `where_clause` e `limit` extraídos na etapa 1 são passados corretamente para `search_titles_spec()` |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
-| `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Maio de 1980"`) |
+| `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Mai de 1980"`) |
 | `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`type`, `year`, `genres`, `overview`, `rating`, `duration`, `streaming_providers`, `in_theaters`) |
 | `test_motivo_incluido_no_resultado` | Campo `reason` da etapa 3 é mesclado corretamente ao registro formatado |
 | `test_remove_markdown_code_block_do_motivo` | Remove cerca de código Markdown (` ```json ... ``` `) antes do `json.loads()` |
@@ -233,7 +233,7 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_nao_exibe_elenco` | Card não renderiza nomes do elenco mesmo quando fornecidos |
 | `test_card_nao_exibe_diretor` | Card não renderiza "Diretor: {nome}" mesmo quando fornecido |
 | `test_card_com_certificacao` | Card exibe badge de classificação indicativa |
-| `test_card_com_trailer` | Card exibe link clicável para o trailer, como item da linha de nota/data |
+| `test_card_com_trailer` | Card exibe link clicável para o trailer |
 | `test_card_vitals_combina_nota_data_e_trailer` | Linha de vitals agrupa nota, data de lançamento e trailer, nessa ordem |
 | `test_card_duracao_fica_em_linha_separada_apos_vitals` | Duração aparece em linha própria, depois da linha de nota/data/trailer |
 | `test_card_vitals_omite_nota_ausente_sem_separador_solto` | Sem nota, a linha de vitals não deixa separador `·` solto |
@@ -292,19 +292,19 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 
 | Teste | O que verifica |
 |---|---|
-| `test_filme_com_duracao` | `146` min → `"2h 26min"` |
+| `test_filme_com_duracao` | `146` min (≥ 1h) → `"2h 26min (146min)"` (parêntese com o total em minutos) |
 | `test_filme_sem_duracao` | `runtime_minutes=None` → `None` |
-| `test_filme_menos_de_uma_hora` | `45` min → `"45min"` (sem horas) |
-| `test_serie_completa` | Seasons + episodes + ep. runtime → `"3 temporadas · 36 eps · ~45 min/ep"` |
-| `test_serie_sem_episode_runtime` | Omite parte de runtime → `"2 temporadas · 20 eps"` |
-| `test_serie_uma_temporada` | Singular → `"1 temporada · 10 eps"` |
+| `test_filme_menos_de_uma_hora` | `45` min → `"45min"` (sem horas, sem parêntese — seria redundante) |
+| `test_serie_completa` | Seasons + episodes + ep. runtime → `"3 temp · 36 ep · ~45 min/ep"` (tudo abreviado) |
+| `test_serie_sem_episode_runtime` | Omite parte de runtime → `"2 temp · 20 ep"` |
+| `test_serie_uma_temporada_um_episodio` | Quantidade 1 não muda a abreviação (sem plural) → `"1 temp · 1 ep"` |
 | `test_serie_sem_dados` | Todos os campos `None` → `None` |
 
 ### `TestFormatReleaseDate` — Formatação de data
 
 | Teste | O que verifica |
 |---|---|
-| `test_data_valida` | `"1980-05-23"` → `"Maio de 1980"` |
+| `test_data_valida` | `"1980-05-23"` → `"Mai de 1980"` (mês abreviado) |
 | `test_data_none` | `None` → `None` |
 | `test_data_vazia` | `""` → `None` |
 | `test_data_curta` | `"1980"` (sem mês) → `None` |
@@ -334,7 +334,7 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_novos_campos_filme` | Campos `writers`, `composer`, `keywords` (pt) formatados corretamente |
 | `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
 | `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_providers` (entre outros) retornam `None` quando ausentes |
-| `test_registro_serie` | Registro de série com `type="série"` e duração formatada com temporadas |
+| `test_registro_serie` | Registro de série com `type="Série"` e duração formatada abreviada (`temp`/`ep`) |
 
 ## Como executar
 

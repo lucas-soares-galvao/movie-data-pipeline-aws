@@ -21,6 +21,7 @@ from agent import (
     transcribe_preference,
 )
 from componentes import (
+    icon,
     load_audio_cancel_script,
     load_audio_timer_script,
     load_countdown_script,
@@ -165,8 +166,11 @@ if not st.session_state.get("authenticated"):
     _, col, _ = st.columns([1, 1.1, 1])
     with col:
         with st.container(key="login-card"):
-            st.markdown("""
-            <p class="login-title">🎬 <span class="accent-gradient-text">FilmBot</span></p>
+            st.markdown(f"""
+            <div class="login-brand">
+              <span class="login-icon-badge">{icon("clapperboard", size=18)}</span>
+              <p class="login-title">FilmBot</p>
+            </div>
             <p class="login-subtitle">Seu assistente de filmes e séries com IA</p>
             <hr class="login-divider">
             """, unsafe_allow_html=True)
@@ -214,7 +218,7 @@ with st.container(key="header-row"):
     with title_col:
         st.markdown(
             '<div class="header-brand">'
-            '<span class="header-icon">🎬</span>'
+            f'<span class="header-icon-badge">{icon("clapperboard", size=20)}</span>'
             '<div class="header-text">'
             '<p class="header-title">FilmBot</p>'
             '<p class="header-subtitle">Seu assistente de filmes e séries com IA</p>'
@@ -462,7 +466,7 @@ with st.container(key="hero-actions"):
             st.rerun()
     else:
         if st.button(
-            "✨ Recomendar",
+            "Recomendar",
             type="primary",
             disabled=_remaining <= 0,
             use_container_width=True,

@@ -24,19 +24,39 @@
   box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(249,115,22,0.06);
   margin-bottom: 8px;
 }
+/* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
+   (componentes.py::icon()) — mesmo ícone do badge do cabeçalho principal
+   (.header-icon-badge, principal.css), só com as cores invertidas: lá é fundo laranja +
+   ícone branco, aqui é fundo escuro + ícone laranja, mais discreto pra tela de login. */
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.login-icon-badge {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* .icon (branca, de principal.css) não existe nesta tela — cada tela injeta o próprio CSS
+   de forma independente (mesmo motivo de .accent-gradient-text abaixo) — por isso o ícone
+   precisa da própria regra de cor aqui. */
+.login-icon-badge .icon {
+  color: #f97316;
+}
 .login-title {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 32px;
   font-weight: 600;
   color: #ffffff;
-  margin: 0 0 6px 0;
+  margin: 0;
   letter-spacing: -0.02em;
-}
-/* Duplicado de .accent-gradient-text em principal.css — cada tela injeta
-   seu próprio CSS de forma independente, então a classe precisa existir
-   nos dois arquivos. */
-.accent-gradient-text {
-  color: #f97316;
 }
 .login-subtitle {
   font-size: 14px;
