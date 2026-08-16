@@ -40,13 +40,6 @@ ICON_PATHS = {
         'A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>'
         '<path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>'
     ),
-    "sparkles": (
-        '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 '
-        '1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 '
-        '1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-'
-        '1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/>'
-        '<circle cx="4" cy="20" r="2"/>'
-    ),
     "users": (
         '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>'
         '<path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>'
@@ -58,6 +51,11 @@ ICON_PATHS = {
         '<path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
         '<path d="m6.18 5.276 3.1 3.899"/>'
     ),
+    "lightbulb": (
+        '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 '
+        '.2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/>'
+        '<path d="M9 18h6"/><path d="M10 22h4"/>'
+    ),
     "mic": (
         '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>'
         '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>'
@@ -67,7 +65,7 @@ ICON_PATHS = {
 
 def icon(name: str, size: int = 16) -> str:
     """Monta um ícone Lucide inline (outline, `stroke="currentColor"` — cor vem da classe
-    `.icon` em base.css, branca por padrão; o ícone "sparkles" do Insight do FilmBot é
+    `.icon` em base.css, branca por padrão; o ícone "lightbulb" do Insight do FilmBot é
     a única exceção, laranja via `.reason-label .icon` em cards.css). Usada por
     `render_card()` aqui dentro, pelo badge do ícone do cabeçalho/login em `app.py`/
     `login.py`, e pelo status "Transcrevendo áudio..." em `recommendation.py`."""
@@ -383,11 +381,11 @@ def render_card(title: dict, idx: int = 0) -> str:
     # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
     # sincronia de altura com os vizinhos da fileira, ver cards.css). Sem motivo, a div
     # nem é gerada (meio solto) — caso comum, não só borda: `reason` costuma vir vazio fora
-    # do fluxo de recomendação da IA. Rótulo "✨ Insight do FilmBot" acima do texto, mesmo
+    # do fluxo de recomendação da IA. Rótulo "💡 Insight do FilmBot" acima do texto, mesmo
     # princípio do rótulo "Onde assistir" acima dos badges de provedor — a seção agora vem
     # depois dos gêneros (ver return, mais abaixo), não mais logo após o título.
     reason_block_html = (
-        f'<div class="row-reason"><span class="reason-label">{icon("sparkles")} Insight do FilmBot</span>'
+        f'<div class="row-reason"><span class="reason-label">{icon("lightbulb")} Insight do FilmBot</span>'
         f'<p class="reason">{reason}</p></div>'
         if reason
         else ""
