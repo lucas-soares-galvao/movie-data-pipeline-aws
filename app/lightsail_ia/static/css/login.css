@@ -185,7 +185,33 @@
   letter-spacing: 0.05em;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
+  /* Breakpoint mobile unificado do projeto (mesmo usado por hero/cabeçalho/grid em
+     base.css/recommendation.css/cards.css). Abaixo dele, as colunas-espaçadoras do
+     st.columns([1, 1.1, 1]) — mantidas flexíveis de propósito pela regra .../div
+     acima, pra centralizar o card em ~35% da largura útil em telas maiores — somem
+     do fluxo flex e a coluna central assume a linha inteira. Sem isso o card fica
+     preso em ~35% da tela e "FilmBot" quebra letra a letra no título. Seletores
+     :first-child/:last-child têm mais especificidade que o "> div" genérico da
+     regra desktop (linha ~171), então vencem mesmo com !important dos dois lados. */
+  [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:first-child,
+  [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:last-child {
+    display: none !important;
+  }
+  [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:nth-child(2) {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .login-title { font-size: 28px; }
+  .st-key-login-card { padding: 28px 24px 24px; }
+  .login-subtitle { margin-bottom: 20px; }
+}
+
+@media (max-width: 480px) {
+  /* Segundo degrau isolado, só o título — mesmo padrão de .hero-heading em
+     recommendation.css (768px→28px, 480px→22px): reduz o texto mais numa faixa de
+     telas bem estreitas (ex. iPhone SE, 375px), sem repetir padding/estrutura. */
   .login-title { font-size: 24px; }
-  .st-key-login-card { padding: 24px 20px 20px; }
 }

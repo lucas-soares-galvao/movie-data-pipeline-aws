@@ -318,7 +318,7 @@ _SYSTEM_PROMPT = (
 # cards.css/components.py) e controla o custo de tokens de completion.
 _REASON_SYSTEM_PROMPT = (
     "Você é um curador de filmes e séries. "
-    "Para cada título na lista, escreva um motivo curto (1-2 frases, no máximo "
+    "Para cada título na lista, escreva um motivo curto (1 frase, no máximo "
     "~90 caracteres) explicando por que ele é uma boa recomendação para o "
     "pedido do usuário. "
     "Cite diretor, elenco, plataforma de streaming, classificação indicativa ou "
