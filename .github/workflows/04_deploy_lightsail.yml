@@ -221,6 +221,9 @@ jobs:
               sudo git pull origin "$BRANCH"
               sudo chown -R "$APP_NAME:$APP_NAME" "$APP_DIR"
               sudo chown "$APP_NAME:$APP_NAME" "$APP_DIR/app/$APP_FOLDER/.env"
+              # Força regeneração do secrets.toml a partir do Secrets Manager a cada deploy
+              # (load_filmbot_password() só escreve o arquivo se ele ainda não existir)
+              sudo rm -f "$APP_DIR/app/$APP_FOLDER/.streamlit/secrets.toml"
               cd "$APP_DIR/app/$APP_FOLDER"
               sudo python3 -m venv .venv
               sudo .venv/bin/pip install --upgrade pip -q
