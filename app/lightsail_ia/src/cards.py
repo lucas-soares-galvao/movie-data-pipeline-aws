@@ -35,4 +35,10 @@ def render_cards() -> None:
             f'<p class="results-heading">Encontramos {len(titles)} {word} para você!</p>',
             unsafe_allow_html=True,
         )
-        st.markdown(render_grid(titles), unsafe_allow_html=True)
+        # " ".join(...split()) colapsa pra uma linha só, sem espaço redundante entre tags:
+        # o HTML de render_card() é um f-string multi-linha com indentação >=4 espaços e
+        # linhas em branco (seções condicionais vazias) — os dois gatilhos que fazem o
+        # parser de Markdown do st.markdown (rodado antes do unsafe_allow_html) tratar
+        # trechos como bloco de código em vez de HTML bruto. HTML não é sensível a espaço
+        # em branco entre tags, então colapsar não muda nada visualmente.
+        st.markdown(" ".join(render_grid(titles).split()), unsafe_allow_html=True)

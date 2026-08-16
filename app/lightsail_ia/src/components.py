@@ -79,6 +79,23 @@ def icon(name: str, size: int = 16) -> str:
     )
 
 
+def favicon_svg() -> str:
+    """Monta o favicon como SVG autocontido: badge escuro arredondado (mesmo #1a1a1a de
+    .header-icon-badge/.login-icon-badge) com o ícone "clapperboard" laranja (#f97316)
+    dentro, reaproveitando ICON_PATHS como única fonte da geometria. Cores hardcoded (não
+    `currentColor`, diferente de icon()) porque um favicon é carregado como recurso
+    isolado, sem acesso ao CSS da página. Usada só por app.py (`st.set_page_config`)."""
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        '<rect width="24" height="24" rx="6" fill="#1a1a1a"/>'
+        '<g transform="translate(3 3) scale(0.75)" fill="none" stroke="#f97316"'
+        ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        f'{ICON_PATHS["clapperboard"]}'
+        '</g>'
+        '</svg>'
+    )
+
+
 def _inject_css(file_name: str) -> None:
     """Lê um arquivo CSS de static/css/ e injeta na página via st.markdown."""
     path = Path(__file__).parent.parent / "static" / "css" / file_name

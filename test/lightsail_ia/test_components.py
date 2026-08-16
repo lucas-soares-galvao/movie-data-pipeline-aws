@@ -59,6 +59,28 @@ class TestIcon:
         assert 'height="14"' in svg
 
 
+class TestFaviconSvg:
+    """favicon_svg() monta um SVG autocontido (cores hardcoded, não currentColor — um
+    favicon é carregado como recurso isolado, sem acesso ao CSS da página)."""
+
+    def test_e_svg(self):
+        svg = components.favicon_svg()
+        assert svg.startswith("<svg")
+
+    def test_usa_cores_hardcoded_do_badge(self):
+        svg = components.favicon_svg()
+        assert "#1a1a1a" in svg
+        assert "#f97316" in svg
+
+    def test_nao_depende_de_current_color(self):
+        svg = components.favicon_svg()
+        assert "currentColor" not in svg
+
+    def test_reaproveita_geometria_do_icon_paths_clapperboard(self):
+        svg = components.favicon_svg()
+        assert components.ICON_PATHS["clapperboard"] in svg
+
+
 class TestLoadAudioTimerScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
         captured = {}

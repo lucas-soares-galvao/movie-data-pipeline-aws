@@ -7,16 +7,40 @@
 
 /* Centralização vertical do card de login: stAppViewContainer já tem min-height:100vh
    (base.css), mas nada empurrava o conteúdo pro meio da tela — sem isso o card
-   renderiza colado no topo, seguindo o fluxo normal do block-container. Só as
-   colunas do card (stHorizontalBlock, ver regra de gap logo abaixo) crescem pra
-   preencher o espaço (flex:1) e centralizam o filho verticalmente — o rodapé
-   (.footer-login) fica de fora do flex:1, então continua perto da base da tela em
-   vez de ser puxado pro meio junto com o card. Só se aplica na tela de login: estas
-   regras só são injetadas quando render_login() roda, nunca junto de app.css. */
+   renderiza colado no topo, seguindo o fluxo normal do block-container.
+   justify-content:center no próprio .block-container centraliza o único filho direto
+   dele (stVerticalBlock, que por sua vez engloba a linha de colunas do card E o rodapé
+   juntos — confirmado via inspeção real do DOM, Playwright) como um grupo só: tentar
+   isolar só a linha de colunas e prender o rodapé embaixo exigiria mirar wrappers
+   internos do Streamlit sem `data-testid` estável (stLayoutWrapper genérico, usado por
+   qualquer bloco de layout, não só colunas) — frágil entre versões. Centralizar o grupo
+   inteiro (card + rodapé, com respiro igual acima/abaixo) é o resultado padrão de tela
+   de login com esse layout e não depende de nenhum detalhe interno não documentado. Só
+   se aplica na tela de login: estas regras só são injetadas quando render_login() roda,
+   nunca junto de app.css. */
 [data-testid="stMain"] .block-container {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   min-height: 100vh;
+  /* Streamlit reserva ~96px/160px de padding topo/base pro cabeçalho/toolbar nativos —
+     mesmo com eles escondidos (display:none acima), o padding continua reservado e
+     praticamente consome sozinho o espaço livre da viewport (medido via inspeção real do
+     DOM, Playwright: conteúdo de 644px "cabia" quase exato no espaço sobrando de 644px
+     depois do padding, sem folga nenhuma pro justify-content:center redistribuir).
+     Zerado aqui porque não há mais nada ocupando esse espaço reservado na tela de login. */
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+/* Com o padding zerado acima, o stVerticalBlock (filho direto do block-container, que
+   engloba a linha de colunas do card + o rodapé) passou a esticar sozinho pros 100vh
+   inteiros — o próprio Streamlit já aplica flex-grow nele por padrão (medido via
+   inspeção real do DOM, Playwright: sem isso ele ocupava a viewport toda e o
+   justify-content:center do block-container acima não tinha mais efeito nenhum, porque
+   não sobrava espaço livre *nele* pra redistribuir — sobrava dentro do próprio
+   stVerticalBlock, um nível abaixo). Centraliza aqui, um nível mais interno. */
+[data-testid="stMain"] .block-container > [data-testid="stVerticalBlock"] {
+  justify-content: center;
 }
 
 /* Card de login unificado: título, subtítulo, divisor, campo de senha e
@@ -136,12 +160,17 @@
   gap: 0.4rem !important;
 }
 
-/* Cresce pra preencher o espaço vertical sobrando no block-container (regra acima) e
-   centraliza a coluna do meio (com o card) nesse espaço — flex-row por padrão do
-   próprio Streamlit, então align-items:center já centraliza verticalmente. */
-[data-testid="stHorizontalBlock"] {
-  flex: 1;
-  align-items: center;
+/* Sobrescreve a regra genérica "colunas encolhem pro conteúdo" de base.css (pensada pros
+   botões do cabeçalho/hero-actions, ver div[data-testid="stHorizontalBlock"]:not(:has(h1))
+   > div lá) só pras 3 colunas do st.columns([1, 1.1, 1]) da tela de login — aqui elas
+   precisam continuar flexíveis (crescendo pra dividir a linha igualmente) pra centralizar
+   o card horizontalmente entre as duas colunas-espaçadoras vazias; sem isso, as duas
+   colapsam pro tamanho mínimo e o card fica colado à esquerda. Dois seletores de atributo
+   (em vez de um só em base.css) garantem maior especificidade CSS, então vence
+   independente da ordem de injeção. */
+[data-testid="stMain"] [data-testid="stHorizontalBlock"] > div {
+  flex: 1 1 0% !important;
+  width: auto !important;
 }
 
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de

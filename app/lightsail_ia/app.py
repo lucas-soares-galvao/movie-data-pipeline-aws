@@ -3,6 +3,7 @@
 import streamlit as st
 from src.cards import render_cards
 from src.components import (
+    favicon_svg,
     icon,
     load_app_css,
     render_footer,
@@ -18,7 +19,7 @@ from src.recommendation import render_recommendation
 load_filmbot_password()
 setup_cloudwatch_logging()
 
-st.set_page_config(page_title="FilmBot", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="FilmBot", page_icon=favicon_svg(), layout="wide")
 
 client_ip = get_client_ip()
 
