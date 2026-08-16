@@ -49,7 +49,6 @@ def render_login(client_ip: str) -> None:
               <p class="login-title">FilmBot</p>
             </div>
             <p class="login-subtitle">Seu assistente de filmes e séries com IA</p>
-            <hr class="login-divider">
             """, unsafe_allow_html=True)
 
             password = st.text_input(
@@ -82,5 +81,6 @@ def render_login(client_ip: str) -> None:
                 with error_placeholder:
                     render_feedback("error", "Senha incorreta. Tente novamente.")
 
-    render_login_footer()
+            render_login_footer()
+
     st.stop()
