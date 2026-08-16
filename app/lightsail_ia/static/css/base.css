@@ -39,10 +39,18 @@ button[data-testid="stBaseButton-secondary"] {
   .st-key-hero-section, .st-key-hero-actions, .st-key-header-row { max-width: 100%; padding: 0 8px; }
 }
 
-/* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam — usada tanto pelas
-   colunas do cabeçalho (app.css) quanto pelas de hero-actions no estado "searching"
-   (recommendation.css). */
-div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
+/* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam — usada pelas colunas
+   do cabeçalho (app.css, .st-key-header-row) e pelas de hero-actions no estado
+   "searching" (recommendation.css, .st-key-hero-actions). Escopada explicitamente a
+   essas duas classes (antes era global, "qualquer stHorizontalBlock sem h1") — o
+   seletor genérico também pegava sem querer as 3 colunas do login (st.columns([1, 1.1,
+   1]) em login.py, nunca envolvidas num container com key própria), forçando um
+   colapso ali que login.css precisava reverter com overrides cada vez mais
+   específicos. Ver histórico: bug introduzido nesta regra (commit 4ff3b59), sintoma
+   "consertado" só pro desktop em 02228c4, e só pro mobile na correção seguinte —
+   ambos removidos de login.css agora que a causa raiz está corrigida aqui. */
+.st-key-header-row [data-testid="stHorizontalBlock"] > div,
+.st-key-hero-actions [data-testid="stHorizontalBlock"] > div {
   flex: 0 0 auto !important;
   width: auto !important;
   min-width: 0 !important;
