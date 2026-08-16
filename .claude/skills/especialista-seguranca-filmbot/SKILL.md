@@ -31,7 +31,7 @@ segredos/credenciais (repo, CI/CD, ambiente local) mora em `especialista-seguran
 
 ### Eixo 1 — Prevenção de SQL injection
 
-`app/lightsail_ia/agent.py` é o único lugar do projeto onde SQL é **gerado dinamicamente por um LLM** e depois executado — o vetor de ataque é texto livre do usuário → LLM gera a cláusula `where_clause` (function calling) → interpolada num f-string SQL → executada via `boto3.client("athena")`. É uma classe de vulnerabilidade real (SQL injection), mesmo que o termo nunca apareça em nenhum outro doc do projeto além deste.
+`app/lightsail_ia/src/agent.py` é o único lugar do projeto onde SQL é **gerado dinamicamente por um LLM** e depois executado — o vetor de ataque é texto livre do usuário → LLM gera a cláusula `where_clause` (function calling) → interpolada num f-string SQL → executada via `boto3.client("athena")`. É uma classe de vulnerabilidade real (SQL injection), mesmo que o termo nunca apareça em nenhum outro doc do projeto além deste.
 
 - **Mitigação existente**: `_validate_where()` bloqueia `;`, palavras-chave DDL/DML (`DROP`/`DELETE`/`INSERT`/`UPDATE`/`ALTER`/`CREATE`/`GRANT`/`TRUNCATE`/`EXEC`/`MERGE`/`REPLACE`/`CALL`) e subqueries (`SELECT`) antes de qualquer interpolação. Mecanismo completo, com números de linha, em `especialista-engenharia-dados-app` (seção Lightsail).
 - **Testes existentes** confirmam a validação (`test/lightsail_ia/test_agent.py`) rejeitando payloads como `"...; DROP TABLE x"`, `"DROP TABLE spec"`, `"DELETE FROM spec WHERE 1=1"`.

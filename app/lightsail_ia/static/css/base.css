@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200;300;600&display=swap');
+
+/* Fundo cinematografico — mesmo gradiente radial usado em login.css, para
+   as duas telas terem a mesma textura de fundo. */
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+  min-height: 100vh;
+}
+
+/* Padroniza todos os botoes */
+[data-testid="stBaseButton-primary"] button,
+[data-testid="stBaseButton-secondary"] button,
+button[data-testid="stBaseButton-primary"],
+button[data-testid="stBaseButton-secondary"] {
+  width: 140px !important;
+  height: 42px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+}
+
+/* Largura máxima compartilhada do conteúdo principal (640px, centralizado) — usada por
+   cabeçalho (app.css), formulário de recomendação (recommendation.css) e mensagens de
+   resultado (cards.css), por isso mora aqui em vez de em qualquer um dos três. */
+.st-key-hero-section,
+.st-key-hero-actions,
+.st-key-header-row,
+.st-key-results-messages {
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* Nota: não inclui .st-key-results-messages, diferente da regra acima — comportamento
+     pré-existente preservado na migração (não é um dos bugs corrigidos aqui). */
+  .st-key-hero-section, .st-key-hero-actions, .st-key-header-row { max-width: 100%; padding: 0 8px; }
+}
+
+/* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam — usada tanto pelas
+   colunas do cabeçalho (app.css) quanto pelas de hero-actions no estado "searching"
+   (recommendation.css). */
+div[data-testid="stHorizontalBlock"]:not(:has(h1)) > div {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+/* Impede scroll horizontal em qualquer viewport */
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.main .block-container {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+
+/* Ícones Lucide (outline, stroke="currentColor" no SVG — ver icon() em components.py):
+   brancos por padrão, independente do contexto (mesmo dentro de .meta-line/.providers-label,
+   que são cinza) — `color` declarado direto no próprio elemento sempre vence o herdado do
+   ancestral, então não precisa mexer nessas regras. Usado tanto no badge do cabeçalho
+   (app.css) quanto nos ícones do card (cards.css). */
+.icon {
+  color: #fff;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* Mensagens de feedback — largura cheia do container (640px do hero/results-messages,
+   ou do card de login), não uma fração dele. Compartilhado por login.css,
+   recommendation.css (rate limit, avisos de transcrição) e cards.css (erro/sem
+   resultado). */
+.msg-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+  max-width: 100%;
+  color: #fca5a5;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.msg-warning {
+  background: rgba(250,204,21,0.1);
+  border: 1px solid rgba(250,204,21,0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+  max-width: 100%;
+  color: #fbbf24;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.time-countdown {
+  font-weight: 600;
+}

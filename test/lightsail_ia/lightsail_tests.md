@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatacao.py`) e os componentes de renderização HTML (`app/lightsail_ia/componentes.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatacao.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_componentes.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade) e as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`). Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -11,8 +11,9 @@ test/lightsail_ia/
 ├── conftest.py               # Fixtures locais da suite
 ├── requirements_tests.txt    # Dependências de teste
 ├── test_agent.py             # Testes do agente (LLM, Athena, cache, validação)
-├── test_componentes.py       # Testes de renderização HTML (cards e grids)
-└── test_formatacao.py        # Testes das funções puras de formatação
+├── test_components.py       # Testes de renderização HTML (cards e grids)
+├── test_formatting.py        # Testes das funções puras de formatação
+└── test_infrastructure.py    # Testes do bootstrap de processo e rate limiting
 ```
 
 ## Setup (`conftest.py`)
@@ -137,11 +138,11 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 |---|---|
 | `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `step` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
-| `test_logger_tem_nivel_info_explicito` | `agent.logger.level` é `logging.INFO`, garantindo que os logs de tokens não sejam suprimidos quando `app.py` eleva o root logger para `ERROR` |
+| `test_logger_tem_nivel_info_explicito` | `agent.logger.level` é `logging.INFO`, garantindo que os logs de tokens não sejam suprimidos quando `infrastructure.py` eleva o root logger para `ERROR` |
 
 ### `TestTranscribePreference` — Transcrição de áudio (Whisper via litellm)
 
-Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que gera um WAV de teste (silêncio) com a duração informada via módulo padrão `wave`. Qualquer falha é tratada pelo chamador (`app.py`).
+Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que gera um WAV de teste (silêncio) com a duração informada via módulo padrão `wave`. Qualquer falha é tratada pelo chamador (`recommendation.py`).
 
 | Teste | O que verifica |
 |---|---|
@@ -154,13 +155,13 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_audio_dentro_do_limite_nao_levanta_erro` | Áudio com duração abaixo de `_MAX_AUDIO_SECONDS` chama `litellm.transcription` normalmente |
 | `test_audio_muito_longo_levanta_erro_sem_chamar_api` | Áudio acima de `_MAX_AUDIO_SECONDS` levanta `AudioMuitoLongoError` **sem** chamar `litellm.transcription` (`assert_not_called()`), evitando gastar crédito à toa |
 
-## Casos de teste — `test_componentes.py`
+## Casos de teste — `test_components.py`
 
 ### `TestLoadAudioTimerScript` — Injeção do script do timer de áudio
 
 | Teste | O que verifica |
 |---|---|
-| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `audio-timer-badge` (mock de `componentes.components.html`, já que não há `st.testing`/`AppTest` na suite) |
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `audio-timer-badge` (mock de `components.components.html`, já que não há `st.testing`/`AppTest` na suite) |
 | `test_substitui_max_seconds_no_template` | O placeholder `__MAX_SECONDS__` é substituído pelo valor passado (`15` → `const maxSeconds = 15;`) — mesmo padrão de template string de `__MAX_CHARS__` em `contador_caracteres.js` |
 
 ### `TestRenderFeedback` — Renderização da caixa de mensagem de erro/aviso padronizada
@@ -270,7 +271,7 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_grid_vazio` | Grid vazio renderiza container sem cards |
 | `test_grid_com_titulos` | Grid com múltiplos títulos renderiza múltiplos cards |
 
-## Casos de teste — `test_formatacao.py`
+## Casos de teste — `test_formatting.py`
 
 ### `TestFormatType` — Conversão de `media_type`
 
@@ -336,6 +337,40 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_providers` (entre outros) retornam `None` quando ausentes |
 | `test_registro_serie` | Registro de série com `type="Série"` e duração formatada abreviada (`temp`/`ep`) |
 
+## Casos de teste — `test_infrastructure.py`
+
+### `TestLoadFilmbotPassword` — Bootstrap da senha via Secrets Manager
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_sem_chamar_secrets_manager_quando_secret_arn_nao_configurado` | Sem `FILMBOT_SECRET_ARN`, retorna sem chamar `boto3.client` |
+| `test_retorna_sem_chamar_secrets_manager_quando_secrets_toml_ja_existe` | Com `secrets.toml` já existente (mockado), retorna sem chamar `boto3.client` |
+
+### `TestSetupCloudwatchLogging` — Bootstrap do logging CloudWatch
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_sem_registrar_handler_quando_log_group_nao_configurado` | Sem `CLOUDWATCH_LOG_GROUP`, retorna sem instanciar `watchtower.CloudWatchLogHandler` |
+
+Só o ramo de saída antecipada é testado — o ramo que efetivamente chama AWS (criação do handler, cliente `boto3.client("logs")`) fica sem teste, mesmo padrão já tolerado hoje para o ramo AWS de `agent.py::_load_llm_api_key()`.
+
+### `TestGetClientIp` — Extração do IP do cliente
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_local_quando_nao_ha_header_x_forwarded_for` | Fora de um request real (sem header `X-Forwarded-For`), retorna `"local"` |
+
+### `TestEventsInWindow` / `TestSecondsUntilAvailable` — Rate limiting por janela deslizante
+
+| Teste | O que verifica |
+|---|---|
+| `test_conta_apenas_eventos_dentro_da_janela` | Eventos fora da janela não entram na contagem |
+| `test_limpa_eventos_expirados_do_historico` | Eventos expirados são removidos do dict de histórico (mutação in-place) |
+| `test_retorna_zero_para_ip_sem_historico` | IP sem histórico prévio → `0` |
+| `test_retorna_zero_quando_nao_ha_historico` | Sem histórico, `seconds_until_available` retorna `0` |
+| `test_calcula_segundos_restantes_ate_evento_mais_antigo_expirar` | Calcula corretamente os segundos restantes até o evento mais antigo sair da janela |
+| `test_retorna_zero_quando_janela_ja_expirou` | Janela já expirada → `0`, nunca negativo |
+
 ## Como executar
 
 ```bash
@@ -348,11 +383,11 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py` está formalmente excluído dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não conta nem a favor nem contra o gate.
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py`, `login.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py` **não** está excluído: embora também seja bootstrap/UI, tem funções puras ou com saída antecipada trivialmente testáveis sem depender de um script Streamlit rodando (ver `test_infrastructure.py` acima).
 
 ## Observação sobre testes de interface
 
-A interface Streamlit (`app.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, o arquivo ficaria em 0% de cobertura (roda código a nível de import, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubaria o gate de 95% sozinho. Para validar o app visualmente, execute localmente:
+A interface Streamlit (`app.py`, `login.py`, `recommendation.py`, `cards.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, esses arquivos ficariam em 0% de cobertura (rodam código a nível de import/execução de script, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubariam o gate de 95% sozinhos. Para validar o app visualmente, execute localmente:
 
 ```bash
 cd app/lightsail_ia

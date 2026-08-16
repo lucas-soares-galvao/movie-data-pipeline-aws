@@ -346,14 +346,14 @@ já definido (cores, tipografia, componentes, motion), com foco em responsividad
 input externo (usuário ou LLM); (2) proteção contra abuso automatizado (bots/scripts) do FilmBot.
 
 **Quando usar:**
-- Ao mexer em SQL montado a partir de input externo em `app/lightsail_ia/agent.py`.
+- Ao mexer em SQL montado a partir de input externo em `app/lightsail_ia/src/agent.py`.
 - Ao avaliar login/rate limit/limites de tamanho do FilmBot.
 - Ao mudar como o IP do cliente é identificado (proxy reverso, `X-Forwarded-For`).
 
 ### especialista-custo-llm-agente
 
 **O que é:** especialista em custo x benefício de tokens/LLM no agente de recomendação do FilmBot
-(`app/lightsail_ia/agent.py`).
+(`app/lightsail_ia/src/agent.py`).
 
 **Quando usar:**
 - Ao alterar o system prompt.
