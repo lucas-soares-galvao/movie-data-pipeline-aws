@@ -145,7 +145,7 @@
   font-size: 12px;
   letter-spacing: 0.05em;
   border-top: 1px solid #1f2937;
-  margin: -24px auto 0;
+  margin: -39px auto 0;
   max-width: 640px;
 }
 body:has(.grid-titles) .footer {
