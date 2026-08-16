@@ -36,11 +36,9 @@ with st.container(key="header-row"):
         st.markdown(
             '<div class="header-brand">'
             f'<span class="header-icon-badge">{icon("clapperboard", size=20)}</span>'
-            '<div class="header-text">'
             '<p class="header-title">FilmBot</p>'
-            '<p class="header-subtitle">Seu assistente de filmes e séries com IA</p>'
             '</div>'
-            '</div>',
+            '<p class="header-subtitle">Seu assistente de filmes e séries com IA</p>',
             unsafe_allow_html=True,
         )
     with logout_col:

@@ -1,7 +1,8 @@
-/* Cabeçalho: ícone + título/subtítulo empilhados (substituem st.title/
-   st.caption, que rendem um <h1> grande demais pra esse contexto de topo de
-   página — mesmo padrão de markdown customizado já usado em .login-title/
-   .login-subtitle) e botão "Sair" como pill discreto. */
+/* Cabeçalho: ícone+título numa linha (.header-brand) e subtítulo solto embaixo,
+   largura toda — mesma estrutura de .login-brand/.login-subtitle na tela de
+   login (substituem st.title/st.caption, que rendem um <h1> grande demais pra
+   esse contexto de topo de página) — e botão "Sair" como pill discreto,
+   centralizado verticalmente entre as duas linhas. */
 /* A regra genérica "Colunas dos botoes se ajustam ao conteudo" (ver base.css)
    exclui explicitamente linhas com <h1> — o st.title() de antes gerava um <h1>
    e escapava dela. Trocando por st.markdown, o header perdeu essa blindagem: as
@@ -20,7 +21,7 @@
    (Playwright, viewport 375px: coluna do título ocupava 327px sozinha numa
    linha, botão "Sair" na linha seguinte). Com nowrap, os dois ficam sempre
    na mesma linha e é o encolhimento (min-width:0 na coluna do título/
-   .header-text/.header-subtitle abaixo) que faz o subtítulo quebrar em
+   .header-brand/.header-subtitle abaixo) que faz o subtítulo quebrar em
    várias linhas pra caber — o botão nunca mais "cai". */
 .st-key-header-row [data-testid="stHorizontalBlock"] {
   align-items: center;
@@ -37,14 +38,17 @@
   flex: 0 0 auto !important;
   width: auto !important;
 }
-/* Ícone maior à esquerda, título+subtítulo empilhados à direita dele sem
-   nenhuma das duas linhas passar por baixo do ícone (como no mockup) — em
-   vez de emoji+título na mesma linha e subtítulo solto embaixo, largura
-   toda. */
+/* Ícone + título lado a lado, mesmo padrão de .login-brand (login.css) — o
+   subtítulo fica fora deste flex, como linha própria abaixo (.header-subtitle),
+   ocupando a largura toda da coluna em vez de ficar indentado ao lado do
+   ícone. min-width:0 permite que esta linha (e o título dentro dela) encolha
+   junto com a coluna do título no mobile, mesma lógica documentada no bloco
+   de comentário acima. */
 .header-brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 /* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
    (via components.py::icon()) — mesmo estilo do badge da tela de login
@@ -67,17 +71,6 @@
 .header-icon-badge .icon {
   color: #f97316;
 }
-/* Itens flex têm min-width:auto por padrão, travando a largura mínima no
-   conteúdo sem quebra — o subtítulo inteiro numa linha só. Isso empurra a
-   coluna do título além da largura disponível no mobile, disparando o
-   flex-wrap do row (acima) e derrubando o botão "Sair" pra linha de baixo.
-   min-width:0 aqui (e em .header-subtitle) libera o subtítulo pra quebrar em
-   duas linhas dentro da própria coluna em vez de forçar o row a estourar. */
-.header-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
 /* !important em font-size (aqui e no subtítulo) necessário: o Streamlit
    aplica um font-size próprio no <p> via seletor com especificidade maior
    que a classe sozinha (mesmo motivo do margin abaixo) — sem isso, o
@@ -91,10 +84,14 @@
   margin: 0 !important;
   letter-spacing: -0.02em;
 }
+/* Linha própria abaixo de .header-brand (não mais empilhado ao lado do ícone) — largura
+   toda da coluna, mesmo padrão de .login-subtitle. min-width:0 libera o texto pra quebrar
+   em duas linhas dentro da própria coluna no mobile em vez de forçar o row a estourar
+   (mesma lógica do flex-wrap:nowrap documentado no topo do arquivo). */
 .header-subtitle {
   font-size: 13px !important;
   color: #a3a3a3;
-  margin: -8px 0 0 !important;
+  margin: 4px 0 0 !important;
   min-width: 0;
 }
 /* Nudge vertical fino, mesmo princípio do .recorder-timer (recommendation.css): o
@@ -118,7 +115,7 @@
   font-size: 14px !important;
   font-weight: 500 !important;
   position: relative;
-  top: 8px;
+  top: 13px;
 }
 .st-key-btn_sair button[data-testid="stBaseButton-secondary"]:hover {
   filter: brightness(1.15);
