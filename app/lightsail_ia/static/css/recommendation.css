@@ -42,7 +42,13 @@
   letter-spacing: -0.02em;
   font-size: 40px;
   color: #fff;
-  margin: 0 0 4px;
+  /* !important necessário nos dois: o Streamlit aplica padding/margin próprios em <h1> com
+     especificidade maior que a classe sozinha (mesmo motivo do !important em font-weight
+     acima) — sem isso, o padding padrão (~20px/16px, medido via inspeção real do DOM)
+     soma um respiro invisível ao gap real até o .hero-subtitle abaixo, e o margin abaixo
+     nem chega a ser aplicado (fica travado em 0). */
+  padding: 0 !important;
+  margin: 0 0 4px !important;
   /* Sem isso, "O que você quer assistir hoje?" quebra deixando "hoje?" sozinho na 2ª linha
      (quebra padrão do navegador dentro dos ~616px úteis de .st-key-hero-section) —
      text-wrap:balance distribui o texto de forma mais equilibrada entre as linhas.

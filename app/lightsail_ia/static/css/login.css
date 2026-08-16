@@ -56,22 +56,22 @@
   box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(249,115,22,0.06);
   margin-bottom: 8px;
 }
-/* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
-   (components.py::icon()) — mesmo estilo do badge do cabeçalho principal
-   (.header-icon-badge, app.css), pra manter a identidade visual consistente entre as
-   duas telas. */
 .login-brand {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-bottom: 0;
 }
+/* Wrapper do ícone Lucide "clapperboard" laranja (components.py::icon()) — mesmo estilo
+   do wrapper do cabeçalho principal (.header-icon-badge, app.css). Sem fundo/borda (era
+   um badge com fundo colorido antes; virou transparente numa rodada anterior), então a
+   caixa é do mesmo tamanho do ícone (size=18 em icon("clapperboard", size=18), login.py)
+   — maior que isso só criaria respiro invisível somado ao gap de .login-brand. */
 .login-icon-badge {
-  width: 36px;
-  height: 36px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   background: transparent;
-  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,13 +92,17 @@
 .login-subtitle {
   font-size: 14px;
   color: #737373;
-  margin: 0 0 24px 0;
+  margin: 0 0 4px 0;
 }
+/* !important necessário: o Streamlit aplica margin própria em <hr> com especificidade maior
+   que a classe sozinha (mesmo motivo do !important em .hero-heading, recommendation.css) —
+   sem isso, o valor ficava travado em ~32px de cada lado (medido via inspeção real do DOM),
+   bem mais que os 24px declarados aqui, e sem respeitar o margin-top:0 pretendido. */
 .login-divider {
   border: none;
   border-top: 2px solid #f97316;
   opacity: 0.5;
-  margin: 0 0 24px 0;
+  margin: 8px 0 !important;
 }
 
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
