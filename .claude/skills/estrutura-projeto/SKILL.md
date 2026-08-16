@@ -51,16 +51,34 @@ proj-eng-dados-filmes-aws/
 │   │   └── src/utils.py           # Une filmes+séries via Athena SQL (CTEs + DENSE_RANK), escreve SPEC
 │   ├── lightsail_ia/
 │   │   ├── __init__.py
-│   │   ├── agent.py               # Agente de recomendação: extrai filtros → Athena → formata
-│   │   ├── app.py                 # Interface Streamlit (FilmBot)
-│   │   ├── componentes.py         # Helpers de renderização HTML (CSS, cards, grid, rodapé)
+│   │   ├── app.py                 # Orquestrador Streamlit: bootstrap → login → header → recomendação → cards (único entrypoint, streamlit run app.py)
+│   │   ├── src/
+│   │   │   ├── __init__.py
+│   │   │   ├── agent.py           # Agente de recomendação: extrai filtros → Athena → formata
+│   │   │   ├── infrastructure.py  # Bootstrap de processo (senha, CloudWatch) + utils de rate limiting
+│   │   │   ├── login.py           # Tela de autenticação
+│   │   │   ├── recommendation.py  # Formulário (texto/áudio) + busca assíncrona
+│   │   │   ├── cards.py           # Exibição dos resultados da busca
+│   │   │   ├── components.py      # Helpers de renderização HTML (CSS, cards, grid, rodapé)
+│   │   │   └── formatting.py      # Formatação determinística de registros do Athena para o card
 │   │   ├── requirements.txt       # streamlit, litellm, boto3, python-dotenv
 │   │   ├── lightsail_ia.md        # Documentação do módulo
 │   │   ├── .env.example           # Exemplo de variáveis de ambiente
 │   │   ├── .streamlit/secrets.toml.example  # Exemplo de config Streamlit
 │   │   ├── static/
-│   │   │   ├── login.css          # Estilos da tela de login
-│   │   │   └── principal.css      # Estilos da página principal
+│   │   │   ├── css/
+│   │   │   │   ├── base.css           # Estilos transversais (fundo, botão, container, .icon, .msg-*)
+│   │   │   │   ├── login.css          # Estilos da tela de login
+│   │   │   │   ├── app.css            # Estilos de cabeçalho/rodapé
+│   │   │   │   ├── recommendation.css # Estilos do formulário de recomendação
+│   │   │   │   └── cards.css          # Estilos do grid de resultados
+│   │   │   └── js/
+│   │   │       ├── contador_caracteres.js     # Contador de caracteres + toggle do botão "Recomendar"
+│   │   │       ├── audio_cancel_recording.js  # Ícone de descarte durante a gravação
+│   │   │       ├── audio_timer.js             # Timer decorrido/máximo do gravador
+│   │   │       ├── auto_grow_textarea.js      # Auto-grow do campo de preferência
+│   │   │       ├── countdown.js               # Countdown MM:SS genérico (rate limit/bloqueio)
+│   │   │       └── login_button_toggle.js     # Toggle do botão "Entrar" a cada tecla
 │   │   └── deploy/setup.sh        # Configura systemd service no Lightsail
 │   ├── lambda_lightsail_scheduler/
 │   │   ├── main.py                # Handler Lambda para ligar/desligar instância Lightsail

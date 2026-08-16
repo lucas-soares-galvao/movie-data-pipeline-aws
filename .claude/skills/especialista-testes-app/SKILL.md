@@ -15,19 +15,21 @@ Você é o especialista responsável pelos testes em `test/`, que espelha `app/`
 |---|---|
 | Árvore de `test/`, config geral do `pytest.ini` | `estrutura-projeto` |
 | Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `revisao-pos-mudanca-codigo` |
-| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/01_test.yml`) — `scripts/` e `app/lightsail_ia/app.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
+| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/01_test.yml`) — `scripts/` e `app/lightsail_ia/{app,login,recommendation,cards}.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
 
 ## Débito de cobertura para chegar a 95% — ordem de prioridade
 
-Com `app.py` excluído do gate (script de página do Streamlit, sem framework de teste automatizado
-no projeto), a cobertura de `app/` fica em ~95,25% — margem mínima (poucas linhas). Ao fechar essa
-lacuna, seguir esta ordem (do mais barato ao mais caro):
+Com `app.py`/`login.py`/`recommendation.py`/`cards.py` excluídos do gate (telas Streamlit, sem
+framework de teste automatizado no projeto), a cobertura de `app/` fica em ~95,25% — margem mínima
+(poucas linhas). Ao fechar essa lacuna, seguir esta ordem (do mais barato ao mais caro):
 
-1. **`app/lightsail_ia/componentes.py`** (15 linhas faltando) — funções wrapper finas em torno de
-   `st.markdown`/`components.html` (`_inject_css`, `load_login_css`, `load_main_css`,
-   `load_preference_counter_script`, `load_audio_cancel_script`, `render_footer`,
-   `render_login_footer`). Reaproveitar o mock de `streamlit` que já cobre `render_card`/`render_grid`
-   no mesmo arquivo.
+1. **`app/lightsail_ia/src/components.py`** — funções wrapper finas em torno de
+   `st.markdown`/`components.html` (`_inject_css`, `load_base_css`, `load_login_css`, `load_app_css`,
+   `load_recommendation_css`, `load_cards_css`, `load_preference_counter_script`,
+   `load_audio_cancel_script`, `render_footer`, `render_login_footer`). Reaproveitar o mock de
+   `streamlit` que já cobre `render_card`/`render_grid` no mesmo arquivo. (Contagem de linhas
+   faltando não recalculada nesta edição — mudou com o split de `app.py` em `login.py`/
+   `recommendation.py`/`cards.py`/`infrastructure.py`; ver `pytest --cov` para o número atual.)
 2. **`app/lambda_api/src/utils.py`** (12 linhas faltando) — branches de erro em
    `collect_now_playing_data`/`collect_discover_data`: `except HTTPError` (retry/continue) e
    `if saved_pages == 0: raise RuntimeError`. Reaproveitar o mock de `tmdb_get`/`fetch_tmdb_data`
@@ -36,7 +38,7 @@ lacuna, seguir esta ordem (do mais barato ao mais caro):
    `sys.argv` para `--FORCE_REFETCH`/`--TRANSLATE_PROVIDER`, a função `_fetch_collections_pt_br`
    inteira (busca paralela de coleções em pt-BR, ainda sem nenhum teste) e o branch de merge com
    dados existentes via `wr.s3.read_parquet` no fluxo de watch providers.
-4. **`app/lightsail_ia/agent.py`** (12 linhas) e **`app/lightsail_ia/formatacao.py`** (6 linhas) —
+4. **`app/lightsail_ia/src/agent.py`** (12 linhas) e **`app/lightsail_ia/src/formatting.py`** (6 linhas) —
    branches de erro/edge case do agente de recomendação (LLM) e de formatação de data/duração;
    deixar por último por menor volume e maior complexidade de mock (LLM).
 | Enumeração caso a caso de testes e fixtures de cada módulo | `test/<modulo>/<modulo>_tests.md` |
@@ -44,14 +46,15 @@ lacuna, seguir esta ordem (do mais barato ao mais caro):
 
 ## Mecanismo central: `test/conftest.py` (raiz) — isolamento entre suítes Glue
 
-Problema: `glue_etl`, `glue_details`, `glue_agg`, `glue_data_quality` e `lambda_api` importam seu próprio `utils.py` internamente como `src.utils` — mesmo nome de módulo em suítes diferentes, o que causaria uma suíte importar o `utils.py` em cache de outra ao rodarem juntas na mesma sessão pytest.
+Problema: `glue_etl`, `glue_details`, `glue_agg`, `glue_data_quality`, `lambda_api` e `lightsail_ia` importam seus próprios módulos internamente via `src.X` (`src.utils` nos 5 primeiros, `src.agent`/`src.components`/`src.infrastructure`/`src.cards`/`src.login`/`src.formatting`/`src.recommendation` em `lightsail_ia`) — mesmo nome de pacote raiz (`src`) em suítes diferentes, o que causaria uma suíte importar o módulo em cache de outra ao rodarem juntas na mesma sessão pytest.
 
 Solução, em `test/conftest.py`:
-- `_SUITE_TO_APP` (nome da suíte → `Path` de `app/<modulo>`) e `_SUITE_TO_SRC_MODULE` (nome da suíte → módulo totalmente qualificado, ex. `app.glue_etl.src.utils`) registram as 5 suítes que colidem. **Suítes sem entrada aqui não recebem alias** (`lightsail_ia`, `shared_src`, `scripts` — estrutura diferente, sem colisão de nome).
-- `pytest_collect_file` (hook chamado antes de cada arquivo de teste ser importado): identifica a suíte pelo primeiro segmento do path (`test/glue_etl/... → "glue_etl"`), limpa do `sys.modules` as chaves `src`, `main`, `utils`, `shared_utils` (e submódulos `src.*`/`shared_utils.*`), reconstrói `sys.path` via `_set_suite_path` (coloca `src/`, `app_dir` e `shared_src` da suíte atual na frente, removendo os das demais suítes), importa o módulo fully-qualified da suíte e registra como `sys.modules["src.utils"]` — mais os aliases de cada submódulo de `src` (ex. `src.rulesets_dq` no `glue_data_quality`).
+- `import app` roda no topo do módulo, **antes** de qualquer `_set_suite_path`, cacheando o pacote real `app/` em `sys.modules["app"]`. Necessário porque `app/lightsail_ia/` tem um `app.py` próprio (entrypoint do Streamlit) — se a suíte `lightsail_ia` for a primeira do processo a rodar `_set_suite_path`, esse `app.py` ficaria à frente da raiz do repo no `sys.path` e sombrearia o pacote `app` de verdade (`import app` resolveria pro arquivo, não pro pacote), quebrando o import fully-qualified de **todas as outras suítes** pelo resto da sessão.
+- `_SUITE_TO_APP` (nome da suíte → `Path` de `app/<modulo>`) e `_SUITE_TO_SRC_MODULE` (nome da suíte → módulo fully-qualified usado como âncora, ex. `app.glue_etl.src.utils`) registram as 6 suítes que colidem em `src`. Suítes sem entrada aqui (`shared_src`, `scripts`) não recebem alias — estrutura diferente, sem colisão de nome. Para `lightsail_ia`, que não tem `utils.py`, a âncora é `app.lightsail_ia.src.recommendation` (importa `agent`/`components`/`infrastructure` internamente, pré-populando a maioria dos aliases; `cards`/`login`/`formatting` resolvem sob demanda via `__path__` do pacote `src` já aliasado — mesmo mecanismo de resolução de subpacote que já cobre `src.rulesets_dq` em `glue_data_quality`).
+- `pytest_collect_file` (hook chamado antes de cada arquivo de teste ser importado): identifica a suíte pelo primeiro segmento do path (`test/glue_etl/... → "glue_etl"`), limpa do `sys.modules` as chaves `src`, `main`, `utils`, `shared_utils` (e submódulos `src.*`/`shared_utils.*`), reconstrói `sys.path` via `_set_suite_path` (coloca `src/`, `app_dir` e `shared_src` da suíte atual na frente, removendo os das demais suítes), importa o módulo fully-qualified âncora da suíte e registra como `sys.modules["src.utils"]` (alias sem uso real em `lightsail_ia`, que não tem `utils.py` — inofensivo) — mais os aliases de cada submódulo de `src` já carregado sob o pacote fully-qualified (ex. `src.rulesets_dq` no `glue_data_quality`).
 - `pytest_runtest_setup` (hook chamado antes de **cada teste individual**, via `_apply_suite_aliases`): reaplica os mesmos aliases — necessário porque a execução pode intercalar suítes diferentes — e restaura `sys.modules["main"]` para o módulo `main` correto da suíte, pois `patch("main.xxx")` resolve pela string em tempo de execução e ficaria apontando para a suíte errada.
 
-**Regra prática**: ao criar um job Glue novo com `src/utils.py` (ou outro módulo que colida em `src.utils`), registrar as chaves correspondentes em `_SUITE_TO_APP` e `_SUITE_TO_SRC_MODULE` em `test/conftest.py` — sem isso, os testes do módulo novo podem silenciosamente importar o `utils.py` de outro job.
+**Regra prática**: ao criar um job Glue novo com `src/utils.py` (ou outro módulo que colida em `src.X`), registrar as chaves correspondentes em `_SUITE_TO_APP` e `_SUITE_TO_SRC_MODULE` em `test/conftest.py` — sem isso, os testes do módulo novo podem silenciosamente importar o módulo em cache de outro job. Se o novo módulo tiver um arquivo literalmente chamado `app.py` no próprio diretório (só `lightsail_ia` hoje), confirmar que o `import app` no topo do conftest continua rodando antes de qualquer `_set_suite_path` — é o que impede esse `app.py` de sombrear o pacote `app` real.
 
 ## `pytest.ini`
 

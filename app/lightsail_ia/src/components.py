@@ -1,4 +1,4 @@
-"""componentes.py — Funções auxiliares de renderização para o FilmBot."""
+"""components.py — Funções auxiliares de renderização para o FilmBot."""
 
 import html
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ _MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
 
 # Ícones outline do design system "Luminous" (Lucide, stroke-only, brancos via .icon em
-# principal.css) — paths oficiais do pacote lucide-static, viewBox 24x24. Embutidos como
+# base.css) — paths oficiais do pacote lucide-static, viewBox 24x24. Embutidos como
 # <svg> inline (não <img> base64, como o antigo ícone de marca do YouTube que isso
 # substituiu) porque só assim `stroke="currentColor"` consegue herdar cor via CSS. Públicos
 # (sem prefixo `_`) porque `app.py` também usa pra montar o badge do ícone do cabeçalho, não
@@ -63,9 +63,9 @@ ICON_PATHS = {
 
 def icon(name: str, size: int = 16) -> str:
     """Monta um ícone Lucide inline (outline, `stroke="currentColor"` — cor vem da classe
-    `.icon` em principal.css, branca por padrão; o ícone "sparkles" do Insight do FilmBot é
-    a única exceção, laranja via `.reason-label .icon`). Usada por `render_card()` aqui
-    dentro e pelo badge do ícone do cabeçalho em `app.py`."""
+    `.icon` em base.css, branca por padrão; o ícone "sparkles" do Insight do FilmBot é
+    a única exceção, laranja via `.reason-label .icon` em cards.css). Usada por
+    `render_card()` aqui dentro e pelo badge do ícone do cabeçalho em `app.py`."""
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"'
         f' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
@@ -75,25 +75,45 @@ def icon(name: str, size: int = 16) -> str:
 
 
 def _inject_css(file_name: str) -> None:
-    """Lê um arquivo CSS e injeta na página via st.markdown."""
-    path = Path(__file__).parent / "static" / file_name
+    """Lê um arquivo CSS de static/css/ e injeta na página via st.markdown."""
+    path = Path(__file__).parent.parent / "static" / "css" / file_name
     css = path.read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
+def load_base_css() -> None:
+    """Injeta os estilos transversais (fundo, reset de botão, largura de container, ícones,
+    mensagens de feedback), compartilhados entre a tela de login e a página principal."""
+    _inject_css("base.css")
+
+
 def load_login_css() -> None:
-    """Injeta os estilos da tela de login."""
+    """Injeta os estilos base seguidos dos estilos específicos da tela de login."""
+    load_base_css()
     _inject_css("login.css")
 
 
-def load_main_css() -> None:
-    """Injeta os estilos da página principal."""
-    _inject_css("principal.css")
+def load_app_css() -> None:
+    """Injeta os estilos base seguidos dos estilos de cabeçalho/rodapé da página principal."""
+    load_base_css()
+    _inject_css("app.css")
+
+
+def load_recommendation_css() -> None:
+    """Injeta os estilos do formulário de preferência/busca assíncrona (depende de base.css já
+    injetado por load_app_css() na mesma execução de script)."""
+    _inject_css("recommendation.css")
+
+
+def load_cards_css() -> None:
+    """Injeta os estilos da exibição de resultados (depende de base.css já injetado por
+    load_app_css() na mesma execução de script)."""
+    _inject_css("cards.css")
 
 
 def load_preference_counter_script(max_chars: int, rate_limited: bool = False) -> None:
     """Injeta o script do contador dinâmico de caracteres e do habilitar/desabilitar do botão "Recomendar"."""
-    path = Path(__file__).parent / "static" / "contador_caracteres.js"
+    path = Path(__file__).parent.parent / "static" / "js" / "contador_caracteres.js"
     script = (
         path.read_text(encoding="utf-8")
         .replace("__MAX_CHARS__", str(max_chars))
@@ -104,21 +124,21 @@ def load_preference_counter_script(max_chars: int, rate_limited: bool = False) -
 
 def load_audio_cancel_script() -> None:
     """Injeta o script do ícone de descarte durante a gravação de áudio."""
-    path = Path(__file__).parent / "static" / "audio_cancel_recording.js"
+    path = Path(__file__).parent.parent / "static" / "js" / "audio_cancel_recording.js"
     script = path.read_text(encoding="utf-8")
     components.html(f"<script>{script}</script>", height=0)
 
 
 def load_audio_timer_script(max_seconds: int) -> None:
     """Injeta o script do timer decorrido/máximo do gravador, que também para a gravação sozinha ao atingir max_seconds."""
-    path = Path(__file__).parent / "static" / "audio_timer.js"
+    path = Path(__file__).parent.parent / "static" / "js" / "audio_timer.js"
     script = path.read_text(encoding="utf-8").replace("__MAX_SECONDS__", str(max_seconds))
     components.html(f"<script>{script}</script>", height=0)
 
 
 def load_textarea_autogrow_script() -> None:
     """Injeta o script que ajusta a altura do campo de preferência ao conteúdo digitado."""
-    path = Path(__file__).parent / "static" / "auto_grow_textarea.js"
+    path = Path(__file__).parent.parent / "static" / "js" / "auto_grow_textarea.js"
     script = path.read_text(encoding="utf-8")
     components.html(f"<script>{script}</script>", height=0)
 
@@ -129,7 +149,7 @@ def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
     a 00:00. `element_id` mira o `<span>` a atualizar — necessário quando mais de um
     countdown pode estar visível na mesma página ao mesmo tempo (busca e transcrição),
     para não colidir em `id="countdown"` duplicado no DOM."""
-    path = Path(__file__).parent / "static" / "countdown.js"
+    path = Path(__file__).parent.parent / "static" / "js" / "countdown.js"
     script = (
         path.read_text(encoding="utf-8")
         .replace("__SECONDS__", str(seconds))
@@ -142,7 +162,7 @@ def load_login_button_toggle_script(locked_out: bool) -> None:
     """Injeta o script que habilita/desabilita o botão "Entrar" a cada tecla digitada
     no campo de senha, mesmo padrão de `load_preference_counter_script()` para o botão
     "Recomendar"."""
-    path = Path(__file__).parent / "static" / "login_button_toggle.js"
+    path = Path(__file__).parent.parent / "static" / "js" / "login_button_toggle.js"
     script = path.read_text(encoding="utf-8").replace(
         "__LOCKED_OUT__", "true" if locked_out else "false"
     )
@@ -206,7 +226,7 @@ def _render_provider_badges(providers: list[tuple[str, str]], highlighted: list[
     """Monta os badges de provedor (streaming e aluguel/compra já combinados, pareados com
     logo via zip posicional, e deduplicados por nome por `render_card`), priorizando via
     `_prioritize` o(s) provedor(es) mencionado(s) pelo usuário e marcando cada um com a
-    classe "highlighted" (borda laranja, ver principal.css) — não só o primeiro, todo
+    classe "highlighted" (borda laranja, ver cards.css) — não só o primeiro, todo
     provedor que bateu com a busca. Cada badge mostra a logo real do TMDB antes do nome
     quando disponível (`.provider-logo`); sem logo, cai de volta pro badge só-texto. Mostra
     até `_MAX_VISIBLE_PROVIDER_BADGES` badges direto — o restante trunca silenciosamente,
@@ -272,13 +292,13 @@ def render_card(title: dict, idx: int = 0) -> str:
     genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
     visible_genres_raw = genres_raw[:_MAX_VISIBLE_GENRES]
     # Todo gênero que bateu com a busca do usuário ganha "highlighted" (borda laranja, ver
-    # principal.css) — não só o primeiro, mesmo padrão de _render_provider_badges.
+    # cards.css) — não só o primeiro, mesmo padrão de _render_provider_badges.
     genres_html = "".join(
         f'<span class="genre{" highlighted" if _matches_highlighted(g, highlighted_genres) else ""}">'
         f"{html.escape(g)}</span>"
         for g in visible_genres_raw
     )
-    # Faz parte do meio solto do card (ver principal.css) — só emite a div quando há algum
+    # Faz parte do meio solto do card (ver cards.css) — só emite a div quando há algum
     # gênero pra mostrar.
     genres_block_html = ""
     if genres_html:
@@ -293,7 +313,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     # isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
     # Os três usam o mesmo ícone de calendário (antes eram emoji diferentes por estado —
     # 🎬/📅/🔜 —, unificados num só ícone Lucide). Sem nenhum dos três, não emite a div — o
-    # card fica com essa linha a menos (meio solto, ver principal.css).
+    # card fica com essa linha a menos (meio solto, ver cards.css).
     cinema_icon_html = f'<span class="meta-icon">{icon("calendar")}</span>'
     cinema_content = ""
     if in_theaters:
@@ -339,7 +359,7 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     # Motivo é limitado a 90 caracteres na origem (prompt do agente) — cabe sem clamp nem
     # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
-    # sincronia de altura com os vizinhos da fileira, ver principal.css). Sem motivo, a div
+    # sincronia de altura com os vizinhos da fileira, ver cards.css). Sem motivo, a div
     # nem é gerada (meio solto) — caso comum, não só borda: `reason` costuma vir vazio fora
     # do fluxo de recomendação da IA. Rótulo "✨ Insight do FilmBot" acima do texto, mesmo
     # princípio do rótulo "Onde assistir" acima dos badges de provedor — a seção agora vem
@@ -373,7 +393,7 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     # Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo (+
     # Trailer); sem pôster a nota continua no slot direito, como sempre foi. Faz parte do
-    # meio solto do card (ver principal.css) — só emite a div quando há data/tipo, Trailer ou
+    # meio solto do card (ver cards.css) — só emite a div quando há data/tipo, Trailer ou
     # nota (sem pôster) pra mostrar. Ícone e Trailer ficam dentro de .meta-info (não como
     # irmãos soltos de .meta-row) porque .meta-line usa justify-content:space-between pra
     # separar meta-info/nota — um filho a mais direto do .meta-row empurraria pra ponta
@@ -392,7 +412,7 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     # Duração em linha própria — só quando há duração pra mostrar (o Trailer não entra mais
     # aqui, subiu pra meta-line acima, do lado esquerdo, junto de data/tipo). Faz parte do
-    # meio solto do card (ver principal.css) — sem duração, a div nem é gerada.
+    # meio solto do card (ver cards.css) — sem duração, a div nem é gerada.
     duration_html = ""
     if duration:
         duration_html = (
@@ -430,7 +450,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     # provedores agora, com ou sem pôster. Rótulo "Onde assistir" fica em linha própria,
     # acima dos badges (não espremido ao lado deles) — mesmo princípio do rótulo "✨
     # Insight do FilmBot" acima de `.reason`. Faz parte do meio solto do card (ver
-    # principal.css) — só emite a div quando há algum provedor pra mostrar.
+    # cards.css) — só emite a div quando há algum provedor pra mostrar.
     providers_block_html = ""
     if provider_badges_html:
         providers_block_html = (
@@ -447,7 +467,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     # Checkbox fica fora da .synopsis-row, como sibling direto de .synopsis-text, pra o
     # seletor CSS ~ continuar funcionando. Ícone+texto ficam à esquerda e o chevron ⌄/⌃ na
     # ponta direita do label (`justify-content:space-between` em `.synopsis-label`, ver
-    # principal.css) — mesmo padrão visual de `.people-label` (Ficha Técnica) abaixo.
+    # cards.css) — mesmo padrão visual de `.people-label` (Ficha Técnica) abaixo.
     toggle_id = f"synopsis-toggle-{idx}"
     synopsis_toggle_html = ""
     synopsis_label_html = ""
@@ -466,7 +486,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     synopsis_row_html = (
         f'<div class="meta-row synopsis-row">{synopsis_label_html}</div>' if synopsis_label_html else ""
     )
-    # Sinopse faz parte do meio solto do card (ver principal.css), sem sincronia de altura
+    # Sinopse faz parte do meio solto do card (ver cards.css), sem sincronia de altura
     # com os vizinhos da fileira — só emite a div quando há de fato sinopse pra mostrar.
     synopsis_html = ""
     if synopsis_toggle_html or synopsis_row_html:
@@ -478,7 +498,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), posicionada ANTES da
     # sinopse — todo o elenco/equipe técnica já formatado em `title` aparece aqui, um bullet
     # por papel, com o rótulo em negrito pra escanear rápido. Faz parte do "meio solto" do
-    # card (ver principal.css) — só emite a div quando há algum campo preenchido. Ícone+texto
+    # card (ver cards.css) — só emite a div quando há algum campo preenchido. Ícone+texto
     # à esquerda, chevron ⌄/⌃ na ponta direita, mesmo padrão de `.synopsis-label` acima.
     people_toggle_id = f"people-toggle-{idx}"
     people_html = ""
@@ -535,7 +555,7 @@ def render_grid(titles: list[dict]) -> str:
     """Monta o HTML completo do grid de cards.
 
     Cada card estica pra altura do maior vizinho da fileira (`.grid-titles` com
-    `align-items: stretch`, ver principal.css) — não precisa de nenhum posicionamento
+    `align-items: stretch`, ver cards.css) — não precisa de nenhum posicionamento
     explícito de linha/coluna, o grid de 3 colunas com `repeat(3, 1fr)` já forma fileiras
     implícitas de 3 cards sozinho.
     """

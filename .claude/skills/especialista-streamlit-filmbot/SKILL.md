@@ -1,6 +1,6 @@
 ---
 name: especialista-streamlit-filmbot
-description: Especialista em construir/estilizar telas Streamlit do FilmBot seguindo o design system "Luminous" já definido (cores, tipografia, componentes, motion), a partir de pedidos em texto do usuário e/ou imagens de referência (mockups) e imagens de conteúdo (pôsteres/backdrops TMDB), com foco em responsividade desktop/mobile. Use ao criar novas telas/seções do app/lightsail_ia, redesenhar componentes existentes (cards, login, grid), ajustar CSS/JS em static/*.css|js, ou ao receber um pedido (em texto ou imagem/mockup) para aplicar/replicar visualmente no Streamlit.
+description: Especialista em construir/estilizar telas Streamlit do FilmBot seguindo o design system "Luminous" já definido (cores, tipografia, componentes, motion), a partir de pedidos em texto do usuário e/ou imagens de referência (mockups) e imagens de conteúdo (pôsteres/backdrops TMDB), com foco em responsividade desktop/mobile. Use ao criar novas telas/seções do app/lightsail_ia, redesenhar componentes existentes (cards, login, grid), ajustar CSS/JS em static/css/*.css e static/js/*.js, ou ao receber um pedido (em texto ou imagem/mockup) para aplicar/replicar visualmente no Streamlit.
 ---
 
 # Especialista Streamlit + Design System (FilmBot)
@@ -14,11 +14,11 @@ Você é o responsável pela consistência visual do FilmBot (`app/lightsail_ia/
 | O quê | Onde |
 |---|---|
 | Tokens/referência de design ("Luminous") | `app/lightsail_ia/design/ai-social-automation.aura.build/design-system.html` |
-| Implementação real em produção | `app/lightsail_ia/static/principal.css`, `static/login.css`, `static/contador_caracteres.js` |
-| Helpers Python de renderização | `app/lightsail_ia/componentes.py` |
+| Implementação real em produção | `app/lightsail_ia/static/css/base.css` (transversal), `static/css/login.css`, `static/css/app.css` (cabeçalho/rodapé), `static/css/recommendation.css`, `static/css/cards.css`, `static/js/contador_caracteres.js` |
+| Helpers Python de renderização | `app/lightsail_ia/src/components.py` |
 | Doc funcional do app | `app/lightsail_ia/lightsail_ia.md` |
 
-Regra: nunca duplicar um helper que já existe em `componentes.py` (`_inject_css`, `load_main_css`, `load_login_css`, `render_card`, `render_grid`, `load_preference_counter_script`) — estenda ou reutilize.
+Regra: nunca duplicar um helper que já existe em `components.py` (`_inject_css`, `load_base_css`, `load_login_css`, `load_app_css`, `load_recommendation_css`, `load_cards_css`, `render_card`, `render_grid`, `load_preference_counter_script`) — estenda ou reutilize. Cada `load_*_css()` de tela injeta `base.css` antes do CSS próprio — ao adicionar uma regra transversal nova, ela vai em `base.css`, nunca duplicada nos arquivos de tela.
 
 ## Tokens do design system "Luminous"
 
@@ -38,20 +38,20 @@ Resumo condensado de `design-system.html`, para não precisar reler o arquivo in
 - **Motion**: `fadeInUpBlur` para entrada (opacity + translateY + blur), delays escalonados (75/100/150/200/300/500/700ms); hover com `scale-105`/`brightness-110`/mudança de borda ou fundo; scroll-reveal via `IntersectionObserver`
 - **Ícones**: Lucide, tamanhos 12/16/24px, cor branca/neutral/laranja conforme hierarquia
 
-Essa paleta já bate com o CSS real de produção (`#111` cards, `#f97316` laranja, badges pill em `principal.css`) — trate o design system como fonte canônica para **tokens novos**, e o CSS de produção como fonte canônica do que **já está implementado**. Se os dois divergirem, o CSS de produção vence (é o que está no ar).
+Essa paleta já bate com o CSS real de produção (`#111` cards, `#f97316` laranja, badges pill em `cards.css`) — trate o design system como fonte canônica para **tokens novos**, e o CSS de produção como fonte canônica do que **já está implementado**. Se os dois divergirem, o CSS de produção vence (é o que está no ar).
 
 ## Padrões técnicos para Streamlit responsivo
 
 Como aplicar esses tokens dentro das limitações reais do Streamlit:
 
-- **CSS**: sempre injetado via `st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)` (ver `_inject_css` em `componentes.py`). Evite `style=` inline espalhado pelo Python quando dá para centralizar num `.css` em `static/`.
-- **Seletores**: os widgets nativos do Streamlit não têm classes CSS estáveis — o CSS mira atributos `data-testid` (`stTextArea`, `stAudioInput`, `stHorizontalBlock`, `stBaseButton-primary`, etc.). Isso é estrutura interna não documentada e pode quebrar em upgrades do Streamlit — quando usar um seletor desses, deixe um comentário curto avisando (mesmo padrão já usado em `contador_caracteres.js` e `principal.css`).
-- **Grid responsivo mobile-first**: `grid-template-columns: repeat(N, 1fr)` com número fixo de colunas — 3 como padrão (desktop), 1 (coluna única) no mobile. Replique o padrão de `.grid-titles` em `principal.css`.
+- **CSS**: sempre injetado via `st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)` (ver `_inject_css` em `components.py`). Evite `style=` inline espalhado pelo Python quando dá para centralizar num `.css` em `static/css/`.
+- **Seletores**: os widgets nativos do Streamlit não têm classes CSS estáveis — o CSS mira atributos `data-testid` (`stTextArea`, `stAudioInput`, `stHorizontalBlock`, `stBaseButton-primary`, etc.). Isso é estrutura interna não documentada e pode quebrar em upgrades do Streamlit — quando usar um seletor desses, deixe um comentário curto avisando (mesmo padrão já usado em `contador_caracteres.js` e nos arquivos CSS de `static/css/`).
+- **Grid responsivo mobile-first**: `grid-template-columns: repeat(N, 1fr)` com número fixo de colunas — 3 como padrão (desktop), 1 (coluna única) no mobile. Replique o padrão de `.grid-titles` em `cards.css`.
 - **Breakpoints já estabelecidos no projeto**: `768px` (mobile/desktop, unificado para toda a página — hero, cabeçalho, textarea/áudio, mensagens de erro/aviso e grid de cards viram juntos nesse ponto) — reutilize antes de inventar um novo. Existe também um `480px` isolado só para o `font-size` do `.hero-heading`, que não faz parte desse breakpoint principal.
 - **Imagens de conteúdo**: `aspect-ratio` fixo (`16/9` para cards) + `object-fit: cover` + `loading="lazy"`; prefira backdrop sobre poster quando os dois existirem (padrão já usado em `render_card`).
 - **JS**: injetado via `components.html`, acessando `window.parent.document` (iframe same-origin) quando precisa manipular o DOM da página real — padrão de `load_preference_counter_script`.
 - **Segurança**: qualquer HTML montado a partir de dado dinâmico (título, sinopse, etc. vindo do TMDB ou do LLM) passa por `html.escape()` antes de entrar na string — nunca interpolar texto de fonte externa sem escapar.
-- **Sem scroll horizontal**: `overflow-x: hidden` nos containers principais (`stAppViewContainer`, `stMain`, `.block-container`), como já feito em `principal.css`.
+- **Sem scroll horizontal**: `overflow-x: hidden` nos containers principais (`stAppViewContainer`, `stMain`, `.block-container`), como já feito em `base.css`.
 
 ## Trabalhando a partir de pedidos do usuário (texto e imagens)
 
@@ -65,7 +65,7 @@ Três cenários distintos — não confunda um com o outro:
 
 ## Checklist antes de finalizar uma mudança visual
 
-- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`>768px` e `≤768px`) — `app.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. `app.py` está inclusive excluído do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
-- Confira que nenhum seletor novo quebra os já existentes em `principal.css`/`login.css` — teste visualmente as duas telas (login e principal).
-- Se a mudança tocar `componentes.py`/`utils.py` ou lógica Python testável (fora de `app.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
+- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`>768px` e `≤768px`) — `app.py`/`login.py`/`recommendation.py`/`cards.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. Esses 4 arquivos estão inclusive excluídos do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
+- Confira que nenhum seletor novo quebra os já existentes em `base.css`/`login.css`/`app.css`/`recommendation.css`/`cards.css` — teste visualmente as duas telas (login e principal). Se a mudança tocar uma regra genuinamente transversal (usada por mais de uma tela), ela pertence a `base.css`, não duplicada nos arquivos de tela.
+- Se a mudança tocar `components.py`/`infrastructure.py` ou lógica Python testável (fora de `app.py`/`login.py`/`recommendation.py`/`cards.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
 - Prosa em português, identificadores em inglês, conforme `CLAUDE.md`.

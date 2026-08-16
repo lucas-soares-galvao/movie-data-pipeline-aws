@@ -20,7 +20,7 @@ Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
     (ORDER BY popularity DESC) já é o sinal de relevância, e inclui títulos ainda
     não lançados (que nunca tiveram chance de acumular voto).
     O Athena retorna títulos reais que passaram pelo pipeline completo de ETL.
-    Em seguida, funções em formatacao.py convertem cada registro em campos
+    Em seguida, funções em formatting.py convertem cada registro em campos
     prontos para o card da interface (sem usar LLM).
 
   PASSO 3 — Geração do motivo (LLM via litellm):
@@ -78,7 +78,7 @@ import wave
 import boto3
 import litellm
 from dotenv import load_dotenv
-from formatacao import format_record
+from src.formatting import format_record
 
 # Carrega as variáveis de ambiente do arquivo .env (na mesma pasta do app).
 # No ambiente de produção (Lightsail), o .env é criado pelo script de deploy
@@ -315,7 +315,7 @@ _SYSTEM_PROMPT = (
 # JSON estruturado (menos tokens de completion do que prosa livre). O limite de
 # ~90 caracteres mantém o bloco "reason" da UI compacto (card tem min-height/
 # max-height de 3 linhas no desktop, com toggle "Ver mais"/"Ver menos" — ver
-# principal.css/componentes.py) e controla o custo de tokens de completion.
+# cards.css/components.py) e controla o custo de tokens de completion.
 _REASON_SYSTEM_PROMPT = (
     "Você é um curador de filmes e séries. "
     "Para cada título na lista, escreva um motivo curto (1-2 frases, no máximo "
@@ -372,7 +372,7 @@ _HIGHLIGHT_FIELD_PATTERNS = {
 
 def _extract_highlighted_terms(where_clause: str) -> dict[str, list[str]]:
     """Extrai os termos de gênero/provedor que o LLM já filtrou na where_clause (Passo 1),
-    usados para priorizar as badges correspondentes nos cards (ver componentes.py::_prioritize).
+    usados para priorizar as badges correspondentes nos cards (ver components.py::_prioritize).
 
     Cláusulas NOT LIKE são ignoradas: significam que o usuário não quer aquele valor, então
     ele não deve ser destacado.
@@ -400,7 +400,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
     qualidade por vote_count — a relevância vem só do ORDER BY popularity DESC (que já
     naturalmente prioriza títulos com mais dados/reconhecimento) e do pool+sorteio abaixo.
     Isso também inclui títulos com air_date futuro (ainda não lançados, badge "Em breve" no
-    card — ver render_card() em componentes.py), que nunca tiveram chance de acumular voto e
+    card — ver render_card() em components.py), que nunca tiveram chance de acumular voto e
     antes ficavam de fora sem um bypass explícito no WHERE.
 
     Busca um pool de candidatos maior que `limit` (ordenado por popularidade,

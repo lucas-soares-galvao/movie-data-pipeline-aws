@@ -1,15 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;600&display=swap');
+/* @import de fonte + fundo radial vêm de base.css (compartilhado com a página principal). */
 
 /* Oculta header/toolbar do Streamlit na tela de login */
 [data-testid="stHeader"] { display: none; }
 [data-testid="stToolbar"] { display: none; }
 [data-testid="stDecoration"] { display: none; }
-
-/* Fundo cinematografico */
-[data-testid="stAppViewContainer"] {
-  background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
-  min-height: 100vh;
-}
 
 /* Card de login unificado: título, subtítulo, divisor, campo de senha e
    botão "Entrar" ficam todos dentro do mesmo st.container(key="login-card"),
@@ -25,8 +19,8 @@
   margin-bottom: 8px;
 }
 /* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
-   (componentes.py::icon()) — mesmo ícone do badge do cabeçalho principal
-   (.header-icon-badge, principal.css), só com as cores invertidas: lá é fundo laranja +
+   (components.py::icon()) — mesmo ícone do badge do cabeçalho principal
+   (.header-icon-badge, app.css), só com as cores invertidas: lá é fundo laranja +
    ícone branco, aqui é fundo escuro + ícone laranja, mais discreto pra tela de login. */
 .login-brand {
   display: flex;
@@ -44,9 +38,8 @@
   align-items: center;
   justify-content: center;
 }
-/* .icon (branca, de principal.css) não existe nesta tela — cada tela injeta o próprio CSS
-   de forma independente (mesmo motivo de .accent-gradient-text abaixo) — por isso o ícone
-   precisa da própria regra de cor aqui. */
+/* .icon (branca, de base.css) é branca por padrão — por isso o ícone laranja desta tela
+   precisa da própria regra de cor aqui, sobrescrevendo-a por especificidade. */
 .login-icon-badge .icon {
   color: #f97316;
 }
@@ -71,7 +64,7 @@
 }
 
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
-   usada pro "Press Ctrl+Enter to apply" da textarea em principal.css. */
+   usada pro "Press Ctrl+Enter to apply" da textarea em recommendation.css. */
 [data-testid="stTextInput"] [data-testid="InputInstructions"] {
   display: none;
 }
@@ -99,7 +92,7 @@
 
 /* Sobrescreve o botao de login — mesmo padrão pill/glow do botão
    "Recomendar" da página principal (.st-key-btn_recomendar em
-   principal.css), para consistência visual entre as duas telas.
+   recommendation.css), para consistência visual entre as duas telas.
    Cor sólida (sem gradiente), no laranja principal do design system. */
 [data-testid="stButton"] > button {
   background: #f97316 !important;
@@ -127,29 +120,9 @@
   gap: 0.4rem !important;
 }
 
-/* Duplicado de .msg-error/.msg-warning em principal.css — cada tela injeta
-   seu próprio CSS de forma independente (mesmo motivo de .accent-gradient-text
-   acima). Usado por render_feedback() na mensagem de senha incorreta. */
-.msg-error {
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.3);
-  border-radius: 10px;
-  padding: 12px 16px;
-  max-width: 100%;
-  color: #fca5a5;
-  font-size: 14px;
-  margin-bottom: 12px;
-}
-.msg-warning {
-  background: rgba(250,204,21,0.1);
-  border: 1px solid rgba(250,204,21,0.3);
-  border-radius: 10px;
-  padding: 12px 16px;
-  max-width: 100%;
-  color: #fbbf24;
-  font-size: 14px;
-  margin-bottom: 12px;
-}
+/* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de
+   senha incorreta/bloqueio) vêm de base.css — antes duplicados aqui, e sem .time-countdown
+   (bug corrigido nesta migração: o countdown de bloqueio de login não tinha essa classe). */
 
 .footer-login {
   text-align: center;

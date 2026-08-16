@@ -25,9 +25,9 @@
             counter.id = "pref-char-counter";
             // position:relative;top:-2px — nudge vertical fino medido via inspeção
             // real do DOM (Playwright), igual ao usado em .recorder-timer
-            // (principal.css) para os dois labels ficarem na mesma linha de base.
+            // (recommendation.css) para os dois labels ficarem na mesma linha de base.
             // left:12px — compensa o margin-left:-12px de .st-key-recorder-card
-            // (principal.css, nudge de alinhamento do gravador com o início do
+            // (recommendation.css, nudge de alinhamento do gravador com o início do
             // texto): como o contador é filho dessa mesma linha e empurrado pra
             // ponta via margin-left:auto, aquele nudge também arrastava o
             // contador 12px pra esquerda do fim real do texto — medido via

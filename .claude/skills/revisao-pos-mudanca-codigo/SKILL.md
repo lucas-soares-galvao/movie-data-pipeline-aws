@@ -51,7 +51,7 @@ app/shared_src/shared_utils/api_client.py    →  test/shared_src/test_api_clien
 app/shared_src/shared_utils/triggers.py      →  test/shared_src/test_triggers.py
 app/shared_src/shared_utils/glue_helpers.py  →  test/shared_src/test_glue_helpers.py
 app/shared_src/shared_utils/traducao.py      →  test/shared_src/test_traducao.py
-app/lightsail_ia/agent.py  →  test/lightsail_ia/test_agent.py
+app/lightsail_ia/src/agent.py  →  test/lightsail_ia/test_agent.py
 ```
 
 Se o módulo de teste ainda não existe, crie seguindo a estrutura espelhada com `__init__.py`, `conftest.py` e `requirements_tests.txt`.

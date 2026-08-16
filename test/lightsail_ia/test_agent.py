@@ -15,10 +15,10 @@ import time
 import wave
 from unittest.mock import MagicMock, patch
 
-import agent
 import litellm
 import openai
 import pytest
+from src import agent
 
 
 def _make_wav_bytes(duration_seconds: float, framerate: int = 16000) -> bytes:
@@ -78,7 +78,7 @@ def _setup_athena_mock(mock_boto3, rows_data=None):
       3. get_paginator().paginate() → le os resultados paginados
 
     Args:
-        mock_boto3:  Mock do modulo boto3 injetado via @patch("agent.boto3").
+        mock_boto3:  Mock do modulo boto3 injetado via @patch("src.agent.boto3").
         rows_data:   Lista de dicts com os dados de cada linha a retornar.
                      None ou lista vazia → retorna apenas o header (resultado vazio).
 
@@ -255,14 +255,14 @@ class TestExtractHighlightedTerms:
 class TestSearchTitlesSpec:
 
     def test_retorna_lista_vazia_sem_resultados(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             _setup_athena_mock(mock_boto3)
             result = agent.search_titles_spec("vote_average >= 6.0")
 
         assert result == []
 
     def test_retorna_registros_como_lista_de_dicts(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             _setup_athena_mock(mock_boto3, rows_data=[FAKE_TITLE])
             result = agent.search_titles_spec("vote_average >= 6.0")
 
@@ -272,7 +272,7 @@ class TestSearchTitlesSpec:
 
     def test_filtro_where_incluido_na_query(self):
         where_clause = "media_type = 'movie' AND lower(genre_names) LIKE '%terror%'"
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec(where_clause)
 
@@ -283,7 +283,7 @@ class TestSearchTitlesSpec:
     def test_sem_filtro_fixo_de_vote_count(self):
         """Sem filtro automático de vote_count — relevância vem só de ORDER BY popularity DESC,
         o que também inclui títulos futuros (ainda sem votos) sem precisar de bypass no WHERE."""
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("media_type = 'movie'")
 
@@ -291,7 +291,7 @@ class TestSearchTitlesSpec:
         assert "vote_count" not in executed_sql
 
     def test_filtro_idioma_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("original_language = 'ko'")
 
@@ -299,7 +299,7 @@ class TestSearchTitlesSpec:
         assert "original_language = 'ko'" in executed_sql
 
     def test_filtro_duracao_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("runtime_minutes <= 90 AND media_type = 'movie'")
 
@@ -307,7 +307,7 @@ class TestSearchTitlesSpec:
         assert "runtime_minutes <= 90" in executed_sql
 
     def test_filtro_temporadas_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("number_of_seasons = 1 AND media_type = 'tv'")
 
@@ -315,7 +315,7 @@ class TestSearchTitlesSpec:
         assert "number_of_seasons = 1" in executed_sql
 
     def test_select_inclui_campos_de_proximo_episodio(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("media_type = 'tv'")
 
@@ -325,7 +325,7 @@ class TestSearchTitlesSpec:
         assert "next_episode_season_number" in executed_sql
 
     def test_select_inclui_logos_de_provedor(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("media_type = 'movie'")
 
@@ -334,7 +334,7 @@ class TestSearchTitlesSpec:
         assert "rent_buy_provider_logos" in executed_sql
 
     def test_filtro_proximo_episodio_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("next_episode_air_date IS NOT NULL AND media_type = 'tv'")
 
@@ -342,7 +342,7 @@ class TestSearchTitlesSpec:
         assert "next_episode_air_date IS NOT NULL" in executed_sql
 
     def test_filtro_em_cartaz_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("in_theaters = true AND media_type = 'movie'")
 
@@ -350,7 +350,7 @@ class TestSearchTitlesSpec:
         assert "in_theaters = true" in executed_sql
 
     def test_filtro_plataforma_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("lower(streaming_providers) LIKE '%netflix%'")
 
@@ -358,7 +358,7 @@ class TestSearchTitlesSpec:
         assert "lower(streaming_providers) LIKE '%netflix%'" in executed_sql
 
     def test_filtro_faixa_de_ano_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("year BETWEEN '2000' AND '2010'")
 
@@ -366,7 +366,7 @@ class TestSearchTitlesSpec:
         assert "year BETWEEN '2000' AND '2010'" in executed_sql
 
     def test_pool_maior_que_limite_solicitado_na_query(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("vote_average >= 6.0", limit=5)
 
@@ -374,7 +374,7 @@ class TestSearchTitlesSpec:
         assert "LIMIT 15" in executed_sql  # 5 * _CANDIDATE_POOL_MULTIPLIER
 
     def test_limite_solicitado_e_limitado_a_15_antes_do_pool(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("vote_average >= 6.0", limit=100)
 
@@ -383,7 +383,7 @@ class TestSearchTitlesSpec:
         assert "LIMIT 100" not in executed_sql
 
     def test_limite_minimo_e_1(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("vote_average >= 6.0", limit=0)
 
@@ -391,7 +391,7 @@ class TestSearchTitlesSpec:
         assert "LIMIT 3" in executed_sql  # limit capado a 1, pool = min(1*3, 30)
 
     def test_pool_nao_ultrapassa_maximo_absoluto(self):
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
             agent.search_titles_spec("vote_average >= 6.0", limit=15)
 
@@ -401,7 +401,7 @@ class TestSearchTitlesSpec:
 
     def test_amostra_e_limitada_ao_limit_solicitado_quando_pool_maior(self):
         many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             _setup_athena_mock(mock_boto3, rows_data=many_rows)
             result = agent.search_titles_spec("vote_average >= 6.0", limit=3)
 
@@ -409,7 +409,7 @@ class TestSearchTitlesSpec:
 
     def test_retorna_todos_quando_pool_nao_excede_limit(self):
         few_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(3)]
-        with patch("agent.boto3") as mock_boto3:
+        with patch("src.agent.boto3") as mock_boto3:
             _setup_athena_mock(mock_boto3, rows_data=few_rows)
             result = agent.search_titles_spec("vote_average >= 6.0", limit=15)
 
@@ -418,8 +418,8 @@ class TestSearchTitlesSpec:
     def test_amostra_preserva_ordem_de_popularidade_do_subconjunto(self):
         many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
         with (
-            patch("agent.boto3") as mock_boto3,
-            patch("agent.random.sample", return_value=[7, 2, 5]),
+            patch("src.agent.boto3") as mock_boto3,
+            patch("src.agent.random.sample", return_value=[7, 2, 5]),
         ):
             _setup_athena_mock(mock_boto3, rows_data=many_rows)
             result = agent.search_titles_spec("vote_average >= 6.0", limit=3)
@@ -437,8 +437,8 @@ class TestRecommend:
 
     def test_retorna_lista_vazia_se_athena_sem_resultados(self):
         with (
-            patch("agent.search_titles_spec", return_value=[]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -449,8 +449,8 @@ class TestRecommend:
 
     def test_chama_llm_duas_vezes(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -461,8 +461,8 @@ class TestRecommend:
 
     def test_passos_1_e_3_usam_retry_configurado(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -480,16 +480,16 @@ class TestRecommend:
             model="deepseek/deepseek-v4-flash",
         )
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion", side_effect=error),
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion", side_effect=error),
         ):
             with pytest.raises(litellm.exceptions.ServiceUnavailableError):
                 agent.recommend("filmes de terror")
 
     def test_retorna_lista_de_titulos(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -506,8 +506,8 @@ class TestRecommend:
             "limit": 5,
         }
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]) as mock_search,
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]) as mock_search,
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(filters)
             agent.recommend("filmes de terror dos anos 80")
@@ -523,8 +523,8 @@ class TestRecommend:
         step1_no_tool.choices = [MagicMock(message=msg_no_tool)]
 
         with (
-            patch("agent.search_titles_spec") as mock_search,
-            patch("agent.litellm.completion", return_value=step1_no_tool),
+            patch("src.agent.search_titles_spec") as mock_search,
+            patch("src.agent.litellm.completion", return_value=step1_no_tool),
         ):
             result = agent.recommend("filmes de terror")
 
@@ -533,8 +533,8 @@ class TestRecommend:
 
     def test_retorna_data_lancamento_formatada(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -546,8 +546,8 @@ class TestRecommend:
 
     def test_campos_formatados_pelo_python(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -567,8 +567,8 @@ class TestRecommend:
     def test_motivo_incluido_no_resultado(self):
         reason_json = json.dumps({"titles": [{"id": 0, "reason": "Combina com o pedido de terror."}]})
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
@@ -584,8 +584,8 @@ class TestRecommend:
             + "\n```"
         )
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
@@ -596,8 +596,8 @@ class TestRecommend:
 
     def test_motivo_vazio_se_llm_retorna_string_vazia(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=""
@@ -608,8 +608,8 @@ class TestRecommend:
 
     def test_motivo_vazio_se_llm_retorna_json_invalido(self):
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content="não é json"
@@ -623,8 +623,8 @@ class TestRecommend:
             {"titles": [{"id": "0", "reason": "Nota alta e clássico do gênero."}]}
         )
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
@@ -636,8 +636,8 @@ class TestRecommend:
     def test_motivo_funciona_com_lista_direta_sem_wrapper(self):
         reason_json = json.dumps([{"id": 0, "reason": "Direto na lista, sem wrapper."}])
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
@@ -649,8 +649,8 @@ class TestRecommend:
     def test_motivo_ignora_item_com_id_nao_conversivel(self):
         reason_json = json.dumps({"titles": [{"id": "abc", "reason": "Motivo órfão."}]})
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
@@ -668,8 +668,8 @@ class TestRecommend:
             keywords_pt="isolamento, loucura",
         )
         with (
-            patch("agent.search_titles_spec", return_value=[fake_title_com_ficha]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[fake_title_com_ficha]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}
@@ -685,8 +685,8 @@ class TestRecommend:
     def test_anexa_generos_destacados_ao_resultado(self):
         filters = {"where_clause": "lower(genre_names) LIKE '%terror%'"}
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(filters)
             result = agent.recommend("filmes de terror")
@@ -697,8 +697,8 @@ class TestRecommend:
     def test_anexa_provedores_destacados_ao_resultado(self):
         filters = {"where_clause": "lower(streaming_providers) LIKE '%netflix%'"}
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(filters)
             result = agent.recommend("filmes da netflix")
@@ -709,8 +709,8 @@ class TestRecommend:
     def test_destaque_vazio_sem_filtro_de_genero_ou_provedor(self):
         filters = {"where_clause": "media_type = 'movie'"}
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm(filters)
             result = agent.recommend("filmes")
@@ -752,8 +752,8 @@ class TestCacheWhere:
         agent._save_cached_where("filmes de terror", cached_args)
 
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]) as mock_search,
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]) as mock_search,
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm({})
             result = agent.recommend("filmes de terror")
@@ -770,8 +770,8 @@ class TestCacheWhere:
         agent._save_cached_where("filmes de terror", cached_args)
 
         with (
-            patch("agent.search_titles_spec", return_value=[FAKE_TITLE]),
-            patch("agent.litellm.completion") as mock_completion,
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
         ):
             mock_completion.side_effect = _mock_litellm({})
             result = agent.recommend("filmes de terror")
@@ -787,7 +787,7 @@ class TestLogTokenUsage:
         response.usage.completion_tokens = 50
         response.usage.total_tokens = 150
 
-        with patch("agent.logger") as mock_logger:
+        with patch("src.agent.logger") as mock_logger:
             agent._log_token_usage("step1_where", response)
 
         mock_logger.info.assert_called_once()
@@ -799,7 +799,7 @@ class TestLogTokenUsage:
     def test_nao_loga_sem_usage(self):
         response = MagicMock(spec=[])
 
-        with patch("agent.logger") as mock_logger:
+        with patch("src.agent.logger") as mock_logger:
             agent._log_token_usage("step1_where", response)
 
         mock_logger.info.assert_not_called()
@@ -816,7 +816,7 @@ class TestTranscribePreference:
 
     def test_transcreve_audio_com_sucesso(self):
         audio_bytes = _make_wav_bytes(2)
-        with patch("agent.litellm.transcription") as mock_transcription:
+        with patch("src.agent.litellm.transcription") as mock_transcription:
             mock_transcription.return_value = MagicMock(text="filmes de terror")
             result = agent.transcribe_preference(audio_bytes)
 
@@ -824,7 +824,7 @@ class TestTranscribePreference:
 
     def test_remove_espacos_da_transcricao(self):
         audio_bytes = _make_wav_bytes(2)
-        with patch("agent.litellm.transcription") as mock_transcription:
+        with patch("src.agent.litellm.transcription") as mock_transcription:
             mock_transcription.return_value = MagicMock(text="  filmes de terror  ")
             result = agent.transcribe_preference(audio_bytes)
 
@@ -832,7 +832,7 @@ class TestTranscribePreference:
 
     def test_retorna_string_vazia_sem_fala_detectada(self):
         audio_bytes = _make_wav_bytes(2)
-        with patch("agent.litellm.transcription") as mock_transcription:
+        with patch("src.agent.litellm.transcription") as mock_transcription:
             mock_transcription.return_value = MagicMock(text="")
             result = agent.transcribe_preference(audio_bytes)
 
@@ -841,7 +841,7 @@ class TestTranscribePreference:
     def test_usa_modelo_e_idioma_configurados(self):
         audio_bytes = _make_wav_bytes(2)
         with (
-            patch("agent.litellm.transcription") as mock_transcription,
+            patch("src.agent.litellm.transcription") as mock_transcription,
             patch.object(agent, "_TRANSCRIPTION_MODEL", "groq/whisper-large-v3-turbo"),
         ):
             mock_transcription.return_value = MagicMock(text="ok")
@@ -854,7 +854,7 @@ class TestTranscribePreference:
     def test_propaga_erro_do_provedor(self):
         audio_bytes = _make_wav_bytes(2)
         error = openai.APIConnectionError(message="timeout", request=None)
-        with patch("agent.litellm.transcription", side_effect=error):
+        with patch("src.agent.litellm.transcription", side_effect=error):
             with pytest.raises(openai.APIConnectionError):
                 agent.transcribe_preference(audio_bytes)
 
@@ -866,7 +866,7 @@ class TestTranscribePreference:
 
     def test_audio_dentro_do_limite_nao_levanta_erro(self):
         audio_bytes = _make_wav_bytes(agent._MAX_AUDIO_SECONDS - 1)
-        with patch("agent.litellm.transcription") as mock_transcription:
+        with patch("src.agent.litellm.transcription") as mock_transcription:
             mock_transcription.return_value = MagicMock(text="ok")
             agent.transcribe_preference(audio_bytes)
 
@@ -881,7 +881,7 @@ class TestTranscribePreference:
         audio_bytes = _make_wav_bytes(
             agent._MAX_AUDIO_SECONDS + agent._AUDIO_DURATION_TOLERANCE_SECONDS
         )
-        with patch("agent.litellm.transcription") as mock_transcription:
+        with patch("src.agent.litellm.transcription") as mock_transcription:
             mock_transcription.return_value = MagicMock(text="ok")
             agent.transcribe_preference(audio_bytes)
 
@@ -891,7 +891,7 @@ class TestTranscribePreference:
         audio_bytes = _make_wav_bytes(
             agent._MAX_AUDIO_SECONDS + agent._AUDIO_DURATION_TOLERANCE_SECONDS + 1
         )
-        with patch("agent.litellm.transcription") as mock_transcription:
+        with patch("src.agent.litellm.transcription") as mock_transcription:
             with pytest.raises(agent.AudioMuitoLongoError):
                 agent.transcribe_preference(audio_bytes)
 
