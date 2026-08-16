@@ -15,6 +15,7 @@ from src.agent import (
     transcribe_preference,
 )
 from src.components import (
+    icon,
     load_audio_cancel_script,
     load_audio_timer_script,
     load_countdown_script,
@@ -208,7 +209,10 @@ def render_recommendation(client_ip: str) -> None:
                     # feedback sobre uma ação em andamento, não parte do formulário, mesmo
                     # motivo pelo qual os avisos/erros de transcrição já vivem lá fora.
                     with audio_messages_slot:
-                        st.caption("🎤 Transcrevendo áudio...")
+                        st.caption(
+                            f'{icon("mic", size=14)} Transcrevendo áudio...',
+                            unsafe_allow_html=True,
+                        )
                     time.sleep(0.5)
                     st.rerun()
 

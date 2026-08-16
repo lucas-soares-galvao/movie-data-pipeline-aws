@@ -5,6 +5,20 @@
 [data-testid="stToolbar"] { display: none; }
 [data-testid="stDecoration"] { display: none; }
 
+/* Centralização vertical do card de login: stAppViewContainer já tem min-height:100vh
+   (base.css), mas nada empurrava o conteúdo pro meio da tela — sem isso o card
+   renderiza colado no topo, seguindo o fluxo normal do block-container. Só as
+   colunas do card (stHorizontalBlock, ver regra de gap logo abaixo) crescem pra
+   preencher o espaço (flex:1) e centralizam o filho verticalmente — o rodapé
+   (.footer-login) fica de fora do flex:1, então continua perto da base da tela em
+   vez de ser puxado pro meio junto com o card. Só se aplica na tela de login: estas
+   regras só são injetadas quando render_login() roda, nunca junto de app.css. */
+[data-testid="stMain"] .block-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 /* Card de login unificado: título, subtítulo, divisor, campo de senha e
    botão "Entrar" ficam todos dentro do mesmo st.container(key="login-card"),
    para o campo de senha herdar a mesma largura de conteúdo da linha
@@ -118,6 +132,14 @@
 [data-testid="stColumns"],
 [data-testid="stHorizontalBlock"] {
   gap: 0.4rem !important;
+}
+
+/* Cresce pra preencher o espaço vertical sobrando no block-container (regra acima) e
+   centraliza a coluna do meio (com o card) nesse espaço — flex-row por padrão do
+   próprio Streamlit, então align-items:center já centraliza verticalmente. */
+[data-testid="stHorizontalBlock"] {
+  flex: 1;
+  align-items: center;
 }
 
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de

@@ -44,7 +44,11 @@ with st.container(key="header-row"):
         )
     with logout_col:
         if st.button("Sair", key="btn_sair"):
-            st.session_state["authenticated"] = False
+            # clear() (não só zerar "authenticated"): sem isso, "titles"/"search_completed"/
+            # etc. escritos por recommendation.py sobrevivem no st.session_state (que persiste
+            # por sessão de navegador, independente do login) e a última recomendação
+            # reaparece sozinha ao logar de novo.
+            st.session_state.clear()
             st.rerun()
 
 render_recommendation(client_ip)

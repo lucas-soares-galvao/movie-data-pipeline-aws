@@ -269,7 +269,8 @@ O CSS (`static/`) acompanha a mesma divisão: `base.css` (transversal), `login.c
     **antes** do texto; foi pro lado oposto pra bater com o mockup mais recente. Se nenhum papel estiver presente,
     a div nem é gerada (meio solto)
   - Sinopse, na última linha do card, também no meio solto (não ancorada em nenhuma borda fixa entre os 3 cards
-    da fileira): accordion "Sinopse" (checkbox hack em CSS, já que `st.html` não executa `<script>`) recolhido
+    da fileira): accordion "Sinopse" (checkbox hack em CSS, já que a grid é renderizada via
+    `st.markdown(unsafe_allow_html=True)`, que não executa `<script>` injetado no HTML) recolhido
     por padrão, com o ícone outline "file-text" antes do texto (ver nota geral sobre ícones acima) e o mesmo
     chevron ⌄/⌃ na ponta direita da linha que "Ficha
     Técnica" usa (mesmo motivo — bater com o mockup). O rótulo é **branco**, não mais laranja: o Trailer não
