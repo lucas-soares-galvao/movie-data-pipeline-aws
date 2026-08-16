@@ -96,14 +96,14 @@
 }
 /* Nudge vertical fino, mesmo princípio do .recorder-timer (recommendation.css): o
    wrapper interno sem data-testid que o Streamlit gera em volta de st.markdown (entre
-   stMarkdown e stMarkdownContainer) reporta uma altura menor (~37px) que a
-   dos dois parágrafos reais (título+subtítulo, ~53px juntos) — e essa
-   altura resiste a height/min-height/max-height:auto (não é
-   content-visibility/contain nem estilo inline; não conseguimos isolar a
-   causa exata mesmo inspecionando o DOM real via Playwright). Isso faz o
-   align-items:center do row centralizar o botão "Sair" contra uma altura
-   errada, ~8px acima do centro real do bloco de texto — compensado aqui
-   diretamente, já medido/validado via inspeção real do DOM. */
+   stMarkdown e stMarkdownContainer) reporta uma altura menor que a dos dois parágrafos
+   reais (título+subtítulo), e essa altura resiste a height/min-height/max-height:auto
+   (não é content-visibility/contain nem estilo inline; não conseguimos isolar a causa
+   exata mesmo inspecionando o DOM real). Isso faz o align-items:center do row centralizar
+   o botão "Sair" contra uma altura errada — compensado aqui diretamente. Recalibrado via
+   getBoundingClientRect() no console (mais preciso que inspeção visual): com o gap
+   brand↔subtítulo em 2px, o centro real do bloco fica 5px acima do centro do botão sem
+   o nudge, medido em produção. */
 .st-key-btn_sair button[data-testid="stBaseButton-secondary"] {
   width: auto !important;
   height: auto !important;
@@ -115,7 +115,7 @@
   font-size: 14px !important;
   font-weight: 500 !important;
   position: relative;
-  top: 13px;
+  top: 8px;
 }
 .st-key-btn_sair button[data-testid="stBaseButton-secondary"]:hover {
   filter: brightness(1.15);
