@@ -906,14 +906,14 @@ class TestRenderCard:
         reason_pos = html.index('class="reason"')
         assert label_pos < reason_pos
 
-    def test_card_motivo_icone_sparkles_fica_laranja_nao_branco(self):
-        # Emoji ✨ virou ícone Lucide outline "sparkles" — única exceção à regra de ícone
-        # branco: acompanha a cor do rótulo/barra de acento (.reason-label .icon, laranja).
+    def test_card_motivo_icone_lightbulb_fica_laranja_nao_branco(self):
+        # Ícone Lucide outline "lightbulb" — única exceção à regra de ícone branco:
+        # acompanha a cor do rótulo (.reason-label .icon, laranja).
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
         html = components.render_card(t)
         label_pos = html.index('class="reason-label"')
         label_end = html.index("</span>", label_pos)
-        assert 'class="icon icon-sparkles"' in html[label_pos:label_end]
+        assert 'class="icon icon-lightbulb"' in html[label_pos:label_end]
         assert "✨" not in html
 
     def test_card_motivo_fica_depois_dos_generos_e_antes_dos_provedores(self):

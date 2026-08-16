@@ -180,10 +180,9 @@ O CSS (`static/`) acompanha a mesma divisão: `base.css` (transversal), `login.c
     os emoji nativos que o card usava antes (ℹ/⏱/🎬/📅/🔜/📄/✨/👥, e o ícone de marca do YouTube em vermelho no
     Trailer), seguindo o conjunto de ícones que o design system "Luminous" já declarava (`.claude/skills/
     especialista-streamlit-filmbot/SKILL.md`). Todos brancos via a classe `.icon` em `base.css`, **com uma
-    exceção**: o ícone "sparkles" do "Insight do FilmBot" é laranja (`#fdba74`, via `.reason-label .icon`,
-    mais específico que `.icon` sozinho) — acompanha a cor do rótulo e da barra de acento à esquerda (ver bullet
-    do Insight mais abaixo), em vez do branco padrão. Gênero continua sem ícone (removido por pedido do
-    usuário numa rodada anterior)
+    exceção**: o ícone "lightbulb" do "Insight do FilmBot" é laranja (`#fdba74`, via `.reason-label .icon`,
+    mais específico que `.icon` sozinho) — acompanha a cor do rótulo (ver bullet do Insight mais abaixo), em vez
+    do branco padrão. Gênero continua sem ícone (removido por pedido do usuário numa rodada anterior)
   - Duração em linha própria (`.duration-row`), logo abaixo da linha de tipo/data, com ou sem imagem — ícone
     outline "clock" + texto, sem Trailer (que mora na meta-line acima, ver bullet anterior). A div só é gerada quando há duração
     pra mostrar; sem duração, nem é gerada (meio solto). Formato depende do tipo (`formatting.py::
@@ -221,12 +220,10 @@ O CSS (`static/`) acompanha a mesma divisão: `base.css` (transversal), `login.c
     `components.py::_prioritize()` move todos os que baterem para o início da lista antes do corte, então
     nenhum fica de fora se estiver presente no título — e ganha destaque visual (borda + texto laranja, classe
     `.highlighted`, mesmo `#fdba74` do motivo da IA) via `components.py::_matches_highlighted()`
-  - "✨ Insight do FilmBot" — motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), com rótulo laranja
-    próprio (`.reason-label`) acima do texto em itálico (`.reason`). Uma barra de acento laranja (`border-left:
-    3px solid #f97316` em `.row-reason`, estilo blockquote) cobre rótulo e texto de uma vez, com `padding-left`
-    afastando o conteúdo da barra — sem fundo/caixa colorida atrás do texto (removida numa rodada anterior a
-    pedido do usuário; só a barra voltou, não o fundo). O texto do motivo é neutro, mesmo tom de
-    `.synopsis-text`/`.people-list` (`#d4d4d4`). Vem **depois dos
+  - "💡 Insight do FilmBot" — motivo da recomendação em destaque (gerado pelo LLM na Etapa 3), com rótulo laranja
+    próprio (`.reason-label`) acima do texto em itálico (`.reason`). Sem barra de acento nem fundo/caixa
+    colorida atrás do texto (ambos removidos por pedido do usuário) — só o rótulo laranja marca a seção. O
+    texto do motivo é neutro, mesmo tom de `.synopsis-text`/`.people-list` (`#d4d4d4`). Vem **depois dos
     gêneros**, não mais logo abaixo do título — junto de "Onde assistir" (bullet seguinte), fecha o bloco "por
     que te recomendei isso · onde assistir" no fim do card, antes das seções colapsáveis. Sem
     `min-height`/`max-height`/toggle — faz parte
@@ -238,7 +235,7 @@ O CSS (`static/`) acompanha a mesma divisão: `base.css` (transversal), `login.c
     sem nenhum provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/
     row-synopsis). Rótulo em linha própria acima dos badges (`.providers-label-row`), com o ícone outline "tv"
     ao lado do texto (removido numa rodada anterior por ser emoji, reintroduzido nesta como ícone Lucide — ver
-    nota geral sobre ícones acima) — mesmo princípio visual do rótulo "✨ Insight do FilmBot" acima. Streaming e
+    nota geral sobre ícones acima) — mesmo princípio visual do rótulo "💡 Insight do FilmBot" acima. Streaming e
     aluguel/compra
     combinados num único grupo e deduplicados por nome (`components.py::_render_provider_badges()`), sem badge separado
     "Aluguel/Compra". Cada badge mostra a **logo real do TMDB** (`.provider-logo`, ~14px, `streaming_provider_

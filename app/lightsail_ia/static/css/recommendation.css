@@ -193,6 +193,7 @@
 .st-key-recorder-card [data-testid="stAudioInputActionButton"] svg {
   width: 16px !important;
   height: 16px !important;
+  fill: #fff !important;
 }
 /* Quando o widget nativo mostra dois botões de ação lado a lado (ex.: mic de
    regravar + ▶ Play de prévia, no instante após parar uma gravação, antes do
