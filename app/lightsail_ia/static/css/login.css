@@ -63,8 +63,8 @@
 .login-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 2px;
 }
 .login-icon-badge {
   width: 36px;
