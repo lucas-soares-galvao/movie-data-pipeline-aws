@@ -174,8 +174,6 @@
    "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
 .row-reason {
   margin-top: 16px;
-  border-left: 3px solid #f97316;
-  padding-left: 12px;
 }
 .meta-line {
   margin-top: 16px;
@@ -209,10 +207,9 @@
      conteúdo pede. */
 
 /* Sem height:100%/box-sizing: sem subgrid, .row-reason não compartilha altura de linha com
-   os vizinhos (faz parte do meio solto). Sem fundo colorido — só uma barra de acento à
-   esquerda (border-left, ver .row-reason acima), estilo blockquote, cobrindo rótulo e
-   texto de uma vez por estar no wrapper pai. O rótulo (.reason-label) fica laranja, o
-   texto do motivo (.reason) é neutro, mesmo tom de .synopsis-text/.people-list. */
+   os vizinhos (faz parte do meio solto). Sem fundo colorido e sem barra de acento — só o
+   rótulo laranja (.reason-label) acima do texto do motivo, que é neutro, mesmo tom de
+   .synopsis-text/.people-list. */
 .reason-label {
   display: block;
   color: #fdba74;
@@ -249,11 +246,10 @@
   justify-content: center;
 }
 
-/* Única exceção à regra "ícone sempre branco" (.icon, base.css): o "sparkles" do Insight
-   do FilmBot acompanha a cor do rótulo/barra de acento (mesma família de laranja do design
-   system, ver .reason-label/.row-reason acima) — seletor descendente vence `.icon` sozinho
-   por especificidade, sem precisar de !important nem depender da ordem de injeção dos
-   arquivos CSS. */
+/* Única exceção à regra "ícone sempre branco" (.icon, base.css): o "lightbulb" do Insight
+   do FilmBot acompanha a cor do rótulo (mesma família de laranja do design system, ver
+   .reason-label acima) — seletor descendente vence `.icon` sozinho por especificidade, sem
+   precisar de !important nem depender da ordem de injeção dos arquivos CSS. */
 .reason-label .icon {
   color: #fdba74;
 }
