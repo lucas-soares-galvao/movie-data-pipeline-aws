@@ -54,7 +54,13 @@
   border-radius: 20px;
   padding: 40px 36px 32px;
   box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(249,115,22,0.06);
-  margin-bottom: 8px;
+  /* Centralização horizontal via CSS puro (max-width + margin:auto) em vez de
+     st.columns([1, 1.1, 1]) — funciona identicamente em qualquer viewport, sem
+     depender do breakpoint interno (não documentado/instável entre versões) em
+     que o Streamlit empilha colunas verticalmente no mobile. */
+  max-width: 440px;
+  width: 100%;
+  margin: 0 auto 8px;
 }
 .login-brand {
   display: flex;
