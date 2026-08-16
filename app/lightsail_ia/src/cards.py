@@ -35,4 +35,4 @@ def render_cards() -> None:
             f'<p class="results-heading">Encontramos {len(titles)} {word} para você!</p>',
             unsafe_allow_html=True,
         )
-        st.html(render_grid(titles))
+        st.markdown(render_grid(titles), unsafe_allow_html=True)

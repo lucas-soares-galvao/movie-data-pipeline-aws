@@ -603,6 +603,17 @@ class TestDeriveCanonicalName:
         # " Amazon Channel" → "MGM Plus" → override → "MGM+"
         assert derive_canonical_name("MGM Plus Amazon Channel") == "MGM+"
 
+    def test_remove_sufixo_amazon_channels_plural(self):
+        # TMDB também retorna o sufixo no plural pra alguns provedores (achado numa
+        # auditoria do catálogo real via Athena, ex: "Lionsgate+ Amazon Channels").
+        assert derive_canonical_name("Lionsgate+ Amazon Channels") == "Lionsgate+"
+
+    def test_sufixo_plural_nao_conflita_com_singular(self):
+        # "X Amazon Channels" não termina em " Amazon Channel" (sobra o "s") — as duas
+        # formas do sufixo nunca competem pelo mesmo nome, independente da ordem na lista.
+        assert derive_canonical_name("Telecine Amazon Channel") == "Telecine"
+        assert derive_canonical_name("Telecine Amazon Channels") == "Telecine"
+
 
 # ---------------------------------------------------------------------------
 # get_resolved_option / get_parameters_glue

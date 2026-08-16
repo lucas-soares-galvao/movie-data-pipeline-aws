@@ -40,6 +40,25 @@ BASE_TITLE = {
 TITLE_SEM_POSTER = {**BASE_TITLE, "poster_url": None, "backdrop_url": None}
 
 
+class TestIcon:
+    """icon() monta um <svg> Lucide inline a partir de ICON_PATHS — testado direto aqui pro
+    ícone "mic" (usado só em recommendation.py, sem cobertura indireta via render_card())."""
+
+    def test_icone_mic_existe(self):
+        svg = components.icon("mic")
+        assert 'class="icon icon-mic"' in svg
+        assert "<svg" in svg
+
+    def test_icone_usa_stroke_current_color(self):
+        svg = components.icon("mic")
+        assert 'stroke="currentColor"' in svg
+
+    def test_icone_respeita_size_customizado(self):
+        svg = components.icon("mic", size=14)
+        assert 'width="14"' in svg
+        assert 'height="14"' in svg
+
+
 class TestLoadAudioTimerScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
         captured = {}

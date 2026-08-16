@@ -46,19 +46,26 @@
   align-items: center;
   gap: 12px;
 }
-/* Badge quadrado arredondado laranja atrás do ícone (antes era só o emoji 🎬 solto, sem
-   fundo) — o ícone em si é o SVG Lucide "clapperboard" (via components.py::icon()), branco
-   por padrão via .icon (base.css), sem CSS extra aqui. border-radius:10px casa com o do
-   botão "Sair" (.st-key-btn_sair), mesma linha do header. */
+/* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
+   (via components.py::icon()) — mesmo estilo do badge da tela de login
+   (.login-icon-badge, login.css), pra manter a identidade visual consistente entre as
+   duas telas. border-radius:10px casa com o do botão "Sair" (.st-key-btn_sair), mesma
+   linha do header. */
 .header-icon-badge {
   width: 40px;
   height: 40px;
   flex-shrink: 0;
-  background: #f97316;
+  background: #1a1a1a;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* .icon (branca, de base.css) é branca por padrão — por isso o ícone laranja deste badge
+   precisa da própria regra de cor aqui, sobrescrevendo-a por especificidade (mesma técnica
+   de .login-icon-badge .icon em login.css). */
+.header-icon-badge .icon {
+  color: #f97316;
 }
 /* Itens flex têm min-width:auto por padrão, travando a largura mínima no
    conteúdo sem quebra — o subtítulo inteiro numa linha só. Isso empurra a
