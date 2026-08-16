@@ -25,7 +25,7 @@ Implementa o "cérebro" do FilmBot em 3 passos usando LLM + AWS Athena:
 
   PASSO 3 — Geração do motivo (LLM via litellm):
     O LLM recebe apenas os campos essenciais de cada título já encontrado pelo
-    Athena e escreve um motivo curto (1-2 frases) explicando por que aquele
+    Athena e escreve um motivo curto (1 frase) explicando por que aquele
     título específico atende ao pedido do usuário. Responde em JSON, que é
     mesclado por índice aos registros já formatados pelo Python.
 
@@ -313,13 +313,13 @@ _SYSTEM_PROMPT = (
 
 # System prompt enviado ao LLM no Passo 3. Pede um motivo curto por título, em
 # JSON estruturado (menos tokens de completion do que prosa livre). O limite de
-# ~90 caracteres mantém o bloco "reason" da UI compacto (card tem min-height/
-# max-height de 3 linhas no desktop, com toggle "Ver mais"/"Ver menos" — ver
+# ~150 caracteres mantém o bloco "reason" da UI compacto (card não tem clamp
+# nem toggle — o texto sempre aparece completo, "meio solto" do card, ver
 # cards.css/components.py) e controla o custo de tokens de completion.
 _REASON_SYSTEM_PROMPT = (
     "Você é um curador de filmes e séries. "
     "Para cada título na lista, escreva um motivo curto (1 frase, no máximo "
-    "~90 caracteres) explicando por que ele é uma boa recomendação para o "
+    "~150 caracteres) explicando por que ele é uma boa recomendação para o "
     "pedido do usuário. "
     "Cite diretor, elenco, plataforma de streaming, classificação indicativa ou "
     "palavras-chave apenas quando fizerem parte do motivo real — não force menção "
