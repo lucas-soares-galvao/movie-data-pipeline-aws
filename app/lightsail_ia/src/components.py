@@ -379,7 +379,7 @@ def render_card(title: dict, idx: int = 0) -> str:
             f'</div>'
         )
 
-    # Motivo é limitado a 90 caracteres na origem (prompt do agente) — cabe sem clamp nem
+    # Motivo é limitado a 150 caracteres na origem (prompt do agente) — cabe sem clamp nem
     # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
     # sincronia de altura com os vizinhos da fileira, ver cards.css). Sem motivo, a div
     # nem é gerada (meio solto) — caso comum, não só borda: `reason` costuma vir vazio fora
