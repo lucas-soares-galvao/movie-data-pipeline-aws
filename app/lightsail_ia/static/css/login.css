@@ -94,17 +94,6 @@
   color: #737373;
   margin: 0 0 4px 0;
 }
-/* !important necessário: o Streamlit aplica margin própria em <hr> com especificidade maior
-   que a classe sozinha (mesmo motivo do !important em .hero-heading, recommendation.css) —
-   sem isso, o valor ficava travado em ~32px de cada lado (medido via inspeção real do DOM),
-   bem mais que os 24px declarados aqui, e sem respeitar o margin-top:0 pretendido. */
-.login-divider {
-  border: none;
-  border-top: 2px solid #f97316;
-  opacity: 0.5;
-  margin: 8px 0 !important;
-}
-
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
    usada pro "Press Ctrl+Enter to apply" da textarea em recommendation.css. */
 [data-testid="stTextInput"] [data-testid="InputInstructions"] {

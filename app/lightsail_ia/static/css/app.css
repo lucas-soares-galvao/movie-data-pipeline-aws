@@ -91,7 +91,11 @@
 .header-subtitle {
   font-size: 13px !important;
   color: #a3a3a3;
-  margin: 0 !important;
+  /* Mesmo com margin:0, sobra um respiro visual entre o título e o subtítulo — não é
+     margin/padding, é o line-height/leading da fonte de .header-title (28px) por baixo da
+     linha de base do texto. Margin negativo compensa isso, medido via getBoundingClientRect()
+     (mesmo processo já usado nos outros ajustes de espaçamento desta sessão). */
+  margin: -3px 0 0 !important;
   min-width: 0;
 }
 /* Nudge vertical fino, mesmo princípio do .recorder-timer (recommendation.css): o
@@ -127,14 +131,21 @@
    acompanha essa largura em vez de ficar travado nos 640px do hero. Acoplamento por
    nome de classe entre este arquivo e cards.css: renomear .grid-titles lá exige
    atualizar a regra abaixo aqui também. */
+/* margin-top negativo: o .stVerticalBlock principal do Streamlit usa gap:16px entre TODOS
+   os elementos de topo, incluindo containers vazios de altura zero entre a busca e o rodapé
+   (injetor de JS + placeholder de results-messages quando não há erro/sem-resultado) — dois
+   desses "slots" invisíveis empilham 32px de gap escondido antes mesmo de qualquer
+   margin/padding declarado aqui, medido via inspeção real do DOM (Playwright,
+   getBoundingClientRect() nos irmãos do .stVerticalBlock). Negativo compensa isso, puxando
+   o rodapé pra perto do texto "Consultas restantes" acima. */
 .footer {
   text-align: center;
-  padding: 16px 0 8px;
+  padding: 8px 0;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
   border-top: 1px solid #1f2937;
-  margin: 32px auto 0;
+  margin: -24px auto 0;
   max-width: 640px;
 }
 body:has(.grid-titles) .footer {

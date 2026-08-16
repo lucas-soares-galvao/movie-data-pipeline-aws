@@ -332,7 +332,7 @@
   text-align: center;
   color: #a3a3a3;
   font-size: 15px !important;
-  margin: 16px 0;
+  margin: 16px 0 8px;
 }
 
 /* Consultas restantes <= 3: destaca em laranja (mesmo tom de #f97316 usado nos
