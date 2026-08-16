@@ -50,17 +50,17 @@
   gap: 4px;
   min-width: 0;
 }
-/* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
-   (via components.py::icon()) — mesmo estilo do badge da tela de login
-   (.login-icon-badge, login.css), pra manter a identidade visual consistente entre as
-   duas telas. border-radius:10px casa com o do botão "Sair" (.st-key-btn_sair), mesma
-   linha do header. */
+/* Wrapper do ícone Lucide "clapperboard" laranja (via components.py::icon()) — mesmo
+   estilo do wrapper da tela de login (.login-icon-badge, login.css), pra manter a
+   identidade visual consistente entre as duas telas. Sem fundo/borda (era um badge com
+   fundo colorido antes; virou transparente numa rodada anterior), então a caixa é do
+   mesmo tamanho do ícone (size=20 em icon("clapperboard", size=20), app.py) — maior que
+   isso só criaria respiro invisível somado ao gap de .header-brand. */
 .header-icon-badge {
-  width: 40px;
-  height: 40px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   background: transparent;
-  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
