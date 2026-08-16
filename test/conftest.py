@@ -26,6 +26,14 @@ _TEST_ROOT = Path(__file__).parent
 _APP_ROOT = _TEST_ROOT.parent / "app"
 _SHARED_DIR = str(_APP_ROOT / "shared_src")
 
+# Cacheia o pacote real "app" (raiz do repo) ANTES de qualquer _set_suite_path rodar.
+# app/lightsail_ia/ tem um app.py próprio (entrypoint do Streamlit) — se "import app"
+# só acontecesse depois que _set_suite_path colocasse app/lightsail_ia no sys.path
+# (suite lightsail_ia sendo a primeira do processo pytest), esse app.py sombrearia o
+# pacote "app" de verdade, quebrando o import "app.<qualquer-outra-suite>.src.X" pro
+# resto da sessão. Uma vez em sys.modules, o cache protege as suites seguintes.
+import app  # noqa: E402, F401
+
 # Ex: quando o pytest processa test/glue_agg/..., o app correspondente é app/glue_agg/
 _SUITE_TO_APP: dict[str, Path] = {
     "glue_agg": _APP_ROOT / "glue_agg",
@@ -33,15 +41,22 @@ _SUITE_TO_APP: dict[str, Path] = {
     "glue_etl": _APP_ROOT / "glue_etl",
     "glue_details": _APP_ROOT / "glue_details",
     "lambda_api": _APP_ROOT / "lambda_api",
+    "lightsail_ia": _APP_ROOT / "lightsail_ia",
 }
 
-# Suites sem entrada aqui não recebem alias src.utils (ex: lightsail usa estrutura diferente).
+# Chave de _SUITE_TO_SRC_MODULE: qualquer módulo fully-qualified dentro do "src" da suite,
+# usado só como âncora para descobrir o pacote "src" real (fq_module.rsplit(".", 1)[0]) e
+# realiasá-lo. Nas suites Glue/Lambda é sempre "src.utils" porque main.py importa esse nome
+# exato; lightsail_ia não tem utils.py, então a âncora é "recommendation" (importa agent/
+# components/infrastructure internamente, pré-populando a maior parte dos aliases — cards/
+# login/formatting resolvem sob demanda via __path__ do pacote "src" já aliasado).
 _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_agg": "app.glue_agg.src.utils",
     "glue_data_quality": "app.glue_data_quality.src.utils",
     "glue_etl": "app.glue_etl.src.utils",
     "glue_details": "app.glue_details.src.utils",
     "lambda_api": "app.lambda_api.src.utils",
+    "lightsail_ia": "app.lightsail_ia.src.recommendation",
 }
 
 # Conjuntos de todos os diretórios conhecidos de cada suite.
@@ -93,7 +108,7 @@ def pytest_collect_file(parent, file_path):
 
     app_dir = _SUITE_TO_APP.get(suite)
     if app_dir is None:
-        return  # suite desconhecida (ex: lightsail, que tem estrutura diferente)
+        return  # suite desconhecida (fora de _SUITE_TO_APP, sem imports "src.X" pra realiasar)
 
     # Remove do cache Python os módulos "src", "main", "utils", "shared_utils" e "src.*"/"shared_utils.*"
     # para que a próxima importação use os módulos da suite correta.
@@ -115,9 +130,12 @@ def pytest_collect_file(parent, file_path):
     try:
         __import__(fq_module)
         mod = sys.modules[fq_module]
+        # Alias "src.utils" só é usado por Glue/Lambda (main.py importa esse nome exato);
+        # em lightsail_ia fica sem uso (não existe utils.py), inofensivo.
         sys.modules["src.utils"] = mod
         # Também expõe o pacote pai "src" para que imports como
-        # "from src.rulesets_dq import ..." funcionem no glue_data_quality.
+        # "from src.rulesets_dq import ..." (glue_data_quality) ou "from src.cards import ..."
+        # (lightsail_ia) funcionem.
         src_pkg = fq_module.rsplit(".", 1)[0]  # ex: "app.glue_etl.src"
         if src_pkg in sys.modules:
             sys.modules["src"] = sys.modules[src_pkg]

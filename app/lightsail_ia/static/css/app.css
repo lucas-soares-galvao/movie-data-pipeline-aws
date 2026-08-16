@@ -1,0 +1,143 @@
+/* Cabeçalho: ícone + título/subtítulo empilhados (substituem st.title/
+   st.caption, que rendem um <h1> grande demais pra esse contexto de topo de
+   página — mesmo padrão de markdown customizado já usado em .login-title/
+   .login-subtitle) e botão "Sair" como pill discreto. */
+/* A regra genérica "Colunas dos botoes se ajustam ao conteudo" (ver base.css)
+   exclui explicitamente linhas com <h1> — o st.title() de antes gerava um <h1>
+   e escapava dela. Trocando por st.markdown, o header perdeu essa blindagem: as
+   duas colunas passaram a encolher pro conteúdo em vez de ocupar a largura toda
+   do row, deixando ~178px de vão entre o botão "Sair" e a borda direita real do
+   hero — medido via inspeção real do DOM (Playwright). Restaurado aqui: a coluna
+   do título cresce (flex:1) pra preencher o espaço extra, empurrando a do botão
+   (flex:0 0 auto) pra ponta direita, independente da proporção definida em
+   st.columns([9, 1]).
+   flex-wrap:nowrap (não wrap) é proposital: tentamos wrap+min-width:0 antes,
+   pra deixar o botão "cair" pra própria linha só quando faltasse espaço, mas
+   a decisão de quebra de um flex container usa o tamanho max-content de cada
+   item (o subtítulo inteiro sem quebrar), não o tamanho já encolhido — ou
+   seja, com wrap o botão sempre "sobrava" e caía pra linha de baixo,
+   independente de min-width:0, confirmado via inspeção real do DOM
+   (Playwright, viewport 375px: coluna do título ocupava 327px sozinha numa
+   linha, botão "Sair" na linha seguinte). Com nowrap, os dois ficam sempre
+   na mesma linha e é o encolhimento (min-width:0 na coluna do título/
+   .header-text/.header-subtitle abaixo) que faz o subtítulo quebrar em
+   várias linhas pra caber — o botão nunca mais "cai". */
+.st-key-header-row [data-testid="stHorizontalBlock"] {
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.st-key-header-row [data-testid="stHorizontalBlock"] > div:first-child {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+.st-key-header-row [data-testid="stHorizontalBlock"] > div:last-child {
+  flex: 0 0 auto !important;
+  width: auto !important;
+}
+/* Ícone maior à esquerda, título+subtítulo empilhados à direita dele sem
+   nenhuma das duas linhas passar por baixo do ícone (como no mockup) — em
+   vez de emoji+título na mesma linha e subtítulo solto embaixo, largura
+   toda. */
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Badge quadrado arredondado laranja atrás do ícone (antes era só o emoji 🎬 solto, sem
+   fundo) — o ícone em si é o SVG Lucide "clapperboard" (via components.py::icon()), branco
+   por padrão via .icon (base.css), sem CSS extra aqui. border-radius:10px casa com o do
+   botão "Sair" (.st-key-btn_sair), mesma linha do header. */
+.header-icon-badge {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: #f97316;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Itens flex têm min-width:auto por padrão, travando a largura mínima no
+   conteúdo sem quebra — o subtítulo inteiro numa linha só. Isso empurra a
+   coluna do título além da largura disponível no mobile, disparando o
+   flex-wrap do row (acima) e derrubando o botão "Sair" pra linha de baixo.
+   min-width:0 aqui (e em .header-subtitle) libera o subtítulo pra quebrar em
+   duas linhas dentro da própria coluna em vez de forçar o row a estourar. */
+.header-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* !important em font-size (aqui e no subtítulo) necessário: o Streamlit
+   aplica um font-size próprio no <p> via seletor com especificidade maior
+   que a classe sozinha (mesmo motivo do margin abaixo) — sem isso, o
+   font-size fica travado em 16px independente do valor definido aqui,
+   confirmado via inspeção real do DOM (Playwright). */
+.header-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 28px !important;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 !important;
+  letter-spacing: -0.02em;
+}
+.header-subtitle {
+  font-size: 13px !important;
+  color: #a3a3a3;
+  margin: -8px 0 0 !important;
+  min-width: 0;
+}
+/* Nudge vertical fino, mesmo princípio do .recorder-timer (recommendation.css): o
+   wrapper interno sem data-testid que o Streamlit gera em volta de st.markdown (entre
+   stMarkdown e stMarkdownContainer) reporta uma altura menor (~37px) que a
+   dos dois parágrafos reais (título+subtítulo, ~53px juntos) — e essa
+   altura resiste a height/min-height/max-height:auto (não é
+   content-visibility/contain nem estilo inline; não conseguimos isolar a
+   causa exata mesmo inspecionando o DOM real via Playwright). Isso faz o
+   align-items:center do row centralizar o botão "Sair" contra uma altura
+   errada, ~8px acima do centro real do bloco de texto — compensado aqui
+   diretamente, já medido/validado via inspeção real do DOM. */
+.st-key-btn_sair button[data-testid="stBaseButton-secondary"] {
+  width: auto !important;
+  height: auto !important;
+  padding: 8px 20px !important;
+  background: #3f3f3f !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  position: relative;
+  top: 8px;
+}
+.st-key-btn_sair button[data-testid="stBaseButton-secondary"]:hover {
+  filter: brightness(1.15);
+}
+
+/* Rodape — mesma largura do hero (640px, centralizado) antes de pesquisar.
+   .grid-titles (resultados, cards.css) não tem max-width próprio, ocupa a largura
+   natural do block-container — quando ele existe (pesquisa feita), o rodapé
+   acompanha essa largura em vez de ficar travado nos 640px do hero. Acoplamento por
+   nome de classe entre este arquivo e cards.css: renomear .grid-titles lá exige
+   atualizar a regra abaixo aqui também. */
+.footer {
+  text-align: center;
+  padding: 16px 0 8px;
+  color: #6b7280;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  border-top: 1px solid #1f2937;
+  margin: 32px auto 0;
+  max-width: 640px;
+}
+body:has(.grid-titles) .footer {
+  max-width: none;
+}
+
+.footer a {
+  color: #6b7280;
+  text-decoration: underline;
+}

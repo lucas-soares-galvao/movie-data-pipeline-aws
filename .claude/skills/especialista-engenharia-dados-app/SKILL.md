@@ -65,7 +65,7 @@ Três dos quatro jobs Glue usam **awswrangler** para I/O — não a API DataFram
 
 `lightsail_ia/agent.py` é o único lugar do projeto onde SQL é **gerado dinamicamente por um LLM** (function calling via `litellm`) e depois executado — o vetor é uma classe real de **SQL injection** (texto do usuário → LLM gera a cláusula `WHERE` → interpolada em SQL executado), por isso tem uma camada de validação própria:
 
-- `recommend()` — orquestra: LLM gera cláusula `WHERE` → `search_titles_spec()` consulta Athena → `format_record()` (em `formatacao.py`) formata para a UI
+- `recommend()` — orquestra: LLM gera cláusula `WHERE` → `search_titles_spec()` consulta Athena → `format_record()` (em `formatting.py`) formata para a UI
 - `_validate_where()` — bloqueia `;`, palavras-chave DDL/DML (`_FORBIDDEN_KEYWORDS`: DROP/DELETE/INSERT/UPDATE/ALTER/CREATE/GRANT/TRUNCATE/EXEC/MERGE/REPLACE/CALL) e subqueries (`SELECT`) antes de interpolar a cláusula na query
 - `search_titles_spec()` — monta o SQL final (`WHERE vote_count >= 50 AND {where_clause}`), executa via `boto3.client("athena")` (start_query_execution + polling), não via awswrangler
 - Cache em memória (`_WHERE_CACHE`, TTL 1h) evita chamar o LLM de novo para a mesma preferência

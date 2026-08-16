@@ -5,4 +5,7 @@ omit =
     infra/*
     setup.py
     app/lightsail_ia/app.py
+    app/lightsail_ia/src/login.py
+    app/lightsail_ia/src/recommendation.py
+    app/lightsail_ia/src/cards.py
     

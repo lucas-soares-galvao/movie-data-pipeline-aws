@@ -1,4 +1,4 @@
-"""formatacao.py — Formatação determinística de registros do Athena para cards do FilmBot."""
+"""formatting.py — Formatação determinística de registros do Athena para cards do FilmBot."""
 
 from datetime import date, datetime, timezone
 
@@ -74,7 +74,7 @@ def _format_adaptive_date(iso_date: str | None, today: date | None = None) -> st
     com muita antecedência, ou próximo episódio de uma pausa longa de temporada) costumam ter
     só mês/ano confirmado no TMDB, com o dia sendo um placeholder que muda depois; usado por
     theater_end_date/next_episode_date/upcoming_date (ver format_record() abaixo e
-    render_card() em componentes.py). `today` é injetável pra testes determinísticos; em
+    render_card() em components.py). `today` é injetável pra testes determinísticos; em
     produção usa a data real em UTC."""
     if not iso_date:
         return None
@@ -91,7 +91,7 @@ def _format_adaptive_date(iso_date: str | None, today: date | None = None) -> st
 
 def _is_upcoming(air_date: str | None, today: date | None = None) -> bool:
     """True quando `air_date` é estritamente futuro (título ainda não lançado) — usado só pra
-    decidir se o badge "Em breve" aparece (ver render_card() em componentes.py); o texto do
+    decidir se o badge "Em breve" aparece (ver render_card() em components.py); o texto do
     badge vem de _format_adaptive_date() (mesmo campo `air_date`). `today` é injetável pra
     testes determinísticos; em produção usa a data real em UTC."""
     if not air_date:

@@ -5,14 +5,17 @@ agent.py chama load_dotenv() no momento em que é importado e lê algumas env va
 no load time. As variáveis precisam existir ANTES do import, por isso são definidas
 aqui. LLM_API_KEY não precisa ser válida — o cliente LLM é inicializado lazy
 e todas as chamadas reais são interceptadas por @patch nos testes.
+
+Módulos de produção são importados via `from src.X import Y` (mesmo padrão de
+lambda_api/glue_*). O `src` solto é realiasado para `app.lightsail_ia.src` pelo
+conftest.py global (`test/conftest.py`, `_SUITE_TO_APP`/`_SUITE_TO_SRC_MODULE`) a cada
+arquivo/teste, evitando colisão com o `src` de outras suites quando a suíte completa
+roda no mesmo processo pytest.
 """
 
 import os
-import sys
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../app/lightsail_ia"))
 
 # setdefault preserva valores reais se os testes rodarem com env vars configuradas
 os.environ.setdefault("LLM_API_KEY", "test-llm-key")
@@ -25,5 +28,5 @@ os.environ.setdefault("ATHENA_S3_OUTPUT", "s3://test-bucket-temp/athena-results/
 
 @pytest.fixture(autouse=True)
 def _limpar_cache_where():
-    import agent
+    from src import agent
     agent._WHERE_CACHE.clear()

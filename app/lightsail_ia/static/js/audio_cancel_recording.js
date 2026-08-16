@@ -44,7 +44,7 @@
                 trash.title = "Descartar gravação";
                 trash.innerText = "✕";
                 // 28x28 casa com o tamanho renderizado do botão nativo
-                // (stAudioInputActionButton, ver principal.css) — medido via
+                // (stAudioInputActionButton, ver recommendation.css) — medido via
                 // inspeção real do DOM (Playwright); se o Streamlit mudar esse
                 // tamanho num upgrade, ajustar aqui também.
                 trash.style.cssText =

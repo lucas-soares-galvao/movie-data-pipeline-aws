@@ -1,0 +1,497 @@
+/* Linha divisória antes do grid de resultados (só aparece quando há recomendação) */
+.results-divider {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  margin: 32px 0 24px;
+}
+
+/* Título "Encontramos X opções para você!" acima do grid de resultados */
+.results-heading {
+  font-weight: 700;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.grid-titles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: stretch;
+  /* row-gap reproduz a linha de respiro de 16px que antes vinha do grid-template-rows
+     explícito (subgrid, removido) entre cada fileira de 3 cards. */
+  gap: 16px;
+}
+
+/* Abaixo de 1200px (breakpoint "xl" do Bootstrap — convenção, não medição exata),
+   gêneros/provedores com nomes longos (ex. "Amazon Prime Video", "Ação & Aventura")
+   frequentemente não cabem numa linha só e quebram pra 2ª/3ª linha dentro do próprio card
+   — largura insuficiente pro card, não relacionado ao vizinho da fileira. Por isso o
+   fallback de 1 card por linha (que já existia só para viewport de celular) passa a cobrir
+   também essa faixa "desktop estreito", dando mais largura pra cada card. Medido
+   empiricamente (Playwright, nomes reais e longos do catálogo, numa fixture isolada sem o
+   padding/chrome real do Streamlit): o caso comum (até 4 gêneros/provedores) já cabe numa
+   linha a partir de ~373px de largura de card, bem próximo do que 1200px de janela
+   costuma render — sem folga extra pro overhead real do Streamlit, então vale reconferir
+   no app de verdade se aparecer wrap bem na borda do breakpoint. O teto máximo de 6
+   gêneros/6 provedores simultâneos (caso raro) continua quebrando linha mesmo em larguras
+   bem maiores — nomes demais pra caber em qualquer card, não dá pra resolver só com
+   breakpoint (ver `especialista-streamlit-filmbot` se isso incomodar na prática). */
+@media (max-width: 1200px) {
+  .grid-titles {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .grid-titles img { aspect-ratio: 16 / 9; }
+
+  /* Sem isso o único card da fileira esticaria pra largura inteira do container — em
+     janelas largas (ex. 1000-1200px, onde cabe folga mas não os 3 lado a lado) o pôster
+     (16:9, width:100%) ficaria desproporcionalmente grande. max-width trava o card num
+     tamanho "normal" (mesma ordem de grandeza que ele já tem lado a lado no desktop) e
+     justify-items centraliza — em celular real (viewport mais estreito que isso) não muda
+     nada, o card já ocupa a largura toda disponível de qualquer forma. */
+  .grid-titles {
+    justify-items: center;
+  }
+  .card {
+    width: 100%;
+    max-width: 460px;
+  }
+
+}
+
+.card, article.card {
+  background: #111;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  transition: background-color .2s ease, border-color .2s ease, transform .2s ease;
+}
+
+@media (hover: hover) {
+  .card:hover, article.card:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.12);
+    transform: translateY(-2px);
+  }
+}
+
+.card-media {
+  position: relative;
+}
+
+.card-img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+}
+
+.media-scrim {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 56px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+  pointer-events: none;
+}
+
+.media-badges-top {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.rating-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(2px);
+  color: #f97316;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 99px;
+  padding: 2px 8px;
+}
+
+/* line-height explícito: sem isso, herda o "normal" do navegador pra fonte "Bricolage
+   Grotesque", cujas métricas internas (ascent/descent/line-gap do arquivo da fonte) sobram
+   bem mais alto que o texto realmente ocupa — mesma família de bug que já exigiu
+   `.header-subtitle { margin: -8px 0 0 }` em app.css. Esse espaço
+   "invisível" abaixo do título somava com o margin-top:16px de `.row-reason` (logo abaixo)
+   e lia como um vão bem maior que 16px entre título e motivo. */
+.card-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* display:flex (não bloco simples) pra caber o ícone 🎭 antes dos badges — align-items
+   flex-start (não center) pra ele ficar alinhado com a primeira linha mesmo quando os
+   badges quebram pra 2ª/3ª linha, em vez de centralizado no meio do bloco todo. Sem
+   gap — os badges já têm margin própria (.genre) pra espaçamento entre si; um gap aqui
+   somaria em cima disso e mudaria o respiro que já existe. margin-bottom maior (16px, em
+   vez dos mesmos 6px do topo) separa visualmente gênero de provedor — os dois usam badge
+   cinza neutro e ficam adjacentes na ordem atual (ver seção "Interface"), então precisam
+   de mais respiro entre si pra não parecerem uma lista só; alternativa mais leve que dar
+   cor própria a cada um (cor nesse design é reservada pra "preste atenção aqui" — nota,
+   motivo, sinopse, em cartaz, classificação —, não pra diferenciar categoria). */
+/* Sem ícone (removido) — wrapper só existe pra receber o margin-top de seção (ver bloco
+   "Respiro entre seções" abaixo). Sem margin própria além desse — respiro vem do gap de
+   .card-body. */
+.genres-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.genre-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Respiro entre seções via margin-top no início de cada seção (não gap uniforme no
+   .card-body, e não margin-bottom em cada linha que a precede) — toda seção do card (ver
+   components.py: row-reason/meta-line/duration-row/cinema-row/genres-container/
+   providers-row/row-people/row-synopsis) só existe no HTML quando tem conteúdo real, então
+   o respiro certo já vem naturalmente do primeiro elemento realmente presente, sem precisar
+   somar/descontar linhas vazias — nenhuma seção fica "reservada" vazia. duration-row/
+   cinema-row ficam com um respiro menor (4px, não zero) que as demais seções (16px) —
+   quando aparecem, ficam mais coladas na meta-line, como continuação do mesmo bloco de
+   "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
+.row-reason {
+  margin-top: 16px;
+  border-left: 3px solid #f97316;
+  padding-left: 12px;
+}
+.meta-line {
+  margin-top: 16px;
+}
+.duration-row,
+.cinema-row {
+  margin-top: 4px;
+}
+.genres-container {
+  margin-top: 16px;
+}
+.providers-row {
+  margin-top: 16px;
+}
+.row-synopsis {
+  margin-top: 16px;
+}
+.row-people {
+  margin-top: 16px;
+}
+
+/* Alinhamento entre os 3 cards de uma fileira, só no topo do card (pôster) — todo o resto
+   (título, motivo, meta, duração, "em cartaz", gêneros, provedores, ficha técnica,
+   sinopse/trailer) tem altura livre por card, sem nenhuma sincronia com os vizinhos:
+   - .grid-titles é grid de 3 colunas com align-items:stretch (acima) — isso estica cada
+     card até a altura do maior vizinho da fileira (o fundo/borda do card acompanham), sem
+     precisar de subgrid nem de posicionamento explícito de linha/coluna.
+   - .card-media (pôster) fica alinhado "de graça": aspect-ratio:16/9 + colunas de largura
+     igual garantem a mesma altura de pôster nos 3 cards. Nenhum outro campo do card tem
+     mecanismo de alinhamento entre siblings — cada um só ocupa a altura que o próprio
+     conteúdo pede. */
+
+/* Sem height:100%/box-sizing: sem subgrid, .row-reason não compartilha altura de linha com
+   os vizinhos (faz parte do meio solto). Sem fundo colorido — só uma barra de acento à
+   esquerda (border-left, ver .row-reason acima), estilo blockquote, cobrindo rótulo e
+   texto de uma vez por estar no wrapper pai. O rótulo (.reason-label) fica laranja, o
+   texto do motivo (.reason) é neutro, mesmo tom de .synopsis-text/.people-list. */
+.reason-label {
+  display: block;
+  color: #fdba74;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.reason {
+  color: #d4d4d4;
+  font-size: 14px;
+  font-style: italic;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Sem margin própria — o respiro entre uma .meta-row e a próxima (ou qualquer outra
+   seção) vem do margin-top de cada wrapper de seção (.meta-line, .row-people, ...), não
+   daqui (ver bloco "Respiro entre seções" acima). */
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* display:inline-flex + align-items/justify-content:center centraliza o ícone (SVG Lucide,
+   ver .icon em base.css) dentro de uma caixa de tamanho fixo, independente de estado
+   (ℹ/⏱/calendário/tv). */
+.meta-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Única exceção à regra "ícone sempre branco" (.icon, base.css): o "sparkles" do Insight
+   do FilmBot acompanha a cor do rótulo/barra de acento (mesma família de laranja do design
+   system, ver .reason-label/.row-reason acima) — seletor descendente vence `.icon` sozinho
+   por especificidade, sem precisar de !important nem depender da ordem de injeção dos
+   arquivos CSS. */
+.reason-label .icon {
+  color: #fdba74;
+}
+
+.meta-line {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  color: #a3a3a3;
+  font-size: 13px;
+}
+
+.meta-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vital {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #a3a3a3;
+}
+.vital-rating { color: #f97316; font-weight: bold; font-size: 15px; }
+
+/* Fundo/borda mais sutis que .provider-badge (0.04/0.08 vs. 0.12/0.16) — os dois usam a
+   mesma escala de cinza neutro do design system (sem matiz própria, reservada pra pontos
+   de atenção como nota/motivo/"em cartaz"), só em dois degraus diferentes, pra dar pra
+   distinguir gênero de provedor mesmo sem ícone (nenhum dos dois grupos tem mais). */
+.genre {
+  background: rgba(255,255,255,0.04);
+  color: #d4d4d4;
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 12px;
+  display: inline-block;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.certification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #555;
+  vertical-align: middle;
+  cursor: default;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.certification-badge[data-rating="L"]  { background: #00a651; }
+.certification-badge[data-rating="10"] { background: #0091d4; }
+.certification-badge[data-rating="12"] { background: #f8c709; }
+.certification-badge[data-rating="14"] { background: #ee7a1a; }
+.certification-badge[data-rating="16"] { background: #d21920; }
+.certification-badge[data-rating="18"] { background: #1d1815; }
+
+/* justify-content:space-between só entra em jogo quando o Trailer soma na linha (sem
+   pôster, ver components.py) — com um único filho (só a duração), o space-between não
+   muda nada. flex-wrap evita overflow em telas bem estreitas. */
+.duration-row {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  color: #a3a3a3;
+  font-size: 13px;
+}
+
+/* Coluna (não mais uma única linha) — rótulo "Onde assistir" em cima, badges embaixo,
+   mesmo princípio visual de .row-reason (rótulo acima do conteúdo). */
+.providers-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.providers-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.providers-label {
+  color: #a3a3a3;
+  font-size: 13px;
+}
+
+.provider-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Fundo/borda mais claros que .genre (0.12/0.16 vs. 0.04/0.08) — ver comentário lá.
+   inline-flex (não inline-block) pra logo (.provider-logo) e nome ficarem alinhados
+   verticalmente quando a logo existe. */
+.provider-badge {
+  background: rgba(255,255,255,0.12);
+  color: #d4d4d4;
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,0.16);
+}
+.provider-logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  margin-right: 4px;
+  object-fit: cover;
+}
+
+/* Gênero/provedor que o usuário mencionou explicitamente na busca (components.py::
+   _matches_highlighted) — só borda + texto laranja, sem mudar o fundo, pra não competir
+   com elementos sólidos em laranja do mesmo card (nota, "em cartaz"). Reaproveita o mesmo
+   #fdba74 de .reason (motivo da IA) em vez de outro tom, já que os dois são "por que este
+   título" — motivo em texto corrido, aqui em badge. Se o usuário pediu mais de um termo
+   (ex: "ação e comédia"), todo item que bateu fica destacado, não só o primeiro. */
+.genre.highlighted,
+.provider-badge.highlighted {
+  border-color: rgba(249,115,22,0.5);
+  color: #fdba74;
+}
+
+.cinema-badge {
+  background: rgba(250,204,21,0.15);
+  color: #fbbf24;
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 12px;
+  display: inline-block;
+  margin: 2px;
+  vertical-align: middle;
+}
+
+/* Sinopse recolhida por padrão: checkbox hack (sem JS — st.html não executa
+   <script>). O label aponta para o checkbox oculto; marcar/desmarcar alterna
+   :checked, que revela o texto e troca o chevron ⌄/⌃ — mesmo princípio do antigo
+   "ver mais"/"ver menos", só que fechado por padrão em vez de mostrar um
+   trecho truncado. O checkbox fica fora de .synopsis-row (sibling direto de
+   .synopsis-text) só pra o seletor ~ continuar enxergando os dois. */
+.synopsis-toggle { display: none; }
+/* .synopsis-row (o meta-row interno) não tem margin-top próprio — o respiro antes da seção
+   inteira vem do margin-top:16px de .row-synopsis (ver bloco "Respiro entre seções" acima).
+   O Trailer não divide mais esta linha (subiu pra duration-row/meta-line, ver
+   components.py) — a linha agora só contém o label do accordion. */
+.synopsis-row {
+  display: flex;
+}
+/* Ícone+texto à esquerda, chevron ⌄/⌃ na ponta direita (justify-content:space-between +
+   width:100% no próprio <label>, que preenche a linha toda) — mesmo padrão visual de
+   .people-label (Ficha Técnica) logo abaixo. Cor branca (não mais laranja): o laranja
+   fica reservado só pra nota e "Insight do FilmBot" (.reason/.reason-label). */
+.synopsis-label {
+  cursor: pointer;
+  color: #fff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+.synopsis-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Mesmo font-size do rótulo "Sinopse"/"Ficha Técnica" — sem isso ".vital" (sem font-size
+   próprio) herda o tamanho ambiente e "Trailer" fica visualmente maior que o resto do
+   texto na mesma linha (duration-row/meta-line, ver components.py). */
+.vital-trailer {
+  font-size: 13px;
+}
+.synopsis-arrow-open { display: none; }
+.synopsis-toggle:checked ~ .synopsis-row .synopsis-arrow-closed { display: none; }
+.synopsis-toggle:checked ~ .synopsis-row .synopsis-arrow-open { display: inline; }
+.synopsis-text {
+  display: none;
+  color: #d4d4d4;
+  font-size: 14px;
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+.synopsis-toggle:checked ~ .synopsis-text { display: block; }
+
+/* Ficha técnica (diretor, elenco, roteiro, trilha sonora, produção, fotografia, montagem,
+   criador(es)) recolhida por padrão — mesmo mecanismo de checkbox hack da Sinopse acima,
+   posicionada ANTES da sinopse, no meio solto do card. Rótulo em branco — o laranja fica
+   reservado pra nota e "Insight do FilmBot" (.reason/.reason-label), os pontos que pedem
+   destaque; aqui é só mais um bloco de conteúdo informativo. */
+.people-toggle { display: none; }
+.people-row {
+  display: flex;
+}
+.people-icon {
+  font-size: 13px;
+}
+/* Ícone+texto à esquerda, chevron ⌄/⌃ na ponta direita — mesmo padrão de .synopsis-label
+   acima (justify-content:space-between + width:100% no <label>, que preenche a linha
+   toda). */
+.people-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.people-label {
+  cursor: pointer;
+  color: #fff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+.people-arrow-open { display: none; }
+.people-toggle:checked ~ .people-row .people-arrow-closed { display: none; }
+.people-toggle:checked ~ .people-row .people-arrow-open { display: inline; }
+/* Bullets (um por papel) em vez do parágrafo único da sinopse — cada <li> tem o rótulo em
+   <strong> (branco, mesmo tom do texto) seguido do(s) nome(s). */
+.people-list {
+  display: none;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #d4d4d4;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.people-list li {
+  margin-top: 2px;
+}
+.people-list strong {
+  color: #fff;
+}
+.people-toggle:checked ~ .people-list { display: block; }
