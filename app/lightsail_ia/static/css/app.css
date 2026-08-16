@@ -23,6 +23,14 @@
    na mesma linha e é o encolhimento (min-width:0 na coluna do título/
    .header-brand/.header-subtitle abaixo) que faz o subtítulo quebrar em
    várias linhas pra caber — o botão nunca mais "cai". */
+/* Reduz o padding-top nativo do Streamlit (~96px) reservado pro header/toolbar —
+   mesmo escondidos, o espaço continua reservado e renderiza como uma faixa vazia
+   sobre o fundo gradiente (base.css) antes do cabeçalho. Reduzido, não zerado
+   (diferente de login.css): aqui há cabeçalho real logo abaixo. */
+[data-testid="stMain"] .block-container {
+  padding-top: 32px !important;
+}
+
 .st-key-header-row [data-testid="stHorizontalBlock"] {
   align-items: center;
   flex-wrap: nowrap;
@@ -148,8 +156,12 @@
   margin: -39px auto 0;
   max-width: 640px;
 }
+/* Com resultados (.grid-titles), o -39px acima deixa de compensar um gap
+   invisível e passa a puxar o rodapé pra dentro do conteúdo real do grid de
+   cards, sobrepondo os dois. Reseta pra um respiro positivo só nesse estado. */
 body:has(.grid-titles) .footer {
   max-width: none;
+  margin-top: 24px;
 }
 
 .footer a {

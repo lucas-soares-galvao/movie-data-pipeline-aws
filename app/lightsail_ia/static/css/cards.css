@@ -1,8 +1,12 @@
-/* Linha divisória antes do grid de resultados (só aparece quando há recomendação) */
+/* Linha divisória antes do grid de resultados (só aparece quando há recomendação).
+   Sem margin-top próprio: .query-counter-text (recommendation.css, margin-bottom:8px)
+   e este bloco já ficam em stVerticalBlocks de topo distintos, com ~16px de gap
+   nativo entre eles — somar mais 32px aqui deixava o espaço quase o dobro do
+   padrão de respiro (24-32px) usado no resto da tela. */
 .results-divider {
   border: none;
   border-top: 1px solid rgba(255,255,255,0.1);
-  margin: 32px 0 24px;
+  margin: 0 0 24px;
 }
 
 /* Título "Encontramos X opções para você!" acima do grid de resultados */
