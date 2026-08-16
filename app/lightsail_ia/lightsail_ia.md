@@ -69,7 +69,7 @@ Após o Athena retornar os resultados brutos, funções puras em `formatting.py`
 - `recommended` (títulos recomendados pelo TMDB), `similar` (títulos similares), `alternative_titles` (nomes regionais)
 
 ### Etapa 3 — Geração do motivo (LLM)
-O LLM recebe apenas os campos que ajudam a justificar a recomendação de cada título já encontrado pelo Athena — `id`, `title`, `overview`, `genre_names`, `year`, `vote_average`, `director`, `actor_names`, `streaming_providers`, `certification`, `keywords_pt` — e gera um `reason` curto (1-2 frases) explicando por que aquele título específico atende ao pedido do usuário, podendo citar diretor/elenco/streaming/classificação/palavras-chave quando fizerem parte do motivo real. Retorna JSON com apenas `id` e `reason` por título (`{"titles": [...]}`), mesclado por índice ao registro já formatado pelo Python. O merge é tolerante a variações de resposta do LLM: aceita `id` como int ou string (converte via `int()`), aceita tanto `{"titles": [...]}` quanto lista direta `[...]`, e degrada para `reason=""` em caso de resposta vazia ou JSON inválido — uma falha aqui nunca derruba a recomendação.
+O LLM recebe apenas os campos que ajudam a justificar a recomendação de cada título já encontrado pelo Athena — `id`, `title`, `overview`, `genre_names`, `year`, `vote_average`, `director`, `actor_names`, `streaming_providers`, `certification`, `keywords_pt` — e gera um `reason` curto (1 frase) explicando por que aquele título específico atende ao pedido do usuário, podendo citar diretor/elenco/streaming/classificação/palavras-chave quando fizerem parte do motivo real. Retorna JSON com apenas `id` e `reason` por título (`{"titles": [...]}`), mesclado por índice ao registro já formatado pelo Python. O merge é tolerante a variações de resposta do LLM: aceita `id` como int ou string (converte via `int()`), aceita tanto `{"titles": [...]}` quanto lista direta `[...]`, e degrada para `reason=""` em caso de resposta vazia ou JSON inválido — uma falha aqui nunca derruba a recomendação.
 
 Esta etapa roda em toda busca com resultados, mesmo quando a Etapa 1 tem cache hit: os títulos reais só existem depois da consulta ao Athena, então o motivo não pode ser cacheado junto com a cláusula WHERE.
 
@@ -232,7 +232,7 @@ O CSS (`static/`) acompanha a mesma divisão: `base.css` (transversal), `login.c
     `min-height`/`max-height`/toggle — faz parte
     do meio solto do card (ver item do grid, acima), sem sincronia de altura com os vizinhos da fileira, então o
     texto completo sempre aparece direto (motivo raramente varia muito de tamanho: o prompt do LLM,
-    `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~90 caracteres). Sem `reason` (título fora do fluxo de
+    `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~150 caracteres). Sem `reason` (título fora do fluxo de
     recomendação da IA), a div nem é gerada — caso comum, não só borda
   - "Onde assistir" sempre sozinho numa linha própria (com ou sem imagem), quando há pelo menos um provedor —
     sem nenhum provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/

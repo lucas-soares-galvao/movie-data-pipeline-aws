@@ -937,7 +937,7 @@ class TestRenderCard:
         assert "row-reason" not in html
 
     def test_card_motivo_sem_toggle(self):
-        # Motivo é limitado a 90 caracteres na origem (prompt do agente), cabendo sem clamp
+        # Motivo é limitado a 150 caracteres na origem (prompt do agente), cabendo sem clamp
         # — sem checkbox hack de "Ver mais/Ver menos" (diferente de sinopse, que continua
         # com accordion próprio).
         t = {**BASE_TITLE, "reason": "Nota alta e mesmo gênero pedido."}
