@@ -1,12 +1,18 @@
 /* Linha divisória antes do grid de resultados (só aparece quando há recomendação).
    Sem margin-top próprio: .query-counter-text (recommendation.css, margin-bottom:8px)
-   e este bloco já ficam em stVerticalBlocks de topo distintos, com ~16px de gap
-   nativo entre eles — somar mais 32px aqui deixava o espaço quase o dobro do
-   padrão de respiro (24-32px) usado no resto da tela. */
+   e este bloco já ficam em stVerticalBlocks de topo distintos — somar mais 32px de
+   margin-top aqui (valor antigo) deixava o espaço acima da linha bem maior que o
+   necessário. O espaço ACIMA da linha hoje é 40px (8px do contador + dois gaps
+   nativos de 16px do stVerticalBlock, um de cada lado do container invisível
+   .st-key-hero-scripts — ver comentário em recommendation.py sobre por que esse
+   injetor de JS fica isolado ali). margin-bottom aqui em 40px iguala o espaço
+   ABAIXO da linha a esse mesmo valor: hr e .results-heading (margin-top:8px) são
+   parte do mesmo st.markdown/bloco HTML, então as margens colapsam (fica o maior
+   dos dois, não a soma) — 40px vence os 8px do heading e replica o espaço de cima. */
 .results-divider {
   border: none;
   border-top: 1px solid rgba(255,255,255,0.1);
-  margin: 0 0 24px;
+  margin: 0 0 40px;
 }
 
 /* Título "Encontramos X opções para você!" acima do grid de resultados */
