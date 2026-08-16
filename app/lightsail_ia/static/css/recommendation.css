@@ -179,10 +179,13 @@
   width: auto !important;
   overflow: visible !important;
 }
+/* Mesmo laranja escurecido dos botões "Entrar"/"Recomendar" (#ea580c) — os três são os
+   únicos pontos do app com fundo laranja cheio + branco por cima (texto ou ícone), então
+   escurecem juntos pra não cansar a vista. */
 .st-key-recorder-card [data-testid="stAudioInputActionButton"] {
   border-radius: 50% !important;
-  background: #f97316 !important;
-  box-shadow: 0 0 16px -2px rgba(249,115,22,0.5);
+  background: #ea580c !important;
+  box-shadow: 0 0 16px -2px rgba(234,88,12,0.5);
   flex-shrink: 0;
   width: 28px !important;
   height: 28px !important;
@@ -290,15 +293,17 @@
 }
 
 /* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill,
-   cor sólida (sem gradiente, mesma cor usada no botão "Entrar" do login).
+   cor sólida (sem gradiente, mesma cor usada no botão "Entrar" do login) —
+   um tom mais escuro (#ea580c) que o #f97316 dos ícones/badges, pra não
+   cansar a vista num campo sólido tão grande quanto um botão full-width.
    Seletor mira a key específica (e não todo .st-key-hero-actions) para não
    afetar o botão "Recomendar" desabilitado do estado de busca, que mantém
    o layout compacto em colunas. */
 .st-key-btn_recomendar button {
   width: 100% !important;
   border-radius: 999px !important;
-  background: #f97316 !important;
-  box-shadow: 0 0 24px -4px rgba(249,115,22,0.6);
+  background: #ea580c !important;
+  box-shadow: 0 0 24px -4px rgba(234,88,12,0.6);
   font-weight: 600 !important;
   transition: filter 0.2s ease, transform 0.2s ease;
 }

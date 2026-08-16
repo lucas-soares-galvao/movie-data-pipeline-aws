@@ -394,8 +394,9 @@
   vertical-align: middle;
 }
 
-/* Sinopse recolhida por padrão: checkbox hack (sem JS — st.html não executa
-   <script>). O label aponta para o checkbox oculto; marcar/desmarcar alterna
+/* Sinopse recolhida por padrão: checkbox hack (sem JS — a grid é renderizada via
+   st.markdown(unsafe_allow_html=True), que não executa <script> injetado no HTML).
+   O label aponta para o checkbox oculto; marcar/desmarcar alterna
    :checked, que revela o texto e troca o chevron ⌄/⌃ — mesmo princípio do antigo
    "ver mais"/"ver menos", só que fechado por padrão em vez de mostrar um
    trecho truncado. O checkbox fica fora de .synopsis-row (sibling direto de

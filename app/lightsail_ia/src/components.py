@@ -58,6 +58,10 @@ ICON_PATHS = {
         '<path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
         '<path d="m6.18 5.276 3.1 3.899"/>'
     ),
+    "mic": (
+        '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>'
+        '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>'
+    ),
 }
 
 
@@ -65,7 +69,8 @@ def icon(name: str, size: int = 16) -> str:
     """Monta um ícone Lucide inline (outline, `stroke="currentColor"` — cor vem da classe
     `.icon` em base.css, branca por padrão; o ícone "sparkles" do Insight do FilmBot é
     a única exceção, laranja via `.reason-label .icon` em cards.css). Usada por
-    `render_card()` aqui dentro e pelo badge do ícone do cabeçalho em `app.py`."""
+    `render_card()` aqui dentro, pelo badge do ícone do cabeçalho/login em `app.py`/
+    `login.py`, e pelo status "Transcrevendo áudio..." em `recommendation.py`."""
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"'
         f' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'

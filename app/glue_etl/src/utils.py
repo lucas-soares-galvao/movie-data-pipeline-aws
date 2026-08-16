@@ -50,8 +50,15 @@ SOR_KEYS = {
 # Ex: " Standard with Ads" deve vir antes de " with Ads"; senão "Netflix Standard with Ads"
 # removeria só " with Ads" e viraria "Netflix Standard" em vez de "Netflix".
 _CANONICAL_SUFFIXES = [
+    # Formas no plural também aparecem na TMDB (ex: "Lionsgate+ Amazon Channels", achado
+    # numa auditoria do catálogo real via Athena) — sem conflito de ordem com o singular:
+    # "X Amazon Channels" não termina em " Amazon Channel" (sobra o "s"), então as duas
+    # formas nunca competem pelo mesmo sufixo.
+    " Amazon Channels",
     " Amazon Channel",
+    " Apple TV Channels",
     " Apple TV Channel",
+    " Apple Channels",
     " Apple Channel",
     " Plus Premium",
     " Premium",
