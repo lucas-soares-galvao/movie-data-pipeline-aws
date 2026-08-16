@@ -47,7 +47,7 @@
 .header-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 7px;
   min-width: 0;
 }
 /* Badge quadrado arredondado escuro com o ícone Lucide "clapperboard" laranja dentro
@@ -91,7 +91,7 @@
 .header-subtitle {
   font-size: 13px !important;
   color: #a3a3a3;
-  margin: 4px 0 0 !important;
+  margin: 2px 0 0 !important;
   min-width: 0;
 }
 /* Nudge vertical fino, mesmo princípio do .recorder-timer (recommendation.css): o
