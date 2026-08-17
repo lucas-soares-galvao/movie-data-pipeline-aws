@@ -1,4 +1,5 @@
 name: "5. Lightsail Scheduler (Liga/Desliga)"
+run-name: "Lightsail Scheduler [${{ github.ref_name == 'develop' && 'DEV' || 'PROD' }}]: ${{ (github.event_name == 'workflow_dispatch' && inputs.action || (github.event.schedule == '0 3 * * *' && 'stop' || 'start')) == 'start' && 'Ligar' || 'Desligar' }}"
 
 # =============================================================================
 # Substitui o antigo Lambda+EventBridge (infra/lightsail_scheduler.tf,
@@ -8,9 +9,18 @@ name: "5. Lightsail Scheduler (Liga/Desliga)"
 # bootstrap de 04_deploy_lightsail.yml. O IP estático nunca é alvo do
 # destroy — persiste sempre, sem precisar atualizar o DNS no registro.br.
 #
+# O ambiente (dev/prod) é resolvido automaticamente a partir do branch
+# selecionado em "Use workflow from" ao disparar o workflow (mesmo padrão de
+# 06_backfill.yml):
+#   - main    → prod (também usado pelo cron — schedule sempre roda no branch
+#               default do repositório)
+#   - develop → dev
+#   - qualquer outro branch (ex.: feature/*) → falha, ver step "Resolve
+#     environment from branch and action from trigger"
+#
 # prod: cron automático (BRT = UTC-3, sem horário de verão desde 2019) +
-#       workflow_dispatch manual.
-# dev:  só workflow_dispatch manual — nunca roda via cron.
+#       workflow_dispatch manual (a partir de main).
+# dev:  só workflow_dispatch manual (a partir de develop) — nunca roda via cron.
 # =============================================================================
 
 on:
@@ -20,12 +30,6 @@ on:
     - cron: "0 11 * * 0,6" # 08:00 BRT sáb-dom (0=dom) → ligar prod (apply)
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Ambiente (dev só aceita disparo manual — nunca roda via cron)"
-        required: true
-        type: choice
-        options: [prod, dev]
-        default: prod
       action:
         description: "Ação"
         required: true
@@ -43,7 +47,7 @@ jobs:
     # Serializa com o job "terraform" de 02_terraform.yml (mesmo group,
     # terraform-${env}) — evita dois processos escrevendo no mesmo state.
     concurrency:
-      group: terraform-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'prod' }}
+      group: terraform-${{ github.ref_name == 'develop' && 'dev' || 'prod' }}
       cancel-in-progress: false
 
     outputs:
@@ -58,14 +62,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Resolve environment and action from trigger
+      - name: Resolve environment from branch and action from trigger
         id: resolve
         run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            ENVIRONMENT="prod"
+          elif [ "${{ github.ref_name }}" = "develop" ]; then
+            ENVIRONMENT="dev"
+          else
+            echo "❌ Branch '${{ github.ref_name }}' inválido — dispare este workflow a partir de 'main' (prod) ou 'develop' (dev)."
+            exit 1
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ENVIRONMENT="${{ inputs.environment }}"
             ACTION="${{ inputs.action }}"
           else
-            ENVIRONMENT="prod"
             if [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
               ACTION="stop"
             else
@@ -74,7 +85,7 @@ jobs:
           fi
           echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "🕐 Ambiente: $ENVIRONMENT | Ação: $ACTION (trigger: ${{ github.event.schedule || 'workflow_dispatch' }})"
+          echo "🕐 Ambiente: $ENVIRONMENT (branch: ${{ github.ref_name }}) | Ação: $ACTION (trigger: ${{ github.event.schedule || 'workflow_dispatch' }})"
 
       - name: Read project configuration
         id: project
