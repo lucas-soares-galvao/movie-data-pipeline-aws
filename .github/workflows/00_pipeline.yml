@@ -127,10 +127,16 @@ jobs:
       pull-requests: write
 
   auto-pr-environment:
-    needs: [terraform]
+    needs: [terraform, deploy-lightsail]
+    # Espera o deploy-lightsail terminar para não abrir a PR develop → main
+    # antes do deploy do FilmBot em dev ser confirmado. "skipped" também é
+    # aceito porque deploy-lightsail é pulado de propósito quando o Terraform
+    # destruiu a infra de dev nesse push (scheduler liga/desliga da instância
+    # nano) — isso não é uma falha que deva bloquear a promoção do código.
     if: |
       github.ref_name == 'develop' &&
-      needs.terraform.result == 'success'
+      needs.terraform.result == 'success' &&
+      (needs.deploy-lightsail.result == 'success' || needs.deploy-lightsail.result == 'skipped')
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
