@@ -590,6 +590,7 @@ resource "aws_iam_policy" "cicd_lightsail" {
           "lightsail:StartInstance",
           "lightsail:StopInstance",
           "lightsail:PutInstancePublicPorts",
+          "lightsail:CloseInstancePublicPorts",
         ]
         Resource = "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:Instance/*"
       },
