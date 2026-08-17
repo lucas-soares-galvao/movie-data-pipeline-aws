@@ -103,7 +103,7 @@
      margin/padding, é o line-height/leading da fonte de .header-title (28px) por baixo da
      linha de base do texto. Margin negativo compensa isso, medido via getBoundingClientRect()
      (mesmo processo já usado nos outros ajustes de espaçamento desta sessão). */
-  margin: -3px 0 0 !important;
+  margin: -6px 0 0 !important;
   min-width: 0;
 }
 /* Nudge vertical fino, mesmo princípio do .recorder-timer (recommendation.css): o
