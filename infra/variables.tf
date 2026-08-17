@@ -336,6 +336,12 @@ variable "lightsail_enabled" {
   default     = true
 }
 
+variable "lightsail_bundle_id" {
+  description = "Bundle Lightsail (tamanho da instância). micro_3_0 em prod, nano_3_0 (mais barato, 512MB) em dev."
+  type        = string
+  default     = "micro_3_0"
+}
+
 variable "lightsail_instance_name" {
   description = "Nome da instância Lightsail para o agente IA (FilmBot)"
   type        = string

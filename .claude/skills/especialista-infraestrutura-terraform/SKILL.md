@@ -26,7 +26,7 @@ Esta skill cobre o nível de detalhe que falta nos documentos abaixo (argumentos
 
 - `local.project_config = jsondecode(file("config/project.json"))` — fonte única de `tmdb_prefix`, nome do wheel compartilhado (`shared_wheel_name`), nome/prefixo da role de CI/CD. **Só `locals.tf` lê esse arquivo**; mudar `project.json` propaga nome para quase todo `infra/*.tf` via `local.tmdb_prefix`.
 - `local.envs` — mapa único com todos os nomes sufixados por ambiente: jobs Glue (`glue_etl_job_name`, `glue_agg_job_name`, `glue_details_job_name`, `glue_data_quality_job_name`), `lambda_api_name`, roles (`iam_role_glue`, `iam_role_lambda`), os 6 buckets S3 (`s3_bucket_aux/temp/sor/sot/spec/data_quality`), 3 databases + 14 tabelas do Glue Catalog (`glue_catalog_db_*`, `glue_catalog_tb_*`) e `lightsail_instance_name`. Toda referência a nome de recurso passa por `local.envs.<chave>`, nunca é reconstruída inline.
-- `local.component_tags.<componente>` — tags aplicadas por componente (`shared`, `lambda_api`, `eventbridge`, `glue_etl`, `glue_data_quality`, `glue_agg`, `glue_details`, `glue_catalog`, `lightsail_scheduler`, `lightsail_ia`); `local.default_resource_tags` (Service/Environment/FinOps) vai no `default_tags` do provider.
+- `local.component_tags.<componente>` — tags aplicadas por componente (`shared`, `lambda_api`, `eventbridge`, `glue_etl`, `glue_data_quality`, `glue_agg`, `glue_details`, `glue_catalog`, `lightsail_ia`); `local.default_resource_tags` (Service/Environment/FinOps) vai no `default_tags` do provider.
 - Único padrão de repetição no projeto é `count = var.lightsail_enabled ? 1 : 0` — não há `for_each` em lugar nenhum de `infra/`.
 - `depends_on` explícito é comum porque o Terraform não infere ordem a partir de interpolação de string dentro de `default_arguments`/`environment` (argumentos de Glue Job/Lambda são strings, não referências diretas).
 - Dois providers: default (`sa-east-1`, com `default_tags`) e `aws.lightsail` (`us-east-1` — obrigatório, a API do Lightsail só responde nessa região).
@@ -49,10 +49,9 @@ Esta skill cobre o nível de detalhe que falta nos documentos abaixo (argumentos
 
 Ao criar um bucket novo: seguir o mesmo bloco de 5 recursos, adicionar a chave em `local.envs`, e escolher lifecycle conforme o padrão de acesso (dados efêmeros → expiração curta sem IA, como TEMP; dados de longo prazo consultados raramente → IA em 30-90d).
 
-### AWS Lambda — `lambda_api.tf`, `lightsail_scheduler.tf`
+### AWS Lambda — `lambda_api.tf`
 
 - **`lambda_api`** (`aws_lambda_function.simple_lambda`) — `runtime="python3.11"`, `architecture="arm64"`, `timeout=900s`, `memory_size=512MB`, handler `main.lambda_handler`. Deploy **via S3** (não código inline): `null_resource.lambda_build` (local-exec rodando `scripts/build_lambda_package.py`, `triggers` = sha256 do código-fonte + shared_src + requirements + o próprio script builder) → `data.archive_file.lambda_bundle` (zip) → upload no bucket AUX → `s3_bucket`/`s3_key` na function. Cadeia longa de `depends_on` (policies IAM, log group, objeto S3, build).
-- **`lightsail_scheduler`** (`aws_lambda_function.lightsail_scheduler`, gated por `count = var.lightsail_enabled ? 1 : 0`) — `python3.11`/arm64, `timeout=30s`, empacotado direto via `data.archive_file` a partir de `app/lambda_lightsail_scheduler/main.py` (sem build script, sem wheel compartilhado — módulo não depende de `shared_src`). Acionado por 3 regras cron: stop 00:00 BRT diário, start 18:00 BRT dias úteis, start 08:00 BRT fim de semana. Usa `provider = aws.lightsail` para as chamadas do lado Lightsail; provider default para Lambda/IAM/CloudWatch.
 
 ### AWS Glue — jobs PythonShell — `glue_etl.tf`, `glue_agg.tf`, `glue_details.tf`
 
@@ -76,9 +75,11 @@ Os três compartilham o mesmo esqueleto: `command.name="pythonshell"`, `command.
 
 **Importante**: a tabela SPEC (`glue_catalog_tb_discover_unified`, `tb_tmdb_discover_unified_{env}`) **não está declarada aqui** — é registrada em runtime pelo próprio job Glue AGG (`wr.s3.to_parquet(..., database=..., table=...)`). Não adicione essa tabela ao `glue_catalog.tf`; isso duplicaria a definição e causaria drift.
 
-### Amazon Lightsail — `lightsail_ia.tf`, `lightsail_scheduler.tf`
+### Amazon Lightsail — `lightsail_ia.tf`
 
-`aws_lightsail_instance.filmbot` (gated por `var.lightsail_enabled`) — `bundle_id="micro_3_0"` (1GB RAM/2vCPU/40GB), `blueprint_id="ubuntu_22_04"`, AZ `us-east-1a`, `provider = aws.lightsail`. Acompanhado de key pair, IP estático + attachment, portas públicas (22 restrita a `var.lightsail_ssh_allowed_cidrs`; 80/443 abertas a `0.0.0.0/0`).
+`aws_lightsail_instance.filmbot` (gated por `var.lightsail_enabled`) — `bundle_id=var.lightsail_bundle_id` (`micro_3_0` em prod, `nano_3_0` mais barato em dev), `blueprint_id="ubuntu_22_04"`, AZ `us-east-1a`, `provider = aws.lightsail`. Acompanhado de key pair, IP estático + attachment, portas públicas (22 restrita a `var.lightsail_ssh_allowed_cidrs`; 80/443 abertas a `0.0.0.0/0`).
+
+Os 4 outputs que indexam `recurso[0]` (`lightsail_public_ip`, `lightsail_url`, `lightsail_private_key`, `lightsail_instance_name`) usam guarda `length(recurso) > 0 ? recurso[0].attr : ""`, não `var.lightsail_enabled ? ... : ""` — necessário porque o scheduler (`05_lightsail_scheduler.yml`) destrói/recria `aws_lightsail_instance.filmbot` via `-target` enquanto `lightsail_enabled` permanece `true`; com a guarda antiga, `terraform destroy -target=aws_lightsail_instance.filmbot` quebraria ao recalcular os outputs no final (índice inválido numa lista vazia).
 
 Usa `aws_iam_user.lightsail_agent` (**usuário, não role** — a instância Lightsail não assume roles IAM) com access key gerenciada pelo Terraform (output sensível), policy escopada para Athena, S3 (SPEC leitura, TEMP leitura/escrita), Glue read, CloudWatch Logs, Secrets Manager. Vários `output` (IP, URL, private key, access keys, log group, path de saída do Athena, DB/tabela do Glue) alimentam o `.env` da instância — consumidos pelo workflow `04_deploy_lightsail.yml`, não fixados no Terraform.
 
@@ -87,7 +88,7 @@ Usa `aws_iam_user.lightsail_agent` (**usuário, não role** — a instância Lig
 - **`iam_roles.tf`** — roles de serviço (`lambda_function`, `glue_etl_role`, `glue_dq_role`, `glue_agg_role`, `glue_details_role`), todas com `assume_role_policy` de service principal, anexadas às duas managed policies **customizadas** compartilhadas (`glue_shared_base`, `glue_shared_read_code`) definidas em `iam_policies.tf`. Todas dependem de `terraform_data.cicd_policies_ready`.
 - **`iam_policies.tf`** (~1024 linhas) — policies por job (logs, S3 escopado por prefixo, Glue Catalog escopado por ARN de DB/tabela, Athena, Secrets Manager, SSM, Translate/Comprehend para fallback de tradução) + `aws_sns_topic_policy` (via `aws_iam_policy_document`) controlando quem publica em cada tópico SNS. `glue_shared_base` substitui `AWSGlueServiceRole` (concede `glue:*` em `*` — permissiva demais); a policy de logs da Lambda substitui `AWSLambdaBasicExecutionRole` (permitiria `logs:CreateLogGroup`, ignorando a retenção gerenciada pelo Terraform).
 - **`iam_cicd.tf`** — `aws_iam_role.github_actions` (`lsg-github-actions-{env}`, trust OIDC, `max_session_duration=3600`) + 7 policies least-privilege (backend/state-lock, S3, IAM self-mgmt escopado a `tmdb-*`, compute, observability, lightsail, ssm). Termina em `terraform_data.cicd_policies_ready` — **quase todo outro recurso do projeto depende dela** — seguida de `null_resource.cicd_policies_propagation` que faz polling em `iam:SimulatePrincipalPolicy` (até 60s) contornando a consistência eventual do IAM.
-- **`iam_backfill.tf`** — role separada `tmdb-backfill-role-{env}` para o workflow manual `05_backfill.yml` (antes reusava a role de CI/CD — excesso de privilégio). Trust policy restrita por repo **e** branch (`local.backfill_allowed_branch`: dev→`develop`, prod→`main`). Policies escopadas: invocar Lambda, iniciar/monitorar Glue Details+DQ, S3 (checkpoints + prefixos específicos da SOT), Glue Catalog (só tabelas de details/watch_providers).
+- **`iam_backfill.tf`** — role separada `tmdb-backfill-role-{env}` para o workflow manual `06_backfill.yml` (antes reusava a role de CI/CD — excesso de privilégio). Trust policy restrita por repo **e** branch (`local.backfill_allowed_branch`: dev→`develop`, prod→`main`). Policies escopadas: invocar Lambda, iniciar/monitorar Glue Details+DQ, S3 (checkpoints + prefixos específicos da SOT), Glue Catalog (só tabelas de details/watch_providers).
 
 Ao adicionar permissão nova: sempre uma policy customizada com escopo mínimo — nunca anexar uma managed policy ampla como atalho.
 

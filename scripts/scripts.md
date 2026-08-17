@@ -45,11 +45,11 @@ genérico de `backfill_shared.py`, só que com unidade "nome do estágio"
 
 ### Via GitHub Actions (recomendado)
 
-1. Ir em **Actions > 5. Backfill > Run workflow**, escolhendo o branch `main` (prod) ou `develop` (dev) no seletor "Use workflow from" — esse branch determina o ambiente
+1. Ir em **Actions > 6. Backfill > Run workflow**, escolhendo o branch `main` (prod) ou `develop` (dev) no seletor "Use workflow from" — esse branch determina o ambiente
 2. Selecionar o grupo de tabelas (`table_group`), ano inicial e ano final (ambos ignorados para `referencias` e `changes` — `changes` não usa nenhum input de data, é sempre a janela padrão de 7 dias)
 3. Acompanhar logs na aba do workflow
 
-O workflow (`.github/workflows/05_backfill.yml`) resolve o ambiente automaticamente pelo branch selecionado, autentica via OIDC no ambiente correspondente e configura todas as variáveis de ambiente automaticamente.
+O workflow (`.github/workflows/06_backfill.yml`) resolve o ambiente automaticamente pelo branch selecionado, autentica via OIDC no ambiente correspondente e configura todas as variáveis de ambiente automaticamente.
 
 ### Localmente (requer credenciais AWS configuradas)
 
@@ -193,7 +193,7 @@ erro que a AWS usa para credencial expirada: `ExpiredTokenException` (STS —
 ex.: chamadas de Lambda/Glue) e `ExpiredToken` (S3 — ex.: `ListObjectsV2` via
 awswrangler, `get_object`/`put_object`/`delete_object`).
 
-O workflow `.github/workflows/05_backfill.yml` reconhece esse código: renova a
+O workflow `.github/workflows/06_backfill.yml` reconhece esse código: renova a
 credencial (nova sessão de 1h via `sts assume-role-with-web-identity`, usando
 o token OIDC do próprio job) e roda o script de novo, dentro do mesmo job —
 até 6 tentativas (alinhado ao timeout de 360min do job / ~1h por sessão AWS).
@@ -283,7 +283,7 @@ diferente dos demais tópicos deste projeto — não existe um "Job State Change
 nativo para um processo Python rodando fora do Glue; mesmo racional do tópico de
 métricas do Glue Data Quality, publicado por `notify_failed_outcomes` em
 `app/glue_data_quality/src/utils.py`). O workflow
-(`.github/workflows/05_backfill.yml`) monta o ARN do tópico
+(`.github/workflows/06_backfill.yml`) monta o ARN do tópico
 (`SNS_TOPIC_ARN_BACKFILL_SUCCESS`) em runtime, extraindo o `account_id` de
 `ROLE_ARN` (já disponível no mesmo step) — sem depender de um output novo do
 Terraform.
@@ -311,7 +311,7 @@ completo.
 ## Step summary: resumo do backfill ao final
 
 Depois que o loop de retry termina com sucesso (`exit 0`), o workflow
-(`.github/workflows/05_backfill.yml`) escreve no step summary do GitHub
+(`.github/workflows/06_backfill.yml`) escreve no step summary do GitHub
 Actions o resumo real do que o script fez, extraído do log via `grep` (todos
 os 8 scripts usam o mesmo formato de log, `backfill_shared.py:58-63`:
 `"%(asctime)s %(levelname)s %(message)s"`, com `%(asctime)s` em horário de

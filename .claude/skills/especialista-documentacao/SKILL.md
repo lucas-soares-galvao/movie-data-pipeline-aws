@@ -57,7 +57,7 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
   ranges DQDL citando colunas (`budget`, `revenue`) que não existem em `rulesets_dq.py`, tabela de variáveis de
   ambiente da Lambda incompleta, um modo inteiro da Lambda (`only_rotation_refresh`) e um `table_group` inteiro do
   backfill manual (`rename_colunas`) não documentados em lugar nenhum — sem que nada sinalizasse o gap até uma
-  auditoria manual linha a linha contra `infra/*.tf`, `app/lambda_api/main.py` e `.github/workflows/05_backfill.yml`.
+  auditoria manual linha a linha contra `infra/*.tf`, `app/lambda_api/main.py` e `.github/workflows/06_backfill.yml`.
 - **Padrão do gap: docs agregadores driftam, docs por módulo não.** `scripts/scripts.md` e `test/scripts/
   scripts_tests.md` (que descrevem só os 7 scripts de `scripts/`) estavam corretos e completos; `estrutura-projeto`
   (que resume a mesma lista de scripts numa árvore de diretório) estava desatualizado. Hipótese: quem edita um módulo

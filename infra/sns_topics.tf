@@ -146,7 +146,7 @@ resource "aws_sns_topic_subscription" "glue_details_failure_email" {
 # =============================================================================
 # TÓPICO 9: Sucesso dos backfills manuais (scripts/backfill_*.py)
 # =============================================================================
-# Notifica quando um backfill manual (disparado via .github/workflows/05_backfill.yml)
+# Notifica quando um backfill manual (disparado via .github/workflows/06_backfill.yml)
 # termina com sucesso total (sem unidades pendentes). Publicado diretamente por
 # scripts/backfill_shared.py:notify_backfill_success via boto3 — não há EventBridge no
 # meio, já que não existe um "Job State Change" nativo para um processo Python rodando

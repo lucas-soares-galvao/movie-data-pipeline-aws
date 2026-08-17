@@ -65,11 +65,11 @@ Junta tudo — filmes e séries, com todos os seus detalhes — em uma única ta
 ### Aplicativo de recomendações (FilmBot — Lightsail)
 Interface web onde o usuário digita o que quer assistir em linguagem natural. Um agente de IA interpreta o pedido, consulta a base de dados e retorna recomendações personalizadas com pôster, sinopse, avaliação, duração e onde assistir. Servido via HTTPS com certificado automático (Caddy + Let's Encrypt). O acesso é protegido por senha configurável, evitando uso não autorizado da API de IA e das consultas ao Athena.
 
-### Agendador do FilmBot (Lambda Lightsail Scheduler)
-Liga e desliga automaticamente a instância Lightsail onde o FilmBot roda, reduzindo custo ao manter o servidor ativo apenas nos horários de uso. Acionado pelo EventBridge Scheduler com o parâmetro `"start"` ou `"stop"`, sem intervenção humana.
+### Agendador do FilmBot (`05_lightsail_scheduler.yml`)
+Liga e desliga a instância Lightsail onde o FilmBot roda — via `terraform apply`/`destroy -target`, não stop/start (o Lightsail cobra a mesma tarifa do bundle em ambos os estados; só destruir a instância reduz custo de verdade). Em prod roda por cron automático (GitHub Actions `schedule`); em dev (bundle `nano_3_0`, mais barato, em `filmbot-dev.lsgalvao.com.br`) só via disparo manual (`workflow_dispatch`). O IP estático nunca é destruído, então o DNS não precisa ser reconfigurado a cada ciclo.
 
 ### Backfill histórico manual
-Backfill manual sob demanda via workflow `05_backfill.yml` (`workflow_dispatch`), que roda os scripts em `scripts/` para reprocessar um grupo específico de tabelas (discover, referências, detalhes/providers, data quality ou tradução). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow. Veja [`scripts/scripts.md`](scripts/scripts.md) para detalhes.
+Backfill manual sob demanda via workflow `06_backfill.yml` (`workflow_dispatch`), que roda os scripts em `scripts/` para reprocessar um grupo específico de tabelas (discover, referências, detalhes/providers, data quality ou tradução). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow. Veja [`scripts/scripts.md`](scripts/scripts.md) para detalhes.
 
 ---
 
@@ -91,7 +91,7 @@ Qualquer alteração no código passa por um processo automatizado de validaçã
 | `develop` | Terraform apply no ambiente `dev` → PR automático para `main` |
 | `main` | Terraform apply no ambiente `prod` → deploy do FilmBot no Lightsail |
 
-O pipeline é orquestrado por 6 workflows em `.github/workflows/`. Consulte [`.github/workflow.md`](.github/workflow.md) para a documentação completa.
+O pipeline é orquestrado por 7 workflows em `.github/workflows/`. Consulte [`.github/workflow.md`](.github/workflow.md) para a documentação completa.
 
 ---
 
@@ -160,7 +160,7 @@ Se você quer entender o projeto do zero, siga esta ordem — ela acompanha o fl
 | Infraestrutura como código | Terraform `>= 1.5.0` |
 | CI/CD | GitHub Actions |
 | Processamento de dados | AWS Glue (PySpark), AWS Lambda |
-| Agendamento | AWS EventBridge (pipeline de dados), AWS EventBridge Scheduler (ciclo de vida do Lightsail) |
+| Agendamento | AWS EventBridge (pipeline de dados), GitHub Actions `schedule` + `terraform -target` (ciclo de vida do Lightsail) |
 | Armazenamento | AWS S3 (arquitetura medalhão — 4 camadas: SOR → SOT → SPEC → DQ), AWS Glue Catalog (catálogo de metadados), AWS Athena (consultas SQL sobre o S3) |
 | Observabilidade | AWS CloudWatch, AWS SNS, AWS SQS (dead-letter queue) |
 | Interface web | Streamlit (hospedado no AWS Lightsail, HTTPS via Caddy) |

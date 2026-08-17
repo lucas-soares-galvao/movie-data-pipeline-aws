@@ -47,9 +47,6 @@ locals {
     glue_catalog = {
       Component = "glue_catalog"
     }
-    lightsail_scheduler = {
-      Component = "lightsail_scheduler"
-    }
     lightsail_ia = {
       Component = "lightsail_ia"
     }

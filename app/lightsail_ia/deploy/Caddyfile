@@ -1,4 +1,4 @@
-filmbot.lsgalvao.com.br {
+{$FILMBOT_DOMAIN} {
     # Sobrescreve X-Forwarded-For com o IP real do peer TCP em vez de anexar ao valor
     # recebido do cliente — sem isso, o rate limit por IP em app.py pode ser burlado
     # com um header forjado e diferente a cada requisição.

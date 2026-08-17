@@ -1,6 +1,6 @@
 ---
 name: especialista-scripts-backfill
-description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), entender o contrato entre um script e `.github/workflows/05_backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`), ou a notificação de sucesso por e-mail (`backfill_shared.notify_backfill_success`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
+description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), entender o contrato entre um script e `.github/workflows/06_backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`), ou a notificação de sucesso por e-mail (`backfill_shared.notify_backfill_success`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
 ---
 
 # Especialista em Scripts de Backfill
@@ -30,7 +30,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 |---|---|
 | Descrição de cada um dos 8 scripts, variáveis de ambiente, como executar (workflow ou local) | `scripts/scripts.md` |
 | Casos de teste por script, os 4 bugs reais que motivaram a suíte | `test/scripts/scripts_tests.md` |
-| Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC | `especialista-workflows-github`, `.github/workflows/05_backfill.yml` |
+| Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC | `especialista-workflows-github`, `.github/workflows/06_backfill.yml` |
 | Funções reaproveitadas dos jobs reais (`collect_discover_data` em `app/lambda_api/src/utils.py`; `read_from_sor`/`write_parquet_to_sot` em `app/glue_etl/src/utils.py`; `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`; `run_athena_query`/`write_parquet_to_spec` em `app/glue_agg/src/utils.py`, via `backfill_shared.trigger_agg_locally`) | `especialista-engenharia-dados-app` |
 | Padrões de mock específicos de `test/scripts/` (parametrização `ExpiredTokenException`/`ExpiredToken`) | `especialista-testes-app` |
 | Guard de custo do AWS Translate como decisão de FinOps | `especialista-finops-aws` |
@@ -70,7 +70,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   engano e queira voltar.
 - **Exit code 75 (`RETRYABLE_EXIT_CODE`) é um contrato explícito entre script e workflow**: `run_with_retry_exit`
   (`scripts/backfill_shared.py:190-205`) traduz qualquer `ClientError` de token expirado nesse código; o loop bash
-  em `.github/workflows/05_backfill.yml:201-222` é o único lugar que interpreta esse número — reconhece 75 como
+  em `.github/workflows/06_backfill.yml:201-222` é o único lugar que interpreta esse número — reconhece 75 como
   "renovar credencial e tentar de novo" e qualquer outro código `!= 0` como falha real (`exit $codigo`, sem retry).
   Um script novo que capture uma exceção e chame `sys.exit` com outro número quebraria esse contrato
   silenciosamente. `backfill_referencias.py` e `backfill_changes.py` são os únicos scripts sem esse bloco — nenhum
@@ -171,7 +171,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   testes de contrato descritos em `scripts_tests.md` verificam o payload/argumentos enviados, não a semântica do
   checkpoint. Se decidir corrigir a lacuna acima, o teste que trava a regressão também não existe ainda.
 - **`table_group` é texto livre repetido em 3 lugares sem validação cruzada automática**: a lista de `choices` do
-  `workflow_dispatch` (`.github/workflows/05_backfill.yml:39-45`), o `case` do bash que resolve qual script rodar
+  `workflow_dispatch` (`.github/workflows/06_backfill.yml:39-45`), o `case` do bash que resolve qual script rodar
   (`:167-174`), e o valor que cada script recebe via `TABLE_GROUP` (usado só como chave do checkpoint, nunca
   validado contra uma lista permitida dentro do próprio script Python). Adicionar um `table_group` novo sem
   atualizar os 3 lugares (mais `scripts/scripts.md`) resulta em falha silenciosa ou script executando com um
@@ -205,7 +205,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   não um modelo a replicar.
 - **Qualquer `sys.exit` direto num script de backfill deve usar `shared.RETRYABLE_EXIT_CODE` (75) só para token
   expirado** — nunca reaproveitar esse número para outro tipo de erro, e nunca introduzir um exit code novo sem
-  também atualizar o loop bash em `05_backfill.yml` que o interpreta.
+  também atualizar o loop bash em `06_backfill.yml` que o interpreta.
 - **`table_group` novo**: adicionar nas 3 pontas (choices do `workflow_dispatch`, `case` do bash, docstring do
   script) mais `scripts/scripts.md` no mesmo PR — nada valida a string em runtime hoje (ver "Lacunas encontradas").
 - **Guard de custo de tradução**: se o script novo aceitar `TRANSLATE_PROVIDER` e depender de range de anos, chamar

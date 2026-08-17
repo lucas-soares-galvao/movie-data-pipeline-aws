@@ -105,7 +105,7 @@ resource "aws_lightsail_instance" "filmbot" {
   name              = local.envs.lightsail_instance_name
   availability_zone = "us-east-1a"
   blueprint_id      = "ubuntu_22_04"
-  bundle_id         = "micro_3_0" # 1 GB RAM, 2 vCPU, 40 GB SSD — $7,00/mês
+  bundle_id         = var.lightsail_bundle_id
   key_pair_name     = aws_lightsail_key_pair.filmbot[0].name
   tags              = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
@@ -152,17 +152,17 @@ resource "aws_lightsail_static_ip_attachment" "filmbot" {
 
 output "lightsail_public_ip" {
   description = "IP público fixo da instância Lightsail"
-  value       = var.lightsail_enabled ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
+  value       = length(aws_lightsail_static_ip.filmbot) > 0 ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
 }
 
 output "lightsail_url" {
   description = "URL do FilmBot — clicável no terminal"
-  value       = var.lightsail_enabled ? "http://${aws_lightsail_static_ip.filmbot[0].ip_address}" : ""
+  value       = length(aws_lightsail_static_ip.filmbot) > 0 ? "http://${aws_lightsail_static_ip.filmbot[0].ip_address}" : ""
 }
 
 output "lightsail_private_key" {
   description = "Chave privada SSH para acessar a instância via ssh -i <key> ubuntu@<ip>"
-  value       = var.lightsail_enabled ? aws_lightsail_key_pair.filmbot[0].private_key : ""
+  value       = length(aws_lightsail_key_pair.filmbot) > 0 ? aws_lightsail_key_pair.filmbot[0].private_key : ""
   sensitive   = true
 }
 
@@ -180,7 +180,7 @@ output "lightsail_agent_secret_access_key" {
 
 output "lightsail_instance_name" {
   description = "Nome da instância Lightsail para verificação de estado"
-  value       = var.lightsail_enabled ? aws_lightsail_instance.filmbot[0].name : ""
+  value       = length(aws_lightsail_instance.filmbot) > 0 ? aws_lightsail_instance.filmbot[0].name : ""
 }
 
 output "lightsail_cloudwatch_log_group" {
