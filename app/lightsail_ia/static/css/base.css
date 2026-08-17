@@ -1,5 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200;300;600&display=swap');
 
+/* Rede de segurança: mesmo tom da ponta escura do gradiente abaixo (#050508),
+   fixo em html/body. O Streamlit não tem [theme] fixado no config.toml, então
+   o fundo nativo por trás do stAppViewContainer varia com o tema do navegador
+   de quem acessa (claro/escuro) — sem isso, encurtar o container em app.css
+   (tela principal, min-height:0 lá) exporia esse fundo imprevisível abaixo do
+   rodapé em vez de continuar a textura escura do app. */
+html, body {
+  background: #050508;
+}
+
 /* Fundo cinematografico — mesmo gradiente radial usado em login.css, para
    as duas telas terem a mesma textura de fundo. */
 [data-testid="stAppViewContainer"] {
