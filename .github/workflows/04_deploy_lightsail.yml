@@ -188,6 +188,18 @@ jobs:
             "test -s /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env" || { echo "❌ Arquivo .env não foi criado na instância"; exit 1; }
           echo "✅ Arquivo .env criado com sucesso na instância"
 
+      # Domínio do Caddy por ambiente — dev e prod servem em subdomínios
+      # separados na mesma instância física de código (Caddyfile lê
+      # {$FILMBOT_DOMAIN} do ambiente do processo via EnvironmentFile=).
+      - name: Create .env.caddy file on instance
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
+        run: |
+          DOMAIN=${{ inputs.environment == 'dev' && 'filmbot-dev.lsgalvao.com.br' || 'filmbot.lsgalvao.com.br' }}
+          printf 'FILMBOT_DOMAIN=%s\n' "$DOMAIN" \
+            | ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+                "sudo mkdir -p /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }} && sudo tee /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy > /dev/null && sudo chmod 600 /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy"
+          echo "✅ Arquivo .env.caddy criado com sucesso na instância (FILMBOT_DOMAIN=$DOMAIN)"
+
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
@@ -200,6 +212,18 @@ jobs:
             REPO_URL="https://github.com/${{ github.repository }}.git" \
             bash << 'ENDSSH'
             set -e
+
+            # Swap de 1GB — necessário em bundles pequenos (ex.: nano_3_0, 512MB)
+            # para o pip install/app não sofrerem OOM kill. Idempotente e
+            # aplicado em qualquer bundle — custo de disco desprezível.
+            if [ ! -f /swapfile ]; then
+              sudo fallocate -l 1G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+            fi
+
             sudo apt-get update -q && sudo apt-get install -y python3-venv python3-pip git debian-keyring debian-archive-keyring apt-transport-https curl -q
             sudo useradd -m "$APP_NAME" || true
 

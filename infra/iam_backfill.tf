@@ -1,9 +1,9 @@
 # =============================================================================
 # iam_backfill.tf — Role e políticas IAM de privilégio mínimo para o backfill
-# manual sob demanda (05_backfill.yml)
+# manual sob demanda (06_backfill.yml)
 # =============================================================================
 #
-# Antes desta role, o workflow 05_backfill.yml assumia a mesma role de CI/CD
+# Antes desta role, o workflow 06_backfill.yml assumia a mesma role de CI/CD
 # (aws_iam_role.github_actions, em iam_cicd.tf) usada para o terraform apply
 # completo — o que dava ao backfill manual acesso a IAM CRUD, gestão de
 # buckets S3, Lightsail, etc., sem nenhuma necessidade real.
@@ -28,7 +28,7 @@
 
 locals {
   # Restringe a role ao branch que resolve para o mesmo ambiente em
-  # 05_backfill.yml (develop→dev, main→prod). Reforço de segurança além do
+  # 06_backfill.yml (develop→dev, main→prod). Reforço de segurança além do
   # wildcard usado pela trust policy da role de CI/CD (que não restringe por
   # ref, só por repo).
   backfill_allowed_branch = { dev = "develop", prod = "main" }[var.env]
@@ -59,7 +59,7 @@ resource "aws_iam_role" "backfill" {
   })
 
   # Mesma duração da role de CI/CD (1h) — o mecanismo de retry do
-  # 05_backfill.yml usa --duration-seconds 3600 hardcoded ao renovar a
+  # 06_backfill.yml usa --duration-seconds 3600 hardcoded ao renovar a
   # credencial expirada via assume-role-with-web-identity.
   max_session_duration = 3600
 

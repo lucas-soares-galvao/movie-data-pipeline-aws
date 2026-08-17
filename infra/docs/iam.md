@@ -9,9 +9,8 @@
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, StartJobRun (DQ) |
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP restrito a `tmdb/athena/glue_details/*` e `tmdb/changes/*` — modo changes), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
-| `tmdb-lightsail-scheduler-{env}` | Lambda Lightsail Scheduler | `lightsail:StartInstance`, `StopInstance`, `GetInstance` |
 | `tmdb-filmbot-agent-{env}` (user) | Lightsail FilmBot | Athena, S3 (SPEC, TEMP), Glue Catalog, CloudWatch Logs, Secrets Manager |
-| `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`05_backfill.yml`) | `glue:StartJobRun`/`GetJobRun` (jobs Data Quality e AGG), Athena, Secrets Manager, S3 (checkpoints + tabelas discover/details/referência movie/tv no SOT + JSON bruto no SOR), Glue Catalog (tabelas discover/details/referência movie/tv), Translate/Comprehend |
+| `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`06_backfill.yml`) | `glue:StartJobRun`/`GetJobRun` (jobs Data Quality e AGG), Athena, Secrets Manager, S3 (checkpoints + tabelas discover/details/referência movie/tv no SOT + JSON bruto no SOR), Glue Catalog (tabelas discover/details/referência movie/tv), Translate/Comprehend |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
@@ -23,7 +22,7 @@ Pelo mesmo princípio, os jobs Glue usam uma **policy compartilhada customizada*
 
 A role do GitHub Actions (`lsg-github-actions-{env}`) foi originalmente criada **manualmente** e é gerenciada como `aws_iam_role.github_actions` em `iam_cicd.tf`, que também cria e anexa 7 policies managed de privilégio mínimo. Como a role já existia antes do resource, o step "Import existing CI/CD role (one-time state adoption)" em `02_terraform.yml` adota ela no state via `terraform import` antes do plan/apply de cada ambiente (checa `terraform state show` primeiro — no-op depois da primeira adoção); sem isso o Terraform tentaria `CreateRole` nela, que a própria role não tem permissão de fazer contra si mesma. O job também usa `concurrency: group: terraform-{env}` para serializar runs do mesmo ambiente, evitando que dois pushes próximos disputem a adoção da role no state ao mesmo tempo. O nome da role (`cicd_role_name`) e o prefixo das policies (`cicd_policy_prefix`) vêm de `infra/config/project.json` — os valores abaixo são os defaults:
 
-**MaxSessionDuration:** a role tem `max_session_duration = 3600` (1h) fixado no código, e o workflow `05_backfill.yml` não pede `role-duration-seconds` customizado (usa esse mesmo default de 1h da action `aws-actions/configure-aws-credentials`). Backfills históricos podem rodar por horas e a sessão expira antes do fim — em vez de esticar a duração, o step "Run backfill" trata `ExpiredTokenException` especificamente: reassume a role via `aws sts assume-role-with-web-identity` inline (nova sessão de 1h) e retoma o script do checkpoint em S3 (ver `scripts/backfill_shared.py` e a seção `05_backfill.yml` em `estrutura-projeto`).
+**MaxSessionDuration:** a role tem `max_session_duration = 3600` (1h) fixado no código, e o workflow `06_backfill.yml` não pede `role-duration-seconds` customizado (usa esse mesmo default de 1h da action `aws-actions/configure-aws-credentials`). Backfills históricos podem rodar por horas e a sessão expira antes do fim — em vez de esticar a duração, o step "Run backfill" trata `ExpiredTokenException` especificamente: reassume a role via `aws sts assume-role-with-web-identity` inline (nova sessão de 1h) e retoma o script do checkpoint em S3 (ver `scripts/backfill_shared.py` e a seção `06_backfill.yml` em `estrutura-projeto`).
 
 A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se auto-gerenciar (`iam:UpdateRole`, `iam:UpdateAssumeRolePolicy`, `iam:TagRole`/`UntagRole`), sem poder se criar ou deletar (statement `IAMCICDRoleManagement`).
 
@@ -45,7 +44,7 @@ Além do polling do workflow (`aws iam list-attached-role-policies`, 12 tentativ
 
 ## Permissões do backfill manual (`iam_backfill.tf`)
 
-O workflow `05_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 8 scripts `scripts/backfill_*.py` usam:
+O workflow `06_backfill.yml` (dispatch manual de reprocessamento pontual) usava, até então, a mesma role de CI/CD acima — o que dava a um backfill manual acesso a IAM CRUD, gestão de buckets, Lightsail, etc., sem necessidade real. A role `tmdb-backfill-role-{env}` separa essa responsabilidade com privilégio mínimo, cobrindo exatamente o que os 8 scripts `scripts/backfill_*.py` usam:
 
 Nenhum dos 8 scripts invoca a Lambda API hoje — todos rodam a coleta TMDB e a transformação
 equivalente ao Glue ETL/Glue Details diretamente no processo do script, então não existe (nem
@@ -65,8 +64,8 @@ nenhuma policy nova.
 | `tmdb-backfill-glue-catalog-{env}` | `GetTable`/`GetPartitions`/`BatchCreatePartition`/`BatchDeletePartition`/`UpdateTable` restrito às tabelas discover, details, watch_providers e referência movie/tv — usado implicitamente pelo `awswrangler` em `backfill_discover.py`, `backfill_referencias.py`, `backfill_traducao.py` e `backfill_rename_colunas.py` — mais `CreateTable`/`DeleteTable` (statement `DeleteCtasTempTable`) restrito a `table/{database}/*` nas databases movie/tv, para a tabela temporária que o Athena CTAS (`ctas_approach=True`) cria e apaga em `resolve_matched_ids_for_changed_ids` (`backfill_changes.py`) — mesmo padrão de `glue_details_catalog` em `iam_policies.tf` |
 | `tmdb-backfill-translate-{env}` | `translate:TranslateText`/`comprehend:DetectDominantLanguage` (sem restrição de recurso) — usado quando `TRANSLATE_PROVIDER=aws` é escolhido, e como fallback automático mesmo com o default `"google"` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_traducao.py`, `backfill_changes.py`) |
 
-Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token OIDC também por branch (`ref:refs/heads/develop` em dev, `ref:refs/heads/main` em prod, casando com a resolução de ambiente feita pelo próprio `05_backfill.yml`), não só por repositório — reforço de segurança possível porque é uma role nova, sem histórico de uso a preservar.
+Diferente da role de CI/CD, a trust policy desta role restringe o `sub` do token OIDC também por branch (`ref:refs/heads/develop` em dev, `ref:refs/heads/main` em prod, casando com a resolução de ambiente feita pelo próprio `06_backfill.yml`), não só por repositório — reforço de segurança possível porque é uma role nova, sem histórico de uso a preservar.
 
 Não há problema de bootstrap circular: a policy `cicd-terraform-iam-{env}` já cobre `role/tmdb-*` (wildcard existente), então a role de CI/CD já pode criar/gerenciar `tmdb-backfill-role-{env}` num apply normal, sem `-target` nem step de bootstrap adicional.
 
-Esta role serve o backfill **manual sob demanda** via scripts (`05_backfill.yml`), assumida via OIDC do GitHub Actions.
+Esta role serve o backfill **manual sob demanda** via scripts (`06_backfill.yml`), assumida via OIDC do GitHub Actions.

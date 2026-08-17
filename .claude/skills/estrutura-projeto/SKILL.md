@@ -1,6 +1,6 @@
 ---
 name: estrutura-projeto
-description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a 05_backfill), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
+description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a 06_backfill), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
 ---
 
 # Skill: Estrutura do Projeto proj-eng-dados-filmes-aws
@@ -20,7 +20,8 @@ proj-eng-dados-filmes-aws/
 │       ├── 02_terraform.yml       # Workflow reutilizável: infra Terraform
 │       ├── 03_pr_auto.yml         # Workflow reutilizável: criação automática de PR
 │       ├── 04_deploy_lightsail.yml # Deploy do app configurado via SSH no Lightsail
-│       └── 05_backfill.yml        # Backfill manual sob demanda (workflow_dispatch, ambiente por branch)
+│       ├── 05_lightsail_scheduler.yml # Liga/desliga (destroy/create) o Lightsail — cron em prod, manual em dev
+│       └── 06_backfill.yml        # Backfill manual sob demanda (workflow_dispatch, ambiente por branch)
 ├── app/
 │   ├── lambda_api/
 │   │   ├── main.py                # Handler da Lambda (entry point)
@@ -79,11 +80,12 @@ proj-eng-dados-filmes-aws/
 │   │   │       ├── auto_grow_textarea.js      # Auto-grow do campo de preferência
 │   │   │       ├── countdown.js               # Countdown MM:SS genérico (rate limit/bloqueio)
 │   │   │       └── login_button_toggle.js     # Toggle do botão "Entrar" a cada tecla
-│   │   └── deploy/setup.sh        # Configura systemd service no Lightsail
-│   ├── lambda_lightsail_scheduler/
-│   │   ├── main.py                # Handler Lambda para ligar/desligar instância Lightsail
-│   │   ├── requirements.txt
-│   │   └── lambda_lightsail_scheduler.md  # Documentação do módulo compartilhado
+│   │   └── deploy/
+│   │       ├── setup.sh            # Bootstrap manual legado (referência) — CI/CD usa 04_deploy_lightsail.yml
+│   │       ├── Caddyfile           # Proxy reverso — domínio via {$FILMBOT_DOMAIN} (injetado por .env.caddy)
+│   │       ├── caddy.service       # EnvironmentFile=.env.caddy
+│   │       └── filmbot.service     # EnvironmentFile=.env
+│   └── shared_src/
 │       └── shared_utils/
 │           ├── __init__.py
 │           ├── api_client.py          # API client genérico com retry/backoff e Secrets Manager
@@ -121,7 +123,6 @@ proj-eng-dados-filmes-aws/
 │   ├── glue_data_quality.tf        # Glue Job Data Quality + upload de scripts
 │   ├── glue_catalog.tf             # Database e tabelas no Glue Catalog
 │   ├── lightsail_ia.tf             # Instância Lightsail + IAM user filmbot-agent
-│   ├── lightsail_scheduler.tf      # Lambda + EventBridge para ligar/desligar o Lightsail (custo)
 │   ├── eventbridge.tf              # Regras EventBridge (semanal, semanal de changes, semanal de rotation, mensal)
 │   ├── sns_topics.tf               # Tópicos SNS + subscrições de e-mail
 │   ├── cloudwatch_alarms.tf        # Alarmes Lambda e EventBridge
@@ -182,12 +183,6 @@ proj-eng-dados-filmes-aws/
     │   ├── requirements_tests.txt
     │   ├── lightsail_tests.md
     │   └── test_agent.py           # Testes do agente de recomendação
-    ├── lambda_lightsail_scheduler/
-    │   ├── __init__.py
-    │   ├── conftest.py
-    │   ├── requirements_tests.txt
-    │   ├── lambda_lightsail_scheduler_tests.md
-    │   └── test_main.py
     ├── shared_src/
     │   ├── __init__.py
     │   ├── conftest.py
@@ -319,7 +314,27 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 ---
 
-### `05_backfill.yml` — Backfill Manual
+### `05_lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
+
+Substitui o antigo `lightsail_scheduler.tf` (Lambda + EventBridge, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped`, então parar a instância não economia nada (confirmado via fatura AWS real). Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, em vez de só ligar/desligar.
+
+**Triggers:**
+- `schedule` (cron, só prod): desliga `00:00 BRT` diário, liga `18:00 BRT` seg-sex e `08:00 BRT` sáb-dom.
+- `workflow_dispatch` (`environment`: dev|prod, `action`: start|stop) — dev só roda por aqui, nunca por cron.
+
+**Etapas:** resolve ambiente/ação pelo trigger → lê `infra/config/project.json` → seleciona secrets `_DEV`/`_PROD` conforme o ambiente resolvido → autenticação OIDC → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `02_terraform.yml`).
+
+`aws_lightsail_static_ip.filmbot` **nunca** entra no `-target` — o IP estático nunca é destruído, então o DNS no registro.br (`filmbot.lsgalvao.com.br` em prod, `filmbot-dev.lsgalvao.com.br` em dev) é cadastrado uma única vez por ambiente.
+
+Job `deploy-app` encadeia `04_deploy_lightsail.yml` (via `uses:`) só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot).
+
+**Concorrência:** `concurrency.group: terraform-${ambiente}` — mesmo group usado pelo job `terraform` de `02_terraform.yml`, serializa com qualquer apply/destroy completo disparado por push.
+
+**Comportamento a saber:** como `lightsail_enabled` permanece `true` sempre (o liga/desliga é feito via `-target`, não por essa variável), um `terraform apply` completo disparado por um push normal em `main`/`develop` recria a instância se ela estiver destruída no momento — um deploy de código pode religar o servidor fora da janela agendada.
+
+---
+
+### `06_backfill.yml` — Backfill Manual
 
 **Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
@@ -374,7 +389,6 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `glue_data_quality.tf` | Glue Job DQ + upload de scripts no S3 AUX |
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
 | `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
-| `lightsail_scheduler.tf` | Lambda + EventBridge para ligar/desligar o Lightsail (custo) |
 | `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, semanal de rotation, mensal) → Lambda |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |
@@ -419,7 +433,6 @@ app/<modulo>/
 | `glue_agg` | `awswrangler`, `boto3`, `pandas`, `awsglue` (Glue runtime) |
 | `lightsail_ia` | `streamlit`, `litellm`, `boto3`, `python-dotenv` |
 | `shared_src` | `boto3`, `requests`, `deep-translator` |
-| `lambda_lightsail_scheduler` | `boto3` |
 
 ---
 

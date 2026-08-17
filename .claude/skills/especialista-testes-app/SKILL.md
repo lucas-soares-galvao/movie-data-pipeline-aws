@@ -68,7 +68,7 @@ python_files = test_*.py
 
 ## Organização por serviço AWS
 
-### AWS Lambda — `lambda_api`, `lambda_lightsail_scheduler`
+### AWS Lambda — `lambda_api`
 
 Sem stub de `sys.modules`: `boto3`/`requests` são dependências reais instaláveis, nada a fingir. Mock no ponto de chamada — `patch("src.utils.<colaborador>", ...)` para funções do próprio módulo, ou um `MagicMock()` passado como argumento (ex. `s3_client`) — assertando via `mock.call_args`/`assert_called_once_with(...)`. `test/lambda_api/conftest.py` é essencialmente vazio (só documenta a ausência de `sys.path` global).
 

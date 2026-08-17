@@ -1,0 +1,201 @@
+name: "5. Lightsail Scheduler (Liga/Desliga)"
+
+# =============================================================================
+# Substitui o antigo Lambda+EventBridge (infra/lightsail_scheduler.tf,
+# removido). A instância deixa de ser só parada/iniciada — o Lightsail cobra
+# a mesma tarifa do bundle em running ou stopped — e passa a ser DESTRUÍDA
+# nas janelas ociosas e RECRIADA do zero via Terraform, reidratada pelo
+# bootstrap de 04_deploy_lightsail.yml. O IP estático nunca é alvo do
+# destroy — persiste sempre, sem precisar atualizar o DNS no registro.br.
+#
+# prod: cron automático (BRT = UTC-3, sem horário de verão desde 2019) +
+#       workflow_dispatch manual.
+# dev:  só workflow_dispatch manual — nunca roda via cron.
+# =============================================================================
+
+on:
+  schedule:
+    - cron: "0 3 * * *"    # 00:00 BRT diário         → desligar prod (destroy)
+    - cron: "0 21 * * 1-5" # 18:00 BRT seg-sex         → ligar prod (apply)
+    - cron: "0 11 * * 0,6" # 08:00 BRT sáb-dom (0=dom) → ligar prod (apply)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente (dev só aceita disparo manual — nunca roda via cron)"
+        required: true
+        type: choice
+        options: [prod, dev]
+        default: prod
+      action:
+        description: "Ação"
+        required: true
+        type: choice
+        options: [start, stop]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lightsail-schedule:
+    runs-on: ubuntu-latest
+
+    # Serializa com o job "terraform" de 02_terraform.yml (mesmo group,
+    # terraform-${env}) — evita dois processos escrevendo no mesmo state.
+    concurrency:
+      group: terraform-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'prod' }}
+      cancel-in-progress: false
+
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+      action: ${{ steps.resolve.outputs.action }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve environment and action from trigger
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ inputs.environment }}"
+            ACTION="${{ inputs.action }}"
+          else
+            ENVIRONMENT="prod"
+            if [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+              ACTION="stop"
+            else
+              ACTION="start"
+            fi
+          fi
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "🕐 Ambiente: $ENVIRONMENT | Ação: $ACTION (trigger: ${{ github.event.schedule || 'workflow_dispatch' }})"
+
+      - name: Read project configuration
+        id: project
+        run: |
+          CONFIG=infra/config/project.json
+          echo "statefile_key=$(jq -r '.statefile_key' $CONFIG)" >> $GITHUB_OUTPUT
+
+      - name: Select secrets for resolved environment
+        id: secrets
+        env:
+          ASSUME_ROLE_ARN_DEV: ${{ secrets.AWS_ASSUME_ROLE_ARN_DEV }}
+          ASSUME_ROLE_ARN_PROD: ${{ secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+          STATEFILE_BUCKET_DEV: ${{ secrets.AWS_STATEFILE_S3_BUCKET_DEV }}
+          STATEFILE_BUCKET_PROD: ${{ secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+          LOCK_TABLE_DEV: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_DEV }}
+          LOCK_TABLE_PROD: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+          FILMBOT_SECRET_ARN_DEV: ${{ secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
+          FILMBOT_SECRET_ARN_PROD: ${{ secrets.AWS_FILMBOT_SECRET_ARN_PROD }}
+        run: |
+          if [ "${{ steps.resolve.outputs.environment }}" = "dev" ]; then
+            echo "assume-role-arn=$ASSUME_ROLE_ARN_DEV" >> "$GITHUB_OUTPUT"
+            echo "statefile-bucket=$STATEFILE_BUCKET_DEV" >> "$GITHUB_OUTPUT"
+            echo "lock-table=$LOCK_TABLE_DEV" >> "$GITHUB_OUTPUT"
+            echo "filmbot-secret-arn=$FILMBOT_SECRET_ARN_DEV" >> "$GITHUB_OUTPUT"
+          else
+            echo "assume-role-arn=$ASSUME_ROLE_ARN_PROD" >> "$GITHUB_OUTPUT"
+            echo "statefile-bucket=$STATEFILE_BUCKET_PROD" >> "$GITHUB_OUTPUT"
+            echo "lock-table=$LOCK_TABLE_PROD" >> "$GITHUB_OUTPUT"
+            echo "filmbot-secret-arn=$FILMBOT_SECRET_ARN_PROD" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.secrets.outputs.assume-role-arn }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: sa-east-1
+
+      - name: Terraform Init
+        run: |
+          cd infra && terraform init \
+            -backend-config="bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
+            -backend-config="key=${{ steps.project.outputs.statefile_key }}" \
+            -backend-config="region=sa-east-1" \
+            -backend-config="dynamodb_table=${{ steps.secrets.outputs.lock-table }}"
+
+      - name: Desligar — Terraform Destroy (target)
+        if: steps.resolve.outputs.action == 'stop'
+        run: |
+          cd infra
+          terraform destroy -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
+            -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
+            -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
+            -var="cicd_lock_dynamodb_table=${{ steps.secrets.outputs.lock-table }}" \
+            -target=aws_lightsail_static_ip_attachment.filmbot \
+            -target=aws_lightsail_instance_public_ports.filmbot \
+            -target=aws_lightsail_instance.filmbot \
+            -auto-approve
+          echo "✅ Instância destruída (${{ steps.resolve.outputs.environment }}) — IP estático preservado"
+
+      - name: Ligar — Terraform Apply (target)
+        if: steps.resolve.outputs.action == 'start'
+        run: |
+          cd infra
+          terraform apply -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
+            -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
+            -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
+            -var="cicd_lock_dynamodb_table=${{ steps.secrets.outputs.lock-table }}" \
+            -target=aws_lightsail_key_pair.filmbot \
+            -target=aws_lightsail_instance.filmbot \
+            -target=aws_lightsail_instance_public_ports.filmbot \
+            -target=aws_lightsail_static_ip_attachment.filmbot \
+            -auto-approve
+          echo "✅ Instância recriada (${{ steps.resolve.outputs.environment }}) e IP estático reanexado"
+
+      # Mesmo padrão de 02_terraform.yml — protege contra cancelamento manual
+      # deixando o lock do DynamoDB órfão.
+      - name: Force-unlock automático em caso de cancelamento
+        if: cancelled()
+        continue-on-error: true
+        run: |
+          cd infra
+          LOCK_KEY="${{ steps.secrets.outputs.statefile-bucket }}/${{ steps.project.outputs.statefile_key }}"
+          ITEM=$(aws dynamodb get-item \
+            --table-name "${{ steps.secrets.outputs.lock-table }}" \
+            --key "{\"LockID\": {\"S\": \"$LOCK_KEY\"}}" \
+            --region sa-east-1 --output json)
+
+          if [ -z "$ITEM" ] || [ "$ITEM" = "{}" ]; then
+            echo "✅ Nenhum lock encontrado — nada a destravar"
+            exit 0
+          fi
+
+          LOCK_ID=$(echo "$ITEM" | jq -r '.Item.Info.S' | jq -r '.ID // empty')
+          if [ -z "$LOCK_ID" ]; then
+            echo "⚠ Lock encontrado mas sem ID legível — não vou destravar às cegas"
+            exit 0
+          fi
+
+          terraform init \
+            -backend-config="bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
+            -backend-config="key=${{ steps.project.outputs.statefile_key }}" \
+            -backend-config="region=sa-east-1" \
+            -backend-config="dynamodb_table=${{ steps.secrets.outputs.lock-table }}"
+
+          terraform force-unlock -force "$LOCK_ID"
+          echo "🔓 Lock $LOCK_ID removido automaticamente (job cancelado)"
+
+  deploy-app:
+    needs: lightsail-schedule
+    if: needs.lightsail-schedule.outputs.action == 'start' && needs.lightsail-schedule.result == 'success'
+    uses: ./.github/workflows/04_deploy_lightsail.yml
+    with:
+      environment: ${{ needs.lightsail-schedule.outputs.environment }}
+    secrets:
+      aws-assume-role-arn: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}

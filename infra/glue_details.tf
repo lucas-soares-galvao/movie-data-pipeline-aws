@@ -55,7 +55,7 @@ resource "aws_glue_job" "details_job_pythonshell" {
   ]
 
   # Semanal: 1 movie + 1 TV em paralelo.
-  # Backfill manual (05_backfill.yml): até 4 simultâneos em janelas longas (Details próximo do timeout de 30min).
+  # Backfill manual (06_backfill.yml): até 4 simultâneos em janelas longas (Details próximo do timeout de 30min).
   # job_run_queuing_enabled garante enfileiramento sem falha se o limite for atingido.
   execution_property {
     max_concurrent_runs = 4

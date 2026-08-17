@@ -45,7 +45,7 @@ EventBridge (schedule)
 
   aws_glue_trigger SCHEDULED (sábado e domingo, 08:00 BRT — infra/glue_agg.tf)
   + disparo pelo backfill manual ao final de qualquer table_group exceto
-  data_quality (.github/workflows/05_backfill.yml — ver scripts/scripts.md)
+  data_quality (.github/workflows/06_backfill.yml — ver scripts/scripts.md)
        │
        ▼
   Glue AGG (app/glue_agg/) — independente do pipeline automático, não espera o Glue Details

@@ -51,13 +51,16 @@
 
 ## Servidor — Lightsail (`lightsail_ia.tf`)
 
-- Instância `tmdb-filmbot-{env}` (`micro_3_0` — 2 vCPU, 1 GB RAM, $7/mês) para hospedar o app Streamlit
-- **Caddy** como proxy reverso na porta 80
+- Instância `tmdb-filmbot-{env}` para hospedar o app Streamlit. Bundle por ambiente via `lightsail_bundle_id`: `micro_3_0` (2 vCPU, 1 GB RAM) em prod, `nano_3_0` (512 MB RAM, mais barato) em dev
+- **Caddy** como proxy reverso na porta 80/443, com domínio parametrizado via `{$FILMBOT_DOMAIN}` no `Caddyfile` (injetado por `EnvironmentFile=.env.caddy`, escrito pelo CI/CD): `filmbot.lsgalvao.com.br` em prod, `filmbot-dev.lsgalvao.com.br` em dev — subdomínios distintos apontando para os IPs estáticos de cada conta
 - Streamlit escuta apenas em `127.0.0.1:8501` (não acessível diretamente pela internet)
 - Portas abertas: 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`), 80 (redirect HTTP→HTTPS + ACME challenge), 443 (HTTPS — proxy reverso para Streamlit)
-- IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável
+- IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável — nunca é alvo de nenhum `terraform destroy` (nem o do scheduler, nem um `apply`/`destroy` completo), então o registro DNS no registro.br é cadastrado uma única vez por ambiente e nunca precisa ser atualizado
 - IAM user `tmdb-filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP, Glue Catalog e CloudWatch Logs
-- Controlado pela variável `lightsail_enabled` (default `true`). Em `dev` está desabilitado (`false`) — a instância não é criada e o CI/CD ignora o deploy SSH. Para reativar: mudar para `true` em `infra/envs/dev/terraform.tfvars` e fazer push no `develop`.
-- Quando habilitada, o workflow de deploy verifica o estado da instância via `aws lightsail get-instance` antes de tentar o SSH. Se a instância estiver parada (ex: fora do horário do scheduler), o deploy é **ignorado com warning** em vez de falhar por timeout.
+- Swap de 1 GB criado automaticamente no bootstrap (`04_deploy_lightsail.yml`) — necessário no bundle `nano_3_0` (512 MB) para o `pip install`/app não sofrerem OOM kill; aplicado em qualquer bundle, custo de disco desprezível
+- Controlado pela variável `lightsail_enabled` (default `true` em ambos os ambientes). Quando habilitada, o workflow de deploy verifica o estado da instância via `aws lightsail get-instance` antes de tentar o SSH. Se a instância estiver destruída (fora da janela do scheduler), o deploy é **ignorado com warning** em vez de falhar por timeout.
 
-**Agendamento de custo** (`lightsail_scheduler.tf`): Lambda + EventBridge com 3 regras de schedule. Desliga todos os dias às **00:00 BRT** (`cron(00 03 ? * * *)`); inicia às **18:00 BRT de seg–sex** (`cron(00 21 ? * MON-FRI *)`) e às **08:00 BRT aos sáb–dom** (`cron(00 11 ? * SAT-SUN *)`). Habilitado apenas quando `lightsail_enabled = true`.
+**Agendamento de custo** (`.github/workflows/05_lightsail_scheduler.yml`): o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` — só parar a instância não economiza nada (confirmado via fatura AWS real). Por isso o scheduler **destrói e recria** a instância (não só liga/desliga), via `terraform apply`/`destroy -target` — o IP estático nunca entra nesse `-target`, então persiste sempre.
+- **prod**: cron automático — desliga todo dia às **00:00 BRT**, liga às **18:00 BRT** seg-sex e **08:00 BRT** sáb-dom. Também aceita `workflow_dispatch` manual (`environment=prod`).
+- **dev**: só `workflow_dispatch` manual (`environment=dev`, `action=start`/`stop`) — nunca roda via cron, ligada só sob demanda para testes pontuais.
+- Como `lightsail_enabled` permanece `true` sempre, qualquer `terraform apply` completo (não-targeted) disparado por um push normal em `main`/`develop` recria a instância se ela estiver destruída no momento — ou seja, um deploy de código pode religar o servidor fora da janela agendada.

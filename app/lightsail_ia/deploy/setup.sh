@@ -2,9 +2,12 @@
 # Bootstrap da instância Lightsail para o FilmBot.
 # Execute como root (ubuntu) logo após o primeiro SSH na instância.
 #
-# PRÉ-REQUISITO: antes de rodar este script, crie o arquivo .env em
-#   /opt/filmbot/app/lightsail_ia/.env
-# com as credenciais geradas pelo Terraform (terraform output).
+# PRÉ-REQUISITO: antes de rodar este script, crie os arquivos abaixo em
+# /opt/filmbot/app/lightsail_ia/:
+#   .env       — credenciais geradas pelo Terraform (terraform output)
+#   .env.caddy — FILMBOT_DOMAIN=<dominio>, ex.: filmbot.lsgalvao.com.br (prod)
+#                ou filmbot-dev.lsgalvao.com.br (dev). Exigido pelo
+#                caddy.service (EnvironmentFile=) — sem ele o Caddy não sobe.
 
 set -e
 
