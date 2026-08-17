@@ -153,7 +153,10 @@
    então qualquer reajuste futuro deve remedir, não recalcular na mão. */
 .footer {
   text-align: center;
-  padding: 8px 0;
+  /* padding-top igual ao gap de 24px entre .results-divider e .results-heading
+     (cards.css) — mesma respiração linha→texto usada no topo da tela de
+     resultados, replicada aqui entre o border-top e os créditos. */
+  padding: 24px 0 8px;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
