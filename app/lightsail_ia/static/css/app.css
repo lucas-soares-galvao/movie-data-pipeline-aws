@@ -1,3 +1,16 @@
+/* base.css força min-height:100vh/100dvh em stAppViewContainer pra cobrir a
+   tela toda com o gradiente mesmo em conteúdo curto — necessário na tela de
+   login (login.css centraliza o card verticalmente nesse espaço). Na tela
+   principal não há centralização nenhuma: o conteúdo só cresce de cima pra
+   baixo, então esse mínimo forçado sobrava como área vazia depois do rodapé
+   em vez de ser redistribuído. Zerado aqui (só carregado nesta tela, nunca
+   junto de login.css) pra o container encolher pro tamanho real do conteúdo;
+   html/body (base.css) garante a mesma cor sólida por trás caso ainda sobre
+   viewport abaixo dele. */
+[data-testid="stAppViewContainer"] {
+  min-height: 0;
+}
+
 /* Cabeçalho: ícone+título numa linha (.header-brand) e subtítulo solto embaixo,
    largura toda — mesma estrutura de .login-brand/.login-subtitle na tela de
    login (substituem st.title/st.caption, que rendem um <h1> grande demais pra
@@ -153,10 +166,10 @@
    então qualquer reajuste futuro deve remedir, não recalcular na mão. */
 .footer {
   text-align: center;
-  /* padding-top igual ao gap de 24px entre .results-divider e .results-heading
-     (cards.css) — mesma respiração linha→texto usada no topo da tela de
-     resultados, replicada aqui entre o border-top e os créditos. */
-  padding: 24px 0 8px;
+  /* padding-top igual aos 16px do gap "Consultas restantes"→linha calibrado
+     acima (margin-top -28px): mesma respiração texto→linha nos dois lados
+     do border-top, estado sem resultados. */
+  padding: 16px 0 8px;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
@@ -170,6 +183,10 @@
 body:has(.grid-titles) .footer {
   max-width: none;
   margin-top: 24px;
+  /* padding-top 24px igual ao gap .results-divider→.results-heading (cards.css)
+     — mesma respiração linha→texto do topo da tela de resultados, só neste
+     estado (acima da linha aqui é o grid de cards, não "Consultas restantes"). */
+  padding-top: 24px;
 }
 
 .footer a {
