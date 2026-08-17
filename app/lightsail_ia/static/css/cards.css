@@ -30,6 +30,7 @@
    não precisa — essa regra nativa não declara margin-bottom, então a nossa já vale. */
 .results-heading {
   font-weight: 700;
+  line-height: 20px;
   margin-top: 8px !important;
   margin-bottom: 8px;
 }

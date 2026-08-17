@@ -97,29 +97,31 @@
 .login-icon-badge .icon {
   color: #f97316;
 }
-/* !important no font-size/margin de .login-title/.login-subtitle: o Streamlit aplica
-   valores próprios no <p> via seletor autogerado por instância com especificidade maior
-   que a classe sozinha (mesmo achado do .header-title/.header-subtitle em app.css) — sem
-   isso o título renderiza no tamanho nativo (~16px) em vez de 32px, confirmado via
-   inspeção real do DOM (Playwright). */
+/* font-size:16px !important — por pedido do usuário, de volta ao tamanho original (o CSS
+   já declarava 32px antes, mas nunca era aplicado de verdade: o Streamlit força um
+   font-size próprio no <p> via seletor autogerado por instância com especificidade maior
+   que a classe sozinha, mesmo achado do .header-title em app.css — então o título sempre
+   renderizou a 16px na prática. Declarado explicitamente aqui com !important em vez de
+   deixado implícito, pra não depender de um comportamento não-documentado do Streamlit
+   continuar do mesmo jeito em versões futuras). */
 .login-title {
   font-family: 'Bricolage Grotesque', sans-serif;
-  font-size: 32px !important;
+  font-size: 16px !important;
   font-weight: 600;
   color: #ffffff;
   margin: 0 !important;
   letter-spacing: -0.02em;
 }
 /* margin-top negativo: mesmo com margin:0 nos dois elementos, sobra respiro visual entre
-   o título e o subtítulo — não é margin/padding, é o line-height/leading da fonte de 32px
-   do .login-title por baixo da linha de base do texto (mesmo padrão do .header-subtitle
-   em app.css, recalibrado aqui pra fonte maior). Medido via getBoundingClientRect()
-   (Playwright) até o espaço entre as duas linhas ficar equivalente a uma quebra de linha
-   simples, não um espaçamento de parágrafo. */
+   o título e o subtítulo — não é margin/padding, é o line-height/leading da fonte de
+   .login-title por baixo da linha de base do texto (mesmo padrão do .header-subtitle em
+   app.css). Medido via getBoundingClientRect() (Playwright) até o espaço entre as duas
+   linhas ficar equivalente a uma quebra de linha simples, não um espaçamento de parágrafo
+   — recalibrado quando o font-size do título mudou de 32px pra 16px. */
 .login-subtitle {
   font-size: 14px !important;
   color: #737373;
-  margin: -5px 0 20px !important;
+  margin: -2px 0 20px !important;
 }
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
    usada pro "Press Ctrl+Enter to apply" da textarea em recommendation.css. */

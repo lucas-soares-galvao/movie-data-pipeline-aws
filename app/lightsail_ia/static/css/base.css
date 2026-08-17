@@ -35,6 +35,11 @@ button[data-testid="stBaseButton-secondary"] {
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
+  /* Sem isso, o padding adicionado no @media abaixo soma por fora do width:100%
+     (content-box, padrão do navegador) e o elemento fica 16px mais largo que o
+     container — mesma causa do scroll horizontal já corrigido em
+     .st-key-login-card (login.css). */
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
