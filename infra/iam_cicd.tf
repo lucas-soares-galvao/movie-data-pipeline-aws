@@ -604,10 +604,21 @@ resource "aws_iam_policy" "cicd_lightsail" {
         Effect = "Allow"
         Action = [
           "lightsail:ReleaseStaticIp",
-          "lightsail:AttachStaticIp",
           "lightsail:DetachStaticIp",
         ]
         Resource = "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:StaticIp/*"
+      },
+      {
+        # AttachStaticIp exige permissão tanto no recurso StaticIp quanto no
+        # Instance (ver Service Authorization Reference do Lightsail) — as
+        # outras operações de Static IP não tocam em Instance/*.
+        Sid    = "LightsailAttachStaticIp"
+        Effect = "Allow"
+        Action = "lightsail:AttachStaticIp"
+        Resource = [
+          "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:StaticIp/*",
+          "arn:aws:lightsail:us-east-1:${data.aws_caller_identity.current.account_id}:Instance/*",
+        ]
       },
       {
         Sid    = "LightsailTagging"
