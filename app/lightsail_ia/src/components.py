@@ -195,10 +195,15 @@ def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
     kind: "error" (ícone ❌) ou "warning" (ícone ⚠️).
     extra_html: HTML bruto adicional anexado ao final, não escapado — usado só pelo
     countdown de rate limit de busca, para injetar o <span id="countdown"> vazio.
+    Ícone e texto ficam em spans (.msg-icon/.msg-text) separados para que o CSS
+    (base.css) possa alinhá-los verticalmente via flexbox — o glifo de emoji usa a fonte
+    de emoji do sistema, com métricas de altura diferentes da fonte de texto, e sem
+    wrapper próprio o conjunto desalinhava dentro da caixa.
     """
     icon_char = "❌" if kind == "error" else "⚠️"
     st.markdown(
-        f'<div class="msg-{kind}">{icon_char} {html.escape(message)}{extra_html}</div>',
+        f'<div class="msg-{kind}"><span class="msg-icon">{icon_char}</span>'
+        f'<span class="msg-text">{html.escape(message)}{extra_html}</span></div>',
         unsafe_allow_html=True,
     )
 
