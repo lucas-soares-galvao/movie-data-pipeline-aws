@@ -220,9 +220,9 @@ proj-eng-dados-filmes-aws/
 
 ```
 push em feature/*  →  test  →  auto-pr-feature (feature/* → develop)
-push em develop    →  terraform (dev)  →  auto-pr-environment (develop → main)
+push em develop    →  terraform (dev)  →  deploy-lightsail (dev, se a instância estiver ligada) + auto-pr-environment (develop → main), em paralelo — os dois só dependem de `terraform`, não um do outro
 push em main       →  terraform (prod)  →  deploy-lightsail (prod)
-workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail (apenas se prod)
+workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail (mesmo ambiente)
 ```
 
 **Secrets usados por ambiente (job `terraform`):**

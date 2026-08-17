@@ -95,10 +95,14 @@ jobs:
 
   deploy-lightsail:
     needs: [resolve-env, terraform]
-    # Deploy apenas em prod (main ou dispatch manual com environment=prod)
-    # e somente se o Terraform aplicou com sucesso (não destruiu a infra)
+    # Deploy em develop (dev) ou main (prod) — dev também tem instância
+    # Lightsail própria (nano_3_0) desde que o scheduler passou a gerenciar
+    # o liga/desliga por destroy/create. Se a instância do ambiente resolvido
+    # estiver destruída no momento do push, o step "Check instance state" de
+    # 04_deploy_lightsail.yml já pula o deploy com warning — não falha o
+    # pipeline. Só roda se o Terraform aplicou com sucesso (não destruiu a infra).
     if: |
-      (github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')) &&
+      (github.ref_name == 'main' || github.ref_name == 'develop' || github.event_name == 'workflow_dispatch') &&
       needs.terraform.result == 'success' &&
       needs.terraform.outputs.was_destroyed != 'true'
     uses: ./.github/workflows/04_deploy_lightsail.yml

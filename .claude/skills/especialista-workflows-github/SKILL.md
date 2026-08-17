@@ -51,7 +51,7 @@ Em `00_pipeline.yml`, a seleção de secret por ambiente (`_DEV`/`_PROD`) é uma
 
 - `test`: `startsWith(github.ref_name, 'feature/')`
 - `resolve-env` / `terraform`: `github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'`
-- `deploy-lightsail`: `(github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')) && needs.terraform.result == 'success' && needs.terraform.outputs.was_destroyed != 'true'` — o gate que impede deploy depois de um `terraform destroy`
+- `deploy-lightsail`: `(github.ref_name == 'main' || github.ref_name == 'develop' || github.event_name == 'workflow_dispatch') && needs.terraform.result == 'success' && needs.terraform.outputs.was_destroyed != 'true'` — roda em dev e prod (não é mais prod-only); o gate real de "não tenta deployar numa instância que não existe" é o step "Check instance state" dentro de `04_deploy_lightsail.yml`, que pula com warning em vez de falhar. Este `if:` só impede deploy depois de um `terraform destroy` do ambiente inteiro
 - `auto-pr-feature`: `startsWith(github.ref_name, 'feature/') && needs.test.result == 'success'`
 - `auto-pr-environment`: `github.ref_name == 'develop' && needs.terraform.result == 'success'`
 - Dentro de `02_terraform.yml` (mesmo job `terraform`): apply e destroy são mutuamente exclusivos via `if: steps.read-destroy-config.outputs.destroy == 'true'` (Destroy) / `!= 'true'` (Bootstrap IAM, Plan, Apply)

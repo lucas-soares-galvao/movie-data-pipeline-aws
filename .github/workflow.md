@@ -43,9 +43,9 @@ flowchart TD
 | Evento | Branch | Workflows executados |
 |---|---|---|
 | `push` | `feature/*` | test → PR feature→develop |
-| `push` | `develop` | terraform (dev) → PR develop→main |
+| `push` | `develop` | terraform (dev) → deploy (dev, se a instância estiver ligada) → PR develop→main |
 | `push` | `main` | terraform (prod) → deploy (prod) |
-| `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy apenas se ambiente = prod |
+| `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy no mesmo ambiente |
 | `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
 | `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual (prod ou dev, `action=start`/`stop`) — dev só roda por aqui |
 | `workflow_dispatch` (`06_backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
@@ -135,7 +135,7 @@ Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fm
 
 ### `04_deploy_lightsail.yml` — Deploy da Aplicação
 
-Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml` executa **apenas em `main`** (ou `workflow_dispatch` com ambiente `prod`) — o job `deploy-lightsail` de lá é prod-only. Também é chamado por `05_lightsail_scheduler.yml` (job `deploy-app`) para `prod` **e** `dev`, sempre que a ação foi `start` — dev tem sua própria instância (bundle `nano_3_0`, mais barato) e é reidratada por aqui após cada ciclo manual de liga.
+Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml`, o job `deploy-lightsail` executa em `develop` **e** `main` (ou `workflow_dispatch` em qualquer ambiente) — dev também tem instância própria (bundle `nano_3_0`, mais barato). Se a instância do ambiente resolvido estiver destruída no momento do push (fora da janela agendada em prod, ou nunca ligada manualmente em dev), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline — um push em `develop` só atualiza de verdade uma instância de dev que já estava ligada. Também é chamado por `05_lightsail_scheduler.yml` (job `deploy-app`) para `prod` **e** `dev`, sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (manual em dev, agendado ou manual em prod).
 
 **Entrada:** `environment` (`dev` ou `prod`, dependendo de quem chama)
 
