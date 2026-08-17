@@ -59,7 +59,7 @@ dados (SOR/SOT/SPEC/DQ), as tabelas do Glue Catalog e as variáveis de ambiente 
 ### estrutura-projeto
 
 **O que é:** a árvore de diretórios completa do projeto, o encadeamento dos workflows GitHub Actions
-(`00_pipeline` a `05_backfill`), a estrutura de `infra/` (Terraform) e a organização de `test/` (que espelha
+(`00_pipeline` a `06_backfill`), a estrutura de `infra/` (Terraform) e a organização de `test/` (que espelha
 `app/`).
 
 **Quando usar:**
@@ -266,7 +266,7 @@ retomada automática) e no racional de design dos 6 scripts + `backfill_shared.p
 - Ao alterar checkpoint/retry.
 - Ao decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail).
 - Ao revisar o guard de custo do `TRANSLATE_PROVIDER`, ou entender o contrato entre um script e
-  `.github/workflows/05_backfill.yml`.
+  `.github/workflows/06_backfill.yml`.
 
 ---
 
@@ -302,8 +302,8 @@ de clareza já em vigor no projeto — não introduz convenção nova.
 ### especialista-workflows-github
 
 **O que é:** especialista nos workflows GitHub Actions de `.github/workflows/` (`00_pipeline`, `01_test`,
-`02_terraform`, `03_pr_auto`, `04_deploy_lightsail`, `05_backfill`) — a mecânica YAML que a documentação
-narrativa (`estrutura-projeto`, `.github/workflow.md`) não detalha.
+`02_terraform`, `03_pr_auto`, `04_deploy_lightsail`, `05_lightsail_scheduler`, `06_backfill`) — a mecânica YAML
+que a documentação narrativa (`estrutura-projeto`, `.github/workflow.md`) não detalha.
 
 **Quando usar:**
 - Ao criar/editar arquivos `.yml` de workflow.

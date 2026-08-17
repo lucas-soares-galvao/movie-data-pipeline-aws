@@ -4,7 +4,7 @@
 #
 # A role lsg-github-actions-{env} foi originalmente criada manualmente e agora
 # é importada e gerenciada pelo Terraform (max_session_duration = 3600, 1h —
-# o workflow 05_backfill.yml usa exatamente essa duração e trata
+# o workflow 06_backfill.yml usa exatamente essa duração e trata
 # ExpiredTokenException com retomada automática via checkpoint — ver
 # infra/docs/iam.md). Este arquivo também cria as políticas managed e as
 # anexa à role.

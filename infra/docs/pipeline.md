@@ -21,9 +21,9 @@
 
 **Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.
 
-## Backfill histórico manual (`05_backfill.yml`)
+## Backfill histórico manual (`06_backfill.yml`)
 
-O backfill histórico é sempre manual: via workflow `05_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality — usado para correções pontuais em um grupo específico de tabelas. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
+O backfill histórico é sempre manual: via workflow `06_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality — usado para correções pontuais em um grupo específico de tabelas. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
 
 ## Notificações — SNS (`sns_topics.tf`)
 

@@ -4,9 +4,11 @@
 
 env = "dev"
 
-# Instância Lightsail desabilitada em dev — usar desenvolvimento local.
-# Para reativar: mudar para true e fazer push no develop.
-lightsail_enabled           = false
+# Instância Lightsail em dev: bundle mais barato (nano_3_0, 512MB), ligada só
+# manualmente via workflow_dispatch em 05_lightsail_scheduler.yml — nunca por
+# cron. Serve em filmbot-dev.lsgalvao.com.br (subdomínio separado de prod).
+lightsail_enabled           = true
+lightsail_bundle_id         = "nano_3_0"
 lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"]
 
 # Retencao de logs curta no dev para economizar custo.

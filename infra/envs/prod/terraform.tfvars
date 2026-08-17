@@ -5,6 +5,7 @@
 env = "prod"
 
 lightsail_enabled           = true
+lightsail_bundle_id         = "micro_3_0"
 lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"]
 
 # Retencao de logs mais longa em prod para permitir investigar incidentes

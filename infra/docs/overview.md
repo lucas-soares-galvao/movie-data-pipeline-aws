@@ -26,7 +26,8 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 | `02_terraform.yml` | Reusável: `terraform init` + `apply` ou `destroy` |
 | `03_pr_auto.yml` | Reusável: cria PR automático após deploy |
 | `04_deploy_lightsail.yml` | Deploy do app FilmBot na instância Lightsail |
-| `05_backfill.yml` | Manual (`workflow_dispatch`): backfill pontual para 5 grupos de tabelas (discover, referencias, detalhes_e_providers, data_quality, traducao). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (`main` → prod, `develop` → dev) |
+| `05_lightsail_scheduler.yml` | Liga/desliga (destroy/create real) a instância Lightsail via `terraform apply`/`destroy -target` — cron automático em prod, só `workflow_dispatch` manual em dev |
+| `06_backfill.yml` | Manual (`workflow_dispatch`): backfill pontual para 5 grupos de tabelas (discover, referencias, detalhes_e_providers, data_quality, traducao). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (`main` → prod, `develop` → dev) |
 
 Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` (nome configurável em `infra/config/project.json`) com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`).
 

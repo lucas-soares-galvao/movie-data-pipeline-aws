@@ -2,7 +2,7 @@
 Glue AGG — une filmes e séries do SOT em uma tabela SPEC unificada.
 Acionado por agendamento fixo (sábado/domingo 08:00 BRT, ver
 aws_glue_trigger.agg_weekly em infra/glue_agg.tf) e, como última etapa,
-por qualquer backfill manual elegível (ver .github/workflows/05_backfill.yml).
+por qualquer backfill manual elegível (ver .github/workflows/06_backfill.yml).
 """
 
 from shared_utils.glue_helpers import configure_glue_logging
