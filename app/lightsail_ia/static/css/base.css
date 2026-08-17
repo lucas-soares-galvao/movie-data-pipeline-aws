@@ -98,27 +98,41 @@ button[data-testid="stBaseButton-secondary"] {
 /* Mensagens de feedback — largura cheia do container (640px do hero/results-messages,
    ou do card de login), não uma fração dele. Compartilhado por login.css,
    recommendation.css (rate limit, avisos de transcrição) e cards.css (erro/sem
-   resultado). */
-.msg-error {
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.3);
+   resultado). Ícone (.msg-icon) e texto (.msg-text, ver render_feedback() em
+   components.py) viram flex items separados porque o glifo de emoji usa a fonte de
+   emoji do sistema — métricas de altura diferentes da fonte de texto — e sem
+   align-items:center o conjunto desalinhava verticalmente dentro da caixa. */
+.msg-error,
+.msg-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border-radius: 10px;
   padding: 12px 16px;
   max-width: 100%;
-  color: #fca5a5;
   font-size: 14px;
   margin-bottom: 12px;
+}
+
+.msg-icon {
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.msg-text {
+  line-height: 1.4;
+}
+
+.msg-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #fca5a5;
 }
 
 .msg-warning {
   background: rgba(250,204,21,0.1);
   border: 1px solid rgba(250,204,21,0.3);
-  border-radius: 10px;
-  padding: 12px 16px;
-  max-width: 100%;
   color: #fbbf24;
-  font-size: 14px;
-  margin-bottom: 12px;
 }
 
 .time-countdown {

@@ -145,14 +145,24 @@ class TestRenderFeedback:
         )
         assert '<span id="countdown"></span>' in captured["content"]
 
-    def test_sem_extra_html_nao_inclui_span(self, monkeypatch):
+    def test_sem_extra_html_nao_inclui_span_de_countdown(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(
             components.st, "markdown",
             lambda content, unsafe_allow_html=False: captured.update(content=content),
         )
         components.render_feedback("error", "Mensagem simples.")
-        assert "<span" not in captured["content"]
+        assert 'id="countdown"' not in captured["content"]
+
+    def test_separa_icone_e_texto_em_spans_proprios(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_feedback("error", "Mensagem simples.")
+        assert '<span class="msg-icon">❌</span>' in captured["content"]
+        assert '<span class="msg-text">Mensagem simples.</span>' in captured["content"]
 
 
 class TestLoadCountdownScript:

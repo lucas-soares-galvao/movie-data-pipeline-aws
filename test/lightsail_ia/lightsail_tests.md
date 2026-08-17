@@ -172,7 +172,8 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_renderiza_classe_warning` | `kind="warning"` gera `class="msg-warning"` e ícone ⚠️ |
 | `test_escapa_xss_na_mensagem` | `message` com `<script>` é escapado via `html.escape` |
 | `test_extra_html_nao_e_escapado` | `extra_html` (ex: `<span id="countdown">`) passa intacto, sem escape — único uso hoje é o countdown de rate limit de busca |
-| `test_sem_extra_html_nao_inclui_span` | Sem `extra_html`, nenhum `<span` aparece no HTML gerado |
+| `test_sem_extra_html_nao_inclui_span_de_countdown` | Sem `extra_html`, nenhum `<span id="countdown">` aparece no HTML gerado |
+| `test_separa_icone_e_texto_em_spans_proprios` | Ícone e mensagem vêm em `<span class="msg-icon">`/`<span class="msg-text">` separados — permite ao CSS alinhar os dois verticalmente via flexbox |
 
 ### `TestLoadCountdownScript` — Injeção do script de countdown genérico (rate limit de busca, rate limit de transcrição e bloqueio de login)
 
