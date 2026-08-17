@@ -1,5 +1,5 @@
 name: "5. Lightsail Scheduler (Liga/Desliga)"
-run-name: "Lightsail Scheduler [${{ github.ref_name == 'develop' && 'DEV' || 'PROD' }}]: ${{ (github.event_name == 'workflow_dispatch' && inputs.action || (github.event.schedule == '0 3 * * *' && 'stop' || 'start')) == 'start' && 'Ligar' || 'Desligar' }}"
+run-name: "Lightsail Scheduler [${{ (github.ref_name == 'develop' || github.event.schedule == '1 3 * * *') && 'DEV' || 'PROD' }}]: ${{ (github.event_name == 'workflow_dispatch' && inputs.action || ((github.event.schedule == '0 3 * * *' || github.event.schedule == '1 3 * * *') && 'stop' || 'start')) == 'start' && 'Ligar' || 'Desligar' }}"
 
 # =============================================================================
 # Substitui o antigo Lambda+EventBridge (infra/lightsail_scheduler.tf,
@@ -9,23 +9,28 @@ run-name: "Lightsail Scheduler [${{ github.ref_name == 'develop' && 'DEV' || 'PR
 # bootstrap de 04_deploy_lightsail.yml. O IP estático nunca é alvo do
 # destroy — persiste sempre, sem precisar atualizar o DNS no registro.br.
 #
-# O ambiente (dev/prod) é resolvido automaticamente a partir do branch
-# selecionado em "Use workflow from" ao disparar o workflow (mesmo padrão de
-# 06_backfill.yml):
-#   - main    → prod (também usado pelo cron — schedule sempre roda no branch
-#               default do repositório)
+# O ambiente (dev/prod) é resolvido a partir do branch selecionado em "Use
+# workflow from" ao disparar manualmente (mesmo padrão de 06_backfill.yml):
+#   - main    → prod
 #   - develop → dev
 #   - qualquer outro branch (ex.: feature/*) → falha, ver step "Resolve
 #     environment from branch and action from trigger"
+# Um evento schedule, porém, SEMPRE roda com o branch default do repositório
+# (main) — não existe cron nativo "por branch" no GitHub Actions. Por isso o
+# desligar automático de dev abaixo é resolvido pelo horário exato do cron
+# (comparando github.event.schedule), não pelo branch — mesma técnica já
+# usada para resolver a ação (start/stop) num evento schedule.
 #
-# prod: cron automático (BRT = UTC-3, sem horário de verão desde 2019) +
-#       workflow_dispatch manual (a partir de main).
-# dev:  só workflow_dispatch manual (a partir de develop) — nunca roda via cron.
+# prod: cron automático de desligar (00:00 BRT) e ligar (18:00 BRT seg-sex /
+#       08:00 BRT fim de semana) + workflow_dispatch manual (a partir de main).
+# dev:  cron automático só de DESLIGAR (00:01 BRT) — ligar continua só
+#       workflow_dispatch manual (a partir de develop).
 # =============================================================================
 
 on:
   schedule:
     - cron: "0 3 * * *"    # 00:00 BRT diário         → desligar prod (destroy)
+    - cron: "1 3 * * *"    # 00:01 BRT diário         → desligar dev (destroy) — 1min de diferença só para ter uma string distinta em github.event.schedule
     - cron: "0 21 * * 1-5" # 18:00 BRT seg-sex         → ligar prod (apply)
     - cron: "0 11 * * 0,6" # 08:00 BRT sáb-dom (0=dom) → ligar prod (apply)
   workflow_dispatch:
@@ -47,7 +52,7 @@ jobs:
     # Serializa com o job "terraform" de 02_terraform.yml (mesmo group,
     # terraform-${env}) — evita dois processos escrevendo no mesmo state.
     concurrency:
-      group: terraform-${{ github.ref_name == 'develop' && 'dev' || 'prod' }}
+      group: terraform-${{ (github.ref_name == 'develop' || github.event.schedule == '1 3 * * *') && 'dev' || 'prod' }}
       cancel-in-progress: false
 
     outputs:
@@ -65,7 +70,9 @@ jobs:
       - name: Resolve environment from branch and action from trigger
         id: resolve
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
+          if [ "${{ github.event.schedule }}" = "1 3 * * *" ]; then
+            ENVIRONMENT="dev"
+          elif [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             ENVIRONMENT="prod"
           elif [ "${{ github.ref_name }}" = "develop" ]; then
             ENVIRONMENT="dev"
@@ -76,12 +83,10 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             ACTION="${{ inputs.action }}"
+          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ] || [ "${{ github.event.schedule }}" = "1 3 * * *" ]; then
+            ACTION="stop"
           else
-            if [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
-              ACTION="stop"
-            else
-              ACTION="start"
-            fi
+            ACTION="start"
           fi
           echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
