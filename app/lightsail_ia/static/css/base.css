@@ -4,7 +4,11 @@
    as duas telas terem a mesma textura de fundo. */
 [data-testid="stAppViewContainer"] {
   background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+  /* 100dvh acompanha a altura visível real em mobile (100vh usa a altura máxima,
+     com a barra de endereço recolhida) — ver login.css para o efeito visual disso
+     na centralização do card de login. 100vh fica como fallback. */
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Padroniza todos os botoes */

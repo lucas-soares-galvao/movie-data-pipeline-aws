@@ -1,24 +1,36 @@
 /* Linha divisória antes do grid de resultados (só aparece quando há recomendação).
-   Sem margin-top próprio: .query-counter-text (recommendation.css, margin-bottom:8px)
-   e este bloco já ficam em stVerticalBlocks de topo distintos — somar mais 32px de
-   margin-top aqui (valor antigo) deixava o espaço acima da linha bem maior que o
-   necessário. O espaço ACIMA da linha hoje é 40px (8px do contador + dois gaps
-   nativos de 16px do stVerticalBlock, um de cada lado do container invisível
-   .st-key-hero-scripts — ver comentário em recommendation.py sobre por que esse
-   injetor de JS fica isolado ali). margin-bottom aqui em 40px iguala o espaço
-   ABAIXO da linha a esse mesmo valor: hr e .results-heading (margin-top:8px) são
-   parte do mesmo st.markdown/bloco HTML, então as margens colapsam (fica o maior
-   dos dois, não a soma) — 40px vence os 8px do heading e replica o espaço de cima. */
+   .query-counter-text (recommendation.css, margin-bottom:8px) e este bloco ficam em
+   stVerticalBlocks de topo distintos, com o container invisível .st-key-hero-scripts
+   entre os dois (ver comentário em recommendation.py) — mesmo com display:none, o
+   wrapper que o Streamlit insere ao redor dele continua contando pro gap:16px nativo
+   do stVerticalBlock. Resultado medido (Playwright): espaço ACIMA da linha de 24px
+   (8px do contador + 16px do gap nativo) — bem mais próximo do gap nativo de 16px
+   usado em transições vizinhas (ex. botão "Recomendar" → contador) do que o valor
+   original, onde o !important faltante deixava o hr herdar os 32px de margem nativa
+   do Streamlit dos dois lados. margin-bottom replica o mesmo valor: hr e
+   .results-heading (margin-top:8px) são parte do mesmo
+   st.markdown/bloco HTML, então as margens colapsam (fica o maior dos dois, não a
+   soma) — 24px vence os 8px do heading e replica o espaço de cima.
+   !important necessário nos dois: o Streamlit injeta seu próprio CSS por instância
+   (classe autogerada tipo .st-emotion-cache-XXXXXX combinada com o elemento, ex.
+   ".st-emotion-cache-XXXXXX hr { margin: 2em 0; }") com especificidade maior que uma
+   classe isolada (.results-divider) — vence mesmo vindo antes no cascade. Confirmado
+   via inspeção real do DOM (Playwright, CSSOM): sem !important aqui, o hr renderiza
+   com os 32px nativos dos dois lados, ignorando por completo o valor declarado. */
 .results-divider {
   border: none;
   border-top: 1px solid rgba(255,255,255,0.1);
-  margin: 0 0 40px;
+  margin: 0 0 24px !important;
 }
 
-/* Título "Encontramos X opções para você!" acima do grid de resultados */
+/* Título "Encontramos X opções para você!" acima do grid de resultados.
+   margin-top precisa de !important pelo mesmo motivo do .results-divider acima: o
+   Streamlit já força margin-top:0 em qualquer <p> via regra própria por instância
+   (".st-emotion-cache-XXXXXX p"), mais específica que uma classe isolada. margin-bottom
+   não precisa — essa regra nativa não declara margin-bottom, então a nossa já vale. */
 .results-heading {
   font-weight: 700;
-  margin-top: 8px;
+  margin-top: 8px !important;
   margin-bottom: 8px;
 }
 

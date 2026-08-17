@@ -335,6 +335,10 @@ def render_recommendation(client_ip: str) -> None:
     # st.container() de nível superior é um item a mais no `gap` do bloco
     # vertical da página — entre os dois, ele dobrava o respiro do botão
     # "Recomendar" em relação à textarea (32px em vez dos 16px do gap normal).
+    # O mesmo efeito aparece do lado de baixo (hero-scripts → hr/título dos
+    # resultados, em cards.py) — ver .results-divider em cards.css, que também
+    # precisa de !important pra vencer a margem nativa que o Streamlit aplica
+    # por instância em <hr>/<p> (achado adicional só encontrado ali).
     with st.container(key="hero-scripts"):
         load_preference_counter_script(_MAX_PREFERENCE_CHARS, rate_limited=_remaining <= 0)
         load_audio_cancel_script()
