@@ -36,12 +36,12 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 /* Largura máxima compartilhada do conteúdo principal (640px, centralizado) — usada por
-   cabeçalho (app.css), formulário de recomendação (recommendation.css) e mensagens de
-   resultado (cards.css), por isso mora aqui em vez de em qualquer um dos três. */
+   cabeçalho (app.css) e formulário de recomendação (recommendation.css, inclui erro/
+   sem-resultado de busca, renderizados dentro de hero-actions), por isso mora aqui em
+   vez de em qualquer um dos dois. */
 .st-key-hero-section,
 .st-key-hero-actions,
-.st-key-header-row,
-.st-key-results-messages {
+.st-key-header-row {
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
@@ -53,8 +53,6 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 @media (max-width: 768px) {
-  /* Nota: não inclui .st-key-results-messages, diferente da regra acima — comportamento
-     pré-existente preservado na migração (não é um dos bugs corrigidos aqui). */
   .st-key-hero-section, .st-key-hero-actions, .st-key-header-row { max-width: 100%; padding: 0 8px; }
 }
 
@@ -95,10 +93,10 @@ button[data-testid="stBaseButton-secondary"] {
   flex-shrink: 0;
 }
 
-/* Mensagens de feedback — largura cheia do container (640px do hero/results-messages,
-   ou do card de login), não uma fração dele. Compartilhado por login.css,
-   recommendation.css (rate limit, avisos de transcrição) e cards.css (erro/sem
-   resultado). Ícone (.msg-icon) e texto (.msg-text, ver render_feedback() em
+/* Mensagens de feedback — largura cheia do container (640px do hero, ou do card de
+   login), não uma fração dele. Compartilhado por login.css e recommendation.css (rate
+   limit, avisos de transcrição, erro/sem-resultado de busca — todos dentro de
+   hero-actions). Ícone (.msg-icon) e texto (.msg-text, ver render_feedback() em
    components.py) viram flex items separados porque o glifo de emoji usa a fonte de
    emoji do sistema — métricas de altura diferentes da fonte de texto — e sem
    align-items:center o conjunto desalinhava verticalmente dentro da caixa. */
