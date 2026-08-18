@@ -3,8 +3,14 @@
 # stTextAreaRootElement, stAudioInputWaveSurfer — ver static/*.css/lightsail_ia.md).
 # Sem essa trava, local e Lightsail podem instalar versões diferentes em cada deploy
 # (nenhum dos dois lados usa lockfile) e divergir visualmente sem nenhuma mudança de código.
+# Raciocínio: litellm==1.97.0 quebra toda chamada litellm.completion()/transcription() em
+# Python 3.10/3.11 (a instância Lightsail roda 3.10) — regressão upstream que troca
+# List["X"] por list["X"] em litellm/types/llms/openai.py e faz o Pydantic falhar ao
+# montar Message/ModelResponse (PydanticUserError: `Message` is not fully defined).
+# Ver BerriAI/litellm#36384 (ainda sem fix mergeado em #36387/#36396). Travado na última
+# versão estável anterior à regressão — desafixar quando um release pós-fix sair no PyPI.
 streamlit==1.59.2
-litellm
+litellm==1.96.2
 openai
 boto3
 python-dotenv
