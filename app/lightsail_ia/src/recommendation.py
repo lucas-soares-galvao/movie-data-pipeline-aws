@@ -328,6 +328,25 @@ def render_recommendation(client_ip: str) -> None:
                 unsafe_allow_html=True,
             )
 
+        # Erro de busca/sem-resultado ficam empilhados aqui embaixo (não em cards.py) para
+        # aparecerem sempre perto do botão "Recomendar" — no lugar do rate limit quando
+        # sozinhos, ou logo abaixo dele quando os dois coexistem — em vez de lá embaixo,
+        # depois do rodapé.
+        _search_error = st.session_state.get("search_error")
+        _titles = st.session_state.get("titles", [])
+        _no_results = st.session_state.get("search_completed") and not _titles and not _search_error
+        if _search_error:
+            render_feedback(
+                "error",
+                "Algo deu errado ao buscar as recomendações. Tente novamente em instantes.",
+            )
+        elif _no_results:
+            render_feedback(
+                "warning",
+                "Não encontramos nada com essa descrição. Tente usar outras palavras ou "
+                "ser mais específico.",
+            )
+
     # Fica fora do container do hero/actions de propósito: é só um injetor de JS
     # (height=0, sem presença visual), e a posição no DOM não importa (cada
     # script busca o textarea globalmente via querySelector). Colocado depois de

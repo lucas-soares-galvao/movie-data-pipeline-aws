@@ -163,27 +163,27 @@
    atualizar a regra abaixo aqui também. */
 /* margin-top negativo: o .stVerticalBlock principal do Streamlit usa gap:16px entre TODOS
    os elementos de topo, incluindo containers vazios de altura zero entre a busca e o rodapé
-   (injetor de JS + placeholder de results-messages quando não há erro/sem-resultado) — dois
-   desses "slots" invisíveis empilham 32px de gap escondido antes mesmo de qualquer
-   margin/padding declarado aqui, medido via inspeção real do DOM (Playwright,
-   getBoundingClientRect() nos irmãos do .stVerticalBlock). Negativo compensa isso, puxando
-   o rodapé pra perto do texto "Consultas restantes" acima. -28px (não -39px) porque o
-   respiro resultante precisa igualar o gap nativo entre o botão "Recomendar" e o próprio
-   texto "Consultas restantes" (16px). Calibrado empiricamente via Playwright (bounding
-   boxes reais) em vez de somado a partir das margens declaradas: a resposta do gap
-   visível a mudanças neste valor não é 1:1 (colapso de margem com o gap escondido acima),
-   então qualquer reajuste futuro deve remedir, não recalcular na mão. */
+   — hoje só o injetor de JS (hero-scripts, sempre presente, display:none). Erro/sem-resultado
+   de busca NÃO entram nessa conta: moram dentro de hero-actions (recommendation.py, junto do
+   rate limit), então a caixa cresce mas não adiciona nenhum item novo ao stVerticalBlock — o
+   gap escondido é o mesmo com ou sem essas mensagens visíveis (confirmado via Playwright,
+   getBoundingClientRect(), gap idêntico ~16px nos três estados: vazio, só erro, rate-limit+
+   erro juntos). -36px porque o respiro resultante precisa igualar o gap nativo entre o botão
+   "Recomendar" e o próprio texto "Consultas restantes" (16px). Calibrado empiricamente via
+   Playwright (bounding boxes reais) em vez de somado a partir das margens declaradas: a
+   resposta do gap visível a mudanças neste valor não é 1:1 (colapso de margem com o gap
+   escondido acima), então qualquer reajuste futuro deve remedir, não recalcular na mão. */
 .footer {
   text-align: center;
   /* padding-top igual aos 16px do gap "Consultas restantes"→linha calibrado
-     acima (margin-top -28px): mesma respiração texto→linha nos dois lados
+     acima (margin-top -36px): mesma respiração texto→linha nos dois lados
      do border-top, estado sem resultados. */
   padding: 16px 0 8px;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
   border-top: 1px solid #1f2937;
-  margin: -28px auto 0;
+  margin: -36px auto 0;
   max-width: 640px;
 }
 /* Com resultados (.grid-titles), o margin-top negativo acima deixa de compensar um
