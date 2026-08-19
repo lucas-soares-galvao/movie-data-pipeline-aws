@@ -16,7 +16,6 @@ def render_cards() -> None:
     if titles:
         word = "opção" if len(titles) == 1 else "opções"
         st.markdown(
-            f'<hr class="results-divider">'
             f'<p class="results-heading">Encontramos {len(titles)} {word} para você!</p>',
             unsafe_allow_html=True,
         )
