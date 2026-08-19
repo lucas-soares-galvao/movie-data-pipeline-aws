@@ -138,26 +138,33 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
 }
 
 resource "aws_lightsail_static_ip" "filmbot" {
-  count    = var.lightsail_enabled ? 1 : 0
+  count    = local.lightsail_static_ip_enabled ? 1 : 0
   provider = aws.lightsail
   name     = "${local.tmdb_prefix}-filmbot-static-ip-${var.env}"
 }
 
 resource "aws_lightsail_static_ip_attachment" "filmbot" {
-  count          = var.lightsail_enabled ? 1 : 0
+  count          = local.lightsail_static_ip_enabled ? 1 : 0
   provider       = aws.lightsail
   static_ip_name = aws_lightsail_static_ip.filmbot[0].name
   instance_name  = aws_lightsail_instance.filmbot[0].name
 }
 
+# Prod: IP fixo do static IP. Dev: IP dinâmico da própria instância (sem static
+# IP — ver local.lightsail_static_ip_enabled), refletido no Route 53 a cada
+# apply (infra/route53.tf).
 output "lightsail_public_ip" {
-  description = "IP público fixo da instância Lightsail"
-  value       = length(aws_lightsail_static_ip.filmbot) > 0 ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
+  description = "IP público da instância Lightsail (fixo em prod, dinâmico em dev)"
+  value = local.lightsail_static_ip_enabled ? (
+    length(aws_lightsail_static_ip.filmbot) > 0 ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
+    ) : (
+    length(aws_lightsail_instance.filmbot) > 0 ? aws_lightsail_instance.filmbot[0].public_ip_address : ""
+  )
 }
 
 output "lightsail_url" {
   description = "URL do FilmBot — clicável no terminal"
-  value       = length(aws_lightsail_static_ip.filmbot) > 0 ? "http://${aws_lightsail_static_ip.filmbot[0].ip_address}" : ""
+  value       = length(aws_lightsail_instance.filmbot) > 0 ? "http://${aws_lightsail_instance.filmbot[0].public_ip_address}" : ""
 }
 
 output "lightsail_private_key" {

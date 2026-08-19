@@ -52,15 +52,35 @@
 ## Servidor — Lightsail (`lightsail_ia.tf`)
 
 - Instância `tmdb-filmbot-{env}` para hospedar o app Streamlit. Bundle por ambiente via `lightsail_bundle_id`: `micro_3_0` (2 vCPU, 1 GB RAM) em prod, `nano_3_0` (512 MB RAM, mais barato) em dev
-- **Caddy** como proxy reverso na porta 80/443, com domínio parametrizado via `{$FILMBOT_DOMAIN}` no `Caddyfile` (injetado por `EnvironmentFile=.env.caddy`, escrito pelo CI/CD): `filmbot.lsgalvao.com.br` em prod, `filmbot-dev.lsgalvao.com.br` em dev — subdomínios distintos apontando para os IPs estáticos de cada conta
+- **Caddy** como proxy reverso na porta 80/443, com domínio parametrizado via `{$FILMBOT_DOMAIN}` no `Caddyfile` (injetado por `EnvironmentFile=.env.caddy`, escrito pelo CI/CD): `filmbot.lsgalvao.com.br` em prod, `filmbot-dev.lsgalvao.com.br` em dev — subdomínios distintos
 - Streamlit escuta apenas em `127.0.0.1:8501` (não acessível diretamente pela internet)
 - Portas abertas: 22 (SSH — CIDR configurável via `lightsail_ssh_allowed_cidrs`), 80 (redirect HTTP→HTTPS + ACME challenge), 443 (HTTPS — proxy reverso para Streamlit)
-- IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável — nunca é alvo de nenhum `terraform destroy` (nem o do scheduler, nem um `apply`/`destroy` completo), então o registro DNS no registro.br é cadastrado uma única vez por ambiente e nunca precisa ser atualizado
+- **IP público — diferente por ambiente** (`local.lightsail_static_ip_enabled` em `locals.tf`, só `true` em prod):
+  - **Prod**: IP estático fixo (`tmdb-filmbot-static-ip-{env}`) para URL estável — nunca é alvo de nenhum `terraform destroy` (nem o do scheduler, nem um `apply`/`destroy` completo), então o registro DNS no registro.br é cadastrado uma única vez e nunca precisa ser atualizado.
+  - **Dev**: sem static IP — a instância liga só sob demanda e fica desligada quase o mês inteiro, e manter um static IP gera cobrança residual da AWS de US$0,005/h por IP não-anexado (após 1h desanexado, FAQ oficial do Lightsail), quase dobrando o custo do bundle `nano_3_0`. O IP público é dinâmico, muda a cada `start`. Ver `route53.tf` abaixo para como `filmbot-dev.lsgalvao.com.br` continua funcionando mesmo assim.
 - IAM user `tmdb-filmbot-agent-{env}` com acesso mínimo a Athena, S3 SPEC/TEMP, Glue Catalog e CloudWatch Logs
 - Swap de 1 GB criado automaticamente no bootstrap (`04_deploy_lightsail.yml`) — necessário no bundle `nano_3_0` (512 MB) para o `pip install`/app não sofrerem OOM kill; aplicado em qualquer bundle, custo de disco desprezível
 - Controlado pela variável `lightsail_enabled` (default `true` em ambos os ambientes). Quando habilitada, o workflow de deploy verifica o estado da instância via `aws lightsail get-instance` antes de tentar o SSH. Se a instância estiver destruída (fora da janela do scheduler), o deploy é **ignorado com warning** em vez de falhar por timeout.
 
-**Agendamento de custo** (`.github/workflows/05_lightsail_scheduler.yml`): o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` — só parar a instância não economiza nada (confirmado via fatura AWS real). Por isso o scheduler **destrói e recria** a instância (não só liga/desliga), via `terraform apply`/`destroy -target` — o IP estático nunca entra nesse `-target`, então persiste sempre.
+**Agendamento de custo** (`.github/workflows/05_lightsail_scheduler.yml`): o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` — só parar a instância não economiza nada (confirmado via fatura AWS real). Por isso o scheduler **destrói e recria** a instância (não só liga/desliga), via `terraform apply`/`destroy -target` — em prod o IP estático nunca entra nesse `-target` (persiste sempre); em dev quem entra no `-target` do `start` é o `aws_route53_record.filmbot_dev`, atualizado com o IP novo a cada ciclo.
 - **prod**: cron automático — desliga todo dia às **00:00 BRT**, liga às **18:00 BRT** seg-sex e **08:00 BRT** sáb-dom. Também aceita `workflow_dispatch` manual (`environment=prod`).
 - **dev**: cron automático só para desligar — todo dia às **00:01 BRT**. Não há cron para ligar; liga só via `workflow_dispatch` manual (`environment=dev`, `action=start`/`stop`), sob demanda para testes pontuais.
 - Como `lightsail_enabled` permanece `true` sempre, qualquer `terraform apply` completo (não-targeted) disparado por um push normal em `main`/`develop` recria a instância se ela estiver destruída no momento — ou seja, um deploy de código pode religar o servidor fora da janela agendada.
+
+## DNS do dev — Route 53 (`route53.tf`)
+
+Só existe em dev (`count` condicionado a `var.env == "dev"`). Sem static IP (ver seção anterior), o IP público do
+dev muda a cada `start` — para `filmbot-dev.lsgalvao.com.br` continuar resolvendo, esse subdomínio (só ele, não o
+domínio raiz `lsgalvao.com.br`) é delegado para uma hosted zone do Route 53:
+
+- `aws_route53_zone.filmbot_dev` — criada uma única vez pelo apply completo normal (`02_terraform.yml`), **nunca
+  destruída** (nem pelo scheduler, nem por um `apply`/`destroy -target`) — seus `name_servers` precisam ficar
+  estáveis pela vida do recurso, porque a delegação no registro.br é um registro NS cadastrado manualmente **uma
+  única vez**, fora do Terraform (ver `route53_dev_name_servers` no output). Custo: ~US$0,50/mês.
+- `aws_route53_record.filmbot_dev` (tipo A, TTL 60s) — este sim entra no `-target` do `start` do scheduler,
+  atualizado com o IP novo a cada ciclo. Não precisa ser destruído no `stop` (fica apontando pro último IP
+  conhecido enquanto a instância está desligada, inofensivo).
+- IAM: policy dedicada `cicd_route53` (`iam_cicd.tf`) — Route 53 é global e a hosted zone tem ID opaco, então as
+  ações de create/list exigem `Resource: "*"` e as demais ficam escopadas por tipo (`hostedzone/*`, `change/*`),
+  não por nome/prefixo do projeto como o resto das policies.
+- Prod não usa nada disso — continua com static IP e DNS cadastrado manualmente no registro.br, sem mudança.

@@ -720,7 +720,63 @@ resource "aws_iam_role_policy_attachment" "cicd_ssm" {
 }
 
 # =============================================================================
-# SINCRONIZAÇÃO — Garante que as 7 policies estejam attachadas antes de criar
+# POLICY 8 — ROUTE53 (Hosted zone + registro A de filmbot-dev.lsgalvao.com.br)
+# =============================================================================
+# Route 53 é global (sem região no ARN) e o ID da hosted zone é opaco — não dá
+# pra escopar por nome/prefixo "tmdb-*" como as outras policies. Create/List
+# exigem Resource "*" (obrigatório pela API); as demais ações ficam escopadas
+# por tipo de recurso (hostedzone/*, change/*).
+
+resource "aws_iam_policy" "cicd_route53" {
+  name        = "${local.project_config.cicd_policy_prefix}-route53-${var.env}"
+  description = "Gerenciamento da hosted zone e registro A de filmbot-dev.lsgalvao.com.br"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Route53CreateAndListZones"
+        Effect = "Allow"
+        Action = [
+          "route53:CreateHostedZone",
+          "route53:ListHostedZones",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Route53ZoneOperations"
+        Effect = "Allow"
+        Action = [
+          "route53:GetHostedZone",
+          "route53:DeleteHostedZone",
+          "route53:ChangeResourceRecordSets",
+          "route53:ListResourceRecordSets",
+          "route53:ChangeTagsForResource",
+          "route53:ListTagsForResource",
+        ]
+        Resource = "arn:aws:route53:::hostedzone/*"
+      },
+      {
+        # ChangeResourceRecordSets é assíncrona — o provider Terraform faz
+        # polling via GetChange até o status virar INSYNC.
+        Sid      = "Route53GetChange"
+        Effect   = "Allow"
+        Action   = "route53:GetChange"
+        Resource = "arn:aws:route53:::change/*"
+      },
+    ]
+  })
+
+  tags = merge(local.default_resource_tags, local.component_tags.shared)
+}
+
+resource "aws_iam_role_policy_attachment" "cicd_route53" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = aws_iam_policy.cicd_route53.arn
+}
+
+# =============================================================================
+# SINCRONIZAÇÃO — Garante que as 8 policies estejam attachadas antes de criar
 # qualquer recurso de infraestrutura. Sem isso, o Terraform pode tentar criar
 # S3 buckets ou Lambda functions antes das policies propagarem no IAM.
 #
@@ -737,6 +793,7 @@ resource "terraform_data" "cicd_policies_ready" {
     aws_iam_role_policy_attachment.cicd_observability,
     aws_iam_role_policy_attachment.cicd_lightsail,
     aws_iam_role_policy_attachment.cicd_ssm,
+    aws_iam_role_policy_attachment.cicd_route53,
   ]
 }
 

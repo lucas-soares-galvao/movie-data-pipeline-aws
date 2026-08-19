@@ -310,6 +310,7 @@ jobs:
       - name: Show app URL
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
-          echo "🔗 ${{ steps.project.outputs.app_display_name }}: http://${{ steps.tf.outputs.public_ip }}"
+          DOMAIN=${{ inputs.environment == 'dev' && 'filmbot-dev.lsgalvao.com.br' || 'filmbot.lsgalvao.com.br' }}
+          echo "🔗 ${{ steps.project.outputs.app_display_name }}: https://$DOMAIN"
           echo "## 🔗 ${{ steps.project.outputs.app_display_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "http://${{ steps.tf.outputs.public_ip }}" >> $GITHUB_STEP_SUMMARY
+          echo "https://$DOMAIN" >> $GITHUB_STEP_SUMMARY
