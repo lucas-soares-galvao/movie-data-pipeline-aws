@@ -29,9 +29,6 @@ on:
         required: true
       aws-lock-dynamodb-table:
         required: true
-      cloudflare-tunnel-token:
-        description: "Token do Cloudflare Tunnel — só usado em dev, instala/registra o cloudflared na instância"
-        required: false
 
 jobs:
   deploy:
@@ -291,33 +288,6 @@ jobs:
             fi
           ENDSSH
           echo "✅ Deploy concluído com sucesso na instância ${{ steps.tf.outputs.public_ip }}"
-
-      # Só em dev — expõe o FilmBot via Cloudflare Tunnel (login por e-mail
-      # antes de qualquer tráfego chegar no servidor) em vez de porta pública.
-      # A porta 443 já está fechada nesse ambiente (aws_lightsail_instance_public_ports.filmbot,
-      # ver infra/lightsail_ia.tf) — cloudflared aponta para https://localhost:443
-      # (Caddy) via loopback, que não passa pelo firewall do Lightsail.
-      - name: Instalar/registrar Cloudflare Tunnel (dev)
-        if: inputs.environment == 'dev' && steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
-        env:
-          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.cloudflare-tunnel-token }}
-        run: |
-          if [ -z "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
-            echo "⚠ CLOUDFLARE_TUNNEL_TOKEN não configurado — pulando instalação do cloudflared"
-            exit 0
-          fi
-          ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-            TOKEN="$CLOUDFLARE_TUNNEL_TOKEN" \
-            bash << 'ENDSSH'
-            set -e
-            if ! command -v cloudflared &> /dev/null; then
-              curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
-              echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared jammy main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-              sudo apt-get update -q && sudo apt-get install -y cloudflared -q
-            fi
-            sudo cloudflared service install "$TOKEN"
-            sudo systemctl is-active --quiet cloudflared && echo "✅ cloudflared ativo" || { echo "❌ cloudflared não ficou ativo"; exit 1; }
-          ENDSSH
 
       - name: Health Check
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'

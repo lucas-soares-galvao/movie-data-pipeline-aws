@@ -215,4 +215,3 @@ jobs:
       aws-assume-role-arn: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
       aws-statefile-s3-bucket: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
-      cloudflare-tunnel-token: ${{ secrets.AWS_CLOUDFLARE_TUNNEL_TOKEN_DEV }}

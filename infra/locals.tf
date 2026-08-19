@@ -73,18 +73,6 @@ locals {
   eventbridge_schedule_state = lower(var.env) == "prod" ? "ENABLED" : "DISABLED"
 
   # ===========================================================================
-  # PORTA 443 DO LIGHTSAIL — Pública apenas em produção
-  # ===========================================================================
-  # Em dev, o FilmBot deixa de ter a porta 443 publicamente acessível — o
-  # acesso passa a ser só via Cloudflare Tunnel (cloudflared rodando na
-  # própria instância, apontando para https://localhost:443 via loopback,
-  # não afetado pelo firewall do Lightsail). Em prod, mantém 0.0.0.0/0 como
-  # sempre foi. Lista vazia em dev faz o "dynamic port_info" em
-  # lightsail_ia.tf não gerar nenhum bloco para a porta 443 — ela fica
-  # implicitamente fechada (modelo allow-list do firewall do Lightsail).
-  https_public_cidrs = lower(var.env) == "prod" ? ["0.0.0.0/0"] : []
-
-  # ===========================================================================
   # CAMINHOS DOS ARQUIVOS DE CÓDIGO
   # ===========================================================================
   # Definem onde estão os arquivos Python de cada componente.
