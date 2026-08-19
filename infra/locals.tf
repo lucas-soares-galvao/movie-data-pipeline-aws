@@ -73,6 +73,17 @@ locals {
   eventbridge_schedule_state = lower(var.env) == "prod" ? "ENABLED" : "DISABLED"
 
   # ===========================================================================
+  # STATIC IP DO LIGHTSAIL — Habilitado apenas em produção
+  # ===========================================================================
+  # Em prod a instância fica ligada boa parte da semana e precisa de IP fixo
+  # (DNS cadastrado uma única vez no registro.br). Em dev a instância liga só
+  # sob demanda e fica desligada quase o mês inteiro — manter um static IP
+  # gera cobrança residual da AWS por IP não-anexado por mais de 1h. Por isso
+  # dev usa IP público dinâmico + delegação de subdomínio no Route 53
+  # (ver infra/route53.tf), que o Terraform atualiza a cada apply.
+  lightsail_static_ip_enabled = var.lightsail_enabled && lower(var.env) == "prod"
+
+  # ===========================================================================
   # CAMINHOS DOS ARQUIVOS DE CÓDIGO
   # ===========================================================================
   # Definem onde estão os arquivos Python de cada componente.

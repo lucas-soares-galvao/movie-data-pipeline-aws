@@ -27,8 +27,15 @@
   gap: 16px;
 }
 
-/* Heading centralizado do hero */
-.hero-heading-wrap { text-align: center; margin: 24px auto 8px; padding: 0 12px; }
+/* Heading centralizado do hero. margin-top de 8px (não 24px): entre .st-key-header-row e
+   este wrap existe um container invisível extra — o <style> injetado por
+   load_recommendation_css() (render_recommendation(), chamado antes do
+   st.container(key="hero-section")) — que soma o gap:16px nativo do stVerticalBlock
+   DUAS vezes (cabeçalho→injetor, injetor→hero-section) em vez de uma, mesmo padrão já
+   documentado pro injetor hero-scripts (ver app.css/lightsail_ia.md). 8px + 16px + 16px
+   = 40px, batendo com o mesmo respiro usado no resto da página (contador/último
+   card→rodapé, rodapé→fim da página) — medido via Playwright (getBoundingClientRect). */
+.hero-heading-wrap { text-align: center; margin: 8px auto 8px; padding: 0 12px; }
 /* !important em font-weight necessário: o Streamlit força font-weight:700 em
    <h1> via regra própria com especificidade/!important maior que a classe
    sozinha (mesmo motivo do !important em font-size no .header-title/

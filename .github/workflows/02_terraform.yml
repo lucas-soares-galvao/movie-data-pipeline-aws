@@ -262,6 +262,8 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -target=aws_iam_policy.cicd_ssm \
             -target=aws_iam_role_policy_attachment.cicd_ssm \
+            -target=aws_iam_policy.cicd_route53 \
+            -target=aws_iam_role_policy_attachment.cicd_route53 \
             -auto-approve
           ROLE_NAME="${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
           EXPECTED_POLICIES=(
@@ -272,6 +274,7 @@ jobs:
             "${{ steps.project.outputs.cicd_policy_prefix }}-observability-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-lightsail-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-ssm-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-route53-${{ inputs.environment }}"
           )
 
           MAX_WAIT=60

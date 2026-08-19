@@ -1,3 +1,19 @@
+/* base.css força min-height:100vh/100dvh em stAppViewContainer pra cobrir a
+   tela toda com o gradiente mesmo em conteúdo curto — necessário na tela de
+   login (login.css centraliza o card verticalmente nesse espaço). Na tela
+   principal isso é indesejado: o respiro entre o rodapé e o fim da página é
+   fixo (ver padding-bottom do block-container abaixo), não proporcional ao
+   tamanho da tela — sem zerar aqui, sobraria uma faixa vazia extra depois
+   desse padding sempre que o conteúdo for mais curto que a viewport (testado:
+   com min-height:100vh restaurado + margin:auto no rodapé, o vão vinha
+   proporcional à tela e ficava desproporcionalmente grande em telas altas).
+   Zerado aqui (só carregado nesta tela, nunca junto de login.css) pra o
+   container encolher pro tamanho real do conteúdo; html/body (base.css)
+   garante a mesma cor sólida por trás caso ainda sobre viewport abaixo dele. */
+[data-testid="stAppViewContainer"] {
+  min-height: 0;
+}
+
 /* Cabeçalho: ícone+título numa linha (.header-brand) e subtítulo solto embaixo,
    largura toda — mesma estrutura de .login-brand/.login-subtitle na tela de
    login (substituem st.title/st.caption, que rendem um <h1> grande demais pra
@@ -29,34 +45,24 @@
    (diferente de login.css): aqui há cabeçalho real logo abaixo. Aumentado de 32px
    pra 44px pra descer um pouco mais a linha "FilmBot"/"Sair", primeiro conteúdo
    do block-container.
-   padding-bottom, por outro lado, é zerado (não reduzido): não há nenhum
-   conteúdo real reservando espaço depois do .footer (último elemento da
-   página) — o padding nativo do Streamlit sobrava ali como faixa vazia,
-   mesmo bug e mesma correção já aplicados ao padding-bottom em login.css.
-   display:flex/min-height: mesma técnica de login.css:21-31 (confirmada via
-   Playwright lá) pra cobrir a tela toda mesmo com conteúdo curto, mas aqui SEM
-   justify-content:center — cabeçalho/busca/grid devem continuar exatamente onde
-   estão hoje, coladas no topo; só o rodapé (regra abaixo, :last-child) deve
-   flutuar no vão sobrando. Quando o conteúdo já é mais alto que a tela, não sobra
-   vão nenhum e o comportamento é idêntico ao de antes (rodapé colado ao conteúdo). */
+   padding-bottom, por outro lado, é fixo (não zerado): mesmo respiro já usado no
+   resto da página entre bloco e bloco (cabeçalho→hero, contador/último card→rodapé —
+   ver comentário do .footer mais abaixo) — o rodapé passa a ter o mesmo respiro embaixo
+   que já tem em cima, independente da altura da tela. Descartado tentar centralizar
+   proporcionalmente esse espaço (via display:flex + min-height:100vh no block-container
+   + margin:auto no rodapé, espelhando login.css): funcionava tecnicamente, mas em telas
+   altas o vão distribuído ficava desproporcionalmente grande, maior que qualquer outro
+   espaçamento da página — um valor fixo é mais consistente com o resto do design.
+   56px, não os 40px do padrão: o wrapper interno que o Streamlit gera em volta do
+   st.markdown do rodapé reporta uma altura ~16px menor que o conteúdo real (mesmo
+   quirk documentado pro rodapé do login, "margin-top negativo em .footer-login",
+   lightsail_ia.md) — sem compensar, o respiro visível medido (Playwright,
+   getBoundingClientRect) ficava em 24px em vez de 40px. 56px = 40px pretendido + 16px
+   de compensação; conferido que o respiro visível bate com o do topo ("Consultas
+   restantes"→rodapé) nos dois estados. */
 [data-testid="stMain"] .block-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
   padding-top: 44px !important;
-  padding-bottom: 0 !important;
-}
-/* Empurra só o rodapé (último item renderizado por app.py, depois de render_cards())
-   pro meio do vão livre acima descrito — margin auto nos dois lados verticais faz o
-   flexbox dividir esse espaço igualmente acima/abaixo dele, sem mexer no espaçamento
-   entre os elementos anteriores (cabeçalho, busca, grid). *:last-child em vez de mirar
-   o data-testid do wrapper interno do Streamlit em torno do st.markdown do rodapé:
-   esses wrappers não têm testid estável entre versões (mesmo motivo já registrado em
-   login.css:14-16) — :last-child no filho direto do stVerticalBlock é mais robusto. */
-[data-testid="stMain"] .block-container > [data-testid="stVerticalBlock"] > *:last-child {
-  margin-top: auto;
-  margin-bottom: auto;
+  padding-bottom: 56px !important;
 }
 
 .st-key-header-row [data-testid="stHorizontalBlock"] {

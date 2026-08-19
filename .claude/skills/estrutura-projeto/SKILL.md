@@ -115,7 +115,7 @@ proj-eng-dados-filmes-aws/
 │   ├── s3.tf                       # Buckets SOR, SOT, SPEC, DQ, AUX, TEMP
 │   ├── iam_roles.tf                # Roles para Lambda e Glue
 │   ├── iam_policies.tf             # Policies com privilégio mínimo
-│   ├── iam_cicd.tf                 # 7 policies least-privilege da role GitHub Actions + sync
+│   ├── iam_cicd.tf                 # 8 policies least-privilege da role GitHub Actions + sync
 │   ├── lambda_api.tf               # Função Lambda + package zip
 │   ├── glue_etl.tf                 # Glue Job ETL + upload de scripts no S3
 │   ├── glue_details.tf             # Glue Job Details + upload de scripts no S3
@@ -123,6 +123,7 @@ proj-eng-dados-filmes-aws/
 │   ├── glue_data_quality.tf        # Glue Job Data Quality + upload de scripts
 │   ├── glue_catalog.tf             # Database e tabelas no Glue Catalog
 │   ├── lightsail_ia.tf             # Instância Lightsail + IAM user filmbot-agent
+│   ├── route53.tf                  # Hosted zone + registro A de filmbot-dev.lsgalvao.com.br (só dev)
 │   ├── eventbridge.tf              # Regras EventBridge (semanal, semanal de changes, semanal de rotation, mensal)
 │   ├── sns_topics.tf               # Tópicos SNS + subscrições de e-mail
 │   ├── cloudwatch_alarms.tf        # Alarmes Lambda e EventBridge
@@ -272,7 +273,7 @@ Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-la
 10. **terraform fmt -check** (informativo)
 11. **Checkov** — security/compliance scan (informativo)
 12. Injeta o e-mail de notificação (`notification-email`) no `.tfvars`
-13. **Bootstrap das IAM policies do CI/CD** (se não for destroy) — `terraform apply -target` nas 7 policies/attachments, depois faz polling em `aws iam list-attached-role-policies` (a cada 5s, timeout 60s) até confirmar que todas estão attachadas
+13. **Bootstrap das IAM policies do CI/CD** (se não for destroy) — `terraform apply -target` nas 8 policies/attachments, depois faz polling em `aws iam list-attached-role-policies` (a cada 5s, timeout 60s) até confirmar que todas estão attachadas
 14. Se `destroy_config[env] == true` → `terraform destroy`
 15. Se não → `terraform plan -out=<env>.plan` → Infracost (setup, breakdown no Job Summary, comentário no PR se o evento for `pull_request`) → `terraform apply <env>.plan`
 
@@ -324,7 +325,7 @@ Substitui o antigo `lightsail_scheduler.tf` (Lambda + EventBridge, removido) —
 
 **Etapas:** resolve ambiente/ação pelo trigger → lê `infra/config/project.json` → seleciona secrets `_DEV`/`_PROD` conforme o ambiente resolvido → autenticação OIDC → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `02_terraform.yml`).
 
-`aws_lightsail_static_ip.filmbot` **nunca** entra no `-target` — o IP estático nunca é destruído, então o DNS no registro.br (`filmbot.lsgalvao.com.br` em prod, `filmbot-dev.lsgalvao.com.br` em dev) é cadastrado uma única vez por ambiente.
+`aws_lightsail_static_ip.filmbot` só existe em prod (`local.lightsail_static_ip_enabled`) e **nunca** entra no `-target` — o IP estático nunca é destruído, então o DNS de `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez. Dev não tem static IP (evita cobrança residual de IP não-anexado) — o IP muda a cada `start`, e quem entra no `-target` é `aws_route53_record.filmbot_dev` (`infra/route53.tf`), que reflete o IP novo a cada ciclo numa hosted zone do Route 53 delegada só para o subdomínio `filmbot-dev.lsgalvao.com.br` (registro NS cadastrado manualmente uma única vez no registro.br, fora do Terraform).
 
 Job `deploy-app` encadeia `04_deploy_lightsail.yml` (via `uses:`) só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot).
 
@@ -381,7 +382,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `s3.tf` | 6 buckets: SOR, SOT, SPEC, DQ, AUX (código), TEMP (Athena) |
 | `iam_roles.tf` | Role para Lambda, Role para Glue |
 | `iam_policies.tf` | Policies de mínimo privilégio por serviço |
-| `iam_cicd.tf` | 7 policies least-privilege da role GitHub Actions (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
+| `iam_cicd.tf` | 8 policies least-privilege da role GitHub Actions (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
 | `lambda_api.tf` | Lambda function + zip do pacote Python |
 | `glue_etl.tf` | Glue Job ETL + upload de scripts/dependências no S3 AUX |
 | `glue_details.tf` | Glue Job Details + upload de scripts no S3 AUX |
@@ -389,6 +390,7 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `glue_data_quality.tf` | Glue Job DQ + upload de scripts no S3 AUX |
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
 | `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
+| `route53.tf` | Hosted zone + registro A de `filmbot-dev.lsgalvao.com.br` — só dev, sem static IP (ver `recursos.md`) |
 | `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, semanal de rotation, mensal) → Lambda |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |
