@@ -1,16 +1,3 @@
-/* base.css força min-height:100vh/100dvh em stAppViewContainer pra cobrir a
-   tela toda com o gradiente mesmo em conteúdo curto — necessário na tela de
-   login (login.css centraliza o card verticalmente nesse espaço). Na tela
-   principal não há centralização nenhuma: o conteúdo só cresce de cima pra
-   baixo, então esse mínimo forçado sobrava como área vazia depois do rodapé
-   em vez de ser redistribuído. Zerado aqui (só carregado nesta tela, nunca
-   junto de login.css) pra o container encolher pro tamanho real do conteúdo;
-   html/body (base.css) garante a mesma cor sólida por trás caso ainda sobre
-   viewport abaixo dele. */
-[data-testid="stAppViewContainer"] {
-  min-height: 0;
-}
-
 /* Cabeçalho: ícone+título numa linha (.header-brand) e subtítulo solto embaixo,
    largura toda — mesma estrutura de .login-brand/.login-subtitle na tela de
    login (substituem st.title/st.caption, que rendem um <h1> grande demais pra
@@ -45,10 +32,31 @@
    padding-bottom, por outro lado, é zerado (não reduzido): não há nenhum
    conteúdo real reservando espaço depois do .footer (último elemento da
    página) — o padding nativo do Streamlit sobrava ali como faixa vazia,
-   mesmo bug e mesma correção já aplicados ao padding-bottom em login.css. */
+   mesmo bug e mesma correção já aplicados ao padding-bottom em login.css.
+   display:flex/min-height: mesma técnica de login.css:21-31 (confirmada via
+   Playwright lá) pra cobrir a tela toda mesmo com conteúdo curto, mas aqui SEM
+   justify-content:center — cabeçalho/busca/grid devem continuar exatamente onde
+   estão hoje, coladas no topo; só o rodapé (regra abaixo, :last-child) deve
+   flutuar no vão sobrando. Quando o conteúdo já é mais alto que a tela, não sobra
+   vão nenhum e o comportamento é idêntico ao de antes (rodapé colado ao conteúdo). */
 [data-testid="stMain"] .block-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
   padding-top: 44px !important;
   padding-bottom: 0 !important;
+}
+/* Empurra só o rodapé (último item renderizado por app.py, depois de render_cards())
+   pro meio do vão livre acima descrito — margin auto nos dois lados verticais faz o
+   flexbox dividir esse espaço igualmente acima/abaixo dele, sem mexer no espaçamento
+   entre os elementos anteriores (cabeçalho, busca, grid). *:last-child em vez de mirar
+   o data-testid do wrapper interno do Streamlit em torno do st.markdown do rodapé:
+   esses wrappers não têm testid estável entre versões (mesmo motivo já registrado em
+   login.css:14-16) — :last-child no filho direto do stVerticalBlock é mais robusto. */
+[data-testid="stMain"] .block-container > [data-testid="stVerticalBlock"] > *:last-child {
+  margin-top: auto;
+  margin-bottom: auto;
 }
 
 .st-key-header-row [data-testid="stHorizontalBlock"] {
@@ -174,10 +182,12 @@
    hero-actions (recommendation.py, junto do rate limit), então a caixa cresce mas não
    adiciona item novo ao stVerticalBlock — o gap escondido é o mesmo com ou sem essas
    mensagens visíveis (confirmado via Playwright, getBoundingClientRect() numa
-   calibração anterior desta mesma regra). */
+   calibração anterior desta mesma regra). padding vertical simétrico (16px/16px): o texto
+   fica centralizado na própria caixa do rodapé — distinto do espaçamento acima dela (o
+   respiro de 40px em relação ao conteúdo anterior, tratado pelo padding-top/margin-top). */
 .footer {
   text-align: center;
-  padding: 16px 0 8px;
+  padding: 16px 0;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
@@ -188,11 +198,14 @@
    logo depois do grid de cards — margin-top:16px + padding-top:24px reproduz a mesma
    soma de 40px do estado acima (e do padrão cabeçalho→hero), só que sem o gap nativo
    oculto do stVerticalBlock que existe no outro estado (aqui a origem dos 16px é só
-   margem explícita, não um container-fantasma). */
+   margem explícita, não um container-fantasma). padding-bottom sobe de 16 pra 24 pra
+   acompanhar o padding-top e manter o texto centralizado na própria caixa, igual ao
+   estado acima. */
 body:has(.grid-titles) .footer {
   max-width: none;
   margin-top: 16px;
   padding-top: 24px;
+  padding-bottom: 24px;
 }
 
 .footer a {
