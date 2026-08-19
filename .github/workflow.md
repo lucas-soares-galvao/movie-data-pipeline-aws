@@ -11,7 +11,7 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 
 Além do fluxo automático acima, dois workflows são independentes do `00_pipeline.yml`:
 
-- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail para economizar custo. Roda por `schedule` (cron, só prod) e também aceita `workflow_dispatch` manual (prod ou dev — dev só roda por aqui, nunca por cron).
+- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail para economizar custo. Roda por `schedule` (cron): prod liga e desliga automaticamente, dev só desliga automaticamente (ligar dev é sempre manual). Também aceita `workflow_dispatch` manual (prod ou dev).
 - `06_backfill.yml` — disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
 
 ---
@@ -29,7 +29,7 @@ flowchart TD
     TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
     TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
 
-    CRON["schedule (cron, só prod)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
+    CRON["schedule (cron: liga/desliga prod, só desliga dev)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
     MANUAL2["workflow_dispatch manual (prod ou dev)"] --> SCHED
     SCHED -->|action=start| DEPLOY2["04_deploy_lightsail.yml\nReidrata a instância"]
 
@@ -46,8 +46,8 @@ flowchart TD
 | `push` | `develop` | terraform (dev) → deploy (dev, se a instância estiver ligada) → PR develop→main |
 | `push` | `main` | terraform (prod) → deploy (prod) |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy no mesmo ambiente |
-| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
-| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual (prod ou dev, `action=start`/`stop`) — dev só roda por aqui |
+| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) e desliga automaticamente a de dev (cron BRT, sem cron de ligar) — independente do `00_pipeline.yml` |
+| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual (prod ou dev, `action=start`/`stop`) — único jeito de ligar dev |
 | `workflow_dispatch` (`06_backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
 
 ---
@@ -153,8 +153,9 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `0
    - **Primeiro deploy**: clone do repo (URL derivada de `${{ github.repository }}`), venv, systemd services (`<app_name>` + `caddy`)
    - **Updates**: git pull, pip install, restart de ambos os services
    - Verifica se os serviços `<app_name>` e `caddy` estão ativos (`systemctl is-active`) — falha o pipeline se algum estiver inativo
-8. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
-9. Exibe a URL do app (`app_display_name`) no log e no Job Summary (clicável)
+8. **Só em dev**: instala/registra o `cloudflared` (Cloudflare Tunnel) via SSH, usando o secret opcional `cloudflare-tunnel-token` (`AWS_CLOUDFLARE_TUNNEL_TOKEN_DEV`) — pulado com warning se o secret não estiver configurado. Expõe o FilmBot de dev via Cloudflare Access (login por e-mail) em vez de porta 443 pública, que fica fechada nesse ambiente (`local.https_public_cidrs`, ver `infra/docs/recursos.md`)
+9. Health check — aguarda 30s e faz `curl` no IP público (porta 80) para confirmar que o app está respondendo
+10. Exibe a URL do app (`app_display_name`) no log e no Job Summary (clicável)
 
 **Branch deployada por ambiente:**
 
