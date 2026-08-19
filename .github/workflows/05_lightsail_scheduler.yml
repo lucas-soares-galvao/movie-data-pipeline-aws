@@ -6,8 +6,13 @@ run-name: "Lightsail Scheduler [${{ (github.ref_name == 'develop' || github.even
 # removido). A instância deixa de ser só parada/iniciada — o Lightsail cobra
 # a mesma tarifa do bundle em running ou stopped — e passa a ser DESTRUÍDA
 # nas janelas ociosas e RECRIADA do zero via Terraform, reidratada pelo
-# bootstrap de 04_deploy_lightsail.yml. O IP estático nunca é alvo do
-# destroy — persiste sempre, sem precisar atualizar o DNS no registro.br.
+# bootstrap de 04_deploy_lightsail.yml.
+#
+# prod: o IP estático nunca é alvo do destroy — persiste sempre, sem precisar
+#       atualizar o DNS no registro.br.
+# dev:  sem IP estático (evita cobrança residual de IP não-anexado) — o IP
+#       muda a cada start, e o registro A no Route 53 (infra/route53.tf) é
+#       atualizado automaticamente no mesmo apply que recria a instância.
 #
 # O ambiente (dev/prod) é resolvido a partir do branch selecionado em "Use
 # workflow from" ao disparar manualmente (mesmo padrão de 06_backfill.yml):
@@ -147,30 +152,48 @@ jobs:
         if: steps.resolve.outputs.action == 'stop'
         run: |
           cd infra
+          TARGETS=(
+            -target=aws_lightsail_instance_public_ports.filmbot
+            -target=aws_lightsail_instance.filmbot
+          )
+          # Static IP attachment só existe (e só precisa ser destruído antes da
+          # instância) em prod — dev não tem esse recurso (ver
+          # local.lightsail_static_ip_enabled em infra/locals.tf).
+          if [ "${{ steps.resolve.outputs.environment }}" = "prod" ]; then
+            TARGETS=(-target=aws_lightsail_static_ip_attachment.filmbot "${TARGETS[@]}")
+          fi
           terraform destroy -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ steps.secrets.outputs.lock-table }}" \
-            -target=aws_lightsail_static_ip_attachment.filmbot \
-            -target=aws_lightsail_instance_public_ports.filmbot \
-            -target=aws_lightsail_instance.filmbot \
+            "${TARGETS[@]}" \
             -auto-approve
-          echo "✅ Instância destruída (${{ steps.resolve.outputs.environment }}) — IP estático preservado"
+          echo "✅ Instância destruída (${{ steps.resolve.outputs.environment }})"
 
       - name: Ligar — Terraform Apply (target)
         if: steps.resolve.outputs.action == 'start'
         run: |
           cd infra
+          TARGETS=(
+            -target=aws_lightsail_key_pair.filmbot
+            -target=aws_lightsail_instance.filmbot
+            -target=aws_lightsail_instance_public_ports.filmbot
+          )
+          # prod reanexa o static IP; dev atualiza o registro A no Route 53
+          # com o IP novo (infra/route53.tf) — cada ambiente só tem um dos dois
+          # recursos (count condicionado por ambiente).
+          if [ "${{ steps.resolve.outputs.environment }}" = "prod" ]; then
+            TARGETS+=(-target=aws_lightsail_static_ip_attachment.filmbot)
+          else
+            TARGETS+=(-target=aws_route53_record.filmbot_dev)
+          fi
           terraform apply -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ steps.secrets.outputs.lock-table }}" \
-            -target=aws_lightsail_key_pair.filmbot \
-            -target=aws_lightsail_instance.filmbot \
-            -target=aws_lightsail_instance_public_ports.filmbot \
-            -target=aws_lightsail_static_ip_attachment.filmbot \
+            "${TARGETS[@]}" \
             -auto-approve
-          echo "✅ Instância recriada (${{ steps.resolve.outputs.environment }}) e IP estático reanexado"
+          echo "✅ Instância recriada (${{ steps.resolve.outputs.environment }})"
 
       # Mesmo padrão de 02_terraform.yml — protege contra cancelamento manual
       # deixando o lock do DynamoDB órfão.
