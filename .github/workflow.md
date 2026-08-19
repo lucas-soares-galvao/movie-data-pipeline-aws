@@ -153,9 +153,8 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `0
    - **Primeiro deploy**: clone do repo (URL derivada de `${{ github.repository }}`), venv, systemd services (`<app_name>` + `caddy`)
    - **Updates**: git pull, pip install, restart de ambos os services
    - Verifica se os serviços `<app_name>` e `caddy` estão ativos (`systemctl is-active`) — falha o pipeline se algum estiver inativo
-8. **Só em dev**: instala/registra o `cloudflared` (Cloudflare Tunnel) via SSH, usando o secret opcional `cloudflare-tunnel-token` (`AWS_CLOUDFLARE_TUNNEL_TOKEN_DEV`) — pulado com warning se o secret não estiver configurado. Expõe o FilmBot de dev via Cloudflare Access (login por e-mail) em vez de porta 443 pública, que fica fechada nesse ambiente (`local.https_public_cidrs`, ver `infra/docs/recursos.md`)
-9. Health check — aguarda 30s e faz `curl` no IP público (porta 80) para confirmar que o app está respondendo
-10. Exibe a URL do app (`app_display_name`) no log e no Job Summary (clicável)
+8. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
+9. Exibe a URL do app (`app_display_name`) no log e no Job Summary (clicável)
 
 **Branch deployada por ambiente:**
 
