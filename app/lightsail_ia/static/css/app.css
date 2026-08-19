@@ -160,41 +160,38 @@
    natural do block-container — quando ele existe (pesquisa feita), o rodapé
    acompanha essa largura em vez de ficar travado nos 640px do hero. Acoplamento por
    nome de classe entre este arquivo e cards.css: renomear .grid-titles lá exige
-   atualizar a regra abaixo aqui também. */
-/* margin-top negativo: o .stVerticalBlock principal do Streamlit usa gap:16px entre TODOS
-   os elementos de topo, incluindo containers vazios de altura zero entre a busca e o rodapé
-   — hoje só o injetor de JS (hero-scripts, sempre presente, display:none). Erro/sem-resultado
-   de busca NÃO entram nessa conta: moram dentro de hero-actions (recommendation.py, junto do
-   rate limit), então a caixa cresce mas não adiciona nenhum item novo ao stVerticalBlock — o
-   gap escondido é o mesmo com ou sem essas mensagens visíveis (confirmado via Playwright,
-   getBoundingClientRect(), gap idêntico ~16px nos três estados: vazio, só erro, rate-limit+
-   erro juntos). -36px porque o respiro resultante precisa igualar o gap nativo entre o botão
-   "Recomendar" e o próprio texto "Consultas restantes" (16px). Calibrado empiricamente via
-   Playwright (bounding boxes reais) em vez de somado a partir das margens declaradas: a
-   resposta do gap visível a mudanças neste valor não é 1:1 (colapso de margem com o gap
-   escondido acima), então qualquer reajuste futuro deve remedir, não recalcular na mão. */
+   atualizar a regra abaixo aqui também. Sem borda: a página não usa linha pra
+   separar blocos em nenhum outro lugar, só espaço (mesma lógica de
+   .results-heading, cards.css). */
+/* Estado sem resultados: espaçamento entre "Consultas restantes" e o rodapé espelha
+   o padrão cabeçalho→".hero-heading-wrap" (recommendation.css) — gap:16px nativo do
+   stVerticalBlock (o .stVerticalBlock principal do Streamlit usa esse gap entre TODOS
+   os elementos de topo, incluindo o container vazio sempre presente do injetor de JS
+   hero-scripts, display:none, entre a busca e o rodapé) + margin-bottom:8px de
+   .query-counter-text (colapsa com o margin-top:0 do rodapé abaixo) + padding-top:16px
+   deste bloco = 40px totais, igual aos 40px entre o cabeçalho e "O que você quer
+   assistir hoje?". Erro/sem-resultado de busca NÃO entram nessa conta: moram dentro de
+   hero-actions (recommendation.py, junto do rate limit), então a caixa cresce mas não
+   adiciona item novo ao stVerticalBlock — o gap escondido é o mesmo com ou sem essas
+   mensagens visíveis (confirmado via Playwright, getBoundingClientRect() numa
+   calibração anterior desta mesma regra). */
 .footer {
   text-align: center;
-  /* padding-top igual aos 16px do gap "Consultas restantes"→linha calibrado
-     acima (margin-top -36px): mesma respiração texto→linha nos dois lados
-     do border-top, estado sem resultados. */
   padding: 16px 0 8px;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
-  border-top: 1px solid #1f2937;
-  margin: -36px auto 0;
+  margin: 0 auto;
   max-width: 640px;
 }
-/* Com resultados (.grid-titles), o margin-top negativo acima deixa de compensar um
-   gap invisível e passa a puxar o rodapé pra dentro do conteúdo real do grid de
-   cards, sobrepondo os dois. Reseta pra um respiro positivo só nesse estado. */
+/* Com resultados (.grid-titles), o rodapé some do fluxo de 640px do hero e passa a vir
+   logo depois do grid de cards — margin-top:16px + padding-top:24px reproduz a mesma
+   soma de 40px do estado acima (e do padrão cabeçalho→hero), só que sem o gap nativo
+   oculto do stVerticalBlock que existe no outro estado (aqui a origem dos 16px é só
+   margem explícita, não um container-fantasma). */
 body:has(.grid-titles) .footer {
   max-width: none;
-  margin-top: 24px;
-  /* padding-top 24px igual ao gap .results-divider→.results-heading (cards.css)
-     — mesma respiração linha→texto do topo da tela de resultados, só neste
-     estado (acima da linha aqui é o grid de cards, não "Consultas restantes"). */
+  margin-top: 16px;
   padding-top: 24px;
 }
 

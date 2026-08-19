@@ -62,5 +62,5 @@
 
 **Agendamento de custo** (`.github/workflows/05_lightsail_scheduler.yml`): o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` — só parar a instância não economiza nada (confirmado via fatura AWS real). Por isso o scheduler **destrói e recria** a instância (não só liga/desliga), via `terraform apply`/`destroy -target` — o IP estático nunca entra nesse `-target`, então persiste sempre.
 - **prod**: cron automático — desliga todo dia às **00:00 BRT**, liga às **18:00 BRT** seg-sex e **08:00 BRT** sáb-dom. Também aceita `workflow_dispatch` manual (`environment=prod`).
-- **dev**: só `workflow_dispatch` manual (`environment=dev`, `action=start`/`stop`) — nunca roda via cron, ligada só sob demanda para testes pontuais.
+- **dev**: cron automático só para desligar — todo dia às **00:01 BRT**. Não há cron para ligar; liga só via `workflow_dispatch` manual (`environment=dev`, `action=start`/`stop`), sob demanda para testes pontuais.
 - Como `lightsail_enabled` permanece `true` sempre, qualquer `terraform apply` completo (não-targeted) disparado por um push normal em `main`/`develop` recria a instância se ela estiver destruída no momento — ou seja, um deploy de código pode religar o servidor fora da janela agendada.

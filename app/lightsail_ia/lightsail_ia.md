@@ -92,18 +92,18 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 O CSS (`static/`) acompanha a mesma divisão: `base.css` (transversal), `login.css`, `app.css` (cabeçalho/rodapé), `recommendation.css` e `cards.css`. Cada `load_*_css()` (`components.py`) injeta `base.css` antes do CSS específico da tela — necessário porque duas regras (reset genérico de botão em `base.css` e `.st-key-btn_recomendar` em `recommendation.css`) têm especificidade CSS empatada; sem `base.css` injetado primeiro, o botão "Recomendar" perderia a largura `100%` e voltaria a 140px fixo.
 
 - Tema escuro com CSS customizado
-- **Linha divisória + título de resultados (`.results-divider`/`.results-heading`, `cards.py`/`cards.css`):**
-  o container `hero-scripts` (`recommendation.py`, só injeta `<script>`s, `display:none`) fica entre
-  `hero-actions` e o `<hr>`/título dos resultados — mesmo escondido, o wrapper que o Streamlit insere ao
-  redor dele continua contando pro `gap:16px` nativo do `stVerticalBlock` da página. `margin` em
-  `.results-divider`/`.results-heading` traz o espaço acima/abaixo da linha pra ~24px (perto do gap nativo
-  de 16px usado em transições vizinhas, ex. botão "Recomendar" → contador), calibrado e confirmado via
-  Playwright (`getBoundingClientRect()`). **`!important` obrigatório nos dois:** o Streamlit injeta CSS
-  próprio por instância (classe autogerada + elemento, ex. `.st-emotion-cache-XXXXXX hr { margin: 2em 0 }`
-  e `.st-emotion-cache-XXXXXX p { margin-top: 0 }`), com especificidade maior que uma classe isolada — sem
-  `!important`, o `<hr>` herda 32px de margem nativa dos dois lados e o `<p>` do título perde o
-  `margin-top` declarado, independente do valor escrito em `cards.css` (achado ao investigar reclamação
-  real de usuário: o gap chegava a ~80px, não os ~40px que os comentários antigos do CSS assumiam)
+- **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
+  `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
+  a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir
+  hoje?"). O container `hero-scripts` (`recommendation.py`, só injeta `<script>`s, `display:none`) fica entre
+  `hero-actions` e o título dos resultados — mesmo escondido, o wrapper que o Streamlit insere ao redor dele
+  continua contando pro `gap:16px` nativo do `stVerticalBlock` da página. Nos três pontos onde a linha existia
+  (contador→rodapé sem resultado, contador→título dos resultados, último card→rodapé com resultado), o
+  `margin`/`padding` soma 40px — igual ao gap nativo de 16px + `margin-top:24px` de `.hero-heading-wrap`
+  (`recommendation.css`) usado entre o cabeçalho e o hero. **`!important` obrigatório em `.results-heading`:**
+  o Streamlit injeta CSS próprio por instância (classe autogerada + elemento, ex.
+  `.st-emotion-cache-XXXXXX p { margin-top: 0 }`), com especificidade maior que uma classe isolada — sem
+  `!important`, o `<p>` do título perde o `margin-top` declarado, independente do valor escrito em `cards.css`
 - Grid responsivo de cards: 3 colunas fixas (`repeat(3, 1fr)`) acima de 1200px (breakpoint
   "xl" do Bootstrap, escolhido por convenção), 1 coluna abaixo disso (`≤1200px`, cobrindo
   tanto celular quanto janela de desktop estreita). O breakpoint não é 768px (limite típico

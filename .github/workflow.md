@@ -11,7 +11,7 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 
 Além do fluxo automático acima, dois workflows são independentes do `00_pipeline.yml`:
 
-- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail para economizar custo. Roda por `schedule` (cron, só prod) e também aceita `workflow_dispatch` manual (prod ou dev — dev só roda por aqui, nunca por cron).
+- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail para economizar custo. Roda por `schedule` (cron): prod liga e desliga automaticamente, dev só desliga automaticamente (ligar dev é sempre manual). Também aceita `workflow_dispatch` manual (prod ou dev).
 - `06_backfill.yml` — disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
 
 ---
@@ -29,7 +29,7 @@ flowchart TD
     TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
     TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
 
-    CRON["schedule (cron, só prod)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
+    CRON["schedule (cron: liga/desliga prod, só desliga dev)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
     MANUAL2["workflow_dispatch manual (prod ou dev)"] --> SCHED
     SCHED -->|action=start| DEPLOY2["04_deploy_lightsail.yml\nReidrata a instância"]
 
@@ -46,8 +46,8 @@ flowchart TD
 | `push` | `develop` | terraform (dev) → deploy (dev, se a instância estiver ligada) → PR develop→main |
 | `push` | `main` | terraform (prod) → deploy (prod) |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy no mesmo ambiente |
-| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
-| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual (prod ou dev, `action=start`/`stop`) — dev só roda por aqui |
+| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) e desliga automaticamente a de dev (cron BRT, sem cron de ligar) — independente do `00_pipeline.yml` |
+| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual (prod ou dev, `action=start`/`stop`) — único jeito de ligar dev |
 | `workflow_dispatch` (`06_backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
 
 ---
