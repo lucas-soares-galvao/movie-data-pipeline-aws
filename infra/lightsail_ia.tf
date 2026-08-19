@@ -129,11 +129,16 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
     cidrs     = ["0.0.0.0/0"]
   }
 
-  port_info {
-    from_port = 443
-    to_port   = 443
-    protocol  = "tcp"
-    cidrs     = ["0.0.0.0/0"]
+  # Pública só em prod (local.https_public_cidrs) — em dev, o acesso é via
+  # Cloudflare Tunnel (cloudflared na própria instância), não pela rede.
+  dynamic "port_info" {
+    for_each = length(local.https_public_cidrs) > 0 ? [local.https_public_cidrs] : []
+    content {
+      from_port = 443
+      to_port   = 443
+      protocol  = "tcp"
+      cidrs     = port_info.value
+    }
   }
 }
 

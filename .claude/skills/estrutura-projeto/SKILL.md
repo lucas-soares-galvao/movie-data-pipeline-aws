@@ -319,8 +319,8 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 Substitui o antigo `lightsail_scheduler.tf` (Lambda + EventBridge, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped`, então parar a instância não economia nada (confirmado via fatura AWS real). Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, em vez de só ligar/desligar.
 
 **Triggers:**
-- `schedule` (cron, só prod): desliga `00:00 BRT` diário, liga `18:00 BRT` seg-sex e `08:00 BRT` sáb-dom.
-- `workflow_dispatch` (`environment`: dev|prod, `action`: start|stop) — dev só roda por aqui, nunca por cron.
+- `schedule` (cron): prod desliga `00:00 BRT` diário e liga `18:00 BRT` seg-sex + `08:00 BRT` sáb-dom; dev só desliga `00:01 BRT` diário (sem cron de ligar).
+- `workflow_dispatch` (`environment`: dev|prod, `action`: start|stop) — único jeito de ligar dev.
 
 **Etapas:** resolve ambiente/ação pelo trigger → lê `infra/config/project.json` → seleciona secrets `_DEV`/`_PROD` conforme o ambiente resolvido → autenticação OIDC → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `02_terraform.yml`).
 
