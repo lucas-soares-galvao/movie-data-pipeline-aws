@@ -95,24 +95,21 @@ jobs:
 
   deploy-lightsail:
     needs: [resolve-env, terraform]
-    # Deploy em develop (dev) ou main (prod) — dev também tem instância
-    # Lightsail própria (nano_3_0) desde que o scheduler passou a gerenciar
-    # o liga/desliga por destroy/create. Se a instância do ambiente resolvido
-    # estiver destruída no momento do push, o step "Check instance state" de
-    # 04_deploy_lightsail.yml já pula o deploy com warning — não falha o
-    # pipeline. Só roda se o Terraform aplicou com sucesso (não destruiu a infra).
+    # FilmBot (Lightsail) existe só em prod — dev não provisiona mais
+    # instância, IAM user do agente, DNS nem policies dedicadas de
+    # Lightsail (ver infra/lightsail_ia.tf, infra/iam_cicd.tf). Só roda se
+    # o Terraform aplicou com sucesso (não destruiu a infra).
     if: |
-      (github.ref_name == 'main' || github.ref_name == 'develop' || github.event_name == 'workflow_dispatch') &&
+      needs.resolve-env.outputs.environment == 'prod' &&
       needs.terraform.result == 'success' &&
       needs.terraform.outputs.was_destroyed != 'true'
     uses: ./.github/workflows/04_deploy_lightsail.yml
     with:
       environment: ${{ needs.resolve-env.outputs.environment }}
     secrets:
-      # Mesma lógica de seleção de secrets do job terraform acima
-      aws-assume-role-arn: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD) || github.ref_name == 'develop' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
-      aws-statefile-s3-bucket: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD) || github.ref_name == 'develop' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
-      aws-lock-dynamodb-table: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD) || github.ref_name == 'develop' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
   auto-pr-feature:
     needs: test
@@ -128,11 +125,9 @@ jobs:
 
   auto-pr-environment:
     needs: [terraform, deploy-lightsail]
-    # Espera o deploy-lightsail terminar para não abrir a PR develop → main
-    # antes do deploy do FilmBot em dev ser confirmado. "skipped" também é
-    # aceito porque deploy-lightsail é pulado de propósito quando o Terraform
-    # destruiu a infra de dev nesse push (scheduler liga/desliga da instância
-    # nano) — isso não é uma falha que deva bloquear a promoção do código.
+    # deploy-lightsail roda só em prod — em push de develop ele sempre
+    # resolve "skipped" (ver condição do job acima), o que é aceito aqui de
+    # propósito e não deve bloquear a promoção do código.
     if: |
       github.ref_name == 'develop' &&
       needs.terraform.result == 'success' &&

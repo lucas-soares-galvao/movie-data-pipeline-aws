@@ -1,5 +1,5 @@
 name: "5. Lightsail Scheduler (Liga/Desliga)"
-run-name: "Lightsail Scheduler [${{ (github.ref_name == 'develop' || github.event.schedule == '1 3 * * *') && 'DEV' || 'PROD' }}]: ${{ (github.event_name == 'workflow_dispatch' && inputs.action || ((github.event.schedule == '0 3 * * *' || github.event.schedule == '1 3 * * *') && 'stop' || 'start')) == 'start' && 'Ligar' || 'Desligar' }}"
+run-name: "Lightsail Scheduler [PROD]: ${{ (github.event_name == 'workflow_dispatch' && inputs.action || (github.event.schedule == '0 3 * * *' && 'stop' || 'start')) == 'start' && 'Ligar' || 'Desligar' }}"
 
 # =============================================================================
 # Substitui o antigo Lambda+EventBridge (infra/lightsail_scheduler.tf,
@@ -8,36 +8,26 @@ run-name: "Lightsail Scheduler [${{ (github.ref_name == 'develop' || github.even
 # nas janelas ociosas e RECRIADA do zero via Terraform, reidratada pelo
 # bootstrap de 04_deploy_lightsail.yml.
 #
-# prod: o IP estático nunca é alvo do destroy — persiste sempre, sem precisar
-#       atualizar o DNS no registro.br.
-# dev:  sem IP estático (evita cobrança residual de IP não-anexado) — o IP
-#       muda a cada start, e o registro A no Route 53 (infra/route53.tf) é
-#       atualizado automaticamente no mesmo apply que recria a instância.
+# FilmBot só existe em prod (ver infra/lightsail_ia.tf) — este workflow
+# gerencia só a conta prod. O IP estático nunca é alvo do destroy — persiste
+# sempre, sem precisar atualizar o DNS no registro.br.
 #
-# O ambiente (dev/prod) é resolvido a partir do branch selecionado em "Use
-# workflow from" ao disparar manualmente (mesmo padrão de 06_backfill.yml):
-#   - main    → prod
-#   - develop → dev
-#   - qualquer outro branch (ex.: feature/*) → falha, ver step "Resolve
-#     environment from branch and action from trigger"
-# Um evento schedule, porém, SEMPRE roda com o branch default do repositório
-# (main) — não existe cron nativo "por branch" no GitHub Actions. Por isso o
-# desligar automático de dev abaixo é resolvido pelo horário exato do cron
-# (comparando github.event.schedule), não pelo branch — mesma técnica já
-# usada para resolver a ação (start/stop) num evento schedule.
+# Disparado manualmente, o ambiente é resolvido a partir do branch
+# selecionado em "Use workflow from" (mesmo padrão de 06_backfill.yml):
+#   - main → prod
+#   - qualquer outro branch → falha, ver step "Resolve environment from
+#     branch and action from trigger"
+# Um evento schedule sempre roda com o branch default do repositório (main).
 #
-# prod: cron automático de desligar (00:00 BRT) e ligar (18:00 BRT seg-sex /
-#       08:00 BRT fim de semana) + workflow_dispatch manual (a partir de main).
-# dev:  cron automático só de DESLIGAR (00:01 BRT) — ligar continua só
-#       workflow_dispatch manual (a partir de develop).
+# Cron automático de desligar (00:00 BRT) e ligar (18:00 BRT seg-sex /
+# 08:00 BRT fim de semana) + workflow_dispatch manual (a partir de main).
 # =============================================================================
 
 on:
   schedule:
-    - cron: "0 3 * * *"    # 00:00 BRT diário         → desligar prod (destroy)
-    - cron: "1 3 * * *"    # 00:01 BRT diário         → desligar dev (destroy) — 1min de diferença só para ter uma string distinta em github.event.schedule
-    - cron: "0 21 * * 1-5" # 18:00 BRT seg-sex         → ligar prod (apply)
-    - cron: "0 11 * * 0,6" # 08:00 BRT sáb-dom (0=dom) → ligar prod (apply)
+    - cron: "0 3 * * *"    # 00:00 BRT diário         → desligar (destroy)
+    - cron: "0 21 * * 1-5" # 18:00 BRT seg-sex         → ligar (apply)
+    - cron: "0 11 * * 0,6" # 08:00 BRT sáb-dom (0=dom) → ligar (apply)
   workflow_dispatch:
     inputs:
       action:
@@ -55,9 +45,9 @@ jobs:
     runs-on: ubuntu-latest
 
     # Serializa com o job "terraform" de 02_terraform.yml (mesmo group,
-    # terraform-${env}) — evita dois processos escrevendo no mesmo state.
+    # terraform-prod) — evita dois processos escrevendo no mesmo state.
     concurrency:
-      group: terraform-${{ (github.ref_name == 'develop' || github.event.schedule == '1 3 * * *') && 'dev' || 'prod' }}
+      group: terraform-prod
       cancel-in-progress: false
 
     outputs:
@@ -75,20 +65,16 @@ jobs:
       - name: Resolve environment from branch and action from trigger
         id: resolve
         run: |
-          if [ "${{ github.event.schedule }}" = "1 3 * * *" ]; then
-            ENVIRONMENT="dev"
-          elif [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             ENVIRONMENT="prod"
-          elif [ "${{ github.ref_name }}" = "develop" ]; then
-            ENVIRONMENT="dev"
           else
-            echo "❌ Branch '${{ github.ref_name }}' inválido — dispare este workflow a partir de 'main' (prod) ou 'develop' (dev)."
+            echo "❌ Branch '${{ github.ref_name }}' inválido — FilmBot só existe em prod, dispare este workflow a partir de 'main'."
             exit 1
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             ACTION="${{ inputs.action }}"
-          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ] || [ "${{ github.event.schedule }}" = "1 3 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
             ACTION="stop"
           else
             ACTION="start"
@@ -106,26 +92,15 @@ jobs:
       - name: Select secrets for resolved environment
         id: secrets
         env:
-          ASSUME_ROLE_ARN_DEV: ${{ secrets.AWS_ASSUME_ROLE_ARN_DEV }}
           ASSUME_ROLE_ARN_PROD: ${{ secrets.AWS_ASSUME_ROLE_ARN_PROD }}
-          STATEFILE_BUCKET_DEV: ${{ secrets.AWS_STATEFILE_S3_BUCKET_DEV }}
           STATEFILE_BUCKET_PROD: ${{ secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
-          LOCK_TABLE_DEV: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_DEV }}
           LOCK_TABLE_PROD: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
-          FILMBOT_SECRET_ARN_DEV: ${{ secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
           FILMBOT_SECRET_ARN_PROD: ${{ secrets.AWS_FILMBOT_SECRET_ARN_PROD }}
         run: |
-          if [ "${{ steps.resolve.outputs.environment }}" = "dev" ]; then
-            echo "assume-role-arn=$ASSUME_ROLE_ARN_DEV" >> "$GITHUB_OUTPUT"
-            echo "statefile-bucket=$STATEFILE_BUCKET_DEV" >> "$GITHUB_OUTPUT"
-            echo "lock-table=$LOCK_TABLE_DEV" >> "$GITHUB_OUTPUT"
-            echo "filmbot-secret-arn=$FILMBOT_SECRET_ARN_DEV" >> "$GITHUB_OUTPUT"
-          else
-            echo "assume-role-arn=$ASSUME_ROLE_ARN_PROD" >> "$GITHUB_OUTPUT"
-            echo "statefile-bucket=$STATEFILE_BUCKET_PROD" >> "$GITHUB_OUTPUT"
-            echo "lock-table=$LOCK_TABLE_PROD" >> "$GITHUB_OUTPUT"
-            echo "filmbot-secret-arn=$FILMBOT_SECRET_ARN_PROD" >> "$GITHUB_OUTPUT"
-          fi
+          echo "assume-role-arn=$ASSUME_ROLE_ARN_PROD" >> "$GITHUB_OUTPUT"
+          echo "statefile-bucket=$STATEFILE_BUCKET_PROD" >> "$GITHUB_OUTPUT"
+          echo "lock-table=$LOCK_TABLE_PROD" >> "$GITHUB_OUTPUT"
+          echo "filmbot-secret-arn=$FILMBOT_SECRET_ARN_PROD" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -153,15 +128,10 @@ jobs:
         run: |
           cd infra
           TARGETS=(
+            -target=aws_lightsail_static_ip_attachment.filmbot
             -target=aws_lightsail_instance_public_ports.filmbot
             -target=aws_lightsail_instance.filmbot
           )
-          # Static IP attachment só existe (e só precisa ser destruído antes da
-          # instância) em prod — dev não tem esse recurso (ver
-          # local.lightsail_static_ip_enabled em infra/locals.tf).
-          if [ "${{ steps.resolve.outputs.environment }}" = "prod" ]; then
-            TARGETS=(-target=aws_lightsail_static_ip_attachment.filmbot "${TARGETS[@]}")
-          fi
           terraform destroy -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
@@ -178,15 +148,8 @@ jobs:
             -target=aws_lightsail_key_pair.filmbot
             -target=aws_lightsail_instance.filmbot
             -target=aws_lightsail_instance_public_ports.filmbot
+            -target=aws_lightsail_static_ip_attachment.filmbot
           )
-          # prod reanexa o static IP; dev atualiza o registro A no Route 53
-          # com o IP novo (infra/route53.tf) — cada ambiente só tem um dos dois
-          # recursos (count condicionado por ambiente).
-          if [ "${{ steps.resolve.outputs.environment }}" = "prod" ]; then
-            TARGETS+=(-target=aws_lightsail_static_ip_attachment.filmbot)
-          else
-            TARGETS+=(-target=aws_route53_record.filmbot_dev)
-          fi
           terraform apply -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
@@ -235,6 +198,6 @@ jobs:
     with:
       environment: ${{ needs.lightsail-schedule.outputs.environment }}
     secrets:
-      aws-assume-role-arn: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_ASSUME_ROLE_ARN_DEV || secrets.AWS_ASSUME_ROLE_ARN_PROD }}
-      aws-statefile-s3-bucket: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_STATEFILE_S3_BUCKET_DEV || secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
-      aws-lock-dynamodb-table: ${{ needs.lightsail-schedule.outputs.environment == 'dev' && secrets.AWS_LOCK_DYNAMODB_TABLE_DEV || secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
+      aws-assume-role-arn: ${{ secrets.AWS_ASSUME_ROLE_ARN_PROD }}
+      aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
+      aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}

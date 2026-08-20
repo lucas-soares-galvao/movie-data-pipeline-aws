@@ -236,10 +236,11 @@ jobs:
           sed -i 's/REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL/${{ secrets.notification-email }}/g' \
             infra/envs/${{ inputs.environment }}/terraform.tfvars
 
-      # Bootstrap: cria e anexa as 7 IAM policies do CI/CD ANTES do plan/apply
-      # principal, resolvendo o problema de bootstrap (a role precisa das policies
-      # para gerenciar os recursos, mas as policies são criadas pelo mesmo Terraform).
-      # Idempotente — se as policies já existem, é um no-op.
+      # Bootstrap: cria e anexa as IAM policies do CI/CD ANTES do plan/apply
+      # principal (7 em prod, 6 em dev — cicd_lightsail só existe em prod, ver
+      # infra/iam_cicd.tf), resolvendo o problema de bootstrap (a role precisa
+      # das policies para gerenciar os recursos, mas as policies são criadas
+      # pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op.
       - name: Bootstrap CICD IAM Policies
         if: steps.read-destroy-config.outputs.destroy != 'true'
         run: |
@@ -262,8 +263,6 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -target=aws_iam_policy.cicd_ssm \
             -target=aws_iam_role_policy_attachment.cicd_ssm \
-            -target=aws_iam_policy.cicd_route53 \
-            -target=aws_iam_role_policy_attachment.cicd_route53 \
             -auto-approve
           ROLE_NAME="${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
           EXPECTED_POLICIES=(
@@ -272,10 +271,15 @@ jobs:
             "${{ steps.project.outputs.cicd_policy_prefix }}-iam-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-compute-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-observability-${{ inputs.environment }}"
-            "${{ steps.project.outputs.cicd_policy_prefix }}-lightsail-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-ssm-${{ inputs.environment }}"
-            "${{ steps.project.outputs.cicd_policy_prefix }}-route53-${{ inputs.environment }}"
           )
+          # cicd_lightsail só é criada/anexada em prod (count condicionado a
+          # var.env em infra/iam_cicd.tf, já que dev não provisiona nenhum
+          # recurso Lightsail) — verificá-la em dev travaria o polling até o
+          # timeout de 60s.
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            EXPECTED_POLICIES+=("${{ steps.project.outputs.cicd_policy_prefix }}-lightsail-${{ inputs.environment }}")
+          fi
 
           MAX_WAIT=60
           POLL_INTERVAL=5

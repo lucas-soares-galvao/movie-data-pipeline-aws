@@ -115,15 +115,14 @@ proj-eng-dados-filmes-aws/
 │   ├── s3.tf                       # Buckets SOR, SOT, SPEC, DQ, AUX, TEMP
 │   ├── iam_roles.tf                # Roles para Lambda e Glue
 │   ├── iam_policies.tf             # Policies com privilégio mínimo
-│   ├── iam_cicd.tf                 # 8 policies least-privilege da role GitHub Actions + sync
+│   ├── iam_cicd.tf                 # policies least-privilege da role GitHub Actions (7 em prod, 6 em dev) + sync
 │   ├── lambda_api.tf               # Função Lambda + package zip
 │   ├── glue_etl.tf                 # Glue Job ETL + upload de scripts no S3
 │   ├── glue_details.tf             # Glue Job Details + upload de scripts no S3
 │   ├── glue_agg.tf                 # Glue Job AGG + aws_glue_trigger SCHEDULED (sáb/dom 08:00 BRT) + upload de scripts no S3
 │   ├── glue_data_quality.tf        # Glue Job Data Quality + upload de scripts
 │   ├── glue_catalog.tf             # Database e tabelas no Glue Catalog
-│   ├── lightsail_ia.tf             # Instância Lightsail + IAM user filmbot-agent
-│   ├── route53.tf                  # Hosted zone + registro A de filmbot-dev.lsgalvao.com.br (só dev)
+│   ├── lightsail_ia.tf             # Instância Lightsail + IAM user filmbot-agent (só prod)
 │   ├── eventbridge.tf              # Regras EventBridge (semanal, semanal de changes, semanal de rotation, mensal)
 │   ├── sns_topics.tf               # Tópicos SNS + subscrições de e-mail
 │   ├── cloudwatch_alarms.tf        # Alarmes Lambda e EventBridge
@@ -221,9 +220,9 @@ proj-eng-dados-filmes-aws/
 
 ```
 push em feature/*  →  test  →  auto-pr-feature (feature/* → develop)
-push em develop    →  terraform (dev)  →  deploy-lightsail (dev, se a instância estiver ligada) + auto-pr-environment (develop → main), em paralelo — os dois só dependem de `terraform`, não um do outro
-push em main       →  terraform (prod)  →  deploy-lightsail (prod)
-workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail (mesmo ambiente)
+push em develop    →  terraform (dev)  →  deploy-lightsail sempre "skipped" (FilmBot não existe em dev) + auto-pr-environment (develop → main), em paralelo — os dois só dependem de `terraform`, não um do outro
+push em main       →  terraform (prod)  →  deploy-lightsail (prod, se a instância estiver ligada)
+workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail só roda se o ambiente escolhido for prod
 ```
 
 **Secrets usados por ambiente (job `terraform`):**
@@ -273,7 +272,7 @@ Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-la
 10. **terraform fmt -check** (informativo)
 11. **Checkov** — security/compliance scan (informativo)
 12. Injeta o e-mail de notificação (`notification-email`) no `.tfvars`
-13. **Bootstrap das IAM policies do CI/CD** (se não for destroy) — `terraform apply -target` nas 8 policies/attachments, depois faz polling em `aws iam list-attached-role-policies` (a cada 5s, timeout 60s) até confirmar que todas estão attachadas
+13. **Bootstrap das IAM policies do CI/CD** (se não for destroy) — `terraform apply -target` nas policies/attachments (7 em prod, 6 em dev — `cicd_lightsail` só existe em prod), depois faz polling em `aws iam list-attached-role-policies` (a cada 5s, timeout 60s) até confirmar que todas estão attachadas
 14. Se `destroy_config[env] == true` → `terraform destroy`
 15. Se não → `terraform plan -out=<env>.plan` → Infracost (setup, breakdown no Job Summary, comentário no PR se o evento for `pull_request`) → `terraform apply <env>.plan`
 
@@ -295,7 +294,7 @@ Valida `terraform validate` (sem backend) antes de criar o PR.
 
 ### `04_deploy_lightsail.yml` — Deploy do App Configurado (reutilizável)
 
-**Inputs:** `environment` (dev | prod)  
+**Inputs:** `environment` (mantido na interface do `workflow_call`, mas na prática só é chamado com `prod` — FilmBot não existe em dev)
 **Secrets:** `aws-assume-role-arn`, `aws-statefile-s3-bucket`, `aws-lock-dynamodb-table`
 
 **Etapas:**
@@ -309,7 +308,7 @@ Valida `terraform validate` (sem backend) antes de criar o PR.
 8. Deploy da aplicação via SSH: `git clone` (primeiro deploy, URL derivada de `${{ github.repository }}`) ou `git pull` (atualizações), instala dependências, copia o service `<app_name>.service` + `caddy.service` e reinicia via `systemd`. `app_name`/`app_folder` são passados para dentro do heredoc SSH como variáveis de ambiente (mesmo padrão já usado para `BRANCH`)
 9. Health check via `curl` no IP público
 
-**Mapeamento de branch por ambiente:** `dev → develop`, `prod → main`
+**Branch deployada:** sempre `main` (fixo no workflow — só prod chama este job)
 
 Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=lightsail_ia`, `app_display_name=FilmBot` — trocar esses valores redireciona o deploy para outro app, mas os recursos AWS (IAM user, instância Lightsail) continuam nomeados a partir de `filmbot` hardcoded no lado Terraform (fora de escopo da genericização atual).
 
@@ -317,21 +316,21 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 ### `05_lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
 
-Substitui o antigo `lightsail_scheduler.tf` (Lambda + EventBridge, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped`, então parar a instância não economia nada (confirmado via fatura AWS real). Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, em vez de só ligar/desligar.
+Exclusivo de prod (FilmBot não existe em dev). Substitui o antigo `lightsail_scheduler.tf` (Lambda + EventBridge, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped`, então parar a instância não economia nada (confirmado via fatura AWS real). Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, em vez de só ligar/desligar.
 
 **Triggers:**
-- `schedule` (cron): prod desliga `00:00 BRT` diário e liga `18:00 BRT` seg-sex + `08:00 BRT` sáb-dom; dev só desliga `00:01 BRT` diário (sem cron de ligar).
-- `workflow_dispatch` (`environment`: dev|prod, `action`: start|stop) — único jeito de ligar dev.
+- `schedule` (cron): desliga `00:00 BRT` diário e liga `18:00 BRT` seg-sex + `08:00 BRT` sáb-dom.
+- `workflow_dispatch` (`action`: start|stop), disparado a partir de `main`.
 
-**Etapas:** resolve ambiente/ação pelo trigger → lê `infra/config/project.json` → seleciona secrets `_DEV`/`_PROD` conforme o ambiente resolvido → autenticação OIDC → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `02_terraform.yml`).
+**Etapas:** resolve ambiente (sempre `prod`, falha se disparado de outro branch)/ação pelo trigger → lê `infra/config/project.json` → autenticação OIDC (secrets `_PROD`) → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `02_terraform.yml`).
 
-`aws_lightsail_static_ip.filmbot` só existe em prod (`local.lightsail_static_ip_enabled`) e **nunca** entra no `-target` — o IP estático nunca é destruído, então o DNS de `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez. Dev não tem static IP (evita cobrança residual de IP não-anexado) — o IP muda a cada `start`, e quem entra no `-target` é `aws_route53_record.filmbot_dev` (`infra/route53.tf`), que reflete o IP novo a cada ciclo numa hosted zone do Route 53 delegada só para o subdomínio `filmbot-dev.lsgalvao.com.br` (registro NS cadastrado manualmente uma única vez no registro.br, fora do Terraform).
+`aws_lightsail_static_ip.filmbot` (`local.lightsail_prod_enabled`) **nunca** entra no `-target` — o IP estático nunca é destruído, então o DNS de `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
 
 Job `deploy-app` encadeia `04_deploy_lightsail.yml` (via `uses:`) só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot).
 
-**Concorrência:** `concurrency.group: terraform-${ambiente}` — mesmo group usado pelo job `terraform` de `02_terraform.yml`, serializa com qualquer apply/destroy completo disparado por push.
+**Concorrência:** `concurrency.group: terraform-prod` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para prod, serializa com qualquer apply/destroy completo disparado por push em `main`.
 
-**Comportamento a saber:** como `lightsail_enabled` permanece `true` sempre (o liga/desliga é feito via `-target`, não por essa variável), um `terraform apply` completo disparado por um push normal em `main`/`develop` recria a instância se ela estiver destruída no momento — um deploy de código pode religar o servidor fora da janela agendada.
+**Comportamento a saber:** como `lightsail_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável), um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento — um deploy de código pode religar o servidor fora da janela agendada.
 
 ---
 
@@ -382,15 +381,14 @@ locals.envs.s3_bucket_sor      = "lsg-sa-east-1-bucket-sor-dev" / "...-prod"
 | `s3.tf` | 6 buckets: SOR, SOT, SPEC, DQ, AUX (código), TEMP (Athena) |
 | `iam_roles.tf` | Role para Lambda, Role para Glue |
 | `iam_policies.tf` | Policies de mínimo privilégio por serviço |
-| `iam_cicd.tf` | 8 policies least-privilege da role GitHub Actions (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
+| `iam_cicd.tf` | Policies least-privilege da role GitHub Actions — 7 em prod, 6 em dev (`cicd_lightsail` só existe em prod) — (nome/prefixo lidos de `infra/config/project.json`, default `lsg-github-actions-{env}`) + `terraform_data` de sincronização |
 | `lambda_api.tf` | Lambda function + zip do pacote Python |
 | `glue_etl.tf` | Glue Job ETL + upload de scripts/dependências no S3 AUX |
 | `glue_details.tf` | Glue Job Details + upload de scripts no S3 AUX |
 | `glue_agg.tf` | Glue Job AGG + `aws_glue_trigger` nativo (`SCHEDULED`, sábado e domingo 08:00 BRT, sem EventBridge) + upload de scripts no S3 AUX |
 | `glue_data_quality.tf` | Glue Job DQ + upload de scripts no S3 AUX |
 | `glue_catalog.tf` | Databases e tabelas no Glue Catalog |
-| `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent |
-| `route53.tf` | Hosted zone + registro A de `filmbot-dev.lsgalvao.com.br` — só dev, sem static IP (ver `recursos.md`) |
+| `lightsail_ia.tf` | Instância Lightsail + IAM user filmbot-agent — só prod (`local.lightsail_prod_enabled`, ver `recursos.md`) |
 | `eventbridge.tf` | Regras de schedule EventBridge (semanal, semanal de changes, semanal de rotation, mensal) → Lambda |
 | `sqs.tf` | Fila SQS dead-letter para EventBridge |
 | `shared_src.tf` | Build e upload do wheel compartilhado para S3 AUX |

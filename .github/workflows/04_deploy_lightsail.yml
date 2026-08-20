@@ -3,17 +3,15 @@ name: "4. Deploy Lightsail (Reusable)"
 # =============================================================================
 # Deploy do app configurado (nome/pasta em infra/config/project.json) na
 # instância AWS Lightsail. Chamado pelo 00_pipeline.yml apenas em prod, após
-# o Terraform aplicar com sucesso.
+# o Terraform aplicar com sucesso — FilmBot não existe em dev (ver
+# infra/lightsail_ia.tf).
 #
 # Etapas principais:
 #   1. Lê os outputs do Terraform (IP público, chave SSH, credenciais AWS do agente)
 #   2. Aguarda a instância ficar disponível via SSH (até 30 tentativas, 10s cada)
 #   3. Cria .env com credenciais na instância (sem passar por /tmp)
-#   4. Clona ou atualiza o repositório e reinicia o serviço systemd do app
-#
-# Ambientes:
-#   dev  → deploy da branch "develop"
-#   prod → deploy da branch "main"
+#   4. Clona ou atualiza o repositório (branch "main") e reinicia o serviço
+#      systemd do app
 # =============================================================================
 
 on:
@@ -188,13 +186,13 @@ jobs:
             "test -s /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env" || { echo "❌ Arquivo .env não foi criado na instância"; exit 1; }
           echo "✅ Arquivo .env criado com sucesso na instância"
 
-      # Domínio do Caddy por ambiente — dev e prod servem em subdomínios
-      # separados na mesma instância física de código (Caddyfile lê
-      # {$FILMBOT_DOMAIN} do ambiente do processo via EnvironmentFile=).
+      # Domínio fixo — este workflow só é chamado para prod (ver
+      # 00_pipeline.yml). Caddyfile lê {$FILMBOT_DOMAIN} do ambiente do
+      # processo via EnvironmentFile=.
       - name: Create .env.caddy file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          DOMAIN=${{ inputs.environment == 'dev' && 'filmbot-dev.lsgalvao.com.br' || 'filmbot.lsgalvao.com.br' }}
+          DOMAIN="filmbot.lsgalvao.com.br"
           printf 'FILMBOT_DOMAIN=%s\n' "$DOMAIN" \
             | ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }} && sudo tee /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy > /dev/null && sudo chmod 600 /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy"
@@ -203,8 +201,7 @@ jobs:
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          # dev → clona/atualiza branch "develop" | prod → branch "main"
-          DEPLOY_BRANCH=${{ inputs.environment == 'dev' && 'develop' || 'main' }}
+          DEPLOY_BRANCH="main"
           ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
             BRANCH="$DEPLOY_BRANCH" \
             APP_NAME="${{ steps.project.outputs.app_name }}" \
@@ -310,7 +307,7 @@ jobs:
       - name: Show app URL
         if: steps.tf.outputs.lightsail_enabled == 'true'
         run: |
-          DOMAIN=${{ inputs.environment == 'dev' && 'filmbot-dev.lsgalvao.com.br' || 'filmbot.lsgalvao.com.br' }}
+          DOMAIN="filmbot.lsgalvao.com.br"
           echo "🔗 ${{ steps.project.outputs.app_display_name }}: https://$DOMAIN"
           echo "## 🔗 ${{ steps.project.outputs.app_display_name }}" >> $GITHUB_STEP_SUMMARY
           echo "https://$DOMAIN" >> $GITHUB_STEP_SUMMARY

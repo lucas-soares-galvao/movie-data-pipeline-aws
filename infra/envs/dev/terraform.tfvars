@@ -4,12 +4,12 @@
 
 env = "dev"
 
-# Instância Lightsail em dev: bundle mais barato (nano_3_0, 512MB), ligada só
-# manualmente via workflow_dispatch em 05_lightsail_scheduler.yml — nunca por
-# cron. Serve em filmbot-dev.lsgalvao.com.br (subdomínio separado de prod).
-lightsail_enabled           = true
-lightsail_bundle_id         = "nano_3_0"
-lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"]
+# FilmBot (Lightsail) não existe em dev — só prod tem instância (ver
+# local.lightsail_prod_enabled em infra/locals.tf). O valor abaixo é
+# redundante por construção (o "&& env == 'prod'" no código já zera tudo em
+# dev), mantido só para documentar a intenção aqui também.
+lightsail_enabled           = false
+lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"] # var sem default — precisa de valor mesmo não usado
 
 # Retencao de logs curta no dev para economizar custo.
 # Em dev os logs nao precisam durar; investigamos em tempo real.
