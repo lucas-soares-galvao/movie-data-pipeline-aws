@@ -304,6 +304,7 @@ resource "aws_iam_policy" "iam_cicd" {
           "iam:TagUser",
           "iam:UntagUser",
           "iam:ListUserTags",
+          "iam:ListGroupsForUser",
           "iam:ListUserPolicies",
           "iam:ListAttachedUserPolicies",
           "iam:AttachUserPolicy",
