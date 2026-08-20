@@ -243,18 +243,35 @@ jobs:
       # pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op.
       #
       # Os 6 -target de lightsail_agent/filmbot_secrets_manager/lightsail_filmbot
-      # abaixo não são bootstrap de CI/CD — foram adicionados porque esses
-      # resources ganharam `count = local.lightsail_prod_enabled ? 1 : 0` (antes
-      # sem count), e o Terraform passou a tratar isso como um move implícito de
-      # endereço (de "recurso.nome" pra "recurso.nome[0]"). Com -target, ele exige
-      # que TODA instância com move pendente no state esteja coberta, senão recusa
-      # o plano inteiro — daí precisar listá-los aqui mesmo não sendo policies de
-      # CI/CD. Uma vez que este apply rodar e consolidar o move no state de prod,
-      # esses 6 targets viram no-op (mas não fazem mal continuar aqui).
+      # (LIGHTSAIL_MOVE_TARGETS, dentro do run: abaixo) não são bootstrap de
+      # CI/CD — foram adicionados porque esses resources ganharam
+      # `count = local.lightsail_prod_enabled ? 1 : 0` (antes sem count), e o
+      # Terraform passou a tratar isso como um move implícito de endereço (de
+      # "recurso.nome" pra "recurso.nome[0]") só em PROD, onde local.lightsail_prod_enabled
+      # é true e o state já tinha esses recursos no endereço antigo. Com -target,
+      # o Terraform exige que TODA instância com move pendente esteja coberta,
+      # senão recusa o plano inteiro. São condicionados a environment == prod:
+      # em dev esses resources têm count=0 (FilmBot não existe em dev), então
+      # incluí-los como -target lá faria o bootstrap tentar DESTRUIR esses
+      # recursos ali mesmo — na mesma chamada que atualiza a policy iam_cicd,
+      # sem ordem garantida entre os dois. Uma vez que este apply rodar em prod
+      # e consolidar o move no state, esses 6 targets viram no-op ali também
+      # (mas não fazem mal continuar).
       - name: Bootstrap CICD IAM Policies
         if: steps.read-destroy-config.outputs.destroy != 'true'
         run: |
           cd infra
+          # Os 6 resources de lightsail_agent/filmbot_secrets_manager/lightsail_filmbot
+          # só têm o move de endereço pendente em prod (só lá local.lightsail_prod_enabled
+          # é true e o state já tinha esses recursos no endereço antigo). Incluí-los
+          # como -target em dev faria o bootstrap tentar DESTRUIR esses recursos ali
+          # mesmo (count=0 em dev), na mesma chamada que atualiza a policy iam_cicd —
+          # sem ordem garantida entre os dois, arriscando um AccessDenied por falta de
+          # propagação da permissão nova antes do destroy.
+          LIGHTSAIL_MOVE_TARGETS=""
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            LIGHTSAIL_MOVE_TARGETS="-target=aws_cloudwatch_log_group.lightsail_filmbot -target=aws_iam_access_key.lightsail_agent -target=aws_iam_policy.lightsail_agent_policy -target=aws_iam_user.lightsail_agent -target=aws_iam_user_policy.filmbot_secrets_manager -target=aws_iam_user_policy_attachment.lightsail_agent"
+          fi
           terraform apply -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
@@ -273,12 +290,7 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -target=aws_iam_policy.cicd_ssm \
             -target=aws_iam_role_policy_attachment.cicd_ssm \
-            -target=aws_cloudwatch_log_group.lightsail_filmbot \
-            -target=aws_iam_access_key.lightsail_agent \
-            -target=aws_iam_policy.lightsail_agent_policy \
-            -target=aws_iam_user.lightsail_agent \
-            -target=aws_iam_user_policy.filmbot_secrets_manager \
-            -target=aws_iam_user_policy_attachment.lightsail_agent \
+            $LIGHTSAIL_MOVE_TARGETS \
             -auto-approve
           ROLE_NAME="${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
           EXPECTED_POLICIES=(
