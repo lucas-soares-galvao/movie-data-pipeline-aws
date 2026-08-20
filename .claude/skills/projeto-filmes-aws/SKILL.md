@@ -226,7 +226,7 @@ discover → ETL → Details). Regras EventBridge: `lambda_api_movie_rotation_we
 
 ## Segurança e Observabilidade
 
-- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 8 policies scoped a `tmdb-*`, `lsg-sa-east-1-bucket-*` e `route53:hostedzone/*`); `glue_details_role`, `glue_etl_role` e a role de backfill também têm `translate:TranslateText` (fallback de tradução via AWS Translate — `Resource = "*"`, AWS não restringe esse action por recurso)
+- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 7 policies em prod/6 em dev scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`; a de Lightsail só existe em prod, FilmBot não existe em dev); `glue_details_role`, `glue_etl_role` e a role de backfill também têm `translate:TranslateText` (fallback de tradução via AWS Translate — `Resource = "*"`, AWS não restringe esse action por recurso)
 - **Secrets Manager**: secret unificado (`filmbot_secret_arn`) com `tmdb_api_key`, `llm_api_key` (LLM do FilmBot) e `filmbot_password`; `glue_details` recebe esse ARN como `TMDB_SECRET_ARN`
 - **CloudWatch Alarms**: Alarmes configurados para cada etapa do pipeline, com notificações por e-mail via SNS
 - **Glue DQ CloudWatch Metrics**: `enableDataQualityCloudWatchMetrics: True` no job de DQ

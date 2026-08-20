@@ -2,12 +2,14 @@
 # e o IAM User com política mínima para que o app acesse Athena, S3 e Glue.
 
 resource "aws_iam_user" "lightsail_agent" {
+  count      = local.lightsail_prod_enabled ? 1 : 0
   name       = "${local.tmdb_prefix}-filmbot-agent-${var.env}"
   tags       = merge(local.default_resource_tags, { Component = "lightsail_ia" })
   depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_policy" "lightsail_agent_policy" {
+  count       = local.lightsail_prod_enabled ? 1 : 0
   name        = "${local.tmdb_prefix}-filmbot-agent-policy-${var.env}"
   description = "Permissões mínimas para o agente IA consultar Athena, S3 e Glue"
 
@@ -75,7 +77,7 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           "logs:PutLogEvents",
           "logs:DescribeLogStreams",
         ]
-        Resource = "${aws_cloudwatch_log_group.lightsail_filmbot.arn}:*"
+        Resource = "${aws_cloudwatch_log_group.lightsail_filmbot[0].arn}:*"
       },
     ]
   })
@@ -84,23 +86,25 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
 }
 
 resource "aws_iam_user_policy_attachment" "lightsail_agent" {
-  user       = aws_iam_user.lightsail_agent.name
-  policy_arn = aws_iam_policy.lightsail_agent_policy.arn
+  count      = local.lightsail_prod_enabled ? 1 : 0
+  user       = aws_iam_user.lightsail_agent[0].name
+  policy_arn = aws_iam_policy.lightsail_agent_policy[0].arn
 }
 
 resource "aws_iam_access_key" "lightsail_agent" {
-  user = aws_iam_user.lightsail_agent.name
+  count = local.lightsail_prod_enabled ? 1 : 0
+  user  = aws_iam_user.lightsail_agent[0].name
 }
 
 resource "aws_lightsail_key_pair" "filmbot" {
-  count    = var.lightsail_enabled ? 1 : 0
+  count    = local.lightsail_prod_enabled ? 1 : 0
   provider = aws.lightsail
   name     = "${local.tmdb_prefix}-filmbot-key-${var.env}"
   tags     = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
 resource "aws_lightsail_instance" "filmbot" {
-  count             = var.lightsail_enabled ? 1 : 0
+  count             = local.lightsail_prod_enabled ? 1 : 0
   provider          = aws.lightsail
   name              = local.envs.lightsail_instance_name
   availability_zone = "us-east-1a"
@@ -111,7 +115,7 @@ resource "aws_lightsail_instance" "filmbot" {
 }
 
 resource "aws_lightsail_instance_public_ports" "filmbot" {
-  count         = var.lightsail_enabled ? 1 : 0
+  count         = local.lightsail_prod_enabled ? 1 : 0
   provider      = aws.lightsail
   instance_name = aws_lightsail_instance.filmbot[0].name
 
@@ -138,28 +142,23 @@ resource "aws_lightsail_instance_public_ports" "filmbot" {
 }
 
 resource "aws_lightsail_static_ip" "filmbot" {
-  count    = local.lightsail_static_ip_enabled ? 1 : 0
+  count    = local.lightsail_prod_enabled ? 1 : 0
   provider = aws.lightsail
   name     = "${local.tmdb_prefix}-filmbot-static-ip-${var.env}"
 }
 
 resource "aws_lightsail_static_ip_attachment" "filmbot" {
-  count          = local.lightsail_static_ip_enabled ? 1 : 0
+  count          = local.lightsail_prod_enabled ? 1 : 0
   provider       = aws.lightsail
   static_ip_name = aws_lightsail_static_ip.filmbot[0].name
   instance_name  = aws_lightsail_instance.filmbot[0].name
 }
 
-# Prod: IP fixo do static IP. Dev: IP dinâmico da própria instância (sem static
-# IP — ver local.lightsail_static_ip_enabled), refletido no Route 53 a cada
-# apply (infra/route53.tf).
+# FilmBot só existe em prod, sempre com IP fixo (static IP) — ver
+# local.lightsail_prod_enabled em infra/locals.tf.
 output "lightsail_public_ip" {
-  description = "IP público da instância Lightsail (fixo em prod, dinâmico em dev)"
-  value = local.lightsail_static_ip_enabled ? (
-    length(aws_lightsail_static_ip.filmbot) > 0 ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
-    ) : (
-    length(aws_lightsail_instance.filmbot) > 0 ? aws_lightsail_instance.filmbot[0].public_ip_address : ""
-  )
+  description = "IP público (fixo) da instância Lightsail"
+  value       = length(aws_lightsail_static_ip.filmbot) > 0 ? aws_lightsail_static_ip.filmbot[0].ip_address : ""
 }
 
 output "lightsail_url" {
@@ -175,13 +174,13 @@ output "lightsail_private_key" {
 
 output "lightsail_agent_access_key_id" {
   description = "AWS_ACCESS_KEY_ID para o arquivo .env na instância"
-  value       = aws_iam_access_key.lightsail_agent.id
+  value       = length(aws_iam_access_key.lightsail_agent) > 0 ? aws_iam_access_key.lightsail_agent[0].id : ""
   sensitive   = true
 }
 
 output "lightsail_agent_secret_access_key" {
   description = "AWS_SECRET_ACCESS_KEY para o arquivo .env na instância"
-  value       = aws_iam_access_key.lightsail_agent.secret
+  value       = length(aws_iam_access_key.lightsail_agent) > 0 ? aws_iam_access_key.lightsail_agent[0].secret : ""
   sensitive   = true
 }
 
@@ -192,7 +191,7 @@ output "lightsail_instance_name" {
 
 output "lightsail_cloudwatch_log_group" {
   description = "CLOUDWATCH_LOG_GROUP para o arquivo .env na instância"
-  value       = aws_cloudwatch_log_group.lightsail_filmbot.name
+  value       = length(aws_cloudwatch_log_group.lightsail_filmbot) > 0 ? aws_cloudwatch_log_group.lightsail_filmbot[0].name : ""
 }
 
 output "lightsail_filmbot_secret_arn" {

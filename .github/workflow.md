@@ -11,7 +11,7 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 
 Além do fluxo automático acima, dois workflows são independentes do `00_pipeline.yml`:
 
-- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail para economizar custo. Roda por `schedule` (cron): prod liga e desliga automaticamente, dev só desliga automaticamente (ligar dev é sempre manual). Também aceita `workflow_dispatch` manual (prod ou dev).
+- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail de prod para economizar custo (FilmBot não existe em dev). Roda por `schedule` (cron): liga e desliga automaticamente. Também aceita `workflow_dispatch` manual.
 - `06_backfill.yml` — disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
 
 ---
@@ -29,8 +29,8 @@ flowchart TD
     TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
     TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
 
-    CRON["schedule (cron: liga/desliga prod, só desliga dev)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
-    MANUAL2["workflow_dispatch manual (prod ou dev)"] --> SCHED
+    CRON["schedule (cron: liga/desliga prod)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
+    MANUAL2["workflow_dispatch manual (prod)"] --> SCHED
     SCHED -->|action=start| DEPLOY2["04_deploy_lightsail.yml\nReidrata a instância"]
 
     MANUAL["workflow_dispatch manual"] --> BACKFILL["06_backfill.yml\nBackfill sob demanda (ambiente por branch)"]
@@ -43,11 +43,11 @@ flowchart TD
 | Evento | Branch | Workflows executados |
 |---|---|---|
 | `push` | `feature/*` | test → PR feature→develop |
-| `push` | `develop` | terraform (dev) → deploy (dev, se a instância estiver ligada) → PR develop→main |
-| `push` | `main` | terraform (prod) → deploy (prod) |
-| `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy no mesmo ambiente |
-| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) e desliga automaticamente a de dev (cron BRT, sem cron de ligar) — independente do `00_pipeline.yml` |
-| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual (prod ou dev, `action=start`/`stop`) — único jeito de ligar dev |
+| `push` | `develop` | terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
+| `push` | `main` | terraform (prod) → deploy (prod, se a instância estiver ligada) |
+| `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy só se ambiente resolvido for prod |
+| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
+| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual de prod (`action=start`/`stop`) |
 | `workflow_dispatch` (`06_backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
 
 ---
@@ -135,20 +135,20 @@ Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fm
 
 ### `04_deploy_lightsail.yml` — Deploy da Aplicação
 
-Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml`, o job `deploy-lightsail` executa em `develop` **e** `main` (ou `workflow_dispatch` em qualquer ambiente) — dev também tem instância própria (bundle `nano_3_0`, mais barato). Se a instância do ambiente resolvido estiver destruída no momento do push (fora da janela agendada em prod, ou nunca ligada manualmente em dev), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline — um push em `develop` só atualiza de verdade uma instância de dev que já estava ligada. Também é chamado por `05_lightsail_scheduler.yml` (job `deploy-app`) para `prod` **e** `dev`, sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (manual em dev, agendado ou manual em prod).
+Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml`, o job `deploy-lightsail` executa só quando o ambiente resolvido é `prod` — FilmBot não existe em dev (ver `infra/lightsail_ia.tf`), então um push em `develop` sempre resolve esse job como "skipped". Se a instância de prod estiver destruída no momento do push (fora da janela agendada), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline. Também é chamado por `05_lightsail_scheduler.yml` (job `deploy-app`), sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (agendado ou manual).
 
-**Entrada:** `environment` (`dev` ou `prod`, dependendo de quem chama)
+**Entrada:** `environment` (mantido na interface do `workflow_call` por estabilidade, mas na prática só é chamado com `prod`)
 
 **Etapas principais:**
 
 1. Lê `infra/config/project.json` via `jq` — `app_name`, `app_display_name`, `app_folder`, `statefile_key` (por padrão `filmbot`/`FilmBot`/`lightsail_ia`)
 2. Lê outputs do Terraform (IP, chave SSH, credenciais AWS do agente, nome da instância, log group do CloudWatch, ARN do Secrets Manager, `ATHENA_S3_OUTPUT`/`GLUE_DATABASE`/`SPEC_TABLE`) — valida que nenhum output crítico está vazio
-3. Verifica o estado da instância via `aws lightsail get-instance` — se não estiver `running` (ex: destruída pelo scheduler, fora da janela agendada em prod ou nunca ligada manualmente em dev), **pula os steps de deploy** com warning (mas ainda exibe a URL do app no final)
+3. Verifica o estado da instância via `aws lightsail get-instance` — se não estiver `running` (ex: destruída pelo scheduler, fora da janela agendada), **pula os steps de deploy** com warning (mas ainda exibe a URL do app no final)
 4. Configura SSH com retry (até 30 tentativas, intervalo de 10s) — falha o pipeline se SSH não ficar disponível em 5 minutos
 5. Cria `.env` na instância com variáveis de ambiente da aplicação (credenciais AWS, ARN do Secrets Manager, Athena, Glue, CloudWatch) — todas lidas dos outputs do Terraform, nenhuma hardcoded no workflow — verifica via SSH se o arquivo foi criado
-6. Cria `.env.caddy` na instância com `FILMBOT_DOMAIN` — `filmbot.lsgalvao.com.br` em prod, `filmbot-dev.lsgalvao.com.br` em dev (resolvido por `inputs.environment`, não por output do Terraform). O `Caddyfile` lê essa variável via `{$FILMBOT_DOMAIN}` (`EnvironmentFile=.env.caddy` no `caddy.service`) — sem esse arquivo o Caddy não sobe
-7. Deploy por SSH (`app_name`/`app_folder` passados como variáveis de ambiente da sessão SSH):
-   - Cria um swap de 1GB (`fallocate`/`mkswap`/`swapon`, idempotente) antes de instalar dependências — necessário no bundle `nano_3_0` (512MB) para o `pip install`/app não sofrerem OOM kill; aplicado em qualquer bundle
+6. Cria `.env.caddy` na instância com `FILMBOT_DOMAIN=filmbot.lsgalvao.com.br` (domínio fixo — este workflow só é chamado para prod). O `Caddyfile` lê essa variável via `{$FILMBOT_DOMAIN}` (`EnvironmentFile=.env.caddy` no `caddy.service`) — sem esse arquivo o Caddy não sobe
+7. Deploy por SSH (`app_name`/`app_folder` passados como variáveis de ambiente da sessão SSH, branch fixa `main`):
+   - Cria um swap de 1GB (`fallocate`/`mkswap`/`swapon`, idempotente) antes de instalar dependências — necessário no bundle `micro_3_0` para o `pip install`/app não sofrerem OOM kill; aplicado em qualquer bundle
    - Instala o Caddy como proxy reverso HTTPS (se ainda não instalado)
    - **Primeiro deploy**: clone do repo (URL derivada de `${{ github.repository }}`), venv, systemd services (`<app_name>` + `caddy`)
    - **Updates**: git pull, pip install, restart de ambos os services
@@ -156,47 +156,37 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `0
 8. Health check — aguarda 30s e faz `curl` no IP público para confirmar que o app está respondendo
 9. Exibe a URL do app (`app_display_name`) no log e no Job Summary (clicável)
 
-**Branch deployada por ambiente:**
-
-| Ambiente | Branch |
-|---|---|
-| `dev` | `develop` |
-| `prod` | `main` |
-
 ---
 
 ### `05_lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
 
-Workflow independente do `00_pipeline.yml`. Substitui o antigo Lambda + EventBridge (`lightsail_scheduler.tf`, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` (confirmado via fatura AWS real), então só parar a instância não economizava nada. Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, o que de fato zera a cobrança fora da janela de uso.
+Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não existe em dev). Substitui o antigo Lambda + EventBridge (`lightsail_scheduler.tf`, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` (confirmado via fatura AWS real), então só parar a instância não economizava nada. Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, o que de fato zera a cobrança fora da janela de uso.
 
 **Triggers:**
 
-| Trigger | Ambiente | Ação |
-|---|---|---|
-| `schedule`: `cron(0 3 * * *)` | prod | desligar (00:00 BRT diário) |
-| `schedule`: `cron(0 21 * * 1-5)` | prod | ligar (18:00 BRT seg-sex) |
-| `schedule`: `cron(0 11 * * 0,6)` | prod | ligar (08:00 BRT sáb-dom, `0`=domingo) |
-| `workflow_dispatch` (`environment`: prod\|dev, `action`: start\|stop) | prod ou dev | manual — **dev só liga/desliga por aqui, nunca por cron** |
+| Trigger | Ação |
+|---|---|
+| `schedule`: `cron(0 3 * * *)` | desligar (00:00 BRT diário) |
+| `schedule`: `cron(0 21 * * 1-5)` | ligar (18:00 BRT seg-sex) |
+| `schedule`: `cron(0 11 * * 0,6)` | ligar (08:00 BRT sáb-dom, `0`=domingo) |
+| `workflow_dispatch` (`action`: start\|stop) | manual, disparado a partir de `main` |
 
 **Etapas principais:**
 
-1. Checkout + step `resolve` decide `environment`/`action`: `workflow_dispatch` usa os inputs diretamente; `schedule` sempre resolve `prod`, com `action` decidido comparando `github.event.schedule` contra a string exata do cron de desligar
+1. Checkout + step `resolve` decide `environment`/`action`: sempre resolve `prod` (falha se disparado de outro branch), `action` vem do input em `workflow_dispatch` ou é decidido comparando `github.event.schedule` contra a string exata do cron de desligar
 2. Lê `infra/config/project.json` via `jq` — `statefile_key`
-3. Step `secrets` seleciona `AWS_ASSUME_ROLE_ARN_DEV`/`_PROD` (e demais secrets `_DEV`/`_PROD`) conforme o ambiente resolvido — via `if` em bash lendo de `env:`, não ternária inline do YAML
-4. Autenticação AWS via OIDC + `terraform init`
-5. `terraform destroy -target` (ação `stop`) **ou** `terraform apply -target` (ação `start`), sempre sobre `aws_lightsail_instance.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_static_ip_attachment.filmbot` (+ `aws_lightsail_key_pair.filmbot` no apply) — **nunca** `aws_lightsail_static_ip.filmbot`, que fica de fora do `-target` em ambas as direções
-6. Force-unlock automático em caso de cancelamento (`if: cancelled()`) — mesmo padrão do `02_terraform.yml`
-7. Job `deploy-app`: chama `04_deploy_lightsail.yml` via `uses:`, só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot)
+3. Autenticação AWS via OIDC (secrets `_PROD`) + `terraform init`
+4. `terraform destroy -target` (ação `stop`) **ou** `terraform apply -target` (ação `start`), sempre sobre `aws_lightsail_instance.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_static_ip_attachment.filmbot` (+ `aws_lightsail_key_pair.filmbot` no apply) — **nunca** `aws_lightsail_static_ip.filmbot`, que fica de fora do `-target` em ambas as direções
+5. Force-unlock automático em caso de cancelamento (`if: cancelled()`) — mesmo padrão do `02_terraform.yml`
+6. Job `deploy-app`: chama `04_deploy_lightsail.yml` via `uses:`, só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot)
 
 **Por que destroy/create e não stop/start:** o Lightsail conta o bundle como usado (`BundleUsage` na fatura) tanto parado quanto rodando — a fatura de um mês inteiro com o scheduler antigo (stop/start) mostrou a mesma quantidade de horas cobradas de um mês sem nenhum desligamento. Destruir a instância de fato remove essas horas da fatura.
 
-**Por que o IP estático nunca é destruído (prod):** `aws_lightsail_static_ip.filmbot` (`infra/lightsail_ia.tf`, `local.lightsail_static_ip_enabled` só `true` em prod) é um recurso independente da instância no Lightsail — desanexar não o deleta, só marca como "unattached" (pequena taxa de idle se ficar assim por mais de 1h). Ao nunca incluí-lo no `-target`, o mesmo IP é sempre reanexado à instância nova, e o domínio `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
+**Por que o IP estático nunca é destruído:** `aws_lightsail_static_ip.filmbot` (`infra/lightsail_ia.tf`, `local.lightsail_prod_enabled`) é um recurso independente da instância no Lightsail — desanexar não o deleta, só marca como "unattached" (pequena taxa de idle se ficar assim por mais de 1h). Ao nunca incluí-lo no `-target`, o mesmo IP é sempre reanexado à instância nova, e o domínio `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
 
-**Dev não tem static IP:** fica desligado quase o mês inteiro, e a taxa de idle acima quase dobraria o custo do bundle `nano_3_0`. O IP público é dinâmico (muda a cada `start`) — `filmbot-dev.lsgalvao.com.br` continua funcionando porque esse subdomínio é delegado (registro NS único, manual, no registro.br) para uma hosted zone do Route 53 (`infra/route53.tf`); o registro A dentro dela (`aws_route53_record.filmbot_dev`) entra no `-target` do `start` e é atualizado com o IP novo a cada ciclo — a hosted zone em si nunca entra no `-target` (mesmo motivo do IP estático em prod: precisa persistir para a delegação manual continuar válida).
+**Concorrência:** `concurrency: group: terraform-prod` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para prod, serializando com qualquer apply/destroy completo disparado por push em `main`.
 
-**Concorrência:** `concurrency: group: terraform-{ambiente}` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para aquele ambiente, serializando com qualquer apply/destroy completo disparado por push em `main`/`develop`.
-
-**Comportamento a saber:** `lightsail_enabled` permanece `true` sempre em ambos os ambientes (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main`/`develop` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada; não é uma falha do cron.
+**Comportamento a saber:** `lightsail_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada; não é uma falha do cron.
 
 ---
 
@@ -295,7 +285,7 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | Terraform apply falha com `AccessDenied: ... iam:CreateRole ... lsg-github-actions-{env}` | O step "Import da role de CI/CD" (item 5 de `02_terraform.yml`) não rodou ou falhou antes de adotar a role existente no state | Confirme que o step de import rodou com sucesso no log; se a role realmente não existir ainda na AWS para esse ambiente, crie-a manualmente antes do próximo run (ela não pode se auto-criar) |
 | Testes passam no CI mas falham localmente (ImportError) | `sys.path` não está configurado corretamente | Rode `pytest` da raiz do projeto (não de dentro de `test/`). O `test/conftest.py` raiz gerencia os imports automaticamente |
 | Testes falham localmente mas passam no CI | Versão do Python diferente ou dependências desatualizadas | Verifique que está usando Python 3.12+ e instale as dependências de cada módulo: `for req in app/*/requirements.txt test/*/requirements_tests.txt; do pip install -r "$req"; done` |
-| Deploy Lightsail é pulado com warning no step "Check instance state" | Instância destruída pelo `05_lightsail_scheduler.yml` (fora da janela agendada em prod, ou nunca ligada manualmente em dev) | Verifique o estado com `aws lightsail get-instance --instance-name {nome} --region us-east-1`. Dispare `05_lightsail_scheduler.yml` via `workflow_dispatch` (`action=start`) para religar |
+| Deploy Lightsail é pulado com warning no step "Check instance state" | Instância de prod destruída pelo `05_lightsail_scheduler.yml` (fora da janela agendada) | Verifique o estado com `aws lightsail get-instance --instance-name {nome} --region us-east-1`. Dispare `05_lightsail_scheduler.yml` via `workflow_dispatch` (`action=start`) para religar |
 | `06_backfill.yml` falha com `AccessDenied` | A role `tmdb-backfill-role-{env}` não tem a permissão específica exercida pelo `table_group` escolhido | Confira o `eventName` negado no CloudTrail e adicione a action/recurso faltante na policy inline correspondente em `infra/iam_backfill.tf` |
 | `terraform destroy` rodou sem querer | Flag `true` em `infra/config/destroy_config.json` não foi revertida | Mude o valor de volta para `false` e faça push para reaplicar a infraestrutura |
 | Build Lambda falha com "directory is empty" | Erro no script `build_lambda_package.py` (dependências não instaladas) | Verifique se `pip install` no CI está usando a versão correta do Python e se o `requirements.txt` está atualizado |

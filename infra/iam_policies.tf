@@ -1036,8 +1036,9 @@ resource "aws_iam_role_policy" "glue_details_start_dq" {
 # =============================================================================
 
 resource "aws_iam_user_policy" "filmbot_secrets_manager" {
-  name = "${local.tmdb_prefix}-filmbot-secrets-manager-${var.env}"
-  user = aws_iam_user.lightsail_agent.name
+  count = local.lightsail_prod_enabled ? 1 : 0
+  name  = "${local.tmdb_prefix}-filmbot-secrets-manager-${var.env}"
+  user  = aws_iam_user.lightsail_agent[0].name
 
   policy = jsonencode({
     Version = "2012-10-17"

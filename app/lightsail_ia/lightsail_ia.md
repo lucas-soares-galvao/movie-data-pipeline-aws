@@ -358,10 +358,11 @@ Arquivos de deploy:
 
 ### Desenvolvimento local
 
-Em dev, a instância Lightsail está desabilitada (`lightsail_enabled = false`). Para rodar localmente:
+FilmBot não existe em dev — só prod tem instância Lightsail, IAM user do agente, etc. (ver `local.lightsail_prod_enabled` em `infra/locals.tf`). Para rodar localmente:
 
 ```bash
-# 1. Gerar o .env com as credenciais da conta dev (requer Terraform inicializado)
+# 1. Gerar o .env com as credenciais da conta prod (requer Terraform inicializado
+#    contra o state de prod — dev não tem mais o IAM user do agente)
 bash infra/config/export_env_local.sh
 
 # 2. Rodar

@@ -5,9 +5,9 @@
 # PRÉ-REQUISITO: antes de rodar este script, crie os arquivos abaixo em
 # /opt/filmbot/app/lightsail_ia/:
 #   .env       — credenciais geradas pelo Terraform (terraform output)
-#   .env.caddy — FILMBOT_DOMAIN=<dominio>, ex.: filmbot.lsgalvao.com.br (prod)
-#                ou filmbot-dev.lsgalvao.com.br (dev). Exigido pelo
-#                caddy.service (EnvironmentFile=) — sem ele o Caddy não sobe.
+#   .env.caddy — FILMBOT_DOMAIN=filmbot.lsgalvao.com.br (FilmBot só existe em
+#                prod). Exigido pelo caddy.service (EnvironmentFile=) — sem
+#                ele o Caddy não sobe.
 
 set -e
 
