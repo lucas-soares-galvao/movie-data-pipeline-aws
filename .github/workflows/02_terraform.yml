@@ -241,6 +241,16 @@ jobs:
       # infra/iam_cicd.tf), resolvendo o problema de bootstrap (a role precisa
       # das policies para gerenciar os recursos, mas as policies são criadas
       # pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op.
+      #
+      # Os 6 -target de lightsail_agent/filmbot_secrets_manager/lightsail_filmbot
+      # abaixo não são bootstrap de CI/CD — foram adicionados porque esses
+      # resources ganharam `count = local.lightsail_prod_enabled ? 1 : 0` (antes
+      # sem count), e o Terraform passou a tratar isso como um move implícito de
+      # endereço (de "recurso.nome" pra "recurso.nome[0]"). Com -target, ele exige
+      # que TODA instância com move pendente no state esteja coberta, senão recusa
+      # o plano inteiro — daí precisar listá-los aqui mesmo não sendo policies de
+      # CI/CD. Uma vez que este apply rodar e consolidar o move no state de prod,
+      # esses 6 targets viram no-op (mas não fazem mal continuar aqui).
       - name: Bootstrap CICD IAM Policies
         if: steps.read-destroy-config.outputs.destroy != 'true'
         run: |
@@ -263,6 +273,12 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_lightsail \
             -target=aws_iam_policy.cicd_ssm \
             -target=aws_iam_role_policy_attachment.cicd_ssm \
+            -target=aws_cloudwatch_log_group.lightsail_filmbot \
+            -target=aws_iam_access_key.lightsail_agent \
+            -target=aws_iam_policy.lightsail_agent_policy \
+            -target=aws_iam_user.lightsail_agent \
+            -target=aws_iam_user_policy.filmbot_secrets_manager \
+            -target=aws_iam_user_policy_attachment.lightsail_agent \
             -auto-approve
           ROLE_NAME="${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
           EXPECTED_POLICIES=(
