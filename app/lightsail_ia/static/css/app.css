@@ -177,27 +177,29 @@
    atualizar a regra abaixo aqui também. Sem borda: a página não usa linha pra
    separar blocos em nenhum outro lugar, só espaço (mesma lógica de
    .results-heading, cards.css). */
-/* Estado sem resultados: espaçamento entre "Consultas restantes" e o rodapé espelha
-   o padrão cabeçalho→".hero-heading-wrap" (recommendation.css) — gap:16px nativo do
-   stVerticalBlock (o .stVerticalBlock principal do Streamlit usa esse gap entre TODOS
-   os elementos de topo, incluindo o container vazio sempre presente do injetor de JS
-   hero-scripts, display:none, entre a busca e o rodapé) + margin-bottom:8px de
-   .query-counter-text (colapsa com o margin-top:0 do rodapé abaixo) + padding-top:16px
-   deste bloco = 40px totais, igual aos 40px entre o cabeçalho e "O que você quer
-   assistir hoje?". Erro/sem-resultado de busca NÃO entram nessa conta: moram dentro de
+/* Estado sem resultados: espaçamento entre "Consultas restantes" e o rodapé — o valor
+   de CAIXA (gap:16px nativo do stVerticalBlock + margin-bottom:8px de
+   .query-counter-text, que colapsa, + padding-top:16px deste bloco = 40px) não é o que
+   importa aqui: esse padding-top é interno à própria caixa do rodapé (fica DEPOIS do
+   margin-top abaixo), então uma fatia dele — mais o leading da fonte pequena de
+   .footer — nunca é espaço realmente em branco. O respiro visível de tinta a tinta
+   (medido por pixel, screenshot + análise de brilho por linha, não getBoundingClientRect
+   — mesmo racional de .hero-heading-wrap, recommendation.css) ficava em ~69px com
+   margin-top:0, bem maior que os ~52px do mesmo respiro cabeçalho→hero. margin-top:-17px
+   traz os dois pro mesmo alvo (~52px), a favor do espaçamento mais compacto (decisão do
+   usuário). Erro/sem-resultado de busca NÃO entram nessa conta: moram dentro de
    hero-actions (recommendation.py, junto do rate limit), então a caixa cresce mas não
-   adiciona item novo ao stVerticalBlock — o gap escondido é o mesmo com ou sem essas
-   mensagens visíveis (confirmado via Playwright, getBoundingClientRect() numa
-   calibração anterior desta mesma regra). padding vertical simétrico (16px/16px): o texto
-   fica centralizado na própria caixa do rodapé — distinto do espaçamento acima dela (o
-   respiro de 40px em relação ao conteúdo anterior, tratado pelo padding-top/margin-top). */
+   adiciona item novo ao stVerticalBlock — o gap é o mesmo com ou sem essas mensagens
+   visíveis (confirmado via Playwright numa calibração anterior desta mesma regra).
+   padding vertical simétrico (16px/16px): o texto fica centralizado na própria caixa do
+   rodapé — preocupação distinta do espaçamento acima dela, tratado pelo margin-top. */
 .footer {
   text-align: center;
   padding: 16px 0;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
-  margin: 0 auto;
+  margin: -17px auto 0;
   max-width: 640px;
 }
 /* Com resultados (.grid-titles), o rodapé some do fluxo de 640px do hero e passa a vir
