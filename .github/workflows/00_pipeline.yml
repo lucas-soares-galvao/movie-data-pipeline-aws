@@ -124,14 +124,15 @@ jobs:
       pull-requests: write
 
   auto-pr-environment:
-    needs: [terraform, deploy-lightsail]
-    # deploy-lightsail roda só em prod — em push de develop ele sempre
-    # resolve "skipped" (ver condição do job acima), o que é aceito aqui de
-    # propósito e não deve bloquear a promoção do código.
+    needs: terraform
+    # deploy-lightsail roda só em prod (push em main) — nunca em develop, então
+    # não tem por que esse job esperar por ele. Antes ele ficava em needs
+    # também, e como deploy-lightsail resolve sempre "skipped" em push de
+    # develop, o GitHub Actions parava de avaliar o "if" custom e pulava este
+    # job direto — nenhuma PR develop → main era aberta.
     if: |
       github.ref_name == 'develop' &&
-      needs.terraform.result == 'success' &&
-      (needs.deploy-lightsail.result == 'success' || needs.deploy-lightsail.result == 'skipped')
+      needs.terraform.result == 'success'
     uses: ./.github/workflows/03_pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}

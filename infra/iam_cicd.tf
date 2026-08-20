@@ -569,6 +569,20 @@ resource "aws_iam_role_policy_attachment" "cicd_observability" {
 # KeyPair/*, StaticIp/*) e região (us-east-1). Apenas criação e listagens
 # usam Resource "*" (obrigatório).
 
+# Estes 2 recursos existiam sem `count` até a remoção do Lightsail de dev — em
+# prod já estão no state em endereço "bare". Sem os `moved` abaixo, o apply
+# destruiria e recriaria a policy da role de CI/CD (risco de EntityAlreadyExists
+# por falta de ordenação garantida entre os dois endereços no mesmo apply).
+moved {
+  from = aws_iam_policy.cicd_lightsail
+  to   = aws_iam_policy.cicd_lightsail[0]
+}
+
+moved {
+  from = aws_iam_role_policy_attachment.cicd_lightsail
+  to   = aws_iam_role_policy_attachment.cicd_lightsail[0]
+}
+
 resource "aws_iam_policy" "cicd_lightsail" {
   count       = lower(var.env) == "prod" ? 1 : 0
   name        = "${local.project_config.cicd_policy_prefix}-lightsail-${var.env}"

@@ -1,6 +1,30 @@
 # Raciocinio: provisiona a instância Lightsail para hospedar o agente IA (Streamlit)
 # e o IAM User com política mínima para que o app acesse Athena, S3 e Glue.
 
+# Estes 4 recursos existiam sem `count` (incondicionais) até a remoção do
+# Lightsail de dev — em prod eles já estão no state em endereço "bare" (sem
+# índice). Sem os `moved` abaixo, o próximo apply em prod faria destroy+create
+# em vez de só reindexar (rotacionaria a IAM access key do agente à toa).
+moved {
+  from = aws_iam_user.lightsail_agent
+  to   = aws_iam_user.lightsail_agent[0]
+}
+
+moved {
+  from = aws_iam_policy.lightsail_agent_policy
+  to   = aws_iam_policy.lightsail_agent_policy[0]
+}
+
+moved {
+  from = aws_iam_user_policy_attachment.lightsail_agent
+  to   = aws_iam_user_policy_attachment.lightsail_agent[0]
+}
+
+moved {
+  from = aws_iam_access_key.lightsail_agent
+  to   = aws_iam_access_key.lightsail_agent[0]
+}
+
 resource "aws_iam_user" "lightsail_agent" {
   count      = local.lightsail_prod_enabled ? 1 : 0
   name       = "${local.tmdb_prefix}-filmbot-agent-${var.env}"
