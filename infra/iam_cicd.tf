@@ -304,6 +304,7 @@ resource "aws_iam_policy" "iam_cicd" {
           "iam:TagUser",
           "iam:UntagUser",
           "iam:ListUserTags",
+          "iam:ListGroupsForUser",
           "iam:ListUserPolicies",
           "iam:ListAttachedUserPolicies",
           "iam:AttachUserPolicy",
@@ -560,12 +561,30 @@ resource "aws_iam_role_policy_attachment" "cicd_observability" {
 }
 
 # =============================================================================
-# POLICY 6 — LIGHTSAIL (Instância, KeyPair, Static IP)
+# POLICY 6 — LIGHTSAIL (Instância, KeyPair, Static IP) — só prod
 # =============================================================================
-# Resource restrito por tipo (Instance/*, KeyPair/*, StaticIp/*) e região
-# (us-east-1). Apenas criação e listagens usam Resource "*" (obrigatório).
+# FilmBot (Lightsail) só existe em prod (ver local.lightsail_prod_enabled em
+# infra/locals.tf) — dev não provisiona nenhum recurso Lightsail, então esta
+# policy também não existe em dev. Resource restrito por tipo (Instance/*,
+# KeyPair/*, StaticIp/*) e região (us-east-1). Apenas criação e listagens
+# usam Resource "*" (obrigatório).
+
+# Estes 2 recursos existiam sem `count` até a remoção do Lightsail de dev — em
+# prod já estão no state em endereço "bare". Sem os `moved` abaixo, o apply
+# destruiria e recriaria a policy da role de CI/CD (risco de EntityAlreadyExists
+# por falta de ordenação garantida entre os dois endereços no mesmo apply).
+moved {
+  from = aws_iam_policy.cicd_lightsail
+  to   = aws_iam_policy.cicd_lightsail[0]
+}
+
+moved {
+  from = aws_iam_role_policy_attachment.cicd_lightsail
+  to   = aws_iam_role_policy_attachment.cicd_lightsail[0]
+}
 
 resource "aws_iam_policy" "cicd_lightsail" {
+  count       = lower(var.env) == "prod" ? 1 : 0
   name        = "${local.project_config.cicd_policy_prefix}-lightsail-${var.env}"
   description = "Gerenciamento de instância, key pair e static IP do Lightsail em us-east-1"
 
@@ -660,8 +679,9 @@ resource "aws_iam_policy" "cicd_lightsail" {
 }
 
 resource "aws_iam_role_policy_attachment" "cicd_lightsail" {
+  count      = lower(var.env) == "prod" ? 1 : 0
   role       = aws_iam_role.github_actions.name
-  policy_arn = aws_iam_policy.cicd_lightsail.arn
+  policy_arn = aws_iam_policy.cicd_lightsail[0].arn
 }
 
 # =============================================================================
@@ -720,65 +740,12 @@ resource "aws_iam_role_policy_attachment" "cicd_ssm" {
 }
 
 # =============================================================================
-# POLICY 8 — ROUTE53 (Hosted zone + registro A de filmbot-dev.lsgalvao.com.br)
-# =============================================================================
-# Route 53 é global (sem região no ARN) e o ID da hosted zone é opaco — não dá
-# pra escopar por nome/prefixo "tmdb-*" como as outras policies. Create/List
-# exigem Resource "*" (obrigatório pela API); as demais ações ficam escopadas
-# por tipo de recurso (hostedzone/*, change/*).
-
-resource "aws_iam_policy" "cicd_route53" {
-  name        = "${local.project_config.cicd_policy_prefix}-route53-${var.env}"
-  description = "Gerenciamento da hosted zone e registro A de filmbot-dev.lsgalvao.com.br"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "Route53CreateAndListZones"
-        Effect = "Allow"
-        Action = [
-          "route53:CreateHostedZone",
-          "route53:ListHostedZones",
-        ]
-        Resource = "*"
-      },
-      {
-        Sid    = "Route53ZoneOperations"
-        Effect = "Allow"
-        Action = [
-          "route53:GetHostedZone",
-          "route53:DeleteHostedZone",
-          "route53:ChangeResourceRecordSets",
-          "route53:ListResourceRecordSets",
-          "route53:ChangeTagsForResource",
-          "route53:ListTagsForResource",
-        ]
-        Resource = "arn:aws:route53:::hostedzone/*"
-      },
-      {
-        # ChangeResourceRecordSets é assíncrona — o provider Terraform faz
-        # polling via GetChange até o status virar INSYNC.
-        Sid      = "Route53GetChange"
-        Effect   = "Allow"
-        Action   = "route53:GetChange"
-        Resource = "arn:aws:route53:::change/*"
-      },
-    ]
-  })
-
-  tags = merge(local.default_resource_tags, local.component_tags.shared)
-}
-
-resource "aws_iam_role_policy_attachment" "cicd_route53" {
-  role       = aws_iam_role.github_actions.name
-  policy_arn = aws_iam_policy.cicd_route53.arn
-}
-
-# =============================================================================
-# SINCRONIZAÇÃO — Garante que as 8 policies estejam attachadas antes de criar
+# SINCRONIZAÇÃO — Garante que as policies estejam attachadas antes de criar
 # qualquer recurso de infraestrutura. Sem isso, o Terraform pode tentar criar
 # S3 buckets ou Lambda functions antes das policies propagarem no IAM.
+#
+# 7 policies em prod, 6 em dev — cicd_lightsail só existe em prod (ver
+# Policy 6 acima), já que dev não provisiona nenhum recurso Lightsail.
 #
 # Recursos raiz (S3 buckets, IAM roles) referenciam este recurso via depends_on,
 # e a dependência se propaga naturalmente para todos os recursos derivados.
@@ -793,7 +760,6 @@ resource "terraform_data" "cicd_policies_ready" {
     aws_iam_role_policy_attachment.cicd_observability,
     aws_iam_role_policy_attachment.cicd_lightsail,
     aws_iam_role_policy_attachment.cicd_ssm,
-    aws_iam_role_policy_attachment.cicd_route53,
   ]
 }
 
