@@ -52,6 +52,14 @@ resource "aws_cloudwatch_log_group" "glue_details_output" {
   tags              = local.component_tags.glue_details
 }
 
+# Existia sem `count` até a remoção do Lightsail de dev — em prod já está no
+# state em endereço "bare". Sem este `moved`, o apply destruiria e recriaria o
+# log group, perdendo todo o histórico de logs do FilmBot.
+moved {
+  from = aws_cloudwatch_log_group.lightsail_filmbot
+  to   = aws_cloudwatch_log_group.lightsail_filmbot[0]
+}
+
 resource "aws_cloudwatch_log_group" "lightsail_filmbot" {
   count             = local.lightsail_prod_enabled ? 1 : 0
   name              = "/lightsail/${local.envs.lightsail_instance_name}"
