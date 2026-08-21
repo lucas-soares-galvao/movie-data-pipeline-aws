@@ -330,7 +330,7 @@ Job `deploy-app` encadeia `04_deploy_lightsail.yml` (via `uses:`) só quando a a
 
 **Concorrência:** `concurrency.group: terraform-prod` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para prod, serializa com qualquer apply/destroy completo disparado por push em `main`.
 
-**Comportamento a saber:** como `lightsail_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável), um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento — um deploy de código pode religar o servidor fora da janela agendada.
+**Comportamento a saber:** como `lightsail_instance_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável), um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento — um deploy de código pode religar o servidor fora da janela agendada.
 
 ---
 

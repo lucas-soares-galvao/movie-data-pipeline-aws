@@ -358,11 +358,11 @@ Arquivos de deploy:
 
 ### Desenvolvimento local
 
-FilmBot não existe em dev — só prod tem instância Lightsail, IAM user do agente, etc. (ver `local.lightsail_prod_enabled` em `infra/locals.tf`). Para rodar localmente:
+A instância Lightsail em si só existe em prod (ver `local.lightsail_prod_enabled` em `infra/locals.tf`), mas o IAM user do agente (`aws_iam_access_key.lightsail_agent`) existe em dev e prod (`local.lightsail_agent_enabled`), justamente para permitir rodar localmente contra dados reais de dev sem misturar credenciais com prod. Para rodar localmente:
 
 ```bash
-# 1. Gerar o .env com as credenciais da conta prod (requer Terraform inicializado
-#    contra o state de prod — dev não tem mais o IAM user do agente)
+# 1. Gerar o .env com as credenciais do workspace ativo (dev ou prod — requer
+#    Terraform inicializado contra o state correspondente)
 bash infra/config/export_env_local.sh
 
 # 2. Rodar
@@ -372,6 +372,8 @@ streamlit run app.py   # http://localhost:8501
 ```
 
 Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quando `FILMBOT_SECRET_ARN` não está definida). Use `.env.example` como referência.
+
+> Rodando contra o state de **dev**: o secret unificado de dev (`AWS_FILMBOT_SECRET_ARN_DEV`) já existe para `tmdb_api_key`/`llm_api_key` (usado por Lambda/backfill), mas pode não ter o campo `filmbot_password` (nem `transcription_api_key`) — adicione manualmente via Secrets Manager antes do login funcionar localmente.
 
 ## Variáveis de ambiente necessárias
 

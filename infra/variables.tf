@@ -330,8 +330,14 @@ variable "glue_catalog_tb_watch_providers_ref_tv_name" {
 # LIGHTSAIL — Servidor do App FilmBot
 # =============================================================================
 
-variable "lightsail_enabled" {
-  description = "Habilita a instância Lightsail. false = instância destruída (reduz custo em dev)."
+variable "lightsail_agent_enabled" {
+  description = "Habilita o IAM user do agente FilmBot (access key + secret access + log group). Vale em dev e prod — sem custo, é só IAM/CloudWatch."
+  type        = bool
+  default     = true
+}
+
+variable "lightsail_instance_enabled" {
+  description = "Habilita a instância/DNS Lightsail (VM + key pair + static IP). Só tem efeito em prod (dev nunca cria instância). false = pausa a instância (reduz custo) sem revogar o agente."
   type        = bool
   default     = true
 }
