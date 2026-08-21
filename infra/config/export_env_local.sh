@@ -2,10 +2,11 @@
 # Gera app/lightsail_ia/.env com as credenciais e os nomes de recurso (Athena/Glue/
 # Secrets Manager) lidos 100% dos outputs Terraform do workspace ativo — rode com o
 # Terraform local inicializado (`terraform init -backend-config=...`) contra a conta
-# prod. FilmBot (Lightsail) não existe em dev — o IAM user do agente
-# (aws_iam_access_key.lightsail_agent) só é criado em prod (ver
-# local.lightsail_prod_enabled em infra/locals.tf), então rodar este script contra
-# o state de dev geraria um .env com AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY vazios.
+# dev ou prod. O IAM user do agente (aws_iam_access_key.lightsail_agent) existe nos
+# dois ambientes — controlado por var.lightsail_agent_enabled (ver
+# local.lightsail_agent_enabled em infra/locals.tf), independente da instância
+# Lightsail em si (que só existe em prod). Rodar contra dev testa recommend()
+# localmente com dados reais de dev, sem misturar credenciais com prod.
 # Uso: bash infra/config/export_env_local.sh
 #      [LLM_API_KEY=sk-...] [TRANSCRIPTION_API_KEY=gsk_...] bash infra/config/export_env_local.sh
 #
@@ -41,11 +42,11 @@ if [ -z "$FILMBOT_SECRET_ARN" ] && [ -z "$LLM_API_KEY" ]; then
   exit 1
 fi
 
-# Fail-fast: workspace de dev não tem mais o IAM user do agente (FilmBot só
-# existe em prod) — sem isso, o .env seria gerado com credenciais AWS vazias
-# e o erro só apareceria depois, de forma confusa, ao chamar Athena/Glue/S3.
+# Fail-fast: sem isso, o .env seria gerado com credenciais AWS vazias e o erro
+# só apareceria depois, de forma confusa, ao chamar Athena/Glue/S3. Só acontece
+# se var.lightsail_agent_enabled=false no workspace ativo (ver infra/locals.tf).
 if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
-  echo "❌ AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY vieram vazios do Terraform — rode este script contra o state de prod (FilmBot não existe em dev)." >&2
+  echo "❌ AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY vieram vazios do Terraform — confirme que lightsail_agent_enabled=true no tfvars deste workspace." >&2
   exit 1
 fi
 

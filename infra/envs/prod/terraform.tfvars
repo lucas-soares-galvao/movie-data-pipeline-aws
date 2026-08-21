@@ -4,7 +4,8 @@
 
 env = "prod"
 
-lightsail_enabled           = true
+lightsail_agent_enabled     = true
+lightsail_instance_enabled  = true
 lightsail_bundle_id         = "micro_3_0"
 lightsail_ssh_allowed_cidrs = ["0.0.0.0/0"]
 

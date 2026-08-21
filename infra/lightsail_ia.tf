@@ -26,14 +26,14 @@ moved {
 }
 
 resource "aws_iam_user" "lightsail_agent" {
-  count      = local.lightsail_prod_enabled ? 1 : 0
+  count      = local.lightsail_agent_enabled ? 1 : 0
   name       = "${local.tmdb_prefix}-filmbot-agent-${var.env}"
   tags       = merge(local.default_resource_tags, { Component = "lightsail_ia" })
   depends_on = [terraform_data.cicd_policies_ready]
 }
 
 resource "aws_iam_policy" "lightsail_agent_policy" {
-  count       = local.lightsail_prod_enabled ? 1 : 0
+  count       = local.lightsail_agent_enabled ? 1 : 0
   name        = "${local.tmdb_prefix}-filmbot-agent-policy-${var.env}"
   description = "Permissões mínimas para o agente IA consultar Athena, S3 e Glue"
 
@@ -110,13 +110,13 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
 }
 
 resource "aws_iam_user_policy_attachment" "lightsail_agent" {
-  count      = local.lightsail_prod_enabled ? 1 : 0
+  count      = local.lightsail_agent_enabled ? 1 : 0
   user       = aws_iam_user.lightsail_agent[0].name
   policy_arn = aws_iam_policy.lightsail_agent_policy[0].arn
 }
 
 resource "aws_iam_access_key" "lightsail_agent" {
-  count = local.lightsail_prod_enabled ? 1 : 0
+  count = local.lightsail_agent_enabled ? 1 : 0
   user  = aws_iam_user.lightsail_agent[0].name
 }
 
