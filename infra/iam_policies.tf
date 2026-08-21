@@ -1044,7 +1044,7 @@ moved {
 }
 
 resource "aws_iam_user_policy" "filmbot_secrets_manager" {
-  count = local.lightsail_prod_enabled ? 1 : 0
+  count = local.lightsail_agent_enabled ? 1 : 0
   name  = "${local.tmdb_prefix}-filmbot-secrets-manager-${var.env}"
   user  = aws_iam_user.lightsail_agent[0].name
 

@@ -73,16 +73,21 @@ locals {
   eventbridge_schedule_state = lower(var.env) == "prod" ? "ENABLED" : "DISABLED"
 
   # ===========================================================================
-  # LIGHTSAIL — Habilitado apenas em produção (dev removido por completo)
+  # LIGHTSAIL — Instância/DNS só em produção; agente (IAM) em dev e prod
   # ===========================================================================
-  # FilmBot deixou de existir em dev — o custo de manter um ambiente de teste
-  # completo (instância + IAM user do agente + DNS) não compensava (ver
-  # especialista-finops-aws). O "&& lower(var.env) == 'prod'" é o que de fato
-  # garante isso: mesmo que lightsail_enabled=true fique esquecido em
-  # envs/dev/terraform.tfvars, nenhum recurso Lightsail é criado em dev.
-  # var.lightsail_enabled continua servindo só como kill-switch manual dentro
-  # de prod (ex.: pausa emergencial de custo).
-  lightsail_prod_enabled = var.lightsail_enabled && lower(var.env) == "prod"
+  # A instância Lightsail (VM + key pair + static IP + DNS) é cara e só existe
+  # em prod — o "&& lower(var.env) == 'prod'" garante isso mesmo que
+  # lightsail_instance_enabled=true fique esquecido em envs/dev/terraform.tfvars.
+  # var.lightsail_instance_enabled continua servindo como kill-switch manual
+  # dentro de prod (ex.: pausa emergencial de custo), sem afetar o agente.
+  lightsail_prod_enabled = var.lightsail_instance_enabled && lower(var.env) == "prod"
+
+  # O IAM user do agente (access key + secret access + log group) não tem
+  # custo (é só IAM/CloudWatch) e não depende de instância nenhuma — pode
+  # existir em dev também, pra testar recommend() localmente contra
+  # Athena/Glue reais de dev via export_env_local.sh, sem misturar
+  # credenciais com prod.
+  lightsail_agent_enabled = var.lightsail_agent_enabled
 
   # ===========================================================================
   # CAMINHOS DOS ARQUIVOS DE CÓDIGO

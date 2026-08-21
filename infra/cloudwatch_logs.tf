@@ -61,7 +61,7 @@ moved {
 }
 
 resource "aws_cloudwatch_log_group" "lightsail_filmbot" {
-  count             = local.lightsail_prod_enabled ? 1 : 0
+  count             = local.lightsail_agent_enabled ? 1 : 0
   name              = "/lightsail/${local.envs.lightsail_instance_name}"
   retention_in_days = var.log_retention_days
   tags              = local.component_tags.lightsail_ia

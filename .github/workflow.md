@@ -186,7 +186,7 @@ Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não exis
 
 **Concorrência:** `concurrency: group: terraform-prod` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para prod, serializando com qualquer apply/destroy completo disparado por push em `main`.
 
-**Comportamento a saber:** `lightsail_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada; não é uma falha do cron.
+**Comportamento a saber:** `lightsail_instance_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada; não é uma falha do cron.
 
 ---
 
