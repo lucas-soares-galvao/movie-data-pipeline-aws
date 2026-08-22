@@ -101,7 +101,8 @@ button[data-testid="stBaseButton-secondary"] {
    emoji do sistema — métricas de altura diferentes da fonte de texto — e sem
    align-items:center o conjunto desalinhava verticalmente dentro da caixa. */
 .msg-error,
-.msg-warning {
+.msg-warning,
+.msg-success {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -131,6 +132,12 @@ button[data-testid="stBaseButton-secondary"] {
   background: rgba(250,204,21,0.1);
   border: 1px solid rgba(250,204,21,0.3);
   color: #fbbf24;
+}
+
+.msg-success {
+  background: rgba(34,197,94,0.1);
+  border: 1px solid rgba(34,197,94,0.3);
+  color: #86efac;
 }
 
 .time-countdown {

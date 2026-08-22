@@ -6,25 +6,30 @@
     // (quando o bloqueio já não se aplicar) manda de novo com esse valor
     // atualizado.
     const lockedOut = __LOCKED_OUT__;
+    const buttonKey = "__BUTTON_KEY__";
 
     function attach() {
-        const input = doc.querySelector('[data-testid="stTextInput"] input');
-        const btn = doc.querySelector('.st-key-btn_entrar button');
-        if (!input || !btn) { setTimeout(attach, 200); return; }
+        // Generalizado para N campos (login: e-mail+senha, cadastro: nome+e-mail+
+        // senha+confirmar, esqueci senha: variável) — todos os stTextInput visíveis
+        // precisam estar preenchidos, não só o primeiro. Só existe um formulário
+        // visível por vez (render_login troca de view via st.session_state e chama
+        // st.stop() logo depois), então "todos os inputs da página" == "todos os
+        // inputs deste formulário".
+        const inputs = doc.querySelectorAll('[data-testid="stTextInput"] input');
+        const btn = doc.querySelector(`.st-key-${buttonKey} button`);
+        if (!inputs.length || !btn) { setTimeout(attach, 200); return; }
 
-        // Habilita/desabilita "Entrar" a cada tecla. Python só calcula
-        // disabled=_locked_out (não depende do texto digitado, para não
-        // conflitar com a prop React que o clique nativo do st.button usa
-        // internamente) — este script é a única fonte da gate de campo vazio.
         const update = () => {
             if (lockedOut) return;
-            btn.disabled = input.value.length === 0;
+            btn.disabled = Array.from(inputs).some((input) => input.value.length === 0);
         };
 
-        if (!input.dataset.loginToggleBound) {
-            input.addEventListener("input", update);
-            input.dataset.loginToggleBound = "1";
-        }
+        inputs.forEach((input) => {
+            if (!input.dataset.loginToggleBound) {
+                input.addEventListener("input", update);
+                input.dataset.loginToggleBound = "1";
+            }
+        });
         update();
     }
     attach();
