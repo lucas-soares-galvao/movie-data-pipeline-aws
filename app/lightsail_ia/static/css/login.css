@@ -151,6 +151,36 @@
 [data-testid="stTextInput"] input.password-match {
   border-color: #22c55e !important;
 }
+/* Lista de critérios de senha (password_requirements_gate.js), abaixo do campo
+   "Confirmar senha" — mesmo racional de cor de estado das linhas acima (verde/vermelho),
+   neutro (#6b7280, mesmo tom de .footer-login) enquanto a senha estiver vazia. */
+.password-requirements {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.password-requirements li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #a3a3a3;
+}
+.password-requirements .req-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: #6b7280;
+}
+.password-requirements li.req-met .req-icon {
+  color: #22c55e;
+}
+.password-requirements li.req-unmet .req-icon {
+  color: #ef4444;
+}
 /* O Streamlit já tem seu próprio ícone de olho pra mostrar/esconder a senha
    (type="password") — no Edge/Windows, o navegador soma o ícone nativo dele
    (::-ms-reveal) por cima, duplicando o olho. Esconde só o nativo. */
