@@ -3,6 +3,11 @@
     const passwordKey = "__PASSWORD_KEY__";
     const confirmKey = "__CONFIRM_KEY__";
     const buttonKey = "__BUTTON_KEY__";
+    const emailKey = "__EMAIL_KEY__";
+
+    // Mesma regex de _EMAIL_RE em login.py, que continua a fonte de verdade — este
+    // script só antecipa a borda verde/vermelha antes do submit.
+    const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
     // Mesma política de infra/lightsail_ia.tf (aws_cognito_user_pool.filmbot.password_policy)
     // + teto de 16 caracteres (regra só do app — Cognito não impõe máximo). Espelha
@@ -26,11 +31,14 @@
         const confirm = doc.querySelector(`.st-key-${confirmKey} input`);
         const btn = doc.querySelector(`.st-key-${buttonKey} button`);
         const requirements = doc.getElementById("password-requirements");
+        // Só a tela de cadastro passa emailKey (redefinir senha não tem campo de e-mail
+        // digitado — o e-mail já foi confirmado no passo anterior).
+        const email = emailKey ? doc.querySelector(`.st-key-${emailKey} input`) : null;
         // Generalizado para N campos (cadastro: nome+e-mail+senha+confirmar; redefinir
         // senha: código+senha+confirmar), mesmo racional de login_button_toggle.js — só
         // existe um formulário visível por vez.
         const inputs = doc.querySelectorAll('[data-testid="stTextInput"] input');
-        if (!password || !confirm || !btn || !requirements || !inputs.length) {
+        if (!password || !confirm || !btn || !requirements || (emailKey && !email) || !inputs.length) {
             setTimeout(attach, 200);
             return;
         }
@@ -41,8 +49,16 @@
             if (confirm.value.length > 0) {
                 confirm.classList.add(matches ? "password-match" : "password-mismatch");
             }
+            let emailValid = true;
+            if (email) {
+                email.classList.remove("email-valid", "email-invalid");
+                emailValid = EMAIL_RE.test(email.value);
+                if (email.value.length > 0) {
+                    email.classList.add(emailValid ? "email-valid" : "email-invalid");
+                }
+            }
             const allFilled = Array.from(inputs).every((input) => input.value.length > 0);
-            btn.disabled = !(allFilled && matches && passwordValid(password.value));
+            btn.disabled = !(allFilled && matches && passwordValid(password.value) && emailValid);
 
             const setReqState = (key, neutral, met) => {
                 const item = requirements.querySelector(`li[data-req="${key}"]`);

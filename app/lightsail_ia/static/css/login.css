@@ -165,6 +165,14 @@
 [data-testid="stTextInput"] input.password-match {
   border-color: #22c55e !important;
 }
+/* Feedback dinâmico de formato do campo "E-mail" (cadastro e esqueci a senha, ver
+   login_button_toggle.js/password_requirements_gate.js) — mesmo padrão de cor acima. */
+[data-testid="stTextInput"] input.email-invalid {
+  border-color: #ef4444 !important;
+}
+[data-testid="stTextInput"] input.email-valid {
+  border-color: #22c55e !important;
+}
 /* Lista de critérios de senha (password_requirements_gate.js), abaixo do campo
    "Confirmar senha" — mesmo racional de cor de estado das linhas acima (verde/vermelho),
    neutro (#6b7280, mesmo tom de .footer-login) enquanto a senha estiver vazia. */

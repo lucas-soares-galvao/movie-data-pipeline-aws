@@ -193,6 +193,7 @@ def _render_signup() -> None:
             password_key="signup_password",
             confirm_key="signup_confirm_password",
             button_key="btn_cadastrar",
+            email_key="signup_email",
         )
 
         if submit:
@@ -265,7 +266,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
         email = st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="reset_email")
         error_placeholder = st.empty()
         submit = st.button("Enviar código →", use_container_width=True, key="btn_enviar_codigo")
-        load_login_button_toggle_script(False, button_key="btn_enviar_codigo")
+        load_login_button_toggle_script(False, button_key="btn_enviar_codigo", email_key="reset_email")
 
         if submit:
             if not _EMAIL_RE.match(email):
