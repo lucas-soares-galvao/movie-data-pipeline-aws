@@ -99,14 +99,16 @@ def _switch_view(view: str) -> None:
     st.rerun()
 
 
-def _brand_header(subtitle: str) -> None:
+def _brand_header(title: str | None = None) -> None:
     st.markdown(f"""
     <div class="login-brand">
       <span class="login-icon-badge">{icon("clapperboard", size=18)}</span>
       <p class="login-title">FilmBot</p>
     </div>
-    <p class="login-subtitle">{subtitle}</p>
+    <p class="login-subtitle">Seu assistente de filmes e séries com IA</p>
     """, unsafe_allow_html=True)
+    if title:
+        st.markdown(f'<p class="login-page-title">{title}</p>', unsafe_allow_html=True)
 
 
 def _render_login_form(client_ip: str) -> None:
@@ -114,7 +116,7 @@ def _render_login_form(client_ip: str) -> None:
     _locked_out = _failed_attempts >= _MAX_LOGIN_ATTEMPTS
 
     with st.container(key="login-card"):
-        _brand_header("Seu assistente de filmes e séries com IA")
+        _brand_header()
 
         email = st.text_input(
             "", placeholder="E-mail", label_visibility="collapsed", key="login_email"
@@ -173,7 +175,7 @@ def _render_login_form(client_ip: str) -> None:
 
 def _render_signup() -> None:
     with st.container(key="login-card"):
-        _brand_header("Criar uma conta nova")
+        _brand_header("Criar uma Conta Nova")
 
         name = st.text_input("", placeholder="Nome completo", label_visibility="collapsed", key="signup_name")
         email = st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="signup_email")
@@ -191,6 +193,7 @@ def _render_signup() -> None:
             password_key="signup_password",
             confirm_key="signup_confirm_password",
             button_key="btn_cadastrar",
+            email_key="signup_email",
         )
 
         if submit:
@@ -237,7 +240,7 @@ def _signup_error_message(exc: ClientError) -> str:
 
 def _render_signup_success() -> None:
     with st.container(key="login-card"):
-        _brand_header("Cadastro enviado")
+        _brand_header("Cadastro Enviado")
         render_feedback(
             "success",
             "Recebemos seu cadastro! O admin vai revisar os dados e confirmar o acesso — "
@@ -258,12 +261,12 @@ def _render_forgot_password(client_ip: str) -> None:
 
 def _render_forgot_password_request(client_ip: str) -> None:
     with st.container(key="login-card"):
-        _brand_header("Recuperar acesso")
+        _brand_header("Recuperar Acesso")
 
         email = st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="reset_email")
         error_placeholder = st.empty()
         submit = st.button("Enviar código →", use_container_width=True, key="btn_enviar_codigo")
-        load_login_button_toggle_script(False, button_key="btn_enviar_codigo")
+        load_login_button_toggle_script(False, button_key="btn_enviar_codigo", email_key="reset_email")
 
         if submit:
             if not _EMAIL_RE.match(email):
@@ -294,10 +297,11 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
         events_in_window(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
     )
     with st.container(key="login-card"):
-        _brand_header(
-            f"Enviamos um código para {email}. Confira também a pasta de spam." if email
-            else "Digite o código recebido"
-        )
+        _brand_header("Recuperar Acesso")
+        if email:
+            render_feedback("success", f"Enviamos um código para {email}. Confira também a pasta de spam.")
+        else:
+            st.markdown('<p class="login-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
 
         code = st.text_input("", placeholder="Código recebido por e-mail", label_visibility="collapsed", key="reset_code")
         password = st.text_input(
@@ -343,25 +347,20 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                 )
             load_countdown_script(_seconds, element_id="resend-countdown")
 
-        link_col1, link_col2 = st.columns(2)
-        with link_col1:
-            if st.button(
-                "Reenviar código", key="btn_reenviar_codigo",
-                use_container_width=True, disabled=_resend_locked,
-            ):
-                try:
-                    infrastructure.request_password_reset(email)
-                except ClientError:
-                    # Mesmo racional anti-enumeration do passo 1 (request_password_reset acima).
-                    pass
-                _reset_attempt_history.setdefault(client_ip, []).append(time.time())
-                with resend_placeholder:
-                    render_feedback("success", "Novo código enviado. Confira a caixa de entrada e o spam.")
-        with link_col2:
-            if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
-                st.session_state.pop("reset_step", None)
-                st.session_state.pop("reset_email_confirmed", None)
-                _switch_view("login")
+        if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+            st.session_state.pop("reset_step", None)
+            st.session_state.pop("reset_email_confirmed", None)
+            _switch_view("login")
+
+        if st.button("Reenviar código", key="btn_reenviar_codigo", disabled=_resend_locked):
+            try:
+                infrastructure.request_password_reset(email)
+            except ClientError:
+                # Mesmo racional anti-enumeration do passo 1 (request_password_reset acima).
+                pass
+            _reset_attempt_history.setdefault(client_ip, []).append(time.time())
+            with resend_placeholder:
+                render_feedback("success", "Novo código enviado. Confira a caixa de entrada e o spam.")
 
         render_login_footer()
 

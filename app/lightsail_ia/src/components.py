@@ -184,22 +184,29 @@ def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
-def load_login_button_toggle_script(locked_out: bool, button_key: str = "btn_entrar") -> None:
+def load_login_button_toggle_script(
+    locked_out: bool, button_key: str = "btn_entrar", email_key: str = ""
+) -> None:
     """Injeta o script que habilita/desabilita o botão de submit a cada tecla digitada
     em qualquer campo do formulário ativo (login, cadastro ou esqueci senha — só um
     fica visível por vez), mesmo padrão de `load_preference_counter_script()` para o
     botão "Recomendar". `button_key` identifica o botão (`key=...` do `st.button`) de
-    cada formulário."""
+    cada formulário. `email_key`, se informado (só a tela "esqueci a senha" passa —
+    login não precisa), marca o campo de e-mail com borda verde/vermelha conforme o
+    formato (mesma regex de `_EMAIL_RE` em `login.py`) e inclui isso no gate do botão."""
     path = Path(__file__).parent.parent / "static" / "js" / "login_button_toggle.js"
     script = (
         path.read_text(encoding="utf-8")
         .replace("__LOCKED_OUT__", "true" if locked_out else "false")
         .replace("__BUTTON_KEY__", button_key)
+        .replace("__EMAIL_KEY__", email_key)
     )
     components.html(f"<script>{script}</script>", height=0)
 
 
-def load_password_requirements_gate_script(password_key: str, confirm_key: str, button_key: str) -> None:
+def load_password_requirements_gate_script(
+    password_key: str, confirm_key: str, button_key: str, email_key: str = ""
+) -> None:
     """Injeta o script que, a cada tecla digitada em qualquer campo do formulário (cadastro
     ou redefinir senha), marca o campo "Confirmar senha" com borda verde/vermelha e mantém o
     botão de submit desabilitado até todos os campos estarem preenchidos, senha e confirmação
@@ -209,13 +216,16 @@ def load_password_requirements_gate_script(password_key: str, confirm_key: str, 
     vazio" que aquele script cuidava, além de senha/confirmação); as telas sem confirmação
     de senha (login, esqueci senha) continuam usando o outro script. `password_key`/
     `confirm_key`/`button_key` identificam os campos e o botão (`key=...`) do formulário
-    ativo."""
+    ativo. `email_key`, se informado (só a tela de cadastro passa — redefinir senha não tem
+    campo de e-mail digitado), marca o campo de e-mail com borda verde/vermelha conforme o
+    formato (mesma regex de `_EMAIL_RE` em `login.py`) e inclui isso no gate do botão."""
     path = Path(__file__).parent.parent / "static" / "js" / "password_requirements_gate.js"
     script = (
         path.read_text(encoding="utf-8")
         .replace("__PASSWORD_KEY__", password_key)
         .replace("__CONFIRM_KEY__", confirm_key)
         .replace("__BUTTON_KEY__", button_key)
+        .replace("__EMAIL_KEY__", email_key)
     )
     components.html(f"<script>{script}</script>", height=0)
 

@@ -10,92 +10,110 @@ import streamlit as st
 from src import infrastructure
 from src.components import icon, load_admin_css
 
+_COLUMN_RATIOS = [3, 4, 1.3, 1.6, 2]
+_COLUMN_LABELS = ["Nome", "E-mail", "Admin", "Status", "Ação"]
+
 
 def render_admin_panel() -> None:
-    """Renderiza o painel admin: cadastros novos (aprovar/reprovar) e usuários já
-    aprovados (revogar/restaurar acesso)."""
+    """Renderiza o painel admin: uma única tabela com todos os cadastros (novos e já
+    aprovados), coluna Admin (sim/não), Status (novo/ativo/revogado) e Ação (aprovar/
+    reprovar cadastro novo; revogar/restaurar usuário existente)."""
     load_admin_css()
 
     st.markdown(
+        f'<div class="admin-page">'
         f'<div class="header-brand">'
         f'<span class="header-icon-badge">{icon("users", size=20)}</span>'
-        f'<p class="header-title">Painel Admin</p>'
+        f'<p class="page-title">Painel Admin</p>'
         f'</div>'
-        f'<p class="header-subtitle">Aprovação de cadastro e gestão de acesso</p>',
+        f'<p class="header-subtitle">Aprovação de cadastro e gestão de acesso</p>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    _render_pending_section()
-    _render_active_section()
+    _render_table()
 
 
-def _render_pending_section() -> None:
-    pending = infrastructure.list_pending_users()
+def _build_rows() -> list[dict]:
+    """Combina cadastros pendentes e usuários já aprovados numa lista só, marcando a
+    origem de cada um (`kind`) e resolvendo a associação a admins por linha."""
+    rows = []
+    for user in infrastructure.list_pending_users():
+        rows.append({**user, "kind": "pending"})
+    for user in infrastructure.list_active_users():
+        rows.append({**user, "kind": "active"})
 
-    st.markdown('<div class="admin-section">', unsafe_allow_html=True)
-    st.markdown('<p class="admin-section-title">Cadastros novos</p>', unsafe_allow_html=True)
+    for row in rows:
+        row["is_admin"] = infrastructure.is_admin(row["email"])
 
-    if not pending:
-        st.markdown(
-            '<p class="admin-empty">Nenhum cadastro aguardando aprovação.</p>',
-            unsafe_allow_html=True,
-        )
+    return rows
+
+
+def _render_table() -> None:
+    rows = _build_rows()
+
+    st.markdown('<div class="admin-table">', unsafe_allow_html=True)
+
+    if not rows:
+        st.markdown('<p class="admin-empty">Nenhum usuário encontrado.</p>', unsafe_allow_html=True)
     else:
-        for user in pending:
-            _render_user_row(user, status_html="")
-            col_approve, col_reject, _ = st.columns([1, 1, 3])
-            with col_approve:
-                if st.button("Aprovar", key=f"btn_aprovar_{user['email']}", use_container_width=True):
-                    infrastructure.approve_signup(user["email"])
-                    st.rerun()
-            with col_reject:
-                if st.button("Reprovar", key=f"btn_reprovar_{user['email']}", use_container_width=True):
-                    infrastructure.reject_signup(user["email"])
-                    st.rerun()
+        _render_header_row()
+        for row in rows:
+            _render_data_row(row)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-def _render_active_section() -> None:
-    active = infrastructure.list_active_users()
-
-    st.markdown('<div class="admin-section">', unsafe_allow_html=True)
-    st.markdown('<p class="admin-section-title">Usuários ativos</p>', unsafe_allow_html=True)
-
-    if not active:
-        st.markdown(
-            '<p class="admin-empty">Nenhum cadastro aprovado ainda.</p>',
-            unsafe_allow_html=True,
-        )
-    else:
-        for user in active:
-            status_html = (
-                '<span class="admin-user-status active">Ativo</span>'
-                if user["enabled"]
-                else '<span class="admin-user-status revoked">Acesso revogado</span>'
-            )
-            _render_user_row(user, status_html=status_html)
-            col_action, _ = st.columns([1, 4])
-            with col_action:
-                if user["enabled"]:
-                    if st.button("Revogar", key=f"btn_revogar_{user['email']}", use_container_width=True):
-                        infrastructure.revoke_access(user["email"])
-                        st.rerun()
-                elif st.button("Restaurar", key=f"btn_restaurar_{user['email']}", use_container_width=True):
-                    infrastructure.restore_access(user["email"])
-                    st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
+def _render_header_row() -> None:
+    cols = st.columns(_COLUMN_RATIOS)
+    for col, label in zip(cols, _COLUMN_LABELS):
+        col.markdown(f'<p class="admin-table-header-cell">{label}</p>', unsafe_allow_html=True)
 
 
-def _render_user_row(user: dict, *, status_html: str) -> None:
+def _render_data_row(user: dict) -> None:
     name = html.escape(user["name"])
     email = html.escape(user["email"])
-    st.markdown(
-        f'<div class="admin-user-row">'
-        f'<div class="admin-user-info">'
-        f'<span class="admin-user-name">{name}</span>{status_html}<br/>'
-        f'<span class="admin-user-email">{email}</span>'
-        f'</div></div>',
+
+    col_name, col_email, col_admin, col_status, col_action = st.columns(_COLUMN_RATIOS)
+
+    col_name.markdown(f'<p class="admin-cell-name">{name}</p>', unsafe_allow_html=True)
+    col_email.markdown(f'<p class="admin-cell-email">{email}</p>', unsafe_allow_html=True)
+    col_admin.markdown(
+        f'<p class="admin-cell-admin">{"Sim" if user["is_admin"] else "Não"}</p>',
         unsafe_allow_html=True,
     )
+    col_status.markdown(_status_pill_html(user), unsafe_allow_html=True)
+
+    with col_action:
+        _render_action_buttons(user)
+
+
+def _status_pill_html(user: dict) -> str:
+    if user["kind"] == "pending":
+        return '<span class="admin-user-status new">Novo</span>'
+    if user["enabled"]:
+        return '<span class="admin-user-status active">Ativo</span>'
+    return '<span class="admin-user-status revoked">Revogado</span>'
+
+
+def _render_action_buttons(user: dict) -> None:
+    email = user["email"]
+
+    if user["kind"] == "pending":
+        col_approve, col_reject = st.columns(2)
+        with col_approve:
+            if st.button("", icon=":material/check:", key=f"btn_aprovar_{email}", use_container_width=True):
+                infrastructure.approve_signup(email)
+                st.rerun()
+        with col_reject:
+            if st.button("", icon=":material/close:", key=f"btn_reprovar_{email}", use_container_width=True):
+                infrastructure.reject_signup(email)
+                st.rerun()
+    elif user["enabled"]:
+        if st.button("", icon=":material/close:", key=f"btn_revogar_{email}", use_container_width=True):
+            infrastructure.revoke_access(email)
+            st.rerun()
+    else:
+        if st.button("", icon=":material/check:", key=f"btn_restaurar_{email}", use_container_width=True):
+            infrastructure.restore_access(email)
+            st.rerun()
