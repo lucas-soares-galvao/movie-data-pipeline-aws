@@ -161,6 +161,13 @@ resource "aws_cognito_user_pool" "filmbot" {
   count = local.lightsail_agent_enabled ? 1 : 0
   name  = "${local.tmdb_prefix}-filmbot-users-${var.env}"
 
+  # Sem isso, o Terraform pode tentar criar o pool antes da policy cicd_cognito
+  # estar de fato anexada/propagada na role de CI/CD (mesmo racional do
+  # depends_on em aws_iam_user.lightsail_agent, linha ~32 acima) — foi
+  # exatamente essa race que causou AccessDeniedException em CreateUserPool
+  # mesmo depois da policy já existir no código.
+  depends_on = [terraform_data.cicd_policies_ready]
+
   # Login por e-mail, sem username separado.
   username_attributes = ["email"]
 
