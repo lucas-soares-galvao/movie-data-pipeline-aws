@@ -17,21 +17,23 @@
   letter-spacing: -0.02em;
 }
 
-.admin-section {
+/* .admin-page (cabeçalho) e .admin-table (tabela) compartilham max-width +
+   margin:0 auto pra ficarem alinhados um sob o outro e centralizados
+   horizontalmente dentro do .block-container do Streamlit (que é full-width por
+   padrão — sem isso a página inteira grudava na margem esquerda, ver
+   admin.py). */
+.admin-page {
+  max-width: 900px;
+  margin: 0 auto 20px;
+}
+
+.admin-table {
   background: rgba(17, 17, 17, 0.92);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   padding: 20px 24px;
-  margin-bottom: 20px;
-  max-width: 640px;
-}
-
-.admin-section-title {
-  font-family: 'Bricolage Grotesque', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #ffffff;
-  margin: 0 0 12px;
+  margin: 0 auto;
+  max-width: 900px;
 }
 
 .admin-empty {
@@ -39,36 +41,46 @@
   font-size: 14px;
 }
 
-.admin-user-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+.admin-table-header-cell {
+  color: #737373;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
 }
 
-.admin-user-info {
-  min-width: 0;
-}
-
-.admin-user-name {
+.admin-cell-name {
   color: #f5f5f5;
   font-weight: 600;
   font-size: 14px;
+  margin: 0;
 }
 
-.admin-user-email {
+.admin-cell-email {
   color: #a3a3a3;
   font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-cell-admin {
+  color: #d4d4d4;
+  font-size: 14px;
+  margin: 0;
 }
 
 .admin-user-status {
+  display: inline-block;
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 999px;
-  margin-left: 8px;
   white-space: nowrap;
+}
+
+.admin-user-status.new {
+  background: rgba(249,115,22,0.15);
+  color: #fdba74;
 }
 
 .admin-user-status.active {
@@ -81,18 +93,18 @@
   color: #fca5a5;
 }
 
-/* Botões de ação (Aprovar/Reprovar/Revogar/Restaurar) têm uma key dinâmica por
+/* Botões de ação (check/x, ver icon= em admin.py) têm uma key dinâmica por
    usuário (ex.: btn_aprovar_<email>) — seletor por substring (`*=`) em vez de
-   `.st-key-X` exato, já que não dá pra prever/enumerar cada e-mail em CSS estático. */
+   `.st-key-X` exato, já que não dá pra prever/enumerar cada e-mail em CSS estático.
+   Padding simétrico (sem texto, só o ícone material) em vez do padding assimétrico
+   de quando esses botões tinham label "Aprovar"/"Revogar" etc. */
 [class*="st-key-btn_aprovar_"] button {
   background: rgba(34,197,94,0.15) !important;
   color: #86efac !important;
   border: 1px solid rgba(34,197,94,0.3) !important;
   box-shadow: none !important;
   border-radius: 8px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  padding: 6px 14px !important;
+  padding: 6px !important;
 }
 
 [class*="st-key-btn_reprovar_"] button,
@@ -102,9 +114,7 @@
   border: 1px solid rgba(239,68,68,0.3) !important;
   box-shadow: none !important;
   border-radius: 8px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  padding: 6px 14px !important;
+  padding: 6px !important;
 }
 
 [class*="st-key-btn_restaurar_"] button {
@@ -113,7 +123,5 @@
   border: 1px solid rgba(249,115,22,0.3) !important;
   box-shadow: none !important;
   border-radius: 8px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  padding: 6px 14px !important;
+  padding: 6px !important;
 }
