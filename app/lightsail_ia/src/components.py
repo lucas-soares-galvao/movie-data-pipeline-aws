@@ -199,6 +199,27 @@ def load_login_button_toggle_script(locked_out: bool, button_key: str = "btn_ent
     components.html(f"<script>{script}</script>", height=0)
 
 
+def load_password_requirements_gate_script(password_key: str, confirm_key: str, button_key: str) -> None:
+    """Injeta o script que, a cada tecla digitada em qualquer campo do formulário (cadastro
+    ou redefinir senha), marca o campo "Confirmar senha" com borda verde/vermelha e mantém o
+    botão de submit desabilitado até todos os campos estarem preenchidos, senha e confirmação
+    coincidirem, e a senha atender à política mínima (8 a 16 caracteres, maiúscula, número e
+    símbolo — mesma política de infra/lightsail_ia.tf, ver password_requirements_gate.js).
+    Substitui `load_login_button_toggle_script()` nessas duas telas (já cobre o "campo
+    vazio" que aquele script cuidava, além de senha/confirmação); as telas sem confirmação
+    de senha (login, esqueci senha) continuam usando o outro script. `password_key`/
+    `confirm_key`/`button_key` identificam os campos e o botão (`key=...`) do formulário
+    ativo."""
+    path = Path(__file__).parent.parent / "static" / "js" / "password_requirements_gate.js"
+    script = (
+        path.read_text(encoding="utf-8")
+        .replace("__PASSWORD_KEY__", password_key)
+        .replace("__CONFIRM_KEY__", confirm_key)
+        .replace("__BUTTON_KEY__", button_key)
+    )
+    components.html(f"<script>{script}</script>", height=0)
+
+
 _FEEDBACK_ICONS = {"error": "❌", "warning": "⚠️", "success": "✅"}
 
 

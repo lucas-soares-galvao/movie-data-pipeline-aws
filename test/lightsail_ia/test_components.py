@@ -257,6 +257,36 @@ class TestLoadLoginButtonToggleScript:
         assert 'const buttonKey = "btn_cadastrar";' in captured["content"]
 
 
+class TestLoadPasswordRequirementsGateScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_password_requirements_gate_script(
+            "signup_password", "signup_confirm_password", "btn_cadastrar"
+        )
+        assert "signup_password" in captured["content"]
+        assert captured["height"] == 0
+
+    def test_substitui_password_key_confirm_key_e_button_key(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_password_requirements_gate_script(
+            "reset_password", "reset_confirm_password", "btn_redefinir_senha"
+        )
+        assert "__PASSWORD_KEY__" not in captured["content"]
+        assert "__CONFIRM_KEY__" not in captured["content"]
+        assert "__BUTTON_KEY__" not in captured["content"]
+        assert 'const passwordKey = "reset_password";' in captured["content"]
+        assert 'const confirmKey = "reset_confirm_password";' in captured["content"]
+        assert 'const buttonKey = "btn_redefinir_senha";' in captured["content"]
+
+
 class TestMatchesHighlighted:
     """_matches_highlighted() diz se um item contém (case-insensitive) algum termo
     destacado pela busca do usuário — usada tanto por _prioritize() (ordena) quanto pelo

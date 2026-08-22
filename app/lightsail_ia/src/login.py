@@ -11,6 +11,7 @@ from src.components import (
     load_countdown_script,
     load_login_button_toggle_script,
     load_login_css,
+    load_password_requirements_gate_script,
     render_feedback,
     render_login_footer,
 )
@@ -35,10 +36,13 @@ _login_attempt_history = _create_login_attempt_history()
 
 def _validate_password(password: str) -> str:
     """Valida a senha contra a mesma política configurada no Cognito (infra/lightsail_ia.tf:
-    aws_cognito_user_pool.filmbot.password_policy) — checar aqui evita disparar a chamada
-    só para receber InvalidPasswordException. Retorna "" se válida, senão a mensagem de erro."""
+    aws_cognito_user_pool.filmbot.password_policy), mais o teto de 16 caracteres — regra só
+    do app, o Cognito não impõe máximo — checar aqui evita disparar a chamada só para
+    receber InvalidPasswordException. Retorna "" se válida, senão a mensagem de erro."""
     if len(password) < 8:
         return "A senha precisa ter pelo menos 8 caracteres."
+    if len(password) > 16:
+        return "A senha pode ter no máximo 16 caracteres."
     if not re.search(r"[a-z]", password):
         return "A senha precisa ter pelo menos uma letra minúscula."
     if not re.search(r"[A-Z]", password):
@@ -169,7 +173,11 @@ def _render_signup() -> None:
         )
         error_placeholder = st.empty()
         submit = st.button("Criar cadastro →", use_container_width=True, key="btn_cadastrar")
-        load_login_button_toggle_script(False, button_key="btn_cadastrar")
+        load_password_requirements_gate_script(
+            password_key="signup_password",
+            confirm_key="signup_confirm_password",
+            button_key="btn_cadastrar",
+        )
 
         if submit:
             error = _validate_signup(name, email, password, confirm_password)
@@ -280,7 +288,11 @@ def _render_forgot_password_confirm() -> None:
         )
         error_placeholder = st.empty()
         submit = st.button("Redefinir senha →", use_container_width=True, key="btn_redefinir_senha")
-        load_login_button_toggle_script(False, button_key="btn_redefinir_senha")
+        load_password_requirements_gate_script(
+            password_key="reset_password",
+            confirm_key="reset_confirm_password",
+            button_key="btn_redefinir_senha",
+        )
 
         if submit:
             error = _validate_reset(code, password, confirm_password)
