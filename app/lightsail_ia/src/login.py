@@ -14,6 +14,7 @@ from src.components import (
     load_password_requirements_gate_script,
     render_feedback,
     render_login_footer,
+    render_password_requirements,
 )
 from src.infrastructure import (
     events_in_window,
@@ -171,6 +172,7 @@ def _render_signup() -> None:
             "", placeholder="Confirmar senha", type="password",
             label_visibility="collapsed", key="signup_confirm_password",
         )
+        render_password_requirements()
         error_placeholder = st.empty()
         submit = st.button("Criar cadastro →", use_container_width=True, key="btn_cadastrar")
         load_password_requirements_gate_script(
@@ -286,6 +288,7 @@ def _render_forgot_password_confirm() -> None:
             "", placeholder="Confirmar nova senha", type="password",
             label_visibility="collapsed", key="reset_confirm_password",
         )
+        render_password_requirements()
         error_placeholder = st.empty()
         submit = st.button("Redefinir senha →", use_container_width=True, key="btn_redefinir_senha")
         load_password_requirements_gate_script(

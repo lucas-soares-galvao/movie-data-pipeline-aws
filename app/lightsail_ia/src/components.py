@@ -220,6 +220,34 @@ def load_password_requirements_gate_script(password_key: str, confirm_key: str, 
     components.html(f"<script>{script}</script>", height=0)
 
 
+_PASSWORD_REQUIREMENTS = (
+    ("length", "8 a 16 caracteres"),
+    ("lower", "Uma letra minúscula"),
+    ("upper", "Uma letra maiúscula"),
+    ("number", "Um número"),
+    ("symbol", "Um símbolo (ex: ! @ # $)"),
+)
+
+
+def render_password_requirements() -> None:
+    """Renderiza a lista de critérios da política de senha (mesma política de
+    `_validate_password()` em login.py e de `password_requirements_gate.js`), abaixo do
+    campo "Confirmar senha" nas telas de cadastro e redefinir senha. Estado inicial neutro
+    (ícone "•", sem classe) — `password_requirements_gate.js` assume o `id` fixo
+    "password-requirements" (só uma tela de autenticação renderiza por vez) e atualiza
+    cada `<li data-req="...">` para ✓/✗ (classes `req-met`/`req-unmet`) a cada tecla
+    digitada no campo de senha."""
+    items = "".join(
+        f'<li data-req="{key}"><span class="req-icon">•</span>'
+        f'<span class="req-label">{label}</span></li>'
+        for key, label in _PASSWORD_REQUIREMENTS
+    )
+    st.markdown(
+        f'<ul id="password-requirements" class="password-requirements">{items}</ul>',
+        unsafe_allow_html=True,
+    )
+
+
 _FEEDBACK_ICONS = {"error": "❌", "warning": "⚠️", "success": "✅"}
 
 
