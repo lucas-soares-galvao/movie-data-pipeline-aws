@@ -34,6 +34,18 @@ def _create_login_attempt_history() -> dict[str, list[float]]:
 
 _login_attempt_history = _create_login_attempt_history()
 
+_MAX_RESEND_ATTEMPTS = 1
+_RESEND_LOCKOUT_SECONDS = 60
+
+
+@st.cache_resource
+def _create_reset_attempt_history() -> dict[str, list[float]]:
+    """Cria dict compartilhado para rastrear timestamps de envio/reenvio de código de reset de senha por IP."""
+    return {}
+
+
+_reset_attempt_history = _create_reset_attempt_history()
+
 
 def _validate_password(password: str) -> str:
     """Valida a senha contra a mesma política configurada no Cognito (infra/lightsail_ia.tf:
@@ -75,7 +87,7 @@ def render_login(client_ip: str) -> None:
     elif view == "signup_success":
         _render_signup_success()
     elif view == "forgot_password":
-        _render_forgot_password()
+        _render_forgot_password(client_ip)
     else:
         _render_login_form(client_ip)
 
@@ -236,15 +248,15 @@ def _render_signup_success() -> None:
         render_login_footer()
 
 
-def _render_forgot_password() -> None:
+def _render_forgot_password(client_ip: str) -> None:
     step = st.session_state.get("reset_step", "request")
     if step == "confirm":
-        _render_forgot_password_confirm()
+        _render_forgot_password_confirm(client_ip)
     else:
-        _render_forgot_password_request()
+        _render_forgot_password_request(client_ip)
 
 
-def _render_forgot_password_request() -> None:
+def _render_forgot_password_request(client_ip: str) -> None:
     with st.container(key="login-card"):
         _brand_header("Recuperar acesso")
 
@@ -265,6 +277,7 @@ def _render_forgot_password_request() -> None:
                     # não confirmar se um e-mail existe ou não (mesmo racional de
                     # prevent_user_existence_errors no app client, infra/lightsail_ia.tf).
                     pass
+                _reset_attempt_history.setdefault(client_ip, []).append(time.time())
                 st.session_state["reset_email_confirmed"] = email
                 st.session_state["reset_step"] = "confirm"
                 st.rerun()
@@ -275,10 +288,16 @@ def _render_forgot_password_request() -> None:
         render_login_footer()
 
 
-def _render_forgot_password_confirm() -> None:
+def _render_forgot_password_confirm(client_ip: str) -> None:
     email = st.session_state.get("reset_email_confirmed", "")
+    _resend_locked = (
+        events_in_window(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
+    )
     with st.container(key="login-card"):
-        _brand_header(f"Enviamos um código para {email}" if email else "Digite o código recebido")
+        _brand_header(
+            f"Enviamos um código para {email}. Confira também a pasta de spam." if email
+            else "Digite o código recebido"
+        )
 
         code = st.text_input("", placeholder="Código recebido por e-mail", label_visibility="collapsed", key="reset_code")
         password = st.text_input(
@@ -313,10 +332,36 @@ def _render_forgot_password_confirm() -> None:
                     st.session_state.pop("reset_email_confirmed", None)
                     _switch_view("login")
 
-        if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
-            st.session_state.pop("reset_step", None)
-            st.session_state.pop("reset_email_confirmed", None)
-            _switch_view("login")
+        resend_placeholder = st.empty()
+        if _resend_locked:
+            _seconds = seconds_until_available(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS)
+            with resend_placeholder:
+                render_feedback(
+                    "warning",
+                    "Aguarde para pedir um novo código em",
+                    extra_html=' <span class="time-countdown" id="resend-countdown"></span>.',
+                )
+            load_countdown_script(_seconds, element_id="resend-countdown")
+
+        link_col1, link_col2 = st.columns(2)
+        with link_col1:
+            if st.button(
+                "Reenviar código", key="btn_reenviar_codigo",
+                use_container_width=True, disabled=_resend_locked,
+            ):
+                try:
+                    infrastructure.request_password_reset(email)
+                except ClientError:
+                    # Mesmo racional anti-enumeration do passo 1 (request_password_reset acima).
+                    pass
+                _reset_attempt_history.setdefault(client_ip, []).append(time.time())
+                with resend_placeholder:
+                    render_feedback("success", "Novo código enviado. Confira a caixa de entrada e o spam.")
+        with link_col2:
+            if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+                st.session_state.pop("reset_step", None)
+                st.session_state.pop("reset_email_confirmed", None)
+                _switch_view("login")
 
         render_login_footer()
 
