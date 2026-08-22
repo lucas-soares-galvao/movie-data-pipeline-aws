@@ -7,6 +7,13 @@
     // atualizado.
     const lockedOut = __LOCKED_OUT__;
     const buttonKey = "__BUTTON_KEY__";
+    const emailKey = "__EMAIL_KEY__";
+
+    // Mesma regex de _EMAIL_RE em login.py, que continua a fonte de verdade — este
+    // script só antecipa a borda verde/vermelha antes do submit. Só a tela de
+    // "esqueci a senha" passa emailKey (login não precisa: formato inválido já
+    // falha na autenticação normalmente).
+    const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
     function attach() {
         // Generalizado para N campos (login: e-mail+senha, cadastro: nome+e-mail+
@@ -17,11 +24,21 @@
         // inputs deste formulário".
         const inputs = doc.querySelectorAll('[data-testid="stTextInput"] input');
         const btn = doc.querySelector(`.st-key-${buttonKey} button`);
-        if (!inputs.length || !btn) { setTimeout(attach, 200); return; }
+        const email = emailKey ? doc.querySelector(`.st-key-${emailKey} input`) : null;
+        if (!inputs.length || !btn || (emailKey && !email)) { setTimeout(attach, 200); return; }
 
         const update = () => {
             if (lockedOut) return;
-            btn.disabled = Array.from(inputs).some((input) => input.value.length === 0);
+            let emailValid = true;
+            if (email) {
+                email.classList.remove("email-valid", "email-invalid");
+                emailValid = EMAIL_RE.test(email.value);
+                if (email.value.length > 0) {
+                    email.classList.add(emailValid ? "email-valid" : "email-invalid");
+                }
+            }
+            const allFilled = Array.from(inputs).every((input) => input.value.length > 0);
+            btn.disabled = !(allFilled && emailValid);
         };
 
         inputs.forEach((input) => {

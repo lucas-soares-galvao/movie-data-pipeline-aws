@@ -256,6 +256,26 @@ class TestLoadLoginButtonToggleScript:
         assert "__BUTTON_KEY__" not in captured["content"]
         assert 'const buttonKey = "btn_cadastrar";' in captured["content"]
 
+    def test_email_key_default_vazio(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_login_button_toggle_script(False)
+        assert "__EMAIL_KEY__" not in captured["content"]
+        assert 'const emailKey = "";' in captured["content"]
+
+    def test_substitui_email_key_customizado(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_login_button_toggle_script(False, email_key="reset_email")
+        assert "__EMAIL_KEY__" not in captured["content"]
+        assert 'const emailKey = "reset_email";' in captured["content"]
+
 
 class TestLoadPasswordRequirementsGateScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
@@ -285,6 +305,30 @@ class TestLoadPasswordRequirementsGateScript:
         assert 'const passwordKey = "reset_password";' in captured["content"]
         assert 'const confirmKey = "reset_confirm_password";' in captured["content"]
         assert 'const buttonKey = "btn_redefinir_senha";' in captured["content"]
+
+    def test_email_key_default_vazio(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_password_requirements_gate_script(
+            "signup_password", "signup_confirm_password", "btn_cadastrar"
+        )
+        assert "__EMAIL_KEY__" not in captured["content"]
+        assert 'const emailKey = "";' in captured["content"]
+
+    def test_substitui_email_key_customizado(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_password_requirements_gate_script(
+            "signup_password", "signup_confirm_password", "btn_cadastrar", email_key="signup_email"
+        )
+        assert "__EMAIL_KEY__" not in captured["content"]
+        assert 'const emailKey = "signup_email";' in captured["content"]
 
 
 class TestRenderPasswordRequirements:
