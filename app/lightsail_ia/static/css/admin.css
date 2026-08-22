@@ -2,6 +2,21 @@
    Depende de base.css já injetado por load_app_css() na mesma execução de script
    (mesmo padrão de recommendation.css/cards.css). */
 
+/* Título da seção ("Painel Admin", admin.py), dentro do mesmo .header-brand/
+   .header-icon-badge do cabeçalho — mas com classe própria, menor que .header-title
+   (28px, app.css), reservada pra marca "FilmBot". As duas reaproveitavam a mesma
+   classe .header-title antes (mesmo tamanho), competindo visualmente pela atenção no
+   topo da página — a marca, presente em toda tela, deve ter primazia sobre o título de
+   uma página específica (pedido do usuário). */
+.page-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 20px !important;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 !important;
+  letter-spacing: -0.02em;
+}
+
 .admin-section {
   background: rgba(17, 17, 17, 0.92);
   border: 1px solid rgba(255,255,255,0.08);

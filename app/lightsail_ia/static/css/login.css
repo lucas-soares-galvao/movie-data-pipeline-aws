@@ -123,6 +123,20 @@
   color: #737373;
   margin: -2px 0 20px !important;
 }
+/* Título da página (ex.: "Criar uma Conta Nova"/"Recuperar Acesso"), opcional — só as
+   telas de cadastro/recuperar acesso passam `title` para _brand_header() (login.py).
+   Maior que .login-subtitle mas ainda abaixo do peso que teria um <h1> nativo do
+   Streamlit (mesmo racional de .login-title/.header-title: <p> pra evitar o <h1> grande
+   demais desse contexto). Fica por cima do primeiro campo do formulário, substituindo o
+   respiro que .login-subtitle já reservava (margin-bottom:20px acima). */
+.login-page-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 20px !important;
+  font-weight: 700;
+  color: #ffffff;
+  margin: -12px 0 20px !important;
+  letter-spacing: -0.02em;
+}
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
    usada pro "Press Ctrl+Enter to apply" da textarea em recommendation.css. */
 [data-testid="stTextInput"] [data-testid="InputInstructions"] {
@@ -239,6 +253,35 @@
   filter: none;
   text-decoration: underline;
   transform: none;
+}
+
+/* "Reenviar código" — secundário e discreto (pedido do usuário: não competir com o botão
+   de ação primário "Redefinir senha"), auto-width e centralizado em vez do pill laranja
+   full-width padrão acima. display:flex + margin:auto no wrapper stButton centraliza o
+   <button> auto-width dentro do card (mesma técnica de centralizar item único num
+   container flex). */
+.st-key-btn_reenviar_codigo {
+  display: flex;
+  justify-content: center;
+}
+.st-key-btn_reenviar_codigo button {
+  background: transparent !important;
+  color: #a3a3a3 !important;
+  box-shadow: none !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 6px 18px !important;
+  width: auto !important;
+  margin-top: 4px !important;
+}
+.st-key-btn_reenviar_codigo button:hover:not(:disabled) {
+  filter: brightness(1.4);
+  color: #d4d4d4 !important;
+}
+.st-key-btn_reenviar_codigo button:disabled {
+  opacity: 0.4;
 }
 
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de

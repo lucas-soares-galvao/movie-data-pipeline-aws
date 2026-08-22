@@ -19,7 +19,7 @@ def render_admin_panel() -> None:
     st.markdown(
         f'<div class="header-brand">'
         f'<span class="header-icon-badge">{icon("users", size=20)}</span>'
-        f'<p class="header-title">Painel Admin</p>'
+        f'<p class="page-title">Painel Admin</p>'
         f'</div>'
         f'<p class="header-subtitle">Aprovação de cadastro e gestão de acesso</p>',
         unsafe_allow_html=True,
