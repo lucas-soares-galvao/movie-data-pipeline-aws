@@ -769,6 +769,15 @@ resource "aws_iam_policy" "cicd_cognito" {
           "cognito-idp:DescribeUserPool",
           "cognito-idp:UpdateUserPool",
           "cognito-idp:DeleteUserPool",
+          # O provider chama AddCustomAttributes no Update quando um novo
+          # bloco `schema` é adicionado a um user pool já existente (schema
+          # é imutável em Create, mas aditivo depois — ver user_pool.go).
+          "cognito-idp:AddCustomAttributes",
+          # O provider lê a config de MFA como parte do refresh de
+          # aws_cognito_user_pool (Get) e a define ao aplicar mudanças (Set) —
+          # mesmo padrão de "read + write" das demais actions de gerenciamento.
+          "cognito-idp:GetUserPoolMfaConfig",
+          "cognito-idp:SetUserPoolMfaConfig",
           "cognito-idp:TagResource",
           "cognito-idp:UntagResource",
           "cognito-idp:ListTagsForResource",
