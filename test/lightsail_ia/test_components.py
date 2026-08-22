@@ -164,6 +164,16 @@ class TestRenderFeedback:
         assert '<span class="msg-icon">❌</span>' in captured["content"]
         assert '<span class="msg-text">Mensagem simples.</span>' in captured["content"]
 
+    def test_renderiza_classe_success(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_feedback("success", "Cadastro enviado.")
+        assert 'class="msg-success"' in captured["content"]
+        assert "✅" in captured["content"]
+
 
 class TestLoadCountdownScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
@@ -235,6 +245,46 @@ class TestLoadLoginButtonToggleScript:
         )
         components.load_login_button_toggle_script(True)
         assert "const lockedOut = true;" in captured["content"]
+
+    def test_substitui_button_key_customizado(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_login_button_toggle_script(False, button_key="btn_cadastrar")
+        assert "__BUTTON_KEY__" not in captured["content"]
+        assert 'const buttonKey = "btn_cadastrar";' in captured["content"]
+
+
+class TestLoadPasswordRequirementsGateScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_password_requirements_gate_script(
+            "signup_password", "signup_confirm_password", "btn_cadastrar"
+        )
+        assert "signup_password" in captured["content"]
+        assert captured["height"] == 0
+
+    def test_substitui_password_key_confirm_key_e_button_key(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_password_requirements_gate_script(
+            "reset_password", "reset_confirm_password", "btn_redefinir_senha"
+        )
+        assert "__PASSWORD_KEY__" not in captured["content"]
+        assert "__CONFIRM_KEY__" not in captured["content"]
+        assert "__BUTTON_KEY__" not in captured["content"]
+        assert 'const passwordKey = "reset_password";' in captured["content"]
+        assert 'const confirmKey = "reset_confirm_password";' in captured["content"]
+        assert 'const buttonKey = "btn_redefinir_senha";' in captured["content"]
 
 
 class TestMatchesHighlighted:

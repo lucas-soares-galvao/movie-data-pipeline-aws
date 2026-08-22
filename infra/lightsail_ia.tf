@@ -103,6 +103,36 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
         ]
         Resource = "${aws_cloudwatch_log_group.lightsail_filmbot[0].arn}:*"
       },
+      {
+        # Todas as actions abaixo suportam Resource escopado ao user pool
+        # (confirmado no IAM Service Authorization Reference antes de
+        # implementar, ver especialista-doc-oficial-aws).
+        Sid    = "CognitoUserManagement"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:SignUp",
+          "cognito-idp:ForgotPassword",
+          "cognito-idp:ConfirmForgotPassword",
+          "cognito-idp:AdminInitiateAuth",
+          "cognito-idp:AdminConfirmSignUp",
+          "cognito-idp:AdminUpdateUserAttributes",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminDeleteUser",
+          "cognito-idp:AdminAddUserToGroup",
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsers",
+        ]
+        Resource = aws_cognito_user_pool.filmbot[0].arn
+      },
+      {
+        Sid    = "SnsPublishNewSignup"
+        Effect = "Allow"
+        Action = [
+          "sns:Publish",
+        ]
+        Resource = aws_sns_topic.filmbot_new_signup_notifications.arn
+      },
     ]
   })
 
@@ -118,6 +148,89 @@ resource "aws_iam_user_policy_attachment" "lightsail_agent" {
 resource "aws_iam_access_key" "lightsail_agent" {
   count = local.lightsail_agent_enabled ? 1 : 0
   user  = aws_iam_user.lightsail_agent[0].name
+}
+
+# =============================================================================
+# COGNITO — Identidade/usuários do FilmBot (login, cadastro, aprovação, reset)
+# =============================================================================
+# Mesmo gate do agente (lightsail_agent_enabled, não lightsail_prod_enabled):
+# sem custo relevante nesse volume (free tier de 10k MAU/mês) e não depende da
+# instância — permite testar o app localmente contra o Cognito de dev, mesmo
+# racional de existir em dev e prod já aplicado ao IAM user do agente acima.
+resource "aws_cognito_user_pool" "filmbot" {
+  count = local.lightsail_agent_enabled ? 1 : 0
+  name  = "${local.tmdb_prefix}-filmbot-users-${var.env}"
+
+  # Login por e-mail, sem username separado.
+  username_attributes = ["email"]
+
+  # Vazio de propósito: o cadastro (SignUp) não dispara nenhum código
+  # automático — o gate de acesso é a aprovação manual do admin
+  # (AdminConfirmSignUp no painel admin), não um código de verificação.
+  auto_verified_attributes = []
+
+  admin_create_user_config {
+    allow_admin_create_user_only = false # cadastro público (SignUp) — aprovado manualmente depois
+  }
+
+  password_policy {
+    minimum_length    = 8
+    require_lowercase = true
+    require_uppercase = true
+    require_numbers   = true
+    require_symbols   = true
+  }
+
+  # Necessário para o ForgotPassword saber para onde mandar o código — só
+  # funciona depois que o admin marcar email_verified=true na aprovação
+  # (ver AdminUpdateUserAttributes em src/infrastructure.py).
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
+  }
+
+  schema {
+    name                = "email"
+    attribute_data_type = "String"
+    required            = true
+    mutable             = true
+  }
+
+  schema {
+    name                = "name"
+    attribute_data_type = "String"
+    required            = true
+    mutable             = true
+  }
+
+  # Sem email_configuration de propósito: usa o remetente nativo do próprio
+  # Cognito (não configurado com SES) — decisão do projeto para não depender
+  # de identidade SES verificada/production access nesta primeira versão.
+  tags = merge(local.default_resource_tags, { Component = "lightsail_ia" })
+}
+
+resource "aws_cognito_user_pool_client" "filmbot" {
+  count        = local.lightsail_agent_enabled ? 1 : 0
+  name         = "${local.tmdb_prefix}-filmbot-client-${var.env}"
+  user_pool_id = aws_cognito_user_pool.filmbot[0].id
+
+  generate_secret = false # todas as chamadas partem do backend (boto3, IAM), nunca do navegador
+
+  explicit_auth_flows = [
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH", # login via AdminInitiateAuth, chamado pelo backend
+    "ALLOW_REFRESH_TOKEN_AUTH",
+  ]
+
+  prevent_user_existence_errors = "ENABLED" # não vaza se um e-mail já está cadastrado
+}
+
+resource "aws_cognito_user_group" "admins" {
+  count        = local.lightsail_agent_enabled ? 1 : 0
+  name         = "admins"
+  user_pool_id = aws_cognito_user_pool.filmbot[0].id
+  description  = "Usuários com acesso ao painel administrativo do FilmBot"
 }
 
 resource "aws_lightsail_key_pair" "filmbot" {
@@ -236,4 +349,19 @@ output "lightsail_glue_database" {
 output "lightsail_spec_table" {
   description = "SPEC_TABLE para o arquivo .env na instância (tabela SPEC, registrada em runtime pelo Glue AGG)"
   value       = local.envs.glue_catalog_tb_discover_unified
+}
+
+output "lightsail_cognito_user_pool_id" {
+  description = "COGNITO_USER_POOL_ID para o arquivo .env na instância"
+  value       = length(aws_cognito_user_pool.filmbot) > 0 ? aws_cognito_user_pool.filmbot[0].id : ""
+}
+
+output "lightsail_cognito_app_client_id" {
+  description = "COGNITO_APP_CLIENT_ID para o arquivo .env na instância"
+  value       = length(aws_cognito_user_pool_client.filmbot) > 0 ? aws_cognito_user_pool_client.filmbot[0].id : ""
+}
+
+output "lightsail_sns_new_signup_topic_arn" {
+  description = "SNS_NEW_SIGNUP_TOPIC_ARN para o arquivo .env na instância"
+  value       = aws_sns_topic.filmbot_new_signup_notifications.arn
 }

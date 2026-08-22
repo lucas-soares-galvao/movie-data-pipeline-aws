@@ -359,6 +359,11 @@ variable "lightsail_ssh_allowed_cidrs" {
   type        = list(string)
 }
 
+variable "filmbot_new_signup_notification_email" {
+  description = "E-mail do admin para receber notificação de cadastro novo do FilmBot pendente de aprovação"
+  type        = string
+}
+
 # =============================================================================
 # CI/CD — Role do GitHub Actions e backend do Terraform
 # =============================================================================

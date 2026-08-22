@@ -740,11 +740,75 @@ resource "aws_iam_role_policy_attachment" "cicd_ssm" {
 }
 
 # =============================================================================
+# POLICY 8 — COGNITO (User Pool do FilmBot, ver lightsail_ia.tf)
+# =============================================================================
+# CreateUserPool exige Resource "*" (o ARN do pool não existe antes da
+# criação — confirmado no IAM Service Authorization Reference do Cognito
+# User Pools, mesmo padrão já usado para S3CreateBucket/LightsailCreateInstances
+# acima). As demais actions — incluindo CreateUserPoolClient e CreateGroup,
+# que operam sobre um pool já existente identificado por UserPoolId — suportam
+# Resource escopado ao ARN do user pool.
+
+resource "aws_iam_policy" "cicd_cognito" {
+  name        = "${local.project_config.cicd_policy_prefix}-cognito-${var.env}"
+  description = "Gerenciamento do Cognito User Pool do FilmBot"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "CognitoUserPoolCreate"
+        Effect   = "Allow"
+        Action   = "cognito-idp:CreateUserPool"
+        Resource = "*"
+      },
+      {
+        Sid    = "CognitoUserPoolManagement"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:DescribeUserPool",
+          "cognito-idp:UpdateUserPool",
+          "cognito-idp:DeleteUserPool",
+          # O provider chama AddCustomAttributes no Update quando um novo
+          # bloco `schema` é adicionado a um user pool já existente (schema
+          # é imutável em Create, mas aditivo depois — ver user_pool.go).
+          "cognito-idp:AddCustomAttributes",
+          # O provider lê a config de MFA como parte do refresh de
+          # aws_cognito_user_pool (Get) e a define ao aplicar mudanças (Set) —
+          # mesmo padrão de "read + write" das demais actions de gerenciamento.
+          "cognito-idp:GetUserPoolMfaConfig",
+          "cognito-idp:SetUserPoolMfaConfig",
+          "cognito-idp:TagResource",
+          "cognito-idp:UntagResource",
+          "cognito-idp:ListTagsForResource",
+          "cognito-idp:CreateUserPoolClient",
+          "cognito-idp:DescribeUserPoolClient",
+          "cognito-idp:UpdateUserPoolClient",
+          "cognito-idp:DeleteUserPoolClient",
+          "cognito-idp:CreateGroup",
+          "cognito-idp:GetGroup",
+          "cognito-idp:UpdateGroup",
+          "cognito-idp:DeleteGroup",
+        ]
+        Resource = "arn:aws:cognito-idp:sa-east-1:${data.aws_caller_identity.current.account_id}:userpool/*"
+      },
+    ]
+  })
+
+  tags = merge(local.default_resource_tags, local.component_tags.shared)
+}
+
+resource "aws_iam_role_policy_attachment" "cicd_cognito" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = aws_iam_policy.cicd_cognito.arn
+}
+
+# =============================================================================
 # SINCRONIZAÇÃO — Garante que as policies estejam attachadas antes de criar
 # qualquer recurso de infraestrutura. Sem isso, o Terraform pode tentar criar
 # S3 buckets ou Lambda functions antes das policies propagarem no IAM.
 #
-# 7 policies em prod, 6 em dev — cicd_lightsail só existe em prod (ver
+# 8 policies em prod, 7 em dev — cicd_lightsail só existe em prod (ver
 # Policy 6 acima), já que dev não provisiona nenhum recurso Lightsail.
 #
 # Recursos raiz (S3 buckets, IAM roles) referenciam este recurso via depends_on,
@@ -760,6 +824,7 @@ resource "terraform_data" "cicd_policies_ready" {
     aws_iam_role_policy_attachment.cicd_observability,
     aws_iam_role_policy_attachment.cicd_lightsail,
     aws_iam_role_policy_attachment.cicd_ssm,
+    aws_iam_role_policy_attachment.cicd_cognito,
   ]
 }
 

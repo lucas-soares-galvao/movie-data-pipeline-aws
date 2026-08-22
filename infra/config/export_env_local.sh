@@ -33,6 +33,9 @@ ATHENA_S3_OUTPUT=$(terraform output -raw lightsail_athena_s3_output)
 GLUE_DATABASE=$(terraform output -raw lightsail_glue_database)
 SPEC_TABLE=$(terraform output -raw lightsail_spec_table)
 FILMBOT_SECRET_ARN=$(terraform output -raw lightsail_filmbot_secret_arn)
+COGNITO_USER_POOL_ID=$(terraform output -raw lightsail_cognito_user_pool_id)
+COGNITO_APP_CLIENT_ID=$(terraform output -raw lightsail_cognito_app_client_id)
+SNS_NEW_SIGNUP_TOPIC_ARN=$(terraform output -raw lightsail_sns_new_signup_topic_arn)
 
 # Fail-fast: sem isso, um FILMBOT_SECRET_ARN vazio (workspace errado, secret ainda
 # não injetada) geraria um .env sem nenhuma chave, e o erro só apareceria depois,
@@ -60,6 +63,9 @@ AWS_SECRET_ACCESS_KEY=$SECRET_KEY
 ATHENA_S3_OUTPUT=$ATHENA_S3_OUTPUT
 GLUE_DATABASE=$GLUE_DATABASE
 SPEC_TABLE=$SPEC_TABLE
+COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
+COGNITO_APP_CLIENT_ID=$COGNITO_APP_CLIENT_ID
+SNS_NEW_SIGNUP_TOPIC_ARN=$SNS_NEW_SIGNUP_TOPIC_ARN
 
 TRANSCRIPTION_MODEL=groq/whisper-large-v3-turbo
 TRANSCRIPTION_API_KEY=$TRANSCRIPTION_API_KEY

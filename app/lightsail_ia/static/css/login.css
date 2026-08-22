@@ -142,6 +142,15 @@
   border-color: rgba(249,115,22,0.5) !important;
   box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
 }
+/* Feedback dinâmico do campo "Confirmar senha" (password_match.js) — depois da regra
+   :focus acima pra vencer o empate de especificidade (ambas usam !important) mesmo com
+   o campo focado. */
+[data-testid="stTextInput"] input.password-mismatch {
+  border-color: #ef4444 !important;
+}
+[data-testid="stTextInput"] input.password-match {
+  border-color: #22c55e !important;
+}
 /* O Streamlit já tem seu próprio ícone de olho pra mostrar/esconder a senha
    (type="password") — no Edge/Windows, o navegador soma o ícone nativo dele
    (::-ms-reveal) por cima, duplicando o olho. Esconde só o nativo. */
@@ -180,6 +189,26 @@
 [data-testid="stColumns"],
 [data-testid="stHorizontalBlock"] {
   gap: 0.4rem !important;
+}
+
+/* Links secundários (Novo cadastro / Esqueci a senha / Voltar ao login) — estilo
+   "ghost" (sem preenchimento) pra não competir visualmente com o botão de ação
+   primário (Entrar/Criar cadastro/etc.), que continua sólido via a regra genérica
+   acima. Reaproveitado nas 4 telas (login/cadastro/esqueci senha) porque só uma
+   fica visível por vez (ver render_login() em login.py). */
+[class*="st-key-btn_link_"] button {
+  background: transparent !important;
+  color: #f97316 !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 6px 0 !important;
+  margin-top: 4px !important;
+}
+[class*="st-key-btn_link_"] button:hover {
+  filter: none;
+  text-decoration: underline;
+  transform: none;
 }
 
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de

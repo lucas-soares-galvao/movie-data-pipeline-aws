@@ -131,6 +131,12 @@ def load_cards_css() -> None:
     _inject_css("cards.css")
 
 
+def load_admin_css() -> None:
+    """Injeta os estilos do painel administrativo (depende de base.css já injetado por
+    load_app_css() na mesma execução de script)."""
+    _inject_css("admin.css")
+
+
 def load_preference_counter_script(max_chars: int, rate_limited: bool = False) -> None:
     """Injeta o script do contador dinâmico de caracteres e do habilitar/desabilitar do botão "Recomendar"."""
     path = Path(__file__).parent.parent / "static" / "js" / "contador_caracteres.js"
@@ -178,21 +184,50 @@ def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
-def load_login_button_toggle_script(locked_out: bool) -> None:
-    """Injeta o script que habilita/desabilita o botão "Entrar" a cada tecla digitada
-    no campo de senha, mesmo padrão de `load_preference_counter_script()` para o botão
-    "Recomendar"."""
+def load_login_button_toggle_script(locked_out: bool, button_key: str = "btn_entrar") -> None:
+    """Injeta o script que habilita/desabilita o botão de submit a cada tecla digitada
+    em qualquer campo do formulário ativo (login, cadastro ou esqueci senha — só um
+    fica visível por vez), mesmo padrão de `load_preference_counter_script()` para o
+    botão "Recomendar". `button_key` identifica o botão (`key=...` do `st.button`) de
+    cada formulário."""
     path = Path(__file__).parent.parent / "static" / "js" / "login_button_toggle.js"
-    script = path.read_text(encoding="utf-8").replace(
-        "__LOCKED_OUT__", "true" if locked_out else "false"
+    script = (
+        path.read_text(encoding="utf-8")
+        .replace("__LOCKED_OUT__", "true" if locked_out else "false")
+        .replace("__BUTTON_KEY__", button_key)
     )
     components.html(f"<script>{script}</script>", height=0)
 
 
-def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
-    """Renderiza uma caixa de mensagem de feedback padronizada (.msg-error/.msg-warning).
+def load_password_requirements_gate_script(password_key: str, confirm_key: str, button_key: str) -> None:
+    """Injeta o script que, a cada tecla digitada em qualquer campo do formulário (cadastro
+    ou redefinir senha), marca o campo "Confirmar senha" com borda verde/vermelha e mantém o
+    botão de submit desabilitado até todos os campos estarem preenchidos, senha e confirmação
+    coincidirem, e a senha atender à política mínima (8 a 16 caracteres, maiúscula, número e
+    símbolo — mesma política de infra/lightsail_ia.tf, ver password_requirements_gate.js).
+    Substitui `load_login_button_toggle_script()` nessas duas telas (já cobre o "campo
+    vazio" que aquele script cuidava, além de senha/confirmação); as telas sem confirmação
+    de senha (login, esqueci senha) continuam usando o outro script. `password_key`/
+    `confirm_key`/`button_key` identificam os campos e o botão (`key=...`) do formulário
+    ativo."""
+    path = Path(__file__).parent.parent / "static" / "js" / "password_requirements_gate.js"
+    script = (
+        path.read_text(encoding="utf-8")
+        .replace("__PASSWORD_KEY__", password_key)
+        .replace("__CONFIRM_KEY__", confirm_key)
+        .replace("__BUTTON_KEY__", button_key)
+    )
+    components.html(f"<script>{script}</script>", height=0)
 
-    kind: "error" (ícone ❌) ou "warning" (ícone ⚠️).
+
+_FEEDBACK_ICONS = {"error": "❌", "warning": "⚠️", "success": "✅"}
+
+
+def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
+    """Renderiza uma caixa de mensagem de feedback padronizada
+    (.msg-error/.msg-warning/.msg-success).
+
+    kind: "error" (ícone ❌), "warning" (ícone ⚠️) ou "success" (ícone ✅).
     extra_html: HTML bruto adicional anexado ao final, não escapado — usado só pelo
     countdown de rate limit de busca, para injetar o <span id="countdown"> vazio.
     Ícone e texto ficam em spans (.msg-icon/.msg-text) separados para que o CSS
@@ -200,7 +235,7 @@ def render_feedback(kind: str, message: str, *, extra_html: str = "") -> None:
     de emoji do sistema, com métricas de altura diferentes da fonte de texto, e sem
     wrapper próprio o conjunto desalinhava dentro da caixa.
     """
-    icon_char = "❌" if kind == "error" else "⚠️"
+    icon_char = _FEEDBACK_ICONS[kind]
     st.markdown(
         f'<div class="msg-{kind}"><span class="msg-icon">{icon_char}</span>'
         f'<span class="msg-text">{html.escape(message)}{extra_html}</span></div>',

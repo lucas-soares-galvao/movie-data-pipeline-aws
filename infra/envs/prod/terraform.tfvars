@@ -22,6 +22,7 @@ glue_etl_notification_email                  = "REPLACE_VIA_GITHUB_SECRET_NOTIFI
 lambda_notification_email                    = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
 eventbridge_notification_email               = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
 backfill_notification_email                  = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
+filmbot_new_signup_notification_email        = "REPLACE_VIA_GITHUB_SECRET_NOTIFICATION_EMAIL"
 
 # ARN do segredo unificado no Secrets Manager (tmdb_api_key, llm_api_key, filmbot_password).
 # Valor real injetado pelo CI/CD via GitHub Secret AWS_FILMBOT_SECRET_ARN_PROD.

@@ -129,6 +129,15 @@ jobs:
           SPEC_TABLE=$(terraform output -raw lightsail_spec_table)
           echo "spec_table=${SPEC_TABLE}" >> $GITHUB_OUTPUT
 
+          COGNITO_USER_POOL_ID=$(terraform output -raw lightsail_cognito_user_pool_id)
+          echo "cognito_user_pool_id=${COGNITO_USER_POOL_ID}" >> $GITHUB_OUTPUT
+
+          COGNITO_APP_CLIENT_ID=$(terraform output -raw lightsail_cognito_app_client_id)
+          echo "cognito_app_client_id=${COGNITO_APP_CLIENT_ID}" >> $GITHUB_OUTPUT
+
+          SNS_NEW_SIGNUP_TOPIC_ARN=$(terraform output -raw lightsail_sns_new_signup_topic_arn)
+          echo "sns_new_signup_topic_arn=${SNS_NEW_SIGNUP_TOPIC_ARN}" >> $GITHUB_OUTPUT
+
           echo "✅ Terraform outputs lidos com sucesso (IP: $PUBLIC_IP)"
 
       - name: Check instance state
@@ -172,7 +181,7 @@ jobs:
       - name: Create .env file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nFILMBOT_SECRET_ARN=%s\nATHENA_S3_OUTPUT=%s\nGLUE_DATABASE=%s\nSPEC_TABLE=%s\nCLOUDWATCH_LOG_GROUP=%s\n' \
+          printf 'AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_REGION=sa-east-1\nFILMBOT_SECRET_ARN=%s\nATHENA_S3_OUTPUT=%s\nGLUE_DATABASE=%s\nSPEC_TABLE=%s\nCLOUDWATCH_LOG_GROUP=%s\nCOGNITO_USER_POOL_ID=%s\nCOGNITO_APP_CLIENT_ID=%s\nSNS_NEW_SIGNUP_TOPIC_ARN=%s\n' \
             "${{ steps.tf.outputs.access_key_id }}" \
             "${{ steps.tf.outputs.secret_access_key }}" \
             "${{ steps.tf.outputs.filmbot_secret_arn }}" \
@@ -180,6 +189,9 @@ jobs:
             "${{ steps.tf.outputs.glue_database }}" \
             "${{ steps.tf.outputs.spec_table }}" \
             "${{ steps.tf.outputs.cw_log_group }}" \
+            "${{ steps.tf.outputs.cognito_user_pool_id }}" \
+            "${{ steps.tf.outputs.cognito_app_client_id }}" \
+            "${{ steps.tf.outputs.sns_new_signup_topic_arn }}" \
             | ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }} && sudo tee /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env > /dev/null && sudo chmod 600 /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env"
           ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
