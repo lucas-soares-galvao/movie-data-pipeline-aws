@@ -300,14 +300,14 @@ class TestRenderPasswordRequirements:
         components.render_password_requirements()
         assert 'id="password-requirements"' in captured["content"]
 
-    def test_renderiza_os_cinco_criterios(self, monkeypatch):
+    def test_renderiza_os_seis_criterios(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(
             components.st, "markdown",
             lambda content, unsafe_allow_html=False: captured.update(content=content),
         )
         components.render_password_requirements()
-        for key in ("length", "lower", "upper", "number", "symbol"):
+        for key in ("length", "lower", "upper", "number", "symbol", "match"):
             assert f'data-req="{key}"' in captured["content"]
 
     def test_estado_inicial_neutro_sem_classe_de_estado(self, monkeypatch):
@@ -319,7 +319,7 @@ class TestRenderPasswordRequirements:
         components.render_password_requirements()
         assert "req-met" not in captured["content"]
         assert "req-unmet" not in captured["content"]
-        assert captured["content"].count(">•<") == 5
+        assert captured["content"].count(">•<") == 6
 
 
 class TestMatchesHighlighted:
