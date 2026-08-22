@@ -226,17 +226,19 @@ _PASSWORD_REQUIREMENTS = (
     ("upper", "Uma letra maiúscula"),
     ("number", "Um número"),
     ("symbol", "Um símbolo (ex: ! @ # $)"),
+    ("match", "Senha e confirmação iguais"),
 )
 
 
 def render_password_requirements() -> None:
     """Renderiza a lista de critérios da política de senha (mesma política de
-    `_validate_password()` em login.py e de `password_requirements_gate.js`), abaixo do
-    campo "Confirmar senha" nas telas de cadastro e redefinir senha. Estado inicial neutro
-    (ícone "•", sem classe) — `password_requirements_gate.js` assume o `id` fixo
-    "password-requirements" (só uma tela de autenticação renderiza por vez) e atualiza
-    cada `<li data-req="...">` para ✓/✗ (classes `req-met`/`req-unmet`) a cada tecla
-    digitada no campo de senha."""
+    `_validate_password()` em login.py e de `password_requirements_gate.js`) mais o
+    critério de senha/confirmação iguais, abaixo do campo "Confirmar senha" nas telas de
+    cadastro e redefinir senha. Estado inicial neutro (ícone "•", sem classe) —
+    `password_requirements_gate.js` assume o `id` fixo "password-requirements" (só uma
+    tela de autenticação renderiza por vez) e atualiza cada `<li data-req="...">` para
+    ✓/✗ (classes `req-met`/`req-unmet`) a cada tecla digitada nos campos de senha/
+    confirmar senha — o item "match" reage a ambos, os demais só ao campo de senha."""
     items = "".join(
         f'<li data-req="{key}"><span class="req-icon">•</span>'
         f'<span class="req-label">{label}</span></li>'

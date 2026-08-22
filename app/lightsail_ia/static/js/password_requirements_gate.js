@@ -44,19 +44,25 @@
             const allFilled = Array.from(inputs).every((input) => input.value.length > 0);
             btn.disabled = !(allFilled && matches && passwordValid(password.value));
 
-            const typed = password.value.length > 0;
-            CRITERIA.forEach(({ key, test }) => {
+            const setReqState = (key, neutral, met) => {
                 const item = requirements.querySelector(`li[data-req="${key}"]`);
                 const iconEl = item.querySelector(".req-icon");
                 item.classList.remove("req-met", "req-unmet");
-                if (!typed) {
+                if (neutral) {
                     iconEl.textContent = "•";
                     return;
                 }
-                const met = test(password.value);
                 item.classList.add(met ? "req-met" : "req-unmet");
                 iconEl.textContent = met ? "✓" : "✗";
+            };
+
+            const typed = password.value.length > 0;
+            CRITERIA.forEach(({ key, test }) => {
+                setReqState(key, !typed, test(password.value));
             });
+            // Critério "match" reage aos dois campos (senha + confirmar), diferente dos
+            // demais (só a senha) — por isso fica fora de CRITERIA, tratado à parte.
+            setReqState("match", confirm.value.length === 0, matches);
         };
 
         inputs.forEach((input) => {
