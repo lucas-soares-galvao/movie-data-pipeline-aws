@@ -3,7 +3,7 @@
 #
 # Tópicos: glue_data_quality_failure/metrics, glue_etl_failure, lambda_failure,
 #          eventbridge_failure, glue_agg_success/failure, glue_details_failure,
-#          backfill_success
+#          backfill_success, filmbot_new_signup
 # =============================================================================
 
 # =============================================================================
@@ -162,4 +162,24 @@ resource "aws_sns_topic_subscription" "backfill_success_email" {
   topic_arn = aws_sns_topic.backfill_success_notifications.arn
   protocol  = "email"
   endpoint  = var.backfill_notification_email
+}
+
+# =============================================================================
+# TÓPICO 10: Cadastro novo no FilmBot pendente de aprovação
+# =============================================================================
+# Notifica o admin quando alguém faz um cadastro novo (SignUp no Cognito User
+# Pool, ver infra/lightsail_ia.tf) — sem isso o admin precisaria ficar checando
+# o painel periodicamente para saber que existe alguém esperando aprovação.
+# Destino fixo/conhecido de antemão (o próprio admin), por isso SNS e não SES —
+# mesmo racional dos outros 9 tópicos deste arquivo.
+resource "aws_sns_topic" "filmbot_new_signup_notifications" {
+  name         = "${local.tmdb_prefix}-filmbot-new-signup-notifications-${var.env}"
+  display_name = "[${upper(var.env)}] FILMBOT - CADASTRO NOVO"
+  tags         = local.component_tags.lightsail_ia
+}
+
+resource "aws_sns_topic_subscription" "filmbot_new_signup_email" {
+  topic_arn = aws_sns_topic.filmbot_new_signup_notifications.arn
+  protocol  = "email"
+  endpoint  = var.filmbot_new_signup_notification_email
 }

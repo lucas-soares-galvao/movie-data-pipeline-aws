@@ -10,6 +10,7 @@ from pathlib import Path
 import boto3
 import streamlit as st
 import watchtower
+from botocore.exceptions import ClientError
 
 
 def load_filmbot_password() -> None:
@@ -82,3 +83,163 @@ def seconds_until_available(history: dict[str, list[float]], ip: str, window_sec
     if not entries:
         return 0
     return max(0, math.ceil(entries[0] + window_seconds - time.time()))
+
+
+def _cognito_client():  # type: ignore[no-untyped-def]
+    """Cliente boto3 do Cognito Identity Provider, mesmo padrão de client factory inline
+    já usado por load_filmbot_password/setup_cloudwatch_logging."""
+    return boto3.client("cognito-idp", region_name=os.getenv("AWS_REGION", "sa-east-1"))
+
+
+def sign_up(email: str, password: str, name: str) -> None:
+    """Cadastra um novo usuário no Cognito (SignUp) — fica em estado Unconfirmed até o
+    admin aprovar (ver approve_signup). Não dispara nenhum código de verificação: o pool
+    é configurado sem auto_verified_attributes (infra/lightsail_ia.tf) de propósito, já
+    que o gate de acesso é a aprovação manual, não um código."""
+    _cognito_client().sign_up(
+        ClientId=os.environ["COGNITO_APP_CLIENT_ID"],
+        Username=email,
+        Password=password,
+        UserAttributes=[
+            {"Name": "email", "Value": email},
+            {"Name": "name", "Value": name},
+        ],
+    )
+
+
+_INVALID_LOGIN_ERROR_CODES = {"NotAuthorizedException", "UserNotFoundException"}
+
+
+def authenticate(email: str, password: str) -> str:
+    """Valida e-mail/senha contra o Cognito (AdminInitiateAuth).
+
+    Retorna "ok", "pending" (cadastro ainda aguardando aprovação do admin — conta
+    Unconfirmed) ou "invalid" (e-mail/senha incorretos ou conta desativada). Outros
+    códigos de erro (ex.: throttling) propagam para o chamador — só os dois
+    esperados em uso normal viram um retorno tratado.
+    """
+    try:
+        _cognito_client().admin_initiate_auth(
+            UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+            ClientId=os.environ["COGNITO_APP_CLIENT_ID"],
+            AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+            AuthParameters={"USERNAME": email, "PASSWORD": password},
+        )
+        return "ok"
+    except ClientError as error:
+        code = error.response["Error"]["Code"]
+        if code == "UserNotConfirmedException":
+            return "pending"
+        if code in _INVALID_LOGIN_ERROR_CODES:
+            return "invalid"
+        raise
+
+
+def is_admin(email: str) -> bool:
+    """True se o e-mail pertence ao grupo "admins" do Cognito (ver
+    infra/lightsail_ia.tf:aws_cognito_user_group.admins)."""
+    response = _cognito_client().admin_list_groups_for_user(
+        Username=email, UserPoolId=os.environ["COGNITO_USER_POOL_ID"]
+    )
+    return any(group["GroupName"] == "admins" for group in response["Groups"])
+
+
+def request_password_reset(email: str) -> None:
+    """Dispara o código de recuperação de senha (ForgotPassword) — o Cognito gera,
+    envia e expira o código sozinho, usando o remetente nativo dele (sem SES). Só
+    funciona se o e-mail já estiver marcado como verificado, o que acontece na
+    aprovação do cadastro (ver approve_signup)."""
+    _cognito_client().forgot_password(ClientId=os.environ["COGNITO_APP_CLIENT_ID"], Username=email)
+
+
+def confirm_password_reset(email: str, code: str, new_password: str) -> None:
+    """Valida o código de recuperação de senha e define a nova senha
+    (ConfirmForgotPassword)."""
+    _cognito_client().confirm_forgot_password(
+        ClientId=os.environ["COGNITO_APP_CLIENT_ID"],
+        Username=email,
+        ConfirmationCode=code,
+        Password=new_password,
+    )
+
+
+def _parse_user(user: dict) -> dict:
+    """Extrai email/name/enabled de um item retornado por list_users (Attributes vem
+    como lista de {Name, Value}, não como dict)."""
+    attrs = {attr["Name"]: attr["Value"] for attr in user["Attributes"]}
+    return {
+        "email": attrs.get("email", ""),
+        "name": attrs.get("name", ""),
+        "enabled": user["Enabled"],
+    }
+
+
+def list_pending_users() -> list[dict]:
+    """Lista cadastros aguardando aprovação do admin (status Unconfirmed)."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter='cognito:user_status = "UNCONFIRMED"',
+    )
+    return [_parse_user(user) for user in response["Users"]]
+
+
+def list_active_users() -> list[dict]:
+    """Lista usuários já aprovados (status Confirmed), ativos ou com acesso revogado —
+    `enabled` em cada item distingue os dois casos."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter='cognito:user_status = "CONFIRMED"',
+    )
+    return [_parse_user(user) for user in response["Users"]]
+
+
+def approve_signup(email: str) -> None:
+    """Aprova um cadastro pendente: confirma a conta e marca o e-mail como verificado.
+
+    O segundo passo (AdminUpdateUserAttributes) é obrigatório e fácil de esquecer —
+    AdminConfirmSignUp sozinho NÃO verifica o e-mail, e sem e-mail verificado o
+    "esqueci a senha" desse usuário falha silenciosamente mais tarde (ForgotPassword só
+    envia código para e-mail verificado, comportamento documentado da AWS)."""
+    client = _cognito_client()
+    pool_id = os.environ["COGNITO_USER_POOL_ID"]
+    client.admin_confirm_sign_up(UserPoolId=pool_id, Username=email)
+    client.admin_update_user_attributes(
+        UserPoolId=pool_id,
+        Username=email,
+        UserAttributes=[{"Name": "email_verified", "Value": "true"}],
+    )
+
+
+def reject_signup(email: str) -> None:
+    """Reprova um cadastro pendente, excluindo a conta por completo (decisão do
+    projeto: sem histórico de reprovados, ver lightsail_ia.md)."""
+    _cognito_client().admin_delete_user(UserPoolId=os.environ["COGNITO_USER_POOL_ID"], Username=email)
+
+
+def revoke_access(email: str) -> None:
+    """Bloqueia o login de um usuário já ativo (reversível, ver restore_access)."""
+    _cognito_client().admin_disable_user(UserPoolId=os.environ["COGNITO_USER_POOL_ID"], Username=email)
+
+
+def restore_access(email: str) -> None:
+    """Reverte revoke_access, reabilitando o login de um usuário desativado."""
+    _cognito_client().admin_enable_user(UserPoolId=os.environ["COGNITO_USER_POOL_ID"], Username=email)
+
+
+def add_to_admins_group(email: str) -> None:
+    """Adiciona o e-mail ao grupo "admins" do Cognito — usado pelo bootstrap manual do
+    primeiro admin (ver lightsail_ia.md, não tem tela própria no painel)."""
+    _cognito_client().admin_add_user_to_group(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"], Username=email, GroupName="admins"
+    )
+
+
+def notify_new_signup(email: str, name: str) -> None:
+    """Publica no tópico SNS de cadastro novo (infra/sns_topics.tf), para o admin saber
+    que há alguém esperando aprovação sem precisar checar o painel periodicamente."""
+    client = boto3.client("sns", region_name=os.getenv("AWS_REGION", "sa-east-1"))
+    client.publish(
+        TopicArn=os.environ["SNS_NEW_SIGNUP_TOPIC_ARN"],
+        Subject="FilmBot — cadastro novo pendente de aprovação",
+        Message=f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
+    )

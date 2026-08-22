@@ -182,6 +182,26 @@
   gap: 0.4rem !important;
 }
 
+/* Links secundários (Novo cadastro / Esqueci a senha / Voltar ao login) — estilo
+   "ghost" (sem preenchimento) pra não competir visualmente com o botão de ação
+   primário (Entrar/Criar cadastro/etc.), que continua sólido via a regra genérica
+   acima. Reaproveitado nas 4 telas (login/cadastro/esqueci senha) porque só uma
+   fica visível por vez (ver render_login() em login.py). */
+[class*="st-key-btn_link_"] button {
+  background: transparent !important;
+  color: #f97316 !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 6px 0 !important;
+  margin-top: 4px !important;
+}
+[class*="st-key-btn_link_"] button:hover {
+  filter: none;
+  text-decoration: underline;
+  transform: none;
+}
+
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de
    senha incorreta/bloqueio) vêm de base.css — antes duplicados aqui, e sem .time-countdown
    (bug corrigido nesta migração: o countdown de bloqueio de login não tinha essa classe). */

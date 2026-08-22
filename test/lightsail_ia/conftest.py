@@ -24,6 +24,9 @@ os.environ.setdefault("AWS_REGION", "sa-east-1")
 os.environ.setdefault("GLUE_DATABASE", "db_tmdb_unified_prod")
 os.environ.setdefault("SPEC_TABLE", "tb_tmdb_discover_unified_prod")
 os.environ.setdefault("ATHENA_S3_OUTPUT", "s3://test-bucket-temp/athena-results/")
+os.environ.setdefault("COGNITO_USER_POOL_ID", "sa-east-1_testpool")
+os.environ.setdefault("COGNITO_APP_CLIENT_ID", "test-app-client-id")
+os.environ.setdefault("SNS_NEW_SIGNUP_TOPIC_ARN", "arn:aws:sns:sa-east-1:123456789012:test-new-signup-topic")
 
 
 @pytest.fixture(autouse=True)

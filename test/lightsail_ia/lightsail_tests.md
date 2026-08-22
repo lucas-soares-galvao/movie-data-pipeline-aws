@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade) e as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`). Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação (`sign_up`, `authenticate`, `is_admin`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `approve_signup`, `reject_signup`, `revoke_access`, `restore_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `admin.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -28,6 +28,9 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `GLUE_DATABASE` | `"db_tmdb_unified_prod"` |
 | `SPEC_TABLE` | `"tb_tmdb_discover_unified_prod"` |
 | `ATHENA_S3_OUTPUT` | `"s3://test-bucket-temp/athena-results/"` |
+| `COGNITO_USER_POOL_ID` | `"sa-east-1_testpool"` |
+| `COGNITO_APP_CLIENT_ID` | `"test-app-client-id"` |
+| `SNS_NEW_SIGNUP_TOPIC_ARN` | `"arn:aws:sns:sa-east-1:123456789012:test-new-signup-topic"` |
 
 | Fixture | Escopo | Descrição |
 |---|---|---|
@@ -170,6 +173,7 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 |---|---|
 | `test_renderiza_classe_error` | `kind="error"` gera `class="msg-error"` e ícone ❌ |
 | `test_renderiza_classe_warning` | `kind="warning"` gera `class="msg-warning"` e ícone ⚠️ |
+| `test_renderiza_classe_success` | `kind="success"` gera `class="msg-success"` e ícone ✅ (usado pela tela "cadastro enviado" de `login.py`) |
 | `test_escapa_xss_na_mensagem` | `message` com `<script>` é escapado via `html.escape` |
 | `test_extra_html_nao_e_escapado` | `extra_html` (ex: `<span id="countdown">`) passa intacto, sem escape — único uso hoje é o countdown de rate limit de busca |
 | `test_sem_extra_html_nao_inclui_span_de_countdown` | Sem `extra_html`, nenhum `<span id="countdown">` aparece no HTML gerado |
@@ -184,13 +188,14 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_usa_countdown_como_element_id_padrao` | Sem `element_id` explícito, o script busca `getElementById("countdown")` |
 | `test_substitui_element_id_customizado` | O placeholder `__ELEMENT_ID__` é substituído pelo `element_id` passado (ex: `"audio-countdown"`), necessário para não colidir com o `id="countdown"` do rate limit de busca quando os dois countdowns estão visíveis ao mesmo tempo |
 
-### `TestLoadLoginButtonToggleScript` — Injeção do script de habilitar/desabilitar "Entrar" do login
+### `TestLoadLoginButtonToggleScript` — Injeção do script de habilitar/desabilitar o botão de submit das telas de autenticação
 
 | Teste | O que verifica |
 |---|---|
-| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `btn_entrar` |
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `btn_entrar` (`button_key` padrão) |
 | `test_substitui_locked_out_false` | O placeholder `__LOCKED_OUT__` é substituído por `false` quando `locked_out=False` |
 | `test_substitui_locked_out_true` | O placeholder `__LOCKED_OUT__` é substituído por `true` quando `locked_out=True` |
+| `test_substitui_button_key_customizado` | O placeholder `__BUTTON_KEY__` é substituído pelo `button_key` passado (ex: `"btn_cadastrar"`) — usado pelas telas de cadastro/esqueci senha, que reaproveitam o mesmo script com um botão diferente de `btn_entrar` |
 
 ### `TestMatchesHighlighted` — Predicado de match compartilhado por `_prioritize`/render de badges
 
@@ -372,6 +377,28 @@ Só o ramo de saída antecipada é testado — o ramo que efetivamente chama AWS
 | `test_calcula_segundos_restantes_ate_evento_mais_antigo_expirar` | Calcula corretamente os segundos restantes até o evento mais antigo sair da janela |
 | `test_retorna_zero_quando_janela_ja_expirou` | Janela já expirada → `0`, nunca negativo |
 
+### Autenticação (Cognito/SNS) — `TestSignUp`, `TestAuthenticate`, `TestIsAdmin`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestRestoreAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
+
+Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à API do Cognito/SNS (`assert_called_once_with`), sem tocar AWS de verdade — mesmo padrão do resto do arquivo.
+
+| Teste | O que verifica |
+|---|---|
+| `test_chama_sign_up_com_email_senha_e_nome` | `sign_up()` chama `SignUp` com `ClientId`/`Username`/`Password`/`UserAttributes` (email + name) corretos |
+| `test_retorna_ok_quando_credenciais_corretas` | `authenticate()` chama `AdminInitiateAuth` (`ADMIN_USER_PASSWORD_AUTH`) e retorna `"ok"` |
+| `test_retorna_pending_quando_cadastro_ainda_nao_aprovado` | `ClientError(UserNotConfirmedException)` → retorna `"pending"` |
+| `test_retorna_invalid_para_credenciais_incorretas_ou_usuario_inexistente` | Parametrizado: `NotAuthorizedException`/`UserNotFoundException` → retorna `"invalid"` |
+| `test_propaga_outros_codigos_de_erro` | Código de erro fora da lista tratada (ex: `TooManyRequestsException`) propaga `ClientError` para o chamador |
+| `test_retorna_true_quando_usuario_pertence_ao_grupo_admins` / `test_retorna_false_quando_usuario_nao_pertence_ao_grupo_admins` | `is_admin()` checa `AdminListGroupsForUser` pelo `GroupName == "admins"` |
+| `test_chama_forgot_password_com_email` | `request_password_reset()` chama `ForgotPassword` com `ClientId`/`Username` |
+| `test_chama_confirm_forgot_password_com_codigo_e_nova_senha` | `confirm_password_reset()` chama `ConfirmForgotPassword` com `ConfirmationCode`/`Password` |
+| `test_filtra_por_status_unconfirmed_e_extrai_atributos` | `list_pending_users()` chama `ListUsers` com `Filter='cognito:user_status = "UNCONFIRMED"'` e extrai `email`/`name`/`enabled` de `Attributes` (lista de `{Name, Value}`, não dict) |
+| `test_filtra_por_status_confirmed` | `list_active_users()` chama `ListUsers` com `Filter='cognito:user_status = "CONFIRMED"'` |
+| `test_confirma_cadastro_e_marca_email_como_verificado` | `approve_signup()` chama **ambos** `AdminConfirmSignUp` e `AdminUpdateUserAttributes(email_verified=true)` — o segundo passo é o que faz o "esqueci a senha" funcionar depois |
+| `test_exclui_a_conta` | `reject_signup()` chama `AdminDeleteUser` |
+| `test_desativa_o_usuario` / `test_reativa_o_usuario` | `revoke_access()`/`restore_access()` chamam `AdminDisableUser`/`AdminEnableUser` |
+| `test_adiciona_usuario_ao_grupo_admins` | `add_to_admins_group()` chama `AdminAddUserToGroup(GroupName="admins")` |
+| `test_publica_no_topico_sns_com_email_e_nome` | `notify_new_signup()` chama `sns.publish` com `TopicArn`/`Subject`/`Message` (nome e e-mail interpolados) |
+
 ## Como executar
 
 ```bash
@@ -384,11 +411,11 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py`, `login.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py` **não** está excluído: embora também seja bootstrap/UI, tem funções puras ou com saída antecipada trivialmente testáveis sem depender de um script Streamlit rodando (ver `test_infrastructure.py` acima).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py`, `login.py`, `admin.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py` **não** está excluído: embora também seja bootstrap/UI, tem funções puras, com saída antecipada, ou chamadas diretas a boto3 (Cognito/SNS) trivialmente testáveis via mock, sem depender de um script Streamlit rodando (ver `test_infrastructure.py` acima).
 
 ## Observação sobre testes de interface
 
-A interface Streamlit (`app.py`, `login.py`, `recommendation.py`, `cards.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, esses arquivos ficariam em 0% de cobertura (rodam código a nível de import/execução de script, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubariam o gate de 95% sozinhos. Para validar o app visualmente, execute localmente:
+A interface Streamlit (`app.py`, `login.py`, `admin.py`, `recommendation.py`, `cards.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, esses arquivos ficariam em 0% de cobertura (rodam código a nível de import/execução de script, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubariam o gate de 95% sozinhos. Para validar o app visualmente, execute localmente:
 
 ```bash
 cd app/lightsail_ia
