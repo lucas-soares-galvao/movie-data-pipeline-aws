@@ -136,6 +136,7 @@
   color: #ffffff;
   margin: -12px 0 20px !important;
   letter-spacing: -0.02em;
+  text-align: center;
 }
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
    usada pro "Press Ctrl+Enter to apply" da textarea em recommendation.css. */
