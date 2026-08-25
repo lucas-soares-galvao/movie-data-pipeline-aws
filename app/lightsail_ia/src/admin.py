@@ -11,8 +11,6 @@ import streamlit as st
 from src import infrastructure
 from src.components import load_admin_css
 
-_TABLE_COLUMNS = ["Nome", "E-mail", "Último acesso", "Admin", "Status"]
-
 
 def render_admin_panel() -> None:
     """Renderiza o painel admin: uma única tabela com todos os cadastros (novos e já
@@ -52,10 +50,7 @@ def _render_table() -> None:
         if not rows:
             st.markdown('<p class="admin-empty">Nenhum usuário encontrado.</p>', unsafe_allow_html=True)
         else:
-            with st.container(key="admin-table-scroll"):
-                st.table(_build_table_data(rows))
-            _render_action_panel(rows)
-            _render_dataframe_comparison(rows)
+            _render_users_dataframe(rows)
 
 
 def _build_table_data(rows: list[dict]) -> list[dict]:
@@ -63,7 +58,9 @@ def _build_table_data(rows: list[dict]) -> list[dict]:
         {
             "Nome": row["name"],
             "E-mail": row["email"],
-            "Último acesso": _format_last_login(row["last_login"]),
+            "Cadastrado em": _format_datetime(row["created_at"]),
+            "Atualizado em": _format_datetime(row["updated_at"]),
+            "Último acesso": _format_datetime(row["last_login"]),
             "Admin": "Sim" if row["is_admin"] else "Não",
             "Status": _status_label(row),
         }
@@ -79,50 +76,39 @@ def _status_label(user: dict) -> str:
     return "Revogado"
 
 
-def _render_action_panel(rows: list[dict]) -> None:
-    """Seletor de usuário + botões de ação, fora da tabela — st.table não aceita
-    widgets por célula, então a ação não pode morar numa linha dela."""
-    options = {row["email"]: f'{row["name"]} — {row["email"]}' for row in rows}
-    col_select, col_actions = st.columns([2, 1], vertical_alignment="bottom")
-    with col_select:
-        selected_email = st.selectbox(
-            "Usuário",
-            options=list(options.keys()),
-            format_func=lambda email: options[email],
-            key="admin_action_select",
-        )
-    selected_user = next(row for row in rows if row["email"] == selected_email)
-    with col_actions:
-        _render_action_buttons(selected_user)
-
-
-def _render_dataframe_comparison(rows: list[dict]) -> None:
-    """Bloco de comparação (a pedido do usuário, pra ver ao lado da abordagem atual):
-    a mesma grade via st.dataframe, com botão real dentro da célula de Ação
+def _render_users_dataframe(rows: list[dict]) -> None:
+    """Grade de usuários via st.dataframe, com botão real dentro da célula de Ação
     (st.column_config.ButtonColumn, disponível a partir do Streamlit 1.59 — confirmado
-    na versão instalada neste projeto). Ao contrário de st.table, aqui dá pra ter o
-    widget de fato na célula, sem precisar de painel separado."""
-    st.caption("Comparação — st.dataframe com coluna de Ação")
+    na versão instalada neste projeto). st.table não aceita widgets por célula, então
+    st.dataframe é o único jeito de ter aprovar/revogar na própria linha, sem painel
+    separado."""
     # st.dataframe(key=...) não gera classe `st-key-<key>` no wrapper (diferente de
     # st.container/st.button, confirmado via Playwright) — sem esse container extra,
     # não haveria seletor estável pra escopar o CSS que esconde a toolbar/estiliza a
     # moldura (ver admin.css).
-    with st.container(key="admin-dataframe-comparison"):
+    with st.container(key="admin-dataframe"):
         st.dataframe(
             _build_dataframe_action_data(rows),
+            # width="content" — o padrão ("stretch") distribui o espaço sobrando do
+            # container entre as colunas, ignorando o `width` fixo do column_config
+            # abaixo (confirmado visualmente: com "stretch", Admin/Status/Aprovar/
+            # Revogar ficavam largas mesmo com width=60).
+            width="content",
             hide_index=True,
             column_config={
-                "Admin": st.column_config.TextColumn("Admin", alignment="center", width=80),
-                "Status": st.column_config.TextColumn("Status", alignment="center", width=80),
+                "Admin": st.column_config.TextColumn("Admin", alignment="center", width=60),
+                "Status": st.column_config.TextColumn("Status", alignment="center", width=60),
+                "Cadastrado em": st.column_config.TextColumn("Cadastrado em", alignment="left"),
+                "Atualizado em": st.column_config.TextColumn("Atualizado em", alignment="left"),
                 "Último acesso": st.column_config.TextColumn("Último acesso", alignment="left"),
                 "Aprovar": st.column_config.ButtonColumn(
-                    "Aprovar", key="admin_df_approve_click", alignment="center", width=80
+                    "Aprovar", key="admin_approve_click", alignment="center", width=60
                 ),
                 "Revogar": st.column_config.ButtonColumn(
-                    "Revogar", key="admin_df_reject_revoke_click", alignment="center", width=80
+                    "Revogar", key="admin_reject_revoke_click", alignment="center", width=60
                 ),
             },
-            key="admin_dataframe_comparison",
+            key="admin_users_dataframe",
             row_height=33,
         )
     _handle_dataframe_action_click(rows)
@@ -145,8 +131,8 @@ def _build_dataframe_action_data(rows: list[dict]) -> list[dict]:
 
 
 def _handle_dataframe_action_click(rows: list[dict]) -> None:
-    approve_click = st.session_state.get("admin_df_approve_click")
-    reject_revoke_click = st.session_state.get("admin_df_reject_revoke_click")
+    approve_click = st.session_state.get("admin_approve_click")
+    reject_revoke_click = st.session_state.get("admin_reject_revoke_click")
 
     if approve_click:
         infrastructure.approve_signup(rows[approve_click["row"]]["email"])
@@ -160,34 +146,13 @@ def _handle_dataframe_action_click(rows: list[dict]) -> None:
         st.rerun()
 
 
-def _format_last_login(last_login: str) -> str:
-    """Formata o ISO 8601 UTC gravado por infrastructure.record_login() em pt-BR,
-    convertido para America/Sao_Paulo (DD/MM/AAAA HH:MM). "Nunca" para quem ainda
-    não tem o atributo custom:last_login (cadastro anterior a esta feature, ou
-    pendente que nunca completou login)."""
-    if not last_login:
+def _format_datetime(value: str) -> str:
+    """Formata um timestamp ISO 8601 UTC (created_at/updated_at/last_login, ver
+    infrastructure._parse_user()) em pt-BR, convertido para America/Sao_Paulo
+    (DD/MM/AAAA HH:MM). "Nunca" para valor vazio — só ocorre em last_login, para
+    quem ainda não tem o atributo custom:last_login (cadastro anterior a esta
+    feature, ou pendente que nunca completou login)."""
+    if not value:
         return "Nunca"
-    local_dt = datetime.fromisoformat(last_login).astimezone(ZoneInfo("America/Sao_Paulo"))
+    local_dt = datetime.fromisoformat(value).astimezone(ZoneInfo("America/Sao_Paulo"))
     return local_dt.strftime("%d/%m/%Y %H:%M")
-
-
-def _render_action_buttons(user: dict) -> None:
-    email = user["email"]
-
-    with st.container(key=f"admin-action-{email}"):
-        if user["kind"] == "pending":
-            col_approve, col_reject = st.columns(2)
-            with col_approve:
-                if st.button("", icon=":material/check:", key=f"btn_aprovar_{email}"):
-                    infrastructure.approve_signup(email)
-                    st.rerun()
-            with col_reject:
-                if st.button("", icon=":material/close:", key=f"btn_reprovar_{email}"):
-                    infrastructure.reject_signup(email)
-                    st.rerun()
-        elif user["enabled"] and not user["is_admin"]:
-            if st.button("", icon=":material/close:", key=f"btn_revogar_{email}"):
-                infrastructure.revoke_access(email)
-                st.rerun()
-        else:
-            st.caption("Nenhuma ação disponível para este usuário.")
