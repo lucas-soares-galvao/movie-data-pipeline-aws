@@ -388,15 +388,17 @@ Só o ramo de saída antecipada é testado — o ramo que efetivamente chama AWS
 | `test_calcula_segundos_restantes_ate_evento_mais_antigo_expirar` | Calcula corretamente os segundos restantes até o evento mais antigo sair da janela |
 | `test_retorna_zero_quando_janela_ja_expirou` | Janela já expirada → `0`, nunca negativo |
 
-### Autenticação (Cognito/SNS) — `TestSignUp`, `TestConfirmSignUp`, `TestResendConfirmationCode`, `TestAuthenticate`, `TestRecordLogin`, `TestIsAdmin`, `TestGetUserStatus`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
+### Autenticação (Cognito/SNS) — `TestSignUp`, `TestConfirmSignUp`, `TestResendConfirmationCode`, `TestAuthenticate`, `TestRecordLogin`, `TestRecordPasswordUpdate`, `TestIsAdmin`, `TestGetUserStatus`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
 
 Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à API do Cognito/SNS (`assert_called_once_with`), sem tocar AWS de verdade — mesmo padrão do resto do arquivo.
 
 | Teste | O que verifica |
 |---|---|
 | `test_chama_sign_up_com_email_senha_e_nome` | `sign_up()` chama `SignUp` com `ClientId`/`Username`/`Password`/`UserAttributes` (email + name) corretos |
-| `test_desabilita_a_conta_recem_criada` | `sign_up()` também chama `AdminDisableUser` — a conta já nasce desabilitada, para não ficar liberada só por confirmar o e-mail |
+| `test_nao_desabilita_a_conta_no_signup` | `sign_up()` **não** chama `AdminDisableUser` — testado empiricamente que `ConfirmSignUp` rejeita qualquer código (mesmo o certo) com `CodeMismatchException` quando a conta já está `Disabled` |
 | `test_chama_confirm_sign_up_com_email_e_codigo` (`TestConfirmSignUp`) | `confirm_sign_up()` chama `ConfirmSignUp` com `ClientId`/`Username`/`ConfirmationCode` |
+| `test_desabilita_a_conta_depois_de_confirmar` | `confirm_sign_up()` também chama `AdminDisableUser`, só depois do `ConfirmSignUp` ter sucesso |
+| `test_nao_desabilita_a_conta_quando_confirm_sign_up_falha` | Se `ConfirmSignUp` falhar (`ClientError`), `AdminDisableUser` não é chamado e a exceção propaga |
 | `test_chama_resend_confirmation_code_com_email` (`TestResendConfirmationCode`) | `resend_confirmation_code()` chama `ResendConfirmationCode` com `ClientId`/`Username` |
 | `test_retorna_ok_quando_credenciais_corretas` | `authenticate()` chama `AdminInitiateAuth` (`ADMIN_USER_PASSWORD_AUTH`) e retorna `"ok"` |
 | `test_retorna_pending_quando_cadastro_ainda_nao_aprovado` | `ClientError(UserNotConfirmedException)` → retorna `"pending"` |
@@ -404,13 +406,15 @@ Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à AP
 | `test_retorna_pending_quando_conta_esta_desabilitada_aguardando_aprovacao` | `NotAuthorizedException` com mensagem `"User is disabled."` → retorna `"pending"` (distinto de senha incorreta, que usa o mesmo `Code` mas mensagem diferente) |
 | `test_propaga_outros_codigos_de_erro` | Código de erro fora da lista tratada (ex: `TooManyRequestsException`) propaga `ClientError` para o chamador |
 | `test_grava_timestamp_iso_utc_no_atributo_custom_last_login` | `record_login()` chama `AdminUpdateUserAttributes` gravando `custom:last_login` com um valor ISO 8601 parseável (não compara string exata — o timestamp é gerado no momento da chamada) |
+| `test_grava_timestamp_iso_utc_no_atributo_custom_password_updated_at` | `record_password_update()` chama `AdminUpdateUserAttributes` gravando `custom:password_updated_at` com um valor ISO 8601 parseável, mesmo padrão de `record_login()` |
 | `test_retorna_true_quando_usuario_pertence_ao_grupo_admins` / `test_retorna_false_quando_usuario_nao_pertence_ao_grupo_admins` | `is_admin()` checa `AdminListGroupsForUser` pelo `GroupName == "admins"` |
 | `test_retorna_user_status_quando_lista_de_usuarios_nao_esta_vazia` / `test_retorna_none_quando_lista_de_usuarios_esta_vazia` | `get_user_status()` chama `ListUsers` com `Filter='email = "..."'` e retorna o `UserStatus` do primeiro usuário encontrado, ou `None` se a lista veio vazia — usado na tela "Esqueci a senha" pra avisar quando o e-mail não tem cadastro (`None`) ou ainda está pendente de aprovação (`"UNCONFIRMED"`) |
 | `test_retorna_none_sem_chamar_a_api_quando_email_contem_aspas` | E-mail com `"` quebraria a sintaxe do `Filter` (sem escaping documentado) — `get_user_status()` retorna `None` sem chamar `ListUsers` |
 | `test_chama_forgot_password_com_email` | `request_password_reset()` chama `ForgotPassword` com `ClientId`/`Username` |
 | `test_chama_confirm_forgot_password_com_codigo_e_nova_senha` | `confirm_password_reset()` chama `ConfirmForgotPassword` com `ConfirmationCode`/`Password` |
-| `test_filtra_por_status_disabled_e_extrai_atributos` | `list_pending_users()` chama `ListUsers` com `Filter='status = "Disabled"'` e extrai `email`/`name`/`enabled`/`last_login` de `Attributes` (lista de `{Name, Value}`, não dict) — `last_login` vem `""` quando o atributo `custom:last_login` não existe |
+| `test_filtra_por_status_disabled_e_extrai_atributos` | `list_pending_users()` chama `ListUsers` com `Filter='status = "Disabled"'` e extrai `email`/`name`/`enabled`/`created_at`/`updated_at`/`last_login` (`created_at` vem de `UserCreateDate`, campo nativo do item; `updated_at`/`last_login` vêm dos atributos custom `custom:password_updated_at`/`custom:last_login` em `Attributes`, lista de `{Name, Value}`, não dict) — os dois vêm `""` quando o atributo custom correspondente não existe |
 | `test_extrai_last_login_quando_atributo_custom_existe` | Com `custom:last_login` presente em `Attributes`, `_parse_user()` extrai o valor de volta sem alteração |
+| `test_extrai_updated_at_quando_atributo_custom_existe` | Mesmo teste, para `custom:password_updated_at` — gravado só por `record_password_update()` no fluxo de troca de senha, não por `UserLastModifiedDate` (nativo, mas descartado de propósito: reflete qualquer alteração na conta, inclusive cada login, o que tornaria a coluna redundante com "Último acesso") |
 | `test_descarta_usuarios_que_ainda_nao_confirmaram_o_email` | `list_pending_users()` filtra em Python só `UserStatus == "CONFIRMED"` — quem ainda está `UNCONFIRMED` (não confirmou o e-mail) não aparece no painel admin |
 | `test_filtra_por_status_enabled` | `list_active_users()` chama `ListUsers` com `Filter='status = "Enabled"'` |
 | `test_descarta_usuarios_ainda_nao_confirmados_por_defesa` | `list_active_users()` também filtra em Python por `UserStatus == "CONFIRMED"`, defesa contra um caso que não deveria ocorrer no fluxo normal |
