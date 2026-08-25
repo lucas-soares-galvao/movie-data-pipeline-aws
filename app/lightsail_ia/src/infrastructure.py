@@ -93,8 +93,8 @@ def _cognito_client():  # type: ignore[no-untyped-def]
 
 
 def sign_up(email: str, password: str, name: str) -> None:
-    """Cadastra um novo usuário no Cognito (SignUp) e já deixa a conta desabilitada
-    (AdminDisableUser) até o admin aprovar (ver approve_signup).
+    """Cadastra um novo usuário no Cognito (SignUp) — fica Enabled=true (padrão) até
+    confirmar o e-mail (ver confirm_sign_up).
 
     O primeiro código de confirmação de e-mail é enviado automaticamente como efeito
     colateral do próprio SignUp — o pool tem auto_verified_attributes=["email"] +
@@ -102,12 +102,11 @@ def sign_up(email: str, password: str, name: str) -> None:
     reset de senha (request_password_reset), não existe uma chamada explícita de
     "enviar código" aqui.
 
-    Desabilitar a conta já neste ponto (não só na aprovação) é obrigatório: sem isso,
-    assim que o usuário confirmasse o e-mail (confirm_sign_up) o UserStatus viraria
-    CONFIRMED e ele conseguiria logar direto, pulando a aprovação manual do admin —
-    authenticate() não teria mais nenhum outro sinal para barrar."""
-    client = _cognito_client()
-    client.sign_up(
+    Não desabilita a conta aqui de propósito — testado empiricamente contra o Cognito
+    real: ConfirmSignUp rejeita o código com CodeMismatchException (mensagem enganosa,
+    não é o código que está errado) quando a conta já está Disabled. Desabilitar cedo
+    demais quebra o próprio fluxo de confirmação; ver confirm_sign_up()."""
+    _cognito_client().sign_up(
         ClientId=os.environ["COGNITO_APP_CLIENT_ID"],
         Username=email,
         Password=password,
@@ -116,25 +115,32 @@ def sign_up(email: str, password: str, name: str) -> None:
             {"Name": "name", "Value": name},
         ],
     )
-    client.admin_disable_user(UserPoolId=os.environ["COGNITO_USER_POOL_ID"], Username=email)
 
 
 def confirm_sign_up(email: str, code: str) -> None:
-    """Confirma a posse do e-mail do cadastro (ConfirmSignUp) — o UserStatus vira
-    CONFIRMED e, por "email" estar em auto_verified_attributes (infra/lightsail_ia.tf),
-    o Cognito marca email_verified=true sozinho nesse momento (comportamento padrão de
-    auto-verified attribute ligado ao código de confirmação do SignUp).
+    """Confirma a posse do e-mail do cadastro (ConfirmSignUp) e só então desabilita a
+    conta (AdminDisableUser), até o admin aprovar em approve_signup().
 
-    Não reabilita a conta — ela continua Disabled (ver sign_up()) até o admin aprovar
-    em approve_signup(). Exceptions relevantes: CodeMismatchException,
-    ExpiredCodeException, LimitExceededException, TooManyFailedAttemptsException,
-    AliasExistsException, UserNotFoundException (ver _signup_code_error_message em
-    login.py para o mapeamento de mensagem)."""
-    _cognito_client().confirm_sign_up(
+    A ordem importa: ConfirmSignUp exige a conta Enabled=true pra aceitar o código
+    (testado empiricamente — com Enabled=false ele rejeita qualquer código, mesmo o
+    certo, com CodeMismatchException). Por isso sign_up() não desabilita mais a conta
+    — só depois do ConfirmSignUp ter sucesso é que fica seguro desabilitar, sem quebrar
+    a própria confirmação. UserStatus vira CONFIRMED e, por "email" estar em
+    auto_verified_attributes (infra/lightsail_ia.tf), o Cognito marca
+    email_verified=true sozinho nesse momento (comportamento padrão de auto-verified
+    attribute ligado ao código de confirmação do SignUp).
+
+    Exceptions relevantes do ConfirmSignUp: CodeMismatchException, ExpiredCodeException,
+    LimitExceededException, TooManyFailedAttemptsException, AliasExistsException,
+    UserNotFoundException (ver _signup_code_error_message em login.py para o
+    mapeamento de mensagem)."""
+    client = _cognito_client()
+    client.confirm_sign_up(
         ClientId=os.environ["COGNITO_APP_CLIENT_ID"],
         Username=email,
         ConfirmationCode=code,
     )
+    client.admin_disable_user(UserPoolId=os.environ["COGNITO_USER_POOL_ID"], Username=email)
 
 
 def resend_confirmation_code(email: str) -> None:
@@ -162,10 +168,11 @@ def authenticate(email: str, password: str) -> str:
     O caso "conta desabilitada" é detectado pela mensagem do NotAuthorizedException
     (o Cognito não usa um Code dedicado para isso) — checado antes do fallback
     genérico em _INVALID_LOGIN_ERROR_CODES (que também cobre NotAuthorizedException,
-    para senha incorreta), para não colidir. Essa string não é um contrato
-    documentado da API — se a AWS mudar o texto no futuro, o pior caso é essa branch
-    nunca bater e o usuário ver "e-mail ou senha incorretos" em vez de "aguardando
-    aprovação": degradação segura, não uma falha de segurança."""
+    para senha incorreta), para não colidir. A string exata foi confirmada empiricamente
+    contra o Cognito real (AdminInitiateAuth numa conta Disabled); não é, ainda assim,
+    um contrato documentado da API — se a AWS mudar o texto no futuro, o pior caso é
+    essa branch nunca bater e o usuário ver "e-mail ou senha incorretos" em vez de
+    "aguardando aprovação": degradação segura, não uma falha de segurança."""
     try:
         _cognito_client().admin_initiate_auth(
             UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
@@ -195,6 +202,20 @@ def record_login(email: str) -> None:
         UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
         Username=email,
         UserAttributes=[{"Name": "custom:last_login", "Value": datetime.now(timezone.utc).isoformat()}],
+    )
+
+
+def record_password_update(email: str) -> None:
+    """Grava o timestamp (ISO 8601 UTC) da troca de senha bem-sucedida no atributo
+    custom `custom:password_updated_at` (infra/lightsail_ia.tf), lido de volta por
+    _parse_user() para a coluna "Atualizado em" do painel admin. Chamado por login.py
+    logo após um confirm_password_reset() bem-sucedido."""
+    _cognito_client().admin_update_user_attributes(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        UserAttributes=[
+            {"Name": "custom:password_updated_at", "Value": datetime.now(timezone.utc).isoformat()}
+        ],
     )
 
 
@@ -228,7 +249,7 @@ def request_password_reset(email: str) -> None:
     """Dispara o código de recuperação de senha (ForgotPassword) — o Cognito gera,
     envia e expira o código sozinho, usando o remetente nativo dele (sem SES). Só
     funciona se o e-mail já estiver marcado como verificado, o que acontece na
-    aprovação do cadastro (ver approve_signup)."""
+    confirmação do próprio cadastro (ver confirm_sign_up)."""
     _cognito_client().forgot_password(ClientId=os.environ["COGNITO_APP_CLIENT_ID"], Username=email)
 
 
@@ -244,15 +265,23 @@ def confirm_password_reset(email: str, code: str, new_password: str) -> None:
 
 
 def _parse_user(user: dict) -> dict:
-    """Extrai email/name/enabled/last_login de um item retornado por list_users
-    (Attributes vem como lista de {Name, Value}, não como dict). `last_login` vem
-    vazio para quem nunca logou desde que o atributo custom:last_login existe
-    (cadastros antigos, ou cadastros pendentes que nunca completaram login)."""
+    """Extrai email/name/enabled/created_at/updated_at/last_login de um item retornado
+    por list_users (Attributes vem como lista de {Name, Value}, não como dict).
+    `created_at` vem de UserCreateDate, campo nativo do Cognito (sempre presente, sem
+    depender de atributo custom). `updated_at` vem do atributo custom
+    custom:password_updated_at, gravado só por record_password_update() no fluxo de
+    troca de senha — não usa UserLastModifiedDate (nativo) de propósito, porque esse
+    campo reflete qualquer alteração na conta, inclusive o próprio record_login() a
+    cada login, o que o tornaria redundante com `last_login`. `updated_at`/`last_login`
+    vêm vazios para quem nunca trocou a senha/nunca logou desde que os atributos custom
+    existem (cadastros antigos, ou pendentes que nunca completaram o fluxo)."""
     attrs = {attr["Name"]: attr["Value"] for attr in user["Attributes"]}
     return {
         "email": attrs.get("email", ""),
         "name": attrs.get("name", ""),
         "enabled": user["Enabled"],
+        "created_at": user["UserCreateDate"].isoformat(),
+        "updated_at": attrs.get("custom:password_updated_at", ""),
         "last_login": attrs.get("custom:last_login", ""),
     }
 
@@ -278,9 +307,11 @@ def list_active_users() -> list[dict]:
     Filtra por status="Enabled" no server-side (não mais só por
     cognito:user_status) — sem isso, contas aguardando aprovação (Disabled +
     CONFIRMED) apareceriam aqui também, duplicando a linha do usuário no painel
-    admin. Client-side ainda descarta UserStatus != CONFIRMED por defesa, embora
-    não deva ocorrer no fluxo normal (uma conta Enabled=True nunca deveria estar
-    UNCONFIRMED, já que sign_up() sempre desabilita)."""
+    admin. O filtro client-side por UserStatus == "CONFIRMED" aqui não é só defesa:
+    um cadastro que ainda não confirmou o e-mail fica Enabled=True (padrão) +
+    UNCONFIRMED durante essa janela curta (sign_up() não desabilita mais a conta,
+    ver docstring de confirm_sign_up) — sem esse filtro, apareceria aqui como
+    usuário ativo antes mesmo de confirmar o e-mail."""
     response = _cognito_client().list_users(
         UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
         Filter='status = "Enabled"',
