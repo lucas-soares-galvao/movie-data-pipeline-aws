@@ -5,6 +5,19 @@
 [data-testid="stToolbar"] { display: none; }
 [data-testid="stDecoration"] { display: none; }
 
+/* As telas "Esqueci a senha" (request/confirm) rodam _send_section()/_resend_section()
+   como @st.fragment(run_every=1) pra recalcular o cooldown a cada segundo sem reload
+   (ver login.py). Cada tick automático faz o Streamlit marcar os containers do
+   fragmento como data-stale="true" por um instante (indicando "atualizando") e piscar
+   o indicador nativo de execução — sem essas duas regras, o botão "Enviar código"/
+   "Redefinir senha" e a caixa de aviso (ex.: "Seu cadastro ainda está aguardando
+   aprovação do admin.") piscam a cada segundo mesmo quando o conteúdo não muda. */
+[data-testid="stStatusWidget"] { display: none !important; }
+.st-key-login-card [data-stale="true"] {
+  opacity: 1 !important;
+  transition: none !important;
+}
+
 /* Centralização vertical do card de login: stAppViewContainer já tem min-height:100vh
    (base.css), mas nada empurrava o conteúdo pro meio da tela — sem isso o card
    renderiza colado no topo, seguindo o fluxo normal do block-container.
@@ -17,11 +30,21 @@
    inteiro (card + rodapé, com respiro igual acima/abaixo) é o resultado padrão de tela
    de login com esse layout e não depende de nenhum detalhe interno não documentado. Só
    se aplica na tela de login: estas regras só são injetadas quando render_login() roda,
-   nunca junto de app.css. */
+   nunca junto de app.css. `safe center` (não só `center`) nas duas regras abaixo: quando
+   o conteúdo é mais alto que a viewport (telas baixas, zoom alto, ou a tela de
+   "Recuperar Acesso" — a mais alta das 4, com código + 2 campos de senha + checklist +
+   aviso de cooldown + 2 links), `center` sozinho cortava/espremia o card igualmente pros
+   dois lados; `safe` cai pra alinhamento no topo nesse caso, deixando o conteúdo
+   acessível via scroll normal da página. */
 [data-testid="stMain"] .block-container {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* "safe" (CSS Box Alignment L3): centraliza normalmente quando o conteúdo cabe, mas cai
+     pra alinhamento no topo quando o conteúdo é mais alto que a viewport — sem "safe",
+     justify-content:center simples cortava/espremia o card (pior caso: tela de "Recuperar
+     Acesso", a mais alta das 4 telas de auth, com o botão "Reenviar código" colado na borda
+     inferior) em vez de deixar o excesso acessível via scroll normal da página. */
+  justify-content: safe center;
   /* 100vh em navegadores mobile usa a altura MÁXIMA da viewport (barra de
      endereço recolhida), maior que a área visível no load — o card centraliza
      contra essa medida inflada e fica deslocado. 100dvh acompanha a altura
@@ -46,7 +69,7 @@
    não sobrava espaço livre *nele* pra redistribuir — sobrava dentro do próprio
    stVerticalBlock, um nível abaixo). Centraliza aqui, um nível mais interno. */
 [data-testid="stMain"] .block-container > [data-testid="stVerticalBlock"] {
-  justify-content: center;
+  justify-content: safe center;
 }
 
 /* Card de login unificado: título, subtítulo, divisor, campo de senha e
@@ -179,7 +202,7 @@
    neutro (#6b7280, mesmo tom de .footer-login) enquanto a senha estiver vazia. */
 .password-requirements {
   list-style: none;
-  margin: 8px 0 0;
+  margin: 8px 0 8px;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -265,13 +288,14 @@
 }
 
 /* "Reenviar código" — secundário e discreto (pedido do usuário: não competir com o botão
-   de ação primário "Redefinir senha"), auto-width e centralizado em vez do pill laranja
-   full-width padrão acima. display:flex + margin:auto no wrapper stButton centraliza o
-   <button> auto-width dentro do card (mesma técnica de centralizar item único num
-   container flex). */
+   de ação primário "Redefinir senha"), auto-width em vez do pill laranja full-width padrão
+   acima. Divide a linha com "← Voltar ao login" via st.columns(2) (login.py) — fica na
+   coluna da esquerda, então display:flex + justify-content:flex-start ancora o <button>
+   auto-width na borda esquerda da coluna (não mais centralizado no card inteiro, que
+   fazia sentido só quando este era o único link auto-width sozinho numa linha cheia). */
 .st-key-btn_reenviar_codigo {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
 .st-key-btn_reenviar_codigo button {
   background: transparent !important;
