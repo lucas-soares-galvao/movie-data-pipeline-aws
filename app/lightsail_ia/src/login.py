@@ -13,6 +13,7 @@ from src.components import (
     load_login_button_toggle_script,
     load_login_css,
     load_password_requirements_gate_script,
+    render_email_hint,
     render_feedback,
     render_login_footer,
     render_password_requirements,
@@ -238,6 +239,7 @@ def _render_signup(client_ip: str) -> None:
 
         name = st.text_input("", placeholder="Nome completo", label_visibility="collapsed", key="signup_name")
         email = st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="signup_email")
+        render_email_hint()
         password = st.text_input(
             "", placeholder="Senha", type="password", label_visibility="collapsed", key="signup_password"
         )
@@ -377,7 +379,12 @@ def _render_signup_confirm(client_ip: str) -> None:
                 _seconds = seconds_until_available(_signup_code_send_history, client_ip, _RESEND_LOCKOUT_SECONDS)
                 mm, ss = divmod(_seconds, 60)
                 countdown = f"{mm:02d}:{ss:02d}"
-                if st.session_state.get("signup_code_just_resent", False):
+                if st.session_state.get("signup_resend_failed", False):
+                    message = (
+                        "error",
+                        f"Não foi possível reenviar o código agora. Tente de novo em {countdown}.",
+                    )
+                elif st.session_state.get("signup_code_just_resent", False):
                     message = (
                         "success",
                         "Novo código enviado. Confira a caixa de entrada e o spam. "
@@ -393,15 +400,26 @@ def _render_signup_confirm(client_ip: str) -> None:
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
                     if st.button(
-                        "Reenviar código", key="btn_reenviar_codigo_cadastro",
+                        "Reenviar código", key="btn_reenviar_codigo",
                         disabled=_resend_locked, use_container_width=True,
                     ):
+                        # Diferente do reenvio de reset de senha (anti user-enumeration —
+                        # ali faz sentido fingir sucesso mesmo em erro, pra não revelar se o
+                        # e-mail existe), aqui o e-mail já é uma conta sabidamente existente
+                        # (o próprio usuário acabou de se cadastrar com ele, exibido na tela).
+                        # Engolir o erro silenciosamente escondia falhas reais do Cognito
+                        # (ex.: LimitExceededException da cota própria de reenvio) atrás de
+                        # uma mensagem de sucesso falsa — por isso loga e avisa o usuário.
                         try:
                             infrastructure.resend_confirmation_code(email)
                         except ClientError:
-                            pass
+                            logging.exception("Erro ao reenviar código de confirmação de cadastro")
+                            st.session_state["signup_resend_failed"] = True
+                            st.session_state["signup_code_just_resent"] = False
+                        else:
+                            st.session_state["signup_code_just_resent"] = True
+                            st.session_state.pop("signup_resend_failed", None)
                         _signup_code_send_history.setdefault(client_ip, []).append(time.time())
-                        st.session_state["signup_code_just_resent"] = True
                         st.rerun(scope="fragment")
                 with link_col2:
                     if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
@@ -457,6 +475,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
         _brand_header("Recuperar Acesso")
 
         st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="reset_email")
+        render_email_hint()
 
         @st.fragment(run_every=1)
         def _send_section() -> None:
@@ -609,6 +628,13 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                     with error_placeholder:
                         render_feedback("error", _reset_error_message(exc))
                 else:
+                    try:
+                        infrastructure.record_password_update(email)
+                    except ClientError:
+                        # Mesmo racional de record_login (_render_login_form): falha ao
+                        # gravar o timestamp não deve travar a confirmação da troca de
+                        # senha — só loga, não propaga.
+                        logging.exception("Erro ao gravar password_updated_at")
                     st.session_state.pop("reset_step", None)
                     st.session_state.pop("reset_email_confirmed", None)
                     _switch_view("password_reset_success")

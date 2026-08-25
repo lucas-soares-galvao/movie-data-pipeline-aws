@@ -197,6 +197,25 @@
 [data-testid="stTextInput"] input.email-valid {
   border-color: #22c55e !important;
 }
+/* Mensagem de texto do campo "E-mail" (mesmos scripts acima), abaixo do campo — some/
+   aparece junto com a borda, no "blur" (não a cada tecla). `display:none` no `<p>`
+   sozinho não bastava: o `gap:16px` do `stVerticalBlock` do card se aplica a cada
+   `stElementContainer` filho independente da altura do conteúdo (mesmo achado documentado
+   no `margin-top` negativo de `.footer-login` abaixo), sobrando ~16px de vão mesmo com a
+   mensagem escondida. Escondendo o `stElementContainer` inteiro (via `:has()`, já usado em
+   `body:has(.grid-titles)` em app.css) tira o elemento do fluxo do flex por completo,
+   igual a ele nunca ter sido renderizado. */
+[data-testid="stElementContainer"]:has(.email-hint) {
+  display: none;
+}
+[data-testid="stElementContainer"]:has(.email-hint-visible) {
+  display: block;
+}
+.email-hint {
+  margin: -4px 0 8px !important;
+  font-size: 12px !important;
+  color: #ef4444;
+}
 /* Lista de critérios de senha (password_requirements_gate.js), abaixo do campo
    "Confirmar senha" — mesmo racional de cor de estado das linhas acima (verde/vermelho),
    neutro (#6b7280, mesmo tom de .footer-login) enquanto a senha estiver vazia. */

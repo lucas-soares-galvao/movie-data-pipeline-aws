@@ -39,14 +39,24 @@
         // Só a tela de cadastro passa emailKey (redefinir senha não tem campo de e-mail
         // digitado — o e-mail já foi confirmado no passo anterior).
         const email = emailKey ? doc.querySelector(`.st-key-${emailKey} input`) : null;
+        const hint = emailKey ? doc.getElementById("email-hint") : null;
         // Generalizado para N campos (cadastro: nome+e-mail+senha+confirmar; redefinir
         // senha: código+senha+confirmar), mesmo racional de login_button_toggle.js — só
         // existe um formulário visível por vez.
         const inputs = doc.querySelectorAll('[data-testid="stTextInput"] input');
-        if (!password || !confirm || !btn || !requirements || (emailKey && !email) || !inputs.length) {
+        if (!password || !confirm || !btn || !requirements || (emailKey && (!email || !hint)) || !inputs.length) {
             setTimeout(attach, 200);
             return;
         }
+
+        const updateEmailVisual = () => {
+            email.classList.remove("email-valid", "email-invalid");
+            hint.classList.remove("email-hint-visible");
+            if (email.value.length === 0) return;
+            const valid = EMAIL_RE.test(email.value);
+            email.classList.add(valid ? "email-valid" : "email-invalid");
+            if (!valid) hint.classList.add("email-hint-visible");
+        };
 
         const update = () => {
             if (lockedOut) return;
@@ -55,14 +65,11 @@
             if (confirm.value.length > 0) {
                 confirm.classList.add(matches ? "password-match" : "password-mismatch");
             }
-            let emailValid = true;
-            if (email) {
-                email.classList.remove("email-valid", "email-invalid");
-                emailValid = EMAIL_RE.test(email.value);
-                if (email.value.length > 0) {
-                    email.classList.add(emailValid ? "email-valid" : "email-invalid");
-                }
-            }
+            // Só calcula, sem tocar em borda/mensagem — esse feedback visual é
+            // responsabilidade de updateEmailVisual(), disparado no "blur" do campo, não
+            // a cada tecla (evita mostrar "inválido" enquanto o e-mail ainda está sendo
+            // digitado, ex: "usuario@gm" antes de completar ".com").
+            const emailValid = email ? EMAIL_RE.test(email.value) : true;
             const allFilled = Array.from(inputs).every((input) => input.value.length > 0);
             btn.disabled = !(allFilled && matches && passwordValid(password.value) && emailValid);
 
@@ -91,11 +98,16 @@
         // um guard baseado em dataset no nó persistido do input sobrevive entre reruns e
         // bloqueava o rebind quando o iframe (components.html, recriado a cada rerun) e o
         // listener antigo eram substituídos no meio de uma sequência de campos, travando o
-        // botão no estado calculado no rerun anterior. update() é idempotente, então
-        // listeners órfãos de iframes anteriores rodarem em paralelo é inofensivo.
+        // botão no estado calculado no rerun anterior. update()/updateEmailVisual() são
+        // idempotentes, então listeners órfãos de iframes anteriores rodarem em paralelo é
+        // inofensivo.
         inputs.forEach((input) => {
             input.addEventListener("input", update);
         });
+        if (email) {
+            email.addEventListener("blur", updateEmailVisual);
+            updateEmailVisual(); // cobre autofill do navegador, que não dispara "blur".
+        }
         update();
     }
     attach();

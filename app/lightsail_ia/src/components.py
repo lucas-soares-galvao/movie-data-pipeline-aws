@@ -274,6 +274,19 @@ def render_password_requirements() -> None:
     )
 
 
+def render_email_hint() -> None:
+    """Renderiza a mensagem de formato de e-mail inválido, escondida por padrão —
+    login_button_toggle.js/password_requirements_gate.js mostram (classe
+    "email-hint-visible") quando o usuário sai do campo de e-mail (evento "blur", não a
+    cada tecla — evita mostrar "inválido" enquanto o e-mail ainda está sendo digitado)
+    com um valor que não bate com _EMAIL_RE. Chamada logo abaixo do st.text_input de
+    e-mail em cadastro e esqueci senha."""
+    st.markdown(
+        '<p id="email-hint" class="email-hint">Digite um e-mail válido.</p>',
+        unsafe_allow_html=True,
+    )
+
+
 _FEEDBACK_ICONS = {"error": "❌", "warning": "⚠️", "success": "✅"}
 
 

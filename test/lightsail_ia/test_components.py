@@ -389,6 +389,31 @@ class TestRenderPasswordRequirements:
         assert captured["content"].count(">•<") == 6
 
 
+class TestRenderEmailHint:
+    """render_email_hint() renderiza a mensagem de formato de e-mail inválido, exibida
+    abaixo do campo "E-mail" nas telas de cadastro e esqueci a senha, escondida por
+    padrão até login_button_toggle.js/password_requirements_gate.js mostrá-la no blur."""
+
+    def test_renderiza_mensagem_com_id_fixo(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_email_hint()
+        assert 'id="email-hint"' in captured["content"]
+
+    def test_estado_inicial_sem_classe_visivel(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_email_hint()
+        assert "email-hint-visible" not in captured["content"]
+        assert "Digite um e-mail válido." in captured["content"]
+
+
 class TestMatchesHighlighted:
     """_matches_highlighted() diz se um item contém (case-insensitive) algum termo
     destacado pela busca do usuário — usada tanto por _prioritize() (ordena) quanto pelo
