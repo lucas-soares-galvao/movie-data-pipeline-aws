@@ -80,33 +80,11 @@
   flex: 0 0 auto !important;
   width: auto !important;
 }
-/* Mobile: empilha título/admin/sair em 3 linhas (pedido do usuário) em vez da mesma
-   linha nowrap acima — nessa largura o subtítulo já quebraria em várias linhas mesmo
-   (comentário do topo do arquivo), então empilhar os botões abaixo do título fica mais
-   legível que apertá-los ao lado de um bloco de texto de 2-3 linhas. Ordem é a ordem
-   real do DOM (título, depois admin_col só se is_admin, depois logout_col — ver
-   app.py), então "Painel Admin" cai naturalmente acima de "Sair". align-self:flex-end
-   mantém os botões colados à direita, mesma posição que já ocupam hoje. */
-@media (max-width: 768px) {
-  .st-key-header-row [data-testid="stHorizontalBlock"] {
-    flex-wrap: wrap;
-  }
-  .st-key-header-row [data-testid="stHorizontalBlock"] > div {
-    flex: 0 0 100% !important;
-    width: 100% !important;
-  }
-  .st-key-header-row [data-testid="stHorizontalBlock"] > div:not(:first-child) {
-    display: flex;
-    justify-content: flex-end;
-  }
-  /* Reseta o nudge vertical (`top: 8px`) calibrado pra alinhar os botões contra a
-     linha do título quando dividem a mesma linha — em pilha (cada um na própria
-     linha) esse deslocamento só cria um vão extra sem função. */
-  .st-key-btn_sair button[data-testid="stBaseButton-secondary"],
-  .st-key-btn_toggle_admin button[data-testid="stBaseButton-secondary"] {
-    top: 0;
-  }
-}
+/* Empilhar título/admin/sair em mobile foi revertido (pedido anterior do usuário,
+   agora invertido por pedido novo): "← App"/"Sair" devem ficar sempre na mesma linha
+   do título, em qualquer largura — a regra nowrap acima (linhas 68-82) já cobre isso
+   sozinha, título/subtítulo encolhem (min-width:0) e o subtítulo quebra em várias
+   linhas antes dos botões caírem pra linha de baixo. */
 /* Ícone + título lado a lado, mesmo padrão de .login-brand (login.css) — o
    subtítulo fica fora deste flex, como linha própria abaixo (.header-subtitle),
    ocupando a largura toda da coluna em vez de ficar indentado ao lado do

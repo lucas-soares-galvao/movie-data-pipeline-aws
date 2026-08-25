@@ -73,6 +73,22 @@ button[data-testid="stBaseButton-secondary"] {
   min-width: 0 !important;
 }
 
+/* st.columns() do Streamlit empilha verticalmente abaixo de 640px porque cada
+   [data-testid="stColumn"] recebe um min-width quase 100% nesse breakpoint
+   (regra interna via CSS-in-JS, theme.breakpoints.columns/spacing.twoXL — não
+   documentada, não está no CSS estático do pacote). O flex-grow proporcional
+   (que dá a divisão 50/50 dos pares de botões abaixo) não é afetado; zerar só o
+   min-width evita o empilhamento sem mudar a largura relativa dos botões em
+   nenhum viewport. Escopado a essas duas keys pelo mesmo motivo do comentário
+   acima: aplicar isso a qualquer stColumn afetaria outras colunas do app (ex.:
+   campos que devem continuar empilhando no mobile). */
+@media (max-width: 640px) {
+  .st-key-login-links-row [data-testid="stColumn"],
+  .st-key-resend-links-row [data-testid="stColumn"] {
+    min-width: 0 !important;
+  }
+}
+
 /* Impede scroll horizontal em qualquer viewport */
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],

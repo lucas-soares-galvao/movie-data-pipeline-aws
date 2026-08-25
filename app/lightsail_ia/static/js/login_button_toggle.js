@@ -41,11 +41,16 @@
             btn.disabled = !(allFilled && emailValid);
         };
 
+        // Reanexado a cada attach() (novo iframe injetado pelo components.html a cada
+        // rerun do Streamlit), sem guard de "já anexado" — um guard baseado em dataset no
+        // nó persistido do input sobrevive entre reruns e bloqueava o rebind quando o
+        // iframe (e o listener antigo, funcional) era substituído no meio de uma sequência
+        // como "digitar e-mail → tab → digitar senha", deixando o botão travado no estado
+        // calculado no rerun anterior. update() é idempotente (só recalcula disabled/
+        // classes a partir do valor atual dos campos), então listeners órfãos de iframes
+        // anteriores rodarem em paralelo é inofensivo.
         inputs.forEach((input) => {
-            if (!input.dataset.loginToggleBound) {
-                input.addEventListener("input", update);
-                input.dataset.loginToggleBound = "1";
-            }
+            input.addEventListener("input", update);
         });
         update();
     }

@@ -2,12 +2,12 @@
    Depende de base.css já injetado por load_app_css() na mesma execução de script
    (mesmo padrão de recommendation.css/cards.css). */
 
-/* Título da seção ("Painel Admin", admin.py), dentro do mesmo .header-brand/
-   .header-icon-badge do cabeçalho — mas com classe própria, menor que .header-title
-   (28px, app.css), reservada pra marca "FilmBot". As duas reaproveitavam a mesma
-   classe .header-title antes (mesmo tamanho), competindo visualmente pela atenção no
-   topo da página — a marca, presente em toda tela, deve ter primazia sobre o título de
-   uma página específica (pedido do usuário). */
+/* Título da seção ("Painel Admin", admin.py) — sem ícone nem subtítulo (pedido do
+   usuário), centralizado, com classe própria menor que .header-title (28px, app.css),
+   reservada pra marca "FilmBot". As duas reaproveitavam a mesma classe .header-title
+   antes (mesmo tamanho), competindo visualmente pela atenção no topo da página — a
+   marca, presente em toda tela, deve ter primazia sobre o título de uma página
+   específica (pedido anterior do usuário). */
 .page-title {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 20px !important;
@@ -15,6 +15,7 @@
   color: #ffffff;
   margin: 0 !important;
   letter-spacing: -0.02em;
+  text-align: center;
 }
 
 /* .admin-page (cabeçalho) e .admin-table (tabela) compartilham max-width +
@@ -27,9 +28,9 @@
   margin: 0 auto 20px;
 }
 
-.admin-table {
-  background: rgba(17, 17, 17, 0.92);
-  border: 1px solid rgba(255,255,255,0.08);
+.st-key-admin-table {
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 16px;
   padding: 20px 24px;
   margin: 0 auto;
@@ -41,87 +42,114 @@
   font-size: 14px;
 }
 
-.admin-table-header-cell {
+/* Scroll horizontal confinado à tabela (não a página) — sem isso, a regra
+   global "impede scroll horizontal em qualquer viewport" (base.css,
+   overflow-x:hidden!important em .block-container) corta as colunas que não
+   cabem no card em vez de deixar rolar (confirmado visualmente: sem esse
+   wrapper, Status/Último acesso/Ação simplesmente somem no mobile, sem
+   scrollbar). O scroll nativo do st.table sozinho (mostrado na documentação
+   oficial do Streamlit) depende de não ter um ancestral com overflow
+   escondido "vencendo" antes de chegar nele — mesmo princípio já usado antes
+   nesta tela pra st.container(key="admin-table-scroll"). */
+.st-key-admin-table-scroll {
+  overflow-x: auto;
+}
+
+/* st.table nativo — tabela HTML estática do Streamlit (sem widgets/HTML por
+   célula, ver admin.py::_build_table_data). Só acabamento de fonte/cor pro tom
+   "Luminous" do resto do app; sem grade custom (bordas/pill/empilhamento em
+   mobile foram descartados nesta troca — st.table cuida do próprio layout,
+   inclusive em telas estreitas). */
+[data-testid="stTable"] table {
+  color: #d4d4d4;
+  font-size: 13px;
+}
+
+[data-testid="stTable"] thead th {
   color: #737373;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin: 0 0 8px;
-}
-
-.admin-cell-name {
-  color: #f5f5f5;
-  font-weight: 600;
-  font-size: 14px;
-  margin: 0;
-}
-
-.admin-cell-email {
-  color: #a3a3a3;
-  font-size: 13px;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.admin-cell-admin {
-  color: #d4d4d4;
-  font-size: 14px;
-  margin: 0;
-}
-
-.admin-user-status {
-  display: inline-block;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.admin-user-status.new {
-  background: rgba(249,115,22,0.15);
-  color: #fdba74;
-}
-
-.admin-user-status.active {
-  background: rgba(34,197,94,0.15);
-  color: #86efac;
-}
-
-.admin-user-status.revoked {
-  background: rgba(239,68,68,0.15);
-  color: #fca5a5;
 }
 
 /* Botões de ação (check/x, ver icon= em admin.py) têm uma key dinâmica por
    usuário (ex.: btn_aprovar_<email>) — seletor por substring (`*=`) em vez de
    `.st-key-X` exato, já que não dá pra prever/enumerar cada e-mail em CSS estático.
-   Padding simétrico (sem texto, só o ícone material) em vez do padding assimétrico
-   de quando esses botões tinham label "Aprovar"/"Revogar" etc. */
-[class*="st-key-btn_aprovar_"] button {
+   width/min-width/min-height explícitos são necessários (confirmado inspecio-
+   nando o DOM real via Playwright, não só lendo o CSS): a regra global
+   "Padroniza todos os botoes" (base.css) força `width: 140px !important` no
+   mesmo seletor `button[data-testid="stBaseButton-secondary"]`, e a classe
+   interna do Streamlit (`st-emotion-cache-...`, hash muda a cada build/versão,
+   por isso não dá pra mirar por nome) aplica `min-height: 2.5rem` (40px) e
+   `width: 100%` sem !important — como CSS nunca deixa a altura visível ficar
+   menor que min-height, só sobrescrever `height`/`padding` não bastava: o
+   botão continuava saindo 140x40 sem essas três propriedades cobertas aqui.
+   display:flex+align/justify:center centralizam o ícone dentro desse espaço.
+   [data-testid="stBaseButton-secondary"] no seletor (não só `button` genérico)
+   é essencial, não cosmético: a regra global "Padroniza todos os botoes"
+   (base.css) usa esse EXATO seletor com !important — com só `button` genérico
+   aqui, a especificidade empata com a regra global e ela vencia na prática
+   (mesmo com !important dos dois lados); com o mesmo qualificador dos botões
+   Sair/Toggle Admin que já funcionam (app.css), a especificidade fica maior (2
+   atributos + tag vs. 1 atributo + tag) e garante a vitória. */
+[class*="st-key-btn_aprovar_"] button[data-testid="stBaseButton-secondary"] {
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 5.4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background: rgba(34,197,94,0.15) !important;
   color: #86efac !important;
   border: 1px solid rgba(34,197,94,0.3) !important;
   box-shadow: none !important;
   border-radius: 8px !important;
-  padding: 6px !important;
 }
 
-[class*="st-key-btn_reprovar_"] button,
-[class*="st-key-btn_revogar_"] button {
+[class*="st-key-btn_reprovar_"] button[data-testid="stBaseButton-secondary"],
+[class*="st-key-btn_revogar_"] button[data-testid="stBaseButton-secondary"] {
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 5.4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background: rgba(239,68,68,0.15) !important;
   color: #fca5a5 !important;
   border: 1px solid rgba(239,68,68,0.3) !important;
   box-shadow: none !important;
   border-radius: 8px !important;
-  padding: 6px !important;
 }
 
-[class*="st-key-btn_restaurar_"] button {
-  background: rgba(249,115,22,0.15) !important;
-  color: #fdba74 !important;
-  border: 1px solid rgba(249,115,22,0.3) !important;
-  box-shadow: none !important;
-  border-radius: 8px !important;
-  padding: 6px !important;
+/* Par Aprovar/Reprovar (caso "pending") dentro do painel de ação — lado a lado,
+   compactos ao conteúdo em vez de esticados 50%/50% (comportamento padrão do
+   st.columns(2)). */
+[class*="st-key-admin-action-"] [data-testid="stHorizontalBlock"] {
+  gap: 8px;
+}
+
+[class*="st-key-admin-action-"] [data-testid="stColumn"] {
+  width: auto !important;
+  flex: 0 0 auto !important;
+}
+
+/* Bloco de comparação (_render_dataframe_comparison, admin.py) — st.dataframe
+   renderiza a grade (células/cabeçalho) em <canvas> (glide-data-grid), então cor de
+   fundo/texto de lá não é alcançável por CSS (confirmado inspecionando o bundle
+   instalado do Streamlit — vem de tema JS alimentado por [theme] no config.toml, que
+   este projeto não configura). Só a moldura externa e a toolbar de hover são DOM
+   normal. Escopo via .st-key-admin-dataframe-comparison (container extra em
+   admin.py, não o key= do st.dataframe em si — esse não gera classe própria). */
+.st-key-admin-dataframe-comparison [data-testid="stElementToolbar"] {
+  display: none !important;
+}
+
+.st-key-admin-dataframe-comparison [data-testid="stDataFrame"] {
+  border: 1px solid transparent !important;
+  border-radius: 16px !important;
 }

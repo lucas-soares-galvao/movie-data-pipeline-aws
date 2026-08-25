@@ -4,6 +4,11 @@
     const confirmKey = "__CONFIRM_KEY__";
     const buttonKey = "__BUTTON_KEY__";
     const emailKey = "__EMAIL_KEY__";
+    // Mesmo motivo do "lockedOut" em login_button_toggle.js: se a Python já computou
+    // disabled=True por bloqueio de tentativas de código incorreto (não por campo vazio ou
+    // senha inválida), o JS nunca deve reabilitar o botão via digitação — só o rerun
+    // seguinte (quando o bloqueio já não se aplicar) manda esse valor atualizado.
+    const lockedOut = __LOCKED_OUT__;
 
     // Mesma regex de _EMAIL_RE em login.py, que continua a fonte de verdade — este
     // script só antecipa a borda verde/vermelha antes do submit.
@@ -44,6 +49,7 @@
         }
 
         const update = () => {
+            if (lockedOut) return;
             confirm.classList.remove("password-match", "password-mismatch");
             const matches = confirm.value.length > 0 && confirm.value === password.value;
             if (confirm.value.length > 0) {
@@ -81,11 +87,14 @@
             setReqState("match", confirm.value.length === 0, matches);
         };
 
+        // Reanexado a cada attach() sem guard — mesmo racional de login_button_toggle.js:
+        // um guard baseado em dataset no nó persistido do input sobrevive entre reruns e
+        // bloqueava o rebind quando o iframe (components.html, recriado a cada rerun) e o
+        // listener antigo eram substituídos no meio de uma sequência de campos, travando o
+        // botão no estado calculado no rerun anterior. update() é idempotente, então
+        // listeners órfãos de iframes anteriores rodarem em paralelo é inofensivo.
         inputs.forEach((input) => {
-            if (!input.dataset.passwordGateBound) {
-                input.addEventListener("input", update);
-                input.dataset.passwordGateBound = "1";
-            }
+            input.addEventListener("input", update);
         });
         update();
     }

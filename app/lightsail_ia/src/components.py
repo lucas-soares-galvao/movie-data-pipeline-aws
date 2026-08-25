@@ -174,7 +174,16 @@ def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
     transcrição e bloqueio temporário de login), que recarrega a página sozinho ao chegar
     a 00:00. `element_id` mira o `<span>` a atualizar — necessário quando mais de um
     countdown pode estar visível na mesma página ao mesmo tempo (busca e transcrição),
-    para não colidir em `id="countdown"` duplicado no DOM."""
+    para não colidir em `id="countdown"` duplicado no DOM.
+
+    Os cooldowns de "enviar"/"reenviar código" do fluxo de troca de senha (`login.py`)
+    não usam mais este script — o reload de página resetaria `session_state`
+    (`auth_view`/`reset_step`) e devolveria o usuário ao login no meio da troca. Em vez
+    disso, usam `st.fragment(run_every=1)` pra recalcular o cooldown e o contador
+    inteiramente no backend a cada segundo, sem reload e sem depender de JS/DOM pra
+    reabilitar o botão (um hack anterior nesse sentido deixava o botão visualmente
+    habilitado, mas o clique nunca chegava ao backend, já que o componente React
+    continuava com o prop `disabled=True` até o próximo rerun)."""
     path = Path(__file__).parent.parent / "static" / "js" / "countdown.js"
     script = (
         path.read_text(encoding="utf-8")
@@ -205,7 +214,7 @@ def load_login_button_toggle_script(
 
 
 def load_password_requirements_gate_script(
-    password_key: str, confirm_key: str, button_key: str, email_key: str = ""
+    password_key: str, confirm_key: str, button_key: str, email_key: str = "", locked_out: bool = False,
 ) -> None:
     """Injeta o script que, a cada tecla digitada em qualquer campo do formulário (cadastro
     ou redefinir senha), marca o campo "Confirmar senha" com borda verde/vermelha e mantém o
@@ -218,7 +227,11 @@ def load_password_requirements_gate_script(
     `confirm_key`/`button_key` identificam os campos e o botão (`key=...`) do formulário
     ativo. `email_key`, se informado (só a tela de cadastro passa — redefinir senha não tem
     campo de e-mail digitado), marca o campo de e-mail com borda verde/vermelha conforme o
-    formato (mesma regex de `_EMAIL_RE` em `login.py`) e inclui isso no gate do botão."""
+    formato (mesma regex de `_EMAIL_RE` em `login.py`) e inclui isso no gate do botão.
+    `locked_out`, se `True` (bloqueio de tentativas de código incorreto na tela de redefinir
+    senha, `login.py::_render_forgot_password_confirm`), impede o script de reabilitar o
+    botão via digitação — mesmo racional de `locked_out` em
+    `load_login_button_toggle_script()`."""
     path = Path(__file__).parent.parent / "static" / "js" / "password_requirements_gate.js"
     script = (
         path.read_text(encoding="utf-8")
@@ -226,6 +239,7 @@ def load_password_requirements_gate_script(
         .replace("__CONFIRM_KEY__", confirm_key)
         .replace("__BUTTON_KEY__", button_key)
         .replace("__EMAIL_KEY__", email_key)
+        .replace("__LOCKED_OUT__", "true" if locked_out else "false")
     )
     components.html(f"<script>{script}</script>", height=0)
 

@@ -1,6 +1,7 @@
 """test_infrastructure.py — testes do bootstrap de processo e rate limiting do FilmBot."""
 
 import time
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -8,8 +9,8 @@ from botocore.exceptions import ClientError
 from src import infrastructure
 
 
-def _client_error(code: str, operation: str = "Op") -> ClientError:
-    return ClientError({"Error": {"Code": code, "Message": code}}, operation)
+def _client_error(code: str, operation: str = "Op", message: str | None = None) -> ClientError:
+    return ClientError({"Error": {"Code": code, "Message": message if message is not None else code}}, operation)
 
 
 class TestLoadFilmbotPassword:
@@ -98,6 +99,36 @@ class TestSignUp:
             ],
         )
 
+    def test_desabilita_a_conta_recem_criada(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.sign_up("user@ex.com", "Senha123!", "Fulano")
+
+        mock_boto.return_value.admin_disable_user.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool", Username="user@ex.com"
+        )
+
+
+class TestConfirmSignUp:
+    def test_chama_confirm_sign_up_com_email_e_codigo(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.confirm_sign_up("user@ex.com", "123456")
+
+        mock_boto.return_value.confirm_sign_up.assert_called_once_with(
+            ClientId="test-app-client-id",
+            Username="user@ex.com",
+            ConfirmationCode="123456",
+        )
+
+
+class TestResendConfirmationCode:
+    def test_chama_resend_confirmation_code_com_email(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.resend_confirmation_code("user@ex.com")
+
+        mock_boto.return_value.resend_confirmation_code.assert_called_once_with(
+            ClientId="test-app-client-id", Username="user@ex.com"
+        )
+
 
 class TestAuthenticate:
     def test_retorna_ok_quando_credenciais_corretas(self):
@@ -129,6 +160,15 @@ class TestAuthenticate:
 
         assert resultado == "invalid"
 
+    def test_retorna_pending_quando_conta_esta_desabilitada_aguardando_aprovacao(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.admin_initiate_auth.side_effect = _client_error(
+                "NotAuthorizedException", message="User is disabled."
+            )
+            resultado = infrastructure.authenticate("user@ex.com", "Senha123!")
+
+        assert resultado == "pending"
+
     def test_propaga_outros_codigos_de_erro(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
             mock_boto.return_value.admin_initiate_auth.side_effect = _client_error(
@@ -136,6 +176,22 @@ class TestAuthenticate:
             )
             with pytest.raises(ClientError):
                 infrastructure.authenticate("user@ex.com", "Senha123!")
+
+
+class TestRecordLogin:
+    def test_grava_timestamp_iso_utc_no_atributo_custom_last_login(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.record_login("user@ex.com")
+
+        mock_boto.return_value.admin_update_user_attributes.assert_called_once()
+        _, kwargs = mock_boto.return_value.admin_update_user_attributes.call_args
+        assert kwargs["UserPoolId"] == "sa-east-1_testpool"
+        assert kwargs["Username"] == "user@ex.com"
+        [attribute] = kwargs["UserAttributes"]
+        assert attribute["Name"] == "custom:last_login"
+        # Valida que o valor gravado é um ISO 8601 parseável (não compara string exata,
+        # já que o timestamp é gerado no momento da chamada).
+        datetime.fromisoformat(attribute["Value"])
 
 
 class TestIsAdmin:
@@ -150,6 +206,30 @@ class TestIsAdmin:
         with patch("src.infrastructure.boto3.client") as mock_boto:
             mock_boto.return_value.admin_list_groups_for_user.return_value = {"Groups": []}
             assert infrastructure.is_admin("user@ex.com") is False
+
+
+class TestGetUserStatus:
+    def test_retorna_user_status_quando_lista_de_usuarios_nao_esta_vazia(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [{"Attributes": [], "UserStatus": "UNCONFIRMED"}]
+            }
+            assert infrastructure.get_user_status("user@ex.com") == "UNCONFIRMED"
+
+        mock_boto.return_value.list_users.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Filter='email = "user@ex.com"',
+        )
+
+    def test_retorna_none_quando_lista_de_usuarios_esta_vazia(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {"Users": []}
+            assert infrastructure.get_user_status("naocadastrado@ex.com") is None
+
+    def test_retorna_none_sem_chamar_a_api_quando_email_contem_aspas(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            assert infrastructure.get_user_status('a"@ex.com') is None
+            mock_boto.return_value.list_users.assert_not_called()
 
 
 class TestRequestPasswordReset:
@@ -176,12 +256,13 @@ class TestConfirmPasswordReset:
 
 
 class TestListPendingUsers:
-    def test_filtra_por_status_unconfirmed_e_extrai_atributos(self):
+    def test_filtra_por_status_disabled_e_extrai_atributos(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
             mock_boto.return_value.list_users.return_value = {
                 "Users": [
                     {
-                        "Enabled": True,
+                        "Enabled": False,
+                        "UserStatus": "CONFIRMED",
                         "Attributes": [
                             {"Name": "email", "Value": "novo@ex.com"},
                             {"Name": "name", "Value": "Novo Usuário"},
@@ -193,35 +274,103 @@ class TestListPendingUsers:
 
         mock_boto.return_value.list_users.assert_called_once_with(
             UserPoolId="sa-east-1_testpool",
-            Filter='cognito:user_status = "UNCONFIRMED"',
+            Filter='status = "Disabled"',
         )
-        assert resultado == [{"email": "novo@ex.com", "name": "Novo Usuário", "enabled": True}]
+        assert resultado == [
+            {"email": "novo@ex.com", "name": "Novo Usuário", "enabled": False, "last_login": ""}
+        ]
+
+    def test_extrai_last_login_quando_atributo_custom_existe(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": False,
+                        "UserStatus": "CONFIRMED",
+                        "Attributes": [
+                            {"Name": "email", "Value": "ativo@ex.com"},
+                            {"Name": "name", "Value": "Usuário Ativo"},
+                            {"Name": "custom:last_login", "Value": "2026-08-23T12:00:00+00:00"},
+                        ],
+                    }
+                ]
+            }
+            resultado = infrastructure.list_pending_users()
+
+        assert resultado[0]["last_login"] == "2026-08-23T12:00:00+00:00"
+
+    def test_descarta_usuarios_que_ainda_nao_confirmaram_o_email(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": False,
+                        "UserStatus": "CONFIRMED",
+                        "Attributes": [
+                            {"Name": "email", "Value": "confirmado@ex.com"},
+                            {"Name": "name", "Value": "Confirmado"},
+                        ],
+                    },
+                    {
+                        "Enabled": False,
+                        "UserStatus": "UNCONFIRMED",
+                        "Attributes": [
+                            {"Name": "email", "Value": "aindanaoconfirmou@ex.com"},
+                            {"Name": "name", "Value": "Ainda Não Confirmou"},
+                        ],
+                    },
+                ]
+            }
+            resultado = infrastructure.list_pending_users()
+
+        assert [user["email"] for user in resultado] == ["confirmado@ex.com"]
 
 
 class TestListActiveUsers:
-    def test_filtra_por_status_confirmed(self):
+    def test_filtra_por_status_enabled(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
             mock_boto.return_value.list_users.return_value = {"Users": []}
             infrastructure.list_active_users()
 
         mock_boto.return_value.list_users.assert_called_once_with(
             UserPoolId="sa-east-1_testpool",
-            Filter='cognito:user_status = "CONFIRMED"',
+            Filter='status = "Enabled"',
         )
+
+    def test_descarta_usuarios_ainda_nao_confirmados_por_defesa(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "CONFIRMED",
+                        "Attributes": [
+                            {"Name": "email", "Value": "ativo@ex.com"},
+                            {"Name": "name", "Value": "Ativo"},
+                        ],
+                    },
+                    {
+                        "Enabled": True,
+                        "UserStatus": "UNCONFIRMED",
+                        "Attributes": [
+                            {"Name": "email", "Value": "inesperado@ex.com"},
+                            {"Name": "name", "Value": "Inesperado"},
+                        ],
+                    },
+                ]
+            }
+            resultado = infrastructure.list_active_users()
+
+        assert [user["email"] for user in resultado] == ["ativo@ex.com"]
 
 
 class TestApproveSignup:
-    def test_confirma_cadastro_e_marca_email_como_verificado(self):
+    def test_habilita_a_conta(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
             infrastructure.approve_signup("user@ex.com")
 
-        mock_boto.return_value.admin_confirm_sign_up.assert_called_once_with(
+        mock_boto.return_value.admin_enable_user.assert_called_once_with(
             UserPoolId="sa-east-1_testpool", Username="user@ex.com"
-        )
-        mock_boto.return_value.admin_update_user_attributes.assert_called_once_with(
-            UserPoolId="sa-east-1_testpool",
-            Username="user@ex.com",
-            UserAttributes=[{"Name": "email_verified", "Value": "true"}],
         )
 
 
@@ -236,21 +385,11 @@ class TestRejectSignup:
 
 
 class TestRevokeAccess:
-    def test_desativa_o_usuario(self):
+    def test_exclui_a_conta(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
             infrastructure.revoke_access("user@ex.com")
 
-        mock_boto.return_value.admin_disable_user.assert_called_once_with(
-            UserPoolId="sa-east-1_testpool", Username="user@ex.com"
-        )
-
-
-class TestRestoreAccess:
-    def test_reativa_o_usuario(self):
-        with patch("src.infrastructure.boto3.client") as mock_boto:
-            infrastructure.restore_access("user@ex.com")
-
-        mock_boto.return_value.admin_enable_user.assert_called_once_with(
+        mock_boto.return_value.admin_delete_user.assert_called_once_with(
             UserPoolId="sa-east-1_testpool", Username="user@ex.com"
         )
 
