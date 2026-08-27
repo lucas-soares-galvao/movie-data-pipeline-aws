@@ -7,6 +7,7 @@ from src.components import (
     favicon_svg,
     icon,
     load_app_css,
+    load_scroll_lock_script,
     render_footer,
 )
 from src.infrastructure import (
@@ -15,6 +16,7 @@ from src.infrastructure import (
     setup_cloudwatch_logging,
 )
 from src.login import render_login
+from src.profile import render_profile_panel
 from src.recommendation import render_recommendation
 
 load_filmbot_password()
@@ -30,18 +32,19 @@ render_login(client_ip)
 # PÁGINA PRINCIPAL
 # ==============================================================================
 load_app_css()
+load_scroll_lock_script()
 
 is_admin = st.session_state.get("is_admin", False)
 
 with st.container(key="header-row"):
-    # Terceira coluna só existe pra quem é admin (grupo Cognito "admins", checado no
-    # login — ver login.py::_render_login_form) — não-admin nunca vê o botão nem sabe
-    # que a tela de admin existe, mesmo racional de não usar multipage nativo do
-    # Streamlit (que vazaria a rota na sidebar independente de permissão).
+    # Admin vê "Painel Admin", não-admin vê "Meu Perfil" — nunca os dois juntos (pedido
+    # do usuário: admin não edita o próprio perfil por esta tela). Não-admin nunca vê o
+    # botão de admin nem sabe que a tela existe, mesmo racional de não usar multipage
+    # nativo do Streamlit (que vazaria a rota na sidebar independente de permissão).
     if is_admin:
         title_col, admin_col, logout_col = st.columns([8, 1.3, 1])
     else:
-        title_col, logout_col = st.columns([9, 1])
+        title_col, profile_col, logout_col = st.columns([8, 1.3, 1])
     with title_col:
         st.markdown(
             '<div class="header-brand">'
@@ -58,6 +61,13 @@ with st.container(key="header-row"):
                 _current = st.session_state.get("current_view", "app")
                 st.session_state["current_view"] = "app" if _current == "admin" else "admin"
                 st.rerun()
+    else:
+        with profile_col:
+            _profile_label = "← App" if st.session_state.get("current_view") == "profile" else "Meu Perfil"
+            if st.button(_profile_label, key="btn_toggle_profile"):
+                _current = st.session_state.get("current_view", "app")
+                st.session_state["current_view"] = "app" if _current == "profile" else "profile"
+                st.rerun()
     with logout_col:
         if st.button("Sair", key="btn_sair"):
             # clear() (não só zerar "authenticated"): sem isso, "titles"/"search_completed"/
@@ -67,8 +77,11 @@ with st.container(key="header-row"):
             st.session_state.clear()
             st.rerun()
 
-if is_admin and st.session_state.get("current_view") == "admin":
-    render_admin_panel()
+_current_view = st.session_state.get("current_view")
+if is_admin and _current_view == "admin":
+    render_admin_panel(client_ip)
+elif _current_view == "profile":
+    render_profile_panel(client_ip)
 else:
     render_recommendation(client_ip)
     render_cards()

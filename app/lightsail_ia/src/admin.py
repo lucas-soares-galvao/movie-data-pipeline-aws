@@ -1,37 +1,64 @@
-"""admin.py — painel administrativo do FilmBot (aprovação de cadastro, gestão de acesso).
+"""admin.py — painel administrativo do FilmBot (aprovação de cadastro, gestão de acesso,
+e edição do próprio nome/senha do admin).
 
 Só é chamado por app.py quando st.session_state["is_admin"] é True (setado em
 login.py::_render_login_form a partir de infrastructure.is_admin() no momento do
 login) — este módulo não repete o gate, confia no chamador."""
 
-import html
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 from src import infrastructure
-from src.components import icon, load_admin_css
+from src.components import load_admin_css, load_profile_css
+from src.profile import (
+    get_own_profile,
+    render_nav_bar,
+    render_password_tab,
+    render_profile_tab,
+)
 
-_COLUMN_RATIOS = [3, 4, 1.3, 1.6, 2]
-_COLUMN_LABELS = ["Nome", "E-mail", "Admin", "Status", "Ação"]
+# Mesmo racional de profile.py::_PROFILE_SECTIONS — uma lista só (valor, ícone, rótulo)
+# usada por render_nav_bar pra montar os itens do menu.
+_ADMIN_SECTIONS = [
+    ("usuarios", "users", "Usuários"),
+    ("perfil", "user", "Perfil"),
+    ("senha", "lock", "Senha"),
+]
 
 
-def render_admin_panel() -> None:
-    """Renderiza o painel admin: uma única tabela com todos os cadastros (novos e já
-    aprovados), coluna Admin (sim/não), Status (novo/ativo/revogado) e Ação (aprovar/
-    reprovar cadastro novo; revogar/restaurar usuário existente)."""
+def render_admin_panel(client_ip: str) -> None:
+    """Renderiza o painel admin com barra horizontal (Usuários/Perfil/Senha) no topo e
+    o conteúdo da seção ativa abaixo, centralizado: "Usuários" (tabela de cadastros,
+    igual antes), "Perfil" e "Senha" (nome/senha do próprio admin — reaproveita
+    render_profile_tab/render_password_tab/render_nav_bar de profile.py, mesmo
+    padrão da tela "Meu Perfil" de não-admin, em vez de duplicar)."""
     load_admin_css()
+    load_profile_css()
 
-    st.markdown(
-        f'<div class="admin-page">'
-        f'<div class="header-brand">'
-        f'<span class="header-icon-badge">{icon("users", size=20)}</span>'
-        f'<p class="page-title">Painel Admin</p>'
-        f'</div>'
-        f'<p class="header-subtitle">Aprovação de cadastro e gestão de acesso</p>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    active = st.session_state.setdefault("admin_active_section", "usuarios")
 
-    _render_table()
+    # Wrapper único (título + nav + conteúdo, sempre 680px, ver admin-shell em
+    # profile.css) — mesma largura/centralização para as 3 seções, sem exceção nem
+    # ramificação por `active`: é isso que garante que a borda esquerda/direita nunca
+    # pule ao trocar de aba. A tabela pode precisar de scroll horizontal interno
+    # quando as 9 colunas não cabem em 680px (ver admin-dataframe em admin.css) — a
+    # caixa em si não muda de largura por causa disso.
+    with st.container(key="admin-shell"):
+        st.markdown('<p class="page-title">Painel Admin</p>', unsafe_allow_html=True)
+        render_nav_bar("admin", _ADMIN_SECTIONS)
+
+        if active == "usuarios":
+            # Sem card (é a tabela), único caso estruturalmente diferente da tela
+            # "Meu Perfil" (profile.py), onde o conteúdo sempre fica dentro da borda
+            # do card.
+            _render_table()
+        elif active == "perfil":
+            with st.container(key="admin-profile-card"):
+                render_profile_tab(get_own_profile(st.session_state.get("user_email", "")))
+        else:
+            with st.container(key="admin-password-card"):
+                render_password_tab(client_ip)
 
 
 def _build_rows() -> list[dict]:
@@ -52,68 +79,114 @@ def _build_rows() -> list[dict]:
 def _render_table() -> None:
     rows = _build_rows()
 
-    st.markdown('<div class="admin-table">', unsafe_allow_html=True)
-
     if not rows:
         st.markdown('<p class="admin-empty">Nenhum usuário encontrado.</p>', unsafe_allow_html=True)
     else:
-        _render_header_row()
-        for row in rows:
-            _render_data_row(row)
-
-    st.markdown('</div>', unsafe_allow_html=True)
+        _render_users_dataframe(rows)
 
 
-def _render_header_row() -> None:
-    cols = st.columns(_COLUMN_RATIOS)
-    for col, label in zip(cols, _COLUMN_LABELS):
-        col.markdown(f'<p class="admin-table-header-cell">{label}</p>', unsafe_allow_html=True)
+def _build_table_data(rows: list[dict]) -> list[dict]:
+    return [
+        {
+            "Nome": row["name"],
+            "E-mail": row["email"],
+            "Cadastrado em": _format_datetime(row["created_at"]),
+            "Atualizado em": _format_datetime(row["updated_at"]),
+            "Último acesso": _format_datetime(row["last_login"]),
+            "Admin": "Sim" if row["is_admin"] else "Não",
+            "Status": _status_label(row),
+        }
+        for row in rows
+    ]
 
 
-def _render_data_row(user: dict) -> None:
-    name = html.escape(user["name"])
-    email = html.escape(user["email"])
-
-    col_name, col_email, col_admin, col_status, col_action = st.columns(_COLUMN_RATIOS)
-
-    col_name.markdown(f'<p class="admin-cell-name">{name}</p>', unsafe_allow_html=True)
-    col_email.markdown(f'<p class="admin-cell-email">{email}</p>', unsafe_allow_html=True)
-    col_admin.markdown(
-        f'<p class="admin-cell-admin">{"Sim" if user["is_admin"] else "Não"}</p>',
-        unsafe_allow_html=True,
-    )
-    col_status.markdown(_status_pill_html(user), unsafe_allow_html=True)
-
-    with col_action:
-        _render_action_buttons(user)
-
-
-def _status_pill_html(user: dict) -> str:
+def _status_label(user: dict) -> str:
     if user["kind"] == "pending":
-        return '<span class="admin-user-status new">Novo</span>'
+        return "Novo"
     if user["enabled"]:
-        return '<span class="admin-user-status active">Ativo</span>'
-    return '<span class="admin-user-status revoked">Revogado</span>'
+        return "Ativo"
+    return "Revogado"
 
 
-def _render_action_buttons(user: dict) -> None:
-    email = user["email"]
+def _render_users_dataframe(rows: list[dict]) -> None:
+    """Grade de usuários via st.dataframe, com botão real dentro da célula de Ação
+    (st.column_config.ButtonColumn, disponível a partir do Streamlit 1.59 — confirmado
+    na versão instalada neste projeto). st.table não aceita widgets por célula, então
+    st.dataframe é o único jeito de ter aprovar/revogar na própria linha, sem painel
+    separado."""
+    # st.dataframe(key=...) não gera classe `st-key-<key>` no wrapper (diferente de
+    # st.container/st.button, confirmado via Playwright) — sem esse container extra,
+    # não haveria seletor estável pra escopar o CSS que esconde a toolbar/estiliza a
+    # moldura (ver admin.css).
+    with st.container(key="admin-dataframe"):
+        st.dataframe(
+            _build_dataframe_action_data(rows),
+            # width="content" — o padrão ("stretch") distribui o espaço sobrando do
+            # container entre as colunas, ignorando o `width` fixo do column_config
+            # abaixo (confirmado visualmente: com "stretch", Admin/Status/Aprovar/
+            # Revogar ficavam largas mesmo com width=60).
+            width="content",
+            hide_index=True,
+            column_config={
+                "Nome": st.column_config.TextColumn("Nome", alignment="left", width=200),
+                "E-mail": st.column_config.TextColumn("E-mail", alignment="left", width=260),
+                "Admin": st.column_config.TextColumn("Admin", alignment="center", width=60),
+                "Status": st.column_config.TextColumn("Status", alignment="center", width=60),
+                "Cadastrado em": st.column_config.TextColumn("Cadastrado em", alignment="left", width=140),
+                "Atualizado em": st.column_config.TextColumn("Atualizado em", alignment="left", width=140),
+                "Último acesso": st.column_config.TextColumn("Último acesso", alignment="left", width=140),
+                "Aprovar": st.column_config.ButtonColumn(
+                    "Aprovar", key="admin_approve_click", alignment="center", width=60
+                ),
+                "Revogar": st.column_config.ButtonColumn(
+                    "Revogar", key="admin_reject_revoke_click", alignment="center", width=60
+                ),
+            },
+            key="admin_users_dataframe",
+            row_height=40,
+        )
+    _handle_dataframe_action_click(rows)
 
-    if user["kind"] == "pending":
-        col_approve, col_reject = st.columns(2)
-        with col_approve:
-            if st.button("", icon=":material/check:", key=f"btn_aprovar_{email}", use_container_width=True):
-                infrastructure.approve_signup(email)
-                st.rerun()
-        with col_reject:
-            if st.button("", icon=":material/close:", key=f"btn_reprovar_{email}", use_container_width=True):
-                infrastructure.reject_signup(email)
-                st.rerun()
-    elif user["enabled"]:
-        if st.button("", icon=":material/close:", key=f"btn_revogar_{email}", use_container_width=True):
-            infrastructure.revoke_access(email)
-            st.rerun()
-    else:
-        if st.button("", icon=":material/check:", key=f"btn_restaurar_{email}", use_container_width=True):
-            infrastructure.restore_access(email)
-            st.rerun()
+
+def _build_dataframe_action_data(rows: list[dict]) -> list[dict]:
+    # Emoji (✔️/❌) em vez de :material/check:/:material/close: — a célula do
+    # ButtonColumn é canvas (glide-data-grid), não alcançável por CSS, então não dá
+    # pra colorir o fundo do botão como os botões do painel acima; emoji já vem
+    # colorido pela fonte do sistema, sem precisar de tema/CSS. ✔️ (sem caixa de
+    # fundo) foi testado no lugar de ✅ pra bater com ❌, mas não renderiza verde
+    # de forma confiável — ✅ garante a cor.
+    data = _build_table_data(rows)
+    for row, entry in zip(rows, data):
+        entry["Aprovar"] = "✅" if row["kind"] == "pending" else None
+        entry["Revogar"] = (
+            "❌" if not row["is_admin"] and (row["kind"] == "pending" or row["enabled"]) else None
+        )
+    return data
+
+
+def _handle_dataframe_action_click(rows: list[dict]) -> None:
+    approve_click = st.session_state.get("admin_approve_click")
+    reject_revoke_click = st.session_state.get("admin_reject_revoke_click")
+
+    if approve_click:
+        infrastructure.approve_signup(rows[approve_click["row"]]["email"])
+        st.rerun()
+    elif reject_revoke_click:
+        user = rows[reject_revoke_click["row"]]
+        if user["kind"] == "pending":
+            infrastructure.reject_signup(user["email"])
+        else:
+            infrastructure.revoke_access(user["email"])
+        st.rerun()
+
+
+def _format_datetime(value: str) -> str:
+    """Formata um timestamp ISO 8601 UTC (created_at/updated_at/last_login, ver
+    infrastructure._parse_user()) em pt-BR, convertido para America/Sao_Paulo
+    (DD/MM/AAAA HH:MM). "Nunca" para valor vazio — só ocorre em last_login, para
+    quem ainda não tem o atributo custom:last_login (cadastro anterior a esta
+    feature, ou pendente que nunca completou login)."""
+    if not value:
+        return "Nunca"
+    local_dt = datetime.fromisoformat(value).astimezone(ZoneInfo("America/Sao_Paulo"))
+    return local_dt.strftime("%d/%m/%Y %H:%M")

@@ -36,12 +36,23 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 /* Largura máxima compartilhada do conteúdo principal (640px, centralizado) — usada por
-   cabeçalho (app.css) e formulário de recomendação (recommendation.css, inclui erro/
-   sem-resultado de busca, renderizados dentro de hero-actions), por isso mora aqui em
-   vez de em qualquer um dos dois. */
+   cabeçalho (app.css), formulário de recomendação (recommendation.css, inclui erro/
+   sem-resultado de busca, renderizados dentro de hero-actions), painel admin e tela
+   "Meu Perfil" (profile.css: .st-key-admin-shell/.st-key-profile-shell — pedido do
+   usuário para a barra de navegação/tabela/forms terem a mesma largura do cabeçalho e
+   da caixa de texto da recomendação), por isso mora aqui em vez de em qualquer um
+   deles. O card de login (.st-key-login-card, login.css) fica de fora desta lista de
+   propósito: das 7 sub-telas do fluxo de autenticação, só Cadastro e "Esqueci a senha"
+   (etapa 2) têm campos pareados o suficiente pra justificar 640px — as outras 5 (login
+   puro, confirmar cadastro, etc.) ficariam com espaço vazio nessa largura (pedido
+   explícito do usuário, com print da tela de login mostrando o problema). Como as 7
+   telas compartilham a mesma key, a diferenciação entre "larga"/"estreita" é feita em
+   login.css via seletor `:has()`, não aqui. */
 .st-key-hero-section,
 .st-key-hero-actions,
-.st-key-header-row {
+.st-key-header-row,
+.st-key-admin-shell,
+.st-key-profile-shell {
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
@@ -53,7 +64,102 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 @media (max-width: 768px) {
-  .st-key-hero-section, .st-key-hero-actions, .st-key-header-row { max-width: 100%; padding: 0 8px; }
+  .st-key-hero-section, .st-key-hero-actions, .st-key-header-row,
+  .st-key-admin-shell, .st-key-profile-shell { max-width: 100%; padding: 0 8px; }
+}
+
+/* Lista de critérios de senha (password_requirements_gate.js) — compartilhada por
+   login.css (cadastro, "esqueci a senha") e profile.css (aba "Senha" do Perfil/Admin).
+   Consolidada aqui (antes duplicada, quase idêntica, em cada um dos dois arquivos, já
+   que login.css e profile.css nunca são carregados juntos) para as duas telas ficarem
+   garantidamente iguais sem depender de manter duas cópias em sincronia. Neutro
+   (#6b7280) enquanto a senha estiver vazia; verde/vermelho conforme o JS marca cada
+   critério como atendido/não atendido. */
+.password-requirements {
+  list-style: none;
+  margin: 8px 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.password-requirements li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #a3a3a3;
+}
+.password-requirements .req-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: #6b7280;
+}
+.password-requirements li.req-met .req-icon {
+  color: #22c55e;
+}
+.password-requirements li.req-unmet .req-icon {
+  color: #ef4444;
+}
+/* Mesmo tamanho/peso dos labels de campo de formulário (Senha/Confirmar senha etc.),
+   pra ler como um label, não como um título de seção à parte. */
+.password-requirements-title {
+  margin: 0 !important;
+  color: #d4d4d4;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Linha de campos de senha (50%) + painel de requisitos (50%) — usada tanto por
+   profile.py::render_password_tab quanto por login.py::_render_forgot_password_confirm
+   (ambos usam st.container(key="password-fields-row") + st.columns(2, gap="medium")
+   com essa forma exata: campos empilhados numa coluna, requisitos na outra). Consolidada
+   aqui em vez de duplicada por tela, já que as duas telas compartilham a mesma key e a
+   mesma estrutura. align-items:stretch faz a coluna do painel esticar até a altura da
+   coluna dos campos ao lado (Streamlit usa top-align por padrão sem
+   vertical_alignment="center" no Python) — sem isso o painel ficaria só do tamanho da
+   própria lista, bem mais baixo que os campos. Abaixo do breakpoint interno em que o
+   Streamlit empilha as duas colunas, cada uma volta a ter sua própria altura natural
+   (stretch deixa de ter efeito visível). */
+.st-key-password-fields-row [data-testid="stHorizontalBlock"] {
+  align-items: stretch !important;
+}
+/* Painel da lista de requisitos — segunda stColumn de st.columns(2) dentro da linha
+   acima (a primeira contém os campos, sem estilo próprio de painel). Caixa com
+   borda/fundo sutil, mesma família visual do restante das telas (mesmos tons de
+   .st-key-profile-nav em profile.css: rgba(255,255,255,0.03)/0.08).
+
+   flex-direction:column porque tem DOIS elementos empilhados dentro (título + lista) —
+   justify-content:center centraliza o bloco título+lista como grupo dentro da altura
+   esticada do painel (herdada do align-items:stretch da linha, acima), com respiro
+   igual em cima e embaixo (padding simétrico 16px). gap:8px controla só o espaço entre
+   título e lista — não usar margin no título pra isso (zerado abaixo), pra não somar
+   com esse gap e desequilibrar o cálculo de centro. */
+.st-key-password-fields-row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 16px 14px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+/* Zera a margem padrão que o Streamlit aplica a cada stElementContainer (o container
+   nativo em volta de cada st.markdown) — sem isso, o título e a lista carregam margem
+   própria do framework somada ao gap:8px acima, desequilibrando o respiro entre borda
+   superior/primeiro item vs. último item/borda inferior. Título e lista controlam o
+   próprio espaçamento interno só via este gap + o padding do painel. */
+.st-key-password-fields-row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stElementContainer"] {
+  margin: 0 !important;
+}
+.st-key-password-fields-row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdown"] {
+  width: 100%;
+}
+.st-key-password-fields-row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) .password-requirements {
+  margin: 0;
 }
 
 /* Colunas dos botoes se ajustam ao conteudo; espacadoras colapsam — usada pelas colunas
@@ -73,7 +179,31 @@ button[data-testid="stBaseButton-secondary"] {
   min-width: 0 !important;
 }
 
-/* Impede scroll horizontal em qualquer viewport */
+/* st.columns() do Streamlit empilha verticalmente abaixo de 640px porque cada
+   [data-testid="stColumn"] recebe um min-width quase 100% nesse breakpoint
+   (regra interna via CSS-in-JS, theme.breakpoints.columns/spacing.twoXL — não
+   documentada, não está no CSS estático do pacote). O flex-grow proporcional
+   (que dá a divisão 50/50 dos pares de botões abaixo) não é afetado; zerar só o
+   min-width evita o empilhamento sem mudar a largura relativa dos botões em
+   nenhum viewport. Escopado a essas duas keys pelo mesmo motivo do comentário
+   acima: aplicar isso a qualquer stColumn afetaria outras colunas do app (ex.:
+   campos que devem continuar empilhando no mobile). */
+@media (max-width: 640px) {
+  .st-key-login-links-row [data-testid="stColumn"],
+  .st-key-resend-links-row [data-testid="stColumn"] {
+    min-width: 0 !important;
+  }
+}
+
+/* Impede scroll horizontal em qualquer viewport. overflow-x:hidden ainda deixa o
+   elemento "scrollável" via JS/foco (scrollLeft programático funciona normalmente,
+   só a barra de rolagem some) — testado overflow-x:clip como alternativa que
+   desabilitaria isso por completo, mas exigiria overflow-y:clip também (mesmo eixo,
+   regra do próprio CSS Overflow: um eixo em clip com o outro em auto/visible faz o
+   navegador rebaixar o clip pra hidden de qualquer forma) — inviável aqui porque
+   overflow-y precisa continuar rolável (a página é mais alta que o viewport). Ver
+   load_scroll_lock_script() (components.py) para o mecanismo que neutraliza o
+   scrollLeft residual que esse "hidden ainda rolável via JS" permite. */
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 .main .block-container {

@@ -111,11 +111,21 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
         Effect = "Allow"
         Action = [
           "cognito-idp:SignUp",
+          "cognito-idp:ConfirmSignUp",
+          "cognito-idp:ResendConfirmationCode",
           "cognito-idp:ForgotPassword",
           "cognito-idp:ConfirmForgotPassword",
           "cognito-idp:AdminInitiateAuth",
+          # Não é mais chamada pelo código após a confirmação de e-mail via OTP
+          # no cadastro (ver confirm_sign_up() em src/infrastructure.py) —
+          # mantida por ora, remoção fica para uma limpeza futura de
+          # privilégio mínimo.
           "cognito-idp:AdminConfirmSignUp",
           "cognito-idp:AdminUpdateUserAttributes",
+          # AdminSetUserPassword — troca de senha do próprio usuário logado no perfil
+          # (src/infrastructure.py::change_password): reautentica com a senha atual e,
+          # se válida, define a nova via esta action administrativa.
+          "cognito-idp:AdminSetUserPassword",
           "cognito-idp:AdminDisableUser",
           "cognito-idp:AdminEnableUser",
           "cognito-idp:AdminDeleteUser",
@@ -171,10 +181,22 @@ resource "aws_cognito_user_pool" "filmbot" {
   # Login por e-mail, sem username separado.
   username_attributes = ["email"]
 
-  # Vazio de propósito: o cadastro (SignUp) não dispara nenhum código
-  # automático — o gate de acesso é a aprovação manual do admin
-  # (AdminConfirmSignUp no painel admin), não um código de verificação.
-  auto_verified_attributes = []
+  # O cadastro (SignUp) dispara automaticamente um código de confirmação de
+  # posse do e-mail (efeito colateral de auto_verified_attributes +
+  # verification_message_template abaixo) — mas isso NÃO substitui o gate de
+  # acesso, que continua sendo a aprovação manual do admin (AdminEnableUser,
+  # ver approve_signup() em src/infrastructure.py). A conta só é desabilitada
+  # (AdminDisableUser) DEPOIS de o usuário confirmar o e-mail (ver
+  # confirm_sign_up() em src/infrastructure.py) — não em sign_up(): testado
+  # empiricamente que ConfirmSignUp rejeita qualquer código, mesmo o certo,
+  # com CodeMismatchException quando a conta já está desabilitada.
+  auto_verified_attributes = ["email"]
+
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_message        = "Seu código de confirmação de cadastro no FilmBot é {####}"
+    email_subject        = "Confirme seu e-mail — FilmBot"
+  }
 
   admin_create_user_config {
     allow_admin_create_user_only = false # cadastro público (SignUp) — aprovado manualmente depois
@@ -189,8 +211,10 @@ resource "aws_cognito_user_pool" "filmbot" {
   }
 
   # Necessário para o ForgotPassword saber para onde mandar o código — só
-  # funciona depois que o admin marcar email_verified=true na aprovação
-  # (ver AdminUpdateUserAttributes em src/infrastructure.py).
+  # funciona depois que o e-mail estiver verificado, o que agora acontece
+  # quando o próprio usuário confirma o código de cadastro (ConfirmSignUp,
+  # ver confirm_sign_up() em src/infrastructure.py), não mais na aprovação
+  # do admin.
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -210,6 +234,41 @@ resource "aws_cognito_user_pool" "filmbot" {
     attribute_data_type = "String"
     required            = true
     mutable             = true
+  }
+
+  # Data/hora (ISO 8601 UTC) do último login bem-sucedido, gravada por
+  # infrastructure.record_login() a cada AdminInitiateAuth com sucesso (login.py)
+  # e lida de volta por admin.py para a coluna "Último acesso" do painel admin.
+  # Atributos custom podem ser adicionados a um pool já existente sem forçar
+  # recriação (não podem ser removidos depois — decisão permanente).
+  schema {
+    name                = "last_login"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 40
+    }
+  }
+
+  # Data/hora (ISO 8601 UTC) da última troca de senha bem-sucedida pelo fluxo
+  # "Esqueci a senha", gravada por infrastructure.record_password_update() logo após
+  # um ConfirmForgotPassword bem-sucedido, e lida de volta por admin.py para a coluna
+  # "Atualizado em" do painel admin. Atributos custom podem ser adicionados a um pool
+  # já existente sem forçar recriação (não podem ser removidos depois — decisão
+  # permanente).
+  schema {
+    name                = "password_updated_at"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 40
+    }
   }
 
   # Sem email_configuration de propósito: usa o remetente nativo do próprio

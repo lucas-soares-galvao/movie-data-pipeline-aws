@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação (`sign_up`, `authenticate`, `is_admin`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `approve_signup`, `reject_signup`, `revoke_access`, `restore_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `admin.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação e do perfil (`sign_up`, `confirm_sign_up`, `resend_confirmation_code`, `authenticate`, `record_login`, `record_password_update`, `is_admin`, `get_user_status`, `get_user_profile`, `update_user_name`, `change_password`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `approve_signup`, `reject_signup`, `revoke_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `admin.py`, `profile.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -167,6 +167,12 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `audio-timer-badge` (mock de `components.components.html`, já que não há `st.testing`/`AppTest` na suite) |
 | `test_substitui_max_seconds_no_template` | O placeholder `__MAX_SECONDS__` é substituído pelo valor passado (`15` → `const maxSeconds = 15;`) — mesmo padrão de template string de `__MAX_CHARS__` em `contador_caracteres.js` |
 
+### `TestLoadScrollLockScript` — Injeção do script que neutraliza o `scrollLeft` fantasma de `stMain`/`stAppViewContainer`
+
+| Teste | O que verifica |
+|---|---|
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o marcador `scrollLeft` |
+
 ### `TestRenderFeedback` — Renderização da caixa de mensagem de erro/aviso padronizada
 
 | Teste | O que verifica |
@@ -179,7 +185,7 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_sem_extra_html_nao_inclui_span_de_countdown` | Sem `extra_html`, nenhum `<span id="countdown">` aparece no HTML gerado |
 | `test_separa_icone_e_texto_em_spans_proprios` | Ícone e mensagem vêm em `<span class="msg-icon">`/`<span class="msg-text">` separados — permite ao CSS alinhar os dois verticalmente via flexbox |
 
-### `TestLoadCountdownScript` — Injeção do script de countdown genérico (rate limit de busca, rate limit de transcrição e bloqueio de login)
+### `TestLoadCountdownScript` — Injeção do script de countdown genérico (rate limit de busca, rate limit de transcrição, bloqueio de login e cooldown de reenviar código)
 
 | Teste | O que verifica |
 |---|---|
@@ -196,6 +202,17 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_substitui_locked_out_false` | O placeholder `__LOCKED_OUT__` é substituído por `false` quando `locked_out=False` |
 | `test_substitui_locked_out_true` | O placeholder `__LOCKED_OUT__` é substituído por `true` quando `locked_out=True` |
 | `test_substitui_button_key_customizado` | O placeholder `__BUTTON_KEY__` é substituído pelo `button_key` passado (ex: `"btn_cadastrar"`) — usado pelas telas de cadastro/esqueci senha, que reaproveitam o mesmo script com um botão diferente de `btn_entrar` |
+
+### `TestLoadPasswordRequirementsGateScript` — Injeção do script de requisitos de senha dinâmicos (cadastro e redefinir senha)
+
+| Teste | O que verifica |
+|---|---|
+| `test_injeta_script_via_components_html` | `components.html` é chamado com `height=0` e o script injetado contém o `password_key` passado |
+| `test_substitui_password_key_confirm_key_e_button_key` | Os placeholders `__PASSWORD_KEY__`/`__CONFIRM_KEY__`/`__BUTTON_KEY__` são substituídos pelos valores passados |
+| `test_email_key_default_vazio` | Sem `email_key` explícito, o script recebe `emailKey = ""` (tela de redefinir senha, sem campo de e-mail) |
+| `test_substitui_email_key_customizado` | O placeholder `__EMAIL_KEY__` é substituído pelo `email_key` passado (ex: `"signup_email"`) |
+| `test_locked_out_default_false` | Sem `locked_out` explícito, o placeholder `__LOCKED_OUT__` é substituído por `false` |
+| `test_substitui_locked_out_true` | O placeholder `__LOCKED_OUT__` é substituído por `true` quando `locked_out=True` — usado pelo bloqueio de tentativas de código incorreto na redefinição de senha (`login.py::_render_forgot_password_confirm`), pra impedir o script de reabilitar o botão via digitação enquanto o backend mantém `disabled=True` |
 
 ### `TestMatchesHighlighted` — Predicado de match compartilhado por `_prioritize`/render de badges
 
@@ -276,6 +293,18 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 |---|---|
 | `test_grid_vazio` | Grid vazio renderiza container sem cards |
 | `test_grid_com_titulos` | Grid com múltiplos títulos renderiza múltiplos cards |
+
+### `TestValidatePassword` — Política de senha (movida de `login.py`, também usada por `profile.py`)
+
+| Teste | O que verifica |
+|---|---|
+| `test_aceita_senha_que_atende_todos_os_criterios` | Senha válida → `""` |
+| `test_rejeita_senha_curta_demais` | Menos de 8 caracteres → mensagem citando "8 caracteres" |
+| `test_rejeita_senha_longa_demais` | Mais de 16 caracteres → mensagem citando "16 caracteres" |
+| `test_rejeita_senha_sem_letra_minuscula` | Sem minúscula → mensagem citando "minúscula" |
+| `test_rejeita_senha_sem_letra_maiuscula` | Sem maiúscula → mensagem citando "maiúscula" |
+| `test_rejeita_senha_sem_numero` | Sem número → mensagem citando "número" |
+| `test_rejeita_senha_sem_simbolo` | Sem símbolo → mensagem citando "símbolo" |
 
 ## Casos de teste — `test_formatting.py`
 
@@ -377,25 +406,43 @@ Só o ramo de saída antecipada é testado — o ramo que efetivamente chama AWS
 | `test_calcula_segundos_restantes_ate_evento_mais_antigo_expirar` | Calcula corretamente os segundos restantes até o evento mais antigo sair da janela |
 | `test_retorna_zero_quando_janela_ja_expirou` | Janela já expirada → `0`, nunca negativo |
 
-### Autenticação (Cognito/SNS) — `TestSignUp`, `TestAuthenticate`, `TestIsAdmin`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestRestoreAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
+### Autenticação e perfil (Cognito/SNS) — `TestSignUp`, `TestConfirmSignUp`, `TestResendConfirmationCode`, `TestAuthenticate`, `TestRecordLogin`, `TestRecordPasswordUpdate`, `TestGetUserProfile`, `TestUpdateUserName`, `TestChangePassword`, `TestIsAdmin`, `TestGetUserStatus`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
 
 Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à API do Cognito/SNS (`assert_called_once_with`), sem tocar AWS de verdade — mesmo padrão do resto do arquivo.
 
 | Teste | O que verifica |
 |---|---|
 | `test_chama_sign_up_com_email_senha_e_nome` | `sign_up()` chama `SignUp` com `ClientId`/`Username`/`Password`/`UserAttributes` (email + name) corretos |
+| `test_nao_desabilita_a_conta_no_signup` | `sign_up()` **não** chama `AdminDisableUser` — testado empiricamente que `ConfirmSignUp` rejeita qualquer código (mesmo o certo) com `CodeMismatchException` quando a conta já está `Disabled` |
+| `test_chama_confirm_sign_up_com_email_e_codigo` (`TestConfirmSignUp`) | `confirm_sign_up()` chama `ConfirmSignUp` com `ClientId`/`Username`/`ConfirmationCode` |
+| `test_desabilita_a_conta_depois_de_confirmar` | `confirm_sign_up()` também chama `AdminDisableUser`, só depois do `ConfirmSignUp` ter sucesso |
+| `test_nao_desabilita_a_conta_quando_confirm_sign_up_falha` | Se `ConfirmSignUp` falhar (`ClientError`), `AdminDisableUser` não é chamado e a exceção propaga |
+| `test_chama_resend_confirmation_code_com_email` (`TestResendConfirmationCode`) | `resend_confirmation_code()` chama `ResendConfirmationCode` com `ClientId`/`Username` |
 | `test_retorna_ok_quando_credenciais_corretas` | `authenticate()` chama `AdminInitiateAuth` (`ADMIN_USER_PASSWORD_AUTH`) e retorna `"ok"` |
 | `test_retorna_pending_quando_cadastro_ainda_nao_aprovado` | `ClientError(UserNotConfirmedException)` → retorna `"pending"` |
 | `test_retorna_invalid_para_credenciais_incorretas_ou_usuario_inexistente` | Parametrizado: `NotAuthorizedException`/`UserNotFoundException` → retorna `"invalid"` |
+| `test_retorna_pending_quando_conta_esta_desabilitada_aguardando_aprovacao` | `NotAuthorizedException` com mensagem `"User is disabled."` → retorna status `"pending"` (distinto de senha incorreta, que usa o mesmo `Code` mas mensagem diferente) |
 | `test_propaga_outros_codigos_de_erro` | Código de erro fora da lista tratada (ex: `TooManyRequestsException`) propaga `ClientError` para o chamador |
+| `test_grava_timestamp_iso_utc_no_atributo_custom_last_login` | `record_login()` chama `AdminUpdateUserAttributes` gravando `custom:last_login` com um valor ISO 8601 parseável (não compara string exata — o timestamp é gerado no momento da chamada) |
+| `test_grava_timestamp_iso_utc_no_atributo_custom_password_updated_at` | `record_password_update()` chama `AdminUpdateUserAttributes` gravando `custom:password_updated_at` com um valor ISO 8601 parseável, mesmo padrão de `record_login()` |
+| `test_busca_por_email_e_extrai_atributos` (`TestGetUserProfile`) | `get_user_profile()` chama `ListUsers` filtrado por e-mail e retorna nome/e-mail via `_parse_user()` — usado por `profile.py` para pré-preencher a tela "Meu Perfil" |
+| `test_grava_nome_no_atributo_name` (`TestUpdateUserName`) | `update_user_name()` chama `AdminUpdateUserAttributes` gravando o atributo `name` |
+| `test_retorna_ok_e_define_senha_nova_quando_senha_atual_correta` (`TestChangePassword`) | `change_password()` reautentica via `authenticate()` e, com sucesso, chama `AdminSetUserPassword(Permanent=True)`, retornando `"ok"` |
+| `test_retorna_invalid_sem_definir_senha_quando_senha_atual_incorreta` | Reautenticação falha → retorna `"invalid"` sem chamar `AdminSetUserPassword` |
 | `test_retorna_true_quando_usuario_pertence_ao_grupo_admins` / `test_retorna_false_quando_usuario_nao_pertence_ao_grupo_admins` | `is_admin()` checa `AdminListGroupsForUser` pelo `GroupName == "admins"` |
+| `test_retorna_user_status_quando_lista_de_usuarios_nao_esta_vazia` / `test_retorna_none_quando_lista_de_usuarios_esta_vazia` | `get_user_status()` chama `ListUsers` com `Filter='email = "..."'` e retorna o `UserStatus` do primeiro usuário encontrado, ou `None` se a lista veio vazia — usado na tela "Esqueci a senha" pra avisar quando o e-mail não tem cadastro (`None`) ou ainda está pendente de aprovação (`"UNCONFIRMED"`) |
+| `test_retorna_none_sem_chamar_a_api_quando_email_contem_aspas` | E-mail com `"` quebraria a sintaxe do `Filter` (sem escaping documentado) — `get_user_status()` retorna `None` sem chamar `ListUsers` |
 | `test_chama_forgot_password_com_email` | `request_password_reset()` chama `ForgotPassword` com `ClientId`/`Username` |
 | `test_chama_confirm_forgot_password_com_codigo_e_nova_senha` | `confirm_password_reset()` chama `ConfirmForgotPassword` com `ConfirmationCode`/`Password` |
-| `test_filtra_por_status_unconfirmed_e_extrai_atributos` | `list_pending_users()` chama `ListUsers` com `Filter='cognito:user_status = "UNCONFIRMED"'` e extrai `email`/`name`/`enabled` de `Attributes` (lista de `{Name, Value}`, não dict) |
-| `test_filtra_por_status_confirmed` | `list_active_users()` chama `ListUsers` com `Filter='cognito:user_status = "CONFIRMED"'` |
-| `test_confirma_cadastro_e_marca_email_como_verificado` | `approve_signup()` chama **ambos** `AdminConfirmSignUp` e `AdminUpdateUserAttributes(email_verified=true)` — o segundo passo é o que faz o "esqueci a senha" funcionar depois |
-| `test_exclui_a_conta` | `reject_signup()` chama `AdminDeleteUser` |
-| `test_desativa_o_usuario` / `test_reativa_o_usuario` | `revoke_access()`/`restore_access()` chamam `AdminDisableUser`/`AdminEnableUser` |
+| `test_filtra_por_status_disabled_e_extrai_atributos` | `list_pending_users()` chama `ListUsers` com `Filter='status = "Disabled"'` e extrai `email`/`name`/`enabled`/`created_at`/`updated_at`/`last_login` (`created_at` vem de `UserCreateDate`, campo nativo do item; `updated_at`/`last_login` vêm dos atributos custom `custom:password_updated_at`/`custom:last_login` em `Attributes`, lista de `{Name, Value}`, não dict) — os dois vêm `""` quando o atributo custom correspondente não existe |
+| `test_extrai_last_login_quando_atributo_custom_existe` | Com `custom:last_login` presente em `Attributes`, `_parse_user()` extrai o valor de volta sem alteração |
+| `test_extrai_updated_at_quando_atributo_custom_existe` | Mesmo teste, para `custom:password_updated_at` — gravado só por `record_password_update()` no fluxo de troca de senha, não por `UserLastModifiedDate` (nativo, mas descartado de propósito: reflete qualquer alteração na conta, inclusive cada login, o que tornaria a coluna redundante com "Último acesso") |
+| `test_descarta_usuarios_que_ainda_nao_confirmaram_o_email` | `list_pending_users()` filtra em Python só `UserStatus == "CONFIRMED"` — quem ainda está `UNCONFIRMED` (não confirmou o e-mail) não aparece no painel admin |
+| `test_filtra_por_status_enabled` | `list_active_users()` chama `ListUsers` com `Filter='status = "Enabled"'` |
+| `test_descarta_usuarios_ainda_nao_confirmados_por_defesa` | `list_active_users()` também filtra em Python por `UserStatus == "CONFIRMED"`, defesa contra um caso que não deveria ocorrer no fluxo normal |
+| `test_habilita_a_conta` (`TestApproveSignup`) | `approve_signup()` chama só `AdminEnableUser` — confirmação e verificação do e-mail já aconteceram via `confirm_sign_up()` do próprio usuário |
+| `test_exclui_a_conta` (`TestRejectSignup`) | `reject_signup()` chama `AdminDeleteUser` |
+| `test_exclui_a_conta` (`TestRevokeAccess`) | `revoke_access()` chama `AdminDeleteUser` — mesma decisão de sem histórico usada em `reject_signup()` |
 | `test_adiciona_usuario_ao_grupo_admins` | `add_to_admins_group()` chama `AdminAddUserToGroup(GroupName="admins")` |
 | `test_publica_no_topico_sns_com_email_e_nome` | `notify_new_signup()` chama `sns.publish` com `TopicArn`/`Subject`/`Message` (nome e e-mail interpolados) |
 
@@ -411,11 +458,11 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py`, `login.py`, `admin.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py` **não** está excluído: embora também seja bootstrap/UI, tem funções puras, com saída antecipada, ou chamadas diretas a boto3 (Cognito/SNS) trivialmente testáveis via mock, sem depender de um script Streamlit rodando (ver `test_infrastructure.py` acima).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py`, `login.py`, `admin.py`, `profile.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py`/`components.py` **não** estão excluídos: embora também tenham código chamado pela UI, têm funções puras, com saída antecipada, ou chamadas diretas a boto3 (Cognito/SNS) trivialmente testáveis via mock, sem depender de um script Streamlit rodando (ver `test_infrastructure.py`/`test_components.py` acima).
 
 ## Observação sobre testes de interface
 
-A interface Streamlit (`app.py`, `login.py`, `admin.py`, `recommendation.py`, `cards.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, esses arquivos ficariam em 0% de cobertura (rodam código a nível de import/execução de script, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubariam o gate de 95% sozinhos. Para validar o app visualmente, execute localmente:
+A interface Streamlit (`app.py`, `login.py`, `admin.py`, `profile.py`, `recommendation.py`, `cards.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, esses arquivos ficariam em 0% de cobertura (rodam código a nível de import/execução de script, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubariam o gate de 95% sozinhos. Para validar o app visualmente, execute localmente:
 
 ```bash
 cd app/lightsail_ia
