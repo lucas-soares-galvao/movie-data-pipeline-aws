@@ -1,8 +1,9 @@
 """test_infrastructure.py — testes do bootstrap de processo e rate limiting do FilmBot."""
 
+import json
 import time
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from botocore.exceptions import ClientError
@@ -541,3 +542,151 @@ class TestNotifyNewSignup:
             Subject="FilmBot — cadastro novo pendente de aprovação",
             Message="Fulano (user@ex.com) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
         )
+
+
+class TestNotifyUserApproved:
+    def test_nao_chama_smtp_quando_nenhuma_credencial_esta_configurada(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.delenv("GMAIL_SENDER_EMAIL", raising=False)
+        monkeypatch.delenv("GMAIL_APP_PASSWORD", raising=False)
+
+        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+            infrastructure.notify_user_approved("user@ex.com", "Fulano")
+
+        mock_smtp.assert_not_called()
+
+    def test_envia_email_com_credenciais_do_secrets_manager(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123456789012:secret:x")
+        mock_secrets_client = MagicMock()
+        mock_secrets_client.get_secret_value.return_value = {
+            "SecretString": json.dumps(
+                {"gmail_sender_email": "filmbot.lsgalvao@gmail.com", "gmail_app_password": "abcd efgh ijkl mnop"}
+            )
+        }
+        mock_smtp_server = MagicMock()
+
+        with (
+            patch("src.infrastructure.boto3.client", return_value=mock_secrets_client),
+            patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp,
+        ):
+            mock_smtp.return_value.__enter__.return_value = mock_smtp_server
+            infrastructure.notify_user_approved("user@ex.com", "Fulano")
+
+        mock_secrets_client.get_secret_value.assert_called_once_with(
+            SecretId="arn:aws:secretsmanager:sa-east-1:123456789012:secret:x"
+        )
+        mock_smtp.assert_called_once_with("smtp.gmail.com", 465)
+        mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "abcd efgh ijkl mnop")
+        mock_smtp_server.send_message.assert_called_once()
+        sent_message = mock_smtp_server.send_message.call_args[0][0]
+        assert sent_message["Subject"] == "FilmBot — cadastro aprovado"
+        assert sent_message["From"] == "filmbot.lsgalvao@gmail.com"
+        assert sent_message["To"] == "user@ex.com"
+        body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
+        assert "Fulano" in body
+        assert "https://filmbot.lsgalvao.com.br" in body
+        assert "user@ex.com" in body
+
+    def test_envia_email_com_fallback_de_env_vars_quando_secret_arn_nao_configurado(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("GMAIL_SENDER_EMAIL", "filmbot.lsgalvao@gmail.com")
+        monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
+        mock_smtp_server = MagicMock()
+
+        with (
+            patch("src.infrastructure.boto3.client") as mock_boto,
+            patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp,
+        ):
+            mock_smtp.return_value.__enter__.return_value = mock_smtp_server
+            infrastructure.notify_user_approved("user@ex.com", "Fulano")
+
+        mock_boto.assert_not_called()
+        mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
+        mock_smtp_server.send_message.assert_called_once()
+
+    def test_cai_para_fallback_de_env_vars_quando_secret_nao_tem_as_chaves_gmail(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", "arn:aws:secretsmanager:sa-east-1:123456789012:secret:x")
+        monkeypatch.setenv("GMAIL_SENDER_EMAIL", "filmbot.lsgalvao@gmail.com")
+        monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
+        mock_secrets_client = MagicMock()
+        mock_secrets_client.get_secret_value.return_value = {
+            "SecretString": json.dumps({"llm_api_key": "sk-outra-coisa"})
+        }
+        mock_smtp_server = MagicMock()
+
+        with (
+            patch("src.infrastructure.boto3.client", return_value=mock_secrets_client),
+            patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp,
+        ):
+            mock_smtp.return_value.__enter__.return_value = mock_smtp_server
+            infrastructure.notify_user_approved("user@ex.com", "Fulano")
+
+        mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
+
+    def test_loga_erro_sem_propagar_quando_smtp_falha(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("GMAIL_SENDER_EMAIL", "filmbot.lsgalvao@gmail.com")
+        monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
+
+        with patch("src.infrastructure.smtplib.SMTP_SSL", side_effect=OSError("conexão recusada")):
+            infrastructure.notify_user_approved("user@ex.com", "Fulano")
+
+
+class TestNotifyUserRejected:
+    def test_envia_email_com_assunto_e_corpo_de_reprovacao(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("GMAIL_SENDER_EMAIL", "filmbot.lsgalvao@gmail.com")
+        monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
+        mock_smtp_server = MagicMock()
+
+        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+            mock_smtp.return_value.__enter__.return_value = mock_smtp_server
+            infrastructure.notify_user_rejected("user@ex.com", "Fulano")
+
+        mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
+        sent_message = mock_smtp_server.send_message.call_args[0][0]
+        assert sent_message["Subject"] == "FilmBot — cadastro não aprovado"
+        assert sent_message["To"] == "user@ex.com"
+        body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
+        assert "Fulano" in body
+        assert "não foi aprovado" in body
+
+    def test_nao_chama_smtp_quando_nenhuma_credencial_esta_configurada(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.delenv("GMAIL_SENDER_EMAIL", raising=False)
+        monkeypatch.delenv("GMAIL_APP_PASSWORD", raising=False)
+
+        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+            infrastructure.notify_user_rejected("user@ex.com", "Fulano")
+
+        mock_smtp.assert_not_called()
+
+
+class TestNotifyUserRevoked:
+    def test_envia_email_com_assunto_e_corpo_de_revogacao(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("GMAIL_SENDER_EMAIL", "filmbot.lsgalvao@gmail.com")
+        monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
+        mock_smtp_server = MagicMock()
+
+        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+            mock_smtp.return_value.__enter__.return_value = mock_smtp_server
+            infrastructure.notify_user_revoked("user@ex.com", "Fulano")
+
+        mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
+        sent_message = mock_smtp_server.send_message.call_args[0][0]
+        assert sent_message["Subject"] == "FilmBot — acesso revogado"
+        assert sent_message["To"] == "user@ex.com"
+        body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
+        assert "Fulano" in body
+        assert "revogado" in body
+
+    def test_nao_chama_smtp_quando_nenhuma_credencial_esta_configurada(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.delenv("GMAIL_SENDER_EMAIL", raising=False)
+        monkeypatch.delenv("GMAIL_APP_PASSWORD", raising=False)
+
+        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+            infrastructure.notify_user_revoked("user@ex.com", "Fulano")
+
+        mock_smtp.assert_not_called()

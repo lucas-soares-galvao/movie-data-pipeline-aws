@@ -4,14 +4,18 @@ import json
 import logging
 import math
 import os
+import smtplib
 import time
 from datetime import datetime, timezone
+from email.mime.text import MIMEText
 from pathlib import Path
 
 import boto3
 import streamlit as st
 import watchtower
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 
 def load_filmbot_password() -> None:
@@ -409,4 +413,99 @@ def notify_new_signup(email: str, name: str) -> None:
         TopicArn=os.environ["SNS_NEW_SIGNUP_TOPIC_ARN"],
         Subject="FilmBot — cadastro novo pendente de aprovação",
         Message=f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
+    )
+
+
+def _load_gmail_credentials() -> tuple[str, str] | None:
+    """Busca remetente + senha de app do Gmail para notify_user_approved: do
+    FILMBOT_SECRET_ARN (chaves gmail_sender_email/gmail_app_password) em produção, ou
+    das env vars GMAIL_SENDER_EMAIL/GMAIL_APP_PASSWORD como fallback de dev local —
+    mesmo padrão de load_filmbot_password/agent.py::_load_llm_api_key. Retorna None se
+    nenhuma das duas fontes tiver as duas credenciais."""
+    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
+    if secret_arn:
+        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
+        response = client.get_secret_value(SecretId=secret_arn)
+        secret = json.loads(response["SecretString"])
+        sender_email = secret.get("gmail_sender_email")
+        app_password = secret.get("gmail_app_password")
+        if sender_email and app_password:
+            return sender_email, app_password
+
+    sender_email = os.getenv("GMAIL_SENDER_EMAIL")
+    app_password = os.getenv("GMAIL_APP_PASSWORD")
+    if sender_email and app_password:
+        return sender_email, app_password
+    return None
+
+
+# Mesmo domínio fixo de produção usado pelo Caddy (FILMBOT_DOMAIN em .env.caddy,
+# ver .github/workflows/04_deploy_lightsail.yml) — hardcoded aqui porque o processo
+# Python nunca precisou conhecer a própria URL pública antes disso, e o domínio não
+# varia (só existe deploy em prod, ver workflow.md).
+_FILMBOT_URL = "https://filmbot.lsgalvao.com.br"
+
+
+def _send_gmail_email(to_email: str, subject: str, body: str) -> None:
+    """Monta e envia (via Gmail/SMTP) um e-mail de notificação — reaproveitado por
+    notify_user_approved/notify_user_rejected/notify_user_revoked.
+
+    Fire-and-forget, mesmo racional de notify_new_signup/scripts/backfill_shared.py::
+    notify_backfill_success: uma falha aqui (credencial errada, Gmail fora do ar) não
+    pode derrubar a ação do Cognito que já aconteceu antes desta chamada."""
+    credentials = _load_gmail_credentials()
+    if credentials is None:
+        logger.warning("Credenciais do Gmail não configuradas — e-mail não enviado para '%s'.", to_email)
+        return
+    sender_email, app_password = credentials
+
+    message = MIMEText(body)
+    message["Subject"] = subject
+    message["From"] = sender_email
+    message["To"] = to_email
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, app_password)
+            server.send_message(message)
+    except Exception as exc:  # noqa: BLE001 — falha ao notificar não deve afetar uma ação já concluída
+        logger.error("Falha ao enviar e-mail para '%s': %s", to_email, exc)
+    else:
+        logger.info("E-mail enviado para '%s' (assunto: '%s').", to_email, subject)
+
+
+def notify_user_approved(email: str, name: str) -> None:
+    """Envia (via Gmail/SMTP) o e-mail avisando o usuário que o cadastro foi aprovado e
+    o acesso já está liberado. Chamado por admin.py logo após approve_signup()."""
+    _send_gmail_email(
+        email,
+        "FilmBot — cadastro aprovado",
+        f"Olá, {name}!\n\n"
+        "Seu cadastro no FilmBot foi aprovado. Você já pode fazer login "
+        f"em {_FILMBOT_URL} usando o e-mail {email} e a senha que você cadastrou.\n\n"
+        "Até já,\nEquipe FilmBot",
+    )
+
+
+def notify_user_rejected(email: str, name: str) -> None:
+    """Envia (via Gmail/SMTP) o e-mail avisando o usuário que o cadastro não foi
+    aprovado. Chamado por admin.py só quando o admin marca "Notificar por e-mail" no
+    modal de confirmação de Reprovar — não é automático (ver lightsail_ia.md: notificar
+    todo mundo sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado)."""
+    _send_gmail_email(
+        email,
+        "FilmBot — cadastro não aprovado",
+        f"Olá, {name}!\n\nSeu cadastro no FilmBot não foi aprovado.\n\nAté já,\nEquipe FilmBot",
+    )
+
+
+def notify_user_revoked(email: str, name: str) -> None:
+    """Envia (via Gmail/SMTP) o e-mail avisando o usuário que o acesso foi revogado.
+    Chamado por admin.py só quando o admin marca "Notificar por e-mail" no modal de
+    confirmação de Revogar (checkbox marcado por padrão nesse caso — diferente de
+    Reprovar, ver notify_user_rejected)."""
+    _send_gmail_email(
+        email,
+        "FilmBot — acesso revogado",
+        f"Olá, {name}!\n\nSeu acesso ao FilmBot foi revogado.\n\nAté já,\nEquipe FilmBot",
     )
