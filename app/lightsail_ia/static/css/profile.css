@@ -1,0 +1,425 @@
+/* profile.css — tela "Meu Perfil" (nome editável + e-mail somente leitura na aba
+   "Perfil", troca de senha na aba "Senha"). Depende de base.css já injetado por
+   load_app_css() na mesma execução de script (mesmo padrão de admin.css/
+   recommendation.css/cards.css). */
+
+/* Mesmo estilo de .page-title em admin.css — duplicado aqui de propósito: as duas
+   telas nunca renderizam no mesmo script run (current_view é "admin" OU "profile"),
+   então cada CSS de tela fica autocontido, sem load_profile_css() depender de
+   load_admin_css() já ter rodado antes. */
+.page-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 20px !important;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 !important;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+/* Wrapper único por tela (título + nav + conteúdo, admin.py::render_admin_panel /
+   profile.py::render_profile_panel) — a ÚNICA largura que existe agora para as 3
+   seções de cada tela (tabela/perfil/senha): sempre a mesma, sem exceção por seção
+   ativa (evita o bug histórico de borda esquerda pulando ao trocar de aba, quando
+   "usuarios" e "perfil"/"senha" tinham shells de larguras diferentes). O valor em si
+   (640px, igual ao cabeçalho e à caixa de texto da recomendação) mora em base.css —
+   ver .st-key-hero-section/.st-key-header-row lá — para as três telas ficarem
+   amarradas à mesma largura de conteúdo principal em vez de duas próximas-mas-
+   diferentes. */
+
+/* Sem margin:0 auto própria — width:100% dentro do .st-key-profile-shell/
+   .st-key-admin-shell pai (já limitado a 640px em base.css) faz o card preencher a
+   largura inteira do shell, mesma caixa (mesmo início e fim horizontal) da tabela de
+   usuários (.st-key-admin-dataframe, admin.css, também width:100% dentro do mesmo
+   shell) — pedido do usuário: as 3 seções (tabela/perfil/senha) devem ter início e
+   fim simétricos. max-width:640px aqui é redundante com o do shell pai, mantido como
+   cinto-e-suspensório (mesmo padrão defensivo do próprio shell), caso o card algum
+   dia seja renderizado fora dele. */
+.st-key-profile-card,
+.st-key-admin-profile-card,
+.st-key-admin-password-card {
+  background: rgba(17, 17, 17, 0.92);
+  border: 1px solid rgba(249,115,22,0.18);
+  border-radius: 20px;
+  padding: 24px 28px;
+  margin: 0 0 16px;
+  max-width: 640px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Espelha o @media (max-width:768px) do shell pai (.st-key-admin-shell/
+   .st-key-profile-shell, base.css) — sem isso, abaixo de 768px o shell/barra de
+   navegação já crescem além de 640px (max-width:100% lá), mas o card ficava travado
+   em 640px, sobrando espaço vazio nas laterais que não existe na barra acima
+   (borda do card não acompanhava a da nav). */
+@media (max-width: 768px) {
+  .st-key-profile-card,
+  .st-key-admin-profile-card,
+  .st-key-admin-password-card {
+    max-width: 100%;
+  }
+}
+
+/* Labels visíveis (diferente de login.py, que usa label_visibility="collapsed" com
+   texto só no placeholder) — sem esta regra o texto do label herdaria a cor escura
+   padrão do tema claro nativo do Streamlit (este projeto não fixa [theme] no
+   config.toml, ver base.css), ilegível contra o fundo escuro custom da página. */
+.st-key-profile-card [data-testid="stWidgetLabel"] p,
+.st-key-admin-profile-card [data-testid="stWidgetLabel"] p,
+.st-key-admin-password-card [data-testid="stWidgetLabel"] p {
+  color: #d4d4d4 !important;
+  font-size: 13px !important;
+  font-weight: 500;
+}
+
+.st-key-profile-card [data-testid="stTextInput"] [data-testid="InputInstructions"],
+.st-key-admin-profile-card [data-testid="stTextInput"] [data-testid="InputInstructions"],
+.st-key-admin-password-card [data-testid="stTextInput"] [data-testid="InputInstructions"] {
+  display: none;
+}
+
+.st-key-profile-card [data-testid="stTextInput"] input,
+.st-key-admin-profile-card [data-testid="stTextInput"] input,
+.st-key-admin-password-card [data-testid="stTextInput"] input {
+  background: #1a1a1a !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  border-radius: 10px !important;
+  color: #f5f5f5 !important;
+  font-size: 15px !important;
+  padding: 10px 14px !important;
+}
+.st-key-profile-card [data-testid="stTextInput"] input:focus,
+.st-key-admin-profile-card [data-testid="stTextInput"] input:focus,
+.st-key-admin-password-card [data-testid="stTextInput"] input:focus {
+  border-color: rgba(249,115,22,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important;
+}
+.st-key-profile-card [data-testid="stTextInput"] input.password-mismatch,
+.st-key-admin-profile-card [data-testid="stTextInput"] input.password-mismatch,
+.st-key-admin-password-card [data-testid="stTextInput"] input.password-mismatch {
+  border-color: #ef4444 !important;
+}
+.st-key-profile-card [data-testid="stTextInput"] input.password-match,
+.st-key-admin-profile-card [data-testid="stTextInput"] input.password-match,
+.st-key-admin-password-card [data-testid="stTextInput"] input.password-match {
+  border-color: #22c55e !important;
+}
+.st-key-profile-card [data-testid="stTextInput"] input.email-invalid,
+.st-key-admin-profile-card [data-testid="stTextInput"] input.email-invalid,
+.st-key-admin-password-card [data-testid="stTextInput"] input.email-invalid {
+  border-color: #ef4444 !important;
+}
+.st-key-profile-card [data-testid="stTextInput"] input.email-valid,
+.st-key-admin-profile-card [data-testid="stTextInput"] input.email-valid,
+.st-key-admin-password-card [data-testid="stTextInput"] input.email-valid {
+  border-color: #22c55e !important;
+}
+.st-key-profile-card [data-testid="stTextInput"] input::-ms-reveal,
+.st-key-profile-card [data-testid="stTextInput"] input::-ms-clear,
+.st-key-admin-profile-card [data-testid="stTextInput"] input::-ms-reveal,
+.st-key-admin-profile-card [data-testid="stTextInput"] input::-ms-clear,
+.st-key-admin-password-card [data-testid="stTextInput"] input::-ms-reveal,
+.st-key-admin-password-card [data-testid="stTextInput"] input::-ms-clear {
+  display: none !important;
+}
+
+/* .password-requirements/.password-requirements-title e .st-key-password-fields-row
+   (linha dos campos de senha (50%) + painel de requisitos (50%),
+   render_password_tab::st.columns(2)) vêm de base.css — compartilhados com login.css
+   (_render_forgot_password_confirm usa a mesma key "password-fields-row"), antes
+   duplicados aqui. */
+
+/* Botão de ação primário ("Salvar Perfil →", "Salvar Senha →") — mesmos valores
+   exatos do botão primário de login.css (ex.: "Ir para o login →"), mesmo padrão
+   pill: font-size/padding/margin-top idênticos, para não ficar um pouco menor que o
+   resto das telas de autenticação.
+
+   Largura 140px no desktop (pedido do usuário, pra não esticar o botão pela largura
+   inteira do card agora que os campos acima ocupam a largura em colunas) — mesmo
+   valor da regra global de botão em base.css (width:140px!important), só que aqui
+   precisa ser repetida com a mesma especificidade das regras desta seção pra não
+   depender de qual delas vem depois no CSS final. Volta a 100% no mobile, ver
+   @media abaixo — no mobile os campos acima já colapsam pra empilhado 100%, um
+   botão de 140px ficaria pequeno e descentralizado ao lado deles.
+
+   O wrapper `[data-testid="stButton"]` (não o `<button>` em si) que o Streamlit gera
+   se ajusta ao próprio conteúdo por padrão — só existe se sobrar espaço vazio ao
+   redor caso ele já ocupe a largura inteira da linha, então ele precisa virar
+   `width:100%` primeiro (largura da própria linha do card) para o
+   `justify-content:center` interno ter algo a centralizar; sem isso o botão de
+   140px ficaria colado à esquerda da própria caixa mínima do wrapper, não do card
+   inteiro. No mobile (width:100% no botão, @media abaixo) o efeito visual do
+   center desaparece sozinho — o botão já preenche a linha toda. */
+.st-key-profile-card [data-testid="stButton"],
+.st-key-admin-profile-card [data-testid="stButton"],
+.st-key-admin-password-card [data-testid="stButton"] {
+  display: flex !important;
+  justify-content: center !important;
+  width: 100% !important;
+}
+.st-key-profile-card [data-testid="stButton"] > button,
+.st-key-admin-profile-card [data-testid="stButton"] > button,
+.st-key-admin-password-card [data-testid="stButton"] > button {
+  background: #ea580c !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 999px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  padding: 10px 0 !important;
+  width: 140px !important;
+  margin-top: 8px !important;
+  box-shadow: 0 0 24px -4px rgba(234,88,12,0.6);
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+/* Botão volta a 100% no mobile — os campos de Perfil/Senha já empilham 100% de
+   largura nesse breakpoint, um botão fixo de 140px ficaria pequeno e
+   descentralizado ao lado deles. Posicionado DEPOIS da regra desktop acima (mesma
+   especificidade — em empate, quem vem depois no arquivo vence): estava ANTES
+   originalmente e a regra desktop vencia mesmo dentro do breakpoint mobile,
+   cancelando este width:100% silenciosamente — corrigido junto com a mesma
+   padronização replicada em login.css/recommendation.css. */
+@media (max-width: 768px) {
+  .st-key-profile-card [data-testid="stButton"] > button,
+  .st-key-admin-profile-card [data-testid="stButton"] > button,
+  .st-key-admin-password-card [data-testid="stButton"] > button {
+    width: 100% !important;
+  }
+}
+/* "Salvar Senha →" mais baixo que o padrão genérico acima (margin-top:8px), pra
+   ficar centralizado entre "Confirmar nova senha" e a borda inferior do card — só
+   a aba "Senha" tinha esse desequilíbrio reportado (mais espaço embaixo do botão
+   que em cima), não a aba "Perfil". `:has(.st-key-password-fields-row)` mira só o
+   `.st-key-profile-card` quando ele está mostrando a aba "Senha" no momento (tela
+   solo "Meu Perfil" — as duas abas dividem o mesmo container/mesma `key`, só o
+   conteúdo interno muda conforme `active`, então não dá pra diferenciar por classe
+   sozinha); `.st-key-admin-password-card` já é exclusivo da aba "Senha" no painel
+   admin, sem precisar de `:has()`. Mais seletores = maior especificidade, então
+   esta regra vence a genérica acima sem depender de ordem no arquivo. Valor
+   (24px, igual ao `padding-bottom` do card) é uma estimativa inicial — calibrar por
+   inspeção visual real (mesmo padrão de medição já usado no resto do arquivo, ex.:
+   nudge de ícone de -1.9px na nav bar) se ainda ficar desbalanceado. */
+.st-key-profile-card:has(.st-key-password-fields-row) [data-testid="stButton"] > button,
+.st-key-admin-password-card [data-testid="stButton"] > button {
+  margin-top: 24px !important;
+}
+.st-key-profile-card [data-testid="stButton"] > button:hover,
+.st-key-admin-profile-card [data-testid="stButton"] > button:hover,
+.st-key-admin-password-card [data-testid="stButton"] > button:hover {
+  filter: brightness(1.08);
+  transform: scale(1.01);
+}
+.st-key-profile-card [data-testid="stButton"] > button:disabled,
+.st-key-admin-profile-card [data-testid="stButton"] > button:disabled,
+.st-key-admin-password-card [data-testid="stButton"] > button:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+/* Campo E-mail (aba "Perfil") é sempre disabled=True — só leitura, não dá pra trocar
+   e-mail por esta tela. Opacidade reduzida deixa claro visualmente que o campo não é
+   editável, mesmo com o valor legível. */
+.st-key-profile-card [data-testid="stTextInput"] input:disabled,
+.st-key-admin-profile-card [data-testid="stTextInput"] input:disabled,
+.st-key-admin-password-card [data-testid="stTextInput"] input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Barra horizontal de navegação (Usuários/Perfil/Senha no admin; Perfil/Senha na tela
+   solo "Meu Perfil"), no topo da tela, acima do conteúdo — substitui o antigo menu
+   vertical ao lado do conteúdo. Trocado porque streamlit==1.59.2 (travado no
+   requirements.txt) não suporta st.tabs com ícone por aba de forma estilizável sem
+   depender de comportamento interno não documentado (o indicador da aba ativa é
+   posicionado via transform pensado pro DOM interno da própria versão — exatamente o
+   tipo de fragilidade já corrigida no bloco antigo de abas). Por isso cada item
+   continua sendo um st.button nativo (profile.py::render_nav_item), estilizado aqui
+   via os atributos públicos `data-testid="stBaseButton-primary/secondary"` (item
+   ativo/inativo) e `key=` (classe `st-key-profile-nav`/`st-key-admin-nav`) — mesma
+   técnica de inspeção real do DOM (Playwright) já usada nesta tela, não suposição.
+   .st-key-admin-nav incluído aqui (em vez de duplicado em admin.css) pelo mesmo
+   motivo do card: é onde vive a barra do painel admin (admin.py), que reaproveita
+   exatamente este estilo.
+
+   Existem DOIS níveis de [data-testid="stHorizontalBlock"] dentro do container da
+   nav agora: nível 1 é a própria barra (render_nav_bar::st.columns(N), um item por
+   coluna); nível 2 é a linha ícone+rótulo de CADA item (render_nav_item::
+   st.columns([1,6])). O combinador `>` (filho direto) mira só o nível 1 (a barra); o
+   seletor com [data-testid="stColumn"] no meio mira só o nível 2 (o item) — sem essa
+   distinção, uma regra genérica [data-testid="stHorizontalBlock"] casaria com os dois
+   níveis ao mesmo tempo. */
+.st-key-profile-nav,
+.st-key-admin-nav {
+  margin: 12px 0 24px;
+}
+
+/* Nível 1: a barra em si — caixa arredondada (fundo translúcido + borda sutil, mesmo
+   padrão de badges/tags do design system "Luminous"), não mais pill total (999px):
+   16px, na mesma família visual do card de formulário (border-radius:20px) sem copiar
+   o valor 1:1 (a barra é mais baixa/comprida que o card) — pedido do usuário,
+   inspirado no mock enviado. O filho direto de .st-key-*-nav não é o stHorizontalBlock
+   em si — o Streamlit insere um [data-testid="stLayoutWrapper"] no meio (confirmado
+   inspecionando o DOM real, Playwright) — por isso o combinador `>` precisa passar por
+   ele explicitamente, não mirar stHorizontalBlock direto como filho.
+
+   flex-direction:row!important é necessário porque o Streamlit empilha nativamente um
+   stHorizontalBlock em coluna quando ele fica estreito demais (breakpoint interno do
+   próprio framework, não CSS deste projeto) — confirmado visualmente (Playwright,
+   viewport 375px): sem essa regra, os 3 itens da barra (Usuários/Perfil/Senha)
+   quebravam um por linha em telas estreitas, exatamente o oposto do pedido do usuário
+   (barra sempre horizontal). */
+.st-key-profile-nav > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"],
+.st-key-admin-nav > [data-testid="stLayoutWrapper"] > [data-testid="stHorizontalBlock"] {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 4px;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
+}
+/* O próprio Streamlit define `min-width: calc(100% - 24px)` em toda stColumn abaixo do
+   seu breakpoint interno de responsividade (pensado pra funcionar em conjunto com o
+   flex-direction:column nativo, que empilha colunas em telas estreitas) — como
+   forçamos row acima, esse min-width nativo sobra e faz as 3 colunas (uma por item)
+   disputarem ~100% de largura cada uma na mesma linha, sobrepondo um item no outro
+   (confirmado via getComputedStyle, Playwright, viewport 375px). Zerado aqui pra valer
+   só o `flex: 1 1 ...%` que o Streamlit já calcula pra dividir a barra em N partes
+   iguais. */
+.st-key-profile-nav [data-testid="stColumn"],
+.st-key-admin-nav [data-testid="stColumn"] {
+  min-width: 0 !important;
+}
+
+/* Nível 2: a linha ícone+rótulo de cada item — preenche 100% da coluna que
+   render_nav_bar já alocou pra ele (largura igual entre os itens), mas ícone e
+   rótulo ficam colados e centralizados como par no meio do segmento (pedido do
+   usuário, inspirado no mock) via justify-content:center + gap — não mais
+   alinhados à esquerda com espaço morto entre os dois. Isso só funciona porque as
+   duas stColumn filhas (icon_col/label_col) são forçadas a encolher ao próprio
+   conteúdo logo abaixo (senão elas continuam ocupando 1/7 e 6/7 fixos do segmento,
+   e centralizar a LINHA não aproxima ícone de texto, só desloca os dois já-largos
+   colunas como bloco). border-radius menor (12px, não mais 999px) pela mesma razão
+   do nível 1 — consistente com o mock e com o card de formulário.
+
+   Mesmo racional de flex-direction:row!important do nível 1 acima: cada coluna de
+   item fica ainda mais estreita que a barra inteira (barra ÷ N itens), então o
+   ícone+rótulo interno (render_nav_item::st.columns([1,6])) é o primeiro a quebrar em
+   telas estreitas — confirmado visualmente no admin (3 itens) em 375px. */
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"],
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"] {
+  border-radius: 12px;
+  padding: 6px 4px;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 6px;
+}
+/* icon_col/label_col (render_nav_item::st.columns([1,6])) nascem com largura
+   proporcional fixa (1/7 e 6/7 do segmento) — sem isso, justify-content:center acima
+   só centraliza as DUAS COLUNAS JÁ LARGAS como bloco, sem aproximar visualmente o
+   ícone do texto. flex:0 0 auto + width:auto faz cada uma encolher pro tamanho do
+   próprio conteúdo (ícone 18px / texto do botão), e o gap acima vira o único
+   espaçamento real entre eles. */
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+/* Nudge vertical fino no ícone, mesmo princípio do nudge de .st-key-btn_sair (app.css):
+   vertical_alignment="center" (render_nav_item) centraliza os *blocos* de icon_col/
+   label_col entre si, mas o SVG (18x18, sem descendente abaixo da linha de base) fica
+   opticamente alto demais em relação ao texto do botão (sem descendentes em "Perfil"/
+   "Senha"/"Usuários", que deixa espaço "silencioso" abaixo da linha de base dentro da
+   caixa da fonte que o ícone não tem) — mesmo com os dois blocos geometricamente
+   centralizados, o ícone parece deslocado pra cima.
+
+   Valor medido por pixel real (screenshot em alta resolução via Playwright + PIL/numpy
+   comparando o centro de tinta do ícone com o do texto, não estimativa visual) —
+   recalibrado para -1.9px quando o texto do botão subiu de 14px para 16px (ver
+   font-size abaixo): o texto maior deslocou seu próprio centro óptico, e o valor
+   antigo (+1.5px, medido para 14px) passou a empurrar o ícone pra baixo do centro do
+   texto em vez de alinhar (delta residual medido: 0.013px). Remedir por pixel (não
+   estimar) se o font-size do botão ou o tamanho do ícone (18px,
+   `icon(icon_name, size=18)` em profile.py) mudarem de novo. */
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"] svg.icon,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"] svg.icon {
+  position: relative;
+  top: -1.9px;
+}
+/* Ícone e botão ficam em colunas st.columns() irmãs (gap=None em Python, ver
+   render_nav_item) — o respiro entre os dois vem do `gap:6px` do nível 2 acima, não
+   mais de padding assimétrico aqui (icon_col/label_col agora encolhem ao conteúdo,
+   então um padding-left fixo no botão deslocaria o texto sem motivo). Padding
+   simétrico só pro toque da área clicável. white-space:nowrap evita quebra de linha
+   do rótulo dentro do segmento estreito da barra.
+
+   width:auto!important é essencial agora (antes não precisava): a regra global de
+   botão em base.css (`width:140px!important`) nunca tinha efeito visível aqui porque
+   label_col, com largura proporcional fixa, sempre era mais larga que o texto — o
+   botão simplesmente "sobrava" invisível dentro dela (fundo transparente). Agora que
+   label_col encolhe ao próprio conteúdo (flex:0 0 auto acima), se o botão continuar
+   fixo em 140px a coluna encolhe pra 140px também (não pro tamanho real do texto),
+   e 3 itens de 140px (420px) estouram uma barra de ~340px no mobile, sobrepondo um
+   item no outro — confirmado visualmente (Playwright, viewport 375px) só depois da
+   mudança de layout, não é um bug pré-existente. Nossa regra já é mais específica que
+   a de base.css (mais seletores de atributo + classe), então `width:auto!important`
+   aqui vence de forma confiável. */
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stButton"] > button,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stButton"] > button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #a3a3a3 !important;
+  font-size: 17px !important;
+  font-weight: 500 !important;
+  text-align: center !important;
+  justify-content: center !important;
+  padding: 8px 4px !important;
+  white-space: nowrap !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+/* O rótulo do botão fica dentro de uma <div> interna (sem data-testid estável, classe
+   com hash de build) que centraliza o conteúdo por padrão — mantido explícito aqui
+   por clareza, embora já seja o comportamento nativo dela. */
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stButton"] > button > div,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stButton"] > button > div {
+  justify-content: center !important;
+  width: 100%;
+}
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:hover,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:hover {
+  background: rgba(255,255,255,0.05);
+}
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:hover [data-testid="stButton"] > button,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:hover [data-testid="stButton"] > button {
+  color: #f5f5f5 !important;
+}
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]),
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) {
+  background: rgba(249,115,22,0.12);
+}
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) [data-testid="stButton"] > button,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) [data-testid="stButton"] > button {
+  color: #f97316 !important;
+}
+.st-key-profile-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) .icon,
+.st-key-admin-nav [data-testid="stColumn"] [data-testid="stHorizontalBlock"]:has([data-testid="stBaseButton-primary"]) .icon {
+  color: #f97316 !important;
+}
+
+/* Telas bem estreitas (≤480px, ex.: Android 360px de largura) — reduz fonte/padding
+   do item pra os 3 segmentos do admin (Usuários/Perfil/Senha) não estourarem/
+   cortarem no mesmo trilho horizontal. Verificar visualmente (streamlit run,
+   viewport ~360px) e reajustar se ainda clipar. */
+@media (max-width: 480px) {
+  .st-key-profile-nav [data-testid="stColumn"] [data-testid="stButton"] > button,
+  .st-key-admin-nav [data-testid="stColumn"] [data-testid="stButton"] > button {
+    font-size: 12px !important;
+    padding: 8px 2px !important;
+  }
+}

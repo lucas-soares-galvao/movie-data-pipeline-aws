@@ -17,6 +17,7 @@ from src.components import (
     render_feedback,
     render_login_footer,
     render_password_requirements,
+    validate_password,
 )
 from src.infrastructure import (
     events_in_window,
@@ -85,26 +86,6 @@ def _create_signup_code_attempt_history() -> dict[str, list[float]]:
 _signup_code_attempt_history = _create_signup_code_attempt_history()
 
 
-def _validate_password(password: str) -> str:
-    """Valida a senha contra a mesma política configurada no Cognito (infra/lightsail_ia.tf:
-    aws_cognito_user_pool.filmbot.password_policy), mais o teto de 16 caracteres — regra só
-    do app, o Cognito não impõe máximo — checar aqui evita disparar a chamada só para
-    receber InvalidPasswordException. Retorna "" se válida, senão a mensagem de erro."""
-    if len(password) < 8:
-        return "A senha precisa ter pelo menos 8 caracteres."
-    if len(password) > 16:
-        return "A senha pode ter no máximo 16 caracteres."
-    if not re.search(r"[a-z]", password):
-        return "A senha precisa ter pelo menos uma letra minúscula."
-    if not re.search(r"[A-Z]", password):
-        return "A senha precisa ter pelo menos uma letra maiúscula."
-    if not re.search(r"\d", password):
-        return "A senha precisa ter pelo menos um número."
-    if not re.search(r"[^\w\s]", password):
-        return "A senha precisa ter pelo menos um símbolo (ex: ! @ # $)."
-    return ""
-
-
 def render_login(client_ip: str) -> None:
     """Renderiza a tela de autenticação ativa (login, cadastro ou esqueci a senha) e
     interrompe a execução do script (`st.stop()`) se o usuário ainda não estiver
@@ -161,11 +142,11 @@ def _render_login_form(client_ip: str) -> None:
         _brand_header()
 
         email = st.text_input(
-            "", placeholder="E-mail", label_visibility="collapsed", key="login_email"
+            "E-mail", placeholder="Digite seu e-mail", key="login_email"
         )
         password = st.text_input(
-            "", placeholder="Senha", type="password",
-            label_visibility="collapsed", key="login_password",
+            "Senha", placeholder="Digite sua senha", type="password",
+            key="login_password",
         )
         error_placeholder = st.empty()
         submit = st.button(
@@ -188,6 +169,13 @@ def _render_login_form(client_ip: str) -> None:
                 st.session_state["authenticated"] = True
                 st.session_state["user_email"] = email
                 st.session_state["is_admin"] = infrastructure.is_admin(email)
+                try:
+                    st.session_state["user_name"] = infrastructure.get_user_profile(email)["name"]
+                except ClientError:
+                    # Falha ao buscar o nome não deve travar o login — a tela de
+                    # recomendação trata user_name vazio como "sem saudação".
+                    logging.exception("Erro ao buscar nome do perfil no login")
+                    st.session_state["user_name"] = ""
                 try:
                     infrastructure.record_login(email)
                 except ClientError:
@@ -215,11 +203,11 @@ def _render_login_form(client_ip: str) -> None:
         with st.container(key="login-links-row"):
             link_col1, link_col2 = st.columns(2)
             with link_col1:
-                if st.button("Novo cadastro", key="btn_link_cadastro", use_container_width=True):
-                    _switch_view("signup")
-            with link_col2:
                 if st.button("Esqueci a senha", key="btn_link_esqueci", use_container_width=True):
                     _switch_view("forgot_password")
+            with link_col2:
+                if st.button("Novo cadastro", key="btn_link_cadastro", use_container_width=True):
+                    _switch_view("signup")
 
         render_login_footer()
 
@@ -237,17 +225,25 @@ def _render_signup(client_ip: str) -> None:
     with st.container(key="login-card"):
         _brand_header("Criar uma Conta Nova")
 
-        name = st.text_input("", placeholder="Nome completo", label_visibility="collapsed", key="signup_name")
-        email = st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="signup_email")
-        render_email_hint()
-        password = st.text_input(
-            "", placeholder="Senha", type="password", label_visibility="collapsed", key="signup_password"
-        )
-        confirm_password = st.text_input(
-            "", placeholder="Confirmar senha", type="password",
-            label_visibility="collapsed", key="signup_confirm_password",
-        )
-        render_password_requirements()
+        with st.container(key="password-fields-row"):
+            fields_col, requirements_col = st.columns(2, gap="medium")
+            with fields_col:
+                name = st.text_input("Nome Completo", placeholder="Digite seu nome completo", key="signup_name")
+                email = st.text_input("E-mail", placeholder="Digite seu e-mail", key="signup_email")
+                render_email_hint()
+                password = st.text_input(
+                    "Senha", placeholder="Digite sua senha", type="password", key="signup_password"
+                )
+                confirm_password = st.text_input(
+                    "Confirmar senha", placeholder="Digite sua senha novamente", type="password",
+                    key="signup_confirm_password",
+                )
+            with requirements_col:
+                st.markdown(
+                    '<p class="password-requirements-title">Requisitos da senha</p>',
+                    unsafe_allow_html=True,
+                )
+                render_password_requirements()
         error_placeholder = st.empty()
         submit = st.button("Criar cadastro →", use_container_width=True, key="btn_cadastrar")
         load_password_requirements_gate_script(
@@ -293,7 +289,7 @@ def _validate_signup(name: str, email: str, password: str, confirm_password: str
         return "Digite um e-mail válido."
     if password != confirm_password:
         return "As senhas não coincidem."
-    return _validate_password(password)
+    return validate_password(password)
 
 
 def _signup_error_message(exc: ClientError) -> str:
@@ -319,7 +315,7 @@ def _render_signup_confirm(client_ip: str) -> None:
             st.markdown('<p class="login-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
 
         code = st.text_input(
-            "", placeholder="Código recebido por e-mail", label_visibility="collapsed", key="signup_code"
+            "Código de confirmação", placeholder="Digite o código recebido por e-mail", key="signup_code"
         )
         error_placeholder = st.empty()
         submit = st.button(
@@ -399,6 +395,11 @@ def _render_signup_confirm(client_ip: str) -> None:
             with st.container(key="resend-links-row"):
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
+                    if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+                        st.session_state.pop("signup_email_confirmed", None)
+                        st.session_state.pop("signup_name_confirmed", None)
+                        _switch_view("login")
+                with link_col2:
                     if st.button(
                         "Reenviar código", key="btn_reenviar_codigo",
                         disabled=_resend_locked, use_container_width=True,
@@ -421,11 +422,6 @@ def _render_signup_confirm(client_ip: str) -> None:
                             st.session_state.pop("signup_resend_failed", None)
                         _signup_code_send_history.setdefault(client_ip, []).append(time.time())
                         st.rerun(scope="fragment")
-                with link_col2:
-                    if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
-                        st.session_state.pop("signup_email_confirmed", None)
-                        st.session_state.pop("signup_name_confirmed", None)
-                        _switch_view("login")
 
         _resend_section()
 
@@ -474,7 +470,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
     with st.container(key="login-card"):
         _brand_header("Recuperar Acesso")
 
-        st.text_input("", placeholder="E-mail", label_visibility="collapsed", key="reset_email")
+        st.text_input("E-mail", placeholder="Digite seu e-mail", key="reset_email")
         render_email_hint()
 
         @st.fragment(run_every=1)
@@ -583,15 +579,25 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
         else:
             st.markdown('<p class="login-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
 
-        code = st.text_input("", placeholder="Código recebido por e-mail", label_visibility="collapsed", key="reset_code")
-        password = st.text_input(
-            "", placeholder="Nova senha", type="password", label_visibility="collapsed", key="reset_password"
-        )
-        confirm_password = st.text_input(
-            "", placeholder="Confirmar nova senha", type="password",
-            label_visibility="collapsed", key="reset_confirm_password",
-        )
-        render_password_requirements()
+        with st.container(key="password-fields-row"):
+            fields_col, requirements_col = st.columns(2, gap="medium")
+            with fields_col:
+                code = st.text_input(
+                    "Código de confirmação", placeholder="Digite o código recebido por e-mail", key="reset_code"
+                )
+                password = st.text_input(
+                    "Nova senha", placeholder="Digite sua nova senha", type="password", key="reset_password"
+                )
+                confirm_password = st.text_input(
+                    "Confirmar nova senha", placeholder="Digite sua nova senha novamente", type="password",
+                    key="reset_confirm_password",
+                )
+            with requirements_col:
+                st.markdown(
+                    '<p class="password-requirements-title">Requisitos da senha</p>',
+                    unsafe_allow_html=True,
+                )
+                render_password_requirements()
         error_placeholder = st.empty()
         submit = st.button(
             "Redefinir senha →", use_container_width=True, key="btn_redefinir_senha", disabled=_code_locked_out,
@@ -674,6 +680,11 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
             with st.container(key="resend-links-row"):
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
+                    if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+                        st.session_state.pop("reset_step", None)
+                        st.session_state.pop("reset_email_confirmed", None)
+                        _switch_view("login")
+                with link_col2:
                     if st.button(
                         "Reenviar código", key="btn_reenviar_codigo",
                         disabled=_resend_locked, use_container_width=True,
@@ -686,11 +697,6 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                         _reset_attempt_history.setdefault(client_ip, []).append(time.time())
                         st.session_state["code_just_resent"] = True
                         st.rerun(scope="fragment")
-                with link_col2:
-                    if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
-                        st.session_state.pop("reset_step", None)
-                        st.session_state.pop("reset_email_confirmed", None)
-                        _switch_view("login")
 
         _resend_section()
 
@@ -702,7 +708,7 @@ def _validate_reset(code: str, password: str, confirm_password: str) -> str:
         return "Preencha todos os campos."
     if password != confirm_password:
         return "As senhas não coincidem."
-    return _validate_password(password)
+    return validate_password(password)
 
 
 def _reset_error_message(exc: ClientError) -> str:

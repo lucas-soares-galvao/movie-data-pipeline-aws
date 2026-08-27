@@ -9,4 +9,5 @@ omit =
     app/lightsail_ia/src/admin.py
     app/lightsail_ia/src/recommendation.py
     app/lightsail_ia/src/cards.py
+    app/lightsail_ia/src/profile.py
     

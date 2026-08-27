@@ -1,4 +1,5 @@
-"""admin.py — painel administrativo do FilmBot (aprovação de cadastro, gestão de acesso).
+"""admin.py — painel administrativo do FilmBot (aprovação de cadastro, gestão de acesso,
+e edição do próprio nome/senha do admin).
 
 Só é chamado por app.py quando st.session_state["is_admin"] é True (setado em
 login.py::_render_login_form a partir de infrastructure.is_admin() no momento do
@@ -9,23 +10,55 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 from src import infrastructure
-from src.components import load_admin_css
+from src.components import load_admin_css, load_profile_css
+from src.profile import (
+    get_own_profile,
+    render_nav_bar,
+    render_password_tab,
+    render_profile_tab,
+)
+
+# Mesmo racional de profile.py::_PROFILE_SECTIONS — uma lista só (valor, ícone, rótulo)
+# usada por render_nav_bar pra montar os itens do menu.
+_ADMIN_SECTIONS = [
+    ("usuarios", "users", "Usuários"),
+    ("perfil", "user", "Perfil"),
+    ("senha", "lock", "Senha"),
+]
 
 
-def render_admin_panel() -> None:
-    """Renderiza o painel admin: uma única tabela com todos os cadastros (novos e já
-    aprovados), coluna Admin (sim/não), Status (novo/ativo/revogado) e Ação (aprovar/
-    reprovar cadastro novo; revogar usuário existente)."""
+def render_admin_panel(client_ip: str) -> None:
+    """Renderiza o painel admin com barra horizontal (Usuários/Perfil/Senha) no topo e
+    o conteúdo da seção ativa abaixo, centralizado: "Usuários" (tabela de cadastros,
+    igual antes), "Perfil" e "Senha" (nome/senha do próprio admin — reaproveita
+    render_profile_tab/render_password_tab/render_nav_bar de profile.py, mesmo
+    padrão da tela "Meu Perfil" de não-admin, em vez de duplicar)."""
     load_admin_css()
+    load_profile_css()
 
-    st.markdown(
-        '<div class="admin-page">'
-        '<p class="page-title">Painel Admin</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    active = st.session_state.setdefault("admin_active_section", "usuarios")
 
-    _render_table()
+    # Wrapper único (título + nav + conteúdo, sempre 680px, ver admin-shell em
+    # profile.css) — mesma largura/centralização para as 3 seções, sem exceção nem
+    # ramificação por `active`: é isso que garante que a borda esquerda/direita nunca
+    # pule ao trocar de aba. A tabela pode precisar de scroll horizontal interno
+    # quando as 9 colunas não cabem em 680px (ver admin-dataframe em admin.css) — a
+    # caixa em si não muda de largura por causa disso.
+    with st.container(key="admin-shell"):
+        st.markdown('<p class="page-title">Painel Admin</p>', unsafe_allow_html=True)
+        render_nav_bar("admin", _ADMIN_SECTIONS)
+
+        if active == "usuarios":
+            # Sem card (é a tabela), único caso estruturalmente diferente da tela
+            # "Meu Perfil" (profile.py), onde o conteúdo sempre fica dentro da borda
+            # do card.
+            _render_table()
+        elif active == "perfil":
+            with st.container(key="admin-profile-card"):
+                render_profile_tab(get_own_profile(st.session_state.get("user_email", "")))
+        else:
+            with st.container(key="admin-password-card"):
+                render_password_tab(client_ip)
 
 
 def _build_rows() -> list[dict]:
@@ -46,11 +79,10 @@ def _build_rows() -> list[dict]:
 def _render_table() -> None:
     rows = _build_rows()
 
-    with st.container(key="admin-table"):
-        if not rows:
-            st.markdown('<p class="admin-empty">Nenhum usuário encontrado.</p>', unsafe_allow_html=True)
-        else:
-            _render_users_dataframe(rows)
+    if not rows:
+        st.markdown('<p class="admin-empty">Nenhum usuário encontrado.</p>', unsafe_allow_html=True)
+    else:
+        _render_users_dataframe(rows)
 
 
 def _build_table_data(rows: list[dict]) -> list[dict]:
@@ -96,11 +128,13 @@ def _render_users_dataframe(rows: list[dict]) -> None:
             width="content",
             hide_index=True,
             column_config={
+                "Nome": st.column_config.TextColumn("Nome", alignment="left", width=200),
+                "E-mail": st.column_config.TextColumn("E-mail", alignment="left", width=260),
                 "Admin": st.column_config.TextColumn("Admin", alignment="center", width=60),
                 "Status": st.column_config.TextColumn("Status", alignment="center", width=60),
-                "Cadastrado em": st.column_config.TextColumn("Cadastrado em", alignment="left"),
-                "Atualizado em": st.column_config.TextColumn("Atualizado em", alignment="left"),
-                "Último acesso": st.column_config.TextColumn("Último acesso", alignment="left"),
+                "Cadastrado em": st.column_config.TextColumn("Cadastrado em", alignment="left", width=140),
+                "Atualizado em": st.column_config.TextColumn("Atualizado em", alignment="left", width=140),
+                "Último acesso": st.column_config.TextColumn("Último acesso", alignment="left", width=140),
                 "Aprovar": st.column_config.ButtonColumn(
                     "Aprovar", key="admin_approve_click", alignment="center", width=60
                 ),
@@ -109,7 +143,7 @@ def _render_users_dataframe(rows: list[dict]) -> None:
                 ),
             },
             key="admin_users_dataframe",
-            row_height=33,
+            row_height=40,
         )
     _handle_dataframe_action_click(rows)
 

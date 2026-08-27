@@ -219,6 +219,53 @@ def record_password_update(email: str) -> None:
     )
 
 
+def get_user_profile(email: str) -> dict:
+    """Busca nome/e-mail atuais do usuário logado (ListUsers filtrado por e-mail, mesma
+    chamada de get_user_status()) — usado por profile.py para pré-preencher a tela "Meu
+    Perfil". Reaproveita _parse_user() (já usado pelo painel admin). Levanta IndexError
+    se o e-mail não existir — não deveria acontecer para quem já está autenticado nesta
+    sessão."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter=f'email = "{email}"',
+    )
+    return _parse_user(response["Users"][0])
+
+
+def update_user_name(email: str, name: str) -> None:
+    """Grava o nome novo no atributo padrão `name` (AdminUpdateUserAttributes) — chamado
+    pela seção "Nome" da tela de perfil (profile.py). Mesmo padrão de record_login()/
+    record_password_update(), nenhuma permissão IAM nova (AdminUpdateUserAttributes já
+    concedida)."""
+    _cognito_client().admin_update_user_attributes(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        UserAttributes=[{"Name": "name", "Value": name}],
+    )
+
+
+def change_password(email: str, current_password: str, new_password: str) -> str:
+    """Troca a senha do usuário logado a partir do próprio perfil: reautentica com a
+    senha atual (authenticate(), prova que quem está pedindo a troca ainda conhece a
+    senha em vigor) e, só se válida, define a nova via AdminSetUserPassword
+    (Permanent=True — o usuário já pode logar com ela imediatamente, sem o estado
+    intermediário FORCE_CHANGE_PASSWORD).
+
+    Retorna "ok" ou "invalid" (senha atual incorreta) — mesmo contrato de authenticate(),
+    para o chamador (profile.py) tratar sem precisar distinguir uma exceção nova só para
+    esse caso esperado."""
+    status = authenticate(email, current_password)
+    if status != "ok":
+        return "invalid"
+    _cognito_client().admin_set_user_password(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        Password=new_password,
+        Permanent=True,
+    )
+    return "ok"
+
+
 def is_admin(email: str) -> bool:
     """True se o e-mail pertence ao grupo "admins" do Cognito (ver
     infra/lightsail_ia.tf:aws_cognito_user_group.admins)."""

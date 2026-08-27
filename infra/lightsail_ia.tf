@@ -122,6 +122,10 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           # privilégio mínimo.
           "cognito-idp:AdminConfirmSignUp",
           "cognito-idp:AdminUpdateUserAttributes",
+          # AdminSetUserPassword — troca de senha do próprio usuário logado no perfil
+          # (src/infrastructure.py::change_password): reautentica com a senha atual e,
+          # se válida, define a nova via esta action administrativa.
+          "cognito-idp:AdminSetUserPassword",
           "cognito-idp:AdminDisableUser",
           "cognito-idp:AdminEnableUser",
           "cognito-idp:AdminDeleteUser",

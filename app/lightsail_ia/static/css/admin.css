@@ -18,25 +18,6 @@
   text-align: center;
 }
 
-/* .admin-page (cabeçalho) e .admin-table (tabela) compartilham max-width +
-   margin:0 auto pra ficarem alinhados um sob o outro e centralizados
-   horizontalmente dentro do .block-container do Streamlit (que é full-width por
-   padrão — sem isso a página inteira grudava na margem esquerda, ver
-   admin.py). */
-.admin-page {
-  max-width: 900px;
-  margin: 0 auto 20px;
-}
-
-.st-key-admin-table {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 16px;
-  padding: 20px 24px;
-  margin: 0 auto;
-  max-width: 900px;
-}
-
 .admin-empty {
   color: #737373;
   font-size: 14px;
@@ -48,7 +29,25 @@
    Streamlit — vem de tema JS alimentado por [theme] no config.toml, que este projeto
    não configura). Só a moldura externa e a toolbar de hover são DOM normal. Escopo via
    .st-key-admin-dataframe (container extra em admin.py, não o key= do st.dataframe em
-   si — esse não gera classe própria). */
+   si — esse não gera classe própria).
+
+   width:100%/max-width:100% faz a CAIXA da tabela preencher a largura inteira do
+   .st-key-admin-shell pai (680px, profile.css) — mesmo início/fim horizontal dos
+   cards de perfil/senha (pedido do usuário: as 3 seções devem ter início e fim
+   simétricos), mesmo quando o dataframe em si (width="content" no Python, ver
+   admin.py) é mais estreito que isso — ele fica encostado à esquerda dentro da caixa,
+   com espaço vazio à direita, em vez de encolher a caixa. overflow-x:auto cria scroll
+   horizontal LOCAL (só dentro desta caixa) para quando os dados reais (nomes/e-mails
+   longos, 9 colunas) somam mais que 680px — sem isso o excesso vazaria e seria
+   cortado, sem como rolar até lá, pela regra global overflow-x:hidden de base.css
+   (que continua intacta e impede scroll horizontal na PÁGINA). */
+.st-key-admin-dataframe {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .st-key-admin-dataframe [data-testid="stElementToolbar"] {
   display: none !important;
 }
