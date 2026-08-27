@@ -1,7 +1,7 @@
 """test_infrastructure.py — testes do bootstrap de processo e rate limiting do FilmBot."""
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -226,6 +226,68 @@ class TestRecordPasswordUpdate:
         datetime.fromisoformat(attribute["Value"])
 
 
+class TestGetUserProfile:
+    def test_busca_por_email_e_extrai_atributos(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "user@ex.com"},
+                            {"Name": "name", "Value": "Usuário Teste"},
+                        ],
+                    }
+                ]
+            }
+            resultado = infrastructure.get_user_profile("user@ex.com")
+
+        mock_boto.return_value.list_users.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Filter='email = "user@ex.com"',
+        )
+        assert resultado["name"] == "Usuário Teste"
+        assert resultado["email"] == "user@ex.com"
+
+
+class TestUpdateUserName:
+    def test_grava_nome_no_atributo_name(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.update_user_name("user@ex.com", "Novo Nome")
+
+        mock_boto.return_value.admin_update_user_attributes.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            UserAttributes=[{"Name": "name", "Value": "Novo Nome"}],
+        )
+
+
+class TestChangePassword:
+    def test_retorna_ok_e_define_senha_nova_quando_senha_atual_correta(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            resultado = infrastructure.change_password("user@ex.com", "SenhaAtual1!", "SenhaNova1!")
+
+        assert resultado == "ok"
+        mock_boto.return_value.admin_set_user_password.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            Password="SenhaNova1!",
+            Permanent=True,
+        )
+
+    def test_retorna_invalid_sem_definir_senha_quando_senha_atual_incorreta(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.admin_initiate_auth.side_effect = _client_error(
+                "NotAuthorizedException"
+            )
+            resultado = infrastructure.change_password("user@ex.com", "SenhaErrada", "SenhaNova1!")
+
+        assert resultado == "invalid"
+        mock_boto.return_value.admin_set_user_password.assert_not_called()
+
+
 class TestIsAdmin:
     def test_retorna_true_quando_usuario_pertence_ao_grupo_admins(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
@@ -295,7 +357,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "novo@ex.com"},
                             {"Name": "name", "Value": "Novo Usuário"},
@@ -314,7 +376,7 @@ class TestListPendingUsers:
                 "email": "novo@ex.com",
                 "name": "Novo Usuário",
                 "enabled": False,
-                "created_at": "2026-08-01T10:00:00",
+                "created_at": "2026-08-01T10:00:00+00:00",
                 "updated_at": "",
                 "last_login": "",
             }
@@ -327,7 +389,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "ativo@ex.com"},
                             {"Name": "name", "Value": "Usuário Ativo"},
@@ -347,7 +409,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "ativo@ex.com"},
                             {"Name": "name", "Value": "Usuário Ativo"},
@@ -367,7 +429,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "confirmado@ex.com"},
                             {"Name": "name", "Value": "Confirmado"},
@@ -376,7 +438,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "UNCONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "aindanaoconfirmou@ex.com"},
                             {"Name": "name", "Value": "Ainda Não Confirmou"},
@@ -407,7 +469,7 @@ class TestListActiveUsers:
                     {
                         "Enabled": True,
                         "UserStatus": "CONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "ativo@ex.com"},
                             {"Name": "name", "Value": "Ativo"},
@@ -416,7 +478,7 @@ class TestListActiveUsers:
                     {
                         "Enabled": True,
                         "UserStatus": "UNCONFIRMED",
-                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0),
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "inesperado@ex.com"},
                             {"Name": "name", "Value": "Inesperado"},

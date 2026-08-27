@@ -42,7 +42,10 @@ TITLE_SEM_POSTER = {**BASE_TITLE, "poster_url": None, "backdrop_url": None}
 
 class TestIcon:
     """icon() monta um <svg> Lucide inline a partir de ICON_PATHS — testado direto aqui pro
-    ícone "mic" (usado só em recommendation.py, sem cobertura indireta via render_card())."""
+    ícone "mic" (usado só em recommendation.py, sem cobertura indireta via render_card()) e
+    pros ícones "user"/"lock" (usados só no menu vertical de profile.py/admin.py, sem
+    cobertura indireta — profile.py/admin.py ficam fora do gate de cobertura, ver
+    .coveragerc)."""
 
     def test_icone_mic_existe(self):
         svg = components.icon("mic")
@@ -57,6 +60,43 @@ class TestIcon:
         svg = components.icon("mic", size=14)
         assert 'width="14"' in svg
         assert 'height="14"' in svg
+
+    def test_icone_user_existe(self):
+        svg = components.icon("user")
+        assert 'class="icon icon-user"' in svg
+        assert "<svg" in svg
+
+    def test_icone_lock_existe(self):
+        svg = components.icon("lock")
+        assert 'class="icon icon-lock"' in svg
+        assert "<svg" in svg
+
+
+class TestValidatePassword:
+    """validate_password() — política do Cognito (infra/lightsail_ia.tf) mais o teto de
+    16 caracteres, só do app. Movida de login.py: também usada por profile.py na troca
+    de senha da tela de perfil."""
+
+    def test_aceita_senha_que_atende_todos_os_criterios(self):
+        assert components.validate_password("Senha123!") == ""
+
+    def test_rejeita_senha_curta_demais(self):
+        assert "8 caracteres" in components.validate_password("Ab1!")
+
+    def test_rejeita_senha_longa_demais(self):
+        assert "16 caracteres" in components.validate_password("Senha123456789!ab")
+
+    def test_rejeita_senha_sem_letra_minuscula(self):
+        assert "minúscula" in components.validate_password("SENHA123!")
+
+    def test_rejeita_senha_sem_letra_maiuscula(self):
+        assert "maiúscula" in components.validate_password("senha123!")
+
+    def test_rejeita_senha_sem_numero(self):
+        assert "número" in components.validate_password("SenhaForte!")
+
+    def test_rejeita_senha_sem_simbolo(self):
+        assert "símbolo" in components.validate_password("Senha1234")
 
 
 class TestFaviconSvg:
@@ -101,6 +141,18 @@ class TestLoadAudioTimerScript:
         components.load_audio_timer_script(15)
         assert "__MAX_SECONDS__" not in captured["content"]
         assert "const maxSeconds = 15;" in captured["content"]
+
+
+class TestLoadScrollLockScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_scroll_lock_script()
+        assert "scrollLeft" in captured["content"]
+        assert captured["height"] == 0
 
 
 class TestRenderFeedback:
