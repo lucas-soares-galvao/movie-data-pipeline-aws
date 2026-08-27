@@ -27,15 +27,19 @@
   gap: 16px;
 }
 
-/* Heading centralizado do hero. margin-top de 8px: o respiro visível de tinta a tinta
-   entre ".header-subtitle" e ".hero-heading" (medido por pixel, screenshot + análise de
-   brilho por linha, não getBoundingClientRect — esse engana aqui, ver app.css/
-   lightsail_ia.md pro racional completo de wrapper interno + leading de fonte grande)
-   fica em ~52px com este valor — usado como referência "menor" pro mesmo respiro entre
-   ".query-counter-text"/último card e ".footer" (a favor de um espaçamento mais
-   compacto entre bloco e bloco, decisão do usuário; ver margin-top negativo em .footer,
-   app.css, calibrado pro mesmo alvo de ~52px). */
-.hero-heading-wrap { text-align: center; margin: 8px auto 8px; padding: 0 12px; }
+/* Heading do hero, alinhado à esquerda (pedido do usuário — antes centralizado). margin
+   sem "auto": a centralização horizontal do próprio bloco deixou de fazer sentido com
+   texto à esquerda (.hero-heading-wrap já ocupa a largura inteira de .st-key-hero-section,
+   que por sua vez já é centralizado em 640px via base.css); padding lateral (16px) alinhado
+   ao padding-left da textarea logo abaixo. margin-top de 67px (subiu de 8px, pedido do
+   usuário de mais respiro), calibrado por medição real (Playwright, bounding_box() de
+   .header-subtitle/.hero-greeting — não getBoundingClientRect direto no DOM real, mas o
+   mesmo princípio, ver .footer/app.css pro racional completo de wrapper interno + leading
+   de fonte grande): o respiro visível entre .header-subtitle e .hero-greeting fica em
+   ~83px com esse valor, calibrado pra ficar simétrico ao mesmo respiro "Consultas
+   restantes"→rodapé (~80px, ver .footer/app.css) — sem linha divisória entre cabeçalho e
+   hero (ver lightsail_ia.md, "Sem linha divisória entre blocos"). */
+.hero-heading-wrap { text-align: left; margin: 67px 0 8px; padding: 0 16px; }
 /* !important em font-weight necessário: o Streamlit força font-weight:700 em
    <h1> via regra própria com especificidade/!important maior que a classe
    sozinha (mesmo motivo do !important em font-size no .header-title/
@@ -56,18 +60,22 @@
      nem chega a ser aplicado (fica travado em 0). */
   padding: 0 !important;
   margin: 0 0 4px !important;
-  /* Sem isso, "O que você quer assistir hoje?" quebra deixando "hoje?" sozinho na 2ª linha
-     (quebra padrão do navegador dentro dos ~616px úteis de .st-key-hero-section) —
-     text-wrap:balance distribui o texto de forma mais equilibrada entre as linhas.
-     Navegadores sem suporte (fora do Chrome 114+/Firefox 121+/Safari 17.5+) ignoram a
-     propriedade e mantêm a quebra padrão de hoje — progressive enhancement, não quebra
-     nada. */
-  text-wrap: balance;
 }
 .accent-gradient-text {
   color: #f97316;
 }
 .hero-subtitle { color: #a3a3a3; font-size: 15px; margin: 0 0 24px; }
+/* Saudação "Olá, {nome}" acima do hero-heading. font-size de 22px (faixa 20-24px
+   pedida pelo usuário) — maior que .hero-subtitle (15px), invertendo a hierarquia
+   anterior (saudação deliberadamente menor que o subtítulo, "subordinada" ao
+   título). margin-bottom é ponto de partida: calibrado antes para uma fonte de
+   14px, precisa reconferir visualmente com o tamanho novo (bem maior).
+   !important necessário: mesmo motivo de .header-title/.hero-heading (app.css/
+   acima) — o Streamlit aplica um font-size próprio no <p> com especificidade
+   maior que a classe sozinha; sem !important, o valor definido aqui é ignorado
+   (confirmado via screenshot real, Playwright — a saudação não mudou de
+   tamanho antes desta correção). */
+.hero-greeting { color: #a3a3a3; font-size: 22px !important; margin: 0 0 4px; }
 
 /* Card único (fundo cinza + borda) envolvendo textarea + gravador +
    contador — antes só a textarea tinha fundo/borda próprios; agora o card
@@ -306,6 +314,40 @@
   display: none !important;
 }
 
+/* Row do contador "Consultas restantes"/aviso de rate limit + botão "Recomendar"
+   (estado idle) — mesma linha no desktop (contador à esquerda, botão à direita, via
+   justify-content:space-between), empilhados abaixo de 520px (ver @media no fim do
+   arquivo). O DOM já vem nessa ordem em recommendation.py (contador/aviso ANTES do
+   botão) — não precisa de `order`/row-reverse: a mesma ordem de origem cobre os dois
+   breakpoints (row no desktop = 1º filho à esquerda; column no mobile = 1º filho no
+   topo). */
+.st-key-query-counter-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+/* Os filhos diretos vêm do Streamlit como blocos width:100% (mesmo achado já
+   documentado em .st-key-recorder-card acima) — sem isso, o primeiro filho
+   (contador/aviso) ocupa a linha inteira e o botão "cai" pra fora da área visível
+   do row. flex:0 1 auto: pode encolher se faltar espaço, mas não força a largura
+   total do row. */
+.st-key-query-counter-row > [data-testid="stElementContainer"] {
+  width: auto !important;
+  flex: 0 1 auto !important;
+}
+/* Dentro da row, o botão deixa de ser full-width+centralizado (regra pensada pro
+   layout empilhado antigo, ver .st-key-btn_recomendar abaixo) — encolhe ao próprio
+   conteúdo (140px) e fica ancorado à direita via justify-content:space-between do
+   pai. */
+.st-key-query-counter-row .st-key-btn_recomendar {
+  display: block !important;
+  width: auto !important;
+  flex: 0 0 auto !important;
+}
+
 /* Botão "Recomendar" (estado idle, key="btn_recomendar") full-width em pill,
    cor sólida (sem gradiente, mesma cor usada no botão "Entrar" do login) —
    um tom mais escuro (#ea580c) que o #f97316 dos ícones/badges, pra não
@@ -313,8 +355,18 @@
    Seletor mira a key específica (e não todo .st-key-hero-actions) para não
    afetar o botão "Recomendar" desabilitado do estado de busca, que mantém
    o layout compacto em colunas. */
-.st-key-btn_recomendar button {
+/* Wrapper centralizado — a key já está no próprio [data-testid="stButton"] (mesmo
+   padrão de .st-key-btn_reenviar_codigo em login.css), então basta esta regra, sem
+   precisar de combinador descendente. Necessário porque o botão abaixo tem largura
+   fixa (140px, mesmo padrão de .st-key-profile-card [data-testid="stButton"] >
+   button em profile.css) — sem isso ele colaria na esquerda do wrapper. */
+.st-key-btn_recomendar {
+  display: flex !important;
+  justify-content: center !important;
   width: 100% !important;
+}
+.st-key-btn_recomendar button {
+  width: 140px !important;
   border-radius: 999px !important;
   background: #ea580c !important;
   box-shadow: 0 0 24px -4px rgba(234,88,12,0.6);
@@ -329,6 +381,14 @@
   opacity: 0.5;
   box-shadow: none;
 }
+/* Volta a 100% no mobile, mesmo racional de login.css/profile.css. Posicionado DEPOIS
+   da regra desktop acima (mesma especificidade — em empate, quem vem depois no
+   arquivo vence) para não repetir o bug de ordem encontrado em profile.css. */
+@media (max-width: 768px) {
+  .st-key-btn_recomendar button {
+    width: 100% !important;
+  }
+}
 
 /* Texto "Consultas restantes" — caption simples, sem pill/borda. !important
    necessário: o Streamlit aplica um font-size próprio no <p> com
@@ -336,7 +396,7 @@
    .header-subtitle em app.css) — sem isso, o texto renderiza sempre
    em 16px, confirmado via inspeção real do DOM (Playwright). */
 .query-counter-text {
-  text-align: center;
+  text-align: left;
   color: #a3a3a3;
   font-size: 15px !important;
   line-height: 20px;
@@ -393,4 +453,33 @@
 .spinner-text {
   color: #d4d4d4;
   font-size: 14px;
+}
+
+/* Abaixo de 520px, contador+botão empilham em coluna, largura cheia, centralizados
+   (mockup mobile do usuário). Ordem no DOM já é contador/aviso-depois-botão
+   (recommendation.py); flex-direction:column mantém essa ordem visualmente
+   (contador no topo, botão embaixo), sem precisar de `order`. 520px é breakpoint
+   NOVO — não existe em nenhum outro ponto do projeto (os existentes são 768px/480px
+   aqui, 640px em base.css/app.css), pedido explícito do mock, mais estreito que o
+   768px usado no resto da página. Complementar (não conflita) com o
+   @media (max-width:768px) de .st-key-btn_recomendar button acima: entre 521-768px
+   o wrapper continua em modo row com o botão de 140px dentro; só abaixo de 520px o
+   wrapper também vira full-width. */
+@media (max-width: 520px) {
+  .st-key-query-counter-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .st-key-query-counter-row > [data-testid="stElementContainer"] {
+    width: 100% !important;
+  }
+  .st-key-query-counter-row .st-key-btn_recomendar {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+  }
+  .query-counter-text {
+    text-align: center;
+  }
 }
