@@ -1,7 +1,7 @@
 """test_infrastructure.py — testes do bootstrap de processo e rate limiting do FilmBot."""
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -99,13 +99,15 @@ class TestSignUp:
             ],
         )
 
-    def test_desabilita_a_conta_recem_criada(self):
+    def test_nao_desabilita_a_conta_no_signup(self):
+        # ConfirmSignUp exige Enabled=true para aceitar o código (testado
+        # empiricamente contra o Cognito real — com Enabled=false ele rejeita
+        # qualquer código, mesmo o certo, com CodeMismatchException). Desabilitar
+        # aqui quebraria a própria confirmação — ver TestConfirmSignUp abaixo.
         with patch("src.infrastructure.boto3.client") as mock_boto:
             infrastructure.sign_up("user@ex.com", "Senha123!", "Fulano")
 
-        mock_boto.return_value.admin_disable_user.assert_called_once_with(
-            UserPoolId="sa-east-1_testpool", Username="user@ex.com"
-        )
+        mock_boto.return_value.admin_disable_user.assert_not_called()
 
 
 class TestConfirmSignUp:
@@ -118,6 +120,22 @@ class TestConfirmSignUp:
             Username="user@ex.com",
             ConfirmationCode="123456",
         )
+
+    def test_desabilita_a_conta_depois_de_confirmar(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.confirm_sign_up("user@ex.com", "123456")
+
+        mock_boto.return_value.admin_disable_user.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool", Username="user@ex.com"
+        )
+
+    def test_nao_desabilita_a_conta_quando_confirm_sign_up_falha(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.confirm_sign_up.side_effect = _client_error("CodeMismatchException")
+            with pytest.raises(ClientError):
+                infrastructure.confirm_sign_up("user@ex.com", "000000")
+
+        mock_boto.return_value.admin_disable_user.assert_not_called()
 
 
 class TestResendConfirmationCode:
@@ -194,6 +212,82 @@ class TestRecordLogin:
         datetime.fromisoformat(attribute["Value"])
 
 
+class TestRecordPasswordUpdate:
+    def test_grava_timestamp_iso_utc_no_atributo_custom_password_updated_at(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.record_password_update("user@ex.com")
+
+        mock_boto.return_value.admin_update_user_attributes.assert_called_once()
+        _, kwargs = mock_boto.return_value.admin_update_user_attributes.call_args
+        assert kwargs["UserPoolId"] == "sa-east-1_testpool"
+        assert kwargs["Username"] == "user@ex.com"
+        [attribute] = kwargs["UserAttributes"]
+        assert attribute["Name"] == "custom:password_updated_at"
+        datetime.fromisoformat(attribute["Value"])
+
+
+class TestGetUserProfile:
+    def test_busca_por_email_e_extrai_atributos(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "user@ex.com"},
+                            {"Name": "name", "Value": "Usuário Teste"},
+                        ],
+                    }
+                ]
+            }
+            resultado = infrastructure.get_user_profile("user@ex.com")
+
+        mock_boto.return_value.list_users.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Filter='email = "user@ex.com"',
+        )
+        assert resultado["name"] == "Usuário Teste"
+        assert resultado["email"] == "user@ex.com"
+
+
+class TestUpdateUserName:
+    def test_grava_nome_no_atributo_name(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.update_user_name("user@ex.com", "Novo Nome")
+
+        mock_boto.return_value.admin_update_user_attributes.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            UserAttributes=[{"Name": "name", "Value": "Novo Nome"}],
+        )
+
+
+class TestChangePassword:
+    def test_retorna_ok_e_define_senha_nova_quando_senha_atual_correta(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            resultado = infrastructure.change_password("user@ex.com", "SenhaAtual1!", "SenhaNova1!")
+
+        assert resultado == "ok"
+        mock_boto.return_value.admin_set_user_password.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            Password="SenhaNova1!",
+            Permanent=True,
+        )
+
+    def test_retorna_invalid_sem_definir_senha_quando_senha_atual_incorreta(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.admin_initiate_auth.side_effect = _client_error(
+                "NotAuthorizedException"
+            )
+            resultado = infrastructure.change_password("user@ex.com", "SenhaErrada", "SenhaNova1!")
+
+        assert resultado == "invalid"
+        mock_boto.return_value.admin_set_user_password.assert_not_called()
+
+
 class TestIsAdmin:
     def test_retorna_true_quando_usuario_pertence_ao_grupo_admins(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
@@ -263,6 +357,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "novo@ex.com"},
                             {"Name": "name", "Value": "Novo Usuário"},
@@ -277,7 +372,14 @@ class TestListPendingUsers:
             Filter='status = "Disabled"',
         )
         assert resultado == [
-            {"email": "novo@ex.com", "name": "Novo Usuário", "enabled": False, "last_login": ""}
+            {
+                "email": "novo@ex.com",
+                "name": "Novo Usuário",
+                "enabled": False,
+                "created_at": "2026-08-01T10:00:00+00:00",
+                "updated_at": "",
+                "last_login": "",
+            }
         ]
 
     def test_extrai_last_login_quando_atributo_custom_existe(self):
@@ -287,6 +389,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "ativo@ex.com"},
                             {"Name": "name", "Value": "Usuário Ativo"},
@@ -299,6 +402,26 @@ class TestListPendingUsers:
 
         assert resultado[0]["last_login"] == "2026-08-23T12:00:00+00:00"
 
+    def test_extrai_updated_at_quando_atributo_custom_existe(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": False,
+                        "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "ativo@ex.com"},
+                            {"Name": "name", "Value": "Usuário Ativo"},
+                            {"Name": "custom:password_updated_at", "Value": "2026-08-23T12:00:00+00:00"},
+                        ],
+                    }
+                ]
+            }
+            resultado = infrastructure.list_pending_users()
+
+        assert resultado[0]["updated_at"] == "2026-08-23T12:00:00+00:00"
+
     def test_descarta_usuarios_que_ainda_nao_confirmaram_o_email(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
             mock_boto.return_value.list_users.return_value = {
@@ -306,6 +429,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "confirmado@ex.com"},
                             {"Name": "name", "Value": "Confirmado"},
@@ -314,6 +438,7 @@ class TestListPendingUsers:
                     {
                         "Enabled": False,
                         "UserStatus": "UNCONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "aindanaoconfirmou@ex.com"},
                             {"Name": "name", "Value": "Ainda Não Confirmou"},
@@ -344,6 +469,7 @@ class TestListActiveUsers:
                     {
                         "Enabled": True,
                         "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "ativo@ex.com"},
                             {"Name": "name", "Value": "Ativo"},
@@ -352,6 +478,7 @@ class TestListActiveUsers:
                     {
                         "Enabled": True,
                         "UserStatus": "UNCONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
                         "Attributes": [
                             {"Name": "email", "Value": "inesperado@ex.com"},
                             {"Name": "name", "Value": "Inesperado"},

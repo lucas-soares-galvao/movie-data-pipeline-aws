@@ -1,6 +1,7 @@
 """components.py — Funções auxiliares de renderização para o FilmBot."""
 
 import html
+import re
 from datetime import datetime, timezone
 from itertools import zip_longest
 from pathlib import Path
@@ -60,6 +61,13 @@ ICON_PATHS = {
         '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>'
         '<path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>'
     ),
+    "user": (
+        '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
+    ),
+    "lock": (
+        '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>'
+        '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+    ),
 }
 
 
@@ -68,7 +76,8 @@ def icon(name: str, size: int = 16) -> str:
     `.icon` em base.css, branca por padrão; o ícone "lightbulb" do Insight do FilmBot é
     a única exceção, laranja via `.reason-label .icon` em cards.css). Usada por
     `render_card()` aqui dentro, pelo badge do ícone do cabeçalho/login em `app.py`/
-    `login.py`, e pelo status "Transcrevendo áudio..." em `recommendation.py`."""
+    `login.py`, pelo status "Transcrevendo áudio..." em `recommendation.py`, e pelo menu
+    vertical de navegação (Usuários/Perfil/Senha) em `profile.py`/`admin.py`."""
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"'
         f' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
@@ -119,6 +128,24 @@ def load_app_css() -> None:
     _inject_css("app.css")
 
 
+def load_scroll_lock_script() -> None:
+    """Injeta o script que zera o scrollLeft de stMain/stAppViewContainer sempre que
+    ele muda — overflow-x:hidden (base.css) esconde a barra de rolagem horizontal mas
+    não impede scrollLeft programático. Confirmado (Playwright) que, no painel admin,
+    visitar a aba "Usuários" (st.dataframe) e depois "Senha" (st.components.v1.html,
+    ver load_password_requirements_gate_script) deixa esses containers com
+    scrollLeft > 0 num mecanismo interno do Streamlit não documentado (ligado ao
+    ciclo de montagem/remontagem dos iframes de componente customizado dos dois
+    widgets) — sem scrollbar visível, o conteúdo simplesmente aparece cortado à
+    esquerda. Chamado uma vez por `app.py`, logo após `load_app_css()` — cobre todas
+    as telas (admin/perfil/recomendação), já que qualquer combinação futura de
+    st.dataframe/st.data_editor com um componente iframe pode reproduzir o mesmo
+    sintoma."""
+    path = Path(__file__).parent.parent / "static" / "js" / "scroll_lock.js"
+    script = path.read_text(encoding="utf-8")
+    components.html(f"<script>{script}</script>", height=0)
+
+
 def load_recommendation_css() -> None:
     """Injeta os estilos do formulário de preferência/busca assíncrona (depende de base.css já
     injetado por load_app_css() na mesma execução de script)."""
@@ -135,6 +162,12 @@ def load_admin_css() -> None:
     """Injeta os estilos do painel administrativo (depende de base.css já injetado por
     load_app_css() na mesma execução de script)."""
     _inject_css("admin.css")
+
+
+def load_profile_css() -> None:
+    """Injeta os estilos da tela "Meu Perfil" (depende de base.css já injetado por
+    load_app_css() na mesma execução de script)."""
+    _inject_css("profile.css")
 
 
 def load_preference_counter_script(max_chars: int, rate_limited: bool = False) -> None:
@@ -254,11 +287,35 @@ _PASSWORD_REQUIREMENTS = (
 )
 
 
+def validate_password(password: str) -> str:
+    """Valida a senha contra a mesma política configurada no Cognito (infra/lightsail_ia.tf:
+    aws_cognito_user_pool.filmbot.password_policy), mais o teto de 16 caracteres — regra só
+    do app, o Cognito não impõe máximo — checar aqui evita disparar a chamada só para
+    receber InvalidPasswordException. Retorna "" se válida, senão a mensagem de erro.
+
+    Pública (movida de login.py) porque profile.py também usa, na troca de senha da tela
+    de perfil — mesma política em todos os 3 lugares que pedem senha nova (cadastro,
+    esqueci senha, perfil)."""
+    if len(password) < 8:
+        return "A senha precisa ter pelo menos 8 caracteres."
+    if len(password) > 16:
+        return "A senha pode ter no máximo 16 caracteres."
+    if not re.search(r"[a-z]", password):
+        return "A senha precisa ter pelo menos uma letra minúscula."
+    if not re.search(r"[A-Z]", password):
+        return "A senha precisa ter pelo menos uma letra maiúscula."
+    if not re.search(r"\d", password):
+        return "A senha precisa ter pelo menos um número."
+    if not re.search(r"[^\w\s]", password):
+        return "A senha precisa ter pelo menos um símbolo (ex: ! @ # $)."
+    return ""
+
+
 def render_password_requirements() -> None:
     """Renderiza a lista de critérios da política de senha (mesma política de
-    `_validate_password()` em login.py e de `password_requirements_gate.js`) mais o
+    `validate_password()` acima e de `password_requirements_gate.js`) mais o
     critério de senha/confirmação iguais, abaixo do campo "Confirmar senha" nas telas de
-    cadastro e redefinir senha. Estado inicial neutro (ícone "•", sem classe) —
+    cadastro, redefinir senha e troca de senha do perfil. Estado inicial neutro (ícone "•", sem classe) —
     `password_requirements_gate.js` assume o `id` fixo "password-requirements" (só uma
     tela de autenticação renderiza por vez) e atualiza cada `<li data-req="...">` para
     ✓/✗ (classes `req-met`/`req-unmet`) a cada tecla digitada nos campos de senha/
@@ -270,6 +327,19 @@ def render_password_requirements() -> None:
     )
     st.markdown(
         f'<ul id="password-requirements" class="password-requirements">{items}</ul>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_email_hint() -> None:
+    """Renderiza a mensagem de formato de e-mail inválido, escondida por padrão —
+    login_button_toggle.js/password_requirements_gate.js mostram (classe
+    "email-hint-visible") quando o usuário sai do campo de e-mail (evento "blur", não a
+    cada tecla — evita mostrar "inválido" enquanto o e-mail ainda está sendo digitado)
+    com um valor que não bate com _EMAIL_RE. Chamada logo abaixo do st.text_input de
+    e-mail em cadastro e esqueci senha."""
+    st.markdown(
+        '<p id="email-hint" class="email-hint">Digite um e-mail válido.</p>',
         unsafe_allow_html=True,
     )
 

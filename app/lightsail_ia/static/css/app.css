@@ -85,6 +85,24 @@
    do título, em qualquer largura — a regra nowrap acima (linhas 68-82) já cobre isso
    sozinha, título/subtítulo encolhem (min-width:0) e o subtítulo quebra em várias
    linhas antes dos botões caírem pra linha de baixo. */
+/* Mobile: esconde o subtítulo e centraliza ícone+"FilmBot" junto com os botões como
+   um bloco único (pedido do usuário — cabeçalho mais compacto em telas estreitas). O
+   space-between do desktop (regra acima) some porque, com só uma coluna "flexível"
+   (flex:1 1 auto na 1ª coluna), justify-content:center sozinho não centralizaria o
+   grupo — a coluna do título continuaria crescendo e empurrando os botões pra ponta
+   direita. Por isso essa coluna também vira flex:0 0 auto aqui, só nesta largura. */
+@media (max-width: 768px) {
+  .st-key-header-row [data-testid="stHorizontalBlock"] {
+    justify-content: center;
+  }
+  .st-key-header-row [data-testid="stHorizontalBlock"] > div:first-child {
+    flex: 0 0 auto !important;
+    width: auto !important;
+  }
+  .header-subtitle {
+    display: none;
+  }
+}
 /* Ícone + título lado a lado, mesmo padrão de .login-brand (login.css) — o
    subtítulo fica fora deste flex, como linha própria abaixo (.header-subtitle),
    ocupando a largura toda da coluna em vez de ficar indentado ao lado do
@@ -174,9 +192,12 @@
   filter: brightness(1.15);
 }
 
-/* Alternância "Painel Admin" ↔ "← App" — mesma forma/posicionamento do botão "Sair"
-   acima, cor laranja (não cinza) pra diferenciar navegação de logout. */
-.st-key-btn_toggle_admin button[data-testid="stBaseButton-secondary"] {
+/* Alternância "Painel Admin" ↔ "← App" (admin) e "Meu Perfil" ↔ "← App" (não-admin) —
+   nunca renderizam juntos (um usuário é admin OU não), mas compartilham a mesma regra
+   pra ficarem visualmente idênticos: mesma forma/posicionamento do botão "Sair" acima,
+   cor laranja (não cinza) pra diferenciar navegação de logout. */
+.st-key-btn_toggle_admin button[data-testid="stBaseButton-secondary"],
+.st-key-btn_toggle_profile button[data-testid="stBaseButton-secondary"] {
   width: auto !important;
   height: auto !important;
   padding: 8px 20px !important;
@@ -189,7 +210,8 @@
   position: relative;
   top: 8px;
 }
-.st-key-btn_toggle_admin button[data-testid="stBaseButton-secondary"]:hover {
+.st-key-btn_toggle_admin button[data-testid="stBaseButton-secondary"]:hover,
+.st-key-btn_toggle_profile button[data-testid="stBaseButton-secondary"]:hover {
   filter: brightness(1.15);
 }
 
@@ -201,29 +223,30 @@
    atualizar a regra abaixo aqui também. Sem borda: a página não usa linha pra
    separar blocos em nenhum outro lugar, só espaço (mesma lógica de
    .results-heading, cards.css). */
-/* Estado sem resultados: espaçamento entre "Consultas restantes" e o rodapé — o valor
-   de CAIXA (gap:16px nativo do stVerticalBlock + margin-bottom:8px de
-   .query-counter-text, que colapsa, + padding-top:16px deste bloco = 40px) não é o que
-   importa aqui: esse padding-top é interno à própria caixa do rodapé (fica DEPOIS do
-   margin-top abaixo), então uma fatia dele — mais o leading da fonte pequena de
-   .footer — nunca é espaço realmente em branco. O respiro visível de tinta a tinta
-   (medido por pixel, screenshot + análise de brilho por linha, não getBoundingClientRect
-   — mesmo racional de .hero-heading-wrap, recommendation.css) ficava em ~69px com
-   margin-top:0, bem maior que os ~52px do mesmo respiro cabeçalho→hero. margin-top:-17px
-   traz os dois pro mesmo alvo (~52px), a favor do espaçamento mais compacto (decisão do
-   usuário). Erro/sem-resultado de busca NÃO entram nessa conta: moram dentro de
-   hero-actions (recommendation.py, junto do rate limit), então a caixa cresce mas não
-   adiciona item novo ao stVerticalBlock — o gap é o mesmo com ou sem essas mensagens
-   visíveis (confirmado via Playwright numa calibração anterior desta mesma regra).
-   padding vertical simétrico (16px/16px): o texto fica centralizado na própria caixa do
-   rodapé — preocupação distinta do espaçamento acima dela, tratado pelo margin-top. */
+/* Estado sem resultados: espaçamento entre "Consultas restantes"/botão "Recomendar"
+   (.st-key-query-counter-row) e o rodapé. margin-top:32px (subiu de -17px, pedido do
+   usuário de mais respiro — calibrado por medição real, Playwright bounding_box() do
+   fim de .st-key-query-counter-row até o topo de .footer) dá um respiro de ~80px,
+   calibrado pra ficar simétrico ao respiro cabeçalho→hero (~83px, ver .hero-heading-wrap/
+   recommendation.css). A relação entre margin-top e o respiro visível não é 1:1 direta
+   nesse ponto da página (testado empiricamente: reduzir o margin em 26px chegou a
+   encolher o respiro em até 73px numa calibração intermediária, não os 26px esperados
+   por uma margem simples) — provavelmente colapso de margin com o `gap` nativo do
+   stVerticalBlock/flex acima; os valores finais aqui vieram de iteração empírica
+   (medir → ajustar → remedir), não de fórmula. Erro/sem-resultado de busca NÃO entram
+   nessa conta: moram dentro de hero-actions (recommendation.py, junto do rate limit),
+   então a caixa cresce mas não adiciona item novo ao stVerticalBlock — o gap é o mesmo
+   com ou sem essas mensagens visíveis (confirmado via Playwright numa calibração
+   anterior desta mesma regra). padding vertical simétrico (16px/16px): o texto fica
+   centralizado na própria caixa do rodapé — preocupação distinta do espaçamento acima
+   dela, tratado pelo margin-top. */
 .footer {
   text-align: center;
   padding: 16px 0;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
-  margin: -17px auto 0;
+  margin: 32px auto 0;
   max-width: 640px;
 }
 /* Com resultados (.grid-titles), o rodapé some do fluxo de 640px do hero e passa a vir

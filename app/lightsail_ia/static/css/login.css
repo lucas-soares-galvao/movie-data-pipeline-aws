@@ -95,6 +95,17 @@
      scroll horizontal em mobile. */
   box-sizing: border-box;
 }
+/* Cadastro e "Esqueci a senha" (etapa 2) pareiam campos em 2 colunas — precisam de
+   mais espaço que as outras 5 sub-telas do login, que continuam em coluna única e
+   por isso ficariam com espaço vazio nos mesmos 640px do Perfil/Admin (pedido do
+   usuário). Como as 7 sub-telas compartilham a mesma key (.st-key-login-card), a
+   diferenciação usa `:has()` sobre `.st-key-password-fields-row` — key que as duas
+   telas largas têm em comum (Senha/Confirmar + painel de requisitos, mesmo molde de
+   profile.py::render_password_tab, ver login.py::_render_signup/
+   _render_forgot_password_confirm) e que não existe em nenhuma das outras 5. */
+.st-key-login-card:has(.st-key-password-fields-row) {
+  max-width: 640px;
+}
 .login-brand {
   display: flex;
   align-items: center;
@@ -161,6 +172,16 @@
   letter-spacing: -0.02em;
   text-align: center;
 }
+/* Respiro maior entre subtítulo e título só nas 2 telas com campos pareados (Cadastro,
+   "Esqueci a senha" etapa 2 — mesmo marcador `:has(.st-key-password-fields-row)` já
+   usado pra largura, linha ~107) — pedido do usuário comparando com o gap
+   subtítulo→título do header real (app.css: .header-subtitle/.page-title, sem
+   compressão equivalente). Remove só a compressão de -12px acima, mantendo o resto de
+   `.login-page-title` intacto; as outras sub-telas com título (ex.: "Esqueci a senha"
+   etapa 1, mesma classe) continuam com a compressão original — não foram pedidas. */
+.st-key-login-card:has(.st-key-password-fields-row) .login-page-title {
+  margin-top: 0 !important;
+}
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
    usada pro "Press Ctrl+Enter to apply" da textarea em recommendation.css. */
 [data-testid="stTextInput"] [data-testid="InputInstructions"] {
@@ -197,36 +218,30 @@
 [data-testid="stTextInput"] input.email-valid {
   border-color: #22c55e !important;
 }
-/* Lista de critérios de senha (password_requirements_gate.js), abaixo do campo
-   "Confirmar senha" — mesmo racional de cor de estado das linhas acima (verde/vermelho),
-   neutro (#6b7280, mesmo tom de .footer-login) enquanto a senha estiver vazia. */
-.password-requirements {
-  list-style: none;
-  margin: 8px 0 8px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* Mensagem de texto do campo "E-mail" (mesmos scripts acima), abaixo do campo — some/
+   aparece junto com a borda, no "blur" (não a cada tecla). `display:none` no `<p>`
+   sozinho não bastava: o `gap:16px` do `stVerticalBlock` do card se aplica a cada
+   `stElementContainer` filho independente da altura do conteúdo (mesmo achado documentado
+   no `margin-top` negativo de `.footer-login` abaixo), sobrando ~16px de vão mesmo com a
+   mensagem escondida. Escondendo o `stElementContainer` inteiro (via `:has()`, já usado em
+   `body:has(.grid-titles)` em app.css) tira o elemento do fluxo do flex por completo,
+   igual a ele nunca ter sido renderizado. */
+[data-testid="stElementContainer"]:has(.email-hint) {
+  display: none;
 }
-.password-requirements li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #a3a3a3;
+[data-testid="stElementContainer"]:has(.email-hint-visible) {
+  display: block;
 }
-.password-requirements .req-icon {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  color: #6b7280;
-}
-.password-requirements li.req-met .req-icon {
-  color: #22c55e;
-}
-.password-requirements li.req-unmet .req-icon {
+.email-hint {
+  margin: -4px 0 8px !important;
+  font-size: 12px !important;
   color: #ef4444;
 }
+/* .password-requirements/.password-requirements-title (lista de critérios de senha,
+   password_requirements_gate.js) e .st-key-password-fields-row (painel de requisitos
+   ao lado dos campos, usado por _render_forgot_password_confirm) vêm de base.css —
+   compartilhados com profile.css, antes duplicados aqui. */
+
 /* O Streamlit já tem seu próprio ícone de olho pra mostrar/esconder a senha
    (type="password") — no Edge/Windows, o navegador soma o ícone nativo dele
    (::-ms-reveal) por cima, duplicando o olho. Esconde só o nativo. */
@@ -241,6 +256,17 @@
    Cor sólida (sem gradiente) — laranja um tom mais escuro que o #f97316 dos
    ícones/badges (pedido do usuário: o laranja cheio original cansava a vista
    num campo sólido tão grande quanto um botão full-width). */
+/* Wrapper centralizado — mesmo padrão de .st-key-profile-card [data-testid="stButton"]
+   (profile.css): o botão passou a ter largura fixa (140px, abaixo), então o wrapper
+   (div de bloco que ocupa 100% por padrão) precisa virar flex+center pra não colar o
+   botão na esquerda. Excluído .st-key-btn_reenviar_codigo, que já tem seu próprio
+   justify-content:flex-start (auto-width, dentro de st.columns(2) ao lado de "Voltar
+   ao login" — fora do escopo desta padronização). */
+[data-testid="stButton"]:not(.st-key-btn_reenviar_codigo) {
+  display: flex !important;
+  justify-content: center !important;
+  width: 100% !important;
+}
 [data-testid="stButton"] > button {
   background: #ea580c !important;
   color: #ffffff !important;
@@ -249,7 +275,7 @@
   font-size: 15px !important;
   font-weight: 600 !important;
   padding: 10px 0 !important;
-  width: 100% !important;
+  width: 140px !important;
   margin-top: 8px !important;
   box-shadow: 0 0 24px -4px rgba(234,88,12,0.6);
   transition: filter 0.2s ease, transform 0.2s ease;
@@ -262,8 +288,25 @@
   opacity: 0.5;
   box-shadow: none;
 }
-[data-testid="stColumns"],
-[data-testid="stHorizontalBlock"] {
+/* Volta a 100% no mobile, mesmo racional de profile.css: nesse breakpoint os campos
+   do formulário já empilham 100% de largura, um botão fixo de 140px ficaria pequeno e
+   descentralizado ao lado deles. Posicionado DEPOIS da regra desktop acima (mesma
+   especificidade — em empate, quem vem depois no arquivo vence) para não repetir o bug
+   de ordem encontrado em profile.css, onde a regra mobile perdia para a desktop. */
+@media (max-width: 768px) {
+  [data-testid="stButton"] > button {
+    width: 100% !important;
+  }
+}
+/* Gap apertado só nas linhas de link (Novo cadastro/Esqueci a senha, Reenviar
+   código/Voltar ao login) — escopado a essas duas keys, não mais global: sem escopo,
+   esta regra (`!important`) também esmagava o `gap="small"`/`gap="medium"` já passado
+   no Python pra `password-fields-row` (campos + painel de requisitos, Cadastro e
+   "Esqueci a senha" etapa 2), deixando-a mais colada que o mesmo painel no Perfil/Admin
+   (`profile.css` não tem regra equivalente, então lá o gap do Python sempre valeu).
+   Bug reportado pelo usuário como "respiro" diferente do Painel Admin. */
+.st-key-login-links-row [data-testid="stHorizontalBlock"],
+.st-key-resend-links-row [data-testid="stHorizontalBlock"] {
   gap: 0.4rem !important;
 }
 
@@ -279,6 +322,7 @@
   font-size: 13px !important;
   font-weight: 500 !important;
   padding: 6px 0 !important;
+  width: 100% !important;
   margin-top: 4px !important;
 }
 [class*="st-key-btn_link_"] button:hover {
@@ -290,9 +334,11 @@
 /* "Reenviar código" — secundário e discreto (pedido do usuário: não competir com o botão
    de ação primário "Redefinir senha"), auto-width em vez do pill laranja full-width padrão
    acima. Divide a linha com "← Voltar ao login" via st.columns(2) (login.py) — fica na
-   coluna da esquerda, então display:flex + justify-content:flex-start ancora o <button>
-   auto-width na borda esquerda da coluna (não mais centralizado no card inteiro, que
-   fazia sentido só quando este era o único link auto-width sozinho numa linha cheia). */
+   coluna da direita (pedido do usuário: inverter a ordem, "Voltar ao login" primeiro),
+   então display:flex + justify-content:flex-start ancora o <button> auto-width na borda
+   esquerda da própria coluna (não mais centralizado no card inteiro, que fazia sentido só
+   quando este era o único link auto-width sozinho numa linha cheia) — independe de qual
+   coluna é, a âncora é sempre à borda esquerda da coluna que o contém. */
 .st-key-btn_reenviar_codigo {
   display: flex;
   justify-content: flex-start;
@@ -316,21 +362,41 @@
 .st-key-btn_reenviar_codigo button:disabled {
   opacity: 0.4;
 }
+/* Respiro maior acima da linha "Reenviar código"/"Voltar ao login" (pedido do usuário,
+   print da 2ª etapa de "Esqueci a senha" mostrando a linha colada no bloco de cima) —
+   sobrescreve o margin-top:4px genérico das duas regras acima (`.st-key-btn_reenviar_codigo
+   button`/`[class*="st-key-btn_link_"] button`), mais específica que as duas (2 seletores
+   de key/testid), então vence sem depender de ordem no arquivo. Escopado só a esta linha —
+   não mexe no respiro de `.st-key-login-links-row` (Novo cadastro/Esqueci a senha) nem do
+   "Voltar ao login" avulso das outras telas. */
+.st-key-resend-links-row [data-testid="stButton"] > button {
+  margin-top: 16px !important;
+}
 
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de
    senha incorreta/bloqueio) vêm de base.css — antes duplicados aqui, e sem .time-countdown
    (bug corrigido nesta migração: o countdown de bloqueio de login não tinha essa classe). */
 
-/* margin-top negativo: entre o botão "Entrar" e este rodapé existe um container de altura
-   zero e invisível (injetor de JS de load_login_button_toggle_script) — o gap:16px do
-   stVerticalBlock do card se aplica duas vezes (botão→injetor, injetor→rodapé), somando 32px
-   escondidos mesmo com padding-top zerado, medido via inspeção real do DOM (Playwright,
-   mesmo padrão do achado em .footer de app.css). Negativo compensa isso. */
+/* margin-top:16px é o padrão (respiro normal antes do rodapé, mesma família de valor do
+   gap nativo do stVerticalBlock — pedido do usuário, print mostrando o rodapé colado
+   demais no botão/links acima em "Esqueci a senha" etapas 1 e 2). O -16px abaixo é
+   exceção só do login puro (_render_login_form, via `.st-key-btn_entrar`): ali, entre o
+   botão "Entrar" e o rodapé, existe um container de altura zero e invisível (injetor de
+   JS de load_login_button_toggle_script) que dobra o gap:16px do stVerticalBlock,
+   somando 32px escondidos mesmo com padding-top zerado — medido via inspeção real do DOM
+   (Playwright, mesmo padrão do achado em .footer de app.css), só para essa tela
+   especificamente. Aplicar essa mesma compensação negativa a TODAS as telas (como antes)
+   comprimia o rodapé nas telas sem esse container extra — cadastro, esqueci senha etc. —
+   já que cada uma tem sua própria cadeia (diferente) de containers invisíveis antes do
+   rodapé. */
 .footer-login {
   text-align: center;
   padding: 0 0 8px;
   color: #6b7280;
   font-size: 12px;
   letter-spacing: 0.05em;
+  margin-top: 16px;
+}
+.st-key-login-card:has(.st-key-btn_entrar) .footer-login {
   margin-top: -16px;
 }

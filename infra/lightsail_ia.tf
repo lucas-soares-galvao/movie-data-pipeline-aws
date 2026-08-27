@@ -122,6 +122,10 @@ resource "aws_iam_policy" "lightsail_agent_policy" {
           # privilégio mínimo.
           "cognito-idp:AdminConfirmSignUp",
           "cognito-idp:AdminUpdateUserAttributes",
+          # AdminSetUserPassword — troca de senha do próprio usuário logado no perfil
+          # (src/infrastructure.py::change_password): reautentica com a senha atual e,
+          # se válida, define a nova via esta action administrativa.
+          "cognito-idp:AdminSetUserPassword",
           "cognito-idp:AdminDisableUser",
           "cognito-idp:AdminEnableUser",
           "cognito-idp:AdminDeleteUser",
@@ -181,9 +185,11 @@ resource "aws_cognito_user_pool" "filmbot" {
   # posse do e-mail (efeito colateral de auto_verified_attributes +
   # verification_message_template abaixo) — mas isso NÃO substitui o gate de
   # acesso, que continua sendo a aprovação manual do admin (AdminEnableUser,
-  # ver approve_signup() em src/infrastructure.py). A conta já nasce
-  # desabilitada (AdminDisableUser em sign_up()) e só é habilitada na
-  # aprovação, mesmo depois de o usuário confirmar o e-mail.
+  # ver approve_signup() em src/infrastructure.py). A conta só é desabilitada
+  # (AdminDisableUser) DEPOIS de o usuário confirmar o e-mail (ver
+  # confirm_sign_up() em src/infrastructure.py) — não em sign_up(): testado
+  # empiricamente que ConfirmSignUp rejeita qualquer código, mesmo o certo,
+  # com CodeMismatchException quando a conta já está desabilitada.
   auto_verified_attributes = ["email"]
 
   verification_message_template {
@@ -237,6 +243,24 @@ resource "aws_cognito_user_pool" "filmbot" {
   # recriação (não podem ser removidos depois — decisão permanente).
   schema {
     name                = "last_login"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 40
+    }
+  }
+
+  # Data/hora (ISO 8601 UTC) da última troca de senha bem-sucedida pelo fluxo
+  # "Esqueci a senha", gravada por infrastructure.record_password_update() logo após
+  # um ConfirmForgotPassword bem-sucedido, e lida de volta por admin.py para a coluna
+  # "Atualizado em" do painel admin. Atributos custom podem ser adicionados a um pool
+  # já existente sem forçar recriação (não podem ser removidos depois — decisão
+  # permanente).
+  schema {
+    name                = "password_updated_at"
     attribute_data_type = "String"
     required            = false
     mutable             = true

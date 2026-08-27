@@ -1,6 +1,7 @@
 """recommendation.py — formulário de preferência (texto/áudio) e busca assíncrona do FilmBot."""
 
 import hashlib
+import html
 import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -60,10 +61,18 @@ def render_recommendation(client_ip: str) -> None:
     (`titles`, `search_error`, `search_completed`) para a tela de cards consumir."""
     load_recommendation_css()
 
+    full_name = st.session_state.get("user_name", "")
+    first_name = html.escape(full_name.split()[0]) if full_name else ""
+    greeting_html = (
+        f'<p class="hero-greeting">Olá, <span class="accent-gradient-text">{first_name}</span></p>'
+        if first_name else ""
+    )
+
     with st.container(key="hero-section"):
         st.markdown(
-            """
+            f"""
             <div class="hero-heading-wrap">
+              {greeting_html}
               <h1 class="hero-heading">O que você quer <span class="accent-gradient-text">assistir</span> hoje?</h1>
               <p class="hero-subtitle">Digite ou grave o seu pedido</p>
             </div>
@@ -297,36 +306,46 @@ def render_recommendation(client_ip: str) -> None:
                 time.sleep(0.5)
                 st.rerun()
         else:
-            if st.button(
-                "Recomendar",
-                type="primary",
-                disabled=_remaining <= 0,
-                use_container_width=True,
-                key="btn_recomendar",
-            ) and preference:
-                _ip_history.setdefault(client_ip, []).append(time.time())
-                st.session_state["future"] = _executor.submit(recommend, preference)
-                st.session_state["searching"] = True
-                st.session_state["search_completed"] = False
-                st.session_state["search_error"] = False
-                st.session_state["titles"] = []
-                st.rerun()
+            # Contador/aviso de rate limit ANTES do botão (não o inverso, como antes):
+            # dentro de query-counter-row (flex), a ordem de origem já cobre os dois
+            # breakpoints sozinha — row no desktop (1º filho à esquerda, "Recomendar" à
+            # direita) e column abaixo de 520px (1º filho no topo), sem precisar de
+            # `order`/row-reverse em CSS. Diferente do par áudio/texto acima, não há
+            # nenhuma restrição de session_state forçando uma ordem diferente aqui:
+            # _remaining/_queries_made já foram calculados antes de hero-actions.
+            with st.container(key="query-counter-row"):
+                if _remaining <= 0:
+                    _seconds = seconds_until_available(_ip_history, client_ip, 3600)
+                    render_feedback(
+                        "warning",
+                        f"Limite de {_MAX_QUERIES_PER_HOUR} consultas atingido. Disponível novamente em",
+                        extra_html=' <span class="time-countdown" id="countdown"></span>.',
+                    )
+                    load_countdown_script(_seconds)
+                else:
+                    _counter_class = (
+                        "query-counter-text query-counter-low" if _remaining <= 3 else "query-counter-text"
+                    )
+                    st.markdown(
+                        f'<p class="{_counter_class}">Consultas restantes: '
+                        f'{_remaining}/{_MAX_QUERIES_PER_HOUR} por hora</p>',
+                        unsafe_allow_html=True,
+                    )
 
-        if _remaining <= 0:
-            _seconds = seconds_until_available(_ip_history, client_ip, 3600)
-            render_feedback(
-                "warning",
-                f"Limite de {_MAX_QUERIES_PER_HOUR} consultas atingido. Disponível novamente em",
-                extra_html=' <span class="time-countdown" id="countdown"></span>.',
-            )
-            load_countdown_script(_seconds)
-        else:
-            _counter_class = "query-counter-text query-counter-low" if _remaining <= 3 else "query-counter-text"
-            st.markdown(
-                f'<p class="{_counter_class}">Consultas restantes: '
-                f'{_remaining}/{_MAX_QUERIES_PER_HOUR} por hora</p>',
-                unsafe_allow_html=True,
-            )
+                if st.button(
+                    "Recomendar",
+                    type="primary",
+                    disabled=_remaining <= 0,
+                    use_container_width=True,
+                    key="btn_recomendar",
+                ) and preference:
+                    _ip_history.setdefault(client_ip, []).append(time.time())
+                    st.session_state["future"] = _executor.submit(recommend, preference)
+                    st.session_state["searching"] = True
+                    st.session_state["search_completed"] = False
+                    st.session_state["search_error"] = False
+                    st.session_state["titles"] = []
+                    st.rerun()
 
         # Erro de busca/sem-resultado ficam empilhados aqui embaixo (não em cards.py) para
         # aparecerem sempre perto do botão "Recomendar" — no lugar do rate limit quando
