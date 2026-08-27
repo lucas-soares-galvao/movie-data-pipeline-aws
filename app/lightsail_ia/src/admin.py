@@ -165,18 +165,64 @@ def _build_dataframe_action_data(rows: list[dict]) -> list[dict]:
 
 
 def _handle_dataframe_action_click(rows: list[dict]) -> None:
+    # admin_pending_action (não é a key de trigger do ButtonColumn) guarda a ação de
+    # Reprovar/Revogar aguardando confirmação no modal. Necessário porque o valor de
+    # admin_reject_revoke_click é um "trigger value" do próprio Streamlit: só fica
+    # setado no rerun imediatamente disparado pelo clique, e é zerado sozinho em
+    # qualquer rerun seguinte — inclusive o rerun causado pelo clique em "Confirmar"
+    # dentro do modal. Por isso email/name/kind são resolvidos e copiados pra cá assim
+    # que o clique original é detectado, antes do primeiro st.rerun().
+    pending = st.session_state.get("admin_pending_action")
+    if pending:
+        _render_confirm_dialog(pending)
+        return
+
     approve_click = st.session_state.get("admin_approve_click")
     reject_revoke_click = st.session_state.get("admin_reject_revoke_click")
 
     if approve_click:
-        infrastructure.approve_signup(rows[approve_click["row"]]["email"])
+        user = rows[approve_click["row"]]
+        infrastructure.approve_signup(user["email"])
+        infrastructure.notify_user_approved(user["email"], user["name"])
         st.rerun()
     elif reject_revoke_click:
         user = rows[reject_revoke_click["row"]]
-        if user["kind"] == "pending":
-            infrastructure.reject_signup(user["email"])
+        kind = "reject" if user["kind"] == "pending" else "revoke"
+        st.session_state["admin_pending_action"] = {
+            "kind": kind,
+            "email": user["email"],
+            "name": user["name"],
+        }
+        st.rerun()
+
+
+@st.dialog("Confirmar ação", dismissible=False)
+def _render_confirm_dialog(pending: dict) -> None:
+    verbo = "reprovar o cadastro de" if pending["kind"] == "reject" else "revogar o acesso de"
+    st.write(f"Tem certeza que deseja {verbo} **{pending['name']}** ({pending['email']})?")
+    # Desmarcado por padrão em Reprovar (a instância é pública — notificar todo cadastro
+    # reprovado sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado) e
+    # marcado por padrão em Revogar (quem já tinha acesso normalmente é conhecido, e um
+    # aviso é mais educado). Ver infrastructure.py::notify_user_rejected/notify_user_revoked.
+    notify = st.checkbox("Notificar por e-mail", value=(pending["kind"] == "revoke"))
+
+    col_confirm, col_cancel = st.columns(2)
+    confirmed = col_confirm.button("Confirmar", type="primary", width="stretch")
+    cancelled = col_cancel.button("Cancelar", width="stretch")
+
+    if confirmed:
+        if pending["kind"] == "reject":
+            infrastructure.reject_signup(pending["email"])
+            if notify:
+                infrastructure.notify_user_rejected(pending["email"], pending["name"])
         else:
-            infrastructure.revoke_access(user["email"])
+            infrastructure.revoke_access(pending["email"])
+            if notify:
+                infrastructure.notify_user_revoked(pending["email"], pending["name"])
+        st.session_state.pop("admin_pending_action", None)
+        st.rerun()
+    elif cancelled:
+        st.session_state.pop("admin_pending_action", None)
         st.rerun()
 
 
