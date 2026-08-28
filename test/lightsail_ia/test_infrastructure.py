@@ -289,6 +289,25 @@ class TestChangePassword:
         mock_boto.return_value.admin_set_user_password.assert_not_called()
 
 
+class TestApplyResumedSignup:
+    def test_define_senha_e_grava_nome_novo_sem_reautenticar(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.apply_resumed_signup("user@ex.com", "SenhaNova1!", "Nome Novo")
+
+        mock_boto.return_value.admin_set_user_password.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            Password="SenhaNova1!",
+            Permanent=True,
+        )
+        mock_boto.return_value.admin_update_user_attributes.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            UserAttributes=[{"Name": "name", "Value": "Nome Novo"}],
+        )
+        mock_boto.return_value.admin_initiate_auth.assert_not_called()
+
+
 class TestIsAdmin:
     def test_retorna_true_quando_usuario_pertence_ao_grupo_admins(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:

@@ -270,6 +270,33 @@ def change_password(email: str, current_password: str, new_password: str) -> str
     return "ok"
 
 
+def apply_resumed_signup(email: str, password: str, name: str) -> None:
+    """Grava a senha e o nome digitados na segunda tentativa de um cadastro retomado
+    (e-mail que já existia como UNCONFIRMED, ver _resume_abandoned_signup em login.py) —
+    só deve ser chamada depois que confirm_sign_up() já validou o código de confirmação,
+    ou seja, depois de provar posse do e-mail. Chamar isso antes da confirmação seria uma
+    brecha de account takeover (ver docstring de _resume_abandoned_signup).
+
+    Não reaproveita change_password(): ele reautentica via authenticate()
+    (AdminInitiateAuth) antes de trocar a senha, mas nesse ponto do fluxo a conta acabou
+    de ser desabilitada por confirm_sign_up() (aguardando aprovação do admin) e
+    AdminInitiateAuth falharia numa conta Disabled. Aqui a posse do código de confirmação
+    já é a prova de identidade necessária — mesmo racional de confirm_password_reset(),
+    que troca a senha no mesmo passo em que valida o código, sem reautenticação extra."""
+    client = _cognito_client()
+    client.admin_set_user_password(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        Password=password,
+        Permanent=True,
+    )
+    client.admin_update_user_attributes(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        UserAttributes=[{"Name": "name", "Value": name}],
+    )
+
+
 def is_admin(email: str) -> bool:
     """True se o e-mail pertence ao grupo "admins" do Cognito (ver
     infra/lightsail_ia.tf:aws_cognito_user_group.admins)."""
