@@ -492,6 +492,46 @@ class TestListActiveUsers:
         assert [user["email"] for user in resultado] == ["ativo@ex.com"]
 
 
+class TestListUnconfirmedUsers:
+    def test_filtra_por_status_enabled(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {"Users": []}
+            infrastructure.list_unconfirmed_users()
+
+        mock_boto.return_value.list_users.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Filter='status = "Enabled"',
+        )
+
+    def test_mantem_apenas_usuarios_ainda_nao_confirmados(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "ativo@ex.com"},
+                            {"Name": "name", "Value": "Ativo"},
+                        ],
+                    },
+                    {
+                        "Enabled": True,
+                        "UserStatus": "UNCONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "naoconfirmou@ex.com"},
+                            {"Name": "name", "Value": "Não Confirmou"},
+                        ],
+                    },
+                ]
+            }
+            resultado = infrastructure.list_unconfirmed_users()
+
+        assert [user["email"] for user in resultado] == ["naoconfirmou@ex.com"]
+
+
 class TestApproveSignup:
     def test_habilita_a_conta(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:

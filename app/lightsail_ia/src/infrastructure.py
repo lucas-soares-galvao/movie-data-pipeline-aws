@@ -370,6 +370,23 @@ def list_active_users() -> list[dict]:
     return [_parse_user(user) for user in response["Users"] if user["UserStatus"] == "CONFIRMED"]
 
 
+def list_unconfirmed_users() -> list[dict]:
+    """Lista cadastros que ainda não confirmaram a posse do e-mail (UserStatus=UNCONFIRMED).
+    Ficam Enabled=true (sign_up() não desabilita mais a conta, ver confirm_sign_up()) e por
+    isso não aparecem em list_pending_users() nem em list_active_users() — cadastros
+    abandonados nesse estado ficavam invisíveis e sem trilha de limpeza no painel admin.
+
+    Mesmo filtro server-side de list_active_users() (status="Enabled") — os dois estados
+    (UNCONFIRMED e CONFIRMED ativo) compartilham Enabled=true, então reaproveitar o Filter
+    já testado e invertendo a condição client-side evita introduzir uma sintaxe de Filter
+    nova (ex.: cognito:user_status) não usada em nenhum outro lugar do projeto."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter='status = "Enabled"',
+    )
+    return [_parse_user(user) for user in response["Users"] if user["UserStatus"] == "UNCONFIRMED"]
+
+
 def approve_signup(email: str) -> None:
     """Aprova um cadastro pendente, reabilitando a conta (AdminEnableUser).
 
