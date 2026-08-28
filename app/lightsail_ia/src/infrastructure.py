@@ -455,7 +455,7 @@ def notify_new_signup(email: str, name: str) -> None:
     client = boto3.client("sns", region_name=os.getenv("AWS_REGION", "sa-east-1"))
     client.publish(
         TopicArn=os.environ["SNS_NEW_SIGNUP_TOPIC_ARN"],
-        Subject="FilmBot — cadastro novo pendente de aprovação",
+        Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
         Message=f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
     )
 
@@ -523,7 +523,7 @@ def notify_user_approved(email: str, name: str) -> None:
     o acesso já está liberado. Chamado por admin.py logo após approve_signup()."""
     _send_gmail_email(
         email,
-        "FilmBot — cadastro aprovado",
+        "FilmBot — Cadastro Aprovado",
         f"Olá, {name}!\n\n"
         "Seu cadastro no FilmBot foi aprovado. Você já pode fazer login "
         f"em {_FILMBOT_URL} usando o e-mail {email} e a senha que você cadastrou.\n\n"
@@ -538,7 +538,7 @@ def notify_user_rejected(email: str, name: str) -> None:
     todo mundo sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado)."""
     _send_gmail_email(
         email,
-        "FilmBot — cadastro não aprovado",
+        "FilmBot — Cadastro Não Aprovado",
         f"Olá, {name}!\n\nSeu cadastro no FilmBot não foi aprovado.\n\nAté já,\nEquipe FilmBot",
     )
 
@@ -550,6 +550,6 @@ def notify_user_revoked(email: str, name: str) -> None:
     Reprovar, ver notify_user_rejected)."""
     _send_gmail_email(
         email,
-        "FilmBot — acesso revogado",
+        "FilmBot — Acesso Revogado",
         f"Olá, {name}!\n\nSeu acesso ao FilmBot foi revogado.\n\nAté já,\nEquipe FilmBot",
     )

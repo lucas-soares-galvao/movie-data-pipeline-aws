@@ -598,7 +598,7 @@ class TestNotifyNewSignup:
 
         mock_boto.return_value.publish.assert_called_once_with(
             TopicArn="arn:aws:sns:sa-east-1:123456789012:test-new-signup-topic",
-            Subject="FilmBot — cadastro novo pendente de aprovação",
+            Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
             Message="Fulano (user@ex.com) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
         )
 
@@ -638,7 +638,7 @@ class TestNotifyUserApproved:
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "abcd efgh ijkl mnop")
         mock_smtp_server.send_message.assert_called_once()
         sent_message = mock_smtp_server.send_message.call_args[0][0]
-        assert sent_message["Subject"] == "FilmBot — cadastro aprovado"
+        assert sent_message["Subject"] == "FilmBot — Cadastro Aprovado"
         assert sent_message["From"] == "filmbot.lsgalvao@gmail.com"
         assert sent_message["To"] == "user@ex.com"
         body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
@@ -704,7 +704,7 @@ class TestNotifyUserRejected:
 
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
         sent_message = mock_smtp_server.send_message.call_args[0][0]
-        assert sent_message["Subject"] == "FilmBot — cadastro não aprovado"
+        assert sent_message["Subject"] == "FilmBot — Cadastro Não Aprovado"
         assert sent_message["To"] == "user@ex.com"
         body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
         assert "Fulano" in body
@@ -734,7 +734,7 @@ class TestNotifyUserRevoked:
 
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
         sent_message = mock_smtp_server.send_message.call_args[0][0]
-        assert sent_message["Subject"] == "FilmBot — acesso revogado"
+        assert sent_message["Subject"] == "FilmBot — Acesso Revogado"
         assert sent_message["To"] == "user@ex.com"
         body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
         assert "Fulano" in body
