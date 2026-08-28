@@ -68,7 +68,16 @@ ICON_PATHS = {
         '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>'
         '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
     ),
+    "mail": (
+        '<rect width="20" height="16" x="2" y="4" rx="2"/>'
+        '<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>'
+    ),
 }
+
+# E-mail de contato exibido nos rodapés (render_footer/render_login_footer) — caixa
+# dedicada só para isso, distinta dos e-mails de notificação interna admin/sistema
+# configurados via Terraform (var.filmbot_new_signup_notification_email e afins).
+_CONTACT_EMAIL = "filmbot.lsgalvao@gmail.com"
 
 
 def icon(name: str, size: int = 16) -> str:
@@ -87,14 +96,13 @@ def icon(name: str, size: int = 16) -> str:
 
 
 def favicon_svg() -> str:
-    """Monta o favicon como SVG autocontido: badge escuro arredondado (mesmo #1a1a1a de
-    .header-icon-badge/.login-icon-badge) com o ícone "clapperboard" laranja (#f97316)
-    dentro, reaproveitando ICON_PATHS como única fonte da geometria. Cores hardcoded (não
-    `currentColor`, diferente de icon()) porque um favicon é carregado como recurso
-    isolado, sem acesso ao CSS da página. Usada só por app.py (`st.set_page_config`)."""
+    """Monta o favicon como SVG autocontido: fundo transparente com o ícone
+    "clapperboard" laranja (#f97316) sozinho, reaproveitando ICON_PATHS como única fonte
+    da geometria. Cor hardcoded (não `currentColor`, diferente de icon()) porque um
+    favicon é carregado como recurso isolado, sem acesso ao CSS da página. Usada só por
+    app.py (`st.set_page_config`)."""
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
-        '<rect width="24" height="24" rx="6" fill="#1a1a1a"/>'
         '<g transform="translate(3 3) scale(0.75)" fill="none" stroke="#f97316"'
         ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
         f'{ICON_PATHS["clapperboard"]}'
@@ -747,8 +755,17 @@ def render_grid(titles: list[dict]) -> str:
     return '<div class="grid-titles">' + "".join(cards) + "</div>"
 
 
+def _render_contact_line() -> str:
+    """Monta o link de contato (ícone + e-mail) reaproveitado pelos dois rodapés."""
+    return (
+        f'<div class="footer-contact">'
+        f'<a href="mailto:{_CONTACT_EMAIL}">{icon("mail", 14)} {_CONTACT_EMAIL}</a>'
+        f"</div>"
+    )
+
+
 def render_footer() -> None:
-    """Renderiza o rodapé da página principal com crédito TMDB."""
+    """Renderiza o rodapé da página principal com crédito TMDB e contato por e-mail."""
     year = datetime.now(tz=timezone.utc).year
     st.markdown(
         f'<div class="footer">'
@@ -756,17 +773,19 @@ def render_footer() -> None:
         f'<a href="https://www.themoviedb.org/?language=pt-BR"'
         f' target="_blank" rel="noopener noreferrer">TMDB</a>'
         f" · Todos os direitos reservados"
+        f"{_render_contact_line()}"
         f"</div>",
         unsafe_allow_html=True,
     )
 
 
 def render_login_footer() -> None:
-    """Renderiza o rodapé simplificado da tela de login."""
+    """Renderiza o rodapé simplificado da tela de login, com contato por e-mail."""
     year = datetime.now(tz=timezone.utc).year
     st.markdown(
         f'<div class="footer-login">'
         f"© {year} FilmBot · Todos os direitos reservados"
+        f"{_render_contact_line()}"
         f"</div>",
         unsafe_allow_html=True,
     )

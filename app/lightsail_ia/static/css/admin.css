@@ -56,3 +56,48 @@
   border: 1px solid transparent !important;
   border-radius: 16px !important;
 }
+
+/* Modal de confirmação (_render_confirm_dialog, admin.py) — st.dialog(width="small") já é a
+   opção nativa mais estreita do Streamlit, mas ainda assim tem até 500px (docstring de
+   dialog_decorator), o que deixa os dois botões width="stretch" muito largos. Restringe pro
+   mesmo 440px das sub-telas estreitas de auth (login.css), sem precisar fixar width="stretch"
+   pra um valor em Python (columns continuam 50/50, só o card encolhe).
+
+   [data-testid="stDialog"] em si NÃO é o card visível — é o overlay de tela cheia
+   (react-aria Modal, position:fixed + flexbox centralizando o filho; confirmado no bundle
+   JS instalado do Streamlit). O card real (fundo escuro, borda, padding) é o <div> filho
+   direto dele. Aplicar max-width no próprio overlay encolhe o CONTEXTO de centralização
+   inteiro pra 440px ancorado à esquerda (bug visto na prática: modal indo pro canto
+   esquerdo, ocupando a tela toda em altura) — por isso o seletor mira o filho, não o
+   overlay. */
+[data-testid="stDialog"] > div {
+  max-width: 440px !important;
+}
+
+/* Sem isso, os dois st.columns(2) de Cancelar/Confirmar empilhariam em telas estreitas —
+   o Streamlit empilha nativamente um stHorizontalBlock em coluna abaixo do próprio
+   breakpoint interno de responsividade (mesmo comportamento documentado/testado em
+   profile.css pra .st-key-profile-nav/.st-key-admin-nav, viewport 375px), o que
+   contrariaria o pedido explícito de manter os dois botões lado a lado em qualquer
+   largura. min-width:0 no stColumn zera o `min-width: calc(100% - 24px)` nativo do
+   Streamlit (pensado pra funcionar junto do empilhamento que acabamos de desligar),
+   senão as duas colunas disputam ~100% cada uma e se sobrepõem. */
+[data-testid="stDialog"] [data-testid="stHorizontalBlock"] {
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+}
+
+/* width="stretch" (admin.py) não preenche de fato os 100% da coluna — na prática o
+   <button> fica com ~140px fixos alinhado à esquerda dentro de uma coluna de ~188px
+   (confirmado via Playwright/getComputedStyle no harness de depuração), sobrando ~48px
+   de vão. Como a coluna do Cancelar encosta na borda esquerda do card e a do Confirmar
+   encosta na direita, esse vão cai no meio (pouco visível) pro primeiro e bem na borda
+   direita (visível, quebrando a simetria) pro segundo. Forçar width:100% no <button> em
+   si faz cada um preencher a própria coluna de verdade, restaurando a simetria. */
+[data-testid="stDialog"] [data-testid^="stBaseButton"] {
+  width: 100% !important;
+}
+
+[data-testid="stDialog"] [data-testid="stColumn"] {
+  min-width: 0 !important;
+}

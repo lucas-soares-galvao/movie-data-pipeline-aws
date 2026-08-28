@@ -262,8 +262,13 @@ def _render_signup(client_ip: str) -> None:
                 try:
                     infrastructure.sign_up(email, password, name)
                 except ClientError as exc:
-                    with error_placeholder:
-                        render_feedback("error", _signup_error_message(exc))
+                    resumed = (
+                        exc.response["Error"]["Code"] == "UsernameExistsException"
+                        and _resume_abandoned_signup(email, password, name, client_ip)
+                    )
+                    if not resumed:
+                        with error_placeholder:
+                            render_feedback("error", _signup_error_message(exc))
                 else:
                     # O código de confirmação já foi enviado como efeito colateral do
                     # sign_up() — marca o cooldown de reenvio a partir de agora, não de
@@ -272,6 +277,7 @@ def _render_signup(client_ip: str) -> None:
                     _signup_code_send_history.setdefault(client_ip, []).append(time.time())
                     st.session_state["signup_email_confirmed"] = email
                     st.session_state["signup_name_confirmed"] = name
+                    st.session_state.pop("signup_resumed", None)
                     _switch_view("signup_confirm")
 
         if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
@@ -301,6 +307,50 @@ def _signup_error_message(exc: ClientError) -> str:
     return "Não foi possível concluir o cadastro. Tente novamente."
 
 
+def _resume_abandoned_signup(email: str, password: str, name: str, client_ip: str) -> bool:
+    """Trata o UsernameExistsException de sign_up(): se o e-mail já existe no Cognito mas
+    ainda está UNCONFIRMED, é um cadastro abandonado (usuário saiu antes de digitar o
+    código) — reenviar o cadastro pelo mesmo formulário deve funcionar como "pedir um
+    código novo", igual ao que "esqueci a senha" já faz reentrando o e-mail. Reenvia o
+    código (mesma chamada do botão "Reenviar código" de _render_signup_confirm) e leva o
+    usuário direto pra tela de confirmação. Retorna True se tratou o caso (já trocou de
+    view), False se o chamador deve cair na mensagem genérica de "e-mail já cadastrado"
+    (conta CONFIRMED, ou None por corrida improvável com o UsernameExistsException).
+
+    A senha/nome dessa segunda tentativa só ficam guardados em session_state aqui
+    (signup_password_pending) — não são gravados no Cognito neste momento de propósito:
+    ainda não houve nenhuma prova de que quem preencheu o formulário é o dono do e-mail
+    (reenviar código é uma ação que qualquer um sabendo o e-mail alheio pode disparar).
+    Gravar a senha aqui abriria uma janela de account takeover: um atacante definiria a
+    própria senha, e a vítima, ao confirmar o código real recebido por e-mail, ativaria a
+    conta com a senha do atacante sem ele nunca precisar ver o código. Por isso a aplicação
+    de fato (apply_resumed_signup) só acontece depois que confirm_sign_up() validar o
+    código em _render_signup_confirm — a posse do código é a prova de identidade
+    necessária, mesmo racional de confirm_password_reset()."""
+    if infrastructure.get_user_status(email) != "UNCONFIRMED":
+        return False
+
+    _resend_locked = (
+        events_in_window(_signup_code_send_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
+    )
+    if not _resend_locked:
+        try:
+            infrastructure.resend_confirmation_code(email)
+        except ClientError:
+            logging.exception("Erro ao reenviar código de cadastro incompleto")
+            return False
+        _signup_code_send_history.setdefault(client_ip, []).append(time.time())
+    # Se está dentro do cooldown, não reenvia de novo (já tem um código válido recente) —
+    # só leva o usuário direto pra tela de código.
+
+    st.session_state["signup_email_confirmed"] = email
+    st.session_state["signup_name_confirmed"] = name
+    st.session_state["signup_password_pending"] = password
+    st.session_state["signup_resumed"] = True
+    _switch_view("signup_confirm")
+    return True
+
+
 def _render_signup_confirm(client_ip: str) -> None:
     email = st.session_state.get("signup_email_confirmed", "")
     name = st.session_state.get("signup_name_confirmed", "")
@@ -311,6 +361,12 @@ def _render_signup_confirm(client_ip: str) -> None:
         _brand_header("Confirme seu E-mail")
         if email:
             render_feedback("success", f"Enviamos um código para {email}. Confira também a pasta de spam.")
+            if st.session_state.get("signup_resumed", False):
+                render_feedback(
+                    "warning",
+                    "Você já tinha começado esse cadastro antes. Ao confirmar o código abaixo, "
+                    "o nome e a senha que você acabou de digitar substituem os da tentativa anterior.",
+                )
         else:
             st.markdown('<p class="login-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
 
@@ -351,6 +407,16 @@ def _render_signup_confirm(client_ip: str) -> None:
                     with error_placeholder:
                         render_feedback("error", _signup_code_error_message(exc))
                 else:
+                    if st.session_state.get("signup_resumed", False):
+                        pending_password = st.session_state.get("signup_password_pending", "")
+                        if pending_password:
+                            # Só aplica senha/nome novos aqui, depois do código validado
+                            # (prova de posse do e-mail) — ver docstring de
+                            # _resume_abandoned_signup para o motivo de não aplicar antes.
+                            try:
+                                infrastructure.apply_resumed_signup(email, pending_password, name)
+                            except ClientError:
+                                logging.exception("Erro ao aplicar senha/nome do cadastro retomado")
                     try:
                         infrastructure.notify_new_signup(email, name)
                     except ClientError:
@@ -360,6 +426,8 @@ def _render_signup_confirm(client_ip: str) -> None:
                         logging.exception("Erro ao notificar novo cadastro")
                     st.session_state.pop("signup_email_confirmed", None)
                     st.session_state.pop("signup_name_confirmed", None)
+                    st.session_state.pop("signup_password_pending", None)
+                    st.session_state.pop("signup_resumed", None)
                     _switch_view("signup_success")
 
         @st.fragment(run_every=1)
@@ -398,6 +466,7 @@ def _render_signup_confirm(client_ip: str) -> None:
                     if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
                         st.session_state.pop("signup_email_confirmed", None)
                         st.session_state.pop("signup_name_confirmed", None)
+                        st.session_state.pop("signup_resumed", None)
                         _switch_view("login")
                 with link_col2:
                     if st.button(

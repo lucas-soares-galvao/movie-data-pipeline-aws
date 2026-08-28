@@ -362,16 +362,13 @@
 .st-key-btn_reenviar_codigo button:disabled {
   opacity: 0.4;
 }
-/* Respiro maior acima da linha "Reenviar código"/"Voltar ao login" (pedido do usuário,
-   print da 2ª etapa de "Esqueci a senha" mostrando a linha colada no bloco de cima) —
-   sobrescreve o margin-top:4px genérico das duas regras acima (`.st-key-btn_reenviar_codigo
-   button`/`[class*="st-key-btn_link_"] button`), mais específica que as duas (2 seletores
-   de key/testid), então vence sem depender de ordem no arquivo. Escopado só a esta linha —
-   não mexe no respiro de `.st-key-login-links-row` (Novo cadastro/Esqueci a senha) nem do
-   "Voltar ao login" avulso das outras telas. */
-.st-key-resend-links-row [data-testid="stButton"] > button {
-  margin-top: 16px !important;
-}
+/* Botão de ação → link(s) abaixo dele: respiro uniforme de margin-top:4px em todas as
+   telas de login/cadastro/recuperação, herdado das regras genéricas acima
+   (`.st-key-btn_reenviar_codigo button`/`[class*="st-key-btn_link_"] button`) — nada aqui
+   sobrescreve. Havia uma regra escopada só a `login-links-row`/`resend-links-row` forçando
+   16px nessas duas linhas, deixando esse respiro diferente do "Voltar ao login" avulso das
+   outras telas (cadastro, 1ª etapa de "Esqueci a senha"); removida para unificar em 4px nas
+   5 telas (avaliação de consistência entre formulários pedida pelo usuário). */
 
 /* .msg-error/.msg-warning/.time-countdown (usados por render_feedback() na mensagem de
    senha incorreta/bloqueio) vêm de base.css — antes duplicados aqui, e sem .time-countdown
@@ -379,16 +376,10 @@
 
 /* margin-top:16px é o padrão (respiro normal antes do rodapé, mesma família de valor do
    gap nativo do stVerticalBlock — pedido do usuário, print mostrando o rodapé colado
-   demais no botão/links acima em "Esqueci a senha" etapas 1 e 2). O -16px abaixo é
-   exceção só do login puro (_render_login_form, via `.st-key-btn_entrar`): ali, entre o
-   botão "Entrar" e o rodapé, existe um container de altura zero e invisível (injetor de
-   JS de load_login_button_toggle_script) que dobra o gap:16px do stVerticalBlock,
-   somando 32px escondidos mesmo com padding-top zerado — medido via inspeção real do DOM
-   (Playwright, mesmo padrão do achado em .footer de app.css), só para essa tela
-   especificamente. Aplicar essa mesma compensação negativa a TODAS as telas (como antes)
-   comprimia o rodapé nas telas sem esse container extra — cadastro, esqueci senha etc. —
-   já que cada uma tem sua própria cadeia (diferente) de containers invisíveis antes do
-   rodapé. */
+   demais no botão/links acima em "Esqueci a senha" etapas 1 e 2), uniforme em todas as
+   telas com rodapé, incluindo o login puro. Sem relação com o respiro botão→link acima
+   (que é 4px, ver comentário anterior) — este aqui é só o respiro entre a última linha do
+   formulário e o rodapé. */
 .footer-login {
   text-align: center;
   padding: 0 0 8px;
@@ -397,6 +388,17 @@
   letter-spacing: 0.05em;
   margin-top: 16px;
 }
-.st-key-login-card:has(.st-key-btn_entrar) .footer-login {
-  margin-top: -16px;
+
+.footer-contact {
+  margin-top: 6px;
+}
+.footer-contact a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  text-decoration: none;
+}
+.footer-contact a:hover {
+  text-decoration: underline;
 }

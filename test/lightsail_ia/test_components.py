@@ -71,6 +71,11 @@ class TestIcon:
         assert 'class="icon icon-lock"' in svg
         assert "<svg" in svg
 
+    def test_icone_mail_existe(self):
+        svg = components.icon("mail")
+        assert 'class="icon icon-mail"' in svg
+        assert "<svg" in svg
+
 
 class TestValidatePassword:
     """validate_password() — política do Cognito (infra/lightsail_ia.tf) mais o teto de
@@ -100,16 +105,16 @@ class TestValidatePassword:
 
 
 class TestFaviconSvg:
-    """favicon_svg() monta um SVG autocontido (cores hardcoded, não currentColor — um
+    """favicon_svg() monta um SVG autocontido (cor hardcoded, não currentColor — um
     favicon é carregado como recurso isolado, sem acesso ao CSS da página)."""
 
     def test_e_svg(self):
         svg = components.favicon_svg()
         assert svg.startswith("<svg")
 
-    def test_usa_cores_hardcoded_do_badge(self):
+    def test_fundo_transparente_sem_badge(self):
         svg = components.favicon_svg()
-        assert "#1a1a1a" in svg
+        assert "<rect" not in svg
         assert "#f97316" in svg
 
     def test_nao_depende_de_current_color(self):
@@ -1453,3 +1458,36 @@ class TestRenderGrid:
     def test_grid_nao_declara_grid_template_rows(self):
         html = components.render_grid([BASE_TITLE] * 4)
         assert "grid-template-rows" not in html
+
+
+class TestRenderFooter:
+    def test_mantem_credito_tmdb(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_footer()
+        assert "TMDB" in captured["content"]
+
+    def test_inclui_link_de_contato_por_email(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_footer()
+        assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
+        assert 'class="icon icon-mail"' in captured["content"]
+
+
+class TestRenderLoginFooter:
+    def test_inclui_link_de_contato_por_email(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_login_footer()
+        assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
+        assert 'class="icon icon-mail"' in captured["content"]
