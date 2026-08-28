@@ -57,7 +57,7 @@ proj-eng-dados-filmes-aws/
 │   │   │   ├── __init__.py
 │   │   │   ├── agent.py           # Agente de recomendação: extrai filtros → Athena → formata
 │   │   │   ├── infrastructure.py  # Bootstrap de processo (senha, CloudWatch) + utils de rate limiting
-│   │   │   ├── login.py           # Tela de autenticação
+│   │   │   ├── forms.py           # Telas de autenticação (login, cadastro, esqueci a senha)
 │   │   │   ├── recommendation.py  # Formulário (texto/áudio) + busca assíncrona
 │   │   │   ├── cards.py           # Exibição dos resultados da busca
 │   │   │   ├── components.py      # Helpers de renderização HTML (CSS, cards, grid, rodapé)
@@ -69,7 +69,7 @@ proj-eng-dados-filmes-aws/
 │   │   ├── static/
 │   │   │   ├── css/
 │   │   │   │   ├── base.css           # Estilos transversais (fundo, botão, container, .icon, .msg-*)
-│   │   │   │   ├── login.css          # Estilos da tela de login
+│   │   │   │   ├── forms.css          # Estilos das telas de autenticação
 │   │   │   │   ├── app.css            # Estilos de cabeçalho/rodapé
 │   │   │   │   ├── recommendation.css # Estilos do formulário de recomendação
 │   │   │   │   └── cards.css          # Estilos do grid de resultados
@@ -79,7 +79,7 @@ proj-eng-dados-filmes-aws/
 │   │   │       ├── audio_timer.js             # Timer decorrido/máximo do gravador
 │   │   │       ├── auto_grow_textarea.js      # Auto-grow do campo de preferência
 │   │   │       ├── countdown.js               # Countdown MM:SS genérico (rate limit/bloqueio)
-│   │   │       └── login_button_toggle.js     # Toggle do botão "Entrar" a cada tecla
+│   │   │       └── form_button_toggle.js      # Toggle do botão "Entrar" a cada tecla
 │   │   └── deploy/
 │   │       ├── setup.sh            # Bootstrap manual legado (referência) — CI/CD usa 04_deploy_lightsail.yml
 │   │       ├── Caddyfile           # Proxy reverso — domínio via {$FILMBOT_DOMAIN} (injetado por .env.caddy)

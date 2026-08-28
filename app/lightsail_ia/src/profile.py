@@ -213,7 +213,7 @@ def render_password_tab(client_ip: str) -> None:
                 try:
                     infrastructure.record_password_update(email)
                 except ClientError:
-                    # Mesmo racional de record_login (login.py): falha ao gravar o
+                    # Mesmo racional de record_login (forms.py): falha ao gravar o
                     # timestamp não deve travar a troca de senha do usuário — só loga.
                     logging.exception("Erro ao gravar password_updated_at")
                 st.session_state.pop("profile_current_password", None)

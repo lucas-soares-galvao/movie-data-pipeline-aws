@@ -74,7 +74,7 @@ ICON_PATHS = {
     ),
 }
 
-# E-mail de contato exibido nos rodapés (render_footer/render_login_footer) — caixa
+# E-mail de contato exibido nos rodapés (render_footer/render_form_footer) — caixa
 # dedicada só para isso, distinta dos e-mails de notificação interna admin/sistema
 # configurados via Terraform (var.filmbot_new_signup_notification_email e afins).
 _CONTACT_EMAIL = "filmbot.lsgalvao@gmail.com"
@@ -85,7 +85,7 @@ def icon(name: str, size: int = 16) -> str:
     `.icon` em base.css, branca por padrão; o ícone "lightbulb" do Insight do FilmBot é
     a única exceção, laranja via `.reason-label .icon` em cards.css). Usada por
     `render_card()` aqui dentro, pelo badge do ícone do cabeçalho/login em `app.py`/
-    `login.py`, pelo status "Transcrevendo áudio..." em `recommendation.py`, e pelo menu
+    `forms.py`, pelo status "Transcrevendo áudio..." em `recommendation.py`, e pelo menu
     vertical de navegação (Usuários/Perfil/Senha) em `profile.py`/`admin.py`."""
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"'
@@ -124,10 +124,10 @@ def load_base_css() -> None:
     _inject_css("base.css")
 
 
-def load_login_css() -> None:
-    """Injeta os estilos base seguidos dos estilos específicos da tela de login."""
+def load_forms_css() -> None:
+    """Injeta os estilos base seguidos dos estilos específicos das telas de autenticação."""
     load_base_css()
-    _inject_css("login.css")
+    _inject_css("forms.css")
 
 
 def load_app_css() -> None:
@@ -217,7 +217,7 @@ def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
     countdown pode estar visível na mesma página ao mesmo tempo (busca e transcrição),
     para não colidir em `id="countdown"` duplicado no DOM.
 
-    Os cooldowns de "enviar"/"reenviar código" do fluxo de troca de senha (`login.py`)
+    Os cooldowns de "enviar"/"reenviar código" do fluxo de troca de senha (`forms.py`)
     não usam mais este script — o reload de página resetaria `session_state`
     (`auth_view`/`reset_step`) e devolveria o usuário ao login no meio da troca. Em vez
     disso, usam `st.fragment(run_every=1)` pra recalcular o cooldown e o contador
@@ -234,7 +234,7 @@ def load_countdown_script(seconds: int, element_id: str = "countdown") -> None:
     components.html(f"<script>{script}</script>", height=0)
 
 
-def load_login_button_toggle_script(
+def load_form_button_toggle_script(
     locked_out: bool, button_key: str = "btn_entrar", email_key: str = ""
 ) -> None:
     """Injeta o script que habilita/desabilita o botão de submit a cada tecla digitada
@@ -243,8 +243,8 @@ def load_login_button_toggle_script(
     botão "Recomendar". `button_key` identifica o botão (`key=...` do `st.button`) de
     cada formulário. `email_key`, se informado (só a tela "esqueci a senha" passa —
     login não precisa), marca o campo de e-mail com borda verde/vermelha conforme o
-    formato (mesma regex de `_EMAIL_RE` em `login.py`) e inclui isso no gate do botão."""
-    path = Path(__file__).parent.parent / "static" / "js" / "login_button_toggle.js"
+    formato (mesma regex de `_EMAIL_RE` em `forms.py`) e inclui isso no gate do botão."""
+    path = Path(__file__).parent.parent / "static" / "js" / "form_button_toggle.js"
     script = (
         path.read_text(encoding="utf-8")
         .replace("__LOCKED_OUT__", "true" if locked_out else "false")
@@ -262,17 +262,17 @@ def load_password_requirements_gate_script(
     botão de submit desabilitado até todos os campos estarem preenchidos, senha e confirmação
     coincidirem, e a senha atender à política mínima (8 a 16 caracteres, maiúscula, número e
     símbolo — mesma política de infra/lightsail_ia.tf, ver password_requirements_gate.js).
-    Substitui `load_login_button_toggle_script()` nessas duas telas (já cobre o "campo
+    Substitui `load_form_button_toggle_script()` nessas duas telas (já cobre o "campo
     vazio" que aquele script cuidava, além de senha/confirmação); as telas sem confirmação
     de senha (login, esqueci senha) continuam usando o outro script. `password_key`/
     `confirm_key`/`button_key` identificam os campos e o botão (`key=...`) do formulário
     ativo. `email_key`, se informado (só a tela de cadastro passa — redefinir senha não tem
     campo de e-mail digitado), marca o campo de e-mail com borda verde/vermelha conforme o
-    formato (mesma regex de `_EMAIL_RE` em `login.py`) e inclui isso no gate do botão.
+    formato (mesma regex de `_EMAIL_RE` em `forms.py`) e inclui isso no gate do botão.
     `locked_out`, se `True` (bloqueio de tentativas de código incorreto na tela de redefinir
-    senha, `login.py::_render_forgot_password_confirm`), impede o script de reabilitar o
+    senha, `forms.py::_render_forgot_password_confirm`), impede o script de reabilitar o
     botão via digitação — mesmo racional de `locked_out` em
-    `load_login_button_toggle_script()`."""
+    `load_form_button_toggle_script()`."""
     path = Path(__file__).parent.parent / "static" / "js" / "password_requirements_gate.js"
     script = (
         path.read_text(encoding="utf-8")
@@ -301,7 +301,7 @@ def validate_password(password: str) -> str:
     do app, o Cognito não impõe máximo — checar aqui evita disparar a chamada só para
     receber InvalidPasswordException. Retorna "" se válida, senão a mensagem de erro.
 
-    Pública (movida de login.py) porque profile.py também usa, na troca de senha da tela
+    Pública (movida de forms.py) porque profile.py também usa, na troca de senha da tela
     de perfil — mesma política em todos os 3 lugares que pedem senha nova (cadastro,
     esqueci senha, perfil)."""
     if len(password) < 8:
@@ -341,7 +341,7 @@ def render_password_requirements() -> None:
 
 def render_email_hint() -> None:
     """Renderiza a mensagem de formato de e-mail inválido, escondida por padrão —
-    login_button_toggle.js/password_requirements_gate.js mostram (classe
+    form_button_toggle.js/password_requirements_gate.js mostram (classe
     "email-hint-visible") quando o usuário sai do campo de e-mail (evento "blur", não a
     cada tecla — evita mostrar "inválido" enquanto o e-mail ainda está sendo digitado)
     com um valor que não bate com _EMAIL_RE. Chamada logo abaixo do st.text_input de
@@ -779,11 +779,11 @@ def render_footer() -> None:
     )
 
 
-def render_login_footer() -> None:
-    """Renderiza o rodapé simplificado da tela de login, com contato por e-mail."""
+def render_form_footer() -> None:
+    """Renderiza o rodapé simplificado das telas de autenticação, com contato por e-mail."""
     year = datetime.now(tz=timezone.utc).year
     st.markdown(
-        f'<div class="footer-login">'
+        f'<div class="footer-form">'
         f"© {year} FilmBot · Todos os direitos reservados"
         f"{_render_contact_line()}"
         f"</div>",

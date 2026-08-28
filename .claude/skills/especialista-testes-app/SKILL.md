@@ -15,20 +15,20 @@ Você é o especialista responsável pelos testes em `test/`, que espelha `app/`
 |---|---|
 | Árvore de `test/`, config geral do `pytest.ini` | `estrutura-projeto` |
 | Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `revisao-pos-mudanca-codigo` |
-| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/01_test.yml`) — `scripts/` e `app/lightsail_ia/{app,login,recommendation,cards}.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
+| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/01_test.yml`) — `scripts/` e `app/lightsail_ia/{app,forms,recommendation,cards}.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
 
 ## Débito de cobertura para chegar a 95% — ordem de prioridade
 
-Com `app.py`/`login.py`/`recommendation.py`/`cards.py` excluídos do gate (telas Streamlit, sem
+Com `app.py`/`forms.py`/`recommendation.py`/`cards.py` excluídos do gate (telas Streamlit, sem
 framework de teste automatizado no projeto), a cobertura de `app/` fica em ~95,25% — margem mínima
 (poucas linhas). Ao fechar essa lacuna, seguir esta ordem (do mais barato ao mais caro):
 
 1. **`app/lightsail_ia/src/components.py`** — funções wrapper finas em torno de
-   `st.markdown`/`components.html` (`_inject_css`, `load_base_css`, `load_login_css`, `load_app_css`,
+   `st.markdown`/`components.html` (`_inject_css`, `load_base_css`, `load_forms_css`, `load_app_css`,
    `load_recommendation_css`, `load_cards_css`, `load_preference_counter_script`,
-   `load_audio_cancel_script`, `render_footer`, `render_login_footer`). Reaproveitar o mock de
+   `load_audio_cancel_script`, `render_footer`, `render_form_footer`). Reaproveitar o mock de
    `streamlit` que já cobre `render_card`/`render_grid` no mesmo arquivo. (Contagem de linhas
-   faltando não recalculada nesta edição — mudou com o split de `app.py` em `login.py`/
+   faltando não recalculada nesta edição — mudou com o split de `app.py` em `forms.py`/
    `recommendation.py`/`cards.py`/`infrastructure.py`; ver `pytest --cov` para o número atual.)
 2. **`app/lambda_api/src/utils.py`** (12 linhas faltando) — branches de erro em
    `collect_now_playing_data`/`collect_discover_data`: `except HTTPError` (retry/continue) e
@@ -46,7 +46,7 @@ framework de teste automatizado no projeto), a cobertura de `app/` fica em ~95,2
 
 ## Mecanismo central: `test/conftest.py` (raiz) — isolamento entre suítes Glue
 
-Problema: `glue_etl`, `glue_details`, `glue_agg`, `glue_data_quality`, `lambda_api` e `lightsail_ia` importam seus próprios módulos internamente via `src.X` (`src.utils` nos 5 primeiros, `src.agent`/`src.components`/`src.infrastructure`/`src.cards`/`src.login`/`src.formatting`/`src.recommendation` em `lightsail_ia`) — mesmo nome de pacote raiz (`src`) em suítes diferentes, o que causaria uma suíte importar o módulo em cache de outra ao rodarem juntas na mesma sessão pytest.
+Problema: `glue_etl`, `glue_details`, `glue_agg`, `glue_data_quality`, `lambda_api` e `lightsail_ia` importam seus próprios módulos internamente via `src.X` (`src.utils` nos 5 primeiros, `src.agent`/`src.components`/`src.infrastructure`/`src.cards`/`src.forms`/`src.formatting`/`src.recommendation` em `lightsail_ia`) — mesmo nome de pacote raiz (`src`) em suítes diferentes, o que causaria uma suíte importar o módulo em cache de outra ao rodarem juntas na mesma sessão pytest.
 
 Solução, em `test/conftest.py`:
 - `import app` roda no topo do módulo, **antes** de qualquer `_set_suite_path`, cacheando o pacote real `app/` em `sys.modules["app"]`. Necessário porque `app/lightsail_ia/` tem um `app.py` próprio (entrypoint do Streamlit) — se a suíte `lightsail_ia` for a primeira do processo a rodar `_set_suite_path`, esse `app.py` ficaria à frente da raiz do repo no `sys.path` e sombrearia o pacote `app` de verdade (`import app` resolveria pro arquivo, não pro pacote), quebrando o import fully-qualified de **todas as outras suítes** pelo resto da sessão.

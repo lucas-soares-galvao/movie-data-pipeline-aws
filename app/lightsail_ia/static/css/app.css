@@ -1,13 +1,13 @@
 /* base.css força min-height:100vh/100dvh em stAppViewContainer pra cobrir a
    tela toda com o gradiente mesmo em conteúdo curto — necessário na tela de
-   login (login.css centraliza o card verticalmente nesse espaço). Na tela
+   login (forms.css centraliza o card verticalmente nesse espaço). Na tela
    principal isso é indesejado: o respiro entre o rodapé e o fim da página é
    fixo (ver padding-bottom do block-container abaixo), não proporcional ao
    tamanho da tela — sem zerar aqui, sobraria uma faixa vazia extra depois
    desse padding sempre que o conteúdo for mais curto que a viewport (testado:
    com min-height:100vh restaurado + margin:auto no rodapé, o vão vinha
    proporcional à tela e ficava desproporcionalmente grande em telas altas).
-   Zerado aqui (só carregado nesta tela, nunca junto de login.css) pra o
+   Zerado aqui (só carregado nesta tela, nunca junto de forms.css) pra o
    container encolher pro tamanho real do conteúdo; html/body (base.css)
    garante a mesma cor sólida por trás caso ainda sobre viewport abaixo dele. */
 [data-testid="stAppViewContainer"] {
@@ -15,7 +15,7 @@
 }
 
 /* Cabeçalho: ícone+título numa linha (.header-brand) e subtítulo solto embaixo,
-   largura toda — mesma estrutura de .login-brand/.login-subtitle na tela de
+   largura toda — mesma estrutura de .form-brand/.form-subtitle na tela de
    login (substituem st.title/st.caption, que rendem um <h1> grande demais pra
    esse contexto de topo de página) — e botão "Sair" como pill discreto,
    centralizado verticalmente entre as duas linhas. */
@@ -42,7 +42,7 @@
 /* Reduz o padding-top nativo do Streamlit (~96px) reservado pro header/toolbar —
    mesmo escondidos, o espaço continua reservado e renderiza como uma faixa vazia
    sobre o fundo gradiente (base.css) antes do cabeçalho. Reduzido, não zerado
-   (diferente de login.css): aqui há cabeçalho real logo abaixo. Aumentado de 32px
+   (diferente de forms.css): aqui há cabeçalho real logo abaixo. Aumentado de 32px
    pra 44px pra descer um pouco mais a linha "FilmBot"/"Sair", primeiro conteúdo
    do block-container.
    padding-bottom, por outro lado, é fixo (não zerado): mesmo respiro já usado no
@@ -50,12 +50,12 @@
    ver comentário do .footer mais abaixo) — o rodapé passa a ter o mesmo respiro embaixo
    que já tem em cima, independente da altura da tela. Descartado tentar centralizar
    proporcionalmente esse espaço (via display:flex + min-height:100vh no block-container
-   + margin:auto no rodapé, espelhando login.css): funcionava tecnicamente, mas em telas
+   + margin:auto no rodapé, espelhando forms.css): funcionava tecnicamente, mas em telas
    altas o vão distribuído ficava desproporcionalmente grande, maior que qualquer outro
    espaçamento da página — um valor fixo é mais consistente com o resto do design.
    56px, não os 40px do padrão: o wrapper interno que o Streamlit gera em volta do
    st.markdown do rodapé reporta uma altura ~16px menor que o conteúdo real (mesmo
-   quirk documentado pro rodapé do login, "margin-top negativo em .footer-login",
+   quirk documentado pro rodapé do login, "margin-top negativo em .footer-form",
    lightsail_ia.md) — sem compensar, o respiro visível medido (Playwright,
    getBoundingClientRect) ficava em 24px em vez de 40px. 56px = 40px pretendido + 16px
    de compensação; conferido que o respiro visível bate com o do topo ("Consultas
@@ -103,7 +103,7 @@
     display: none;
   }
 }
-/* Ícone + título lado a lado, mesmo padrão de .login-brand (login.css) — o
+/* Ícone + título lado a lado, mesmo padrão de .form-brand (forms.css) — o
    subtítulo fica fora deste flex, como linha própria abaixo (.header-subtitle),
    ocupando a largura toda da coluna em vez de ficar indentado ao lado do
    ícone. min-width:0 permite que esta linha (e o título dentro dela) encolha
@@ -116,7 +116,7 @@
   min-width: 0;
 }
 /* Wrapper do ícone Lucide "clapperboard" laranja (via components.py::icon()) — mesmo
-   estilo do wrapper da tela de login (.login-icon-badge, login.css), pra manter a
+   estilo do wrapper da tela de login (.form-icon-badge, forms.css), pra manter a
    identidade visual consistente entre as duas telas. Sem fundo/borda (era um badge com
    fundo colorido antes; virou transparente numa rodada anterior), então a caixa é do
    mesmo tamanho do ícone (size=20 em icon("clapperboard", size=20), app.py) — maior que
@@ -132,7 +132,7 @@
 }
 /* .icon (branca, de base.css) é branca por padrão — por isso o ícone laranja deste badge
    precisa da própria regra de cor aqui, sobrescrevendo-a por especificidade (mesma técnica
-   de .login-icon-badge .icon em login.css). */
+   de .form-icon-badge .icon em forms.css). */
 .header-icon-badge .icon {
   color: #f97316;
 }
@@ -150,7 +150,7 @@
   letter-spacing: -0.02em;
 }
 /* Linha própria abaixo de .header-brand (não mais empilhado ao lado do ícone) — largura
-   toda da coluna, mesmo padrão de .login-subtitle. min-width:0 libera o texto pra quebrar
+   toda da coluna, mesmo padrão de .form-subtitle. min-width:0 libera o texto pra quebrar
    em duas linhas dentro da própria coluna no mobile em vez de forçar o row a estourar
    (mesma lógica do flex-wrap:nowrap documentado no topo do arquivo). */
 .header-subtitle {

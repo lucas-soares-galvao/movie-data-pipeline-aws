@@ -237,7 +237,7 @@ resource "aws_cognito_user_pool" "filmbot" {
   }
 
   # Data/hora (ISO 8601 UTC) do último login bem-sucedido, gravada por
-  # infrastructure.record_login() a cada AdminInitiateAuth com sucesso (login.py)
+  # infrastructure.record_login() a cada AdminInitiateAuth com sucesso (forms.py)
   # e lida de volta por admin.py para a coluna "Último acesso" do painel admin.
   # Atributos custom podem ser adicionados a um pool já existente sem forçar
   # recriação (não podem ser removidos depois — decisão permanente).
