@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação e do perfil (`sign_up`, `confirm_sign_up`, `resend_confirmation_code`, `authenticate`, `record_login`, `record_password_update`, `is_admin`, `get_user_status`, `get_user_profile`, `update_user_name`, `change_password`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `approve_signup`, `reject_signup`, `revoke_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `admin.py`, `profile.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`), os rodapés (`render_footer`/`render_login_footer`, incluindo o link de contato por e-mail via `_render_contact_line()`), o helper de ícone Lucide (`icon()`/`ICON_PATHS`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_login_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação e do perfil (`sign_up`, `confirm_sign_up`, `resend_confirmation_code`, `authenticate`, `record_login`, `record_password_update`, `is_admin`, `get_user_status`, `get_user_profile`, `update_user_name`, `change_password`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `list_unconfirmed_users`, `approve_signup`, `reject_signup`, `revoke_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `login.py`, `admin.py`, `profile.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -248,6 +248,17 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_prioriza_provedor_destacado_mesmo_com_logo` | `highlighted` continua priorizando o provedor certo mesmo quando os badges são imagens, não texto |
 | `test_provedor_destacado_ganha_classe_highlighted` | Provedor destacado renderiza com a classe `.highlighted` (borda + texto laranja); os demais renderizam sem ela |
 
+### `TestIcon` — Ícone Lucide inline (`icon()`/`ICON_PATHS`)
+
+| Teste | O que verifica |
+|---|---|
+| `test_icone_mic_existe` | Ícone "mic" existe em `ICON_PATHS` e monta `<svg>` com a classe `icon-mic` — usado só em `recommendation.py`, sem cobertura indireta via `render_card()` |
+| `test_icone_usa_stroke_current_color` | `icon()` sempre usa `stroke="currentColor"` (cor herdada via CSS) |
+| `test_icone_respeita_size_customizado` | Parâmetro `size` reflete em `width`/`height` do `<svg>` |
+| `test_icone_user_existe` | Ícone "user" existe em `ICON_PATHS` — usado só no menu vertical de `profile.py`/`admin.py`, fora do gate de cobertura |
+| `test_icone_lock_existe` | Ícone "lock" existe em `ICON_PATHS` — mesmo caso do "user" acima |
+| `test_icone_mail_existe` | Ícone "mail" existe em `ICON_PATHS` e monta `<svg>` com a classe `icon-mail` — usado por `_render_contact_line()` no rodapé |
+
 ### `TestRenderCard` — Renderização de cards individuais
 
 | Teste | O que verifica |
@@ -293,6 +304,19 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 |---|---|
 | `test_grid_vazio` | Grid vazio renderiza container sem cards |
 | `test_grid_com_titulos` | Grid com múltiplos títulos renderiza múltiplos cards |
+
+### `TestRenderFooter` — Rodapé da página principal
+
+| Teste | O que verifica |
+|---|---|
+| `test_mantem_credito_tmdb` | Regressão: rodapé continua exibindo o crédito "TMDB" após a adição do contato |
+| `test_inclui_link_de_contato_por_email` | Rodapé inclui `<a href="mailto:filmbot.lsgalvao@gmail.com">` com o ícone "mail" (`_render_contact_line()`) |
+
+### `TestRenderLoginFooter` — Rodapé simplificado das telas de login/cadastro
+
+| Teste | O que verifica |
+|---|---|
+| `test_inclui_link_de_contato_por_email` | Rodapé de login também inclui o mesmo link de contato por e-mail (`_render_contact_line()`) |
 
 ### `TestValidatePassword` — Política de senha (movida de `login.py`, também usada por `profile.py`)
 
@@ -406,7 +430,7 @@ Só o ramo de saída antecipada é testado — o ramo que efetivamente chama AWS
 | `test_calcula_segundos_restantes_ate_evento_mais_antigo_expirar` | Calcula corretamente os segundos restantes até o evento mais antigo sair da janela |
 | `test_retorna_zero_quando_janela_ja_expirou` | Janela já expirada → `0`, nunca negativo |
 
-### Autenticação e perfil (Cognito/SNS) — `TestSignUp`, `TestConfirmSignUp`, `TestResendConfirmationCode`, `TestAuthenticate`, `TestRecordLogin`, `TestRecordPasswordUpdate`, `TestGetUserProfile`, `TestUpdateUserName`, `TestChangePassword`, `TestIsAdmin`, `TestGetUserStatus`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
+### Autenticação e perfil (Cognito/SNS) — `TestSignUp`, `TestConfirmSignUp`, `TestResendConfirmationCode`, `TestAuthenticate`, `TestRecordLogin`, `TestRecordPasswordUpdate`, `TestGetUserProfile`, `TestUpdateUserName`, `TestChangePassword`, `TestIsAdmin`, `TestGetUserStatus`, `TestRequestPasswordReset`, `TestConfirmPasswordReset`, `TestListPendingUsers`, `TestListActiveUsers`, `TestListUnconfirmedUsers`, `TestApproveSignup`, `TestRejectSignup`, `TestRevokeAccess`, `TestAddToAdminsGroup`, `TestNotifyNewSignup`
 
 Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à API do Cognito/SNS (`assert_called_once_with`), sem tocar AWS de verdade — mesmo padrão do resto do arquivo.
 
@@ -429,6 +453,7 @@ Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à AP
 | `test_grava_nome_no_atributo_name` (`TestUpdateUserName`) | `update_user_name()` chama `AdminUpdateUserAttributes` gravando o atributo `name` |
 | `test_retorna_ok_e_define_senha_nova_quando_senha_atual_correta` (`TestChangePassword`) | `change_password()` reautentica via `authenticate()` e, com sucesso, chama `AdminSetUserPassword(Permanent=True)`, retornando `"ok"` |
 | `test_retorna_invalid_sem_definir_senha_quando_senha_atual_incorreta` | Reautenticação falha → retorna `"invalid"` sem chamar `AdminSetUserPassword` |
+| `test_define_senha_e_grava_nome_novo_sem_reautenticar` (`TestApplyResumedSignup`) | `apply_resumed_signup()` chama `AdminSetUserPassword(Permanent=True)` e `AdminUpdateUserAttributes` (atributo `name`) sem reautenticar via `AdminInitiateAuth` — usado por `login.py::_render_signup_confirm` só depois de `confirm_sign_up()` validar o código, pra aplicar a senha/nome do cadastro retomado (a posse do código já é a prova de identidade, `change_password()` não serve aqui porque a conta já está `Disabled` nesse ponto) |
 | `test_retorna_true_quando_usuario_pertence_ao_grupo_admins` / `test_retorna_false_quando_usuario_nao_pertence_ao_grupo_admins` | `is_admin()` checa `AdminListGroupsForUser` pelo `GroupName == "admins"` |
 | `test_retorna_user_status_quando_lista_de_usuarios_nao_esta_vazia` / `test_retorna_none_quando_lista_de_usuarios_esta_vazia` | `get_user_status()` chama `ListUsers` com `Filter='email = "..."'` e retorna o `UserStatus` do primeiro usuário encontrado, ou `None` se a lista veio vazia — usado na tela "Esqueci a senha" pra avisar quando o e-mail não tem cadastro (`None`) ou ainda está pendente de aprovação (`"UNCONFIRMED"`) |
 | `test_retorna_none_sem_chamar_a_api_quando_email_contem_aspas` | E-mail com `"` quebraria a sintaxe do `Filter` (sem escaping documentado) — `get_user_status()` retorna `None` sem chamar `ListUsers` |
@@ -440,6 +465,8 @@ Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à AP
 | `test_descarta_usuarios_que_ainda_nao_confirmaram_o_email` | `list_pending_users()` filtra em Python só `UserStatus == "CONFIRMED"` — quem ainda está `UNCONFIRMED` (não confirmou o e-mail) não aparece no painel admin |
 | `test_filtra_por_status_enabled` | `list_active_users()` chama `ListUsers` com `Filter='status = "Enabled"'` |
 | `test_descarta_usuarios_ainda_nao_confirmados_por_defesa` | `list_active_users()` também filtra em Python por `UserStatus == "CONFIRMED"`, defesa contra um caso que não deveria ocorrer no fluxo normal |
+| `test_filtra_por_status_enabled` (`TestListUnconfirmedUsers`) | `list_unconfirmed_users()` chama `ListUsers` com o mesmo `Filter='status = "Enabled"'` de `list_active_users()` — reaproveita o filtro já testado em vez de introduzir uma sintaxe nova (ex.: `cognito:user_status`) |
+| `test_mantem_apenas_usuarios_ainda_nao_confirmados` | `list_unconfirmed_users()` filtra em Python só `UserStatus == "UNCONFIRMED"` — espelho invertido de `list_active_users()`, para cadastros abandonados nesse estado (antes invisíveis nas duas listas) aparecerem no painel admin |
 | `test_habilita_a_conta` (`TestApproveSignup`) | `approve_signup()` chama só `AdminEnableUser` — confirmação e verificação do e-mail já aconteceram via `confirm_sign_up()` do próprio usuário |
 | `test_exclui_a_conta` (`TestRejectSignup`) | `reject_signup()` chama `AdminDeleteUser` |
 | `test_exclui_a_conta` (`TestRevokeAccess`) | `revoke_access()` chama `AdminDeleteUser` — mesma decisão de sem histórico usada em `reject_signup()` |
