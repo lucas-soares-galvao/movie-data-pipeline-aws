@@ -100,16 +100,16 @@ class TestValidatePassword:
 
 
 class TestFaviconSvg:
-    """favicon_svg() monta um SVG autocontido (cores hardcoded, não currentColor — um
+    """favicon_svg() monta um SVG autocontido (cor hardcoded, não currentColor — um
     favicon é carregado como recurso isolado, sem acesso ao CSS da página)."""
 
     def test_e_svg(self):
         svg = components.favicon_svg()
         assert svg.startswith("<svg")
 
-    def test_usa_cores_hardcoded_do_badge(self):
+    def test_fundo_transparente_sem_badge(self):
         svg = components.favicon_svg()
-        assert "#1a1a1a" in svg
+        assert "<rect" not in svg
         assert "#f97316" in svg
 
     def test_nao_depende_de_current_color(self):
