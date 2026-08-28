@@ -79,7 +79,7 @@ class TestIcon:
 
 class TestValidatePassword:
     """validate_password() — política do Cognito (infra/lightsail_ia.tf) mais o teto de
-    16 caracteres, só do app. Movida de login.py: também usada por profile.py na troca
+    16 caracteres, só do app. Movida de forms.py: também usada por profile.py na troca
     de senha da tela de perfil."""
 
     def test_aceita_senha_que_atende_todos_os_criterios(self):
@@ -273,14 +273,14 @@ class TestLoadCountdownScript:
         assert 'getElementById("audio-countdown")' in captured["content"]
 
 
-class TestLoadLoginButtonToggleScript:
+class TestLoadFormButtonToggleScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(
             components.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        components.load_login_button_toggle_script(False)
+        components.load_form_button_toggle_script(False)
         assert "btn_entrar" in captured["content"]
         assert captured["height"] == 0
 
@@ -290,7 +290,7 @@ class TestLoadLoginButtonToggleScript:
             components.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        components.load_login_button_toggle_script(False)
+        components.load_form_button_toggle_script(False)
         assert "__LOCKED_OUT__" not in captured["content"]
         assert "const lockedOut = false;" in captured["content"]
 
@@ -300,7 +300,7 @@ class TestLoadLoginButtonToggleScript:
             components.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        components.load_login_button_toggle_script(True)
+        components.load_form_button_toggle_script(True)
         assert "const lockedOut = true;" in captured["content"]
 
     def test_substitui_button_key_customizado(self, monkeypatch):
@@ -309,7 +309,7 @@ class TestLoadLoginButtonToggleScript:
             components.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        components.load_login_button_toggle_script(False, button_key="btn_cadastrar")
+        components.load_form_button_toggle_script(False, button_key="btn_cadastrar")
         assert "__BUTTON_KEY__" not in captured["content"]
         assert 'const buttonKey = "btn_cadastrar";' in captured["content"]
 
@@ -319,7 +319,7 @@ class TestLoadLoginButtonToggleScript:
             components.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        components.load_login_button_toggle_script(False)
+        components.load_form_button_toggle_script(False)
         assert "__EMAIL_KEY__" not in captured["content"]
         assert 'const emailKey = "";' in captured["content"]
 
@@ -329,7 +329,7 @@ class TestLoadLoginButtonToggleScript:
             components.components, "html",
             lambda content, height=0: captured.update(content=content, height=height),
         )
-        components.load_login_button_toggle_script(False, email_key="reset_email")
+        components.load_form_button_toggle_script(False, email_key="reset_email")
         assert "__EMAIL_KEY__" not in captured["content"]
         assert 'const emailKey = "reset_email";' in captured["content"]
 
@@ -449,7 +449,7 @@ class TestRenderPasswordRequirements:
 class TestRenderEmailHint:
     """render_email_hint() renderiza a mensagem de formato de e-mail inválido, exibida
     abaixo do campo "E-mail" nas telas de cadastro e esqueci a senha, escondida por
-    padrão até login_button_toggle.js/password_requirements_gate.js mostrá-la no blur."""
+    padrão até form_button_toggle.js/password_requirements_gate.js mostrá-la no blur."""
 
     def test_renderiza_mensagem_com_id_fixo(self, monkeypatch):
         captured = {}
@@ -1481,13 +1481,13 @@ class TestRenderFooter:
         assert 'class="icon icon-mail"' in captured["content"]
 
 
-class TestRenderLoginFooter:
+class TestRenderFormFooter:
     def test_inclui_link_de_contato_por_email(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(
             components.st, "markdown",
             lambda content, unsafe_allow_html=False: captured.update(content=content),
         )
-        components.render_login_footer()
+        components.render_form_footer()
         assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
         assert 'class="icon icon-mail"' in captured["content"]

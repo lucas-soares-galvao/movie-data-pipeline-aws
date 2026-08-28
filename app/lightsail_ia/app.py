@@ -10,12 +10,12 @@ from src.components import (
     load_scroll_lock_script,
     render_footer,
 )
+from src.forms import render_forms
 from src.infrastructure import (
     get_client_ip,
     load_filmbot_password,
     setup_cloudwatch_logging,
 )
-from src.login import render_login
 from src.profile import render_profile_panel
 from src.recommendation import render_recommendation
 
@@ -26,7 +26,7 @@ st.set_page_config(page_title="FilmBot", page_icon=favicon_svg(), layout="wide")
 
 client_ip = get_client_ip()
 
-render_login(client_ip)
+render_forms(client_ip)
 
 # ==============================================================================
 # PÁGINA PRINCIPAL

@@ -2,7 +2,7 @@
 e edição do próprio nome/senha do admin).
 
 Só é chamado por app.py quando st.session_state["is_admin"] é True (setado em
-login.py::_render_login_form a partir de infrastructure.is_admin() no momento do
+forms.py::_render_login_form a partir de infrastructure.is_admin() no momento do
 login) — este módulo não repete o gate, confia no chamador."""
 
 from datetime import datetime

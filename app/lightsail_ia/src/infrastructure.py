@@ -136,7 +136,7 @@ def confirm_sign_up(email: str, code: str) -> None:
 
     Exceptions relevantes do ConfirmSignUp: CodeMismatchException, ExpiredCodeException,
     LimitExceededException, TooManyFailedAttemptsException, AliasExistsException,
-    UserNotFoundException (ver _signup_code_error_message em login.py para o
+    UserNotFoundException (ver _signup_code_error_message em forms.py para o
     mapeamento de mensagem)."""
     client = _cognito_client()
     client.confirm_sign_up(
@@ -200,7 +200,7 @@ def authenticate(email: str, password: str) -> str:
 def record_login(email: str) -> None:
     """Grava o timestamp (ISO 8601 UTC) do login bem-sucedido no atributo custom
     `custom:last_login` (infra/lightsail_ia.tf), lido de volta por _parse_user()
-    para a coluna "Último acesso" do painel admin. Chamado por login.py logo após
+    para a coluna "Último acesso" do painel admin. Chamado por forms.py logo após
     um authenticate() com retorno "ok"."""
     _cognito_client().admin_update_user_attributes(
         UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
@@ -212,7 +212,7 @@ def record_login(email: str) -> None:
 def record_password_update(email: str) -> None:
     """Grava o timestamp (ISO 8601 UTC) da troca de senha bem-sucedida no atributo
     custom `custom:password_updated_at` (infra/lightsail_ia.tf), lido de volta por
-    _parse_user() para a coluna "Atualizado em" do painel admin. Chamado por login.py
+    _parse_user() para a coluna "Atualizado em" do painel admin. Chamado por forms.py
     logo após um confirm_password_reset() bem-sucedido."""
     _cognito_client().admin_update_user_attributes(
         UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
@@ -272,7 +272,7 @@ def change_password(email: str, current_password: str, new_password: str) -> str
 
 def apply_resumed_signup(email: str, password: str, name: str) -> None:
     """Grava a senha e o nome digitados na segunda tentativa de um cadastro retomado
-    (e-mail que já existia como UNCONFIRMED, ver _resume_abandoned_signup em login.py) —
+    (e-mail que já existia como UNCONFIRMED, ver _resume_abandoned_signup em forms.py) —
     só deve ser chamada depois que confirm_sign_up() já validou o código de confirmação,
     ou seja, depois de provar posse do e-mail. Chamar isso antes da confirmação seria uma
     brecha de account takeover (ver docstring de _resume_abandoned_signup).
@@ -449,7 +449,7 @@ def add_to_admins_group(email: str) -> None:
 def notify_new_signup(email: str, name: str) -> None:
     """Publica no tópico SNS de cadastro novo (infra/sns_topics.tf), para o admin saber
     que há alguém esperando aprovação sem precisar checar o painel periodicamente.
-    Chamado por login.py só depois que o usuário confirma a posse do e-mail
+    Chamado por forms.py só depois que o usuário confirma a posse do e-mail
     (confirm_sign_up bem-sucedido) — não mais logo após sign_up() — para o admin só
     ser avisado de cadastros que já provaram o e-mail."""
     client = boto3.client("sns", region_name=os.getenv("AWS_REGION", "sa-east-1"))

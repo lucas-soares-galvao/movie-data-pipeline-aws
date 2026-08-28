@@ -9,7 +9,7 @@
     const buttonKey = "__BUTTON_KEY__";
     const emailKey = "__EMAIL_KEY__";
 
-    // Mesma regex de _EMAIL_RE em login.py, que continua a fonte de verdade — este
+    // Mesma regex de _EMAIL_RE em forms.py, que continua a fonte de verdade — este
     // script só antecipa a borda verde/vermelha antes do submit. Só a tela de
     // "esqueci a senha" passa emailKey (login não precisa: formato inválido já
     // falha na autenticação normalmente).
@@ -19,7 +19,7 @@
         // Generalizado para N campos (login: e-mail+senha, cadastro: nome+e-mail+
         // senha+confirmar, esqueci senha: variável) — todos os stTextInput visíveis
         // precisam estar preenchidos, não só o primeiro. Só existe um formulário
-        // visível por vez (render_login troca de view via st.session_state e chama
+        // visível por vez (render_forms troca de view via st.session_state e chama
         // st.stop() logo depois), então "todos os inputs da página" == "todos os
         // inputs deste formulário".
         const inputs = doc.querySelectorAll('[data-testid="stTextInput"] input');

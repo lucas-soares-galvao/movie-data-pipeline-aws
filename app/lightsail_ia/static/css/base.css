@@ -10,12 +10,12 @@ html, body {
   background: #050508;
 }
 
-/* Fundo cinematografico — mesmo gradiente radial usado em login.css, para
+/* Fundo cinematografico — mesmo gradiente radial usado em forms.css, para
    as duas telas terem a mesma textura de fundo. */
 [data-testid="stAppViewContainer"] {
   background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
   /* 100dvh acompanha a altura visível real em mobile (100vh usa a altura máxima,
-     com a barra de endereço recolhida) — ver login.css para o efeito visual disso
+     com a barra de endereço recolhida) — ver forms.css para o efeito visual disso
      na centralização do card de login. 100vh fica como fallback. */
   min-height: 100vh;
   min-height: 100dvh;
@@ -41,13 +41,13 @@ button[data-testid="stBaseButton-secondary"] {
    "Meu Perfil" (profile.css: .st-key-admin-shell/.st-key-profile-shell — pedido do
    usuário para a barra de navegação/tabela/forms terem a mesma largura do cabeçalho e
    da caixa de texto da recomendação), por isso mora aqui em vez de em qualquer um
-   deles. O card de login (.st-key-login-card, login.css) fica de fora desta lista de
+   deles. O card de login (.st-key-form-card, forms.css) fica de fora desta lista de
    propósito: das 7 sub-telas do fluxo de autenticação, só Cadastro e "Esqueci a senha"
    (etapa 2) têm campos pareados o suficiente pra justificar 640px — as outras 5 (login
    puro, confirmar cadastro, etc.) ficariam com espaço vazio nessa largura (pedido
    explícito do usuário, com print da tela de login mostrando o problema). Como as 7
    telas compartilham a mesma key, a diferenciação entre "larga"/"estreita" é feita em
-   login.css via seletor `:has()`, não aqui. */
+   forms.css via seletor `:has()`, não aqui. */
 .st-key-hero-section,
 .st-key-hero-actions,
 .st-key-header-row,
@@ -59,7 +59,7 @@ button[data-testid="stBaseButton-secondary"] {
   /* Sem isso, o padding adicionado no @media abaixo soma por fora do width:100%
      (content-box, padrão do navegador) e o elemento fica 16px mais largo que o
      container — mesma causa do scroll horizontal já corrigido em
-     .st-key-login-card (login.css). */
+     .st-key-form-card (forms.css). */
   box-sizing: border-box;
 }
 
@@ -69,9 +69,9 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 /* Lista de critérios de senha (password_requirements_gate.js) — compartilhada por
-   login.css (cadastro, "esqueci a senha") e profile.css (aba "Senha" do Perfil/Admin).
+   forms.css (cadastro, "esqueci a senha") e profile.css (aba "Senha" do Perfil/Admin).
    Consolidada aqui (antes duplicada, quase idêntica, em cada um dos dois arquivos, já
-   que login.css e profile.css nunca são carregados juntos) para as duas telas ficarem
+   que forms.css e profile.css nunca são carregados juntos) para as duas telas ficarem
    garantidamente iguais sem depender de manter duas cópias em sincronia. Neutro
    (#6b7280) enquanto a senha estiver vazia; verde/vermelho conforme o JS marca cada
    critério como atendido/não atendido. */
@@ -112,7 +112,7 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 /* Linha de campos de senha (50%) + painel de requisitos (50%) — usada tanto por
-   profile.py::render_password_tab quanto por login.py::_render_forgot_password_confirm
+   profile.py::render_password_tab quanto por forms.py::_render_forgot_password_confirm
    (ambos usam st.container(key="password-fields-row") + st.columns(2, gap="medium")
    com essa forma exata: campos empilhados numa coluna, requisitos na outra). Consolidada
    aqui em vez de duplicada por tela, já que as duas telas compartilham a mesma key e a
@@ -167,11 +167,11 @@ button[data-testid="stBaseButton-secondary"] {
    "searching" (recommendation.css, .st-key-hero-actions). Escopada explicitamente a
    essas duas classes (antes era global, "qualquer stHorizontalBlock sem h1") — o
    seletor genérico também pegava sem querer as 3 colunas do login (st.columns([1, 1.1,
-   1]) em login.py, nunca envolvidas num container com key própria), forçando um
-   colapso ali que login.css precisava reverter com overrides cada vez mais
+   1]) em forms.py, nunca envolvidas num container com key própria), forçando um
+   colapso ali que forms.css precisava reverter com overrides cada vez mais
    específicos. Ver histórico: bug introduzido nesta regra (commit 4ff3b59), sintoma
    "consertado" só pro desktop em 02228c4, e só pro mobile na correção seguinte —
-   ambos removidos de login.css agora que a causa raiz está corrigida aqui. */
+   ambos removidos de forms.css agora que a causa raiz está corrigida aqui. */
 .st-key-header-row [data-testid="stHorizontalBlock"] > div,
 .st-key-hero-actions [data-testid="stHorizontalBlock"] > div {
   flex: 0 0 auto !important;
@@ -224,7 +224,7 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 /* Mensagens de feedback — largura cheia do container (640px do hero, ou do card de
-   login), não uma fração dele. Compartilhado por login.css e recommendation.css (rate
+   login), não uma fração dele. Compartilhado por forms.css e recommendation.css (rate
    limit, avisos de transcrição, erro/sem-resultado de busca — todos dentro de
    hero-actions). Ícone (.msg-icon) e texto (.msg-text, ver render_feedback() em
    components.py) viram flex items separados porque o glifo de emoji usa a fonte de

@@ -61,7 +61,7 @@
   }
 }
 
-/* Labels visíveis (diferente de login.py, que usa label_visibility="collapsed" com
+/* Labels visíveis (diferente de forms.py, que usa label_visibility="collapsed" com
    texto só no placeholder) — sem esta regra o texto do label herdaria a cor escura
    padrão do tema claro nativo do Streamlit (este projeto não fixa [theme] no
    config.toml, ver base.css), ilegível contra o fundo escuro custom da página. */
@@ -126,12 +126,12 @@
 
 /* .password-requirements/.password-requirements-title e .st-key-password-fields-row
    (linha dos campos de senha (50%) + painel de requisitos (50%),
-   render_password_tab::st.columns(2)) vêm de base.css — compartilhados com login.css
+   render_password_tab::st.columns(2)) vêm de base.css — compartilhados com forms.css
    (_render_forgot_password_confirm usa a mesma key "password-fields-row"), antes
    duplicados aqui. */
 
 /* Botão de ação primário ("Salvar Perfil →", "Salvar Senha →") — mesmos valores
-   exatos do botão primário de login.css (ex.: "Ir para o login →"), mesmo padrão
+   exatos do botão primário de forms.css (ex.: "Ir para o login →"), mesmo padrão
    pill: font-size/padding/margin-top idênticos, para não ficar um pouco menor que o
    resto das telas de autenticação.
 
@@ -179,7 +179,7 @@
    especificidade — em empate, quem vem depois no arquivo vence): estava ANTES
    originalmente e a regra desktop vencia mesmo dentro do breakpoint mobile,
    cancelando este width:100% silenciosamente — corrigido junto com a mesma
-   padronização replicada em login.css/recommendation.css. */
+   padronização replicada em forms.css/recommendation.css. */
 @media (max-width: 768px) {
   .st-key-profile-card [data-testid="stButton"] > button,
   .st-key-admin-profile-card [data-testid="stButton"] > button,

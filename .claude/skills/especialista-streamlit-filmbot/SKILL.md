@@ -14,11 +14,11 @@ Você é o responsável pela consistência visual do FilmBot (`app/lightsail_ia/
 | O quê | Onde |
 |---|---|
 | Tokens/referência de design ("Luminous") | `app/lightsail_ia/design/ai-social-automation.aura.build/design-system.html` |
-| Implementação real em produção | `app/lightsail_ia/static/css/base.css` (transversal), `static/css/login.css`, `static/css/app.css` (cabeçalho/rodapé), `static/css/recommendation.css`, `static/css/cards.css`, `static/js/contador_caracteres.js` |
+| Implementação real em produção | `app/lightsail_ia/static/css/base.css` (transversal), `static/css/forms.css`, `static/css/app.css` (cabeçalho/rodapé), `static/css/recommendation.css`, `static/css/cards.css`, `static/js/contador_caracteres.js` |
 | Helpers Python de renderização | `app/lightsail_ia/src/components.py` |
 | Doc funcional do app | `app/lightsail_ia/lightsail_ia.md` |
 
-Regra: nunca duplicar um helper que já existe em `components.py` (`_inject_css`, `load_base_css`, `load_login_css`, `load_app_css`, `load_recommendation_css`, `load_cards_css`, `render_card`, `render_grid`, `load_preference_counter_script`) — estenda ou reutilize. Cada `load_*_css()` de tela injeta `base.css` antes do CSS próprio — ao adicionar uma regra transversal nova, ela vai em `base.css`, nunca duplicada nos arquivos de tela.
+Regra: nunca duplicar um helper que já existe em `components.py` (`_inject_css`, `load_base_css`, `load_forms_css`, `load_app_css`, `load_recommendation_css`, `load_cards_css`, `render_card`, `render_grid`, `load_preference_counter_script`) — estenda ou reutilize. Cada `load_*_css()` de tela injeta `base.css` antes do CSS próprio — ao adicionar uma regra transversal nova, ela vai em `base.css`, nunca duplicada nos arquivos de tela.
 
 ## Tokens do design system "Luminous"
 
@@ -65,7 +65,7 @@ Três cenários distintos — não confunda um com o outro:
 
 ## Checklist antes de finalizar uma mudança visual
 
-- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`>768px` e `≤768px`) — `app.py`/`login.py`/`recommendation.py`/`cards.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. Esses 4 arquivos estão inclusive excluídos do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
-- Confira que nenhum seletor novo quebra os já existentes em `base.css`/`login.css`/`app.css`/`recommendation.css`/`cards.css` — teste visualmente as duas telas (login e principal). Se a mudança tocar uma regra genuinamente transversal (usada por mais de uma tela), ela pertence a `base.css`, não duplicada nos arquivos de tela.
-- Se a mudança tocar `components.py`/`infrastructure.py` ou lógica Python testável (fora de `app.py`/`login.py`/`recommendation.py`/`cards.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
+- Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`>768px` e `≤768px`) — `app.py`/`forms.py`/`recommendation.py`/`cards.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. Esses 4 arquivos estão inclusive excluídos do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
+- Confira que nenhum seletor novo quebra os já existentes em `base.css`/`forms.css`/`app.css`/`recommendation.css`/`cards.css` — teste visualmente as duas telas (login e principal). Se a mudança tocar uma regra genuinamente transversal (usada por mais de uma tela), ela pertence a `base.css`, não duplicada nos arquivos de tela.
+- Se a mudança tocar `components.py`/`infrastructure.py` ou lógica Python testável (fora de `app.py`/`forms.py`/`recommendation.py`/`cards.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
 - Prosa em português, identificadores em inglês, conforme `CLAUDE.md`.

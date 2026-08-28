@@ -356,7 +356,7 @@
    afetar o botão "Recomendar" desabilitado do estado de busca, que mantém
    o layout compacto em colunas. */
 /* Wrapper centralizado — a key já está no próprio [data-testid="stButton"] (mesmo
-   padrão de .st-key-btn_reenviar_codigo em login.css), então basta esta regra, sem
+   padrão de .st-key-btn_reenviar_codigo em forms.css), então basta esta regra, sem
    precisar de combinador descendente. Necessário porque o botão abaixo tem largura
    fixa (140px, mesmo padrão de .st-key-profile-card [data-testid="stButton"] >
    button em profile.css) — sem isso ele colaria na esquerda do wrapper. */
@@ -381,7 +381,7 @@
   opacity: 0.5;
   box-shadow: none;
 }
-/* Volta a 100% no mobile, mesmo racional de login.css/profile.css. Posicionado DEPOIS
+/* Volta a 100% no mobile, mesmo racional de forms.css/profile.css. Posicionado DEPOIS
    da regra desktop acima (mesma especificidade — em empate, quem vem depois no
    arquivo vence) para não repetir o bug de ordem encontrado em profile.css. */
 @media (max-width: 768px) {
