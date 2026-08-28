@@ -60,7 +60,7 @@
 /* Modal de confirmação (_render_confirm_dialog, admin.py) — st.dialog(width="small") já é a
    opção nativa mais estreita do Streamlit, mas ainda assim tem até 500px (docstring de
    dialog_decorator), o que deixa os dois botões width="stretch" muito largos. Restringe pro
-   mesmo 440px das sub-telas estreitas de auth (login.css), sem precisar fixar width="stretch"
+   mesmo 440px das sub-telas estreitas de auth (forms.css), sem precisar fixar width="stretch"
    pra um valor em Python (columns continuam 50/50, só o card encolhe).
 
    [data-testid="stDialog"] em si NÃO é o card visível — é o overlay de tela cheia

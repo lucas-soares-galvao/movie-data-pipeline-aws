@@ -4,19 +4,19 @@
     const confirmKey = "__CONFIRM_KEY__";
     const buttonKey = "__BUTTON_KEY__";
     const emailKey = "__EMAIL_KEY__";
-    // Mesmo motivo do "lockedOut" em login_button_toggle.js: se a Python já computou
+    // Mesmo motivo do "lockedOut" em form_button_toggle.js: se a Python já computou
     // disabled=True por bloqueio de tentativas de código incorreto (não por campo vazio ou
     // senha inválida), o JS nunca deve reabilitar o botão via digitação — só o rerun
     // seguinte (quando o bloqueio já não se aplicar) manda esse valor atualizado.
     const lockedOut = __LOCKED_OUT__;
 
-    // Mesma regex de _EMAIL_RE em login.py, que continua a fonte de verdade — este
+    // Mesma regex de _EMAIL_RE em forms.py, que continua a fonte de verdade — este
     // script só antecipa a borda verde/vermelha antes do submit.
     const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
     // Mesma política de infra/lightsail_ia.tf (aws_cognito_user_pool.filmbot.password_policy)
     // + teto de 16 caracteres (regra só do app — Cognito não impõe máximo). Espelha
-    // _validate_password em login.py, que continua a fonte de verdade: este script só
+    // _validate_password em forms.py, que continua a fonte de verdade: este script só
     // antecipa o feedback antes do submit, a chamada ao Cognito valida de novo. Nomeados
     // por `key` (casam com os data-req="..." de render_password_requirements() em
     // components.py) em vez de um só booleano encadeado, pra dar o ✓/✗ por critério.
@@ -41,7 +41,7 @@
         const email = emailKey ? doc.querySelector(`.st-key-${emailKey} input`) : null;
         const hint = emailKey ? doc.getElementById("email-hint") : null;
         // Generalizado para N campos (cadastro: nome+e-mail+senha+confirmar; redefinir
-        // senha: código+senha+confirmar), mesmo racional de login_button_toggle.js — só
+        // senha: código+senha+confirmar), mesmo racional de form_button_toggle.js — só
         // existe um formulário visível por vez.
         const inputs = doc.querySelectorAll('[data-testid="stTextInput"] input');
         if (!password || !confirm || !btn || !requirements || (emailKey && (!email || !hint)) || !inputs.length) {
@@ -94,7 +94,7 @@
             setReqState("match", confirm.value.length === 0, matches);
         };
 
-        // Reanexado a cada attach() sem guard — mesmo racional de login_button_toggle.js:
+        // Reanexado a cada attach() sem guard — mesmo racional de form_button_toggle.js:
         // um guard baseado em dataset no nó persistido do input sobrevive entre reruns e
         // bloqueava o rebind quando o iframe (components.html, recriado a cada rerun) e o
         // listener antigo eram substituídos no meio de uma sequência de campos, travando o

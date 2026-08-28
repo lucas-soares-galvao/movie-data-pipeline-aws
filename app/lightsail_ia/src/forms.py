@@ -1,4 +1,4 @@
-"""login.py — telas de autenticação do FilmBot (login, cadastro, esqueci a senha)."""
+"""forms.py — telas de autenticação do FilmBot (login, cadastro, esqueci a senha)."""
 
 import logging
 import re
@@ -10,12 +10,12 @@ from src import infrastructure
 from src.components import (
     icon,
     load_countdown_script,
-    load_login_button_toggle_script,
-    load_login_css,
+    load_form_button_toggle_script,
+    load_forms_css,
     load_password_requirements_gate_script,
     render_email_hint,
     render_feedback,
-    render_login_footer,
+    render_form_footer,
     render_password_requirements,
     validate_password,
 )
@@ -86,7 +86,7 @@ def _create_signup_code_attempt_history() -> dict[str, list[float]]:
 _signup_code_attempt_history = _create_signup_code_attempt_history()
 
 
-def render_login(client_ip: str) -> None:
+def render_forms(client_ip: str) -> None:
     """Renderiza a tela de autenticação ativa (login, cadastro ou esqueci a senha) e
     interrompe a execução do script (`st.stop()`) se o usuário ainda não estiver
     autenticado. Se já autenticado, retorna sem efeito.
@@ -98,7 +98,7 @@ def render_login(client_ip: str) -> None:
     if st.session_state.get("authenticated"):
         return
 
-    load_login_css()
+    load_forms_css()
 
     view = st.session_state.get("auth_view", "login")
     if view == "signup":
@@ -124,21 +124,21 @@ def _switch_view(view: str) -> None:
 
 def _brand_header(title: str | None = None) -> None:
     st.markdown(f"""
-    <div class="login-brand">
-      <span class="login-icon-badge">{icon("clapperboard", size=18)}</span>
-      <p class="login-title">FilmBot</p>
+    <div class="form-brand">
+      <span class="form-icon-badge">{icon("clapperboard", size=18)}</span>
+      <p class="form-title">FilmBot</p>
     </div>
-    <p class="login-subtitle">Seu assistente de filmes e séries com IA</p>
+    <p class="form-subtitle">Seu assistente de filmes e séries com IA</p>
     """, unsafe_allow_html=True)
     if title:
-        st.markdown(f'<p class="login-page-title">{title}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="form-page-title">{title}</p>', unsafe_allow_html=True)
 
 
 def _render_login_form(client_ip: str) -> None:
     _failed_attempts = events_in_window(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS)
     _locked_out = _failed_attempts >= _MAX_LOGIN_ATTEMPTS
 
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header()
 
         email = st.text_input(
@@ -152,7 +152,7 @@ def _render_login_form(client_ip: str) -> None:
         submit = st.button(
             "Entrar →", use_container_width=True, key="btn_entrar", disabled=_locked_out,
         )
-        load_login_button_toggle_script(_locked_out, button_key="btn_entrar")
+        load_form_button_toggle_script(_locked_out, button_key="btn_entrar")
 
         if _locked_out:
             _seconds = seconds_until_available(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS)
@@ -209,20 +209,20 @@ def _render_login_form(client_ip: str) -> None:
                 if st.button("Novo cadastro", key="btn_link_cadastro", use_container_width=True):
                     _switch_view("signup")
 
-        render_login_footer()
+        render_form_footer()
 
 
 def _render_password_reset_success() -> None:
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header("Senha Redefinida")
         render_feedback("success", "Senha redefinida com sucesso! Faça login com sua nova senha.")
         if st.button("Ir para o login →", use_container_width=True, key="btn_ir_login_reset"):
             _switch_view("login")
-        render_login_footer()
+        render_form_footer()
 
 
 def _render_signup(client_ip: str) -> None:
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header("Criar uma Conta Nova")
 
         with st.container(key="password-fields-row"):
@@ -283,7 +283,7 @@ def _render_signup(client_ip: str) -> None:
         if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
             _switch_view("login")
 
-        render_login_footer()
+        render_form_footer()
 
 
 def _validate_signup(name: str, email: str, password: str, confirm_password: str) -> str:
@@ -357,7 +357,7 @@ def _render_signup_confirm(client_ip: str) -> None:
     _code_locked_out = (
         events_in_window(_signup_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS) >= _MAX_CODE_ATTEMPTS
     )
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header("Confirme seu E-mail")
         if email:
             render_feedback("success", f"Enviamos um código para {email}. Confira também a pasta de spam.")
@@ -368,7 +368,7 @@ def _render_signup_confirm(client_ip: str) -> None:
                     "o nome e a senha que você acabou de digitar substituem os da tentativa anterior.",
                 )
         else:
-            st.markdown('<p class="login-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
+            st.markdown('<p class="form-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
 
         code = st.text_input(
             "Código de confirmação", placeholder="Digite o código recebido por e-mail", key="signup_code"
@@ -378,7 +378,7 @@ def _render_signup_confirm(client_ip: str) -> None:
             "Confirmar e-mail →", use_container_width=True,
             key="btn_confirmar_email", disabled=_code_locked_out,
         )
-        load_login_button_toggle_script(_code_locked_out, button_key="btn_confirmar_email")
+        load_form_button_toggle_script(_code_locked_out, button_key="btn_confirmar_email")
 
         if _code_locked_out:
             _seconds = seconds_until_available(_signup_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
@@ -494,7 +494,7 @@ def _render_signup_confirm(client_ip: str) -> None:
 
         _resend_section()
 
-        render_login_footer()
+        render_form_footer()
 
 
 def _signup_code_error_message(exc: ClientError) -> str:
@@ -515,7 +515,7 @@ def _signup_code_error_message(exc: ClientError) -> str:
 
 
 def _render_signup_success() -> None:
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header("Cadastro Enviado")
         render_feedback(
             "success",
@@ -524,7 +524,7 @@ def _render_signup_success() -> None:
         )
         if st.button("Ir para o login →", use_container_width=True, key="btn_ir_login_sucesso"):
             _switch_view("login")
-        render_login_footer()
+        render_form_footer()
 
 
 def _render_forgot_password(client_ip: str) -> None:
@@ -536,7 +536,7 @@ def _render_forgot_password(client_ip: str) -> None:
 
 
 def _render_forgot_password_request(client_ip: str) -> None:
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header("Recuperar Acesso")
 
         st.text_input("E-mail", placeholder="Digite seu e-mail", key="reset_email")
@@ -561,7 +561,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
             submit = st.button(
                 "Enviar código →", use_container_width=True, key="btn_enviar_codigo", disabled=_send_locked,
             )
-            load_login_button_toggle_script(_send_locked, button_key="btn_enviar_codigo", email_key="reset_email")
+            load_form_button_toggle_script(_send_locked, button_key="btn_enviar_codigo", email_key="reset_email")
 
             # Mensagem computada aqui e só renderizada uma vez, no fim, sem st.empty(): um
             # placeholder recriado a cada tick (run_every=1) e preenchido logo em seguida vira
@@ -635,18 +635,18 @@ def _render_forgot_password_request(client_ip: str) -> None:
         if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
             _switch_view("login")
 
-        render_login_footer()
+        render_form_footer()
 
 
 def _render_forgot_password_confirm(client_ip: str) -> None:
     email = st.session_state.get("reset_email_confirmed", "")
     _code_locked_out = events_in_window(_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS) >= _MAX_CODE_ATTEMPTS
-    with st.container(key="login-card"):
+    with st.container(key="form-card"):
         _brand_header("Recuperar Acesso")
         if email:
             render_feedback("success", f"Enviamos um código para {email}. Confira também a pasta de spam.")
         else:
-            st.markdown('<p class="login-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
+            st.markdown('<p class="form-subtitle">Digite o código recebido</p>', unsafe_allow_html=True)
 
         with st.container(key="password-fields-row"):
             fields_col, requirements_col = st.columns(2, gap="medium")
@@ -769,7 +769,7 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
 
         _resend_section()
 
-        render_login_footer()
+        render_form_footer()
 
 
 def _validate_reset(code: str, password: str, confirm_password: str) -> str:

@@ -7,13 +7,13 @@
 
 /* As telas "Esqueci a senha" (request/confirm) rodam _send_section()/_resend_section()
    como @st.fragment(run_every=1) pra recalcular o cooldown a cada segundo sem reload
-   (ver login.py). Cada tick automático faz o Streamlit marcar os containers do
+   (ver forms.py). Cada tick automático faz o Streamlit marcar os containers do
    fragmento como data-stale="true" por um instante (indicando "atualizando") e piscar
    o indicador nativo de execução — sem essas duas regras, o botão "Enviar código"/
    "Redefinir senha" e a caixa de aviso (ex.: "Seu cadastro ainda está aguardando
    aprovação do admin.") piscam a cada segundo mesmo quando o conteúdo não muda. */
 [data-testid="stStatusWidget"] { display: none !important; }
-.st-key-login-card [data-stale="true"] {
+.st-key-form-card [data-stale="true"] {
   opacity: 1 !important;
   transition: none !important;
 }
@@ -29,7 +29,7 @@
    qualquer bloco de layout, não só colunas) — frágil entre versões. Centralizar o grupo
    inteiro (card + rodapé, com respiro igual acima/abaixo) é o resultado padrão de tela
    de login com esse layout e não depende de nenhum detalhe interno não documentado. Só
-   se aplica na tela de login: estas regras só são injetadas quando render_login() roda,
+   se aplica na tela de login: estas regras só são injetadas quando render_forms() roda,
    nunca junto de app.css. `safe center` (não só `center`) nas duas regras abaixo: quando
    o conteúdo é mais alto que a viewport (telas baixas, zoom alto, ou a tela de
    "Recuperar Acesso" — a mais alta das 4, com código + 2 campos de senha + checklist +
@@ -73,11 +73,11 @@
 }
 
 /* Card de login unificado: título, subtítulo, divisor, campo de senha e
-   botão "Entrar" ficam todos dentro do mesmo st.container(key="login-card"),
+   botão "Entrar" ficam todos dentro do mesmo st.container(key="form-card"),
    para o campo de senha herdar a mesma largura de conteúdo da linha
    divisória (limitada pelo padding do card) em vez de ficar solto por fora
    com uma largura diferente. */
-.st-key-login-card {
+.st-key-form-card {
   background: rgba(17, 17, 17, 0.92);
   border: 1px solid rgba(249,115,22,0.18);
   border-radius: 20px;
@@ -98,15 +98,15 @@
 /* Cadastro e "Esqueci a senha" (etapa 2) pareiam campos em 2 colunas — precisam de
    mais espaço que as outras 5 sub-telas do login, que continuam em coluna única e
    por isso ficariam com espaço vazio nos mesmos 640px do Perfil/Admin (pedido do
-   usuário). Como as 7 sub-telas compartilham a mesma key (.st-key-login-card), a
+   usuário). Como as 7 sub-telas compartilham a mesma key (.st-key-form-card), a
    diferenciação usa `:has()` sobre `.st-key-password-fields-row` — key que as duas
    telas largas têm em comum (Senha/Confirmar + painel de requisitos, mesmo molde de
-   profile.py::render_password_tab, ver login.py::_render_signup/
+   profile.py::render_password_tab, ver forms.py::_render_signup/
    _render_forgot_password_confirm) e que não existe em nenhuma das outras 5. */
-.st-key-login-card:has(.st-key-password-fields-row) {
+.st-key-form-card:has(.st-key-password-fields-row) {
   max-width: 640px;
 }
-.login-brand {
+.form-brand {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -115,9 +115,9 @@
 /* Wrapper do ícone Lucide "clapperboard" laranja (components.py::icon()) — mesmo estilo
    do wrapper do cabeçalho principal (.header-icon-badge, app.css). Sem fundo/borda (era
    um badge com fundo colorido antes; virou transparente numa rodada anterior), então a
-   caixa é do mesmo tamanho do ícone (size=18 em icon("clapperboard", size=18), login.py)
-   — maior que isso só criaria respiro invisível somado ao gap de .login-brand. */
-.login-icon-badge {
+   caixa é do mesmo tamanho do ícone (size=18 em icon("clapperboard", size=18), forms.py)
+   — maior que isso só criaria respiro invisível somado ao gap de .form-brand. */
+.form-icon-badge {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -128,7 +128,7 @@
 }
 /* .icon (branca, de base.css) é branca por padrão — por isso o ícone laranja desta tela
    precisa da própria regra de cor aqui, sobrescrevendo-a por especificidade. */
-.login-icon-badge .icon {
+.form-icon-badge .icon {
   color: #f97316;
 }
 /* font-size:16px !important — por pedido do usuário, de volta ao tamanho original (o CSS
@@ -138,7 +138,7 @@
    renderizou a 16px na prática. Declarado explicitamente aqui com !important em vez de
    deixado implícito, pra não depender de um comportamento não-documentado do Streamlit
    continuar do mesmo jeito em versões futuras). */
-.login-title {
+.form-title {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 16px !important;
   font-weight: 600;
@@ -148,22 +148,22 @@
 }
 /* margin-top negativo: mesmo com margin:0 nos dois elementos, sobra respiro visual entre
    o título e o subtítulo — não é margin/padding, é o line-height/leading da fonte de
-   .login-title por baixo da linha de base do texto (mesmo padrão do .header-subtitle em
+   .form-title por baixo da linha de base do texto (mesmo padrão do .header-subtitle em
    app.css). Medido via getBoundingClientRect() (Playwright) até o espaço entre as duas
    linhas ficar equivalente a uma quebra de linha simples, não um espaçamento de parágrafo
    — recalibrado quando o font-size do título mudou de 32px pra 16px. */
-.login-subtitle {
+.form-subtitle {
   font-size: 14px !important;
   color: #737373;
   margin: -2px 0 20px !important;
 }
 /* Título da página (ex.: "Criar uma Conta Nova"/"Recuperar Acesso"), opcional — só as
-   telas de cadastro/recuperar acesso passam `title` para _brand_header() (login.py).
-   Maior que .login-subtitle mas ainda abaixo do peso que teria um <h1> nativo do
-   Streamlit (mesmo racional de .login-title/.header-title: <p> pra evitar o <h1> grande
+   telas de cadastro/recuperar acesso passam `title` para _brand_header() (forms.py).
+   Maior que .form-subtitle mas ainda abaixo do peso que teria um <h1> nativo do
+   Streamlit (mesmo racional de .form-title/.header-title: <p> pra evitar o <h1> grande
    demais desse contexto). Fica por cima do primeiro campo do formulário, substituindo o
-   respiro que .login-subtitle já reservava (margin-bottom:20px acima). */
-.login-page-title {
+   respiro que .form-subtitle já reservava (margin-bottom:20px acima). */
+.form-page-title {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 20px !important;
   font-weight: 700;
@@ -177,9 +177,9 @@
    usado pra largura, linha ~107) — pedido do usuário comparando com o gap
    subtítulo→título do header real (app.css: .header-subtitle/.page-title, sem
    compressão equivalente). Remove só a compressão de -12px acima, mantendo o resto de
-   `.login-page-title` intacto; as outras sub-telas com título (ex.: "Esqueci a senha"
+   `.form-page-title` intacto; as outras sub-telas com título (ex.: "Esqueci a senha"
    etapa 1, mesma classe) continuam com a compressão original — não foram pedidas. */
-.st-key-login-card:has(.st-key-password-fields-row) .login-page-title {
+.st-key-form-card:has(.st-key-password-fields-row) .form-page-title {
   margin-top: 0 !important;
 }
 /* Esconde o hint "Press Enter to apply" do text_input, mesma técnica já
@@ -211,7 +211,7 @@
   border-color: #22c55e !important;
 }
 /* Feedback dinâmico de formato do campo "E-mail" (cadastro e esqueci a senha, ver
-   login_button_toggle.js/password_requirements_gate.js) — mesmo padrão de cor acima. */
+   form_button_toggle.js/password_requirements_gate.js) — mesmo padrão de cor acima. */
 [data-testid="stTextInput"] input.email-invalid {
   border-color: #ef4444 !important;
 }
@@ -222,7 +222,7 @@
    aparece junto com a borda, no "blur" (não a cada tecla). `display:none` no `<p>`
    sozinho não bastava: o `gap:16px` do `stVerticalBlock` do card se aplica a cada
    `stElementContainer` filho independente da altura do conteúdo (mesmo achado documentado
-   no `margin-top` negativo de `.footer-login` abaixo), sobrando ~16px de vão mesmo com a
+   no `margin-top` negativo de `.footer-form` abaixo), sobrando ~16px de vão mesmo com a
    mensagem escondida. Escondendo o `stElementContainer` inteiro (via `:has()`, já usado em
    `body:has(.grid-titles)` em app.css) tira o elemento do fluxo do flex por completo,
    igual a ele nunca ter sido renderizado. */
@@ -314,7 +314,7 @@
    "ghost" (sem preenchimento) pra não competir visualmente com o botão de ação
    primário (Entrar/Criar cadastro/etc.), que continua sólido via a regra genérica
    acima. Reaproveitado nas 4 telas (login/cadastro/esqueci senha) porque só uma
-   fica visível por vez (ver render_login() em login.py). */
+   fica visível por vez (ver render_forms() em forms.py). */
 [class*="st-key-btn_link_"] button {
   background: transparent !important;
   color: #f97316 !important;
@@ -333,7 +333,7 @@
 
 /* "Reenviar código" — secundário e discreto (pedido do usuário: não competir com o botão
    de ação primário "Redefinir senha"), auto-width em vez do pill laranja full-width padrão
-   acima. Divide a linha com "← Voltar ao login" via st.columns(2) (login.py) — fica na
+   acima. Divide a linha com "← Voltar ao login" via st.columns(2) (forms.py) — fica na
    coluna da direita (pedido do usuário: inverter a ordem, "Voltar ao login" primeiro),
    então display:flex + justify-content:flex-start ancora o <button> auto-width na borda
    esquerda da própria coluna (não mais centralizado no card inteiro, que fazia sentido só
@@ -380,7 +380,7 @@
    telas com rodapé, incluindo o login puro. Sem relação com o respiro botão→link acima
    (que é 4px, ver comentário anterior) — este aqui é só o respiro entre a última linha do
    formulário e o rodapé. */
-.footer-login {
+.footer-form {
   text-align: center;
   padding: 0 0 8px;
   color: #6b7280;
