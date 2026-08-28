@@ -270,6 +270,33 @@ def change_password(email: str, current_password: str, new_password: str) -> str
     return "ok"
 
 
+def apply_resumed_signup(email: str, password: str, name: str) -> None:
+    """Grava a senha e o nome digitados na segunda tentativa de um cadastro retomado
+    (e-mail que já existia como UNCONFIRMED, ver _resume_abandoned_signup em login.py) —
+    só deve ser chamada depois que confirm_sign_up() já validou o código de confirmação,
+    ou seja, depois de provar posse do e-mail. Chamar isso antes da confirmação seria uma
+    brecha de account takeover (ver docstring de _resume_abandoned_signup).
+
+    Não reaproveita change_password(): ele reautentica via authenticate()
+    (AdminInitiateAuth) antes de trocar a senha, mas nesse ponto do fluxo a conta acabou
+    de ser desabilitada por confirm_sign_up() (aguardando aprovação do admin) e
+    AdminInitiateAuth falharia numa conta Disabled. Aqui a posse do código de confirmação
+    já é a prova de identidade necessária — mesmo racional de confirm_password_reset(),
+    que troca a senha no mesmo passo em que valida o código, sem reautenticação extra."""
+    client = _cognito_client()
+    client.admin_set_user_password(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        Password=password,
+        Permanent=True,
+    )
+    client.admin_update_user_attributes(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Username=email,
+        UserAttributes=[{"Name": "name", "Value": name}],
+    )
+
+
 def is_admin(email: str) -> bool:
     """True se o e-mail pertence ao grupo "admins" do Cognito (ver
     infra/lightsail_ia.tf:aws_cognito_user_group.admins)."""
@@ -370,6 +397,23 @@ def list_active_users() -> list[dict]:
     return [_parse_user(user) for user in response["Users"] if user["UserStatus"] == "CONFIRMED"]
 
 
+def list_unconfirmed_users() -> list[dict]:
+    """Lista cadastros que ainda não confirmaram a posse do e-mail (UserStatus=UNCONFIRMED).
+    Ficam Enabled=true (sign_up() não desabilita mais a conta, ver confirm_sign_up()) e por
+    isso não aparecem em list_pending_users() nem em list_active_users() — cadastros
+    abandonados nesse estado ficavam invisíveis e sem trilha de limpeza no painel admin.
+
+    Mesmo filtro server-side de list_active_users() (status="Enabled") — os dois estados
+    (UNCONFIRMED e CONFIRMED ativo) compartilham Enabled=true, então reaproveitar o Filter
+    já testado e invertendo a condição client-side evita introduzir uma sintaxe de Filter
+    nova (ex.: cognito:user_status) não usada em nenhum outro lugar do projeto."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter='status = "Enabled"',
+    )
+    return [_parse_user(user) for user in response["Users"] if user["UserStatus"] == "UNCONFIRMED"]
+
+
 def approve_signup(email: str) -> None:
     """Aprova um cadastro pendente, reabilitando a conta (AdminEnableUser).
 
@@ -411,7 +455,7 @@ def notify_new_signup(email: str, name: str) -> None:
     client = boto3.client("sns", region_name=os.getenv("AWS_REGION", "sa-east-1"))
     client.publish(
         TopicArn=os.environ["SNS_NEW_SIGNUP_TOPIC_ARN"],
-        Subject="FilmBot — cadastro novo pendente de aprovação",
+        Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
         Message=f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
     )
 
@@ -479,7 +523,7 @@ def notify_user_approved(email: str, name: str) -> None:
     o acesso já está liberado. Chamado por admin.py logo após approve_signup()."""
     _send_gmail_email(
         email,
-        "FilmBot — cadastro aprovado",
+        "FilmBot — Cadastro Aprovado",
         f"Olá, {name}!\n\n"
         "Seu cadastro no FilmBot foi aprovado. Você já pode fazer login "
         f"em {_FILMBOT_URL} usando o e-mail {email} e a senha que você cadastrou.\n\n"
@@ -494,7 +538,7 @@ def notify_user_rejected(email: str, name: str) -> None:
     todo mundo sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado)."""
     _send_gmail_email(
         email,
-        "FilmBot — cadastro não aprovado",
+        "FilmBot — Cadastro Não Aprovado",
         f"Olá, {name}!\n\nSeu cadastro no FilmBot não foi aprovado.\n\nAté já,\nEquipe FilmBot",
     )
 
@@ -506,6 +550,6 @@ def notify_user_revoked(email: str, name: str) -> None:
     Reprovar, ver notify_user_rejected)."""
     _send_gmail_email(
         email,
-        "FilmBot — acesso revogado",
+        "FilmBot — Acesso Revogado",
         f"Olá, {name}!\n\nSeu acesso ao FilmBot foi revogado.\n\nAté já,\nEquipe FilmBot",
     )

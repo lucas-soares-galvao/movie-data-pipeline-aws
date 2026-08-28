@@ -69,6 +69,8 @@ def _build_rows() -> list[dict]:
         rows.append({**user, "kind": "pending"})
     for user in infrastructure.list_active_users():
         rows.append({**user, "kind": "active"})
+    for user in infrastructure.list_unconfirmed_users():
+        rows.append({**user, "kind": "unconfirmed"})
 
     for row in rows:
         row["is_admin"] = infrastructure.is_admin(row["email"])
@@ -101,6 +103,8 @@ def _build_table_data(rows: list[dict]) -> list[dict]:
 
 
 def _status_label(user: dict) -> str:
+    if user["kind"] == "unconfirmed":
+        return "Inativo"
     if user["kind"] == "pending":
         return "Novo"
     if user["enabled"]:
@@ -187,7 +191,12 @@ def _handle_dataframe_action_click(rows: list[dict]) -> None:
         st.rerun()
     elif reject_revoke_click:
         user = rows[reject_revoke_click["row"]]
-        kind = "reject" if user["kind"] == "pending" else "revoke"
+        if user["kind"] == "pending":
+            kind = "reject"
+        elif user["kind"] == "unconfirmed":
+            kind = "remove_unconfirmed"
+        else:
+            kind = "revoke"
         st.session_state["admin_pending_action"] = {
             "kind": kind,
             "email": user["email"],
@@ -196,25 +205,40 @@ def _handle_dataframe_action_click(rows: list[dict]) -> None:
         st.rerun()
 
 
+_CONFIRM_VERBOS = {
+    "reject": "reprovar o cadastro de",
+    "revoke": "revogar o acesso de",
+    "remove_unconfirmed": "remover o cadastro não confirmado de",
+}
+
+
 @st.dialog("Confirmar ação", dismissible=False)
 def _render_confirm_dialog(pending: dict) -> None:
-    verbo = "reprovar o cadastro de" if pending["kind"] == "reject" else "revogar o acesso de"
-    st.write(f"Tem certeza que deseja {verbo} **{pending['name']}** ({pending['email']})?")
-    # Desmarcado por padrão em Reprovar (a instância é pública — notificar todo cadastro
-    # reprovado sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado) e
-    # marcado por padrão em Revogar (quem já tinha acesso normalmente é conhecido, e um
-    # aviso é mais educado). Ver infrastructure.py::notify_user_rejected/notify_user_revoked.
-    notify = st.checkbox("Notificar por e-mail", value=(pending["kind"] == "revoke"))
+    st.write(f"Tem certeza que deseja {_CONFIRM_VERBOS[pending['kind']]} **{pending['name']}** ({pending['email']})?")
+    # Sem checkbox de notificação para remove_unconfirmed: o e-mail nunca foi
+    # comprovadamente confirmado (é exatamente por isso que a linha existe), então
+    # avisar por ele não tem a mesma garantia dos outros dois fluxos. Desmarcado por
+    # padrão em Reprovar (a instância é pública — notificar todo cadastro reprovado
+    # sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado) e marcado
+    # por padrão em Revogar (quem já tinha acesso normalmente é conhecido, e um aviso
+    # é mais educado). Ver infrastructure.py::notify_user_rejected/notify_user_revoked.
+    notify = (
+        st.checkbox("Notificar por e-mail", value=(pending["kind"] == "revoke"))
+        if pending["kind"] != "remove_unconfirmed"
+        else False
+    )
 
-    col_confirm, col_cancel = st.columns(2)
-    confirmed = col_confirm.button("Confirmar", type="primary", width="stretch")
+    col_cancel, col_confirm = st.columns(2)
     cancelled = col_cancel.button("Cancelar", width="stretch")
+    confirmed = col_confirm.button("Confirmar", type="primary", width="stretch")
 
     if confirmed:
         if pending["kind"] == "reject":
             infrastructure.reject_signup(pending["email"])
             if notify:
                 infrastructure.notify_user_rejected(pending["email"], pending["name"])
+        elif pending["kind"] == "remove_unconfirmed":
+            infrastructure.reject_signup(pending["email"])
         else:
             infrastructure.revoke_access(pending["email"])
             if notify:

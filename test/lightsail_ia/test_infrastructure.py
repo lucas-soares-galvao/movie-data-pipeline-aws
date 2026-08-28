@@ -289,6 +289,25 @@ class TestChangePassword:
         mock_boto.return_value.admin_set_user_password.assert_not_called()
 
 
+class TestApplyResumedSignup:
+    def test_define_senha_e_grava_nome_novo_sem_reautenticar(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            infrastructure.apply_resumed_signup("user@ex.com", "SenhaNova1!", "Nome Novo")
+
+        mock_boto.return_value.admin_set_user_password.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            Password="SenhaNova1!",
+            Permanent=True,
+        )
+        mock_boto.return_value.admin_update_user_attributes.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Username="user@ex.com",
+            UserAttributes=[{"Name": "name", "Value": "Nome Novo"}],
+        )
+        mock_boto.return_value.admin_initiate_auth.assert_not_called()
+
+
 class TestIsAdmin:
     def test_retorna_true_quando_usuario_pertence_ao_grupo_admins(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
@@ -492,6 +511,46 @@ class TestListActiveUsers:
         assert [user["email"] for user in resultado] == ["ativo@ex.com"]
 
 
+class TestListUnconfirmedUsers:
+    def test_filtra_por_status_enabled(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {"Users": []}
+            infrastructure.list_unconfirmed_users()
+
+        mock_boto.return_value.list_users.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Filter='status = "Enabled"',
+        )
+
+    def test_mantem_apenas_usuarios_ainda_nao_confirmados(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "ativo@ex.com"},
+                            {"Name": "name", "Value": "Ativo"},
+                        ],
+                    },
+                    {
+                        "Enabled": True,
+                        "UserStatus": "UNCONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "naoconfirmou@ex.com"},
+                            {"Name": "name", "Value": "Não Confirmou"},
+                        ],
+                    },
+                ]
+            }
+            resultado = infrastructure.list_unconfirmed_users()
+
+        assert [user["email"] for user in resultado] == ["naoconfirmou@ex.com"]
+
+
 class TestApproveSignup:
     def test_habilita_a_conta(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
@@ -539,7 +598,7 @@ class TestNotifyNewSignup:
 
         mock_boto.return_value.publish.assert_called_once_with(
             TopicArn="arn:aws:sns:sa-east-1:123456789012:test-new-signup-topic",
-            Subject="FilmBot — cadastro novo pendente de aprovação",
+            Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
             Message="Fulano (user@ex.com) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
         )
 
@@ -579,7 +638,7 @@ class TestNotifyUserApproved:
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "abcd efgh ijkl mnop")
         mock_smtp_server.send_message.assert_called_once()
         sent_message = mock_smtp_server.send_message.call_args[0][0]
-        assert sent_message["Subject"] == "FilmBot — cadastro aprovado"
+        assert sent_message["Subject"] == "FilmBot — Cadastro Aprovado"
         assert sent_message["From"] == "filmbot.lsgalvao@gmail.com"
         assert sent_message["To"] == "user@ex.com"
         body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
@@ -645,7 +704,7 @@ class TestNotifyUserRejected:
 
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
         sent_message = mock_smtp_server.send_message.call_args[0][0]
-        assert sent_message["Subject"] == "FilmBot — cadastro não aprovado"
+        assert sent_message["Subject"] == "FilmBot — Cadastro Não Aprovado"
         assert sent_message["To"] == "user@ex.com"
         body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
         assert "Fulano" in body
@@ -675,7 +734,7 @@ class TestNotifyUserRevoked:
 
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
         sent_message = mock_smtp_server.send_message.call_args[0][0]
-        assert sent_message["Subject"] == "FilmBot — acesso revogado"
+        assert sent_message["Subject"] == "FilmBot — Acesso Revogado"
         assert sent_message["To"] == "user@ex.com"
         body = sent_message.get_payload(decode=True).decode(sent_message.get_content_charset())
         assert "Fulano" in body
