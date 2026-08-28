@@ -71,6 +71,11 @@ class TestIcon:
         assert 'class="icon icon-lock"' in svg
         assert "<svg" in svg
 
+    def test_icone_mail_existe(self):
+        svg = components.icon("mail")
+        assert 'class="icon icon-mail"' in svg
+        assert "<svg" in svg
+
 
 class TestValidatePassword:
     """validate_password() — política do Cognito (infra/lightsail_ia.tf) mais o teto de
@@ -1453,3 +1458,36 @@ class TestRenderGrid:
     def test_grid_nao_declara_grid_template_rows(self):
         html = components.render_grid([BASE_TITLE] * 4)
         assert "grid-template-rows" not in html
+
+
+class TestRenderFooter:
+    def test_mantem_credito_tmdb(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_footer()
+        assert "TMDB" in captured["content"]
+
+    def test_inclui_link_de_contato_por_email(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_footer()
+        assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
+        assert 'class="icon icon-mail"' in captured["content"]
+
+
+class TestRenderLoginFooter:
+    def test_inclui_link_de_contato_por_email(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_login_footer()
+        assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
+        assert 'class="icon icon-mail"' in captured["content"]
