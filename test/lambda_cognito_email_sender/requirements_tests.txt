@@ -1,0 +1,5 @@
+# Raciocinio: fixa dependencias necessarias para rodar testes da Lambda Cognito Email Sender.
+# aws-encryption-sdk[MPL] ja vem via app/lambda_cognito_email_sender/requirements.txt
+# (instalado separadamente pelo workflow, ver .github/workflows/01_test.yml).
+
+boto3

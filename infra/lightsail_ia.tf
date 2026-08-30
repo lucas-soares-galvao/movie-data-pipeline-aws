@@ -176,6 +176,13 @@ resource "aws_cognito_user_pool" "filmbot" {
   # depends_on em aws_iam_user.lightsail_agent, linha ~32 acima) — foi
   # exatamente essa race que causou AccessDeniedException em CreateUserPool
   # mesmo depois da policy já existir no código.
+  #
+  # Sem depends_on para aws_lambda_permission.cognito_invoke_email_sender de propósito:
+  # ela referencia aws_cognito_user_pool.filmbot[0].arn (source_arn), então declarar essa
+  # dependência aqui formaria um ciclo. Não há necessidade real de ordem entre as duas —
+  # a permissão só precisa existir no momento em que o Cognito de fato invoca a Lambda
+  # (primeiro SignUp/ResendConfirmationCode/ForgotPassword real, bem depois do apply),
+  # não no momento em que o lambda_config é anexado ao user pool.
   depends_on = [terraform_data.cicd_policies_ready]
 
   # Login por e-mail, sem username separado.
@@ -271,9 +278,20 @@ resource "aws_cognito_user_pool" "filmbot" {
     }
   }
 
-  # Sem email_configuration de propósito: usa o remetente nativo do próprio
-  # Cognito (não configurado com SES) — decisão do projeto para não depender
-  # de identidade SES verificada/production access nesta primeira versão.
+  # Sem email_configuration de propósito: o e-mail de verificação não sai pelo SES nem
+  # pelo remetente nativo do Cognito (ambos exigiriam identidade verificada/production
+  # access, ou caem em spam por serem um domínio compartilhado com milhares de outros
+  # User Pools) — o lambda_config abaixo intercepta o código e o envia pelo Gmail, ver
+  # app/lambda_cognito_email_sender/lambda_cognito_email_sender.md.
+  lambda_config {
+    kms_key_id = aws_kms_key.cognito_email_sender[0].arn
+
+    custom_email_sender {
+      lambda_arn     = aws_lambda_function.cognito_email_sender[0].arn
+      lambda_version = "V1_0"
+    }
+  }
+
   tags = merge(local.default_resource_tags, { Component = "lightsail_ia" })
 }
 
