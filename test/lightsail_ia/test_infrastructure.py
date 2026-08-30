@@ -346,6 +346,37 @@ class TestGetUserStatus:
             mock_boto.return_value.list_users.assert_not_called()
 
 
+class TestGetUnconfirmedSignupName:
+    def test_busca_por_email_e_extrai_o_nome(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "UNCONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "user@ex.com"},
+                            {"Name": "name", "Value": "Usuário Pendente"},
+                        ],
+                    }
+                ]
+            }
+            resultado = infrastructure.get_unconfirmed_signup_name("user@ex.com")
+
+        mock_boto.return_value.list_users.assert_called_once_with(
+            UserPoolId="sa-east-1_testpool",
+            Filter='email = "user@ex.com"',
+        )
+        assert resultado == "Usuário Pendente"
+
+    def test_levanta_index_error_quando_email_nao_existe(self):
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {"Users": []}
+            with pytest.raises(IndexError):
+                infrastructure.get_unconfirmed_signup_name("naocadastrado@ex.com")
+
+
 class TestRequestPasswordReset:
     def test_chama_forgot_password_com_email(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:

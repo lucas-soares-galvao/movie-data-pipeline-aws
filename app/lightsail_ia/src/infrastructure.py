@@ -271,11 +271,11 @@ def change_password(email: str, current_password: str, new_password: str) -> str
 
 
 def apply_resumed_signup(email: str, password: str, name: str) -> None:
-    """Grava a senha e o nome digitados na segunda tentativa de um cadastro retomado
-    (e-mail que já existia como UNCONFIRMED, ver _resume_abandoned_signup em forms.py) —
+    """Grava a senha e o nome digitados na tela de confirmação de um cadastro retomado
+    (e-mail que já existia como UNCONFIRMED, ver _start_signup_resume em forms.py) —
     só deve ser chamada depois que confirm_sign_up() já validou o código de confirmação,
     ou seja, depois de provar posse do e-mail. Chamar isso antes da confirmação seria uma
-    brecha de account takeover (ver docstring de _resume_abandoned_signup).
+    brecha de account takeover (ver docstring de _start_signup_resume).
 
     Não reaproveita change_password(): ele reautentica via authenticate()
     (AdminInitiateAuth) antes de trocar a senha, mas nesse ponto do fluxo a conta acabou
@@ -321,6 +321,19 @@ def get_user_status(email: str) -> str | None:
     )
     users = response["Users"]
     return users[0]["UserStatus"] if users else None
+
+
+def get_unconfirmed_signup_name(email: str) -> str:
+    """Busca o nome gravado num cadastro ainda UNCONFIRMED (ListUsers filtrado por
+    e-mail), pra pré-preencher o campo Nome na tela de confirmação de um cadastro
+    retomado (ver _start_signup_resume em forms.py). Só deve ser chamada depois que
+    get_user_status() já confirmou UNCONFIRMED para esse e-mail — levanta IndexError
+    caso contrário."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter=f'email = "{email}"',
+    )
+    return _parse_user(response["Users"][0])["name"]
 
 
 def request_password_reset(email: str) -> None:
