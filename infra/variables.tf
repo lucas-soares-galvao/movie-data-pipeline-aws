@@ -151,6 +151,22 @@ variable "lambda_api_name" {
 }
 
 # =============================================================================
+# LAMBDA COGNITO EMAIL SENDER — Trigger CustomEmailSender do Cognito
+# =============================================================================
+
+variable "lambda_cognito_email_sender_path_app" {
+  description = "Caminho para os modulos Python da aplicacao da Lambda de envio customizado do codigo do Cognito"
+  type        = string
+  default     = "lambda_cognito_email_sender"
+}
+
+variable "lambda_cognito_email_sender_name" {
+  description = "Nome da funcao Lambda do trigger CustomEmailSender do Cognito, criada por ambiente"
+  type        = string
+  default     = "lambda-cognito-email-sender"
+}
+
+# =============================================================================
 # GLUE ETL — Processamento Básico de Dados
 # =============================================================================
 

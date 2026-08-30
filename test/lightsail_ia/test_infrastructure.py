@@ -252,6 +252,28 @@ class TestGetUserProfile:
         assert resultado["name"] == "Usuário Teste"
         assert resultado["email"] == "user@ex.com"
 
+    def test_remove_espacos_nas_pontas_do_nome(self):
+        """Regressão: nome gravado no Cognito com espaço sobrando (ex.: digitado antes do
+        .strip() nos formulários) quebrava o markdown **negrito** do modal de confirmação
+        do admin (admin.py), já que o CommonMark não fecha ** precedido de espaço."""
+        with patch("src.infrastructure.boto3.client") as mock_boto:
+            mock_boto.return_value.list_users.return_value = {
+                "Users": [
+                    {
+                        "Enabled": True,
+                        "UserStatus": "CONFIRMED",
+                        "UserCreateDate": datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc),
+                        "Attributes": [
+                            {"Name": "email", "Value": "user@ex.com"},
+                            {"Name": "name", "Value": " Mariana Bermudes  "},
+                        ],
+                    }
+                ]
+            }
+            resultado = infrastructure.get_user_profile("user@ex.com")
+
+        assert resultado["name"] == "Mariana Bermudes"
+
 
 class TestUpdateUserName:
     def test_grava_nome_no_atributo_name(self):

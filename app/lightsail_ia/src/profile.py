@@ -127,7 +127,7 @@ def render_profile_tab(profile: dict) -> None:
     with st.container(key="profile-fields-row"):
         name_col, email_col = st.columns(2, gap="small")
         with name_col:
-            name = st.text_input("Nome Completo", value=profile["name"], key="profile_name")
+            name = st.text_input("Nome Completo", value=profile["name"], key="profile_name").strip()
         with email_col:
             # E-mail sempre desabilitado — a tela não permite trocar e-mail (decisão
             # do projeto: quem chega até aqui já autenticou com e-mail+senha no

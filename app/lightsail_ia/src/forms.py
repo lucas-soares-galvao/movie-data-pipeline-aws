@@ -230,7 +230,9 @@ def _render_signup(client_ip: str) -> None:
         with st.container(key="password-fields-row"):
             fields_col, requirements_col = st.columns(2, gap="medium")
             with fields_col:
-                name = st.text_input("Nome Completo", placeholder="Digite seu nome completo", key="signup_name")
+                name = st.text_input(
+                    "Nome Completo", placeholder="Digite seu nome completo", key="signup_name"
+                ).strip()
                 email = st.text_input("E-mail", placeholder="Digite seu e-mail", key="signup_email")
                 render_email_hint()
                 password = st.text_input(
@@ -573,7 +575,7 @@ def _render_signup_resume_details(client_ip: str, email: str, name: str) -> None
         with st.container(key="password-fields-row"):
             fields_col, requirements_col = st.columns(2, gap="medium")
             with fields_col:
-                name = st.text_input("Nome Completo", value=name, key="signup_resume_name")
+                name = st.text_input("Nome Completo", value=name, key="signup_resume_name").strip()
                 st.text_input("E-mail", value=email, disabled=True, key="signup_resume_email")
                 password = st.text_input(
                     "Senha", placeholder="Digite sua senha", type="password", key="signup_resume_password",

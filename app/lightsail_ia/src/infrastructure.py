@@ -369,7 +369,7 @@ def _parse_user(user: dict) -> dict:
     attrs = {attr["Name"]: attr["Value"] for attr in user["Attributes"]}
     return {
         "email": attrs.get("email", ""),
-        "name": attrs.get("name", ""),
+        "name": attrs.get("name", "").strip(),
         "enabled": user["Enabled"],
         "created_at": user["UserCreateDate"].isoformat(),
         "updated_at": attrs.get("custom:password_updated_at", ""),

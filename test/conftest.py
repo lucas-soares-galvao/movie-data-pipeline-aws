@@ -41,6 +41,7 @@ _SUITE_TO_APP: dict[str, Path] = {
     "glue_etl": _APP_ROOT / "glue_etl",
     "glue_details": _APP_ROOT / "glue_details",
     "lambda_api": _APP_ROOT / "lambda_api",
+    "lambda_cognito_email_sender": _APP_ROOT / "lambda_cognito_email_sender",
     "lightsail_ia": _APP_ROOT / "lightsail_ia",
 }
 
@@ -56,6 +57,7 @@ _SUITE_TO_SRC_MODULE: dict[str, str] = {
     "glue_etl": "app.glue_etl.src.utils",
     "glue_details": "app.glue_details.src.utils",
     "lambda_api": "app.lambda_api.src.utils",
+    "lambda_cognito_email_sender": "app.lambda_cognito_email_sender.src.utils",
     "lightsail_ia": "app.lightsail_ia.src.recommendation",
 }
 
