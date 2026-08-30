@@ -271,11 +271,11 @@ def change_password(email: str, current_password: str, new_password: str) -> str
 
 
 def apply_resumed_signup(email: str, password: str, name: str) -> None:
-    """Grava a senha e o nome digitados na segunda tentativa de um cadastro retomado
-    (e-mail que já existia como UNCONFIRMED, ver _resume_abandoned_signup em forms.py) —
+    """Grava a senha e o nome digitados na tela de confirmação de um cadastro retomado
+    (e-mail que já existia como UNCONFIRMED, ver _start_signup_resume em forms.py) —
     só deve ser chamada depois que confirm_sign_up() já validou o código de confirmação,
     ou seja, depois de provar posse do e-mail. Chamar isso antes da confirmação seria uma
-    brecha de account takeover (ver docstring de _resume_abandoned_signup).
+    brecha de account takeover (ver docstring de _start_signup_resume).
 
     Não reaproveita change_password(): ele reautentica via authenticate()
     (AdminInitiateAuth) antes de trocar a senha, mas nesse ponto do fluxo a conta acabou
@@ -321,6 +321,19 @@ def get_user_status(email: str) -> str | None:
     )
     users = response["Users"]
     return users[0]["UserStatus"] if users else None
+
+
+def get_unconfirmed_signup_name(email: str) -> str:
+    """Busca o nome gravado num cadastro ainda UNCONFIRMED (ListUsers filtrado por
+    e-mail), pra pré-preencher o campo Nome na tela de confirmação de um cadastro
+    retomado (ver _start_signup_resume em forms.py). Só deve ser chamada depois que
+    get_user_status() já confirmou UNCONFIRMED para esse e-mail — levanta IndexError
+    caso contrário."""
+    response = _cognito_client().list_users(
+        UserPoolId=os.environ["COGNITO_USER_POOL_ID"],
+        Filter=f'email = "{email}"',
+    )
+    return _parse_user(response["Users"][0])["name"]
 
 
 def request_password_reset(email: str) -> None:
@@ -446,6 +459,12 @@ def add_to_admins_group(email: str) -> None:
     )
 
 
+# Mesmo domínio fixo de produção usado pelo Caddy (FILMBOT_DOMAIN em .env.caddy, ver
+# .github/workflows/04_deploy_lightsail.yml) — hardcoded aqui porque o domínio não
+# varia (só existe deploy em prod, ver workflow.md).
+_FILMBOT_URL = "https://filmbot.lsgalvao.com.br"
+
+
 def notify_new_signup(email: str, name: str) -> None:
     """Publica no tópico SNS de cadastro novo (infra/sns_topics.tf), para o admin saber
     que há alguém esperando aprovação sem precisar checar o painel periodicamente.
@@ -456,7 +475,10 @@ def notify_new_signup(email: str, name: str) -> None:
     client.publish(
         TopicArn=os.environ["SNS_NEW_SIGNUP_TOPIC_ARN"],
         Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
-        Message=f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.",
+        Message=(
+            f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.\n\n"
+            f"{_FILMBOT_URL}"
+        ),
     )
 
 
@@ -483,24 +505,18 @@ def _load_gmail_credentials() -> tuple[str, str] | None:
     return None
 
 
-# Mesmo domínio fixo de produção usado pelo Caddy (FILMBOT_DOMAIN em .env.caddy,
-# ver .github/workflows/04_deploy_lightsail.yml) — hardcoded aqui porque o processo
-# Python nunca precisou conhecer a própria URL pública antes disso, e o domínio não
-# varia (só existe deploy em prod, ver workflow.md).
-_FILMBOT_URL = "https://filmbot.lsgalvao.com.br"
-
-
-def _send_gmail_email(to_email: str, subject: str, body: str) -> None:
+def _send_gmail_email(to_email: str, subject: str, body: str) -> bool:
     """Monta e envia (via Gmail/SMTP) um e-mail de notificação — reaproveitado por
-    notify_user_approved/notify_user_rejected/notify_user_revoked.
+    notify_user_approved/notify_user_rejected/notify_user_revoked. Retorna se o envio
+    teve sucesso, pra admin.py poder informar o admin (ver admin_action_feedback).
 
-    Fire-and-forget, mesmo racional de notify_new_signup/scripts/backfill_shared.py::
-    notify_backfill_success: uma falha aqui (credencial errada, Gmail fora do ar) não
-    pode derrubar a ação do Cognito que já aconteceu antes desta chamada."""
+    Uma falha aqui (credencial errada, Gmail fora do ar) só é reportada de volta pro
+    retorno — nunca lançada — porque não pode derrubar a ação do Cognito que já
+    aconteceu antes desta chamada."""
     credentials = _load_gmail_credentials()
     if credentials is None:
         logger.warning("Credenciais do Gmail não configuradas — e-mail não enviado para '%s'.", to_email)
-        return
+        return False
     sender_email, app_password = credentials
 
     message = MIMEText(body)
@@ -514,14 +530,17 @@ def _send_gmail_email(to_email: str, subject: str, body: str) -> None:
             server.send_message(message)
     except Exception as exc:  # noqa: BLE001 — falha ao notificar não deve afetar uma ação já concluída
         logger.error("Falha ao enviar e-mail para '%s': %s", to_email, exc)
+        return False
     else:
         logger.info("E-mail enviado para '%s' (assunto: '%s').", to_email, subject)
+        return True
 
 
-def notify_user_approved(email: str, name: str) -> None:
+def notify_user_approved(email: str, name: str) -> bool:
     """Envia (via Gmail/SMTP) o e-mail avisando o usuário que o cadastro foi aprovado e
-    o acesso já está liberado. Chamado por admin.py logo após approve_signup()."""
-    _send_gmail_email(
+    o acesso já está liberado. Chamado por admin.py logo após approve_signup(). Retorna
+    se o envio teve sucesso."""
+    return _send_gmail_email(
         email,
         "FilmBot — Cadastro Aprovado",
         f"Olá, {name}!\n\n"
@@ -531,24 +550,24 @@ def notify_user_approved(email: str, name: str) -> None:
     )
 
 
-def notify_user_rejected(email: str, name: str) -> None:
+def notify_user_rejected(email: str, name: str) -> bool:
     """Envia (via Gmail/SMTP) o e-mail avisando o usuário que o cadastro não foi
     aprovado. Chamado por admin.py só quando o admin marca "Notificar por e-mail" no
     modal de confirmação de Reprovar — não é automático (ver lightsail_ia.md: notificar
-    todo mundo sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado)."""
-    _send_gmail_email(
+    todo mundo sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado).
+    Retorna se o envio teve sucesso."""
+    return _send_gmail_email(
         email,
         "FilmBot — Cadastro Não Aprovado",
         f"Olá, {name}!\n\nSeu cadastro no FilmBot não foi aprovado.\n\nAté já,\nEquipe FilmBot",
     )
 
 
-def notify_user_revoked(email: str, name: str) -> None:
+def notify_user_revoked(email: str, name: str) -> bool:
     """Envia (via Gmail/SMTP) o e-mail avisando o usuário que o acesso foi revogado.
     Chamado por admin.py só quando o admin marca "Notificar por e-mail" no modal de
-    confirmação de Revogar (checkbox marcado por padrão nesse caso — diferente de
-    Reprovar, ver notify_user_rejected)."""
-    _send_gmail_email(
+    confirmação de Revogar. Retorna se o envio teve sucesso."""
+    return _send_gmail_email(
         email,
         "FilmBot — Acesso Revogado",
         f"Olá, {name}!\n\nSeu acesso ao FilmBot foi revogado.\n\nAté já,\nEquipe FilmBot",

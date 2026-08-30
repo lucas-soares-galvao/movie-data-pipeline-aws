@@ -457,6 +457,8 @@ Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à AP
 | `test_retorna_true_quando_usuario_pertence_ao_grupo_admins` / `test_retorna_false_quando_usuario_nao_pertence_ao_grupo_admins` | `is_admin()` checa `AdminListGroupsForUser` pelo `GroupName == "admins"` |
 | `test_retorna_user_status_quando_lista_de_usuarios_nao_esta_vazia` / `test_retorna_none_quando_lista_de_usuarios_esta_vazia` | `get_user_status()` chama `ListUsers` com `Filter='email = "..."'` e retorna o `UserStatus` do primeiro usuário encontrado, ou `None` se a lista veio vazia — usado na tela "Esqueci a senha" pra avisar quando o e-mail não tem cadastro (`None`) ou ainda está pendente de aprovação (`"UNCONFIRMED"`) |
 | `test_retorna_none_sem_chamar_a_api_quando_email_contem_aspas` | E-mail com `"` quebraria a sintaxe do `Filter` (sem escaping documentado) — `get_user_status()` retorna `None` sem chamar `ListUsers` |
+| `test_busca_por_email_e_extrai_o_nome` (`TestGetUnconfirmedSignupName`) | `get_unconfirmed_signup_name()` chama `ListUsers` filtrado por e-mail e retorna o `name` do primeiro usuário — usado para pré-preencher o campo Nome na tela de confirmação de um cadastro retomado (`_start_signup_resume`, `forms.py`) |
+| `test_levanta_index_error_quando_email_nao_existe` | Lista de usuários vazia → `IndexError` (contrato documentado: só deve ser chamada depois de `get_user_status()` confirmar `UNCONFIRMED`) |
 | `test_chama_forgot_password_com_email` | `request_password_reset()` chama `ForgotPassword` com `ClientId`/`Username` |
 | `test_chama_confirm_forgot_password_com_codigo_e_nova_senha` | `confirm_password_reset()` chama `ConfirmForgotPassword` com `ConfirmationCode`/`Password` |
 | `test_filtra_por_status_disabled_e_extrai_atributos` | `list_pending_users()` chama `ListUsers` com `Filter='status = "Disabled"'` e extrai `email`/`name`/`enabled`/`created_at`/`updated_at`/`last_login` (`created_at` vem de `UserCreateDate`, campo nativo do item; `updated_at`/`last_login` vêm dos atributos custom `custom:password_updated_at`/`custom:last_login` em `Attributes`, lista de `{Name, Value}`, não dict) — os dois vêm `""` quando o atributo custom correspondente não existe |
@@ -471,7 +473,7 @@ Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à AP
 | `test_exclui_a_conta` (`TestRejectSignup`) | `reject_signup()` chama `AdminDeleteUser` |
 | `test_exclui_a_conta` (`TestRevokeAccess`) | `revoke_access()` chama `AdminDeleteUser` — mesma decisão de sem histórico usada em `reject_signup()` |
 | `test_adiciona_usuario_ao_grupo_admins` | `add_to_admins_group()` chama `AdminAddUserToGroup(GroupName="admins")` |
-| `test_publica_no_topico_sns_com_email_e_nome` | `notify_new_signup()` chama `sns.publish` com `TopicArn`/`Subject`/`Message` (nome e e-mail interpolados) |
+| `test_publica_no_topico_sns_com_email_e_nome` | `notify_new_signup()` chama `sns.publish` com `TopicArn`/`Subject`/`Message` (nome e e-mail interpolados, com o link do FilmBot no corpo) |
 
 ## Como executar
 

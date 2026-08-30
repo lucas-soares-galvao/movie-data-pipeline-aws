@@ -257,22 +257,22 @@ def load_form_button_toggle_script(
 def load_password_requirements_gate_script(
     password_key: str, confirm_key: str, button_key: str, email_key: str = "", locked_out: bool = False,
 ) -> None:
-    """Injeta o script que, a cada tecla digitada em qualquer campo do formulário (cadastro
-    ou redefinir senha), marca o campo "Confirmar senha" com borda verde/vermelha e mantém o
-    botão de submit desabilitado até todos os campos estarem preenchidos, senha e confirmação
-    coincidirem, e a senha atender à política mínima (8 a 16 caracteres, maiúscula, número e
-    símbolo — mesma política de infra/lightsail_ia.tf, ver password_requirements_gate.js).
-    Substitui `load_form_button_toggle_script()` nessas duas telas (já cobre o "campo
-    vazio" que aquele script cuidava, além de senha/confirmação); as telas sem confirmação
-    de senha (login, esqueci senha) continuam usando o outro script. `password_key`/
-    `confirm_key`/`button_key` identificam os campos e o botão (`key=...`) do formulário
-    ativo. `email_key`, se informado (só a tela de cadastro passa — redefinir senha não tem
-    campo de e-mail digitado), marca o campo de e-mail com borda verde/vermelha conforme o
-    formato (mesma regex de `_EMAIL_RE` em `forms.py`) e inclui isso no gate do botão.
-    `locked_out`, se `True` (bloqueio de tentativas de código incorreto na tela de redefinir
-    senha, `forms.py::_render_forgot_password_confirm`), impede o script de reabilitar o
-    botão via digitação — mesmo racional de `locked_out` em
-    `load_form_button_toggle_script()`."""
+    """Injeta o script que, a cada tecla digitada em qualquer campo do formulário (cadastro,
+    redefinir senha, ou confirmação de um cadastro retomado), marca o campo "Confirmar senha"
+    com borda verde/vermelha e mantém o botão de submit desabilitado até todos os campos
+    estarem preenchidos, senha e confirmação coincidirem, e a senha atender à política mínima
+    (8 a 16 caracteres, maiúscula, número e símbolo — mesma política de infra/lightsail_ia.tf,
+    ver password_requirements_gate.js). Substitui `load_form_button_toggle_script()` nessas
+    telas (já cobre o "campo vazio" que aquele script cuidava, além de senha/confirmação); as
+    telas sem confirmação de senha (login, esqueci senha passo 1, confirmação de cadastro não
+    retomado) continuam usando o outro script. `password_key`/`confirm_key`/`button_key`
+    identificam os campos e o botão (`key=...`) do formulário ativo. `email_key`, se informado
+    (só a tela de cadastro passa — as demais não têm campo de e-mail digitado), marca o campo
+    de e-mail com borda verde/vermelha conforme o formato (mesma regex de `_EMAIL_RE` em
+    `forms.py`) e inclui isso no gate do botão. `locked_out`, se `True` (bloqueio de tentativas
+    de código incorreto — `forms.py::_render_forgot_password_confirm` ou
+    `_render_signup_confirm` num cadastro retomado), impede o script de reabilitar o botão via
+    digitação — mesmo racional de `locked_out` em `load_form_button_toggle_script()`."""
     path = Path(__file__).parent.parent / "static" / "js" / "password_requirements_gate.js"
     script = (
         path.read_text(encoding="utf-8")
@@ -323,7 +323,8 @@ def render_password_requirements() -> None:
     """Renderiza a lista de critérios da política de senha (mesma política de
     `validate_password()` acima e de `password_requirements_gate.js`) mais o
     critério de senha/confirmação iguais, abaixo do campo "Confirmar senha" nas telas de
-    cadastro, redefinir senha e troca de senha do perfil. Estado inicial neutro (ícone "•", sem classe) —
+    cadastro, confirmação de um cadastro retomado, redefinir senha e troca de senha do
+    perfil. Estado inicial neutro (ícone "•", sem classe) —
     `password_requirements_gate.js` assume o `id` fixo "password-requirements" (só uma
     tela de autenticação renderiza por vez) e atualiza cada `<li data-req="...">` para
     ✓/✗ (classes `req-met`/`req-unmet`) a cada tecla digitada nos campos de senha/
