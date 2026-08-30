@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 from src import infrastructure
-from src.components import load_admin_css, load_profile_css
+from src.components import load_admin_css, load_profile_css, render_feedback
 from src.profile import (
     get_own_profile,
     render_nav_bar,
@@ -79,6 +79,15 @@ def _build_rows() -> list[dict]:
 
 
 def _render_table() -> None:
+    # Mensagem do resultado da última ação (Aprovar/Reprovar/Revogar/Remover), gravada
+    # em admin_action_feedback por _render_confirm_dialog antes do st.rerun() que fecha
+    # o modal (rerun perde variáveis locais, mesmo racional de admin_pending_action, ver
+    # comentário em _handle_dataframe_action_click) — lida e descartada aqui pra
+    # aparecer uma única vez, mesmo se a ação esvaziar a lista.
+    feedback = st.session_state.pop("admin_action_feedback", None)
+    if feedback:
+        render_feedback(feedback["kind"], feedback["text"])
+
     rows = _build_rows()
 
     if not rows:
@@ -170,12 +179,13 @@ def _build_dataframe_action_data(rows: list[dict]) -> list[dict]:
 
 def _handle_dataframe_action_click(rows: list[dict]) -> None:
     # admin_pending_action (não é a key de trigger do ButtonColumn) guarda a ação de
-    # Reprovar/Revogar aguardando confirmação no modal. Necessário porque o valor de
-    # admin_reject_revoke_click é um "trigger value" do próprio Streamlit: só fica
-    # setado no rerun imediatamente disparado pelo clique, e é zerado sozinho em
-    # qualquer rerun seguinte — inclusive o rerun causado pelo clique em "Confirmar"
-    # dentro do modal. Por isso email/name/kind são resolvidos e copiados pra cá assim
-    # que o clique original é detectado, antes do primeiro st.rerun().
+    # Aprovar/Reprovar/Revogar aguardando confirmação no modal. Necessário porque o
+    # valor de admin_approve_click/admin_reject_revoke_click é um "trigger value" do
+    # próprio Streamlit: só fica setado no rerun imediatamente disparado pelo clique, e
+    # é zerado sozinho em qualquer rerun seguinte — inclusive o rerun causado pelo
+    # clique em "Confirmar" dentro do modal. Por isso email/name/kind são resolvidos e
+    # copiados pra cá assim que o clique original é detectado, antes do primeiro
+    # st.rerun().
     pending = st.session_state.get("admin_pending_action")
     if pending:
         _render_confirm_dialog(pending)
@@ -186,8 +196,11 @@ def _handle_dataframe_action_click(rows: list[dict]) -> None:
 
     if approve_click:
         user = rows[approve_click["row"]]
-        infrastructure.approve_signup(user["email"])
-        infrastructure.notify_user_approved(user["email"], user["name"])
+        st.session_state["admin_pending_action"] = {
+            "kind": "approve",
+            "email": user["email"],
+            "name": user["name"],
+        }
         st.rerun()
     elif reject_revoke_click:
         user = rows[reject_revoke_click["row"]]
@@ -206,43 +219,66 @@ def _handle_dataframe_action_click(rows: list[dict]) -> None:
 
 
 _CONFIRM_VERBOS = {
+    "approve": "aprovar o cadastro de",
     "reject": "reprovar o cadastro de",
     "revoke": "revogar o acesso de",
     "remove_unconfirmed": "remover o cadastro não confirmado de",
+}
+
+# (substantivo, particípio) da mensagem de feedback pós-ação — concordando com
+# "cadastro"/"acesso" (masculinos), não com a pessoa, pra não depender do gênero dela.
+_RESULT_LABELS = {
+    "approve": ("Cadastro", "aprovado"),
+    "reject": ("Cadastro", "reprovado"),
+    "revoke": ("Acesso", "revogado"),
+    "remove_unconfirmed": ("Cadastro não confirmado", "removido"),
 }
 
 
 @st.dialog("Confirmar ação", dismissible=False)
 def _render_confirm_dialog(pending: dict) -> None:
     st.write(f"Tem certeza que deseja {_CONFIRM_VERBOS[pending['kind']]} **{pending['name']}** ({pending['email']})?")
-    # Sem checkbox de notificação para remove_unconfirmed: o e-mail nunca foi
-    # comprovadamente confirmado (é exatamente por isso que a linha existe), então
-    # avisar por ele não tem a mesma garantia dos outros dois fluxos. Desmarcado por
-    # padrão em Reprovar (a instância é pública — notificar todo cadastro reprovado
-    # sinalizaria pra estranhos/spam que o e-mail existe e foi rejeitado) e marcado
-    # por padrão em Revogar (quem já tinha acesso normalmente é conhecido, e um aviso
-    # é mais educado). Ver infrastructure.py::notify_user_rejected/notify_user_revoked.
-    notify = (
-        st.checkbox("Notificar por e-mail", value=(pending["kind"] == "revoke"))
-        if pending["kind"] != "remove_unconfirmed"
-        else False
-    )
+    # Checkbox presente nos quatro fluxos, com o padrão dependendo do risco de cada um.
+    # Marcado por padrão em Aprovar: o usuário aprovado precisa saber que já pode
+    # logar, então o padrão seguro é notificar (evita o caso do admin esquecer de
+    # marcar e o usuário nunca saber que foi liberado). Desmarcado por padrão nos
+    # outros três (Reprovar/Revogar/remove_unconfirmed) — a instância é pública, então
+    # notificar por padrão sinalizaria pra estranhos/spam que o e-mail existe e foi
+    # rejeitado/revogado; fica a critério do admin marcar caso a caso. Ver
+    # infrastructure.py::notify_user_approved/notify_user_rejected/notify_user_revoked.
+    notify = st.checkbox("Notificar por e-mail", value=(pending["kind"] == "approve"))
 
     col_cancel, col_confirm = st.columns(2)
     cancelled = col_cancel.button("Cancelar", width="stretch")
     confirmed = col_confirm.button("Confirmar", type="primary", width="stretch")
 
     if confirmed:
-        if pending["kind"] == "reject":
+        email_sent: bool | None = None
+        if pending["kind"] == "approve":
+            infrastructure.approve_signup(pending["email"])
+            if notify:
+                email_sent = infrastructure.notify_user_approved(pending["email"], pending["name"])
+        elif pending["kind"] in ("reject", "remove_unconfirmed"):
             infrastructure.reject_signup(pending["email"])
             if notify:
-                infrastructure.notify_user_rejected(pending["email"], pending["name"])
-        elif pending["kind"] == "remove_unconfirmed":
-            infrastructure.reject_signup(pending["email"])
+                email_sent = infrastructure.notify_user_rejected(pending["email"], pending["name"])
         else:
             infrastructure.revoke_access(pending["email"])
             if notify:
-                infrastructure.notify_user_revoked(pending["email"], pending["name"])
+                email_sent = infrastructure.notify_user_revoked(pending["email"], pending["name"])
+
+        if email_sent is None:
+            email_text, feedback_kind = "e-mail não enviado (opção desmarcada)", "success"
+        elif email_sent:
+            email_text, feedback_kind = "e-mail enviado com sucesso", "success"
+        else:
+            email_text, feedback_kind = "falha ao enviar o e-mail", "warning"
+
+        subject, participle = _RESULT_LABELS[pending["kind"]]
+        st.session_state["admin_action_feedback"] = {
+            "kind": feedback_kind,
+            "text": f"{subject} de {pending['name']} ({pending['email']}) {participle} — {email_text}.",
+        }
         st.session_state.pop("admin_pending_action", None)
         st.rerun()
     elif cancelled:
