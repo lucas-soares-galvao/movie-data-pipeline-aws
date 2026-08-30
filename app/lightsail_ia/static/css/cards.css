@@ -133,6 +133,7 @@
   font-size: 18px;
   font-weight: 600;
   line-height: 1.2;
+  color: #ffffff;
 }
 
 /* display:flex (não bloco simples) pra caber o ícone 🎭 antes dos badges — align-items

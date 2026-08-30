@@ -61,10 +61,11 @@
   }
 }
 
-/* Labels visíveis (diferente de forms.py, que usa label_visibility="collapsed" com
-   texto só no placeholder) — sem esta regra o texto do label herdaria a cor escura
-   padrão do tema claro nativo do Streamlit (este projeto não fixa [theme] no
-   config.toml, ver base.css), ilegível contra o fundo escuro custom da página. */
+/* Labels visíveis do stTextInput — sem esta regra o texto do label herdaria a cor
+   escura padrão do tema claro nativo do Streamlit (este projeto não fixa [theme] no
+   config.toml, ver base.css), ilegível contra o fundo escuro custom da página. Mesma
+   correção replicada em forms.css (.st-key-form-card) e color-scheme: dark em
+   base.css como blindagem geral. */
 .st-key-profile-card [data-testid="stWidgetLabel"] p,
 .st-key-admin-profile-card [data-testid="stWidgetLabel"] p,
 .st-key-admin-password-card [data-testid="stWidgetLabel"] p {

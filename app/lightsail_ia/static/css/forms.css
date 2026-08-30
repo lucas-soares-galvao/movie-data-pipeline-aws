@@ -146,6 +146,15 @@
   margin: 0 !important;
   letter-spacing: -0.02em;
 }
+/* Mesma correção de profile.css:64-74 — o label nativo de stTextInput herda o tema
+   claro padrão do Streamlit (projeto não fixa [theme] no config.toml, ver base.css),
+   ilegível contra o fundo escuro custom da página. forms.py não usa
+   label_visibility="collapsed" (label sempre visível). */
+.st-key-form-card [data-testid="stWidgetLabel"] p {
+  color: #d4d4d4 !important;
+  font-size: 13px !important;
+  font-weight: 500;
+}
 /* margin-top negativo: mesmo com margin:0 nos dois elementos, sobra respiro visual entre
    o título e o subtítulo — não é margin/padding, é o line-height/leading da fonte de
    .form-title por baixo da linha de base do texto (mesmo padrão do .header-subtitle em

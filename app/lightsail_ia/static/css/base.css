@@ -5,9 +5,15 @@
    o fundo nativo por trás do stAppViewContainer varia com o tema do navegador
    de quem acessa (claro/escuro) — sem isso, encurtar o container em app.css
    (tela principal, min-height:0 lá) exporia esse fundo imprevisível abaixo do
-   rodapé em vez de continuar a textura escura do app. */
+   rodapé em vez de continuar a textura escura do app. color-scheme: dark pelo
+   mesmo motivo, mas para texto: sem ela, qualquer elemento nativo do
+   navegador/Streamlit sem `color` custom (ex.: label de stTextInput, título de
+   card) segue a preferência de cor de texto clara do SO do usuário, ilegível
+   contra este fundo escuro forçado — bug já visto em profile.css/forms.css/
+   cards.css. */
 html, body {
   background: #050508;
+  color-scheme: dark;
 }
 
 /* Fundo cinematografico — mesmo gradiente radial usado em forms.css, para
