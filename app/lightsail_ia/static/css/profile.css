@@ -80,6 +80,22 @@
   display: none;
 }
 
+/* stTextInputRootElement (wrapper nativo do Streamlit em volta do <input>) nasce com
+   altura fixa de 40px, menor que os 44.5px que o padding/line-height abaixo pedem pro
+   <input> por dentro — o Streamlit centraliza o <input> nesse wrapper via flexbox, então
+   o conteúdo "estoura" o wrapper de forma simétrica (~2px pra cima, ~2px pra baixo).
+   Resultado: o topo do <input> fica ~2px acima de onde a linha realmente começa
+   (confirmado via getBoundingClientRect em reprodução real da tela: wrapper e
+   .readonly-field-value do E-mail alinham no mesmo topo; só o <input> cru ficava
+   deslocado), enquanto o campo E-mail ao lado (sem nenhum wrapper) sempre começou no
+   lugar certo — dando a impressão de campos desalinhados/tamanhos diferentes mesmo com
+   a altura total batendo. height:auto deixa o wrapper crescer junto com o conteúdo em
+   vez de ficar menor que ele. */
+.st-key-profile-card [data-testid="stTextInputRootElement"],
+.st-key-admin-profile-card [data-testid="stTextInputRootElement"],
+.st-key-admin-password-card [data-testid="stTextInputRootElement"] {
+  height: auto !important;
+}
 .st-key-profile-card [data-testid="stTextInput"] input,
 .st-key-admin-profile-card [data-testid="stTextInput"] input,
 .st-key-admin-password-card [data-testid="stTextInput"] input {
@@ -88,7 +104,10 @@
   border-radius: 10px !important;
   color: var(--text-input) !important;
   font-size: 15px !important;
+  line-height: 1.5 !important;
   padding: 10px 14px !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
 }
 .st-key-profile-card [data-testid="stTextInput"] input:focus,
 .st-key-admin-profile-card [data-testid="stTextInput"] input:focus,
@@ -211,22 +230,21 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
+/* Fundo translúcido explícito (não mais opacity:0.5) — mesmo motivo de
+   .st-key-btn_recomendar (recommendation.css)/forms.css: mantém a identidade visual
+   original (laranja apagado), só sem decair o texto branco junto com o fundo. */
 .st-key-profile-card [data-testid="stButton"] > button:disabled,
 .st-key-admin-profile-card [data-testid="stButton"] > button:disabled,
 .st-key-admin-password-card [data-testid="stButton"] > button:disabled {
-  opacity: 0.5;
+  background: rgba(234, 88, 12, 0.5) !important;
+  color: #fff !important;
+  opacity: 1;
   box-shadow: none;
 }
 
-/* Campo E-mail (aba "Perfil") é sempre disabled=True — só leitura, não dá pra trocar
-   e-mail por esta tela. Opacidade reduzida deixa claro visualmente que o campo não é
-   editável, mesmo com o valor legível. */
-.st-key-profile-card [data-testid="stTextInput"] input:disabled,
-.st-key-admin-profile-card [data-testid="stTextInput"] input:disabled,
-.st-key-admin-password-card [data-testid="stTextInput"] input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+/* Campo somente-leitura (E-mail no Perfil/Admin e no cadastro retomado, forms.py) —
+   ver base.css (`.readonly-field*`): movido pra lá porque profile.css não é carregado
+   nas telas de autenticação (load_forms_css não chama load_profile_css). */
 
 /* Barra horizontal de navegação (Usuários/Perfil/Senha no admin; Perfil/Senha na tela
    solo "Meu Perfil"), no topo da tela, acima do conteúdo — substitui o antigo menu

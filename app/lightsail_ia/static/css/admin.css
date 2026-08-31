@@ -73,9 +73,60 @@
    direto dele. Aplicar max-width no próprio overlay encolhe o CONTEXTO de centralização
    inteiro pra 440px ancorado à esquerda (bug visto na prática: modal indo pro canto
    esquerdo, ocupando a tela toda em altura) — por isso o seletor mira o filho, não o
-   overlay. */
+   overlay.
+
+   Fundo/borda/sombra: sem eles o card herda o card nativo do Streamlit, dissociado do
+   data-theme do app (mesmo problema documentado acima pro <canvas> da tabela de
+   usuários, mas aqui alcançável via CSS porque é DOM normal). Reaproveita exatamente
+   os valores do card de login (.st-key-form-card, forms.css), mesma linguagem visual
+   do resto do app. */
 [data-testid="stDialog"] > div {
   max-width: 440px !important;
+  background: var(--bg-surface-strong) !important;
+  border: 1px solid rgba(249,115,22,0.18) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(249,115,22,0.06) !important;
+}
+
+/* Texto de confirmação (st.write), link de e-mail autolinkado dentro dele e label do
+   checkbox "Notificar por e-mail" não têm cor própria — herdam o texto nativo do
+   Streamlit, mesma causa-raiz dos labels de stTextInput (forms.css/profile.css). Sem
+   isso, só recolorir o fundo do card acima criaria risco real de texto ilegível
+   quando o tema manual do app diverge do prefers-color-scheme do navegador. Link
+   reaproveita --text-faint + underline, mesmo padrão de .footer a (app.css).
+
+   :not(button *): o rótulo de um st.button() também é renderizado via
+   stMarkdownContainer/p (confirmado inspecionando o DOM real — <button><div><span>
+   <div data-testid="stMarkdownContainer"><p>Cancelar</p></div></span></div></button>),
+   aninhado DENTRO do <button>. Sem essa exclusão, esta regra (mesma especificidade da
+   regra de cor dos botões abaixo) pintava sem querer "Cancelar"/"Confirmar" com
+   --text-primary em vez da cor do botão — color só é herdado quando não há
+   declaração explícita batendo no próprio elemento, e aqui havia (bug visto na
+   prática: texto do botão virava preto/branco em vez de laranja/branco). */
+[data-testid="stDialog"] [data-testid="stMarkdownContainer"] p:not(button *) {
+  color: var(--text-primary) !important;
+}
+[data-testid="stDialog"] [data-testid="stMarkdownContainer"] a:not(button *) {
+  color: var(--text-faint) !important;
+  text-decoration: underline;
+}
+[data-testid="stDialog"] [data-testid="stWidgetLabel"] p {
+  color: var(--text-primary) !important;
+}
+
+/* Indicador visual do checkbox "Notificar por e-mail" (o <div> vazio dentro do
+   <label>, irmão de stWidgetLabel — não tem testid próprio, é puro CSS-in-JS do
+   Streamlit) segue o tema nativo dissociado do data-theme do app (mesma causa-raiz da
+   tabela/botões acima), e nesse caso concreto o resultado é uma caixa sólida
+   preta/escura mesmo com o card já claro (confirmado inspecionando o DOM real com o
+   navegador emulando prefers-color-scheme diferente do toggle manual do app: fundo
+   computado rgb(19,23,32)). :empty isola só o estado DESMARCADO (o <div> fica
+   realmente vazio; quando marcado ganha um <svg> filho) — o estado marcado permanece
+   com o vermelho padrão do Streamlit (fora do escopo pedido, risco residual pequeno,
+   mesma classe dos outros nativos já catalogados). */
+[data-testid="stDialog"] [data-testid="stCheckbox"] label > div:empty {
+  background: var(--bg-input) !important;
+  border-color: var(--overlay-16) !important;
 }
 
 /* Sem isso, os dois st.columns(2) de Cancelar/Confirmar empilhariam em telas estreitas —
@@ -104,4 +155,30 @@
 
 [data-testid="stDialog"] [data-testid="stColumn"] {
   min-width: 0 !important;
+}
+
+/* "Cancelar"/"Confirmar" (_render_confirm_dialog) são os únicos st.button() do app sem
+   nenhum override de cor em lugar nenhum do CSS — herdam a paleta nativa do
+   primary/secondary do Streamlit, que segue o tema do navegador de quem acessa (mesmo
+   problema de fundo/texto nativo documentado em base.css), não o tema custom da página.
+   "Cancelar" (secundário) = outline laranja (fundo transparente, borda e texto
+   #ea580c, pedido do usuário) — hover próprio (tint translúcido) porque
+   filter:brightness não tem efeito visível sobre fundo transparente. "Confirmar"
+   (primário) = laranja sólido com texto branco, mesmo tom de "Entrar"/"Recomendar"
+   em forms.css/recommendation.css. */
+[data-testid="stDialog"] button[data-testid="stBaseButton-secondary"] {
+  background: transparent !important;
+  color: #ea580c !important;
+  border: 1px solid #ea580c !important;
+}
+[data-testid="stDialog"] button[data-testid="stBaseButton-primary"] {
+  background: #ea580c !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+[data-testid="stDialog"] button[data-testid="stBaseButton-secondary"]:hover {
+  background: rgba(234,88,12,0.08) !important;
+}
+[data-testid="stDialog"] button[data-testid="stBaseButton-primary"]:hover {
+  filter: brightness(1.15);
 }

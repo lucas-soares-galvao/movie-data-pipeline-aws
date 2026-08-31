@@ -652,8 +652,8 @@ class TestNotifyNewSignup:
         mock_boto.return_value.publish.assert_called_once_with(
             TopicArn="arn:aws:sns:sa-east-1:123456789012:test-new-signup-topic",
             Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
-            Message="Fulano (user@ex.com) acabou de se cadastrar no FilmBot e está aguardando aprovação.\n\n"
-            "https://filmbot.lsgalvao.com.br",
+            Message="Fulano (user@ex.com) acabou de se cadastrar no FilmBot e está aguardando aprovação. "
+            "Link: https://filmbot.lsgalvao.com.br",
         )
 
 

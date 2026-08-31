@@ -273,10 +273,33 @@ def render_recommendation(client_ip: str) -> None:
 
     with st.container(key="hero-actions"):
         if searching:
-            rec_col, cancel_col, _ = st.columns([1, 1, 6], gap="small")
-            with rec_col:
-                st.button("Recomendar", type="primary", disabled=True)
-            with cancel_col:
+            # "Recomendar" fica fora do DOM neste estado (não só escondido via CSS) — de
+            # propósito: contador_caracteres.js roda um setInterval indefinido que força
+            # `.st-key-btn_recomendar button`.disabled conforme o texto digitado (ver
+            # load_preference_counter_script(), chamado incondicionalmente mais abaixo),
+            # sem saber que a busca está em andamento. Com o campo de preferência não
+            # vazio (texto já digitado antes de clicar), esse script reabilitava o botão a
+            # cada 300ms, brigando com o disabled=True do Python e cancelando qualquer CSS
+            # de :disabled — o botão nunca ficava visualmente desabilitado de verdade.
+            # Sem o botão no DOM, o próprio script não encontra nada pra mexer (guard
+            # `if (!btn) return`) e a interferência desaparece.
+            future: Future = st.session_state.get("future")
+            _search_done = bool(future and future.done())
+
+            # Mesmo padrão de query-counter-row abaixo (texto/spinner à esquerda, botão à
+            # direita via CSS flex, ver recommendation.css) — spinner calculado antes e
+            # ausente do DOM só quando a busca já terminou (frame único antes do rerun
+            # abaixo processar o resultado). "Cancelar" é checado antes do processamento
+            # do resultado, preservando a prioridade que já existia: um clique nesse
+            # mesmo rerun vence mesmo que a busca tenha terminado no mesmo instante.
+            with st.container(key="search-status-row"):
+                if not _search_done:
+                    st.markdown("""
+                    <div class="spinner-container">
+                      <div class="spinner"></div>
+                      <span class="spinner-text">Buscando as melhores opções para você...</span>
+                    </div>
+                    """, unsafe_allow_html=True)
                 if st.button("Cancelar", type="primary", key="btn_cancelar"):
                     st.session_state["searching"] = False
                     st.session_state["search_completed"] = False
@@ -285,8 +308,7 @@ def render_recommendation(client_ip: str) -> None:
                     st.session_state["future"] = None
                     st.rerun()
 
-            future: Future = st.session_state.get("future")
-            if future and future.done():
+            if _search_done:
                 st.session_state["searching"] = False
                 st.session_state["search_completed"] = True
                 try:
@@ -297,12 +319,6 @@ def render_recommendation(client_ip: str) -> None:
                     st.session_state["titles"] = []
                 st.rerun()
             else:
-                st.markdown("""
-                <div class="spinner-container">
-                  <div class="spinner"></div>
-                  <span class="spinner-text">Buscando as melhores opções para você...</span>
-                </div>
-                """, unsafe_allow_html=True)
                 time.sleep(0.5)
                 st.rerun()
         else:

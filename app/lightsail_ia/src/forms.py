@@ -1,5 +1,6 @@
 """forms.py — telas de autenticação do FilmBot (login, cadastro, esqueci a senha)."""
 
+import html
 import logging
 import re
 import time
@@ -533,7 +534,7 @@ def _render_signup_confirm(client_ip: str) -> None:
                         _switch_view("login")
                 with link_col2:
                     if st.button(
-                        "Reenviar código", key="btn_reenviar_codigo",
+                        "Reenviar código", key="btn_reenviar_codigo", type="tertiary",
                         disabled=_resend_locked, use_container_width=True,
                     ):
                         # Diferente do reenvio de reset de senha (anti user-enumeration —
@@ -576,7 +577,17 @@ def _render_signup_resume_details(client_ip: str, email: str, name: str) -> None
             fields_col, requirements_col = st.columns(2, gap="medium")
             with fields_col:
                 name = st.text_input("Nome Completo", value=name, key="signup_resume_name").strip()
-                st.text_input("E-mail", value=email, disabled=True, key="signup_resume_email")
+                # E-mail somente leitura — não é mais st.text_input(disabled=True): mesmo
+                # problema de legibilidade em modo claro já corrigido em profile.py (ver
+                # comentário lá), reaproveitando aqui o mesmo <div> estilizado via CSS
+                # próprio (.readonly-field*, profile.css).
+                st.markdown(
+                    '<div class="readonly-field">'
+                    '<label class="readonly-field-label">E-mail</label>'
+                    f'<div class="readonly-field-value">{html.escape(email)}</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
                 password = st.text_input(
                     "Senha", placeholder="Digite sua senha", type="password", key="signup_resume_password",
                 )
@@ -891,7 +902,7 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                         _switch_view("login")
                 with link_col2:
                     if st.button(
-                        "Reenviar código", key="btn_reenviar_codigo",
+                        "Reenviar código", key="btn_reenviar_codigo", type="tertiary",
                         disabled=_resend_locked, use_container_width=True,
                     ):
                         try:

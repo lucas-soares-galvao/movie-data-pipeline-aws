@@ -25,6 +25,57 @@ html, body {
   min-height: 100dvh;
 }
 
+/* Esconde header/toolbar/decoração nativos do Streamlit em toda tela (login e
+   autenticada) — movido de forms.css (que só cobria o login) pra cá: `.theme-toggle`
+   (theme.css, `position:fixed; top:12px; right:12px; z-index:1000`) senta exatamente no
+   canto onde o `stHeader` nativo do Streamlit posiciona seu próprio toolbar (hambúrguer/
+   "Deploy"), com um z-index nativo bem maior que 1000 — sem esconder esse header também
+   na tela principal/admin/perfil, ele cobria o botão de tema por cima, mesmo ele
+   existindo no DOM (bug reportado: toggle "sumindo" depois do login, mas só
+   visualmente — nunca foi removido do HTML). O app já tem seu próprio cabeçalho custom
+   (`.st-key-header-row`, app.py), então a toolbar nativa nunca foi usada aqui. */
+[data-testid="stHeader"] { display: none; }
+[data-testid="stToolbar"] { display: none; }
+[data-testid="stDecoration"] { display: none; }
+
+/* Placeholder de stTextInput/stTextArea (login, cadastro, perfil, campo de preferência):
+   sem esta regra, a cor vem do CSS nativo do Streamlit, calibrada pro tema que o
+   navegador de quem acessa prefere (mesmo problema documentado acima pro html/body),
+   não pro tema custom (`data-theme`) escolhido no toggle — bug reportado: placeholder
+   claro (pensado pra fundo escuro nativo) invisível sobre `--bg-input` claro quando o
+   usuário força o tema claro manualmente com o navegador em modo escuro. `--text-muted`
+   tem o mesmo valor nos dois temas (theme.css), então funciona em qualquer combinação
+   de tema custom x tema nativo. `opacity:1 !important` neutraliza o fade que o Firefox
+   aplica por padrão a `::placeholder`, que senão desbotaria a cor ainda mais. */
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 1 !important;
+}
+
+/* Autofill do navegador (Chrome/Edge, campo de e-mail no login) força sua própria cor de
+   fundo/texto via UA stylesheet, ignorando `background`/`color` normais do input — só
+   `-webkit-box-shadow` inset consegue sobrescrever isso (técnica padrão, não existe outra
+   via CSS puro). Sem isso, um campo autofilled mantém a paleta de autofill do sistema
+   (observado: fundo escuro no Edge com o app em modo claro), independente do
+   `data-theme` da página. `transition` com delay enorme evita o "flash" da cor nativa de
+   autofill antes do estilo abaixo assumir (truque padrão, mesmo motivo do `!important`
+   nas outras regras deste arquivo). `:disabled` incluído à parte (não coberto pelas 4
+   variantes acima): o campo "E-mail" da tela de Perfil é sempre `disabled=True` e, se o
+   navegador já tiver uma entrada de autofill salva pra aquele e-mail, o Chromium estiliza
+   a combinação autofill+disabled separadamente das demais. */
+[data-testid="stTextInput"] input:-webkit-autofill,
+[data-testid="stTextInput"] input:-webkit-autofill:hover,
+[data-testid="stTextInput"] input:-webkit-autofill:focus,
+[data-testid="stTextInput"] input:-webkit-autofill:active,
+[data-testid="stTextInput"] input:-webkit-autofill:disabled {
+  -webkit-text-fill-color: var(--text-input) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset !important;
+  box-shadow: 0 0 0 1000px var(--bg-input) inset !important;
+  caret-color: var(--text-input);
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* Padroniza todos os botoes */
 [data-testid="stBaseButton-primary"] button,
 [data-testid="stBaseButton-secondary"] button,
@@ -276,4 +327,54 @@ button[data-testid="stBaseButton-secondary"] {
 
 .time-countdown {
   font-weight: 600;
+}
+
+/* Campo somente-leitura (E-mail no Perfil/Admin — profile.py/admin.py — e no cadastro
+   retomado — forms.py) — não é mais st.text_input(disabled=True): o estado disabled
+   nativo do Streamlit ficava ilegível em modo claro (fundo cinza sólido sem texto
+   visível, em Chrome e Edge) mesmo depois de tentativas de CSS visando
+   `:disabled`/`:-webkit-autofill:disabled` — sem conseguir isolar a causa exata. Este
+   <div> não depende de nenhum estado nativo pra inputs desabilitados. Label/valor
+   imitam visualmente o par [data-testid="stWidgetLabel"] p / [data-testid="stTextInput"]
+   input dos campos editáveis ao lado — mesmos tokens de padding/border/font-size, mas
+   value com cor mais apagada (--text-tertiary, não --text-input) e cursor not-allowed
+   no lugar de opacity, mesmo sinal visual de "não editável" sem desbotar texto+fundo
+   juntos. Aqui em base.css (não em profile.css) por ser compartilhado entre
+   profile.py/admin.py (load_profile_css) e forms.py (load_forms_css) — os dois já
+   carregam base.css antes.
+   Padding/border/font-size iguais não bastam pra bater a mesma altura do <input>
+   editável ao lado (bug reportado pelo usuário, print mostrando a caixa de E-mail mais
+   baixa que a de Nome Completo): um <input> nativo mantém `line-height`/`appearance`
+   próprios do navegador por baixo desses overrides, que uma <div> não tem. Corrigido
+   fixando `line-height: 1.5` aqui e na regra do `<input>` (profile.css) — mesmo valor
+   nos dois lados, em vez de depender do `normal` de cada elemento coincidir por acaso. */
+.st-key-profile-card .readonly-field,
+.st-key-admin-profile-card .readonly-field,
+.st-key-form-card .readonly-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-key-profile-card .readonly-field-label,
+.st-key-admin-profile-card .readonly-field-label,
+.st-key-form-card .readonly-field-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.st-key-profile-card .readonly-field-value,
+.st-key-admin-profile-card .readonly-field-value,
+.st-key-form-card .readonly-field-value {
+  background: var(--bg-input);
+  border: 1px solid var(--overlay-10);
+  border-radius: 10px;
+  color: var(--text-tertiary);
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 10px 14px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: not-allowed;
 }
