@@ -63,10 +63,10 @@
 }
 
 .card, article.card {
-  background: #111;
+  background: var(--bg-surface);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--overlay-06);
   display: flex;
   flex-direction: column;
   transition: background-color .2s ease, border-color .2s ease, transform .2s ease;
@@ -74,8 +74,8 @@
 
 @media (hover: hover) {
   .card:hover, article.card:hover {
-    background: rgba(255,255,255,0.04);
-    border-color: rgba(255,255,255,0.12);
+    background: var(--overlay-04);
+    border-color: var(--overlay-12);
     transform: translateY(-2px);
   }
 }
@@ -133,7 +133,7 @@
   font-size: 18px;
   font-weight: 600;
   line-height: 1.2;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 /* display:flex (não bloco simples) pra caber o ícone 🎭 antes dos badges — align-items
@@ -223,7 +223,7 @@
   margin-bottom: 4px;
 }
 .reason {
-  color: #d4d4d4;
+  color: var(--text-secondary);
   font-size: 14px;
   font-style: italic;
   margin: 0;
@@ -262,7 +262,7 @@
 .meta-line {
   justify-content: space-between;
   flex-wrap: wrap;
-  color: #a3a3a3;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -276,7 +276,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #a3a3a3;
+  color: var(--text-tertiary);
 }
 .vital-rating { color: #f97316; font-weight: bold; font-size: 15px; }
 
@@ -285,13 +285,13 @@
    de atenção como nota/motivo/"em cartaz"), só em dois degraus diferentes, pra dar pra
    distinguir gênero de provedor mesmo sem ícone (nenhum dos dois grupos tem mais). */
 .genre {
-  background: rgba(255,255,255,0.04);
-  color: #d4d4d4;
+  background: var(--overlay-04);
+  color: var(--text-secondary);
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 12px;
   display: inline-block;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--overlay-08);
 }
 
 .certification-badge {
@@ -323,7 +323,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   row-gap: 6px;
-  color: #a3a3a3;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -340,7 +340,7 @@
   gap: 6px;
 }
 .providers-label {
-  color: #a3a3a3;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -355,14 +355,14 @@
    inline-flex (não inline-block) pra logo (.provider-logo) e nome ficarem alinhados
    verticalmente quando a logo existe. */
 .provider-badge {
-  background: rgba(255,255,255,0.12);
-  color: #d4d4d4;
+  background: var(--overlay-12);
+  color: var(--text-secondary);
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 11px;
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(255,255,255,0.16);
+  border: 1px solid var(--overlay-16);
 }
 .provider-logo {
   width: 14px;
@@ -416,7 +416,7 @@
    fica reservado só pra nota e "Insight do FilmBot" (.reason/.reason-label). */
 .synopsis-label {
   cursor: pointer;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -440,7 +440,7 @@
 .synopsis-toggle:checked ~ .synopsis-row .synopsis-arrow-open { display: inline; }
 .synopsis-text {
   display: none;
-  color: #d4d4d4;
+  color: var(--text-secondary);
   font-size: 14px;
   margin: 6px 0 0;
   line-height: 1.5;
@@ -469,7 +469,7 @@
 }
 .people-label {
   cursor: pointer;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -486,7 +486,7 @@
   display: none;
   margin: 6px 0 0;
   padding-left: 18px;
-  color: #d4d4d4;
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -494,6 +494,6 @@
   margin-top: 2px;
 }
 .people-list strong {
-  color: #fff;
+  color: var(--text-primary);
 }
 .people-toggle:checked ~ .people-list { display: block; }

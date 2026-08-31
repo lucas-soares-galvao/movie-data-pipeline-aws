@@ -72,6 +72,13 @@ ICON_PATHS = {
         '<rect width="20" height="16" x="2" y="4" rx="2"/>'
         '<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>'
     ),
+    "sun": (
+        '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/>'
+        '<path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/>'
+        '<path d="M2 12h2"/><path d="M20 12h2"/>'
+        '<path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'
+    ),
+    "moon": '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
 }
 
 # E-mail de contato exibido nos rodapés (render_footer/render_form_footer) — caixa
@@ -118,10 +125,45 @@ def _inject_css(file_name: str) -> None:
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
+def render_theme_toggle() -> None:
+    """Renderiza o botão fixo de alternância de tema claro/escuro (sol/lua) — chamado por
+    load_base_css(), presente em toda tela (login ou autenticado). A troca de tema em si é
+    100% client-side (ver load_theme_toggle_script()), sem rerun do Streamlit; aqui só
+    emite os dois ícones sobrepostos, com `data-effective-theme="dark"` como valor inicial
+    (assume escuro, o padrão histórico do app) até o script corrigir com o tema efetivo
+    real (escolha manual salva, ou preferência do SO) — ver .theme-toggle em theme.css para
+    a regra de exibição condicional de cada ícone."""
+    st.markdown(
+        '<button id="theme-toggle" class="theme-toggle" type="button" '
+        'aria-label="Alternar tema claro/escuro" data-effective-theme="dark">'
+        f'<span class="theme-toggle-icon icon-sun">{icon("sun", 18)}</span>'
+        f'<span class="theme-toggle-icon icon-moon">{icon("moon", 18)}</span>'
+        '</button>',
+        unsafe_allow_html=True,
+    )
+
+
+def load_theme_toggle_script() -> None:
+    """Injeta o script do toggle de tema (render_theme_toggle()) — mesmo padrão de
+    load_scroll_lock_script() (`window.parent.document`, loop de retentativa via
+    setTimeout, guarda de binding única via dataset). Resolve o tema inteiramente no
+    navegador via `localStorage` + atributo `data-theme` em `<html>` (consumido pelos
+    tokens de theme.css): sem isso, alternar teria que passar por session_state +
+    st.rerun(), recarregando toda a página para uma simples troca de cor."""
+    path = Path(__file__).parent.parent / "static" / "js" / "theme_toggle.js"
+    script = path.read_text(encoding="utf-8")
+    components.html(f"<script>{script}</script>", height=0)
+
+
 def load_base_css() -> None:
-    """Injeta os estilos transversais (fundo, reset de botão, largura de container, ícones,
-    mensagens de feedback), compartilhados entre a tela de login e a página principal."""
+    """Injeta os estilos transversais (tokens de tema, fundo, reset de botão, largura de
+    container, ícones, mensagens de feedback), compartilhados entre a tela de login e a
+    página principal, e o toggle de tema claro/escuro (presente em toda tela por sair
+    daqui)."""
+    _inject_css("theme.css")
     _inject_css("base.css")
+    render_theme_toggle()
+    load_theme_toggle_script()
 
 
 def load_forms_css() -> None:

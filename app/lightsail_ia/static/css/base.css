@@ -1,25 +1,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200;300;600&display=swap');
 
-/* Rede de segurança: mesmo tom da ponta escura do gradiente abaixo (#050508),
-   fixo em html/body. O Streamlit não tem [theme] fixado no config.toml, então
-   o fundo nativo por trás do stAppViewContainer varia com o tema do navegador
-   de quem acessa (claro/escuro) — sem isso, encurtar o container em app.css
-   (tela principal, min-height:0 lá) exporia esse fundo imprevisível abaixo do
-   rodapé em vez de continuar a textura escura do app. color-scheme: dark pelo
-   mesmo motivo, mas para texto: sem ela, qualquer elemento nativo do
-   navegador/Streamlit sem `color` custom (ex.: label de stTextInput, título de
-   card) segue a preferência de cor de texto clara do SO do usuário, ilegível
-   contra este fundo escuro forçado — bug já visto em profile.css/forms.css/
-   cards.css. */
+/* Rede de segurança: mesmo tom do fundo de página (--bg-page, theme.css), fixo em
+   html/body. O Streamlit não tem [theme] fixado no config.toml, então o fundo nativo por
+   trás do stAppViewContainer varia com o tema do navegador de quem acessa — sem isso,
+   encurtar o container em app.css (tela principal, min-height:0 lá) exporia esse fundo
+   imprevisível abaixo do rodapé em vez de continuar a textura do app. `color-scheme` (via
+   os tokens de theme.css, aplicado em `:root`) resolve o mesmo problema para texto: sem
+   ele, qualquer elemento nativo do navegador/Streamlit sem `color` custom (ex.: label de
+   stTextInput, título de card) seguiria a preferência de cor do SO do usuário,
+   potencialmente ilegível contra o tema custom da página — bug já visto em
+   profile.css/forms.css/cards.css antes de existir o tema dinâmico. */
 html, body {
-  background: #050508;
-  color-scheme: dark;
+  background: var(--bg-page);
 }
 
 /* Fundo cinematografico — mesmo gradiente radial usado em forms.css, para
    as duas telas terem a mesma textura de fundo. */
 [data-testid="stAppViewContainer"] {
-  background: radial-gradient(ellipse at 50% 0%, #1a0a00 0%, #0a0a0f 55%, #050508 100%);
+  background: radial-gradient(ellipse at 50% 0%, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 55%, var(--bg-gradient-end) 100%);
   /* 100dvh acompanha a altura visível real em mobile (100vh usa a altura máxima,
      com a barra de endereço recolhida) — ver forms.css para o efeito visual disso
      na centralização do card de login. 100vh fica como fallback. */
@@ -94,13 +92,13 @@ button[data-testid="stBaseButton-secondary"] {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #a3a3a3;
+  color: var(--text-tertiary);
 }
 .password-requirements .req-icon {
   flex-shrink: 0;
   width: 14px;
   text-align: center;
-  color: #6b7280;
+  color: var(--text-faint);
 }
 .password-requirements li.req-met .req-icon {
   color: #22c55e;
@@ -112,7 +110,7 @@ button[data-testid="stBaseButton-secondary"] {
    pra ler como um label, não como um título de seção à parte. */
 .password-requirements-title {
   margin: 0 !important;
-  color: #d4d4d4;
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
 }
@@ -143,8 +141,8 @@ button[data-testid="stBaseButton-secondary"] {
    título e lista — não usar margin no título pra isso (zerado abaixo), pra não somar
    com esse gap e desequilibrar o cálculo de centro. */
 .st-key-password-fields-row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--overlay-03);
+  border: 1px solid var(--overlay-08);
   border-radius: 12px;
   padding: 16px 14px;
   box-sizing: border-box;
@@ -223,7 +221,7 @@ button[data-testid="stBaseButton-secondary"] {
    ancestral, então não precisa mexer nessas regras. Usado tanto no badge do cabeçalho
    (app.css) quanto nos ícones do card (cards.css). */
 .icon {
-  color: #fff;
+  color: var(--text-primary);
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
@@ -259,21 +257,21 @@ button[data-testid="stBaseButton-secondary"] {
 }
 
 .msg-error {
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.3);
-  color: #fca5a5;
+  background: var(--feedback-error-bg);
+  border: 1px solid var(--feedback-error-border);
+  color: var(--feedback-error-text);
 }
 
 .msg-warning {
-  background: rgba(250,204,21,0.1);
-  border: 1px solid rgba(250,204,21,0.3);
-  color: #fbbf24;
+  background: var(--feedback-warning-bg);
+  border: 1px solid var(--feedback-warning-border);
+  color: var(--feedback-warning-text);
 }
 
 .msg-success {
-  background: rgba(34,197,94,0.1);
-  border: 1px solid rgba(34,197,94,0.3);
-  color: #86efac;
+  background: var(--feedback-success-bg);
+  border: 1px solid var(--feedback-success-border);
+  color: var(--feedback-success-text);
 }
 
 .time-countdown {
