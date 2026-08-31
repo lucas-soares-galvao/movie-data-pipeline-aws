@@ -476,8 +476,8 @@ def notify_new_signup(email: str, name: str) -> None:
         TopicArn=os.environ["SNS_NEW_SIGNUP_TOPIC_ARN"],
         Subject="FilmBot — Cadastro Novo Pendente de Aprovação",
         Message=(
-            f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação.\n\n"
-            f"{_FILMBOT_URL}"
+            f"{name} ({email}) acabou de se cadastrar no FilmBot e está aguardando aprovação. "
+            f"Link: {_FILMBOT_URL}"
         ),
     )
 

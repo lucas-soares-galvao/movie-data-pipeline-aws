@@ -6,6 +6,7 @@ get_own_profile/render_nav_bar/render_nav_item para o próprio admin editar nome
 dentro do painel. Nenhum dos dois chamadores tem o gate repetido aqui — confia em quem
 chama."""
 
+import html
 import logging
 import time
 
@@ -129,12 +130,27 @@ def render_profile_tab(profile: dict) -> None:
         with name_col:
             name = st.text_input("Nome Completo", value=profile["name"], key="profile_name").strip()
         with email_col:
-            # E-mail sempre desabilitado — a tela não permite trocar e-mail (decisão
+            # E-mail sempre somente leitura — a tela não permite trocar e-mail (decisão
             # do projeto: quem chega até aqui já autenticou com e-mail+senha no
             # login; trocar e-mail exigiria reautenticação/fluxo de verificação por
             # código, fora de escopo desta versão). Mostrado só como referência do
             # valor atual.
-            st.text_input("E-mail", value=profile["email"], disabled=True, key="profile_email")
+            #
+            # Não é mais um st.text_input(disabled=True): o estado disabled nativo do
+            # Streamlit ficava ilegível em modo claro (fundo cinza sólido sem texto
+            # visível, reproduzido em Chrome e Edge) mesmo depois de tentativas de CSS
+            # (placeholder, :-webkit-autofill:disabled) — sem conseguir isolar a causa
+            # exata via inspeção de DOM real. Um <div> estilizado via CSS próprio
+            # (.readonly-field*, profile.css) não depende de nenhum estado nativo do
+            # navegador/Streamlit para inputs desabilitados, então elimina a classe
+            # inteira do problema.
+            st.markdown(
+                '<div class="readonly-field">'
+                '<label class="readonly-field-label">E-mail</label>'
+                f'<div class="readonly-field-value">{html.escape(profile["email"])}</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
     error_placeholder = st.empty()
 
     if st.button("Salvar Perfil →", use_container_width=True, key="btn_salvar_perfil"):

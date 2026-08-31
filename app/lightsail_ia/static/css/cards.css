@@ -62,11 +62,18 @@
 
 }
 
+/* border/box-shadow reforçados (eram var(--overlay-06) sem box-shadow): em modo claro
+   --bg-surface e --bg-page (theme.css) são o mesmo branco puro, diferente do modo escuro
+   (onde --bg-surface já destoa um pouco do gradiente de fundo mesmo sem borda) — com as
+   duas cores idênticas, uma borda de só 6% de preto deixava os cards indistinguíveis da
+   página (bug reportado: "não dá pra saber a separação dos cards"). box-shadow dá uma
+   pista de profundidade adicional que não depende da cor de fundo ser diferente. */
 .card, article.card {
   background: var(--bg-surface);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--overlay-06);
+  border: 1px solid var(--overlay-10);
+  box-shadow: 0 1px 3px var(--overlay-08);
   display: flex;
   flex-direction: column;
   transition: background-color .2s ease, border-color .2s ease, transform .2s ease;
@@ -217,7 +224,7 @@
    .synopsis-text/.people-list. */
 .reason-label {
   display: block;
-  color: #fdba74;
+  color: var(--accent-soft-text);
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 4px;
@@ -256,7 +263,7 @@
    .reason-label acima) — seletor descendente vence `.icon` sozinho por especificidade, sem
    precisar de !important nem depender da ordem de injeção dos arquivos CSS. */
 .reason-label .icon {
-  color: #fdba74;
+  color: var(--accent-soft-text);
 }
 
 .meta-line {
@@ -381,12 +388,13 @@
 .genre.highlighted,
 .provider-badge.highlighted {
   border-color: rgba(249,115,22,0.5);
-  color: #fdba74;
+  color: var(--accent-soft-text);
 }
 
 .cinema-badge {
-  background: rgba(250,204,21,0.15);
-  color: #fbbf24;
+  background: var(--feedback-warning-bg);
+  color: var(--feedback-warning-text);
+  border: 1px solid var(--feedback-warning-border);
   border-radius: 99px;
   padding: 2px 8px;
   font-size: 12px;
