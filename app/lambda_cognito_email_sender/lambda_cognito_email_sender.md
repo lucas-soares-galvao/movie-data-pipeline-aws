@@ -53,3 +53,19 @@ Nenhuma exceção de envio propaga para o Cognito — `send_gmail_email` captura
 - **AWS KMS** — chave simétrica dedicada (`infra/kms.tf`), usada pelo Cognito para criptografar e por esta Lambda para descriptografar
 - **boto3** — clientes KMS e Secrets Manager
 - **smtplib** (biblioteca padrão) — envio via Gmail/SMTP
+
+### Build cross-platform (arm64)
+
+O extra `[MPL]` do `aws-encryption-sdk` traz `aws-cryptographic-material-providers`, que depende
+transitivamente de `cryptography` — pacote com binário nativo compilado em Rust
+(`cryptography/hazmat/bindings/_rust.abi3.so`). Como o build roda em runner GitHub Actions x86_64
+(`ubuntu-latest`) mas a Lambda é `architectures = ["arm64"]` (`infra/lambda_cognito_email_sender.tf`),
+o `pip install` em `infra/scripts/build_lambda_package.py` precisa forçar a resolução da wheel para a
+arquitetura de destino — senão o pip resolve a wheel nativa do host (x86_64) e o runtime falha com
+`Runtime.ImportModuleError: ... _rust.abi3.so: cannot open shared object file`.
+
+Por isso o build desta Lambda (tanto no step do `.github/workflows/02_terraform.yml` quanto no
+`local-exec` de `infra/lambda_cognito_email_sender.tf`) passa
+`--platform manylinux2014_aarch64 --python-version 3.11 --only-binary=:all:`. Não usar
+`manylinux_2_28_aarch64`: o runtime `python3.11` do Lambda roda sobre Amazon Linux 2 (glibc 2.26),
+incompatível com o glibc ≥ 2.28 que essa tag exige.
