@@ -157,6 +157,66 @@ resource "aws_iam_role_policy_attachment" "glue_dq_read_code" {
 # GLUE ETL — Políticas do job de transformação (SOR → SOT)
 # =============================================================================
 
+# =============================================================================
+# LAMBDA COGNITO EMAIL SENDER — Políticas do trigger CustomEmailSender do Cognito
+# =============================================================================
+
+resource "aws_iam_role_policy" "lambda_cognito_email_sender_logs" {
+  count = local.lightsail_agent_enabled ? 1 : 0
+  name  = "${local.tmdb_prefix}-lambda-cognito-email-sender-logs-${var.env}"
+  role  = aws_iam_role.lambda_cognito_email_sender[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "WriteLambdaLogs"
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+      ]
+      Resource = [
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.envs.lambda_cognito_email_sender_name}",
+        "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.envs.lambda_cognito_email_sender_name}:log-stream:*",
+      ]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_cognito_email_sender_secrets_manager" {
+  count = local.lightsail_agent_enabled ? 1 : 0
+  name  = "${local.tmdb_prefix}-lambda-cognito-email-sender-secrets-manager-${var.env}"
+  role  = aws_iam_role.lambda_cognito_email_sender[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = var.filmbot_secret_arn
+    }]
+  })
+}
+
+# kms:Decrypt concedido tanto aqui (identity-based, seguindo a orientação da doc oficial do
+# Cognito de dar essa permissão à execution role da Lambda) quanto na key policy da própria
+# chave (resource-based, infra/kms.tf) — redundante de propósito, mesmo padrão de dupla
+# permissão explícita (ARN + role) já usado em outras policies deste projeto.
+resource "aws_iam_role_policy" "lambda_cognito_email_sender_kms_decrypt" {
+  count = local.lightsail_agent_enabled ? 1 : 0
+  name  = "${local.tmdb_prefix}-lambda-cognito-email-sender-kms-decrypt-${var.env}"
+  role  = aws_iam_role.lambda_cognito_email_sender[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["kms:Decrypt"]
+      Resource = aws_kms_key.cognito_email_sender[0].arn
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "glue_etl_logs" {
   name = "${local.tmdb_prefix}-glue-etl-logs-${var.env}"
   role = aws_iam_role.glue_etl_role.name

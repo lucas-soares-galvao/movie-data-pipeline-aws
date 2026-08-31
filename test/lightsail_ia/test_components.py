@@ -76,6 +76,16 @@ class TestIcon:
         assert 'class="icon icon-mail"' in svg
         assert "<svg" in svg
 
+    def test_icone_sun_reaproveita_geometria_do_icon_paths(self):
+        svg = components.icon("sun")
+        assert components.ICON_PATHS["sun"] in svg
+        assert 'class="icon icon-sun"' in svg
+
+    def test_icone_moon_reaproveita_geometria_do_icon_paths(self):
+        svg = components.icon("moon")
+        assert components.ICON_PATHS["moon"] in svg
+        assert 'class="icon icon-moon"' in svg
+
 
 class TestValidatePassword:
     """validate_password() — política do Cognito (infra/lightsail_ia.tf) mais o teto de
@@ -157,6 +167,42 @@ class TestLoadScrollLockScript:
         )
         components.load_scroll_lock_script()
         assert "scrollLeft" in captured["content"]
+        assert captured["height"] == 0
+
+
+class TestRenderThemeToggle:
+    def test_renderiza_botao_com_os_dois_icones(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_theme_toggle()
+        assert 'id="theme-toggle"' in captured["content"]
+        assert 'class="icon icon-sun"' in captured["content"]
+        assert 'class="icon icon-moon"' in captured["content"]
+
+    def test_valor_inicial_assume_tema_escuro(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_theme_toggle()
+        assert 'data-effective-theme="dark"' in captured["content"]
+
+
+class TestLoadThemeToggleScript:
+    def test_injeta_script_via_components_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        components.load_theme_toggle_script()
+        assert "localStorage" in captured["content"]
+        assert "dataset.theme" in captured["content"]
+        assert "themeToggleBound" in captured["content"]
         assert captured["height"] == 0
 
 

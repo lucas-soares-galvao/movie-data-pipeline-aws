@@ -112,6 +112,23 @@ jobs:
           fi
           echo "✅ Lambda package criado com sucesso"
 
+      # Sem --shared: esta Lambda não depende de shared_utils (ver
+      # app/lambda_cognito_email_sender/lambda_cognito_email_sender.md, seção
+      # "Por que a lógica de Gmail é duplicada, não compartilhada").
+      - name: Build Lambda Cognito Email Sender Package
+        run: |
+          python infra/scripts/build_lambda_package.py \
+            --src app/lambda_cognito_email_sender \
+            --requirements app/lambda_cognito_email_sender/requirements.txt \
+            --dest infra/.lambda_cognito_email_sender_build \
+            --platform manylinux2014_aarch64 \
+            --python-version 3.11
+          if [ -z "$(ls -A infra/.lambda_cognito_email_sender_build/ 2>/dev/null)" ]; then
+            echo "❌ Build da Lambda Cognito Email Sender falhou — diretório infra/.lambda_cognito_email_sender_build está vazio."
+            exit 1
+          fi
+          echo "✅ Lambda Cognito Email Sender package criado com sucesso"
+
       - name: Build Shared Wheel
         run: |
           python infra/scripts/build_glue_wheel.py \
@@ -237,7 +254,7 @@ jobs:
             infra/envs/${{ inputs.environment }}/terraform.tfvars
 
       # Bootstrap: cria e anexa as IAM policies do CI/CD ANTES do plan/apply
-      # principal (8 em prod, 7 em dev — cicd_lightsail só existe em prod, ver
+      # principal (9 em prod, 8 em dev — cicd_lightsail só existe em prod, ver
       # infra/iam_cicd.tf), resolvendo o problema de bootstrap (a role precisa
       # das policies para gerenciar os recursos, mas as policies são criadas
       # pelo mesmo Terraform). Idempotente — se as policies já existem, é um no-op.
@@ -292,6 +309,8 @@ jobs:
             -target=aws_iam_role_policy_attachment.cicd_ssm \
             -target=aws_iam_policy.cicd_cognito \
             -target=aws_iam_role_policy_attachment.cicd_cognito \
+            -target=aws_iam_policy.cicd_kms \
+            -target=aws_iam_role_policy_attachment.cicd_kms \
             $LIGHTSAIL_MOVE_TARGETS \
             -auto-approve
           ROLE_NAME="${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
@@ -303,6 +322,7 @@ jobs:
             "${{ steps.project.outputs.cicd_policy_prefix }}-observability-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-ssm-${{ inputs.environment }}"
             "${{ steps.project.outputs.cicd_policy_prefix }}-cognito-${{ inputs.environment }}"
+            "${{ steps.project.outputs.cicd_policy_prefix }}-kms-${{ inputs.environment }}"
           )
           # cicd_lightsail só é criada/anexada em prod (count condicionado a
           # var.env em infra/iam_cicd.tf, já que dev não provisiona nenhum

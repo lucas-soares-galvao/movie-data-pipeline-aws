@@ -28,6 +28,13 @@ resource "aws_cloudwatch_log_group" "lambda_log" {
   tags              = local.component_tags.lambda_api
 }
 
+resource "aws_cloudwatch_log_group" "lambda_cognito_email_sender_log" {
+  count             = local.lightsail_agent_enabled ? 1 : 0
+  name              = "/aws/lambda/${local.envs.lambda_cognito_email_sender_name}"
+  retention_in_days = var.log_retention_days
+  tags              = local.component_tags.lambda_cognito_email_sender
+}
+
 resource "aws_cloudwatch_log_group" "glue_agg_error" {
   name              = "/${local.envs.glue_agg_job_name}/error"
   retention_in_days = var.log_retention_days

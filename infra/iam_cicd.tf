@@ -804,11 +804,67 @@ resource "aws_iam_role_policy_attachment" "cicd_cognito" {
 }
 
 # =============================================================================
+# POLICY 9 — KMS (Chave do trigger CustomEmailSender do Cognito, ver kms.tf)
+# =============================================================================
+# CreateKey/CreateAlias/ListAliases exigem Resource "*" (confirmado no IAM Service
+# Authorization Reference do KMS antes de implementar, ver especialista-doc-oficial-aws —
+# a chave não existe ainda no momento de CreateKey, e alias não é um recurso com ARN
+# restringível por padrão de nome como os demais serviços deste projeto, já que o KMS não
+# aceita wildcard em Resource para essas 3 actions). As demais actions de gerenciamento
+# aceitam Resource escopado por padrão de ARN (key/*, restrito à região e conta).
+
+resource "aws_iam_policy" "cicd_kms" {
+  name        = "${local.project_config.cicd_policy_prefix}-kms-${var.env}"
+  description = "Gerenciamento da chave KMS do trigger CustomEmailSender do Cognito (FilmBot)"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "KMSKeyCreate"
+        Effect   = "Allow"
+        Action   = ["kms:CreateKey", "kms:CreateAlias", "kms:ListAliases"]
+        Resource = "*"
+      },
+      {
+        Sid    = "KMSKeyManagement"
+        Effect = "Allow"
+        Action = [
+          "kms:DescribeKey",
+          "kms:GetKeyPolicy",
+          "kms:PutKeyPolicy",
+          "kms:TagResource",
+          "kms:UntagResource",
+          "kms:ListResourceTags",
+          "kms:EnableKeyRotation",
+          "kms:GetKeyRotationStatus",
+          "kms:ScheduleKeyDeletion",
+          "kms:CancelKeyDeletion",
+          "kms:CreateGrant",
+          "kms:ListGrants",
+          "kms:RevokeGrant",
+          "kms:UpdateAlias",
+          "kms:DeleteAlias",
+        ]
+        Resource = "arn:aws:kms:sa-east-1:${data.aws_caller_identity.current.account_id}:key/*"
+      },
+    ]
+  })
+
+  tags = merge(local.default_resource_tags, local.component_tags.shared)
+}
+
+resource "aws_iam_role_policy_attachment" "cicd_kms" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = aws_iam_policy.cicd_kms.arn
+}
+
+# =============================================================================
 # SINCRONIZAÇÃO — Garante que as policies estejam attachadas antes de criar
 # qualquer recurso de infraestrutura. Sem isso, o Terraform pode tentar criar
 # S3 buckets ou Lambda functions antes das policies propagarem no IAM.
 #
-# 8 policies em prod, 7 em dev — cicd_lightsail só existe em prod (ver
+# 9 policies em prod, 8 em dev — cicd_lightsail só existe em prod (ver
 # Policy 6 acima), já que dev não provisiona nenhum recurso Lightsail.
 #
 # Recursos raiz (S3 buckets, IAM roles) referenciam este recurso via depends_on,
@@ -825,6 +881,7 @@ resource "terraform_data" "cicd_policies_ready" {
     aws_iam_role_policy_attachment.cicd_lightsail,
     aws_iam_role_policy_attachment.cicd_ssm,
     aws_iam_role_policy_attachment.cicd_cognito,
+    aws_iam_role_policy_attachment.cicd_kms,
   ]
 }
 

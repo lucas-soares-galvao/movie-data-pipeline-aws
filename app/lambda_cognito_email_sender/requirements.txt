@@ -1,0 +1,8 @@
+# Raciocinio: fixa dependencias da Lambda de envio customizado do codigo do Cognito.
+# boto3 nao entra aqui — ja vem embutido no runtime Lambda Python 3.11, nao precisa ir no
+# zip (mesmo racional de app/lambda_api/requirements.txt).
+# [MPL] instala tambem aws-cryptographic-material-providers (keyrings), dependencia da
+# AWS Encryption SDK para descriptografar o codigo que o Cognito envia — ver
+# https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/python.html
+
+aws-encryption-sdk[MPL]

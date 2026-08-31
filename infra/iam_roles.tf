@@ -50,6 +50,22 @@ resource "aws_iam_role_policy" "lambda_logs" {
   })
 }
 
+resource "aws_iam_role" "lambda_cognito_email_sender" {
+  count = local.lightsail_agent_enabled ? 1 : 0
+  name  = "${local.tmdb_prefix}-lambda-cognito-email-sender-${var.env}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+
+  depends_on = [terraform_data.cicd_policies_ready]
+}
+
 resource "aws_iam_role" "glue_etl_role" {
   name = "${local.tmdb_prefix}-glue-etl-${var.env}"
 
