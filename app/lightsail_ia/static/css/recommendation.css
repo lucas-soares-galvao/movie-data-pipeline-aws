@@ -52,7 +52,14 @@
   font-weight: 300 !important;
   letter-spacing: -0.02em;
   font-size: 40px;
-  color: var(--text-primary);
+  /* !important necessário: o Streamlit também força a própria cor em todo <h1> (mesmo
+     motivo do !important em font-weight acima) — sem isso, o texto saía no cinza nativo
+     do tema do Streamlit (#31333f), ilegível sobre fundo claro custom quando os dois
+     temas divergem, sobrando só "assistir" visível (cor própria em
+     .accent-gradient-text, aplicada ao <span> e não afetada pela regra do <h1> pai —
+     confirmado via getComputedStyle que essa por si só já funciona, sem precisar de
+     !important). */
+  color: var(--text-primary) !important;
   /* !important necessário nos dois: o Streamlit aplica padding/margin próprios em <h1> com
      especificidade maior que a classe sozinha (mesmo motivo do !important em font-weight
      acima) — sem isso, o padding padrão (~20px/16px, medido via inspeção real do DOM)
@@ -314,6 +321,16 @@
   display: none !important;
 }
 
+/* "🎤 Transcrevendo áudio..." (st.caption, dentro de audio-messages) é widget nativo do
+   Streamlit sem wrapper/classe custom (st.caption não aceita class=) — a cor segue o tema
+   nativo do Streamlit (que segue o navegador de quem acessa, ver theme.css), não o
+   data-theme manual do toggle. Sem isso, o texto fica ilegível sempre que o tema nativo
+   diverge do tema custom escolhido (ex.: navegador em modo escuro + toggle forçado em
+   claro renderiza texto quase branco sobre o fundo claro custom). */
+.st-key-audio-messages [data-testid="stCaptionContainer"] {
+  color: var(--text-tertiary) !important;
+}
+
 /* Row do contador "Consultas restantes"/aviso de rate limit + botão "Recomendar"
    (estado idle) — mesma linha no desktop (contador à esquerda, botão à direita, via
    justify-content:space-between), empilhados abaixo de 520px (ver @media no fim do
@@ -377,8 +394,15 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
+/* Mesmos tokens exatos do botão "Sair" (.st-key-btn_sair, app.css) — pedido explícito do
+   usuário: se o botão precisa mudar de cor pra funcionar em modo claro, que seja neutro
+   igual ao "Sair", não laranja (nem sólido, nem translúcido). Substitui a tentativa
+   anterior com opacity/rgba translúcida, que ficava ilegível ou mudava de identidade
+   dependendo da correção. */
 .st-key-btn_recomendar button:disabled {
-  opacity: 0.5;
+  background: var(--bg-button-muted) !important;
+  color: var(--text-on-muted) !important;
+  opacity: 1;
   box-shadow: none;
 }
 /* Volta a 100% no mobile, mesmo racional de forms.css/profile.css. Posicionado DEPOIS
@@ -417,17 +441,39 @@
   .hero-heading { font-size: 22px; }
 }
 
-/* Cancelar vermelho — só aplica quando há um botão primary desabilitado (estado de busca)
-   dentro de hero-actions. Escopado a .st-key-hero-actions (bug corrigido nesta migração):
-   antes o seletor não tinha classe própria e valia em qualquer par de botões primary
-   nesse estado em qualquer área da página, funcionando hoje só porque esse par
-   (Recomendar/Cancelar) é o único caso existente. */
-.st-key-hero-actions :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled) {
+/* Row do spinner "Buscando as melhores opções..." + botão "Cancelar" (estado
+   searching) — mesmo padrão de .st-key-query-counter-row acima: spinner à esquerda,
+   botão à direita via justify-content:space-between, empilhados abaixo de 520px (ver
+   @media no fim do arquivo). Ordem no DOM já vem spinner-antes-do-botão
+   (recommendation.py). */
+.st-key-search-status-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+.st-key-search-status-row > [data-testid="stElementContainer"] {
+  width: auto !important;
+  flex: 0 1 auto !important;
+}
+.st-key-search-status-row .st-key-btn_cancelar {
+  display: block !important;
+  width: auto !important;
+  flex: 0 0 auto !important;
+}
+
+/* Cancelar vermelho — key própria (não mais dependente de um irmão "Recomendar"
+   desabilitado via :has(), que deixou de existir no DOM durante a busca — ver
+   recommendation.py). "Cancelar" só é renderizado neste estado, com esta key, em todo o
+   app (confirmado por grep), então mirar a key diretamente é seguro e mais simples. */
+.st-key-btn_cancelar button[data-testid="stBaseButton-primary"] {
   background: var(--feedback-error-bg-strong) !important;
   color: var(--feedback-error-text-strong) !important;
   border: 1px solid var(--feedback-error-border-strong) !important;
 }
-.st-key-hero-actions :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled):hover {
+.st-key-btn_cancelar button[data-testid="stBaseButton-primary"]:hover {
   background: var(--feedback-error-bg-strong-hover) !important;
 }
 
@@ -481,5 +527,19 @@
   }
   .query-counter-text {
     text-align: center;
+  }
+
+  .st-key-search-status-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .st-key-search-status-row > [data-testid="stElementContainer"] {
+    width: 100% !important;
+  }
+  .st-key-search-status-row .st-key-btn_cancelar {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
   }
 }

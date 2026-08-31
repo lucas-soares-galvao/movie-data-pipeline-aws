@@ -157,9 +157,129 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   `localStorage` e aplicada via atributo `data-theme` em `<html>` — 100% client-side
   (`static/js/theme_toggle.js`, `load_theme_toggle_script()`), sem depender de `session_state`/`st.rerun()`
   do Streamlit para trocar de tema. Paleta clara pragmática: inverte fundo/texto/bordas neutras, mantendo os
-  acentos laranja/âmbar e as cores de validação de campo (verde/vermelho) idênticos nos dois temas. A tabela
-  de usuários do painel admin (`st.dataframe`, `<canvas>`) fica de fora do tema — permanece sempre escura por
-  decisão deliberada (ver comentário em `admin.css`), já que não é alcançável por CSS custom.
+  acentos laranja/âmbar e as cores de validação de campo (verde/vermelho) idênticos nos dois temas — com uma
+  única exceção deliberada: `--accent-soft-bg`/`--accent-soft-text` (usados só em
+  `.st-key-btn_toggle_admin`/`.st-key-btn_toggle_profile`, `app.css`) variam por tema, porque o par original
+  (`#fdba74` sobre `rgba(249,115,22,0.15)`) foi calibrado só para fundo escuro e ficava sem contraste em
+  fundo claro (bug corrigido). A tabela de usuários do painel admin (`st.dataframe`, `<canvas>`) fica de fora
+  do tema — permanece sempre escura por decisão deliberada (ver comentário em `admin.css`), já que não é
+  alcançável por CSS custom.
+  **Elementos nativos do Streamlit fora do alcance do tema custom:** como `.streamlit/config.toml` não fixa
+  `[theme]`, qualquer elemento cuja aparência vem do CSS interno do Streamlit (não interceptado por seletor
+  nosso) segue `prefers-color-scheme` do navegador de quem acessa, independente da escolha manual no toggle —
+  mesma causa raiz documentada em `base.css`/`profile.css` para labels nativos, mas que também afetava
+  placeholder de `stTextInput`/`stTextArea` (invisível quando o tema nativo e o custom divergiam — nenhum
+  arquivo tinha regra `::placeholder`) e autofill do navegador (Chrome/Edge aplicam sua própria cor de
+  fundo/texto via UA stylesheet, ignorada por `background`/`color` normais — corrigido com o truque padrão de
+  `box-shadow` inset). Ambos corrigidos em `base.css`, cobrindo as duas telas de uma vez. **Header/toolbar
+  nativo do Streamlit** (`stHeader`/`stToolbar`/`stDecoration`) também foi movido de `forms.css` (só cobria o
+  login) para `base.css`: sem escondê-lo na tela principal/admin/perfil, seu z-index nativo (bem maior que o
+  `z-index:1000` de `.theme-toggle`) cobria visualmente o botão de tema depois do login — o botão nunca saiu
+  do DOM, só ficava atrás do header nativo (bug corrigido).
+  **Segunda rodada de bugs de modo claro** (screenshots reais pós-login): `.hero-heading` (`<h1>` de verdade,
+  `recommendation.css`) precisou de `!important` em `color` — o Streamlit força uma cor própria em todo `<h1>`
+  renderizado via markdown (mesmo mecanismo do `!important` já existente ali para `font-weight`/`padding`/
+  `margin`), deixando o texto sem acento invisível em modo claro (só "assistir" ficava visível, com cor
+  própria em `.accent-gradient-text`, aplicada ao `<span>` e não afetada pela regra do `<h1>` pai — essa por
+  si só já funciona sem `!important`, tanto dentro de `<h1>` quanto de `<p>`, ex. `.hero-greeting`).
+  `.reason-label`/`.reason-label .icon`/`.genre.highlighted`/`.provider-badge.highlighted` (`cards.css`)
+  trocaram o hardcoded `#fdba74` por `--accent-soft-text` (mesmo token da correção do "Painel Admin" acima).
+  `.cinema-badge` (`cards.css`) trocou seu par hardcoded de amarelo por `--feedback-warning-bg`/
+  `--feedback-warning-text` (já calibrados por tema, usados por `.msg-warning`). `.card`/`article.card`
+  (`cards.css`) ganhou borda mais forte (`--overlay-10`, era `-06`) e `box-shadow` — em modo claro
+  `--bg-surface`/`--bg-page` são o mesmo branco puro (diferente do escuro, onde já destoam um pouco), então a
+  borda fraca sozinha deixava os cards indistinguíveis da página. Botões primários desabilitados
+  (`.st-key-btn_recomendar`/`forms.css`/`profile.css`) trocaram `opacity:0.5` (mistura com o que estiver atrás
+  — funciona em fundo bem escuro, mas o gradiente pêssego do hero em modo claro é próximo demais do laranja a
+  50% de opacidade, apagando o botão) por cores explícitas neutras (`--bg-button-muted`/`--text-faint`, mesma
+  família do botão "Sair"), que não dependem do fundo.
+  **Terceira rodada:** o `st.button("Recomendar", ...)` do estado "buscando" (`recommendation.py`) não tinha
+  `key=` (diferente do idêntico no estado idle, `key="btn_recomendar"`) — sem key, nenhuma regra CSS o
+  alcançava, 100% estilo nativo do Streamlit; ganhou a mesma key (seguro, os dois `st.button` são mutuamente
+  exclusivos). O `st.caption()` de "🎤 Transcrevendo áudio..." (dentro de `audio-messages`,
+  `recommendation.py`) é widget nativo sem wrapper custom (`st.caption` não aceita `class=`) — cor seguia o
+  tema nativo do Streamlit; corrigido com `.st-key-audio-messages [data-testid="stCaptionContainer"]` +
+  `var(--text-tertiary)` (`recommendation.css`). `.cinema-badge` (`cards.css`) ganhou borda
+  (`var(--feedback-warning-border)`, mesmo token de `.msg-warning`) para mais definição contra fundo claro. O
+  autofill do navegador (rodada 1, `base.css`) ganhou a variante `input:-webkit-autofill:disabled` — o campo
+  "E-mail" do Perfil é sempre `disabled=True`, e um e-mail com autofill salvo pelo navegador para esse campo
+  renderiza a combinação autofill+disabled com um estilo próprio do Chromium, fora das 4 variantes já
+  cobertas.
+  **Quarta rodada:** a correção de contraste do `:disabled` dos botões primários (rodada 2, acima) trocou
+  `opacity:0.5` por `--bg-button-muted`/`--text-faint` (cinza neutro) — resolvia o contraste, mas mudava a
+  identidade visual do botão sem necessidade (pedido do usuário: só consertar a visibilidade, manter o laranja).
+  Revertido para um fundo translúcido explícito (`background: rgba(234,88,12,0.5)` + `color:#fff` sólido, nos
+  3 lugares — `.st-key-btn_recomendar`/`forms.css`/`profile.css`) — mesma aparência "laranja apagado" de
+  sempre, só sem o texto branco decair junto com o fundo (`opacity` no elemento inteiro afeta texto e fundo
+  juntos; `background` translúcido com `color` sólido separa os dois). O fix real de "não aparece" continua
+  sendo a `key=` adicionada na terceira rodada — este ajuste só resolve o contraste sem mexer na cor.
+  **Campo E-mail do Perfil ainda ilegível em modo claro em produção**, mesmo com a correção de autofill da
+  terceira rodada já implantada — investigação aberta, aguardando o usuário testar em aba anônima (sem
+  autofill salvo) pra confirmar ou descartar essa hipótese antes de tentar outra correção (2 tentativas
+  anteriores não resolveram).
+  **Quinta rodada:** revisto de novo — o usuário decidiu que, já que o `:disabled` de `.st-key-btn_recomendar`
+  precisa de alguma cor diferente de laranja pra funcionar em modo claro, prefere que seja **idêntico ao botão
+  "Sair"** (`.st-key-btn_sair`, `app.css`), não uma variante translúcida de laranja. Ajustado pra usar os
+  mesmos tokens exatos (`--bg-button-muted`/`--text-on-muted`) — confirmado via `getComputedStyle` que as
+  cores computadas dos dois botões batem exatamente, nos dois temas. Escopo desta mudança é só
+  `.st-key-btn_recomendar` (`recommendation.css`) — os `:disabled` genéricos de `forms.css`/`profile.css`
+  continuam com o laranja translúcido da quarta rodada, sem reclamação até agora.
+  **Sexta rodada — causa raiz real do botão "Recomendar" era JS, não CSS:** o usuário confirmou que o botão
+  continuava com a aparência de habilitado mesmo após reiniciar o `streamlit run` local (nunca houve deploy
+  envolvido nas rodadas anteriores — presunção incorreta minha). Achado lendo `static/js/
+  contador_caracteres.js:49-54,65-68`: esse script roda um `setInterval` a cada 300ms, para sempre, que faz
+  `.st-key-btn_recomendar button`.disabled = (campo de texto vazio?) — pensado só pro estado idle, mas
+  `load_preference_counter_script()` é chamado incondicionalmente em `recommendation.py` (fora do `if
+  searching:`/`else:`), então o script continuava rodando e sobrescrevendo `disabled=True` do Python a cada
+  300ms durante a busca (campo não estava vazio) — nenhuma correção de CSS resolveria isso, o navegador nunca
+  mantinha o estado `:disabled` tempo suficiente. Corrigido removendo o botão "Recomendar" do DOM por
+  completo durante a busca (pedido do próprio usuário, que também é a correção certa: sem o botão,
+  `document.querySelector('.st-key-btn_recomendar button')` retorna `null` e o script nem tenta mexer,
+  `if (!btn) return`) — só "Cancelar" fica visível. Efeito colateral corrigido: `.st-key-btn_cancelar`
+  (`recommendation.css`) deixou de depender de `:has()` sobre um irmão desabilitado (que não existe mais) pra
+  ficar vermelho — agora mira a própria key diretamente (única no app).
+  **Campo E-mail do Perfil substituído por somente-leitura 100% custom** (`profile.py::render_profile_tab`):
+  depois de 3 tentativas de CSS falhas em 2 navegadores (Chrome e Edge) tentando fazer o `st.text_input(
+  disabled=True)` funcionar em modo claro, trocado por um `<div>` (`.readonly-field`/`.readonly-field-label`/
+  `.readonly-field-value`, `profile.css`) que imita visualmente o par label/input nativo mas não depende de
+  nenhum estado `:disabled`/autofill do navegador — elimina a classe inteira do problema em vez de continuar
+  adivinhando o seletor certo. Sem mudança de comportamento (segue somente leitura, sem elemento de formulário
+  real por trás). CSS morta removida junto (`input:disabled { opacity: 0.55 }`, sem uso desde essa troca).
+  **Sétima rodada — modal de confirmação do admin (`_render_confirm_dialog`, `admin.css`):** mesma
+  causa-raiz do resto desta seção — `[data-testid="stDialog"] > div` (o card visível) não tinha
+  `background`/`border`/texto próprios, herdando o card nativo do Streamlit dissociado do
+  `data-theme` do app. Corrigido reaproveitando exatamente os valores do card de login
+  (`.st-key-form-card`, `forms.css`): mesmo fundo/borda/sombra. Texto de confirmação
+  (`stMarkdownContainer p`), link de e-mail autolinkado (`stMarkdownContainer a`, cor
+  `--text-faint` + underline, mesmo padrão de `.footer a`) e label do checkbox "Notificar por
+  e-mail" (`stWidgetLabel p`) ganharam cor própria pelo mesmo motivo — sem isso, só recolorir o
+  fundo criaria risco real de texto ilegível quando o tema manual diverge do
+  `prefers-color-scheme` do navegador. A caixa nativa do checkbox em si ficou de fora (primeiro
+  `st.checkbox` do app, sem padrão prévio pra reaproveitar) — risco residual pequeno, mesma classe
+  dos outros itens desta seção. O botão "Cancelar" virou outline laranja (fundo transparente,
+  borda e texto `#ea580c`, pedido do usuário) — "Confirmar" permanece laranja sólido. Avaliada e
+  descartada a possibilidade de a tabela de usuários (`st.dataframe`, ver comentário acima em
+  `admin.css`) também acompanhar o tema: `[theme]` no `config.toml` é global (confirmado na doc
+  oficial do Streamlit, não existe tema por widget) e reabriria os bugs de contraste já corrigidos
+  em componentes nativos; o único mecanismo de JS encontrado é um hack de comunidade não-oficial
+  sobre um atributo privado do Streamlit, sem confirmação de que o `<canvas>` do grid realmente
+  repinta — mantida sempre escura, decisão reconfirmada.
+  **Oitava rodada — dois bugs reais na sétima rodada, achados só ao testar no app de verdade** (o
+  harness de verificação inicial só carregava `base.css`+`admin.css`, não a cadeia completa de
+  `render_admin_panel`): (1) o texto de "Cancelar"/"Confirmar" saía preto/branco em vez de
+  laranja/branco — inspecionado o DOM real (Playwright): o rótulo de um `st.button()` também
+  renderiza via `stMarkdownContainer`/`p`, aninhado DENTRO do `<button>`, então a regra de cor do
+  texto de confirmação (mesma especificidade da regra de cor dos botões) vencia para esse `<p>`
+  por atingi-lo diretamente — `color` só é herdado quando não há declaração explícita batendo no
+  próprio elemento. Corrigido com `p:not(button *)`/`a:not(button *)` nas duas regras de texto do
+  modal. (2) o indicador visual do checkbox (`<div>` vazio dentro do `<label>`, sem testid próprio,
+  irmão de `stWidgetLabel`) aparecia preto sólido mesmo com o card já claro — reproduzido de propósito
+  emulando `prefers-color-scheme` do navegador diferente do `data-theme` manual (`color_scheme` do
+  Playwright + `localStorage["filmbot-theme"]`), confirmando a mesma causa-raiz nativa desta seção:
+  o indicador segue o tema auto-detectado do Streamlit, não o toggle do app. Corrigido com
+  `label > div:empty` (isola só o estado DESMARCADO, já que o marcado ganha um `<svg>` filho) +
+  `--bg-input`/`--overlay-16`. Estado marcado permanece com o vermelho padrão do Streamlit (fora do
+  escopo pedido).
 - **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
   `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
   a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir

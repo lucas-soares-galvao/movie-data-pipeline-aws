@@ -1,9 +1,6 @@
-/* @import de fonte + fundo radial vêm de base.css (compartilhado com a página principal). */
-
-/* Oculta header/toolbar do Streamlit na tela de login */
-[data-testid="stHeader"] { display: none; }
-[data-testid="stToolbar"] { display: none; }
-[data-testid="stDecoration"] { display: none; }
+/* @import de fonte + fundo radial vêm de base.css (compartilhado com a página principal).
+   stHeader/stToolbar/stDecoration também são escondidos lá agora (antes só aqui,
+   cobrindo só o login) — ver base.css. */
 
 /* As telas "Esqueci a senha" (request/confirm) rodam _send_section()/_resend_section()
    como @st.fragment(run_every=1) pra recalcular o cooldown a cada segundo sem reload
@@ -293,8 +290,13 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
+/* Fundo translúcido explícito (não mais opacity:0.5) — mesmo motivo de
+   .st-key-btn_recomendar (recommendation.css): mantém a identidade visual original
+   (laranja apagado), só sem decair o texto branco junto com o fundo. */
 [data-testid="stButton"] > button:disabled {
-  opacity: 0.5;
+  background: rgba(234, 88, 12, 0.5) !important;
+  color: #fff !important;
+  opacity: 1;
   box-shadow: none;
 }
 /* Volta a 100% no mobile, mesmo racional de profile.css: nesse breakpoint os campos
@@ -352,11 +354,24 @@
   display: flex;
   justify-content: flex-start;
 }
-.st-key-btn_reenviar_codigo button {
+/* Estiliza via type="tertiary" (data-testid="stBaseButton-tertiary"), não mais via
+   .st-key-btn_reenviar_codigo button: a classe st-key-* é anexada pelo Streamlit de
+   forma assíncrona (depois do primeiro paint), abrindo uma janela onde só a regra
+   genérica acima (laranja) batia — daí o flash. O data-testid vem do próprio prop
+   `kind` do componente, presente desde o primeiro frame. Nenhum outro botão do
+   projeto usa type="tertiary" (confirmado por grep), então o atributo já é exclusivo
+   deste botão, sem precisar da classe. :disabled sobrescreve background/color
+   explicitamente (não só opacity) — a regra genérica de :disabled tem a mesma
+   especificidade e, sem esse override, continuava vencendo essas duas propriedades
+   mesmo com a classe já presente (botão nunca ficava de fato transparente).
+   color/border saíram da regra base e viraram duas variantes (:not(:disabled) vs.
+   :disabled) — pedido do usuário: destacar em laranja (#f97316, mesmo tom dos
+   botões-link "Novo cadastro"/"Esqueci a senha" acima) o estado clicável do botão
+   (antes do primeiro reenvio, ou 60s depois de um — não há distinção de estado entre
+   os dois hoje), mantendo o cinza discreto original só no :disabled (lockout ativo). */
+button[data-testid="stBaseButton-tertiary"] {
   background: transparent !important;
-  color: var(--text-tertiary) !important;
   box-shadow: none !important;
-  border: 1px solid var(--overlay-12) !important;
   border-radius: 999px !important;
   font-size: 12px !important;
   font-weight: 500 !important;
@@ -364,17 +379,23 @@
   width: auto !important;
   margin-top: 4px !important;
 }
-.st-key-btn_reenviar_codigo button:hover:not(:disabled) {
-  filter: brightness(1.4);
-  color: var(--text-secondary) !important;
+button[data-testid="stBaseButton-tertiary"]:not(:disabled) {
+  color: #f97316 !important;
+  border: 1px solid #f97316 !important;
 }
-.st-key-btn_reenviar_codigo button:disabled {
+button[data-testid="stBaseButton-tertiary"]:hover:not(:disabled) {
+  filter: brightness(1.4);
+}
+button[data-testid="stBaseButton-tertiary"]:disabled {
+  background: transparent !important;
+  color: var(--text-tertiary) !important;
+  border: 1px solid var(--overlay-12) !important;
   opacity: 0.4;
 }
 /* Botão de ação → link(s) abaixo dele: respiro uniforme de margin-top:4px em todas as
    telas de login/cadastro/recuperação, herdado das regras genéricas acima
-   (`.st-key-btn_reenviar_codigo button`/`[class*="st-key-btn_link_"] button`) — nada aqui
-   sobrescreve. Havia uma regra escopada só a `login-links-row`/`resend-links-row` forçando
+   (`button[data-testid="stBaseButton-tertiary"]`/`[class*="st-key-btn_link_"] button`) —
+   nada aqui sobrescreve. Havia uma regra escopada só a `login-links-row`/`resend-links-row` forçando
    16px nessas duas linhas, deixando esse respiro diferente do "Voltar ao login" avulso das
    outras telas (cadastro, 1ª etapa de "Esqueci a senha"); removida para unificar em 4px nas
    5 telas (avaliação de consistência entre formulários pedida pelo usuário). */
