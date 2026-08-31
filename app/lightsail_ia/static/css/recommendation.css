@@ -52,7 +52,7 @@
   font-weight: 300 !important;
   letter-spacing: -0.02em;
   font-size: 40px;
-  color: #fff;
+  color: var(--text-primary);
   /* !important necessário nos dois: o Streamlit aplica padding/margin próprios em <h1> com
      especificidade maior que a classe sozinha (mesmo motivo do !important em font-weight
      acima) — sem isso, o padding padrão (~20px/16px, medido via inspeção real do DOM)
@@ -64,7 +64,7 @@
 .accent-gradient-text {
   color: #f97316;
 }
-.hero-subtitle { color: #a3a3a3; font-size: 15px; margin: 0 0 24px; }
+.hero-subtitle { color: var(--text-tertiary); font-size: 15px; margin: 0 0 24px; }
 /* Saudação "Olá, {nome}" acima do hero-heading. font-size de 22px (faixa 20-24px
    pedida pelo usuário) — maior que .hero-subtitle (15px), invertendo a hierarquia
    anterior (saudação deliberadamente menor que o subtítulo, "subordinada" ao
@@ -75,7 +75,7 @@
    maior que a classe sozinha; sem !important, o valor definido aqui é ignorado
    (confirmado via screenshot real, Playwright — a saudação não mudou de
    tamanho antes desta correção). */
-.hero-greeting { color: #a3a3a3; font-size: 22px !important; margin: 0 0 4px; }
+.hero-greeting { color: var(--text-tertiary); font-size: 22px !important; margin: 0 0 4px; }
 
 /* Card único (fundo cinza + borda) envolvendo textarea + gravador +
    contador — antes só a textarea tinha fundo/borda próprios; agora o card
@@ -90,8 +90,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #1a1a1a;
-  border: 1px solid rgba(255,255,255,0.12);
+  background: var(--bg-input);
+  border: 1px solid var(--overlay-12);
   border-radius: 16px;
   padding: 14px 0 0;
 }
@@ -131,7 +131,7 @@
   border: none !important;
   box-sizing: border-box !important;
   padding: 0 16px !important;
-  color: #f5f5f5 !important;
+  color: var(--text-input) !important;
   font-size: 17px !important;
   overflow-x: hidden !important;
   word-wrap: break-word !important;
@@ -258,7 +258,7 @@
    escondido do widget — `label_visibility="collapsed"` — e quebra a técnica
    de ocultação dele). */
 .recorder-timer {
-  color: #a3a3a3;
+  color: var(--text-tertiary);
   font-size: 14px;
   flex-shrink: 0;
   white-space: nowrap;
@@ -397,7 +397,7 @@
    em 16px, confirmado via inspeção real do DOM (Playwright). */
 .query-counter-text {
   text-align: left;
-  color: #a3a3a3;
+  color: var(--text-tertiary);
   font-size: 15px !important;
   line-height: 20px;
   margin: 16px 0 8px;
@@ -423,12 +423,12 @@
    nesse estado em qualquer área da página, funcionando hoje só porque esse par
    (Recomendar/Cancelar) é o único caso existente. */
 .st-key-hero-actions :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled) {
-  background: rgba(239,68,68,0.15) !important;
-  color: #f87171 !important;
-  border: 1px solid rgba(239,68,68,0.4) !important;
+  background: var(--feedback-error-bg-strong) !important;
+  color: var(--feedback-error-text-strong) !important;
+  border: 1px solid var(--feedback-error-border-strong) !important;
 }
 .st-key-hero-actions :has(button[data-testid="stBaseButton-primary"]:disabled) button[data-testid="stBaseButton-primary"]:not(:disabled):hover {
-  background: rgba(239,68,68,0.25) !important;
+  background: var(--feedback-error-bg-strong-hover) !important;
 }
 
 /* Spinner de carregamento */
@@ -451,7 +451,7 @@
 }
 
 .spinner-text {
-  color: #d4d4d4;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 

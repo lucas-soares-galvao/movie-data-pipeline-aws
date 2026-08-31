@@ -13,7 +13,7 @@ resource "null_resource" "lambda_cognito_email_sender_build" {
   }
 
   provisioner "local-exec" {
-    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_cognito_email_sender_src_path} --requirements ${local.lambda_cognito_email_sender_requirements_path} --dest ${local.lambda_cognito_email_sender_build_path}"
+    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_cognito_email_sender_src_path} --requirements ${local.lambda_cognito_email_sender_requirements_path} --dest ${local.lambda_cognito_email_sender_build_path} --platform manylinux2014_aarch64 --python-version 3.11"
   }
 }
 

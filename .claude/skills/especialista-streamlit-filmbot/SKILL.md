@@ -14,11 +14,11 @@ Você é o responsável pela consistência visual do FilmBot (`app/lightsail_ia/
 | O quê | Onde |
 |---|---|
 | Tokens/referência de design ("Luminous") | `app/lightsail_ia/design/ai-social-automation.aura.build/design-system.html` |
-| Implementação real em produção | `app/lightsail_ia/static/css/base.css` (transversal), `static/css/forms.css`, `static/css/app.css` (cabeçalho/rodapé), `static/css/recommendation.css`, `static/css/cards.css`, `static/js/contador_caracteres.js` |
+| Implementação real em produção | `app/lightsail_ia/static/css/theme.css` (tokens de tema claro/escuro), `static/css/base.css` (transversal), `static/css/forms.css`, `static/css/app.css` (cabeçalho/rodapé), `static/css/recommendation.css`, `static/css/cards.css`, `static/js/contador_caracteres.js` |
 | Helpers Python de renderização | `app/lightsail_ia/src/components.py` |
 | Doc funcional do app | `app/lightsail_ia/lightsail_ia.md` |
 
-Regra: nunca duplicar um helper que já existe em `components.py` (`_inject_css`, `load_base_css`, `load_forms_css`, `load_app_css`, `load_recommendation_css`, `load_cards_css`, `render_card`, `render_grid`, `load_preference_counter_script`) — estenda ou reutilize. Cada `load_*_css()` de tela injeta `base.css` antes do CSS próprio — ao adicionar uma regra transversal nova, ela vai em `base.css`, nunca duplicada nos arquivos de tela.
+Regra: nunca duplicar um helper que já existe em `components.py` (`_inject_css`, `load_base_css`, `load_forms_css`, `load_app_css`, `load_recommendation_css`, `load_cards_css`, `render_card`, `render_grid`, `render_theme_toggle`, `load_theme_toggle_script`, `load_preference_counter_script`) — estenda ou reutilize. Cada `load_*_css()` de tela injeta `base.css` antes do CSS próprio (e `load_base_css()` injeta `theme.css` antes de `base.css`) — ao adicionar uma regra transversal nova, ela vai em `base.css`, nunca duplicada nos arquivos de tela; uma cor que precisa mudar entre tema claro/escuro vira um token novo em `theme.css`, nunca hex/rgba hardcoded direto no arquivo da tela.
 
 ## Tokens do design system "Luminous"
 
@@ -39,6 +39,8 @@ Resumo condensado de `design-system.html`, para não precisar reler o arquivo in
 - **Ícones**: Lucide, tamanhos 12/16/24px, cor branca/neutral/laranja conforme hierarquia
 
 Essa paleta já bate com o CSS real de produção (`#111` cards, `#f97316` laranja, badges pill em `cards.css`) — trate o design system como fonte canônica para **tokens novos**, e o CSS de produção como fonte canônica do que **já está implementado**. Se os dois divergirem, o CSS de produção vence (é o que está no ar).
+
+**Tema claro/escuro dinâmico**: a paleta acima descreve o tema **escuro** (o padrão histórico e ainda o fallback). Desde a introdução de `theme.css`, fundos/textos/bordas neutras têm uma variante clara pragmática (inversão simples, sem redesenho de componente) — resolvida em 3 níveis: escuro padrão → `prefers-color-scheme` do SO → escolha manual do usuário no botão sol/lua (`render_theme_toggle()`), salva em `localStorage` e aplicada via atributo `data-theme` em `<html>`, 100% client-side (`theme_toggle.js`). Os acentos laranja/âmbar (`#f97316`, `#ea580c`, `#fdba74`) e as cores de validação de campo (`#ef4444`/`#22c55e`) permanecem **hardcoded e idênticos nos dois temas** — não os tokenize sem necessidade real. Ao estilizar algo novo: fundo/texto/borda neutra → use `var(--bg-*)`/`var(--text-*)`/`var(--overlay-*)` de `theme.css` (nunca hex direto); cor de acento/validação → mantenha hardcoded, seguindo o padrão dos componentes existentes. Exceção deliberada: a tabela de usuários do painel admin (`st.dataframe`, `<canvas>`) fica sempre escura, fora do sistema de tema (ver comentário em `admin.css`) — não é alcançável por CSS custom.
 
 ## Padrões técnicos para Streamlit responsivo
 
@@ -66,6 +68,6 @@ Três cenários distintos — não confunda um com o outro:
 ## Checklist antes de finalizar uma mudança visual
 
 - Rode `streamlit run app.py` localmente e verifique em viewport desktop e mobile (`>768px` e `≤768px`) — `app.py`/`forms.py`/`recommendation.py`/`cards.py`/CSS/JS não têm cobertura automatizada de teste visual, a validação é manual. Esses 4 arquivos estão inclusive excluídos do gate numérico de cobertura via `omit=` no `.coveragerc` — não escreva testes artificiais só para elevar esse número.
-- Confira que nenhum seletor novo quebra os já existentes em `base.css`/`forms.css`/`app.css`/`recommendation.css`/`cards.css` — teste visualmente as duas telas (login e principal). Se a mudança tocar uma regra genuinamente transversal (usada por mais de uma tela), ela pertence a `base.css`, não duplicada nos arquivos de tela.
+- Confira que nenhum seletor novo quebra os já existentes em `theme.css`/`base.css`/`forms.css`/`app.css`/`recommendation.css`/`cards.css` — teste visualmente as duas telas (login e principal) **nos dois temas** (claro e escuro, via toggle sol/lua ou emulando `prefers-color-scheme` nas DevTools). Se a mudança tocar uma regra genuinamente transversal (usada por mais de uma tela), ela pertence a `base.css`, não duplicada nos arquivos de tela.
 - Se a mudança tocar `components.py`/`infrastructure.py` ou lógica Python testável (fora de `app.py`/`forms.py`/`recommendation.py`/`cards.py`), siga o checklist padrão do projeto (skill `revisao-pos-mudanca-codigo`: testes, `.md` do módulo, docstrings, type hints, gate de 95% de cobertura).
 - Prosa em português, identificadores em inglês, conforme `CLAUDE.md`.

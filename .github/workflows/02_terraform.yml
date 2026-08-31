@@ -120,7 +120,9 @@ jobs:
           python infra/scripts/build_lambda_package.py \
             --src app/lambda_cognito_email_sender \
             --requirements app/lambda_cognito_email_sender/requirements.txt \
-            --dest infra/.lambda_cognito_email_sender_build
+            --dest infra/.lambda_cognito_email_sender_build \
+            --platform manylinux2014_aarch64 \
+            --python-version 3.11
           if [ -z "$(ls -A infra/.lambda_cognito_email_sender_build/ 2>/dev/null)" ]; then
             echo "❌ Build da Lambda Cognito Email Sender falhou — diretório infra/.lambda_cognito_email_sender_build está vazio."
             exit 1

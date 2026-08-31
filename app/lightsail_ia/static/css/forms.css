@@ -78,7 +78,7 @@
    divisória (limitada pelo padding do card) em vez de ficar solto por fora
    com uma largura diferente. */
 .st-key-form-card {
-  background: rgba(17, 17, 17, 0.92);
+  background: var(--bg-surface-strong);
   border: 1px solid rgba(249,115,22,0.18);
   border-radius: 20px;
   padding: 40px 36px 32px;
@@ -142,7 +142,7 @@
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 16px !important;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0 !important;
   letter-spacing: -0.02em;
 }
@@ -151,7 +151,7 @@
    ilegível contra o fundo escuro custom da página. forms.py não usa
    label_visibility="collapsed" (label sempre visível). */
 .st-key-form-card [data-testid="stWidgetLabel"] p {
-  color: #d4d4d4 !important;
+  color: var(--text-secondary) !important;
   font-size: 13px !important;
   font-weight: 500;
 }
@@ -163,7 +163,7 @@
    — recalibrado quando o font-size do título mudou de 32px pra 16px. */
 .form-subtitle {
   font-size: 14px !important;
-  color: #737373;
+  color: var(--text-muted);
   margin: -2px 0 20px !important;
 }
 /* Título da página (ex.: "Criar uma Conta Nova"/"Recuperar Acesso"), opcional — só as
@@ -176,7 +176,7 @@
   font-family: 'Bricolage Grotesque', sans-serif;
   font-size: 20px !important;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: -12px 0 20px !important;
   letter-spacing: -0.02em;
   text-align: center;
@@ -199,10 +199,10 @@
 
 /* Sobrescreve o input de senha */
 [data-testid="stTextInput"] input {
-  background: #1a1a1a !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--overlay-10) !important;
   border-radius: 10px !important;
-  color: #f5f5f5 !important;
+  color: var(--text-input) !important;
   font-size: 15px !important;
   padding: 10px 14px !important;
 }
@@ -354,9 +354,9 @@
 }
 .st-key-btn_reenviar_codigo button {
   background: transparent !important;
-  color: #a3a3a3 !important;
+  color: var(--text-tertiary) !important;
   box-shadow: none !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
+  border: 1px solid var(--overlay-12) !important;
   border-radius: 999px !important;
   font-size: 12px !important;
   font-weight: 500 !important;
@@ -366,7 +366,7 @@
 }
 .st-key-btn_reenviar_codigo button:hover:not(:disabled) {
   filter: brightness(1.4);
-  color: #d4d4d4 !important;
+  color: var(--text-secondary) !important;
 }
 .st-key-btn_reenviar_codigo button:disabled {
   opacity: 0.4;
@@ -392,7 +392,7 @@
 .footer-form {
   text-align: center;
   padding: 0 0 8px;
-  color: #6b7280;
+  color: var(--text-faint);
   font-size: 12px;
   letter-spacing: 0.05em;
   margin-top: 16px;
@@ -405,7 +405,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #6b7280;
+  color: var(--text-faint);
   text-decoration: none;
 }
 .footer-contact a:hover {
