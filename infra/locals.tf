@@ -266,5 +266,12 @@ EOT
 
     # Lightsail
     lightsail_instance_name = "${local.tmdb_prefix}-${var.lightsail_instance_name}-${var.env}"
+
+    # Lightsail Scheduler — disparo do workflow_dispatch via EventBridge (API Destination)
+    lightsail_scheduler_connection_name      = "${local.tmdb_prefix}-lightsail-scheduler-gh-connection-${var.env}"
+    lightsail_scheduler_api_destination_name = "${local.tmdb_prefix}-lightsail-scheduler-gh-dispatch-${var.env}"
+    lightsail_scheduler_iam_role_name        = "${local.tmdb_prefix}-lightsail-scheduler-eventbridge-role-${var.env}"
+    lightsail_scheduler_rule_stop_name       = "${local.tmdb_prefix}-lightsail-scheduler-stop-${var.env}"
+    lightsail_scheduler_rule_start_name      = "${local.tmdb_prefix}-lightsail-scheduler-start-${var.env}"
   }
 }

@@ -1,5 +1,5 @@
 name: "5. Lightsail Scheduler (Liga/Desliga)"
-run-name: "Lightsail Scheduler [PROD]: ${{ (github.event_name == 'workflow_dispatch' && inputs.action || (github.event.schedule == '0 3 * * *' && 'stop' || 'start')) == 'start' && 'Ligar' || 'Desligar' }}"
+run-name: "Lightsail Scheduler [PROD]: ${{ inputs.action == 'start' && 'Ligar' || 'Desligar' }}"
 
 # =============================================================================
 # Substitui o antigo Lambda+EventBridge (infra/lightsail_scheduler.tf,
@@ -12,21 +12,25 @@ run-name: "Lightsail Scheduler [PROD]: ${{ (github.event_name == 'workflow_dispa
 # gerencia só a conta prod. O IP estático nunca é alvo do destroy — persiste
 # sempre, sem precisar atualizar o DNS no registro.br.
 #
-# Disparado manualmente, o ambiente é resolvido a partir do branch
-# selecionado em "Use workflow from" (mesmo padrão de 06_backfill.yml):
+# O ambiente é resolvido a partir do branch selecionado em "Use workflow
+# from" (mesmo padrão de 06_backfill.yml):
 #   - main → prod
 #   - qualquer outro branch → falha, ver step "Resolve environment from
 #     branch and action from trigger"
-# Um evento schedule sempre roda com o branch default do repositório (main).
 #
-# Cron automático de desligar (00:00 BRT) e ligar (08:00 BRT diário) +
-# workflow_dispatch manual (a partir de main).
+# Disparo 100% via workflow_dispatch — sem trigger `schedule:` nativo do
+# GitHub Actions, que a própria documentação do GitHub descreve como sujeito
+# a atraso em períodos de alta carga (justamente no início de cada hora,
+# horário usado pelos crons antigos deste workflow). O agendamento diário
+# (desligar 00:00 BRT / ligar 08:00 BRT) é feito por duas EventBridge Rules
+# em infra/lightsail_scheduler_trigger.tf, que chamam a API do GitHub
+# (workflow_dispatch) via API Destination — mesmo motor de cron já usado no
+# resto do projeto (infra/eventbridge.tf), sem o aviso de imprecisão do
+# `schedule:` do GitHub. workflow_dispatch continua disponível para
+# acionamento manual (via UI/CLI ou pela própria AWS).
 # =============================================================================
 
 on:
-  schedule:
-    - cron: "0 3 * * *"  # 00:00 BRT diário → desligar (destroy)
-    - cron: "0 11 * * *" # 08:00 BRT diário → ligar (apply)
   workflow_dispatch:
     inputs:
       action:
@@ -64,23 +68,17 @@ jobs:
       - name: Resolve environment from branch and action from trigger
         id: resolve
         run: |
-          if [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.ref_name }}" = "main" ]; then
             ENVIRONMENT="prod"
           else
             echo "❌ Branch '${{ github.ref_name }}' inválido — FilmBot só existe em prod, dispare este workflow a partir de 'main'."
             exit 1
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ACTION="${{ inputs.action }}"
-          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
-            ACTION="stop"
-          else
-            ACTION="start"
-          fi
+          ACTION="${{ inputs.action }}"
           echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "🕐 Ambiente: $ENVIRONMENT (branch: ${{ github.ref_name }}) | Ação: $ACTION (trigger: ${{ github.event.schedule || 'workflow_dispatch' }})"
+          echo "🕐 Ambiente: $ENVIRONMENT (branch: ${{ github.ref_name }}) | Ação: $ACTION"
 
       - name: Read project configuration
         id: project
@@ -95,11 +93,13 @@ jobs:
           STATEFILE_BUCKET_PROD: ${{ secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
           LOCK_TABLE_PROD: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
           FILMBOT_SECRET_ARN_PROD: ${{ secrets.AWS_FILMBOT_SECRET_ARN_PROD }}
+          GH_WORKFLOW_DISPATCH_TOKEN_PROD: ${{ secrets.AWS_GH_WORKFLOW_DISPATCH_TOKEN_PROD }}
         run: |
           echo "assume-role-arn=$ASSUME_ROLE_ARN_PROD" >> "$GITHUB_OUTPUT"
           echo "statefile-bucket=$STATEFILE_BUCKET_PROD" >> "$GITHUB_OUTPUT"
           echo "lock-table=$LOCK_TABLE_PROD" >> "$GITHUB_OUTPUT"
           echo "filmbot-secret-arn=$FILMBOT_SECRET_ARN_PROD" >> "$GITHUB_OUTPUT"
+          echo "gh-workflow-dispatch-token=$GH_WORKFLOW_DISPATCH_TOKEN_PROD" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -133,6 +133,7 @@ jobs:
           )
           terraform destroy -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
+            -var="github_workflow_dispatch_token=${{ steps.secrets.outputs.gh-workflow-dispatch-token }}" \
             -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ steps.secrets.outputs.lock-table }}" \
             "${TARGETS[@]}" \
@@ -151,6 +152,7 @@ jobs:
           )
           terraform apply -var-file="./envs/${{ steps.resolve.outputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ steps.secrets.outputs.filmbot-secret-arn }}" \
+            -var="github_workflow_dispatch_token=${{ steps.secrets.outputs.gh-workflow-dispatch-token }}" \
             -var="cicd_statefile_s3_bucket=${{ steps.secrets.outputs.statefile-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ steps.secrets.outputs.lock-table }}" \
             "${TARGETS[@]}" \

@@ -11,6 +11,7 @@
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP restrito a `tmdb/athena/glue_details/*` e `tmdb/changes/*` — modo changes), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |
 | `tmdb-filmbot-agent-prod` (user) | Lightsail FilmBot — só prod (dev não provisiona Lightsail) | Athena, S3 (SPEC, TEMP), Glue Catalog, CloudWatch Logs, Secrets Manager |
 | `tmdb-backfill-role-{env}` | GitHub Actions — backfill manual (`06_backfill.yml`) | `glue:StartJobRun`/`GetJobRun` (jobs Data Quality e AGG), Athena, Secrets Manager, S3 (checkpoints + tabelas discover/details/referência movie/tv no SOT + JSON bruto no SOR), Glue Catalog (tabelas discover/details/referência movie/tv), Translate/Comprehend |
+| `tmdb-lightsail-scheduler-eventbridge-role-{env}` | EventBridge Rule (target) — só prod | `events:InvokeApiDestination` restrito ao ARN da API Destination `tmdb-lightsail-scheduler-gh-dispatch-{env}` (ver `lightsail_scheduler_trigger.tf`) — dispara `workflow_dispatch` do GitHub em `05_lightsail_scheduler.yml` |
 
 Políticas com least-privilege: cada role tem acesso apenas aos recursos que realmente precisa.
 
@@ -32,7 +33,7 @@ A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se 
 | `cicd-terraform-s3-{env}` | 6 buckets do projeto + bucket de state |
 | `cicd-terraform-iam-{env}` | Roles/policies/users `tmdb-*` + auto-gerenciamento `cicd-terraform-*` |
 | `cicd-terraform-compute-{env}` | Lambda, Glue (jobs + catalog) |
-| `cicd-terraform-observability-{env}` | EventBridge, CloudWatch (logs + alarms — inclui log groups `/lightsail/tmdb-*`), SNS, SQS (DLQ) |
+| `cicd-terraform-observability-{env}` | EventBridge (rules + connections/API destinations do Lightsail Scheduler), CloudWatch (logs + alarms — inclui log groups `/lightsail/tmdb-*`), SNS, SQS (DLQ) |
 | `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1 — **só prod** (`count` condicionado a `var.env == "prod"` em `iam_cicd.tf`) |
 | `cicd-terraform-ssm-{env}` | Parâmetros SSM do rotation refresh (`/tmdb-pipeline/rotation-year-pointer-*`) + `iam:SimulatePrincipalPolicy` sobre a própria role (usado pelo polling de propagação, ver abaixo) |
 | `cicd-terraform-cognito-{env}` | User Pool do FilmBot (`aws_cognito_user_pool`/`_client`/`aws_cognito_user_group`, ver `lightsail_ia.tf`) — `CreateUserPool` com `Resource "*"` (ARN não existe antes da criação), demais actions escopadas ao ARN do pool |
