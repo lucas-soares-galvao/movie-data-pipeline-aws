@@ -166,8 +166,8 @@ Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não exis
 
 | Trigger | Ação |
 |---|---|
-| `schedule`: `cron(0 21 * * 1-5)` | ligar (18:00 BRT seg-sex) |
-| `schedule`: `cron(0 11 * * 0,6)` | ligar (08:00 BRT sáb-dom, `0`=domingo) |
+| `schedule`: `cron(0 3 * * *)` | desligar (00:00 BRT diário) |
+| `schedule`: `cron(0 11 * * *)` | ligar (08:00 BRT diário) |
 | `workflow_dispatch` (`action`: start\|stop) | manual, disparado a partir de `main` |
 
 **Etapas principais:**

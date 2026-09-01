@@ -29,7 +29,7 @@ Esta skill cobre a mecânica YAML (triggers exatos, permissions, contratos de wo
 | `02_terraform.yml` | `workflow_call` | nenhum — herda do caller |
 | `03_pr_auto.yml` | `workflow_call` (input `branch_name`) | `contents: write`, `pull-requests: write` |
 | `04_deploy_lightsail.yml` | `workflow_call` | nenhum — herda do caller |
-| `05_lightsail_scheduler.yml` | `schedule` (4 crons: liga/desliga prod, desliga dev) + `workflow_dispatch` (inputs `environment`: choice `prod`/`dev`, `action`: choice `start`/`stop`) — chama `04_deploy_lightsail.yml` via `uses:` no job `deploy-app` | `id-token: write`, `contents: read` |
+| `05_lightsail_scheduler.yml` | `schedule` (2 crons: liga `0 11 * * *` 08:00 BRT diário / desliga `0 3 * * *` 00:00 BRT diário, ambos prod) + `workflow_dispatch` (input `action`: choice `start`/`stop`) — chama `04_deploy_lightsail.yml` via `uses:` no job `deploy-app` | `id-token: write`, `contents: read` |
 | `06_backfill.yml` | `workflow_dispatch` isolado (não é chamado por outro workflow); `run-name:` dinâmico (`"Backfill [PROD/DEV]: <table_group> (<start_year>-<end_year|atual>)"`) | `id-token: write`, `contents: read` |
 
 `01_test.yml`, `02_terraform.yml` e `04_deploy_lightsail.yml` só disparam via `uses:` de outro workflow — não têm `push`/`workflow_dispatch` próprio, então não aparecem na aba "Run workflow" do GitHub.

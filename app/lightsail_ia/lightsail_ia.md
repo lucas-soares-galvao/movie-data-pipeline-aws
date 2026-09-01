@@ -481,6 +481,41 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   `.admin-table-wrap` ajustado de 256px (rodada 15: cabeçalho + 5 linhas + padding-bottom 16px +
   borda) pra 248px (cabeçalho + 5 linhas + faixa de scrollbar 8px + borda, sem padding nenhum —
   todas as linhas voltam a ter altura idêntica).
+  **Décima sétima rodada — reversão da quinta rodada + 3 ajustes de espaçamento mobile pedidos
+  juntos numa mesma sessão:** (1) o usuário decidiu reverter a **quinta rodada**: o `:disabled` de
+  `.st-key-btn_recomendar` (cinza neutro, tokens `--bg-button-muted`/`--text-on-muted`, idêntico ao
+  botão "Sair") volta a ser o laranja translúcido (`rgba(234,88,12,0.5)` + `color:#fff`) que já é
+  padrão em `forms.css`/`profile.css` desde a **quarta rodada** — as 3 telas ficam de novo
+  consistentes entre si, sem exceção. (2) `.st-key-btn_cancelar` (estado "buscando") ganhou a mesma
+  regra que `.st-key-btn_recomendar` já tinha (`width:100%` no `<button>` abaixo de 768px): o
+  wrapper `.st-key-search-status-row .st-key-btn_cancelar` já centralizava a partir de 520px (mesmo
+  padrão de `.st-key-query-counter-row .st-key-btn_recomendar`), mas faltava essa regra pro botão em
+  si preencher o wrapper centralizado — "Cancelar" ficava com largura de conteúdo, não full-width,
+  diferente do "Recomendar" ao lado. (3) Pedido do usuário: no mobile (`≤520px`), o respiro entre a
+  caixa de texto e "Consultas restantes"/"Buscando as melhores opções..." deveria igualar o respiro
+  entre esse texto/spinner e o botão abaixo (já `gap:8px`, nativo de
+  `.st-key-query-counter-row`/`.st-key-search-status-row`). Medido via Playwright
+  (`getBoundingClientRect`, viewport 375px) antes de mexer, não por conta de cabeça — o resultado
+  bateu 24px (não os 16px "nativos" documentados no bullet "Sem linha divisória..." abaixo), porque
+  `.audio-messages` (container sempre presente dentro de `hero-section`, mesmo vazio no estado
+  idle/buscando) consome sozinho mais um `gap:16px` inteiro de `hero-section` antes dele — mesmo
+  efeito do `hero-scripts` documentado nesse outro bullet, só que um nível mais raso (dentro de
+  `hero-section`, não entre containers de nível superior da página). Corrigido com 3 regras
+  restritas a `@media (max-width:520px)` (`recommendation.css`): `.query-counter-text`/
+  `.spinner-container` perdem seu próprio respiro de topo (`margin-top`/`padding-top:0`, cada um
+  somava o seu por cima do gap nativo) e `.st-key-hero-actions` ganha `margin-top:-8px !important`
+  (não `+8px` — precisa ser NEGATIVO pra cancelar o `gap:16px` extra do `.audio-messages` vazio, em
+  vez de somar a ele). (4) Mesmo pedido, mas na tela "Meu Perfil": o respiro E-mail→"Salvar Perfil
+  →" deveria igualar o respiro Nome→E-mail quando os dois campos empilham no mobile (`st.columns(2,
+  gap="small")` colapsa nativamente abaixo do breakpoint interno do Streamlit, sem CSS deste
+  projeto). Medido 16px nativo entre Nome/E-mail empilhados vs. 8px (`margin-top:8px` genérico do
+  botão, válido em qualquer largura) até o botão — corrigido com `margin-top:16px !important` em
+  `.st-key-profile-card [data-testid="stButton"] > button` dentro de `@media (max-width:768px)`
+  (`profile.css`), escopado só à tela solo "Meu Perfil" (não ao admin, pedido explícito do usuário).
+  Os 4 ajustes desta rodada foram validados por medição real (Playwright, não só inspeção visual),
+  reproduzindo a cadeia de CSS completa da tela (`load_app_css()` + CSS específico) — uma tentativa
+  inicial sem essa cadeia completa (só o CSS da tela isolado) gerou números de gap inconsistentes
+  entre execuções, mesmo problema já registrado na **oitava rodada** acima.
 - **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
   `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
   a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir
