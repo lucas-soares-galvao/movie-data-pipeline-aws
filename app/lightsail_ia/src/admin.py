@@ -5,7 +5,9 @@ Só é chamado por app.py quando st.session_state["is_admin"] é True (setado em
 forms.py::_render_login_form a partir de infrastructure.is_admin() no momento do
 login) — este módulo não repete o gate, confia no chamador."""
 
+import html
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -42,8 +44,8 @@ def render_admin_panel(client_ip: str) -> None:
     # profile.css) — mesma largura/centralização para as 3 seções, sem exceção nem
     # ramificação por `active`: é isso que garante que a borda esquerda/direita nunca
     # pule ao trocar de aba. A tabela pode precisar de scroll horizontal interno
-    # quando as 9 colunas não cabem em 680px (ver admin-dataframe em admin.css) — a
-    # caixa em si não muda de largura por causa disso.
+    # quando as 9 colunas não cabem em 680px (ver .admin-table-wrap em
+    # static/css/admin_table.css) — a caixa em si não muda de largura por causa disso.
     with st.container(key="admin-shell"):
         st.markdown('<p class="page-title">Painel Admin</p>', unsafe_allow_html=True)
         render_nav_bar("admin", _ADMIN_SECTIONS)
@@ -82,8 +84,8 @@ def _render_table() -> None:
     # Mensagem do resultado da última ação (Aprovar/Reprovar/Revogar/Remover), gravada
     # em admin_action_feedback por _render_confirm_dialog antes do st.rerun() que fecha
     # o modal (rerun perde variáveis locais, mesmo racional de admin_pending_action, ver
-    # comentário em _handle_dataframe_action_click) — lida e descartada aqui pra
-    # aparecer uma única vez, mesmo se a ação esvaziar a lista.
+    # comentário em _queue_pending_action) — lida e descartada aqui pra aparecer uma
+    # única vez, mesmo se a ação esvaziar a lista.
     feedback = st.session_state.pop("admin_action_feedback", None)
     if feedback:
         render_feedback(feedback["kind"], feedback["text"])
@@ -93,7 +95,7 @@ def _render_table() -> None:
     if not rows:
         st.markdown('<p class="admin-empty">Nenhum usuário encontrado.</p>', unsafe_allow_html=True)
     else:
-        _render_users_dataframe(rows)
+        _render_users_table(rows)
 
 
 def _build_table_data(rows: list[dict]) -> list[dict]:
@@ -121,101 +123,133 @@ def _status_label(user: dict) -> str:
     return "Revogado"
 
 
-def _render_users_dataframe(rows: list[dict]) -> None:
-    """Grade de usuários via st.dataframe, com botão real dentro da célula de Ação
-    (st.column_config.ButtonColumn, disponível a partir do Streamlit 1.59 — confirmado
-    na versão instalada neste projeto). st.table não aceita widgets por célula, então
-    st.dataframe é o único jeito de ter aprovar/revogar na própria linha, sem painel
-    separado."""
-    # st.dataframe(key=...) não gera classe `st-key-<key>` no wrapper (diferente de
-    # st.container/st.button, confirmado via Playwright) — sem esse container extra,
-    # não haveria seletor estável pra escopar o CSS que esconde a toolbar/estiliza a
-    # moldura (ver admin.css).
-    with st.container(key="admin-dataframe"):
-        st.dataframe(
-            _build_dataframe_action_data(rows),
-            # width="content" — o padrão ("stretch") distribui o espaço sobrando do
-            # container entre as colunas, ignorando o `width` fixo do column_config
-            # abaixo (confirmado visualmente: com "stretch", Admin/Status/Aprovar/
-            # Revogar ficavam largas mesmo com width=60).
-            width="content",
-            hide_index=True,
-            column_config={
-                "Nome": st.column_config.TextColumn("Nome", alignment="left", width=200),
-                "E-mail": st.column_config.TextColumn("E-mail", alignment="left", width=260),
-                "Admin": st.column_config.TextColumn("Admin", alignment="center", width=60),
-                "Status": st.column_config.TextColumn("Status", alignment="center", width=60),
-                "Cadastrado em": st.column_config.TextColumn("Cadastrado em", alignment="left", width=140),
-                "Atualizado em": st.column_config.TextColumn("Atualizado em", alignment="left", width=140),
-                "Último acesso": st.column_config.TextColumn("Último acesso", alignment="left", width=140),
-                "Aprovar": st.column_config.ButtonColumn(
-                    "Aprovar", key="admin_approve_click", alignment="center", width=60
-                ),
-                "Revogar": st.column_config.ButtonColumn(
-                    "Revogar", key="admin_reject_revoke_click", alignment="center", width=60
-                ),
-            },
-            key="admin_users_dataframe",
-            row_height=40,
-        )
-    _handle_dataframe_action_click(rows)
+# Larguras das colunas, em px — viram <col style="width:...db"> literal no <colgroup> da
+# <table> (ver _build_table_html), únicas responsáveis pelo alinhamento entre cabeçalho e
+# linhas (table-layout:fixed, admin_table.css) — diferente da versão anterior (st.columns()),
+# uma <table> de verdade compartilha os mesmos tracks de coluna entre todas as linhas por
+# construção do HTML, não precisa mais repetir o mesmo array em cada linha pra torcer pelo
+# alinhamento. Índices 5-8 (Admin/Status/Aprovar/Revogar) ficam centralizados, o resto
+# alinhado à esquerda — ver _CENTERED_COLUMNS.
+_COLUMN_LABELS = [
+    "Nome", "E-mail", "Cadastrado em", "Atualizado em", "Último acesso",
+    "Admin", "Status", "Aprovar", "Revogar",
+]
+# Aprovar/Revogar em 90px (não 60) — pedido do usuário: o cabeçalho "Aprovar"/"Revogar" cortava
+# ("APRO…"/"REVO…") na largura antiga. Soma total (1180) precisa bater com o min-width de
+# admin_table.css (mesmo mecanismo de sempre — table-layout:fixed só respeita <col> se a table
+# tiver largura mínima suficiente pra caber a soma).
+_COLUMN_WEIGHTS = [200, 260, 140, 140, 140, 60, 60, 90, 90]
+_CENTERED_COLUMNS = {5, 6, 7, 8}
+
+_STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
-def _build_dataframe_action_data(rows: list[dict]) -> list[dict]:
-    # Emoji (✔️/❌) em vez de :material/check:/:material/close: — a célula do
-    # ButtonColumn é canvas (glide-data-grid), não alcançável por CSS, então não dá
-    # pra colorir o fundo do botão como os botões do painel acima; emoji já vem
-    # colorido pela fonte do sistema, sem precisar de tema/CSS. ✔️ (sem caixa de
-    # fundo) foi testado no lugar de ✅ pra bater com ❌, mas não renderiza verde
-    # de forma confiável — ✅ garante a cor.
-    data = _build_table_data(rows)
-    for row, entry in zip(rows, data):
-        entry["Aprovar"] = "✅" if row["kind"] == "pending" else None
-        entry["Revogar"] = (
-            "❌" if not row["is_admin"] and (row["kind"] == "pending" or row["enabled"]) else None
-        )
-    return data
+def _read_static(sub_dir: str, file_name: str) -> str:
+    return (_STATIC_DIR / sub_dir / file_name).read_text(encoding="utf-8")
 
 
-def _handle_dataframe_action_click(rows: list[dict]) -> None:
-    # admin_pending_action (não é a key de trigger do ButtonColumn) guarda a ação de
-    # Aprovar/Reprovar/Revogar aguardando confirmação no modal. Necessário porque o
-    # valor de admin_approve_click/admin_reject_revoke_click é um "trigger value" do
-    # próprio Streamlit: só fica setado no rerun imediatamente disparado pelo clique, e
-    # é zerado sozinho em qualquer rerun seguinte — inclusive o rerun causado pelo
-    # clique em "Confirmar" dentro do modal. Por isso email/name/kind são resolvidos e
-    # copiados pra cá assim que o clique original é detectado, antes do primeiro
-    # st.rerun().
+def _revoke_kind(row: dict) -> str:
+    if row["kind"] == "pending":
+        return "reject"
+    if row["kind"] == "unconfirmed":
+        return "remove_unconfirmed"
+    return "revoke"
+
+
+def _revoke_visible(row: dict) -> bool:
+    return not row["is_admin"] and (row["kind"] == "pending" or row["enabled"])
+
+
+def _render_users_table(rows: list[dict]) -> None:
+    """Grade de usuários via st.components.v2.component() — <table> HTML real (Shadow DOM,
+    sem iframe), não mais st.columns()+st.button() empilhados por linha. A versão anterior
+    (DOM via st.columns()) já resolvia o problema original do st.dataframe/ButtonColumn
+    (grade em <canvas>/glide-data-grid, inalcançável por CSS, sempre escura fora do tema
+    claro/escuro — ver histórico em lightsail_ia.md), mas cada linha era um flexbox
+    independente que só alinhava com o cabeçalho por coincidência de larguras repetidas
+    (_COLUMN_WEIGHTS igual em todo st.columns()) — uma <table> de verdade garante isso
+    estruturalmente via <colgroup> compartilhado. CSS custom properties (var(--overlay-*)
+    etc., theme.css) atravessam a fronteira do Shadow DOM normalmente, então a tabela
+    continua acompanhando o tema claro/escuro custom do app sem nenhuma ponte extra —
+    confirmado num spike isolado antes desta migração."""
+    table_data = _build_table_data(rows)
+    html_body = _build_table_html(rows, table_data)
+    css = _read_static("css", "admin_table.css")
+    js = _read_static("js", "admin_table.js")
+
+    # on_<key>_change precisa ser declarado por chave dinâmica (uma por botão possível) —
+    # sem isso o componente não expõe o valor correspondente em `result` (confirmado no
+    # mesmo spike). O callback em si não faz nada: só registra a chave, a leitura de fato é
+    # via getattr(result, ...) logo abaixo, depois do rerun que o clique já disparou sozinho.
+    on_changes: dict[str, object] = {}
+    for row in rows:
+        on_changes[f"on_approve_{row['email']}_change"] = lambda: None
+        on_changes[f"on_revoke_{row['email']}_change"] = lambda: None
+
+    admin_table = st.components.v2.component("admin_users_table", html=html_body, css=css, js=js)
+    result = admin_table(**on_changes)
+
+    # `result` só reflete o clique mais recente (não acumula histórico entre cliques sem
+    # rerun no meio, achado do spike) — inofensivo aqui porque cada clique já dispara seu
+    # próprio rerun, então só existe um clique "pendente de processar" por execução deste
+    # bloco, igual ao `if st.button(...):` que essa tabela usava antes.
+    for row in rows:
+        email = row["email"]
+        if row["kind"] == "pending" and getattr(result, f"approve_{email}", None):
+            _queue_pending_action("approve", row)
+        if _revoke_visible(row) and getattr(result, f"revoke_{email}", None):
+            _queue_pending_action(_revoke_kind(row), row)
+
     pending = st.session_state.get("admin_pending_action")
     if pending:
         _render_confirm_dialog(pending)
-        return
 
-    approve_click = st.session_state.get("admin_approve_click")
-    reject_revoke_click = st.session_state.get("admin_reject_revoke_click")
 
-    if approve_click:
-        user = rows[approve_click["row"]]
-        st.session_state["admin_pending_action"] = {
-            "kind": "approve",
-            "email": user["email"],
-            "name": user["name"],
-        }
-        st.rerun()
-    elif reject_revoke_click:
-        user = rows[reject_revoke_click["row"]]
-        if user["kind"] == "pending":
-            kind = "reject"
-        elif user["kind"] == "unconfirmed":
-            kind = "remove_unconfirmed"
-        else:
-            kind = "revoke"
-        st.session_state["admin_pending_action"] = {
-            "kind": kind,
-            "email": user["email"],
-            "name": user["name"],
-        }
-        st.rerun()
+def _build_table_html(rows: list[dict], table_data: list[dict]) -> str:
+    col_tags = "".join(f'<col style="width:{weight}px">' for weight in _COLUMN_WEIGHTS)
+    header_cells = "".join(
+        f'<th class="{"col-center" if i in _CENTERED_COLUMNS else ""}">{html.escape(label)}</th>'
+        for i, label in enumerate(_COLUMN_LABELS)
+    )
+    body_rows = "".join(_build_table_row_html(row, entry) for row, entry in zip(rows, table_data))
+    return (
+        '<div class="admin-table-wrap"><table>'
+        f"<colgroup>{col_tags}</colgroup>"
+        f"<thead><tr>{header_cells}</tr></thead>"
+        f"<tbody>{body_rows}</tbody>"
+        "</table></div>"
+    )
+
+
+def _build_table_row_html(row: dict, entry: dict) -> str:
+    cells = []
+    for i, label in enumerate(_COLUMN_LABELS[:7]):
+        value = html.escape(str(entry[label]))
+        css_class = "col-center" if i in _CENTERED_COLUMNS else ""
+        cells.append(f'<td class="{css_class}" title="{value}">{value}</td>')
+
+    email_attr = html.escape(row["email"])
+
+    approve_btn = ""
+    if row["kind"] == "pending":
+        approve_btn = f'<button class="btn-approve" data-email="{email_attr}">✅</button>'
+    cells.append(f'<td class="col-center">{approve_btn}</td>')
+
+    revoke_btn = ""
+    if _revoke_visible(row):
+        revoke_btn = f'<button class="btn-revoke" data-email="{email_attr}">❌</button>'
+    cells.append(f'<td class="col-center">{revoke_btn}</td>')
+
+    return f"<tr>{''.join(cells)}</tr>"
+
+
+def _queue_pending_action(kind: str, row: dict) -> None:
+    """Grava a ação clicada em admin_pending_action e força o rerun que abre o modal de
+    confirmação (_render_confirm_dialog) — st.button() já retorna True só no rerun
+    imediato do clique (não persiste sozinho), por isso email/name/kind são copiados
+    pra session_state aqui, antes do rerun."""
+    st.session_state["admin_pending_action"] = {"kind": kind, "email": row["email"], "name": row["name"]}
+    st.rerun()
 
 
 _CONFIRM_VERBOS = {
