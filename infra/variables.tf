@@ -134,6 +134,12 @@ variable "filmbot_secret_arn" {
   type        = string
 }
 
+variable "github_workflow_dispatch_token" {
+  description = "Fine-grained PAT (permissão Actions: Read and write, escopado só a este repositório) usado pela EventBridge Connection para disparar 05_lightsail_scheduler.yml via workflow_dispatch"
+  type        = string
+  sensitive   = true
+}
+
 # =============================================================================
 # LAMBDA API
 # =============================================================================
