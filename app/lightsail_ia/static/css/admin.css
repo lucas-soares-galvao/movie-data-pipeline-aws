@@ -23,43 +23,13 @@
   font-size: 14px;
 }
 
-/* Grade de usuários (_render_users_dataframe, admin.py) — st.dataframe renderiza a
-   grade (células/cabeçalho) em <canvas> (glide-data-grid), então cor de fundo/texto de
-   lá não é alcançável por CSS (confirmado inspecionando o bundle instalado do
-   Streamlit — vem de tema JS alimentado por [theme] no config.toml). Com o tema
-   claro/escuro dinâmico (theme.css), essa tabela permanece SEMPRE ESCURA por decisão
-   deliberada, não por limitação pendente: fixar [theme] no config.toml para
-   sincronizá-la reabriria os bugs de contraste em componentes nativos (labels de
-   stTextInput, etc.) que hoje são corrigidos via CSS custom — ver base.css/forms.css/
-   profile.css. Só a moldura externa e a toolbar de hover são DOM normal. Escopo via
-   .st-key-admin-dataframe (container extra em admin.py, não o key= do st.dataframe em
-   si — esse não gera classe própria).
-
-   width:100%/max-width:100% faz a CAIXA da tabela preencher a largura inteira do
-   .st-key-admin-shell pai (680px, profile.css) — mesmo início/fim horizontal dos
-   cards de perfil/senha (pedido do usuário: as 3 seções devem ter início e fim
-   simétricos), mesmo quando o dataframe em si (width="content" no Python, ver
-   admin.py) é mais estreito que isso — ele fica encostado à esquerda dentro da caixa,
-   com espaço vazio à direita, em vez de encolher a caixa. overflow-x:auto cria scroll
-   horizontal LOCAL (só dentro desta caixa) para quando os dados reais (nomes/e-mails
-   longos, 9 colunas) somam mais que 680px — sem isso o excesso vazaria e seria
-   cortado, sem como rolar até lá, pela regra global overflow-x:hidden de base.css
-   (que continua intacta e impede scroll horizontal na PÁGINA). */
-.st-key-admin-dataframe {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.st-key-admin-dataframe [data-testid="stElementToolbar"] {
-  display: none !important;
-}
-
-.st-key-admin-dataframe [data-testid="stDataFrame"] {
-  border: 1px solid transparent !important;
-  border-radius: 16px !important;
-}
+/* Tabela de usuários (_render_users_table, admin.py) — desde a migração pra
+   st.components.v2.component(), o CSS dela mora em static/css/admin_table.css (passado
+   via css=), não aqui: o componente roda em Shadow DOM (isolate_styles=True), então
+   seletores deste arquivo (admin.css, injetado no documento normal do Streamlit) não
+   alcançariam o <table> mesmo se declarados aqui. Ver admin_table.css pro CSS da grade em
+   si, e lightsail_ia.md pro histórico completo (rodadas 9-13 da versão anterior em
+   st.columns(), depois a migração). */
 
 /* Modal de confirmação (_render_confirm_dialog, admin.py) — st.dialog(width="small") já é a
    opção nativa mais estreita do Streamlit, mas ainda assim tem até 500px (docstring de

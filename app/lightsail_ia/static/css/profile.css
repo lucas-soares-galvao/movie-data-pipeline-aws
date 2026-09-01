@@ -30,7 +30,7 @@
 /* Sem margin:0 auto própria — width:100% dentro do .st-key-profile-shell/
    .st-key-admin-shell pai (já limitado a 640px em base.css) faz o card preencher a
    largura inteira do shell, mesma caixa (mesmo início e fim horizontal) da tabela de
-   usuários (.st-key-admin-dataframe, admin.css, também width:100% dentro do mesmo
+   usuários (.st-key-admin-table, admin.css, também width:100% dentro do mesmo
    shell) — pedido do usuário: as 3 seções (tabela/perfil/senha) devem ter início e
    fim simétricos. max-width:640px aqui é redundante com o do shell pai, mantido como
    cinto-e-suspensório (mesmo padrão defensivo do próprio shell), caso o card algum
