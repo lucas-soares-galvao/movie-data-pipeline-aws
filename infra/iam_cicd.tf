@@ -494,6 +494,24 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
       },
       {
+        # A primeira aws_cloudwatch_event_connection de API Destination criada na conta
+        # exige que o EventBridge crie automaticamente esta service-linked role — sem
+        # esta permissão, o CreateConnection falha com "Failed to create service linked
+        # role because the caller does not have sufficient permissions". Uma vez criada,
+        # é reaproveitada por qualquer connection futura da conta (fica concedida
+        # permanentemente, sem custo/risco adicional). ARN/condition conforme
+        # AmazonEventBridgeFullAccess (AWS managed policy).
+        Sid      = "IAMCreateServiceLinkedRoleForApiDestinations"
+        Effect   = "Allow"
+        Action   = "iam:CreateServiceLinkedRole"
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/apidestinations.events.amazonaws.com/AWSServiceRoleForAmazonEventBridgeApiDestinations"
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "apidestinations.events.amazonaws.com"
+          }
+        }
+      },
+      {
         Sid      = "CloudWatchLogGroupsList"
         Effect   = "Allow"
         Action   = "logs:DescribeLogGroups"

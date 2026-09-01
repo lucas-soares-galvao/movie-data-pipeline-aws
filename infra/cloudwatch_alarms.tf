@@ -95,6 +95,64 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_failed_alarm" {
   tags = local.component_tags.eventbridge
 }
 
+# Alarme de falha imediata do Lightsail Scheduler (chamada à API do GitHub via
+# API Destination) — só existe em prod, mesmo gate das regras que monitora
+# (aws_cloudwatch_event_rule.lightsail_scheduler_start/stop, count-based, não dá
+# pra somar nas mesmas metric_query de eventbridge_failed_alarm porque aquele
+# alarme não é gateado por ambiente). Complementa eventbridge_dlq_alarm (que já
+# cobre estas regras via a mesma DLQ compartilhada, mas só depois de esgotadas
+# as tentativas de retry, até 24h depois).
+resource "aws_cloudwatch_metric_alarm" "lightsail_scheduler_failed_alarm" {
+  count = local.lightsail_prod_enabled ? 1 : 0
+
+  alarm_name          = "${local.tmdb_prefix}-lightsail-scheduler-failed-alarm-${var.env}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = 0
+  alarm_description   = "Alerta por e-mail quando o EventBridge falha ao chamar a API do GitHub para ligar/desligar o FilmBot."
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "stop_failed"
+    return_data = false
+
+    metric {
+      metric_name = "FailedInvocations"
+      namespace   = "AWS/Events"
+      period      = 60
+      stat        = "Sum"
+      dimensions = {
+        RuleName = aws_cloudwatch_event_rule.lightsail_scheduler_stop[0].name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "start_failed"
+    return_data = false
+
+    metric {
+      metric_name = "FailedInvocations"
+      namespace   = "AWS/Events"
+      period      = 60
+      stat        = "Sum"
+      dimensions = {
+        RuleName = aws_cloudwatch_event_rule.lightsail_scheduler_start[0].name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "total_failed"
+    expression  = "stop_failed+start_failed"
+    label       = "LightsailSchedulerFailedInvocations"
+    return_data = true
+  }
+
+  alarm_actions = [aws_sns_topic.eventbridge_failure_notifications.arn]
+  tags          = local.component_tags.lightsail_ia
+}
+
 # Alarme da DLQ do EventBridge — dispara quando há mensagens na fila (eventos não entregues)
 resource "aws_cloudwatch_metric_alarm" "eventbridge_dlq_alarm" {
   alarm_name          = "${local.tmdb_prefix}-eventbridge-dlq-alarm-${var.env}"
