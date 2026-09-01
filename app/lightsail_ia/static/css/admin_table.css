@@ -1,0 +1,153 @@
+/* admin_table.css — CSS da tabela de usuários do painel admin (admin.py::_render_users_table),
+   passado via css= pro st.components.v2.component() que desenha a <table> real. Roda dentro do
+   Shadow DOM do componente (isolate_styles=True, o padrão) — não vaza pra página nem sofre
+   interferência do CSS do Streamlit, mas os tokens var(--overlay-*)/var(--text-*)/
+   var(--feedback-*) de theme.css continuam funcionando: CSS custom properties atravessam a
+   fronteira do Shadow DOM normalmente (herança de propriedade CSS padrão da plataforma,
+   confirmado num spike isolado nesta sessão — trocar o data-theme na página pai via JS puro,
+   sem rerun, já muda a cor aqui dentro sozinho). Substitui as regras antigas de
+   .st-key-admin-table/.admin-cell/.admin-header-cell que viviam em admin.css (removidas de lá) —
+   essa tabela agora é um <table> HTML de verdade, não mais N linhas de st.columns() empilhadas,
+   então não precisa mais reproduzir grade via border-right/border-bottom coordenados à mão: table
+   + colgroup fazem isso nativamente, com tracks de coluna garantidos entre cabeçalho e corpo. */
+
+* {
+  box-sizing: border-box;
+}
+
+/* overflow-x:auto (não table-layout:auto) é o que dá o scroll horizontal responsivo quando as
+   9 colunas (min-width da table abaixo) não cabem na largura do .st-key-admin-shell pai (680px,
+   profile.css) — mesmo comportamento da versão st.columns() anterior. Como a tabela (1180px) é
+   sempre mais larga que esse container, a scrollbar horizontal está sempre presente — por isso
+   ela é estilizada (regras abaixo) em vez de deixada no padrão do navegador: sem estilo, o
+   trilho reservado pra ela é um fundo liso sem contraste nenhum no tema escuro, e fica parecendo
+   um vão vazio "desconectado" entre o fim das linhas de grade (border-right em th/td) e a borda
+   inferior arredondada — não é padding sobrando, é só a faixa nativa da scrollbar sem cor
+   nenhuma. Confirmado via DevTools (box model do .admin-table-wrap) antes de optar por manter as
+   duas scrollbars (horizontal e vertical) visíveis em vez de escondê-las.
+
+   max-height/overflow-y:auto — pedido do usuário: a caixa deve crescer livremente com o número
+   de usuários (sem scroll) até um teto de ~5 linhas, só then passando a rolar verticalmente em
+   vez de continuar crescendo. 248px = cabeçalho (35.7px) + 5 linhas uniformes (~40px cada,
+   medido ao vivo via getBoundingClientRect no harness isolado) + faixa da scrollbar horizontal
+   (8px, fixada abaixo via ::-webkit-scrollbar) + borda (2px), com uma pequena folga pra variação
+   de sub-pixel entre navegadores — box-sizing:border-box (regra * abaixo) garante que max-height
+   já contabiliza padding/borda, não só o conteúdo. Com 5 linhas ou menos a soma real fica abaixo
+   do teto, então overflow-y:auto não ativa scrollbar vertical nenhuma (só ativa quando o
+   conteúdo de fato excede max-height). */
+.admin-table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--overlay-03);
+  border: 1px solid var(--overlay-16);
+  border-radius: 12px;
+  max-height: 248px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--overlay-16) var(--overlay-08);
+}
+
+/* ::-webkit-scrollbar-* (Chrome/Edge/Safari) dá controle separado de trilho e polegar que
+   scrollbar-color (Firefox, acima) não tem — por isso as duas abordagens convivem: cada
+   navegador usa a que suporta. Track no mesmo tom sutil já usado em borda de card
+   (var(--overlay-08), base.css) e thumb no mesmo tom das linhas de grade desta tabela
+   (var(--overlay-16), border-right/border-bottom abaixo) — a faixa da scrollbar passa a ler como
+   um divisor desenhado de propósito, encostado na borda, em vez de vão vazio sem estilo. */
+.admin-table-wrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.admin-table-wrap::-webkit-scrollbar-track {
+  background: var(--overlay-08);
+}
+
+.admin-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--overlay-16);
+  border-radius: 999px;
+}
+
+/* min-width = soma exata de _COLUMN_WEIGHTS (admin.py) — table-layout:fixed + <colgroup> fazem
+   cada <col> valer esse px exato, sem a estimativa de gap que a versão st.columns() precisava
+   (lá min-width incluía uma soma de pesos + gap nativo do Streamlit entre colunas "chutado" por
+   inspeção visual; aqui a largura é literal, o navegador não insere gap nenhum numa <table>). */
+table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+  /* table-layout:fixed é o que faz o <colgroup> abaixo (admin.py) valer de verdade — sem isso o
+     navegador ignora as larguras dos <col> e dimensiona cada coluna pelo conteúdo (table-layout:
+     auto, o padrão), o que também desativa o truncamento com "…" (white-space:nowrap +
+     text-overflow:ellipsis só truncam de fato quando a célula tem uma largura definida a priori,
+     não uma que cresce pra caber o conteúdo). */
+  table-layout: fixed;
+}
+
+th,
+td {
+  padding: 8px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.col-center {
+  text-align: center;
+}
+
+thead th {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--overlay-16);
+}
+
+tbody td {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+tbody tr:not(:last-child) td {
+  border-bottom: 1px solid var(--overlay-16);
+}
+
+th:not(:last-child),
+td:not(:last-child) {
+  border-right: 1px solid var(--overlay-16);
+}
+
+tbody tr {
+  transition: background 0.15s ease;
+}
+
+tbody tr:hover {
+  background: var(--overlay-03);
+}
+
+/* Botões Aprovar/Revogar — mesmo par de tokens --feedback-success-*/--feedback-error-* já usado
+   por .msg-success/.msg-error (base.css) e pela versão anterior desta tabela. */
+.btn-approve,
+.btn-revoke {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-approve {
+  background: var(--feedback-success-bg);
+  border: 1px solid var(--feedback-success-border);
+}
+
+.btn-revoke {
+  background: var(--feedback-error-bg);
+  border: 1px solid var(--feedback-error-border);
+}
+
+.btn-approve:hover,
+.btn-revoke:hover {
+  filter: brightness(1.15);
+}
