@@ -523,7 +523,7 @@
   .st-key-query-counter-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 16px;
   }
   .st-key-query-counter-row > [data-testid="stElementContainer"] {
     width: 100% !important;
@@ -540,7 +540,7 @@
   .st-key-search-status-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 16px;
   }
   .st-key-search-status-row > [data-testid="stElementContainer"] {
     width: 100% !important;
@@ -551,26 +551,27 @@
     width: 100% !important;
   }
 
-  /* Iguala o respiro textarea→"Consultas restantes"/"Buscando..." ao gap:8px que já
+  /* Iguala o respiro textarea→"Consultas restantes"/"Buscando..." ao gap:16px que já
      vale, acima, entre esse texto/spinner e o botão (flex gap de
-     .st-key-query-counter-row/.st-key-search-status-row, ambos acima). Calibrado por
-     medição real (Playwright, viewport 375px, getBoundingClientRect), não por conta —
-     a soma "de cabeça" das margens nativas não bate com o resultado renderizado:
-     .st-key-hero-section/.st-key-hero-actions são containers-irmãos com gap:16px
-     nativo do Streamlit entre eles (ver recommendation.py, comentário acima de
-     .st-key-hero-scripts), MAS .audio-messages (container sempre presente dentro de
-     hero-section, mesmo vazio no estado idle — mesmo efeito documentado ali para
-     hero-scripts) consome sozinho mais um gap:16px inteiro de hero-section antes
-     dele, mesmo sem conteúdo visível. Medido 24px de respiro (16+8) antes desta
-     regra, com hero-actions já em margin-top:8px — só bateu nos mesmos 8px do gap
-     de baixo depois de: (1) zerar .query-counter-text/.spinner-container abaixo, que
-     cada um somava seu próprio respiro de topo por cima do gap nativo, e (2) trocar
-     hero-actions para margin-top NEGATIVO (-8px), cancelando o gap:16px extra do
-     .audio-messages vazio em vez de somar a ele. Reconferir por medição, não por
+     .st-key-query-counter-row/.st-key-search-status-row, ambos acima — subido de 8px
+     pra 16px depois, pedido do usuário pra dar mais respiro; ver histórico completo
+     dessa conta em lightsail_ia.md). Calibrado por medição real (Playwright, viewport
+     375px, getBoundingClientRect), não por conta — a soma "de cabeça" das margens
+     nativas não bate com o resultado renderizado: .st-key-hero-section/
+     .st-key-hero-actions são containers-irmãos com gap:16px nativo do Streamlit entre
+     eles (ver recommendation.py, comentário acima de .st-key-hero-scripts), MAS
+     .audio-messages (container sempre presente dentro de hero-section, mesmo vazio no
+     estado idle — mesmo efeito documentado ali para hero-scripts) consome sozinho
+     mais um gap:16px inteiro de hero-section antes dele, mesmo sem conteúdo visível —
+     16px fixos, que somam por cima de qualquer valor de margin-top explícito aqui
+     (confirmado testando dois valores diferentes de margin-top e comparando o
+     resultado renderizado nos dois casos). Como o alvo agora é 16px (mesmo valor do
+     gap de baixo), e 16(fixo) + margin-top = alvo, o valor precisa ser 0 — antes,
+     quando o alvo era 8px, era -8px (16-8=8). Reconferir por medição, não por
      cálculo, se a estrutura de hero-section mudar (novo container fixo entre
-     input-card e audio-messages, por exemplo). */
+     input-card e audio-messages, por exemplo) ou se o gap de baixo mudar de novo. */
   .st-key-hero-actions {
-    margin-top: -8px !important;
+    margin-top: 0 !important;
   }
   .query-counter-text {
     margin-top: 0 !important;

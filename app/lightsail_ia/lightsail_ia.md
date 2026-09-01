@@ -560,6 +560,26 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   convergem para o arredondamento nativo do Streamlit (`8px`, confirmado via `getComputedStyle`) em
   vez de pill — mesmo efeito visual dos dois lados (idle "Recomendar" vs. "buscando" "Cancelar"),
   só que na direção contrária da primeira tentativa.
+  **Vigésima primeira rodada — respiro "Consultas restantes"→"Recomendar" pequeno demais no
+  mobile, e a causa raiz revela por que ajustar margin/padding do CONTEÚDO de dentro de um
+  `stElementContainer` nunca funciona pra separar esse container do próximo irmão:** usuário
+  reportou o respiro pequeno pedindo pra igualar ao de "Buscando..."→"Cancelar". Primeira
+  tentativa — trocar o `margin-bottom:8px` de `.query-counter-text` por `padding-bottom:8px`
+  (mesmo mecanismo já usado em `.spinner-container`) — não teve efeito nenhum, medido via
+  Playwright: o `<p>`/`<div>` interno pode crescer (via padding OU margin) sem que o
+  `stElementContainer` que o envolve (o verdadeiro item do flex `gap` da row) cresça junto — o
+  mesmo achado já documentado em `forms.css` (comentário do `.email-hint`, "o `gap` do
+  `stVerticalBlock` se aplica a cada `stElementContainer` filho **independente da altura do
+  conteúdo**"), agora confirmado também pra flex `gap` horizontal-viram-vertical de
+  `.st-key-query-counter-row`/`.st-key-search-status-row`. Ou seja: **a única alavanca real pra
+  esse respiro é o `gap` do próprio row** — não tem como aumentar só um lado mexendo no
+  conteúdo interno. Corrigido subindo `gap:8px→16px` nos dois rows juntos (mesmo valor, garante
+  igualdade por construção) e recalibrando `.st-key-hero-actions` (`margin-top:-8px→0px`) pra o
+  respiro de cima (textarea→texto/spinner, rodada 17) continuar batendo com o novo valor de
+  baixo — a conta muda porque o gap:16px "fixo" que o `.audio-messages` vazio consome (rodada 17)
+  soma por cima do `margin-top` explícito, então `margin-top` precisa ser `alvo - 16`: era `-8`
+  quando o alvo era `8`, passa a ser `0` quando o alvo é `16`. O `padding-bottom` malsucedido foi
+  removido de `.query-counter-text` (não fazia nada, só CSS morto).
 - **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
   `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
   a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir
