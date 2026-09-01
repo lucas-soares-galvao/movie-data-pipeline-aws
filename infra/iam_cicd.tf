@@ -512,6 +512,24 @@ resource "aws_iam_policy" "cicd_observability" {
         }
       },
       {
+        # Confirmado por erro real de apply: quem chama events:CreateConnection também
+        # precisa de permissão direta sobre o secret que a connection cria/gerencia no
+        # Secrets Manager (prefixo "events!connection/..." — não é só a service-linked
+        # role que usa essas permissões, como o texto da doc da AWS sugere). Actions
+        # conforme AmazonEventBridgeFullAccess (AWS managed policy), escopo restrito ao
+        # padrão de nome de secret das connections deste projeto.
+        Sid    = "SecretsManagerApiDestinationConnection"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:CreateSecret",
+          "secretsmanager:UpdateSecret",
+          "secretsmanager:DeleteSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+        ]
+        Resource = "arn:aws:secretsmanager:sa-east-1:${data.aws_caller_identity.current.account_id}:secret:events!connection/${local.tmdb_prefix}-*"
+      },
+      {
         Sid      = "CloudWatchLogGroupsList"
         Effect   = "Allow"
         Action   = "logs:DescribeLogGroups"
