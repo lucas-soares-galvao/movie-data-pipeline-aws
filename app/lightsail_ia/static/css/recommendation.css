@@ -384,7 +384,6 @@
 }
 .st-key-btn_recomendar button {
   width: 140px !important;
-  border-radius: 999px !important;
   background: #ea580c !important;
   box-shadow: 0 0 24px -4px rgba(234,88,12,0.6);
   font-weight: 600 !important;
@@ -578,5 +577,15 @@
   }
   .spinner-container {
     padding-top: 0;
+    /* .spinner-container é ele mesmo um flex row (display:flex acima) — diferente de
+       .query-counter-text (um <p> block-level, que só precisa de text-align:center
+       porque já ocupa 100% de largura por padrão), um flex item sem width:100% fica
+       do tamanho do próprio conteúdo e colado à esquerda dentro do wrapper
+       [data-testid="stElementContainer"] (que já vira width:100% acima) — mesmo
+       racional de largura+centralização já usado em .st-key-btn_recomendar/
+       .st-key-btn_cancelar. Sem isso, ícone+texto ficavam à esquerda mesmo com o
+       botão "Cancelar" abaixo já centralizado/full-width. */
+    width: 100%;
+    justify-content: center;
   }
 }

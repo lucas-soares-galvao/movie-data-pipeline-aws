@@ -516,6 +516,50 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   reproduzindo a cadeia de CSS completa da tela (`load_app_css()` + CSS específico) — uma tentativa
   inicial sem essa cadeia completa (só o CSS da tela isolado) gerou números de gap inconsistentes
   entre execuções, mesmo problema já registrado na **oitava rodada** acima.
+  **Décima oitava rodada — bug real no item (2) da rodada anterior, achado só ao reler o CSS depois
+  do usuário reportar que nada tinha mudado no site publicado:** o `.spinner-container` (ícone +
+  texto "Buscando as melhores opções...") nunca ganhou a contraparte de centralização que
+  `.query-counter-text` já tinha (`text-align:center`, dentro do mesmo `@media (max-width:520px)`)
+  — diferente de `.query-counter-text` (um `<p>` block-level, que já ocupa 100% de largura por
+  padrão), `.spinner-container` é ele mesmo um flex row (`display:flex`, acima) e, sem
+  `width:100%`, fica do tamanho do próprio conteúdo, colado à esquerda dentro do wrapper
+  `[data-testid="stElementContainer"]` (que já vira `width:100%` nesse breakpoint). Resultado:
+  mesmo com o botão "Cancelar" já centralizado/full-width (item 2 da rodada anterior), o texto do
+  spinner ficava sempre à esquerda — o grupo nunca ficava parecido com a referência ("Consultas
+  restantes" centralizado + "Recomendar" full-width). Corrigido acrescentando `width:100%` +
+  `justify-content:center` na mesma regra `.spinner-container` da rodada anterior (não uma regra
+  nova). Nessa mesma investigação, suposto (incorretamente, ver **décima nona rodada** logo abaixo)
+  que a causa de "nada mudou" reportada pelo usuário pros outros 3 itens da rodada anterior era
+  falta de commit/deploy — hipótese plausível na hora (o agente não tinha mais na própria janela de
+  contexto o registro de ter commitado antes), mas errada: as mudanças já estavam commitadas e
+  pushadas (`cf8d0f0`) desde antes desta investigação.
+  **Décima nona rodada — causa raiz real dos itens que "não refletiram" era escopo CSS, não
+  deploy, revelada pelos prints que o usuário trouxe do site publicado:** ao reler o git
+  (`git merge-base --is-ancestor cf8d0f0 origin/main`), confirmado que o commit `cf8d0f0` (item 4 da
+  décima sétima rodada) já estava commitado, pushado E promovido até `main` pelo pipeline automático
+  (`03_pr_auto.yml`: `feature/* → develop → main`, PRs auto-criados e auto-mergeados, bem mais
+  rápido do que o agente presumiu na rodada anterior) — a hipótese de "nada foi deployado" estava
+  errada. O print da tela de Perfil que o usuário trouxe como prova era da **aba "Perfil" do painel
+  admin** (barra com 3 itens — "Usuários/Perfil/Senha" — só existe ali; a tela solo "Meu Perfil" tem
+  2), não da tela solo — e a regra de `margin-top:16px` da décima sétima rodada (item 4) tinha sido
+  escopada só para `.st-key-profile-card`, excluindo de propósito `.st-key-admin-profile-card` (leitura
+  equivocada do pedido original como "restrito à tela solo", sem confirmação explícita do usuário
+  nesse sentido). Corrigido estendendo o seletor pra cobrir as duas variantes juntas, voltando ao
+  padrão já estabelecido no resto deste arquivo (card/inputs/botões sempre com
+  `.st-key-profile-card`/`.st-key-admin-profile-card` na mesma regra, nunca duplicados) —
+  `.st-key-admin-password-card` (aba "Senha") ficou de fora de propósito, já tem sua própria regra de
+  `margin-top:24px` sem relação com este pedido. **Lição prática:** antes de concluir "não foi
+  deployado" a partir de um relato de "não mudou nada", vale primeiro checar `git merge-base
+  --is-ancestor <commit> origin/main` — é mais rápido e definitivo que negociar hipóteses de cache
+  de navegador ou pipeline com o usuário.
+  **Vigésima rodada — arredondamento de "Recomendar"/"Cancelar" nivelado pro nativo do Streamlit
+  (8px), não mais pill:** tentativa inicial foi o inverso — deixar "Cancelar" pill
+  (`border-radius:999px`, igual a `.st-key-btn_recomendar`) — revertida pelo próprio usuário logo
+  em seguida, preferindo o caminho oposto: `.st-key-btn_recomendar` perdeu o `border-radius:999px`
+  que tinha (nenhuma regra própria nova adicionada a `.st-key-btn_cancelar`), então os dois botões
+  convergem para o arredondamento nativo do Streamlit (`8px`, confirmado via `getComputedStyle`) em
+  vez de pill — mesmo efeito visual dos dois lados (idle "Recomendar" vs. "buscando" "Cancelar"),
+  só que na direção contrária da primeira tentativa.
 - **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
   `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
   a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir

@@ -207,8 +207,9 @@
     width: 100% !important;
   }
 }
-/* Só na aba "Perfil" da tela solo "Meu Perfil" (não no admin, pedido do usuário
-   restrito a essa tela): iguala o respiro E-mail→botão ao respiro Nome→E-mail que já
+/* Aba "Perfil" (tela solo "Meu Perfil" E aba "Perfil" do painel admin — mesmo padrão
+   de extensão, não duplicação, usado no resto deste arquivo pra cobrir as duas telas
+   com uma regra só): iguala o respiro E-mail→botão ao respiro Nome→E-mail que já
    existe abaixo de 768px, quando os dois campos empilham (st.columns(2, gap="small")
    colapsa nativamente pro empilhado nesse breakpoint interno do Streamlit, sem CSS
    deste projeto — ver comentário em profile.py::render_profile_tab). Calibrado por
@@ -216,9 +217,15 @@
    Nome→E-mail empilhados mede 16px; sem esta regra, o margin-top:8px genérico da
    regra desktop (acima) continua valendo no mobile e mede só 8px até o botão — daí o
    valor abaixo, que substitui (não soma) esse 8px. Reconferir por medição, não por
-   estimativa, se o layout dos campos mudar. */
+   estimativa, se o layout dos campos mudar. Não inclui `.st-key-admin-password-card`
+   (aba "Senha") de propósito — essa já tem sua própria regra de margin-top:24px
+   abaixo, sem relação com este pedido. Escopo original (1ª versão desta regra)
+   cobria só `.st-key-profile-card` — corrigido depois que o usuário reportou "não
+   refletiu" testando pela aba Perfil do painel admin, onde a regra restrita não
+   pegava. */
 @media (max-width: 768px) {
-  .st-key-profile-card [data-testid="stButton"] > button {
+  .st-key-profile-card [data-testid="stButton"] > button,
+  .st-key-admin-profile-card [data-testid="stButton"] > button {
     margin-top: 16px !important;
   }
 }
