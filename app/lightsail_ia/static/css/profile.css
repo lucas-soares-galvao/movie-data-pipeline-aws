@@ -207,6 +207,21 @@
     width: 100% !important;
   }
 }
+/* Só na aba "Perfil" da tela solo "Meu Perfil" (não no admin, pedido do usuário
+   restrito a essa tela): iguala o respiro E-mail→botão ao respiro Nome→E-mail que já
+   existe abaixo de 768px, quando os dois campos empilham (st.columns(2, gap="small")
+   colapsa nativamente pro empilhado nesse breakpoint interno do Streamlit, sem CSS
+   deste projeto — ver comentário em profile.py::render_profile_tab). Calibrado por
+   medição real (Playwright, viewport 375px, getBoundingClientRect): o gap nativo
+   Nome→E-mail empilhados mede 16px; sem esta regra, o margin-top:8px genérico da
+   regra desktop (acima) continua valendo no mobile e mede só 8px até o botão — daí o
+   valor abaixo, que substitui (não soma) esse 8px. Reconferir por medição, não por
+   estimativa, se o layout dos campos mudar. */
+@media (max-width: 768px) {
+  .st-key-profile-card [data-testid="stButton"] > button {
+    margin-top: 16px !important;
+  }
+}
 /* "Salvar Senha →" mais baixo que o padrão genérico acima (margin-top:8px), pra
    ficar centralizado entre "Confirmar nova senha" e a borda inferior do card — só
    a aba "Senha" tinha esse desequilíbrio reportado (mais espaço embaixo do botão
