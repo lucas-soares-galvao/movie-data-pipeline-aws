@@ -19,15 +19,14 @@ run-name: "Lightsail Scheduler [PROD]: ${{ (github.event_name == 'workflow_dispa
 #     branch and action from trigger"
 # Um evento schedule sempre roda com o branch default do repositório (main).
 #
-# Cron automático de desligar (00:00 BRT) e ligar (18:00 BRT seg-sex /
-# 08:00 BRT fim de semana) + workflow_dispatch manual (a partir de main).
+# Cron automático de desligar (00:00 BRT) e ligar (08:00 BRT diário) +
+# workflow_dispatch manual (a partir de main).
 # =============================================================================
 
 on:
   schedule:
-    - cron: "0 3 * * *"    # 00:00 BRT diário         → desligar (destroy)
-    - cron: "0 21 * * 1-5" # 18:00 BRT seg-sex         → ligar (apply)
-    - cron: "0 11 * * 0,6" # 08:00 BRT sáb-dom (0=dom) → ligar (apply)
+    - cron: "0 3 * * *"  # 00:00 BRT diário → desligar (destroy)
+    - cron: "0 11 * * *" # 08:00 BRT diário → ligar (apply)
   workflow_dispatch:
     inputs:
       action:
