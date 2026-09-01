@@ -328,6 +328,7 @@ resource "aws_iam_policy" "iam_cicd" {
             "iam:PassedToService" = [
               "lambda.amazonaws.com",
               "glue.amazonaws.com",
+              "events.amazonaws.com",
             ]
           }
         }
@@ -473,6 +474,24 @@ resource "aws_iam_policy" "cicd_observability" {
           "events:UntagResource",
         ]
         Resource = "arn:aws:events:sa-east-1:${data.aws_caller_identity.current.account_id}:rule/${local.tmdb_prefix}-*"
+      },
+      {
+        Sid    = "EventBridgeApiDestination"
+        Effect = "Allow"
+        Action = [
+          "events:CreateConnection",
+          "events:DeleteConnection",
+          "events:DescribeConnection",
+          "events:UpdateConnection",
+          "events:CreateApiDestination",
+          "events:DeleteApiDestination",
+          "events:DescribeApiDestination",
+          "events:UpdateApiDestination",
+        ]
+        Resource = [
+          "arn:aws:events:sa-east-1:${data.aws_caller_identity.current.account_id}:connection/${local.tmdb_prefix}-*",
+          "arn:aws:events:sa-east-1:${data.aws_caller_identity.current.account_id}:api-destination/${local.tmdb_prefix}-*",
+        ]
       },
       {
         Sid      = "CloudWatchLogGroupsList"

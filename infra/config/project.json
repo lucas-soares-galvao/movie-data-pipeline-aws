@@ -5,6 +5,7 @@
   "shared_wheel_name": "tmdb_shared",
   "glue_wheel_modules": ["glue_etl", "glue_agg", "glue_details"],
   "statefile_key": "proj-eng-dados-filmes-aws",
+  "github_repo": "lucas-soares-galvao/movie-data-pipeline-aws",
   "app_name": "filmbot",
   "app_display_name": "FilmBot",
   "app_folder": "lightsail_ia"

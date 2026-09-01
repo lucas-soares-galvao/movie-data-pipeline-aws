@@ -36,6 +36,8 @@ on:
         required: true
       aws-filmbot-secret-arn:
         required: true
+      aws-github-workflow-dispatch-token:
+        required: true
       notification-email:
         required: true
       infracost-api-key:
@@ -208,6 +210,7 @@ jobs:
           else
             terraform import -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
               -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
+              -var="github_workflow_dispatch_token=${{ secrets.aws-github-workflow-dispatch-token }}" \
               -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
               -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
               aws_iam_role.github_actions "${{ steps.project.outputs.cicd_role_name }}-${{ inputs.environment }}"
@@ -291,6 +294,7 @@ jobs:
           fi
           terraform apply -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
+            -var="github_workflow_dispatch_token=${{ secrets.aws-github-workflow-dispatch-token }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -target=aws_iam_policy.cicd_backend \
@@ -376,6 +380,7 @@ jobs:
           cd infra
           terraform destroy -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
+            -var="github_workflow_dispatch_token=${{ secrets.aws-github-workflow-dispatch-token }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -auto-approve
@@ -388,6 +393,7 @@ jobs:
           cd infra
           terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" \
             -var="filmbot_secret_arn=${{ secrets.aws-filmbot-secret-arn }}" \
+            -var="github_workflow_dispatch_token=${{ secrets.aws-github-workflow-dispatch-token }}" \
             -var="cicd_statefile_s3_bucket=${{ secrets.aws-statefile-s3-bucket }}" \
             -var="cicd_lock_dynamodb_table=${{ secrets.aws-lock-dynamodb-table }}" \
             -out="${{ inputs.environment }}.plan"

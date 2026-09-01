@@ -21,6 +21,26 @@
 
 **Dead Letter Queue (DLQ):** todos os targets do EventBridge (pipeline e Lightsail scheduler) enviam eventos não entregues para a fila SQS `tmdb-eventbridge-dlq-{env}` (`sqs.tf`), com retenção de 14 dias. Um alarme CloudWatch monitora a fila e notifica via SNS (tópico de falha do EventBridge) quando há mensagens.
 
+## Disparo do Lightsail Scheduler via AWS (`lightsail_scheduler_trigger.tf`)
+
+`05_lightsail_scheduler.yml` (liga/desliga o FilmBot diariamente) não usa mais o trigger `schedule:` nativo do
+GitHub Actions — a documentação do GitHub descreve esse trigger como sujeito a atraso em períodos de alta carga
+(especialmente no início de cada hora, exatamente o horário dos crons antigos). Duas `aws_cloudwatch_event_rule`
+(só em prod, `local.lightsail_prod_enabled`) chamam a API REST do GitHub (`workflow_dispatch`) via uma EventBridge
+**API Destination**, reaproveitando o input `action: start|stop` que o workflow já aceita:
+
+| Regra | Horário | Ação |
+|---|---|---|
+| `lightsail_scheduler_stop` | 00:00 BRT (03:00 UTC) | `action=stop` |
+| `lightsail_scheduler_start` | 08:00 BRT (11:00 UTC) | `action=start` |
+
+A autenticação na API do GitHub usa um `aws_cloudwatch_event_connection` (`API_KEY`, header `Authorization: Bearer
+<token>`) apontando para um fine-grained PAT do GitHub (permissão "Actions: Read and write", escopado só a este
+repositório) — o token chega via `-var="github_workflow_dispatch_token=..."` (secret `AWS_GH_WORKFLOW_DISPATCH_TOKEN_{DEV,PROD}`,
+mesmo mecanismo de `filmbot_secret_arn`, nunca em `terraform.tfvars`). A role de execução usada pelo target
+(`lightsail_scheduler_eventbridge`) só tem `events:InvokeApiDestination`, escopada ao ARN da própria API
+Destination. Mesmos targets têm `dead_letter_config` apontando para a DLQ compartilhada (ver acima).
+
 ## Backfill histórico manual (`06_backfill.yml`)
 
 O backfill histórico é sempre manual: via workflow `06_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality — usado para correções pontuais em um grupo específico de tabelas. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).

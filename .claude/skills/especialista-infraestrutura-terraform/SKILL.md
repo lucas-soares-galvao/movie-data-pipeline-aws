@@ -83,6 +83,20 @@ Os outputs que indexam `recurso[0]` (`lightsail_public_ip`, `lightsail_url`, `li
 
 Usa `aws_iam_user.lightsail_agent` (**usuário, não role** — a instância Lightsail não assume roles IAM) com access key gerenciada pelo Terraform (output sensível), policy escopada para Athena, S3 (SPEC leitura, TEMP leitura/escrita), Glue read, CloudWatch Logs, Secrets Manager (`aws_iam_user_policy.filmbot_secrets_manager` em `iam_policies.tf`, mesmo gate). Vários `output` (IP, URL, private key, access keys, log group, path de saída do Athena, DB/tabela do Glue) alimentam o `.env` da instância — consumidos pelo workflow `04_deploy_lightsail.yml`, não fixados no Terraform.
 
+### Disparo do Lightsail Scheduler via AWS — `lightsail_scheduler_trigger.tf`
+
+Substitui o trigger `schedule:` nativo do GitHub Actions (documentado como sujeito a atraso em horário de pico) por
+duas `aws_cloudwatch_event_rule` (mesmo gate `local.lightsail_prod_enabled` do resto do FilmBot) chamando a API
+REST do GitHub (`workflow_dispatch` em `05_lightsail_scheduler.yml`) via uma `aws_cloudwatch_event_api_destination`.
+Cadeia de recursos: `aws_cloudwatch_event_connection` (auth `API_KEY`, header `Authorization: Bearer
+${var.github_workflow_dispatch_token}`, headers fixos do GitHub via `invocation_http_parameters`) →
+`aws_cloudwatch_event_api_destination` (endpoint monta a partir de `local.project_config.github_repo`) →
+`aws_cloudwatch_event_target` (dois, um por regra, `role_arn` de `aws_iam_role.lightsail_scheduler_eventbridge`,
+`input` fixo com `{ref: "main", inputs: {action: "start"|"stop"}}`, `dead_letter_config` na mesma DLQ de
+`eventbridge.tf`). `var.github_workflow_dispatch_token` (sensitive, sem default) chega via `-var` tanto em
+`02_terraform.yml` quanto em `05_lightsail_scheduler.yml` (Terraform exige todas as variáveis sem default mesmo em
+`apply -target`, mesmo quando o `-target` não toca o resource que a usa) — nunca em `terraform.tfvars`.
+
 ### IAM — `iam_roles.tf`, `iam_policies.tf`, `iam_cicd.tf`, `iam_backfill.tf`
 
 - **`iam_roles.tf`** — roles de serviço (`lambda_function`, `glue_etl_role`, `glue_dq_role`, `glue_agg_role`, `glue_details_role`), todas com `assume_role_policy` de service principal, anexadas às duas managed policies **customizadas** compartilhadas (`glue_shared_base`, `glue_shared_read_code`) definidas em `iam_policies.tf`. Todas dependem de `terraform_data.cicd_policies_ready`.
