@@ -143,6 +143,21 @@ def render_theme_toggle() -> None:
     )
 
 
+def render_business_hours_badge() -> None:
+    """Renderiza o badge fixo de horário de funcionamento (08:00–00:00) — chamado por
+    load_base_css(), presente em toda tela (login ou autenticada), simétrico ao
+    render_theme_toggle() no canto oposto. Duas linhas estáticas (sem JS): rótulo em caixa
+    alta e o intervalo em destaque — ver .business-hours-badge em base.css para
+    posicionamento/paleta."""
+    st.markdown(
+        '<div id="business-hours-badge" class="business-hours-badge">'
+        '<span class="business-hours-label">Horário de funcionamento</span>'
+        '<span class="business-hours-range">08:00 - 00:00</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def load_theme_toggle_script() -> None:
     """Injeta o script do toggle de tema (render_theme_toggle()) — mesmo padrão de
     load_scroll_lock_script() (`window.parent.document`, loop de retentativa via
@@ -158,12 +173,14 @@ def load_theme_toggle_script() -> None:
 def load_base_css() -> None:
     """Injeta os estilos transversais (tokens de tema, fundo, reset de botão, largura de
     container, ícones, mensagens de feedback), compartilhados entre a tela de login e a
-    página principal, e o toggle de tema claro/escuro (presente em toda tela por sair
-    daqui)."""
+    página principal, o toggle de tema claro/escuro (canto superior direito) e o badge de
+    horário de funcionamento (canto superior esquerdo, estático) — os dois presentes em
+    toda tela por saírem daqui."""
     _inject_css("theme.css")
     _inject_css("base.css")
     render_theme_toggle()
     load_theme_toggle_script()
+    render_business_hours_badge()
 
 
 def load_forms_css() -> None:

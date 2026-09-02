@@ -580,6 +580,33 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   soma por cima do `margin-top` explícito, então `margin-top` precisa ser `alvo - 16`: era `-8`
   quando o alvo era `8`, passa a ser `0` quando o alvo é `16`. O `padding-bottom` malsucedido foi
   removido de `.query-counter-text` (não fazia nada, só CSS morto).
+- **Badge de horário de funcionamento** (`components.py::render_business_hours_badge()`,
+  presente em toda tela por sair de `load_base_css()`, mesmo mecanismo do toggle de tema
+  acima) — texto no canto superior esquerdo (`.business-hours-badge`, `base.css`),
+  simétrico ao `.theme-toggle` no canto direito (mesma altura, `36px`, pra ficar
+  centralizado na mesma faixa vertical do botão sol/lua). Duas linhas estáticas, sem
+  pílula com borda/fundo e sem JS: rótulo em caixa alta "Horário de funcionamento"
+  (`.business-hours-label`, mesmo padrão de `admin_table.css` `thead th`) e o intervalo
+  "08:00 - 00:00" em destaque (`.business-hours-range`, laranja hardcoded `#f97316`, mesmo
+  acento já usado em `recommendation.css`/`forms.css`/`cards.css`/`app.css`/`profile.css`
+  — acentos de laranja/âmbar ficam hardcoded de propósito, ver comentário no topo de
+  `theme.css`). Puramente informativo — não há contador ao vivo nem indicador de
+  aberto/fechado, e não bloqueia login/recomendação fora do horário exibido.
+  `position: absolute` (não `fixed`), assim como `.theme-toggle`: os dois nascem no mesmo
+  canto de sempre, mas rolam junto com o resto do conteúdo em vez de ficar presos ao
+  viewport — decisão explícita do usuário, pra não sobrepor visualmente os cards do grid
+  de recomendação ao rolar a tela. O containing block dos dois é declarado explicitamente
+  em `[data-testid="stMainBlockContainer"]` (`position: relative`, base.css) — tem que ser
+  esse elemento (dentro de `[data-testid="stMain"]`, quem de fato rola,
+  `overflow-y:auto`) e não `[data-testid="stAppViewContainer"]` (o frame externo que NÃO
+  rola, `overflow-y:hidden`): ancorar nele reproduziria visualmente o mesmo efeito de
+  `fixed` que o usuário pediu pra tirar. Como o Streamlit também envolve todo elemento de
+  `st.markdown()` num wrapper `[data-testid="stElementContainer"]` com `position:relative`
+  por padrão (descoberto via inspeção real do DOM, não documentado) — que senão captura o
+  `absolute` primeiro, mais perto —, esse wrapper é neutralizado de volta pra `static` só
+  pros dois casos do badge/toggle (seletor `:has()`, base.css), sem afetar outros
+  elementos do app que dependem desse comportamento padrão (ex. overlay de tela cheia de
+  gráfico).
 - **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
   `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
   a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir

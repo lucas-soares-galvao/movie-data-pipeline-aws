@@ -172,12 +172,15 @@
   --accent-soft-text: #c2410c;
 }
 
-/* Botão fixo de alternância de tema (render_theme_toggle(), toda tela) — troca de ícone
+/* Botão de alternância de tema (render_theme_toggle(), toda tela) — troca de ícone
    controlada via `data-effective-theme`, setado por theme_toggle.js (não por CSS puro,
    porque a mesma classe também precisa refletir o tema automático herdado do SO, não só o
-   atributo manual `data-theme`). */
+   atributo manual `data-theme`).
+   `position: absolute` (não `fixed`, ver mesmo comentário em .business-hours-badge,
+   base.css): nasce no mesmo canto de sempre, mas rola junto com o resto do conteúdo em
+   vez de ficar preso ao viewport. */
 .theme-toggle {
-  position: fixed;
+  position: absolute;
   top: 12px;
   right: 12px;
   z-index: 1000;
