@@ -97,26 +97,26 @@ resource "aws_iam_role_policy" "lightsail_scheduler_invoke_api_destination" {
 
 # Agenda de desligar — 00:00 BRT diário (03:00 UTC)
 # TEMPORÁRIO (teste manual do disparo via EventBridge, reverter para "cron(0 3 * * ? *)"
-# depois de confirmar a run em Actions → 5. Lightsail Scheduler): 23:00 BRT = 02:00 UTC
+# depois de confirmar a run em Actions → 5. Lightsail Scheduler): 23:30 BRT = 02:30 UTC
 resource "aws_cloudwatch_event_rule" "lightsail_scheduler_stop" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                = local.envs.lightsail_scheduler_rule_stop_name
   description         = "Dispara 05_lightsail_scheduler.yml (action=stop) às 00:00 BRT"
-  schedule_expression = "cron(0 2 * * ? *)" # TEMPORÁRIO: 23:00 BRT (reverter para "cron(0 3 * * ? *)")
+  schedule_expression = "cron(30 2 * * ? *)" # TEMPORÁRIO: 23:30 BRT (reverter para "cron(0 3 * * ? *)")
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_ia
 }
 
 # Agenda de ligar — 08:00 BRT diário (11:00 UTC)
 # TEMPORÁRIO (teste manual do disparo via EventBridge, reverter para "cron(0 11 * * ? *)"
-# depois de confirmar a run em Actions → 5. Lightsail Scheduler): 22:50 BRT = 01:50 UTC
+# depois de confirmar a run em Actions → 5. Lightsail Scheduler): 23:20 BRT = 02:20 UTC
 resource "aws_cloudwatch_event_rule" "lightsail_scheduler_start" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                = local.envs.lightsail_scheduler_rule_start_name
   description         = "Dispara 05_lightsail_scheduler.yml (action=start) às 08:00 BRT"
-  schedule_expression = "cron(50 1 * * ? *)" # TEMPORÁRIO: 22:50 BRT (reverter para "cron(0 11 * * ? *)")
+  schedule_expression = "cron(20 2 * * ? *)" # TEMPORÁRIO: 23:20 BRT (reverter para "cron(0 11 * * ? *)")
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_ia
 }
@@ -131,7 +131,7 @@ resource "aws_cloudwatch_event_target" "lightsail_scheduler_stop" {
 
   input = jsonencode({
     ref    = "main"
-    inputs = { action = "stop" }
+    inputs = { action = "stop", triggered_by = "aws" }
   })
 
   dead_letter_config {
@@ -149,7 +149,7 @@ resource "aws_cloudwatch_event_target" "lightsail_scheduler_start" {
 
   input = jsonencode({
     ref    = "main"
-    inputs = { action = "start" }
+    inputs = { action = "start", triggered_by = "aws" }
   })
 
   dead_letter_config {
