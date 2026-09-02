@@ -1,5 +1,5 @@
 name: "5. Lightsail Scheduler (Liga/Desliga)"
-run-name: "Lightsail Scheduler [PROD]: ${{ inputs.action == 'start' && 'Ligar' || 'Desligar' }}"
+run-name: "Lightsail Scheduler [PROD]: ${{ inputs.action == 'start' && 'Ligar' || 'Desligar' }} (${{ inputs.triggered_by == 'aws' && 'agendado pela AWS' || 'manual' }})"
 
 # =============================================================================
 # Substitui o antigo Lambda+EventBridge (infra/lightsail_scheduler.tf,
@@ -38,6 +38,11 @@ on:
         required: true
         type: choice
         options: [start, stop]
+      triggered_by:
+        description: "Origem do disparo (preenchido automaticamente pela EventBridge — não alterar em disparo manual)"
+        required: false
+        type: string
+        default: "manual"
 
 permissions:
   id-token: write
