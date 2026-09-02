@@ -206,6 +206,21 @@ class TestLoadThemeToggleScript:
         assert captured["height"] == 0
 
 
+class TestRenderBusinessHoursBadge:
+    def test_renderiza_badge_com_rotulo_e_intervalo(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_business_hours_badge()
+        assert 'id="business-hours-badge"' in captured["content"]
+        assert 'class="business-hours-label"' in captured["content"]
+        assert "Horário de funcionamento" in captured["content"]
+        assert 'class="business-hours-range"' in captured["content"]
+        assert "08:00 - 00:00" in captured["content"]
+
+
 class TestRenderFeedback:
     def test_renderiza_classe_error(self, monkeypatch):
         captured = {}
