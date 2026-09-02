@@ -25,9 +25,43 @@ html, body {
   min-height: 100dvh;
 }
 
+/* Containing block explícito pro position:absolute de .business-hours-badge/
+   .theme-toggle (base.css/theme.css) — tem que ser especificamente
+   `[data-testid="stMainBlockContainer"]` (a.k.a. `.block-container`), não
+   `[data-testid="stAppViewContainer"]` acima: quem realmente rola é
+   `[data-testid="stMain"]` (`overflow-y:auto`, confirmado via inspeção real do DOM,
+   Playwright) — `stAppViewContainer` é o frame externo que NÃO rola (`overflow-y:hidden`),
+   então ancorar nele reproduziria visualmente o mesmo efeito de `position:fixed` que o
+   usuário pediu pra tirar (o badge/toggle ficariam presos na tela mesmo com
+   `stMain` rolando por baixo). `stMainBlockContainer` já é filho de `stMain`
+   (rola junto) e, ao contrário do seu filho `stVerticalBlock`, não é ele mesmo
+   centralizado verticalmente na tela de login (forms.css) — só o conteúdo *dentro* dele
+   é, via flexbox — então o `top:12px` dos dois fica estável (não depende da altura da
+   viewport), sem o vão gigante do bug reportado. position:relative sem top/left não muda
+   nada visualmente por si só. */
+[data-testid="stMainBlockContainer"] {
+  position: relative;
+}
+
+/* Streamlit envolve TODO elemento emitido via st.markdown() num wrapper próprio
+   (`[data-testid="stElementContainer"]`) com `position: relative` por padrão — descoberto
+   via inspeção real do DOM (Playwright), não documentado. Isso vira o containing block
+   MAIS PRÓXIMO de .business-hours-badge/.theme-toggle (position:absolute), capturando os
+   dois antes de alcançarem `[data-testid="stMainBlockContainer"]` acima (regra anterior).
+   Neutralizado aqui só pros dois wrappers que envolvem especificamente o badge/toggle
+   (`:has()`, suportado em todos os navegadores modernos) — sem mexer no
+   `position:relative` dos demais elementos do app, que o Streamlit usa internamente para
+   posicionar overlays de outros widgets (ex. ícone de tela cheia de gráfico). Com esses
+   dois wrappers voltando a `static`, a resolução de containing block segue pro próximo
+   ancestral posicionado — `[data-testid="stMainBlockContainer"]`. */
+[data-testid="stElementContainer"]:has(#business-hours-badge),
+[data-testid="stElementContainer"]:has(#theme-toggle) {
+  position: static;
+}
+
 /* Esconde header/toolbar/decoração nativos do Streamlit em toda tela (login e
    autenticada) — movido de forms.css (que só cobria o login) pra cá: `.theme-toggle`
-   (theme.css, `position:fixed; top:12px; right:12px; z-index:1000`) senta exatamente no
+   (theme.css, `position:absolute; top:12px; right:12px; z-index:1000`) senta exatamente no
    canto onde o `stHeader` nativo do Streamlit posiciona seu próprio toolbar (hambúrguer/
    "Deploy"), com um z-index nativo bem maior que 1000 — sem esconder esse header também
    na tela principal/admin/perfil, ele cobria o botão de tema por cima, mesmo ele
@@ -327,6 +361,47 @@ button[data-testid="stBaseButton-secondary"] {
 
 .time-countdown {
   font-weight: 600;
+}
+
+/* Badge de horário de funcionamento (render_business_hours_badge(), toda tela) — canto
+   superior esquerdo, simétrico ao .theme-toggle (canto direito, theme.css): mesma altura
+   (36px), pra ficar centralizado na mesma faixa vertical do botão sol/lua do canto oposto.
+   Texto estático, sem JS — duas linhas empilhadas (rótulo + intervalo), sem pílula com
+   borda/fundo (diferente do .theme-toggle, que continua sendo um círculo).
+   `position: absolute` (não `fixed`): nasce na mesma posição visual (`top:12px; left:12px`
+   a partir do topo real da página — sem ancestral com position/transform/filter que crie
+   um containing block diferente, o ponto de referência é o próprio topo do documento), mas
+   rola junto com o resto do conteúdo em vez de ficar preso ao viewport — pedido explícito
+   do usuário, pra não sobrepor visualmente os cards do grid de recomendação ao rolar. */
+.business-hours-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+/* Rótulo em caixa alta — mesmo padrão já usado em admin_table.css (thead th), aqui num
+   tamanho menor por ser um rótulo secundário, não cabeçalho de tabela. */
+.business-hours-label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Laranja hardcoded #f97316 (não tokens --feedback-*), mesmo acento já usado em
+   recommendation.css/forms.css/cards.css/app.css/profile.css — acentos de laranja/âmbar
+   ficam hardcoded de propósito neste projeto (ver comentário no topo de theme.css). */
+.business-hours-range {
+  color: #f97316;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 /* Campo somente-leitura (E-mail no Perfil/Admin — profile.py/admin.py — e no cadastro
