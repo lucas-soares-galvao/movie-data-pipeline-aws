@@ -10,8 +10,12 @@ name: "4. Deploy Lightsail (Reusable)"
 #   1. Lê os outputs do Terraform (IP público, chave SSH, credenciais AWS do agente)
 #   2. Aguarda a instância ficar disponível via SSH (até 30 tentativas, 10s cada)
 #   3. Cria .env com credenciais na instância (sem passar por /tmp)
-#   4. Clona ou atualiza o repositório (branch "main") e reinicia o serviço
+#   4. Restaura do S3 o certificado TLS do Caddy do ciclo anterior, se existir
+#      (a instância é destruída/recriada diariamente — ver
+#      infra/lightsail_scheduler_trigger.tf — e perde o disco a cada ciclo)
+#   5. Clona ou atualiza o repositório (branch "main") e reinicia o serviço
 #      systemd do app
+#   6. Salva no S3 o certificado TLS do Caddy pós-deploy, para o próximo ciclo
 # =============================================================================
 
 on:
@@ -138,6 +142,9 @@ jobs:
           SNS_NEW_SIGNUP_TOPIC_ARN=$(terraform output -raw lightsail_sns_new_signup_topic_arn)
           echo "sns_new_signup_topic_arn=${SNS_NEW_SIGNUP_TOPIC_ARN}" >> $GITHUB_OUTPUT
 
+          CADDY_CERTS_BUCKET=$(terraform output -raw lightsail_caddy_certs_bucket)
+          echo "caddy_certs_bucket=${CADDY_CERTS_BUCKET}" >> $GITHUB_OUTPUT
+
           echo "✅ Terraform outputs lidos com sucesso (IP: $PUBLIC_IP)"
 
       - name: Check instance state
@@ -209,6 +216,25 @@ jobs:
             | ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
                 "sudo mkdir -p /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }} && sudo tee /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy > /dev/null && sudo chmod 600 /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy"
           echo "✅ Arquivo .env.caddy criado com sucesso na instância (FILMBOT_DOMAIN=$DOMAIN)"
+
+      # A instância é destruída e recriada diariamente (ver
+      # infra/lightsail_scheduler_trigger.tf), o que apaga o diretório de
+      # certificados do Caddy junto com o disco raiz. Sem restaurar aqui antes
+      # do restart, o Caddy pede um certificado novo do Let's Encrypt a cada
+      # ciclo e esbarra no rate limit de certificados duplicados (5/semana).
+      # Falha no download é esperada no primeiro deploy (bucket ainda vazio).
+      - name: Restore Caddy cert data from S3
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
+        run: |
+          if aws s3 cp "s3://${{ steps.tf.outputs.caddy_certs_bucket }}/caddy-data.tar.gz" /tmp/caddy-data.tar.gz 2>/dev/null; then
+            scp -i ~/.ssh/${{ steps.project.outputs.app_name }}_key /tmp/caddy-data.tar.gz ubuntu@${{ steps.tf.outputs.public_ip }}:/tmp/caddy-data.tar.gz
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo mkdir -p /root/.local/share/caddy && sudo tar -xzf /tmp/caddy-data.tar.gz -C /root/.local/share/caddy && rm -f /tmp/caddy-data.tar.gz"
+            rm -f /tmp/caddy-data.tar.gz
+            echo "✅ Certificado do Caddy restaurado do S3"
+          else
+            echo "ℹ Nenhum certificado salvo no S3 ainda (primeiro deploy) — Caddy vai emitir um novo"
+          fi
 
       - name: Deploy app
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
@@ -314,6 +340,27 @@ jobs:
           done
           if [ $APP_OK -eq 0 ]; then
             echo "⚠ Health check retornou HTTP $HTTP_CODE após 30s — app pode ainda estar iniciando"
+          fi
+
+      # Salva o certificado do Caddy pra este deploy no S3, pro próximo ciclo
+      # de recriação da instância restaurar em vez de reemitir (ver "Restore
+      # Caddy cert data from S3" acima). Só empacota se o diretório existir e
+      # não estiver vazio, pra nunca sobrescrever um backup bom com um vazio
+      # em caso de falha de emissão do certificado.
+      - name: Save Caddy cert data to S3
+        if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
+        run: |
+          if ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+            "sudo bash -c 'test -d /root/.local/share/caddy && [ \"\$(ls -A /root/.local/share/caddy)\" ]'"; then
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo tar -czf /tmp/caddy-data.tar.gz -C /root/.local/share/caddy . && sudo chmod 644 /tmp/caddy-data.tar.gz"
+            scp -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }}:/tmp/caddy-data.tar.gz /tmp/caddy-data.tar.gz
+            aws s3 cp /tmp/caddy-data.tar.gz "s3://${{ steps.tf.outputs.caddy_certs_bucket }}/caddy-data.tar.gz"
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} "sudo rm -f /tmp/caddy-data.tar.gz"
+            rm -f /tmp/caddy-data.tar.gz
+            echo "✅ Certificado do Caddy salvo no S3"
+          else
+            echo "⚠ Diretório de certificados do Caddy vazio ou inexistente — nada para salvar"
           fi
 
       - name: Show app URL

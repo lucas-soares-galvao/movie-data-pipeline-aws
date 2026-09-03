@@ -427,3 +427,84 @@ resource "aws_s3_bucket_policy" "data_quality_bucket_ssl" {
     }]
   })
 }
+
+
+# =============================================================================
+# BUCKET CADDY CERTS — Persistência do Certificado TLS do Caddy (FilmBot)
+# =============================================================================
+# A instância Lightsail do FilmBot é destruída e recriada diariamente (ver
+# infra/lightsail_scheduler_trigger.tf), o que apaga o certificado Let's
+# Encrypt do Caddy a cada ciclo. Sem persistência, o Caddy pede um
+# certificado novo do zero todo dia e esbarra no rate limit de "certificados
+# duplicados" do Let's Encrypt (5/semana), causando ERR_SSL_PROTOCOL_ERROR
+# para quem acessa o site. Este bucket guarda um tarball do diretório de
+# certificados do Caddy, sincronizado pelo runner do GitHub Actions a cada
+# deploy (ver .github/workflows/04_deploy_lightsail.yml). Só existe quando o
+# Lightsail do FilmBot está habilitado em prod (mesmo gate de local.lightsail_prod_enabled
+# usado pela instância/IP/portas em infra/lightsail_ia.tf).
+resource "aws_s3_bucket" "caddy_certs_bucket" {
+  count         = local.lightsail_prod_enabled ? 1 : 0
+  bucket        = local.envs.s3_bucket_caddy_certs
+  force_destroy = true
+  tags          = local.component_tags.lightsail_ia
+  depends_on    = [terraform_data.cicd_policies_ready]
+}
+
+resource "aws_s3_bucket_public_access_block" "caddy_certs_bucket" {
+  count                   = local.lightsail_prod_enabled ? 1 : 0
+  bucket                  = aws_s3_bucket.caddy_certs_bucket[0].id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "caddy_certs_bucket" {
+  count  = local.lightsail_prod_enabled ? 1 : 0
+  bucket = aws_s3_bucket.caddy_certs_bucket[0].id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Sem transição para STANDARD_IA: o tarball é reescrito e lido a cada ciclo
+# diário de destroy/recreate — IA cobra taxa de recuperação por objeto e tem
+# custo mínimo de 30 dias de armazenamento por versão, o oposto do padrão de
+# acesso deste bucket. Só a limpeza de multipart upload incompleto se aplica.
+resource "aws_s3_bucket_lifecycle_configuration" "caddy_certs_bucket_lifecycle" {
+  count  = local.lightsail_prod_enabled ? 1 : 0
+  bucket = aws_s3_bucket.caddy_certs_bucket[0].id
+
+  rule {
+    id     = "cleanup-incomplete-uploads"
+    status = "Enabled"
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "caddy_certs_bucket_ssl" {
+  count  = local.lightsail_prod_enabled ? 1 : 0
+  bucket = aws_s3_bucket.caddy_certs_bucket[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyNonSSL"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.caddy_certs_bucket[0].arn,
+        "${aws_s3_bucket.caddy_certs_bucket[0].arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+}

@@ -449,3 +449,8 @@ output "lightsail_sns_new_signup_topic_arn" {
   description = "SNS_NEW_SIGNUP_TOPIC_ARN para o arquivo .env na instância"
   value       = aws_sns_topic.filmbot_new_signup_notifications.arn
 }
+
+output "lightsail_caddy_certs_bucket" {
+  description = "Nome do bucket S3 que persiste o certificado TLS do Caddy entre recriações da instância (ver 04_deploy_lightsail.yml)"
+  value       = local.envs.s3_bucket_caddy_certs
+}

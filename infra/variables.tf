@@ -125,6 +125,12 @@ variable "s3_bucket_data_quality" {
   default     = "lsg-sa-east-1-bucket-data-quality"
 }
 
+variable "s3_bucket_caddy_certs" {
+  description = "Nome do bucket para persistir os dados de certificado TLS do Caddy (FilmBot) entre recriacoes diarias da instancia Lightsail"
+  type        = string
+  default     = "lsg-sa-east-1-bucket-caddy-certs"
+}
+
 # =============================================================================
 # SECRETS MANAGER
 # =============================================================================
