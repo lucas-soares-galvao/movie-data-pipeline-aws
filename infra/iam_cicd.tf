@@ -742,6 +742,8 @@ resource "aws_iam_policy" "cicd_lightsail" {
           "s3:GetBucketPolicy",
           "s3:PutBucketPolicy",
           "s3:DeleteBucketPolicy",
+          "s3:GetBucketVersioning",
+          "s3:PutBucketVersioning",
           "s3:GetBucketTagging",
           "s3:PutBucketTagging",
           "s3:GetBucketPublicAccessBlock",
@@ -750,6 +752,14 @@ resource "aws_iam_policy" "cicd_lightsail" {
           "s3:PutEncryptionConfiguration",
           "s3:GetLifecycleConfiguration",
           "s3:PutLifecycleConfiguration",
+          "s3:GetAccelerateConfiguration",
+          "s3:GetBucketAcl",
+          "s3:GetBucketCORS",
+          "s3:GetBucketLogging",
+          "s3:GetBucketObjectLockConfiguration",
+          "s3:GetBucketRequestPayment",
+          "s3:GetBucketWebsite",
+          "s3:GetReplicationConfiguration",
         ]
         Resource = "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*"
       },
