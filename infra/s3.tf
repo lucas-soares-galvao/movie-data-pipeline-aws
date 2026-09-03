@@ -472,7 +472,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "caddy_certs_bucke
 # Sem transição para STANDARD_IA: o tarball é reescrito e lido a cada ciclo
 # diário de destroy/recreate — IA cobra taxa de recuperação por objeto e tem
 # custo mínimo de 30 dias de armazenamento por versão, o oposto do padrão de
-# acesso deste bucket. Só a limpeza de multipart upload incompleto se aplica.
+# acesso deste bucket. A expiration de 90 dias é só uma rede de segurança —
+# cada escrita diária reseta o relógio, então só age se o workflow de deploy
+# parar de rodar por um período longo (ex.: FilmBot descontinuado).
 resource "aws_s3_bucket_lifecycle_configuration" "caddy_certs_bucket_lifecycle" {
   count  = local.lightsail_prod_enabled ? 1 : 0
   bucket = aws_s3_bucket.caddy_certs_bucket[0].id
@@ -483,6 +485,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "caddy_certs_bucket_lifecycle" 
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
+    }
+
+    expiration {
+      days = 90
     }
   }
 }
