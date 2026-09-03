@@ -52,8 +52,8 @@
   padding-bottom: 56px !important;
 }
 
-/* Logo à esquerda, toggle de tema + Painel Admin/Meu Perfil + Sair agrupados no canto
-   direito (pedido do usuário) — a 1ª coluna (título) cresce (flex:1 1 auto, min-width:0)
+/* Logo à esquerda, Painel Admin/Meu Perfil + Sair + toggle de tema agrupados no canto
+   direito, nessa ordem (pedido do usuário) — a 1ª coluna (título) cresce (flex:1 1 auto, min-width:0)
    pra empurrar as outras 3 (flex:0 0 auto cada) pro fim da linha, coladas entre si (gap de
    12px), em vez de espalhadas pela linha toda. min-width:0 na 1ª coluna deixa
    .header-title/.header-subtitle encolherem em vez de estourar quando o título é
@@ -106,10 +106,10 @@
   }
 }
 /* Abaixo de 435px (medido pelo usuário testando o app), o grupo fixo de botões
-   (toggle+Painel Admin/Meu Perfil+Sair) não cabe mais ao lado do título numa linha só —
+   (Painel Admin/Meu Perfil+Sair+toggle) não cabe mais ao lado do título numa linha só —
    em vez de deixar o flex-wrap "natural" decidir onde cortar, força-se uma quebra
    deliberada logo depois do título (.header-row-break, flex-basis:100%, acima) — linha 1
-   fica só logo+"FilmBot", linha 2 o grupo toggle+Painel Admin/Meu Perfil+Sair, cada uma
+   fica só logo+"FilmBot", linha 2 o grupo Painel Admin/Meu Perfil+Sair+toggle, cada uma
    centralizada por justify-content:center (herdado do bloco acima). */
 @media (max-width: 435px) {
   /* Ativa o marcador de quebra (escondido por padrão, ver regra acima) — flex-basis:100%
@@ -129,7 +129,8 @@
      desktop pra empurrar o grupo de botões pro canto direito) — crescendo, ela consumiria
      todo o espaço livre da linha 1 e justify-content:center não teria mais nada pra
      centralizar. Volta a flex:0 0 auto só nesta largura, pra logo+"FilmBot" formarem um
-     grupo compacto centralizado, igual ao grupo toggle+botões na linha de baixo. */
+     grupo compacto centralizado, igual ao grupo Painel Admin/Meu Perfil+Sair+toggle na
+     linha de baixo. */
   .st-key-header-row [data-testid="stHorizontalBlock"] > div:first-child {
     flex: 0 0 auto !important;
     width: auto !important;

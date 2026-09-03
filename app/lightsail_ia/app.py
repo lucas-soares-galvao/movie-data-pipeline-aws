@@ -38,17 +38,17 @@ load_scroll_lock_script()
 is_admin = st.session_state.get("is_admin", False)
 
 with st.container(key="header-row"):
-    # Logo à esquerda, toggle de tema + Painel Admin/Meu Perfil + Sair agrupados no canto
-    # direito (pedido do usuário) — ver .st-key-header-row em app.css: a coluna do título
-    # cresce pra empurrar as outras 3 (fixas) pro fim da linha, coladas entre si.
+    # Logo à esquerda, Painel Admin/Meu Perfil + Sair + toggle de tema agrupados no canto
+    # direito, nessa ordem (pedido do usuário) — ver .st-key-header-row em app.css: a coluna
+    # do título cresce pra empurrar as outras 3 (fixas) pro fim da linha, coladas entre si.
     # Admin vê "Painel Admin", não-admin vê "Meu Perfil" — nunca os dois juntos (pedido
     # do usuário: admin não edita o próprio perfil por esta tela). Não-admin nunca vê o
     # botão de admin nem sabe que a tela existe, mesmo racional de não usar multipage
     # nativo do Streamlit (que vazaria a rota na sidebar independente de permissão).
     if is_admin:
-        title_col, break_col, toggle_col, admin_col, logout_col = st.columns([3, 0.01, 0.6, 1.3, 1])
+        title_col, break_col, admin_col, logout_col, toggle_col = st.columns([3, 0.01, 1.3, 1, 0.6])
     else:
-        title_col, break_col, toggle_col, profile_col, logout_col = st.columns([3, 0.01, 0.6, 1.3, 1])
+        title_col, break_col, profile_col, logout_col, toggle_col = st.columns([3, 0.01, 1.3, 1, 0.6])
     with title_col:
         st.markdown(
             '<div class="header-brand">'
@@ -63,8 +63,6 @@ with st.container(key="header-row"):
         # cabeçalho em telas bem estreitas (≤435px, ver .header-row-break em app.css), logo
         # após o título, sem depender de onde o navegador decidiria cortar naturalmente.
         st.markdown('<div class="header-row-break"></div>', unsafe_allow_html=True)
-    with toggle_col:
-        st.markdown(theme_toggle_html(), unsafe_allow_html=True)
     if is_admin:
         with admin_col:
             _label = "← App" if st.session_state.get("current_view") == "admin" else "Painel Admin"
@@ -87,6 +85,8 @@ with st.container(key="header-row"):
             # reaparece sozinha ao logar de novo.
             st.session_state.clear()
             st.rerun()
+    with toggle_col:
+        st.markdown(theme_toggle_html(), unsafe_allow_html=True)
 
 _current_view = st.session_state.get("current_view")
 if is_admin and _current_view == "admin":
