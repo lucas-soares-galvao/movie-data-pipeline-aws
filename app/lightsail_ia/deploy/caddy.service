@@ -4,6 +4,13 @@ After=network.target
 
 [Service]
 Type=exec
+# Sem User=, o systemd não define $HOME automaticamente (mesmo rodando como
+# root) — sem isso o Caddy não consegue resolver XDG_DATA_HOME/XDG_CONFIG_HOME
+# e cai num fallback de "diretório atual" ambíguo pra guardar o certificado
+# TLS, em vez do padrão /root/.local/share/caddy que o restore/save do
+# certificado em .github/workflows/04_deploy_lightsail.yml espera encontrar
+# (confirmado via journalctl: "neither $XDG_CONFIG_HOME nor $HOME are defined").
+Environment=HOME=/root
 EnvironmentFile=/opt/filmbot/app/lightsail_ia/.env.caddy
 ExecStart=/usr/bin/caddy run --config /opt/filmbot/app/lightsail_ia/deploy/Caddyfile --adapter caddyfile
 ExecReload=/usr/bin/caddy reload --config /opt/filmbot/app/lightsail_ia/deploy/Caddyfile --adapter caddyfile
