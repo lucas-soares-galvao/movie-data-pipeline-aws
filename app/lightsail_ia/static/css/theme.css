@@ -172,18 +172,15 @@
   --accent-soft-text: #c2410c;
 }
 
-/* Botão de alternância de tema (render_theme_toggle(), toda tela) — troca de ícone
+/* Botão de alternância de tema (theme_toggle_html(), toda tela) — troca de ícone
    controlada via `data-effective-theme`, setado por theme_toggle.js (não por CSS puro,
    porque a mesma classe também precisa refletir o tema automático herdado do SO, não só o
    atributo manual `data-theme`).
-   `position: absolute` (não `fixed`, ver mesmo comentário em .business-hours-badge,
-   base.css): nasce no mesmo canto de sempre, mas rola junto com o resto do conteúdo em
-   vez de ficar preso ao viewport. */
+   Sem `position: absolute`: o botão nasce inline, no fluxo normal do flex row de cada
+   cabeçalho (.form-brand no login, .st-key-header-row na página principal) — cada tela
+   embute o mesmo HTML (theme_toggle_html()) na posição que faz sentido pro seu próprio
+   layout, em vez de um único elemento fixo compartilhado num canto da página. */
 .theme-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 1000;
   width: 36px;
   height: 36px;
   border-radius: 50%;

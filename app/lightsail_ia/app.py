@@ -9,6 +9,7 @@ from src.components import (
     load_app_css,
     load_scroll_lock_script,
     render_footer,
+    theme_toggle_html,
 )
 from src.forms import render_forms
 from src.infrastructure import (
@@ -37,14 +38,17 @@ load_scroll_lock_script()
 is_admin = st.session_state.get("is_admin", False)
 
 with st.container(key="header-row"):
+    # Logo à esquerda, toggle de tema + Painel Admin/Meu Perfil + Sair agrupados no canto
+    # direito (pedido do usuário) — ver .st-key-header-row em app.css: a coluna do título
+    # cresce pra empurrar as outras 3 (fixas) pro fim da linha, coladas entre si.
     # Admin vê "Painel Admin", não-admin vê "Meu Perfil" — nunca os dois juntos (pedido
     # do usuário: admin não edita o próprio perfil por esta tela). Não-admin nunca vê o
     # botão de admin nem sabe que a tela existe, mesmo racional de não usar multipage
     # nativo do Streamlit (que vazaria a rota na sidebar independente de permissão).
     if is_admin:
-        title_col, admin_col, logout_col = st.columns([8, 1.3, 1])
+        title_col, toggle_col, break_col, admin_col, logout_col = st.columns([3, 0.6, 0.01, 1.3, 1])
     else:
-        title_col, profile_col, logout_col = st.columns([8, 1.3, 1])
+        title_col, toggle_col, break_col, profile_col, logout_col = st.columns([3, 0.6, 0.01, 1.3, 1])
     with title_col:
         st.markdown(
             '<div class="header-brand">'
@@ -54,6 +58,13 @@ with st.container(key="header-row"):
             '<p class="header-subtitle">Seu assistente de filmes e séries com IA</p>',
             unsafe_allow_html=True,
         )
+    with toggle_col:
+        st.markdown(theme_toggle_html(), unsafe_allow_html=True)
+    with break_col:
+        # Coluna vazia, só com esse marcador — força a quebra de linha deliberada do
+        # cabeçalho em telas bem estreitas (≤435px, ver .header-row-break em app.css), sem
+        # depender de onde o navegador decidiria cortar naturalmente.
+        st.markdown('<div class="header-row-break"></div>', unsafe_allow_html=True)
     if is_admin:
         with admin_col:
             _label = "← App" if st.session_state.get("current_view") == "admin" else "Painel Admin"

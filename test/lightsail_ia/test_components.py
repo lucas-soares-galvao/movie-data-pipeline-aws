@@ -170,26 +170,20 @@ class TestLoadScrollLockScript:
         assert captured["height"] == 0
 
 
-class TestRenderThemeToggle:
-    def test_renderiza_botao_com_os_dois_icones(self, monkeypatch):
-        captured = {}
-        monkeypatch.setattr(
-            components.st, "markdown",
-            lambda content, unsafe_allow_html=False: captured.update(content=content),
-        )
-        components.render_theme_toggle()
-        assert 'id="theme-toggle"' in captured["content"]
-        assert 'class="icon icon-sun"' in captured["content"]
-        assert 'class="icon icon-moon"' in captured["content"]
+class TestThemeToggleHtml:
+    """theme_toggle_html() retorna a string do botão (não chama st.markdown() sozinha)
+    porque cada tela interpola o resultado dentro da própria st.markdown composta do
+    cabeçalho — forms.py::_brand_header() e app.py, no bloco header-row."""
 
-    def test_valor_inicial_assume_tema_escuro(self, monkeypatch):
-        captured = {}
-        monkeypatch.setattr(
-            components.st, "markdown",
-            lambda content, unsafe_allow_html=False: captured.update(content=content),
-        )
-        components.render_theme_toggle()
-        assert 'data-effective-theme="dark"' in captured["content"]
+    def test_botao_tem_os_dois_icones(self):
+        html_content = components.theme_toggle_html()
+        assert 'id="theme-toggle"' in html_content
+        assert 'class="icon icon-sun"' in html_content
+        assert 'class="icon icon-moon"' in html_content
+
+    def test_valor_inicial_assume_tema_escuro(self):
+        html_content = components.theme_toggle_html()
+        assert 'data-effective-theme="dark"' in html_content
 
 
 class TestLoadThemeToggleScript:
@@ -206,19 +200,6 @@ class TestLoadThemeToggleScript:
         assert captured["height"] == 0
 
 
-class TestRenderBusinessHoursBadge:
-    def test_renderiza_badge_com_rotulo_e_intervalo(self, monkeypatch):
-        captured = {}
-        monkeypatch.setattr(
-            components.st, "markdown",
-            lambda content, unsafe_allow_html=False: captured.update(content=content),
-        )
-        components.render_business_hours_badge()
-        assert 'id="business-hours-badge"' in captured["content"]
-        assert 'class="business-hours-label"' in captured["content"]
-        assert "Horário de funcionamento" in captured["content"]
-        assert 'class="business-hours-range"' in captured["content"]
-        assert "08:00 - 00:00" in captured["content"]
 
 
 class TestRenderFeedback:
@@ -1541,6 +1522,17 @@ class TestRenderFooter:
         assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
         assert 'class="icon icon-mail"' in captured["content"]
 
+    def test_inclui_horario_de_funcionamento(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_footer()
+        assert 'class="footer-hours"' in captured["content"]
+        assert 'class="icon icon-clock"' in captured["content"]
+        assert "Horário de funcionamento do site: 08:00 - 00:00" in captured["content"]
+
 
 class TestRenderFormFooter:
     def test_inclui_link_de_contato_por_email(self, monkeypatch):
@@ -1552,3 +1544,14 @@ class TestRenderFormFooter:
         components.render_form_footer()
         assert 'href="mailto:filmbot.lsgalvao@gmail.com"' in captured["content"]
         assert 'class="icon icon-mail"' in captured["content"]
+
+    def test_inclui_horario_de_funcionamento(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.st, "markdown",
+            lambda content, unsafe_allow_html=False: captured.update(content=content),
+        )
+        components.render_form_footer()
+        assert 'class="footer-hours"' in captured["content"]
+        assert 'class="icon icon-clock"' in captured["content"]
+        assert "Horário de funcionamento do site: 08:00 - 00:00" in captured["content"]
