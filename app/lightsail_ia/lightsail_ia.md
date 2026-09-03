@@ -153,7 +153,9 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
 - **Tema claro/escuro dinâmico** (`theme.css`, tokens `:root`/`var()` consumidos pelos demais arquivos CSS)
   — resolução em 3 níveis, maior precedência por último: (1) escuro é o padrão histórico do app; (2)
   `prefers-color-scheme` do SO/navegador; (3) escolha manual do usuário no botão sol/lua
-  (`render_theme_toggle()`, presente em toda tela por sair de `load_base_css()`), persistida via
+  (`theme_toggle_html()`, embutido inline no cabeçalho de cada tela — mesma linha do brand no
+  login, agrupado à esquerda com os botões de navegação na página principal; ver "Cabeçalho
+  agrupado à esquerda" mais abaixo), persistida via
   `localStorage` e aplicada via atributo `data-theme` em `<html>` — 100% client-side
   (`static/js/theme_toggle.js`, `load_theme_toggle_script()`), sem depender de `session_state`/`st.rerun()`
   do Streamlit para trocar de tema. Paleta clara pragmática: inverte fundo/texto/bordas neutras, mantendo os
@@ -580,33 +582,68 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   soma por cima do `margin-top` explícito, então `margin-top` precisa ser `alvo - 16`: era `-8`
   quando o alvo era `8`, passa a ser `0` quando o alvo é `16`. O `padding-bottom` malsucedido foi
   removido de `.query-counter-text` (não fazia nada, só CSS morto).
-- **Badge de horário de funcionamento** (`components.py::render_business_hours_badge()`,
-  presente em toda tela por sair de `load_base_css()`, mesmo mecanismo do toggle de tema
-  acima) — texto no canto superior esquerdo (`.business-hours-badge`, `base.css`),
-  simétrico ao `.theme-toggle` no canto direito (mesma altura, `36px`, pra ficar
-  centralizado na mesma faixa vertical do botão sol/lua). Duas linhas estáticas, sem
-  pílula com borda/fundo e sem JS: rótulo em caixa alta "Horário de funcionamento"
-  (`.business-hours-label`, mesmo padrão de `admin_table.css` `thead th`) e o intervalo
-  "08:00 - 00:00" em destaque (`.business-hours-range`, laranja hardcoded `#f97316`, mesmo
-  acento já usado em `recommendation.css`/`forms.css`/`cards.css`/`app.css`/`profile.css`
-  — acentos de laranja/âmbar ficam hardcoded de propósito, ver comentário no topo de
-  `theme.css`). Puramente informativo — não há contador ao vivo nem indicador de
-  aberto/fechado, e não bloqueia login/recomendação fora do horário exibido.
-  `position: absolute` (não `fixed`), assim como `.theme-toggle`: os dois nascem no mesmo
-  canto de sempre, mas rolam junto com o resto do conteúdo em vez de ficar presos ao
-  viewport — decisão explícita do usuário, pra não sobrepor visualmente os cards do grid
-  de recomendação ao rolar a tela. O containing block dos dois é declarado explicitamente
-  em `[data-testid="stMainBlockContainer"]` (`position: relative`, base.css) — tem que ser
-  esse elemento (dentro de `[data-testid="stMain"]`, quem de fato rola,
-  `overflow-y:auto`) e não `[data-testid="stAppViewContainer"]` (o frame externo que NÃO
-  rola, `overflow-y:hidden`): ancorar nele reproduziria visualmente o mesmo efeito de
-  `fixed` que o usuário pediu pra tirar. Como o Streamlit também envolve todo elemento de
-  `st.markdown()` num wrapper `[data-testid="stElementContainer"]` com `position:relative`
-  por padrão (descoberto via inspeção real do DOM, não documentado) — que senão captura o
-  `absolute` primeiro, mais perto —, esse wrapper é neutralizado de volta pra `static` só
-  pros dois casos do badge/toggle (seletor `:has()`, base.css), sem afetar outros
-  elementos do app que dependem desse comportamento padrão (ex. overlay de tela cheia de
-  gráfico).
+- **Cabeçalho agrupado à esquerda + toggle inline + horário no rodapé** (rodada mais recente,
+  substitui o parágrafo anterior desta seção sobre badge/toggle em cantos fixos da página —
+  pedido do usuário revisando os mockups). Três mudanças relacionadas, já que toggle e badge
+  saíram do único ponto compartilhado (`load_base_css()`) que os posicionava igual em toda
+  tela:
+  - **Toggle de tema inline, não mais um elemento de canto fixo:** `theme_toggle_html()`
+    (`components.py`) agora só retorna a string do botão — quem decide onde ele nasce é cada
+    tela, interpolando o HTML dentro da própria `st.markdown()` composta do cabeçalho:
+    `forms.py::_brand_header()` (mesma linha do brand, à direita, via `.form-brand`
+    `justify-content: space-between` com o ícone+título isolados num `.form-brand-title`
+    interno) e `app.py` (nova coluna dedicada, `toggle_col`, entre o título e o botão de
+    admin/perfil). `.theme-toggle` (`theme.css`) perdeu `position: absolute`/`z-index` — é um
+    botão circular normal, no fluxo, em qualquer um dos dois contextos.
+  - **Cabeçalho da página principal (`.st-key-header-row`, `app.py`/`app.css`) — logo à
+    esquerda, toggle+"Painel Admin"/"Meu Perfil"+"Sair" agrupados no canto direito**
+    (estado atual — uma primeira versão desta rodada tinha agrupado os 4 à esquerda, mas o
+    usuário revisou o resultado e pediu o toggle vertical alinhado com os outros dois botões
+    e o trio inteiro de volta pro canto direito, mesmo padrão espacial de antes da rodada,
+    só que agora com o toggle fazendo parte do grupo em vez de flutuar sozinho). `1ª coluna
+    (título) cresce (`flex: 1 1 auto`, `min-width: 0`) pra empurrar as outras 3 (`flex: 0 0
+    auto` cada, `st.columns([3, 0.6, 1.3, 1])`) pro fim da linha. Nudge vertical do toggle
+    (`.st-key-header-row .theme-toggle { position: relative; top: 8px }`, `app.css`) — mesmo
+    quirk de altura de wrapper já documentado nos botões "Sair"/"Painel Admin" abaixo, o
+    toggle nasce de `st.markdown()` igual ao título e sofre do mesmo deslocamento.
+    **Abaixo de 768px** o subtítulo some e a linha ganha `flex-wrap: wrap` como rede de
+    segurança (evita cortar conteúdo em telas muito estreitas). **Abaixo de 435px**
+    (breakpoint identificado pelo usuário testando o app) a quebra deixa de ser "natural" —
+    uma 5ª coluna vazia (`break_col`, só com um marcador `.header-row-break`) senta entre o
+    toggle e o botão Painel Admin/Perfil; escondida por completo em telas largas
+    (`display: none` no wrapper da coluna, via `:has()`, senão o `gap: 12px` do row
+    reservaria espaço vazio ao redor dela), ela vira `flex: 0 0 100% !important` só dentro
+    de `@media (max-width: 435px)` — um item de largura 100% força tudo que vem depois pra
+    próxima linha do `flex-wrap`, dando um resultado deliberado (linha 1 = logo+toggle,
+    linha 2 = Painel Admin/Meu Perfil+Sair, cada uma centralizada) em vez do corte
+    desigual que o wrap natural produzia (ex.: 3 itens numa linha, só "Sair" sozinho na
+    outra). **`!important` obrigatório no `flex` desta coluna dentro da media query:** a
+    regra base `> div:not(:first-child) { flex: 0 0 auto !important }` (mesmo arquivo) já
+    mira essa coluna (ela não é a 1ª) — sem `!important` equivalente, `flex-basis: 100%`
+    perdia a queda de braço mesmo dentro da media query mais específica (confirmado via
+    inspeção real do DOM, Playwright: `flex-basis` computado ficava `auto`, coluna com
+    ~16px em vez de 100% da linha). Nessa mesma faixa (≤435px), a 1ª coluna (título) também
+    para de crescer (`flex: 0 0 auto` só aqui) — senão ela consumiria o espaço livre da
+    linha 1 e o `justify-content: center` (herdado do breakpoint 768px) não teria mais nada
+    pra centralizar.
+  - **Horário de funcionamento saiu do badge de canto e virou uma linha no rodapé:**
+    `components.py::_render_business_hours_line()` (privada, mesmo padrão de
+    `_render_contact_line()`) monta ícone de relógio + "Horário de funcionamento do site:
+    08:00 - 00:00" numa linha só (`.footer-hours`, duplicada em `app.css`/`forms.css` — sem CSS de
+    rodapé compartilhado entre as duas telas, mesmo padrão já usado por `.footer-contact`),
+    chamada dentro de `render_footer()`/`render_form_footer()`, antes do link de contato.
+    `render_business_hours_badge()` e o CSS de canto fixo (`.business-hours-badge` em
+    `base.css`) foram removidos — junto com a máquina de containing-block que só existia pra
+    sustentar o `position: absolute` do badge/toggle antigos (`[data-testid=
+    "stMainBlockContainer"] { position: relative }` + neutralização `:has()` de
+    `[data-testid="stElementContainer"]`, ambas em `base.css`), já que nenhum elemento do app
+    mais depende delas — os `position: absolute` que restam (`cards.css`, ex. `.media-scrim`)
+    usam seu próprio containing block local (`.card-media { position: relative }`).
+  - **`.form-subtitle` (`forms.css`) também some abaixo de 768px**, mesmo breakpoint e mesma
+    técnica de `.header-subtitle` acima — pedido do usuário, réplica direta pras telas de
+    autenticação ficarem consistentes com a página principal. Sem compensar o respiro
+    perdido com margin extra (o cabeçalho principal também não compensa): o campo de e-mail
+    só sobe um pouco no mobile, mesmo efeito visual esperado.
 - **Sem linha divisória entre blocos** — nem acima de "Encontramos X opções para você!" (`.results-heading`,
   `cards.py`/`cards.css`), nem entre "Consultas restantes"/último card e o rodapé (`.footer`, `app.css`):
   a separação é só espaço, mesmo padrão usado no resto da página (ex. cabeçalho → "O que você quer assistir
