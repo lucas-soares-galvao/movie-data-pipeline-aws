@@ -107,11 +107,10 @@
 }
 /* Abaixo de 435px (medido pelo usuário testando o app), o grupo fixo de botões
    (toggle+Painel Admin/Meu Perfil+Sair) não cabe mais ao lado do título numa linha só —
-   em vez de deixar o flex-wrap "natural" decidir onde cortar (resultado desigual: 3 itens
-   numa linha, só "Sair" sozinho na outra), força-se uma quebra deliberada logo depois do
-   toggle (.header-row-break, flex-basis:100%, acima) — linha 1 fica só logo+toggle, linha
-   2 só o grupo de botões, cada uma centralizada por justify-content:center (herdado do
-   bloco acima). */
+   em vez de deixar o flex-wrap "natural" decidir onde cortar, força-se uma quebra
+   deliberada logo depois do título (.header-row-break, flex-basis:100%, acima) — linha 1
+   fica só logo+"FilmBot", linha 2 o grupo toggle+Painel Admin/Meu Perfil+Sair, cada uma
+   centralizada por justify-content:center (herdado do bloco acima). */
 @media (max-width: 435px) {
   /* Ativa o marcador de quebra (escondido por padrão, ver regra acima) — flex-basis:100%
      faz esse item (vazio, height:0) ocupar a linha inteira e empurrar tudo que vem depois
@@ -129,8 +128,8 @@
   /* A coluna do título não pode mais crescer aqui (flex:1 1 auto é a regra base, usada no
      desktop pra empurrar o grupo de botões pro canto direito) — crescendo, ela consumiria
      todo o espaço livre da linha 1 e justify-content:center não teria mais nada pra
-     centralizar. Volta a flex:0 0 auto só nesta largura, pra logo+toggle formarem um
-     grupo compacto centralizado, igual ao grupo de botões na linha de baixo. */
+     centralizar. Volta a flex:0 0 auto só nesta largura, pra logo+"FilmBot" formarem um
+     grupo compacto centralizado, igual ao grupo toggle+botões na linha de baixo. */
   .st-key-header-row [data-testid="stHorizontalBlock"] > div:first-child {
     flex: 0 0 auto !important;
     width: auto !important;
