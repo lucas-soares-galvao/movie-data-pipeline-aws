@@ -103,11 +103,24 @@
 .st-key-form-card:has(.st-key-password-fields-row) {
   max-width: 640px;
 }
+/* Ícone+título de um lado, toggle de tema (theme_toggle_html()) do outro, mesma linha —
+   pedido do usuário. justify-content:space-between funciona bem aqui (diferente do
+   cabeçalho da página principal, app.css, que agrupa tudo à esquerda): .form-brand só
+   tem 2 filhos (o grupo icone+título e o toggle), sem cluster de botões extra pra
+   considerar. */
 .form-brand {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
   margin-bottom: 0;
+}
+/* Grupo ícone+título isolado num sub-flex — assim o gap de 4px fica só entre os dois,
+   sem "vazar" como espaçamento também para o toggle (que já é separado pelo
+   justify-content:space-between do pai). */
+.form-brand-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 /* Wrapper do ícone Lucide "clapperboard" laranja (components.py::icon()) — mesmo estilo
    do wrapper do cabeçalho principal (.header-icon-badge, app.css). Sem fundo/borda (era
@@ -162,6 +175,19 @@
   font-size: 14px !important;
   color: var(--text-muted);
   margin: -2px 0 20px !important;
+}
+/* Some abaixo de 768px (pedido do usuário), mesmo breakpoint de .header-subtitle em
+   app.css. `visibility: hidden` (não `display: none`): esconde o texto mas mantém a
+   caixa no fluxo — mesma altura, mesmas margens (-2px/20px acima) — preservando o
+   respiro exato entre "FilmBot" e o próximo elemento (título da página ou campo
+   "E-mail") mesmo sem o subtítulo visível (pedido do usuário, revisando o resultado do
+   `display: none` original: o espaço tinha ficado visivelmente mais apertado que no
+   desktop). Ao contrário de `.header-subtitle` (app.css, que usa `display: none` sem
+   essa reclamação de espaçamento) — não replicado lá por não ter sido pedido. */
+@media (max-width: 768px) {
+  .form-subtitle {
+    visibility: hidden;
+  }
 }
 /* Título da página (ex.: "Criar uma Conta Nova"/"Recuperar Acesso"), opcional — só as
    telas de cadastro/recuperar acesso passam `title` para _brand_header() (forms.py).
@@ -417,6 +443,18 @@ button[data-testid="stBaseButton-tertiary"]:disabled {
   font-size: 12px;
   letter-spacing: 0.05em;
   margin-top: 16px;
+}
+
+/* Linha de horário de funcionamento (_render_business_hours_line(), components.py) —
+   antes um badge fixo no canto superior esquerdo de toda tela; movido pro rodapé a
+   pedido do usuário. Mesma regra de app.css (duplicada aqui — não há CSS de rodapé
+   compartilhado entre as duas telas, mesmo padrão já usado por .footer-contact).
+   Sem display:flex (removido — pedido do usuário): ver comentário completo na regra
+   equivalente em app.css — flex centralizava o ícone contra a altura total do texto
+   quando ele quebrava em 2 linhas; como bloco comum, ícone+texto viram conteúdo inline
+   normal e o ícone fica grudado na 1ª linha, igual à linha de copyright acima. */
+.footer-hours {
+  margin-top: 6px;
 }
 
 .footer-contact {

@@ -18,6 +18,7 @@ from src.components import (
     render_feedback,
     render_form_footer,
     render_password_requirements,
+    theme_toggle_html,
     validate_password,
 )
 from src.infrastructure import (
@@ -128,8 +129,11 @@ def _switch_view(view: str) -> None:
 def _brand_header(title: str | None = None) -> None:
     st.markdown(f"""
     <div class="form-brand">
-      <span class="form-icon-badge">{icon("clapperboard", size=18)}</span>
-      <p class="form-title">FilmBot</p>
+      <div class="form-brand-title">
+        <span class="form-icon-badge">{icon("clapperboard", size=18)}</span>
+        <p class="form-title">FilmBot</p>
+      </div>
+      {theme_toggle_html()}
     </div>
     <p class="form-subtitle">Seu assistente de filmes e séries com IA</p>
     """, unsafe_allow_html=True)

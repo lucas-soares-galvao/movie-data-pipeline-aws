@@ -125,36 +125,35 @@ def _inject_css(file_name: str) -> None:
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
-def render_theme_toggle() -> None:
-    """Renderiza o botão fixo de alternância de tema claro/escuro (sol/lua) — chamado por
-    load_base_css(), presente em toda tela (login ou autenticado). A troca de tema em si é
-    100% client-side (ver load_theme_toggle_script()), sem rerun do Streamlit; aqui só
-    emite os dois ícones sobrepostos, com `data-effective-theme="dark"` como valor inicial
-    (assume escuro, o padrão histórico do app) até o script corrigir com o tema efetivo
-    real (escolha manual salva, ou preferência do SO) — ver .theme-toggle em theme.css para
-    a regra de exibição condicional de cada ícone."""
-    st.markdown(
+def theme_toggle_html() -> str:
+    """Monta o HTML do botão de alternância de tema claro/escuro (sol/lua) — retorna a
+    string em vez de emitir via st.markdown() porque o botão precisa ser interpolado
+    dentro da mesma linha (mesma st.markdown composta) do cabeçalho de cada tela — na
+    mesma linha do brand no login (forms.py::_brand_header()) e agrupado à esquerda no
+    cabeçalho da página principal (app.py) — em vez de nascer sozinho num canto fixo da
+    página. A troca de tema em si é 100% client-side (ver load_theme_toggle_script()),
+    sem rerun do Streamlit; aqui só emite os dois ícones sobrepostos, com
+    `data-effective-theme="dark"` como valor inicial (assume escuro, o padrão histórico
+    do app) até o script corrigir com o tema efetivo real (escolha manual salva, ou
+    preferência do SO) — ver .theme-toggle em theme.css para a regra de exibição
+    condicional de cada ícone."""
+    return (
         '<button id="theme-toggle" class="theme-toggle" type="button" '
         'aria-label="Alternar tema claro/escuro" data-effective-theme="dark">'
         f'<span class="theme-toggle-icon icon-sun">{icon("sun", 18)}</span>'
         f'<span class="theme-toggle-icon icon-moon">{icon("moon", 18)}</span>'
-        '</button>',
-        unsafe_allow_html=True,
+        '</button>'
     )
 
 
-def render_business_hours_badge() -> None:
-    """Renderiza o badge fixo de horário de funcionamento (08:00–00:00) — chamado por
-    load_base_css(), presente em toda tela (login ou autenticada), simétrico ao
-    render_theme_toggle() no canto oposto. Duas linhas estáticas (sem JS): rótulo em caixa
-    alta e o intervalo em destaque — ver .business-hours-badge em base.css para
-    posicionamento/paleta."""
-    st.markdown(
-        '<div id="business-hours-badge" class="business-hours-badge">'
-        '<span class="business-hours-label">Horário de funcionamento</span>'
-        '<span class="business-hours-range">08:00 - 00:00</span>'
-        '</div>',
-        unsafe_allow_html=True,
+def _render_business_hours_line() -> str:
+    """Monta a linha de horário de funcionamento (ícone de relógio + rótulo + intervalo),
+    reaproveitada pelos dois rodapés (render_footer()/render_form_footer()) — mesmo
+    padrão de _render_contact_line() logo abaixo. Antes era um badge fixo num canto da
+    página (ver histórico em lightsail_ia.md); movido pro rodapé a pedido do usuário."""
+    return (
+        f'<div class="footer-hours">{icon("clock", 12)} '
+        f'Horário de funcionamento do site: 08:00 - 00:00</div>'
     )
 
 
@@ -172,15 +171,15 @@ def load_theme_toggle_script() -> None:
 
 def load_base_css() -> None:
     """Injeta os estilos transversais (tokens de tema, fundo, reset de botão, largura de
-    container, ícones, mensagens de feedback), compartilhados entre a tela de login e a
-    página principal, o toggle de tema claro/escuro (canto superior direito) e o badge de
-    horário de funcionamento (canto superior esquerdo, estático) — os dois presentes em
-    toda tela por saírem daqui."""
+    container, ícones, mensagens de feedback) e o script do toggle de tema, compartilhados
+    entre a tela de login e a página principal. A marcação visual do toggle
+    (theme_toggle_html()) e da linha de horário de funcionamento
+    (_render_business_hours_line()) não sai mais daqui: cada uma nasce inline no
+    cabeçalho/rodapé de cada tela (posição diferente em cada contexto), não mais como
+    elemento fixo compartilhado."""
     _inject_css("theme.css")
     _inject_css("base.css")
-    render_theme_toggle()
     load_theme_toggle_script()
-    render_business_hours_badge()
 
 
 def load_forms_css() -> None:
@@ -825,7 +824,8 @@ def _render_contact_line() -> str:
 
 
 def render_footer() -> None:
-    """Renderiza o rodapé da página principal com crédito TMDB e contato por e-mail."""
+    """Renderiza o rodapé da página principal com crédito TMDB, horário de funcionamento
+    e contato por e-mail."""
     year = datetime.now(tz=timezone.utc).year
     st.markdown(
         f'<div class="footer">'
@@ -833,6 +833,7 @@ def render_footer() -> None:
         f'<a href="https://www.themoviedb.org/?language=pt-BR"'
         f' target="_blank" rel="noopener noreferrer">TMDB</a>'
         f" · Todos os direitos reservados"
+        f"{_render_business_hours_line()}"
         f"{_render_contact_line()}"
         f"</div>",
         unsafe_allow_html=True,
@@ -840,11 +841,13 @@ def render_footer() -> None:
 
 
 def render_form_footer() -> None:
-    """Renderiza o rodapé simplificado das telas de autenticação, com contato por e-mail."""
+    """Renderiza o rodapé simplificado das telas de autenticação, com horário de
+    funcionamento e contato por e-mail."""
     year = datetime.now(tz=timezone.utc).year
     st.markdown(
         f'<div class="footer-form">'
         f"© {year} FilmBot · Todos os direitos reservados"
+        f"{_render_business_hours_line()}"
         f"{_render_contact_line()}"
         f"</div>",
         unsafe_allow_html=True,
