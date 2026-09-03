@@ -34,7 +34,7 @@ A policy `cicd-terraform-iam-{env}` concede à própria role permissão para se 
 | `cicd-terraform-iam-{env}` | Roles/policies/users `tmdb-*` + auto-gerenciamento `cicd-terraform-*` |
 | `cicd-terraform-compute-{env}` | Lambda, Glue (jobs + catalog) |
 | `cicd-terraform-observability-{env}` | EventBridge (rules + connections/API destinations do Lightsail Scheduler), CloudWatch (logs + alarms — inclui log groups `/lightsail/tmdb-*`), SNS, SQS (DLQ) |
-| `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1 — **só prod** (`count` condicionado a `var.env == "prod"` em `iam_cicd.tf`) |
+| `cicd-terraform-lightsail-{env}` | Instância, key pair, static IP em us-east-1, e Get/Put/List no bucket de persistência do certificado TLS do Caddy (`caddy_certs_bucket`) — **só prod** (`count` condicionado a `var.env == "prod"` em `iam_cicd.tf`) |
 | `cicd-terraform-ssm-{env}` | Parâmetros SSM do rotation refresh (`/tmdb-pipeline/rotation-year-pointer-*`) + `iam:SimulatePrincipalPolicy` sobre a própria role (usado pelo polling de propagação, ver abaixo) |
 | `cicd-terraform-cognito-{env}` | User Pool do FilmBot (`aws_cognito_user_pool`/`_client`/`aws_cognito_user_group`, ver `lightsail_ia.tf`) — `CreateUserPool` com `Resource "*"` (ARN não existe antes da criação), demais actions escopadas ao ARN do pool |
 

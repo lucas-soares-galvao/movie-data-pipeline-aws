@@ -641,7 +641,7 @@ moved {
 resource "aws_iam_policy" "cicd_lightsail" {
   count       = lower(var.env) == "prod" ? 1 : 0
   name        = "${local.project_config.cicd_policy_prefix}-lightsail-${var.env}"
-  description = "Gerenciamento de instância, key pair e static IP do Lightsail em us-east-1"
+  description = "Gerenciamento de instância, key pair, static IP do Lightsail em us-east-1 e do bucket de persistência do certificado TLS do Caddy"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -726,6 +726,24 @@ resource "aws_iam_policy" "cicd_lightsail" {
           "lightsail:GetOperations",
         ]
         Resource = "*"
+      },
+      {
+        # Persistência do certificado TLS do Caddy (FilmBot) entre as
+        # recriações diárias da instância — ver aws_s3_bucket.caddy_certs_bucket
+        # em infra/s3.tf e os passos de restore/save em
+        # .github/workflows/04_deploy_lightsail.yml. ListBucket exige o ARN do
+        # bucket (sem "/*"); Get/PutObject exigem o ARN do objeto (com "/*").
+        Sid    = "CaddyCertsBucketAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*",
+          "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*/*",
+        ]
       },
     ]
   })

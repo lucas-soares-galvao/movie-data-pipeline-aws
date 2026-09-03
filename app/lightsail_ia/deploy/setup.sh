@@ -8,6 +8,12 @@
 #   .env.caddy — FILMBOT_DOMAIN=filmbot.lsgalvao.com.br (FilmBot só existe em
 #                prod). Exigido pelo caddy.service (EnvironmentFile=) — sem
 #                ele o Caddy não sobe.
+#
+# NOTA: este script não restaura o certificado TLS do Caddy do S3 (ver
+# aws_s3_bucket.caddy_certs_bucket em infra/s3.tf) — essa persistência só
+# acontece via 04_deploy_lightsail.yml, que já roda com credenciais AWS
+# (OIDC) no runner. Um bootstrap manual como este é sempre "primeiro deploy"
+# de qualquer forma, então não há certificado anterior para restaurar.
 
 set -e
 
