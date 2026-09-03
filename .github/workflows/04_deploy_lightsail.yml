@@ -347,20 +347,21 @@ jobs:
       # Caddy cert data from S3" acima). O health check anterior só confirma
       # que o Caddy está respondendo (redirect HTTP→HTTPS) — não que a emissão
       # ACME (round-trip HTTP-01 com o Let's Encrypt/ZeroSSL) já terminou e
-      # gravou o certificado em disco. Por isso faz poll (até 12×10s) em vez
-      # de checar uma única vez: uma checagem única confirmou na prática rodar
-      # cedo demais, com o diretório ainda vazio logo após o restart.
+      # gravou o certificado em disco. Por isso faz poll (até 30×10s, mesmo
+      # padrão do step "Setup SSH key" acima) em vez de checar uma única vez.
+      # Se mesmo assim não aparecer, despeja journalctl/status/conteúdo do
+      # diretório pro log do Actions — diagnóstico melhor do que só o aviso.
       - name: Save Caddy cert data to S3
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
           CERT_READY=0
-          for i in $(seq 1 12); do
+          for i in $(seq 1 30); do
             if ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
               "sudo bash -c 'test -d /root/.local/share/caddy && [ \"\$(ls -A /root/.local/share/caddy)\" ]'"; then
               CERT_READY=1
               break
             fi
-            echo "Tentativa $i/12 — certificado do Caddy ainda não disponível, aguardando 10s..."
+            echo "Tentativa $i/30 — certificado do Caddy ainda não disponível, aguardando 10s..."
             sleep 10
           done
 
@@ -373,7 +374,19 @@ jobs:
             rm -f /tmp/caddy-data.tar.gz
             echo "✅ Certificado do Caddy salvo no S3"
           else
-            echo "⚠ Certificado do Caddy não apareceu em /root/.local/share/caddy após 120s — nada para salvar (emissão pode ainda estar em andamento ou ter falhado)"
+            echo "⚠ Certificado do Caddy não apareceu em /root/.local/share/caddy após 300s — nada para salvar (emissão pode ainda estar em andamento ou ter falhado)"
+            echo "::group::Diagnóstico — journalctl -u caddy (últimas 150 linhas)"
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo journalctl -u caddy --no-pager -n 150" || true
+            echo "::endgroup::"
+            echo "::group::Diagnóstico — systemctl status caddy"
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo systemctl status caddy --no-pager" || true
+            echo "::endgroup::"
+            echo "::group::Diagnóstico — conteúdo de /root/.local/share/caddy"
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo find /root/.local/share/caddy -maxdepth 4 2>&1 || echo '(diretório não existe)'" || true
+            echo "::endgroup::"
           fi
 
       - name: Show app URL
