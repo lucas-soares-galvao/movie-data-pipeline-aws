@@ -241,6 +241,7 @@ EOT
     s3_bucket_sot                    = "${var.s3_bucket_sot}-${var.env}"          # ex (dev): "lsg-sa-east-1-bucket-sot-dev"
     s3_bucket_spec                   = "${var.s3_bucket_spec}-${var.env}"         # ex (dev): "lsg-sa-east-1-bucket-spec-dev"
     s3_bucket_data_quality           = "${var.s3_bucket_data_quality}-${var.env}" # ex (dev): "lsg-sa-east-1-bucket-dq-dev"
+    s3_bucket_caddy_certs            = "${var.s3_bucket_caddy_certs}-${var.env}"  # ex (prod): "lsg-sa-east-1-bucket-caddy-certs-prod"
 
     # Glue Catalog — Databases
     glue_catalog_db_movie   = "db_${local.tmdb_prefix}_movie_${var.env}"   # ex (dev): "db_tmdb_movie_dev"

@@ -18,6 +18,8 @@
 
 > Dentro dos buckets AUX, TEMP e SPEC, os objetos também são gravados sob um prefixo de chave `tmdb/` (scripts e wheels dos jobs Glue, resultados temporários do Athena, dados gravados pelo Glue AGG).
 
+> `s3.tf` também declara um 7º bucket fora da arquitetura medalhão — `caddy_certs_bucket` (`lsg-sa-east-1-bucket-caddy-certs`), condicional a `local.lightsail_prod_enabled` (só existe em prod). Não guarda dado de pipeline: persiste o certificado TLS do Caddy do servidor Lightsail do FilmBot. Ver seção [Servidor — Lightsail](#servidor--lightsail-lightsail_iatf).
+
 ## Computação — Lambda (`lambda_api.tf`)
 
 - Função Lambda `lambda-api-{env}` com timeout e memória configurados
@@ -65,6 +67,8 @@ A instância/DNS existe **só em prod** — dev não provisiona VM, key pair, po
 **Agendamento de custo** (`.github/workflows/05_lightsail_scheduler.yml`): o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` — só parar a instância não economiza nada (confirmado via fatura AWS real). Por isso o scheduler **destrói e recria** a instância (não só liga/desliga), via `terraform apply`/`destroy -target` — o IP estático nunca entra nesse `-target` (persiste sempre).
 - Cron automático — desliga todo dia às **00:00 BRT**, liga todo dia às **08:00 BRT**. Também aceita `workflow_dispatch` manual (a partir da branch `main`).
 - Como `lightsail_instance_enabled` permanece `true` por padrão, qualquer `terraform apply` completo (não-targeted) disparado por um push normal em `main` recria a instância se ela estiver destruída no momento — ou seja, um deploy de código pode religar o servidor fora da janela agendada.
+
+**Persistência do certificado TLS do Caddy — bucket `caddy_certs_bucket`** (`s3.tf`, `iam_cicd.tf`, mesmo gate `local.lightsail_prod_enabled`): destruir e recriar a instância todo dia apaga também o disco raiz — e com ele o certificado Let's Encrypt do Caddy (`/root/.local/share/caddy`, sem `User=` no `caddy.service` → roda como root). Sem persistência, o Caddy pediria um certificado novo a cada recriação e esbarraria no rate limit de "certificados duplicados" do Let's Encrypt (5/semana), causando `ERR_SSL_PROTOCOL_ERROR` para quem acessa o site. O runner do GitHub Actions (não a instância — o IAM user `lightsail_agent` não tem acesso a este bucket) restaura o tarball do S3 antes do restart do Caddy em `04_deploy_lightsail.yml` ("Restore Caddy cert data from S3") e o salva de volta depois do health check ("Save Caddy cert data to S3"), via SSH/SCP com as credenciais OIDC já usadas no resto do deploy.
 
 **Identidade de usuários — Cognito** (`lightsail_ia.tf`, mesmo gate `lightsail_agent_enabled` do IAM user do agente acima, dev e prod): `aws_cognito_user_pool.filmbot` guarda os usuários do FilmBot (login por e-mail, sem DynamoDB/RDS próprio — o pool já é o armazenamento persistente). `auto_verified_attributes = ["email"]`: o cadastro dispara um código de confirmação de posse do e-mail (OTP), mas o gate de acesso continua sendo a aprovação manual do admin (`AdminEnableUser`, não mais `AdminConfirmSignUp` — ver `app/lightsail_ia/lightsail_ia.md`). `aws_cognito_user_pool_client.filmbot` sem client secret (chamadas só do backend) e `aws_cognito_user_group.admins` para o grupo de administradores. Sem `email_configuration` — o `lambda_config` (bloco `custom_email_sender`) intercepta o código de cadastro/reenvio/"esqueci a senha" e o entrega via Lambda pelo Gmail, ver seção seguinte.
 
