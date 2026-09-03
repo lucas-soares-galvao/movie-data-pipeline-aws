@@ -232,6 +232,10 @@ jobs:
               "sudo mkdir -p /root/.local/share/caddy && sudo tar -xzf /tmp/caddy-data.tar.gz -C /root/.local/share/caddy && rm -f /tmp/caddy-data.tar.gz"
             rm -f /tmp/caddy-data.tar.gz
             echo "✅ Certificado do Caddy restaurado do S3"
+            echo "::group::Conteúdo restaurado — arquivos em /root/.local/share/caddy"
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo find /root/.local/share/caddy -maxdepth 6 -type f" || true
+            echo "::endgroup::"
           else
             echo "ℹ Nenhum certificado salvo no S3 ainda (primeiro deploy) — Caddy vai emitir um novo"
           fi
@@ -349,6 +353,15 @@ jobs:
       # ACME (round-trip HTTP-01 com o Let's Encrypt/ZeroSSL) já terminou e
       # gravou o certificado em disco. Por isso faz poll (até 30×10s, mesmo
       # padrão do step "Setup SSH key" acima) em vez de checar uma única vez.
+      #
+      # A checagem exige um .crt de verdade sob certificates/ — não basta o
+      # diretório existir/não-estar-vazio: o Caddy já cria a pasta da conta
+      # ACME (acme/.../users/default/default.json) nos primeiros segundos da
+      # emissão, bem antes de ter um certificado válido, e um "Restore" bem-
+      # sucedido também deixa o diretório não-vazio na hora, sem garantir que
+      # o que foi restaurado é um certificado utilizável. Uma checagem mais
+      # fraca (só "não está vazio") já causou o salvamento de um estado
+      # incompleto na prática.
       # Se mesmo assim não aparecer, despeja journalctl/status/conteúdo do
       # diretório pro log do Actions — diagnóstico melhor do que só o aviso.
       - name: Save Caddy cert data to S3
@@ -357,7 +370,7 @@ jobs:
           CERT_READY=0
           for i in $(seq 1 30); do
             if ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-              "sudo bash -c 'test -d /root/.local/share/caddy && [ \"\$(ls -A /root/.local/share/caddy)\" ]'"; then
+              "sudo bash -c 'find /root/.local/share/caddy/certificates -type f -iname \"*.crt\" 2>/dev/null | grep -q .'"; then
               CERT_READY=1
               break
             fi
@@ -366,6 +379,10 @@ jobs:
           done
 
           if [ $CERT_READY -eq 1 ]; then
+            echo "::group::Certificado encontrado — arquivos em /root/.local/share/caddy"
+            ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo find /root/.local/share/caddy -maxdepth 6 -type f" || true
+            echo "::endgroup::"
             ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
               "sudo tar -czf /tmp/caddy-data.tar.gz -C /root/.local/share/caddy . && sudo chmod 644 /tmp/caddy-data.tar.gz"
             scp -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }}:/tmp/caddy-data.tar.gz /tmp/caddy-data.tar.gz
