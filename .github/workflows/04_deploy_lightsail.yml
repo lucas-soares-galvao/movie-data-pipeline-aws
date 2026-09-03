@@ -344,14 +344,27 @@ jobs:
 
       # Salva o certificado do Caddy pra este deploy no S3, pro próximo ciclo
       # de recriação da instância restaurar em vez de reemitir (ver "Restore
-      # Caddy cert data from S3" acima). Só empacota se o diretório existir e
-      # não estiver vazio, pra nunca sobrescrever um backup bom com um vazio
-      # em caso de falha de emissão do certificado.
+      # Caddy cert data from S3" acima). O health check anterior só confirma
+      # que o Caddy está respondendo (redirect HTTP→HTTPS) — não que a emissão
+      # ACME (round-trip HTTP-01 com o Let's Encrypt/ZeroSSL) já terminou e
+      # gravou o certificado em disco. Por isso faz poll (até 12×10s) em vez
+      # de checar uma única vez: uma checagem única confirmou na prática rodar
+      # cedo demais, com o diretório ainda vazio logo após o restart.
       - name: Save Caddy cert data to S3
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'
         run: |
-          if ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
-            "sudo bash -c 'test -d /root/.local/share/caddy && [ \"\$(ls -A /root/.local/share/caddy)\" ]'"; then
+          CERT_READY=0
+          for i in $(seq 1 12); do
+            if ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
+              "sudo bash -c 'test -d /root/.local/share/caddy && [ \"\$(ls -A /root/.local/share/caddy)\" ]'"; then
+              CERT_READY=1
+              break
+            fi
+            echo "Tentativa $i/12 — certificado do Caddy ainda não disponível, aguardando 10s..."
+            sleep 10
+          done
+
+          if [ $CERT_READY -eq 1 ]; then
             ssh -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }} \
               "sudo tar -czf /tmp/caddy-data.tar.gz -C /root/.local/share/caddy . && sudo chmod 644 /tmp/caddy-data.tar.gz"
             scp -i ~/.ssh/${{ steps.project.outputs.app_name }}_key ubuntu@${{ steps.tf.outputs.public_ip }}:/tmp/caddy-data.tar.gz /tmp/caddy-data.tar.gz
@@ -360,7 +373,7 @@ jobs:
             rm -f /tmp/caddy-data.tar.gz
             echo "✅ Certificado do Caddy salvo no S3"
           else
-            echo "⚠ Diretório de certificados do Caddy vazio ou inexistente — nada para salvar"
+            echo "⚠ Certificado do Caddy não apareceu em /root/.local/share/caddy após 120s — nada para salvar (emissão pode ainda estar em andamento ou ter falhado)"
           fi
 
       - name: Show app URL
