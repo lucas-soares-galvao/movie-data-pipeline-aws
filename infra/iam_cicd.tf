@@ -728,22 +728,44 @@ resource "aws_iam_policy" "cicd_lightsail" {
         Resource = "*"
       },
       {
+        # Gerenciamento do bucket em si (aws_s3_bucket + public_access_block +
+        # encryption + lifecycle + policy em infra/s3.tf) — mesma lista de
+        # actions do statement S3ProjectBucketManagement da policy cicd_s3
+        # (Policy 2), já validada para o mesmo formato de 4 recursos nos
+        # outros 5 buckets do projeto.
+        Sid    = "CaddyCertsBucketManagement"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:ListBucket",
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy",
+          "s3:DeleteBucketPolicy",
+          "s3:GetBucketTagging",
+          "s3:PutBucketTagging",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:GetEncryptionConfiguration",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration",
+          "s3:PutLifecycleConfiguration",
+        ]
+        Resource = "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*"
+      },
+      {
         # Persistência do certificado TLS do Caddy (FilmBot) entre as
         # recriações diárias da instância — ver aws_s3_bucket.caddy_certs_bucket
         # em infra/s3.tf e os passos de restore/save em
-        # .github/workflows/04_deploy_lightsail.yml. ListBucket exige o ARN do
-        # bucket (sem "/*"); Get/PutObject exigem o ARN do objeto (com "/*").
-        Sid    = "CaddyCertsBucketAccess"
+        # .github/workflows/04_deploy_lightsail.yml.
+        Sid    = "CaddyCertsObjectAccess"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:ListBucket",
+          "s3:DeleteObject",
         ]
-        Resource = [
-          "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*",
-          "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*/*",
-        ]
+        Resource = "arn:aws:s3:::${var.s3_bucket_caddy_certs}-*/*"
       },
     ]
   })
