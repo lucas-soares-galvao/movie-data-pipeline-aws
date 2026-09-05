@@ -151,6 +151,7 @@ def format_record(record: dict, today: date | None = None) -> dict:
         ),
         "next_episode_date": _format_adaptive_date(record.get("next_episode_air_date"), today=today),
         "tagline": record.get("tagline") or None,
+        "title_status": record.get("title_status") or None,
         "cast": record.get("actor_names") or None,
         "director": record.get("director") or None,
         "writers": record.get("screenplay") or None,
