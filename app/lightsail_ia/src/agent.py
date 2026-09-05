@@ -89,13 +89,17 @@ _LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-pro")
 _LLM_NUM_RETRIES = 3
 # Timeout por tentativa (não pelo total incluindo retries). Sem isso, o padrão do
 # litellm é 600s por tentativa — uma chamada travada (não um erro, só sem resposta)
-# ficaria esperando isso antes de sequer entrar no retry. Valores iniciais generosos
-# o bastante pra não abortar uma resposta normal só um pouco lenta (o que dispararia
-# um retry desnecessário e pioraria a latência): 10s no Passo 1 (saída pequena, só
-# where_clause + limit) e 15s no Passo 3 (saída maior, motivos de vários títulos).
-# Recalibrar depois de medir a latência real por passo em produção (_log_step_latency).
-_LLM_TIMEOUT_STEP1_SECONDS = 10
-_LLM_TIMEOUT_STEP3_SECONDS = 15
+# ficaria esperando isso antes de sequer entrar no retry. Valores generosos o bastante
+# pra não abortar uma resposta normal só um pouco lenta (o que dispararia um retry
+# desnecessário e pioraria a latência): 60s no Passo 1 (saída pequena, só
+# where_clause + limit) e 90s no Passo 3 (saída maior, motivos de vários títulos).
+# Recalibrados a partir dos 10s/15s iniciais depois de estourarem consistentemente
+# (litellm.Timeout real, visto via CloudWatch em dev) com deepseek-v4-pro, mais lento
+# que o modelo usado quando os valores originais foram definidos. Ainda finito de
+# propósito (não None): uma chamada realmente travada, não só lenta, deve falhar em
+# minutos, não nos 600s padrão do litellm por tentativa.
+_LLM_TIMEOUT_STEP1_SECONDS = 60
+_LLM_TIMEOUT_STEP3_SECONDS = 90
 # max_tokens generoso o bastante pra nunca truncar uma resposta normal — só existe
 # pra dar um teto à latência de cauda de uma resposta anormalmente verbosa.
 _LLM_MAX_TOKENS_STEP1 = 300
