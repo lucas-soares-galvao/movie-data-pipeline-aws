@@ -120,6 +120,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_passos_1_e_3_usam_retry_configurado` | As duas chamadas `litellm.completion` (etapas 1 e 3) recebem `num_retries=_LLM_NUM_RETRIES` |
 | `test_passos_1_e_3_usam_timeout_e_max_tokens_configurados` | As duas chamadas recebem `timeout`/`max_tokens` específicos por etapa (`_LLM_TIMEOUT_STEP1_SECONDS`/`_LLM_MAX_TOKENS_STEP1` na etapa 1, `_LLM_TIMEOUT_STEP3_SECONDS`/`_LLM_MAX_TOKENS_STEP3` na etapa 3), sem perder o `num_retries` já configurado |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
+| `test_retorna_lista_vazia_se_argumentos_da_tool_call_sao_json_invalido` | Retorna `[]` sem chamar Athena quando `tool_call.function.arguments` é JSON inválido (ex: resposta cortada do LLM), sem levantar exceção — mesma degradação graciosa já usada no motivo da etapa 3 |
 | `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Mai de 1980"`) |
 | `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`type`, `year`, `genres`, `overview`, `rating`, `duration`, `streaming_providers`, `in_theaters`) |
 | `test_motivo_incluido_no_resultado` | Campo `reason` da etapa 3 é mesclado corretamente ao registro formatado |
