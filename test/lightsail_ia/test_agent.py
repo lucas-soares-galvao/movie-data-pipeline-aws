@@ -580,6 +580,28 @@ class TestRecommend:
         assert result == []
         mock_search.assert_not_called()
 
+    def test_retorna_lista_vazia_se_argumentos_da_tool_call_sao_json_invalido(self):
+        tool_call = MagicMock()
+        tool_call.id = "call_test_123"
+        tool_call.function.name = "search_titles_spec"
+        tool_call.function.arguments = '{"where_clause": "a'
+
+        msg_step1 = MagicMock()
+        msg_step1.content = None
+        msg_step1.tool_calls = [tool_call]
+
+        step1_json_invalido = MagicMock()
+        step1_json_invalido.choices = [MagicMock(message=msg_step1)]
+
+        with (
+            patch("src.agent.search_titles_spec") as mock_search,
+            patch("src.agent.litellm.completion", return_value=step1_json_invalido),
+        ):
+            result = agent.recommend("filmes de terror")
+
+        assert result == []
+        mock_search.assert_not_called()
+
     def test_retorna_data_lancamento_formatada(self):
         with (
             patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
