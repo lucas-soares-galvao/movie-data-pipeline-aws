@@ -19,6 +19,7 @@ BASE_TITLE = {
     "next_episode_number": None,
     "next_episode_date": None,
     "upcoming_date": None,
+    "title_status": None,
     "tagline": None,
     "cast": None,
     "director": None,
@@ -802,10 +803,54 @@ class TestRenderCard:
         assert "Em breve" not in html
 
     def test_card_sem_em_cartaz_proximo_episodio_nem_lancamento_futuro_nao_gera_cinema_row(self):
-        # Sem conteúdo pra nenhum dos três badges, a div nem é gerada (meio solto, ver
-        # cards.css).
+        # Sem conteúdo pra nenhum dos quatro badges (os 3 primeiros e o fallback de
+        # title_status), a div nem é gerada (meio solto, ver cards.css). BASE_TITLE já tem
+        # "title_status": None, então cai nesse caso.
         html = components.render_card(BASE_TITLE)
         assert "cinema-row" not in html
+
+    def test_card_status_fallback_filme_ja_lancado(self):
+        # Sem in_theaters/próximo episódio/upcoming_date, o 4º ramo (title_status) preenche a
+        # cinema-row mesmo no caso comum — filme já lançado e fora de cartaz.
+        t = {**BASE_TITLE, "title_status": "Lançado"}
+        html = components.render_card(t)
+        assert "cinema-row" in html
+        assert "Lançado" in html
+
+    def test_card_status_fallback_serie_encerrada(self):
+        t = {**BASE_TITLE, "type": "Série", "title_status": "Encerrada"}
+        html = components.render_card(t)
+        assert "Encerrada" in html
+
+    def test_card_em_cartaz_tem_prioridade_sobre_status(self):
+        t = {
+            **BASE_TITLE,
+            "in_theaters": True,
+            "theater_end_date": "15/07",
+            "title_status": "Lançado",
+        }
+        html = components.render_card(t)
+        assert "Em cartaz até 15/07" in html
+        assert "Lançado" not in html
+
+    def test_card_proximo_episodio_tem_prioridade_sobre_status(self):
+        t = {
+            **BASE_TITLE,
+            "type": "Série",
+            "next_episode_season_number": 3,
+            "next_episode_number": 1,
+            "next_episode_date": "15/09",
+            "title_status": "Em Exibição",
+        }
+        html = components.render_card(t)
+        assert "T3 E1 estreia em 15/09" in html
+        assert "Em Exibição" not in html
+
+    def test_card_em_breve_tem_prioridade_sobre_status(self):
+        t = {**BASE_TITLE, "upcoming_date": "Set de 2026", "title_status": "Planejado"}
+        html = components.render_card(t)
+        assert "Em breve · Set de 2026" in html
+        assert "Planejado" not in html
 
     def test_card_exibe_produtor_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "producer": "Kevin Feige"}
@@ -842,18 +887,19 @@ class TestRenderCard:
         assert 'class="icon icon-tv"' in html
         assert "📺" not in html
 
-    def test_card_sem_streaming_providers_nao_exibe_rotulo(self):
+    def test_card_sem_provedor_nenhum_exibe_mensagem_nao_disponivel(self):
         t = {**BASE_TITLE, "streaming_providers": None}
         html = components.render_card(t)
-        assert "Onde assistir" not in html
-        assert "providers-label" not in html
+        assert "Onde assistir" in html
+        assert '<span class="provider-badge unavailable">Não disponível no streaming</span>' in html
 
-    def test_card_sem_provedor_nenhum_nao_gera_providers_row(self):
-        # Sem streaming nem aluguel/compra, a div nem é gerada (meio solto, ver
-        # cards.css) — mesmo padrão de duration-row/cinema-row/row-people/row-synopsis.
+    def test_card_sem_provedor_nenhum_ainda_gera_providers_row(self):
+        # Diferente de duration-row/cinema-row/row-people/row-synopsis (meio solto de
+        # verdade): sem nenhum provedor, a seção não some — cai no badge de
+        # indisponibilidade (ver cards.css) em vez de omitir a div inteira.
         t = {**BASE_TITLE, "streaming_providers": None}
         html = components.render_card(t)
-        assert "providers-row" not in html
+        assert "providers-row" in html
 
     def test_card_exibe_logo_real_do_provedor(self):
         t = {
@@ -1217,10 +1263,26 @@ class TestRenderCard:
         assert 'class="reason"' not in html
 
     def test_card_sem_motivo_nao_gera_row_reason(self):
-        # Sem motivo, a div nem é gerada (meio solto, ver cards.css) — mesmo padrão de
+        # Sem motivo (reason=None, título fora do fluxo de recomendação da IA), a div nem é
+        # gerada (meio solto, ver cards.css) — mesmo padrão de
         # duration-row/cinema-row/genres-container/providers-row/row-people/row-synopsis.
         html = components.render_card(BASE_TITLE)
         assert "row-reason" not in html
+
+    def test_card_motivo_string_vazia_gera_texto_de_fallback(self):
+        # reason="" (diferente de None) significa que o agente rodou o Passo 3 mas não
+        # conseguiu gerar motivo pra este título específico (ver agent.py::recommend()) —
+        # nesse caso a seção aparece com um texto de fallback, em vez de ser omitida.
+        t = {**BASE_TITLE, "reason": ""}
+        html = components.render_card(t)
+        assert "row-reason" in html
+        assert components._REASON_FALLBACK_TEXT in html
+
+    def test_card_motivo_string_vazia_mantem_rotulo_insight_do_filmbot(self):
+        t = {**BASE_TITLE, "reason": ""}
+        html = components.render_card(t)
+        assert 'class="reason-label"' in html
+        assert "Insight do FilmBot" in html
 
     def test_card_motivo_sem_toggle(self):
         # Motivo é limitado a 150 caracteres na origem (prompt do agente), cabendo sem clamp

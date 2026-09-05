@@ -58,7 +58,7 @@ COLUMNS = [
     "runtime_minutes", "number_of_seasons",
     "number_of_episodes", "episode_runtime_minutes",
     "next_episode_air_date", "next_episode_number", "next_episode_season_number",
-    "tagline", "actor_names", "director", "screenplay", "music_composer",
+    "tagline", "title_status", "actor_names", "director", "screenplay", "music_composer",
     "producer", "cinematographer", "editor",
     "keywords_pt", "certification", "trailer_url", "collection_name",
     "production_companies", "production_countries", "networks", "created_by",
@@ -147,6 +147,15 @@ def _mock_litellm(tool_args: dict, reason_content: str | None = None):
     step3.usage = usage_mock
 
     return [step1, step3]
+
+
+class TestTool:
+
+    def test_descricao_do_limit_orienta_quantidade_padrao_entre_6_e_9(self):
+        description = agent.TOOL["function"]["parameters"]["properties"]["limit"]["description"]
+        assert "6" in description
+        assert "9" in description
+        assert "15" in description  # teto continua documentado
 
 
 class TestValidateWhere:
@@ -324,6 +333,14 @@ class TestSearchTitlesSpec:
         assert "next_episode_number" in executed_sql
         assert "next_episode_season_number" in executed_sql
 
+    def test_select_inclui_title_status(self):
+        with patch("src.agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("media_type = 'movie'")
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "title_status" in executed_sql
+
     def test_select_inclui_logos_de_provedor(self):
         with patch("src.agent.boto3") as mock_boto3:
             mock_athena = _setup_athena_mock(mock_boto3)
@@ -372,6 +389,19 @@ class TestSearchTitlesSpec:
 
         executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
         assert "LIMIT 15" in executed_sql  # 5 * _CANDIDATE_POOL_MULTIPLIER
+
+    def test_limite_padrao_fica_entre_6_e_9(self):
+        with patch("src.agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("vote_average >= 6.0")  # sem passar limit
+
+        assert 6 <= agent._DEFAULT_RECOMMENDATION_COUNT <= 9
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        expected_pool = min(
+            agent._DEFAULT_RECOMMENDATION_COUNT * agent._CANDIDATE_POOL_MULTIPLIER,
+            agent._CANDIDATE_POOL_MAX,
+        )
+        assert f"LIMIT {expected_pool}" in executed_sql
 
     def test_limite_solicitado_e_limitado_a_15_antes_do_pool(self):
         with patch("src.agent.boto3") as mock_boto3:
@@ -470,6 +500,25 @@ class TestRecommend:
             agent.recommend("filmes de terror")
 
         step1_call, step3_call = mock_completion.call_args_list
+        assert step1_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
+        assert step3_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
+
+    def test_passos_1_e_3_usam_timeout_e_max_tokens_configurados(self):
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror")
+
+        step1_call, step3_call = mock_completion.call_args_list
+        assert step1_call.kwargs["timeout"] == agent._LLM_TIMEOUT_STEP1_SECONDS
+        assert step1_call.kwargs["max_tokens"] == agent._LLM_MAX_TOKENS_STEP1
+        assert step3_call.kwargs["timeout"] == agent._LLM_TIMEOUT_STEP3_SECONDS
+        assert step3_call.kwargs["max_tokens"] == agent._LLM_MAX_TOKENS_STEP3
+        # a proteção de retry continua presente, timeout/max_tokens não a substituem
         assert step1_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
         assert step3_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
 
@@ -682,6 +731,36 @@ class TestRecommend:
         assert "Jack Nicholson" in user_content
         assert "isolamento" in user_content
 
+    def test_overview_e_truncada_no_payload_do_motivo(self):
+        overview_longa = "A" * 1000
+        fake_title_overview_longa = dict(FAKE_TITLE, overview=overview_longa)
+        with (
+            patch("src.agent.search_titles_spec", return_value=[fake_title_overview_longa]),
+            patch("src.agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror")
+
+        step3_call = mock_completion.call_args_list[1]
+        user_content = step3_call.kwargs["messages"][1]["content"]
+        assert overview_longa not in user_content
+        assert "A" * agent._MAX_OVERVIEW_CHARS_FOR_LLM in user_content
+
+    def test_overview_ausente_nao_quebra_o_truncamento(self):
+        fake_title_sem_overview = dict(FAKE_TITLE, overview=None)
+        with (
+            patch("src.agent.search_titles_spec", return_value=[fake_title_sem_overview]),
+            patch("src.agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result  # não levanta exceção
+
     def test_anexa_generos_destacados_ao_resultado(self):
         filters = {"where_clause": "lower(genre_names) LIKE '%terror%'"}
         with (
@@ -809,6 +888,54 @@ class TestLogTokenUsage:
         configurado; sem um nível INFO explícito aqui, esses logs seriam
         suprimidos por herança (ver seção "Observabilidade de tokens" do doc)."""
         assert agent.logger.level == logging.INFO
+
+
+class TestLogStepLatency:
+
+    def test_loga_step_e_tempo_decorrido(self):
+        with patch("src.agent.logger") as mock_logger:
+            agent._log_step_latency("step2_athena", 1.23456)
+
+        mock_logger.info.assert_called_once()
+        extra = mock_logger.info.call_args.kwargs["extra"]
+        assert extra["step"] == "step2_athena"
+        assert extra["elapsed_seconds"] == 1.235  # arredondado a 3 casas
+
+
+class TestRecommendLogaLatenciaPorPasso:
+
+    def test_loga_latencia_dos_3_passos_em_cache_miss(self):
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent._log_step_latency") as mock_log_latency,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror latencia cache miss")
+
+        steps_logados = [call.args[0] for call in mock_log_latency.call_args_list]
+        assert steps_logados == ["step1_where", "step2_athena", "step3_reasons"]
+
+    def test_loga_apenas_step2_e_step3_em_cache_hit(self):
+        preference = "filmes de terror latencia cache hit"
+        agent._save_cached_where(preference, {"where_clause": "media_type = 'movie'"})
+        try:
+            with (
+                patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+                patch("src.agent.litellm.completion") as mock_completion,
+                patch("src.agent._log_step_latency") as mock_log_latency,
+            ):
+                mock_completion.side_effect = _mock_litellm(
+                    {"where_clause": "media_type = 'movie'"}
+                )
+                agent.recommend(preference)
+        finally:
+            agent._WHERE_CACHE.pop(agent._cache_key(preference), None)
+
+        steps_logados = [call.args[0] for call in mock_log_latency.call_args_list]
+        assert steps_logados == ["step2_athena", "step3_reasons"]
 
 
 class TestTranscribePreference:

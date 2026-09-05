@@ -221,6 +221,7 @@ class TestFormatRecord:
         record = {
             **FAKE_TITLE,
             "tagline": "Uma frase marcante",
+            "title_status": "Lançado",
             "actor_names": "Jack Nicholson, Shelley Duvall",
             "director": "Stanley Kubrick",
             "screenplay": "Stephen King, Stanley Kubrick",
@@ -235,6 +236,7 @@ class TestFormatRecord:
         }
         result = formatting.format_record(record)
         assert result["tagline"] == "Uma frase marcante"
+        assert result["title_status"] == "Lançado"
         assert result["cast"] == "Jack Nicholson, Shelley Duvall"
         assert result["director"] == "Stanley Kubrick"
         assert result["writers"] == "Stephen King, Stanley Kubrick"
@@ -353,6 +355,7 @@ class TestFormatRecord:
     def test_novos_campos_nulos(self):
         result = formatting.format_record(FAKE_TITLE)
         assert result["tagline"] is None
+        assert result["title_status"] is None  # título ainda não enriquecido pelo glue_details
         assert result["cast"] is None
         assert result["director"] is None
         assert result["writers"] is None

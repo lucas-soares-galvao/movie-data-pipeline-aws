@@ -16,6 +16,10 @@
 # infrastructure.py:load_filmbot_password) — não é preciso passar LLM_API_KEY/
 # TRANSCRIPTION_API_KEY na mão. As env vars acima continuam aceitas só como override
 # manual (ex.: testar uma chave/model diferente da que está no secret de dev).
+#
+# CLOUDWATCH_LOG_GROUP também vai no .env gerado, ativando setup_cloudwatch_logging()
+# (infrastructure.py) do mesmo jeito que a instância de prod já faz — mesmo código,
+# mesmo conteúdo de log, só apontando pro log group de dev.
 set -euo pipefail
 
 : "${LLM_API_KEY:=}"
@@ -36,6 +40,7 @@ FILMBOT_SECRET_ARN=$(terraform output -raw lightsail_filmbot_secret_arn)
 COGNITO_USER_POOL_ID=$(terraform output -raw lightsail_cognito_user_pool_id)
 COGNITO_APP_CLIENT_ID=$(terraform output -raw lightsail_cognito_app_client_id)
 SNS_NEW_SIGNUP_TOPIC_ARN=$(terraform output -raw lightsail_sns_new_signup_topic_arn)
+CLOUDWATCH_LOG_GROUP=$(terraform output -raw lightsail_cloudwatch_log_group)
 
 # Fail-fast: sem isso, um FILMBOT_SECRET_ARN vazio (workspace errado, secret ainda
 # não injetada) geraria um .env sem nenhuma chave, e o erro só apareceria depois,
@@ -63,6 +68,7 @@ AWS_SECRET_ACCESS_KEY=$SECRET_KEY
 ATHENA_S3_OUTPUT=$ATHENA_S3_OUTPUT
 GLUE_DATABASE=$GLUE_DATABASE
 SPEC_TABLE=$SPEC_TABLE
+CLOUDWATCH_LOG_GROUP=$CLOUDWATCH_LOG_GROUP
 COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
 COGNITO_APP_CLIENT_ID=$COGNITO_APP_CLIENT_ID
 SNS_NEW_SIGNUP_TOPIC_ARN=$SNS_NEW_SIGNUP_TOPIC_ARN

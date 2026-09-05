@@ -17,10 +17,10 @@ O LLM recebe o texto do usuário e o schema completo da tabela SPEC. Usando *Fun
 ```json
 {
   "where_clause": "media_type = 'movie' AND original_language = 'ko' AND lower(genre_names) LIKE '%terror%' AND vote_average >= 7.0",
-  "limit": 15
+  "limit": 8
 }
 ```
-Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz, diretor, elenco). O limite máximo de resultados é 15.
+Essa abordagem "livre" permite que qualquer combinação de filtros seja usada sem precisar mapear cada pergunta possível no código (ex: idioma, duração, país de origem, temporadas, plataforma de streaming, em cartaz, diretor, elenco). O limite máximo de resultados é 15, mas a descrição do parâmetro `limit` na `TOOL` orienta o LLM a pedir por padrão um valor entre 6 e 9 (`_DEFAULT_RECOMMENDATION_COUNT = 8` é o valor usado quando o LLM omite `limit` de todo) — só um número maior, até o teto, quando o usuário pedir explicitamente mais opções ou uma quantidade específica. Motivo: a Etapa 3 gera um "motivo" (texto) por título recomendado, e geração de texto por LLM é sequencial (token a token) — normalmente a parte mais lenta de qualquer chamada. Recomendar menos títulos por padrão corta quase pela metade esse tempo de geração, sem tirar do usuário a opção de pedir mais.
 
 **Destaque de gênero/provedor nas badges:** `_extract_highlighted_terms()` extrai por regex os valores de `lower(genre_names) LIKE '%valor%'` e `lower(streaming_providers) LIKE '%valor%'` de volta da própria `where_clause` gerada pelo LLM — reaproveita uma decisão que o LLM já tomou no Passo 1, sem chamada extra de LLM. Cláusulas `NOT LIKE` são ignoradas (o usuário não quer aquele valor, não deve ser destacado). O resultado é anexado a cada registro formatado como `highlighted_genres`/`highlighted_providers` e usado por `components.py::_prioritize()` (ver seção "Interface") para colocar o gênero/provedor mencionado primeiro nas badges do card.
 
@@ -31,7 +31,9 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 ### Etapa 2 — Consulta ao Athena
 A cláusula WHERE gerada pelo LLM é validada (`_validate_where()` bloqueia SQL perigoso como DROP, DELETE, INSERT, subqueries) e executada na tabela `tb_tmdb_discover_unified_{env}` (camada SPEC), sem nenhum filtro fixo de qualidade por `vote_count` — a relevância vem só de `ORDER BY popularity DESC` (abaixo) e do pool+sorteio. Isso inclui de graça títulos com `air_date` futuro (ainda não lançados, badge "Em breve" no card — ver seção "Interface"), que nunca tiveram chance de acumular voto; antes existia um filtro fixo `vote_count >= 50` com um bypass explícito só pra esse caso (`vote_count >= 50 OR air_date > CURRENT_DATE`), removido por ser redundante com a ordenação por popularidade — o LLM ainda pode usar `vote_count` na própria `where_clause` quando o pedido do usuário pedir explicitamente por títulos bem votados/consagrados.
 
-**Pool de candidatos + sorteio (variedade entre buscas):** a query busca um pool maior que o `limit` pedido — `min(limit * _CANDIDATE_POOL_MULTIPLIER, _CANDIDATE_POOL_MAX)` títulos, ordenados por popularidade (padrão: multiplicador 3x, teto de 30) — e `search_titles_spec()` sorteia um subconjunto de `limit` títulos desse pool, preservando a ordem de popularidade entre os escolhidos. Sem isso, a mesma pergunta (ou uma parecida, já que o LLM tende a gerar a mesma `where_clause`) sempre devolveria exatamente o mesmo top-N por popularidade — a ordenação fixa da query, não só o cache, é que causava a repetição. Como a Etapa 2 roda em toda busca (mesmo em cache hit do Passo 1 — só a cláusula WHERE é cacheada, não os títulos), a variedade acontece sempre, sem custo adicional de LLM. **Valores conservadores de propósito:** a instância Lightsail de produção tem só 1 GB de RAM (bundle `micro_3_0`) — cada linha a mais do pool aumenta proporcionalmente o payload de boto3 carregado na memória por busca, então o teto fica bem abaixo do que daria pra buscar sem problema numa instância maior.
+**Pool de candidatos + sorteio (variedade entre buscas):** a query busca um pool maior que o `limit` pedido — `min(limit * _CANDIDATE_POOL_MULTIPLIER, _CANDIDATE_POOL_MAX)` títulos, ordenados por popularidade (padrão: multiplicador 3x, teto de 30) — e `search_titles_spec()` sorteia um subconjunto de `limit` títulos desse pool, preservando a ordem de popularidade entre os escolhidos. Sem isso, a mesma pergunta (ou uma parecida, já que o LLM tende a gerar a mesma `where_clause`) sempre devolveria exatamente o mesmo top-N por popularidade — a ordenação fixa da query, não só o cache, é que causava a repetição. Como a Etapa 2 roda em toda busca (mesmo em cache hit do Passo 1 — só a cláusula WHERE é cacheada, não os títulos), a variedade acontece sempre, sem custo adicional de LLM. **Valores conservadores de propósito:** a instância Lightsail de produção tem só 1 GB de RAM (bundle `micro_3_0`) — cada linha a mais do pool aumenta proporcionalmente o payload de boto3 carregado na memória por busca, então o teto fica bem abaixo do que daria pra buscar sem problema numa instância maior. Com o `limit` padrão de 8 (Etapa 1), o pool padrão cai de 30 para 24 linhas — efeito colateral positivo da redução de quantidade de recomendações.
+
+**Polling da execução no Athena:** `search_titles_spec()` aguarda a query terminar com `time.sleep(0.3)` entre verificações de status (antes: 1s fixo). Queries do FilmBot levam ~2-5s no Athena; um poll mais frequente reduz a espera "morta" entre a query terminar de verdade e o próximo poll perceber isso (até ~700ms de cauda por request com o intervalo antigo de 1s). Backoff progressivo continua não sendo necessário — o custo de cada poll é mínimo (API leve) mesmo com mais chamadas.
 
 ### Etapa 2.5 — Formatação determinística (formatting.py)
 Após o Athena retornar os resultados brutos, funções puras em `formatting.py` (`format_record()`) convertem cada registro em campos prontos para o card da interface, sem usar LLM:
@@ -59,6 +61,11 @@ Após o Athena retornar os resultados brutos, funções puras em `formatting.py`
 - `upcoming_date` (string formatada conforme acima, `null`/`None` caso contrário) — só preenchido quando
   `air_date` é estritamente futuro (título ainda não lançado, `formatting.py::_is_upcoming()`) — usado pro badge
   "Em breve" (ver seção "Interface")
+- `title_status` (cópia direta de `title_status` — o `status` bruto do TMDB já traduzido pra PT-BR na SPEC via
+  `CASE`, ver `glue_agg/src/queries.py`: `"Lançado"`, `"Encerrada"`, `"Cancelado"`, `"Em Produção"`,
+  `"Planejado"`, `"Pós-Produção"`, `"Rumor"`, `"Piloto"`) — `null`/`None` quando o título ainda não foi
+  enriquecido pelo `glue_details` (sem match no LEFT JOIN com `details`). Usado como fallback da `cinema-row`
+  quando nenhum dos outros três estados se aplica (ver seção "Interface")
 - `cast` (top 5 atores), `director` (filmes e séries), `creators` (apenas séries), `writers` (escritores/roteiristas), `composer` (compositor da trilha sonora), `producer` (produtores/produtores executivos), `cinematographer` (diretor de fotografia) e `editor` (editor/montador) são renderizados no card, na seção "Ficha Técnica" (ver seção "Interface") — um bullet por papel presente
 - `tagline` — campo formatado mas atualmente não renderizado por `render_card()` (`components.py`), junto com `collection` e `networks`
 - `keywords` (tags temáticas em português), `certification` (classificação indicativa BR: L/10/12/14/16/18)
@@ -71,7 +78,18 @@ Após o Athena retornar os resultados brutos, funções puras em `formatting.py`
 ### Etapa 3 — Geração do motivo (LLM)
 O LLM recebe apenas os campos que ajudam a justificar a recomendação de cada título já encontrado pelo Athena — `id`, `title`, `overview`, `genre_names`, `year`, `vote_average`, `director`, `actor_names`, `streaming_providers`, `certification`, `keywords_pt` — e gera um `reason` curto (1 frase) explicando por que aquele título específico atende ao pedido do usuário, podendo citar diretor/elenco/streaming/classificação/palavras-chave quando fizerem parte do motivo real. Retorna JSON com apenas `id` e `reason` por título (`{"titles": [...]}`), mesclado por índice ao registro já formatado pelo Python. O merge é tolerante a variações de resposta do LLM: aceita `id` como int ou string (converte via `int()`), aceita tanto `{"titles": [...]}` quanto lista direta `[...]`, e degrada para `reason=""` em caso de resposta vazia ou JSON inválido — uma falha aqui nunca derruba a recomendação.
 
+`overview` é truncado a `_MAX_OVERVIEW_CHARS_FOR_LLM` (400 caracteres) antes de entrar no payload — é o campo que mais pesa no tamanho da entrada, e um trecho já dá contexto suficiente pro motivo sem repassar sinopses inteiras.
+
 Esta etapa roda em toda busca com resultados, mesmo quando a Etapa 1 tem cache hit: os títulos reais só existem depois da consulta ao Athena, então o motivo não pode ser cacheado junto com a cláusula WHERE.
+
+### Confiabilidade e latência das chamadas LLM (`timeout`, `max_tokens`, `num_retries`)
+
+As duas chamadas `litellm.completion()` (Etapas 1 e 3) usam:
+- `num_retries=3` — configurado deliberadamente após um problema real de indisponibilidade/erro transitório com o provedor DeepSeek. Não é pra remover: tirar isso pra ganhar latência trocaria "às vezes demora mais" por "às vezes quebra de novo".
+- `timeout` explícito por tentativa — `_LLM_TIMEOUT_STEP1_SECONDS = 10` e `_LLM_TIMEOUT_STEP3_SECONDS = 15`. Sem isso, o padrão do litellm é 600s (10 minutos) por tentativa: uma chamada travada (não um erro, só sem resposta) ficaria esperando isso antes de sequer entrar no retry. É uma rede de segurança contra travamento, não um redutor de latência do caso normal — os valores são generosos de propósito, pra não abortar uma resposta normal só um pouco lenta (o que dispararia um retry desnecessário e pioraria a latência). São valores provisórios, a recalibrar com a distribuição real de latência por passo (ver `_log_step_latency` abaixo).
+- `max_tokens` explícito — `_LLM_MAX_TOKENS_STEP1 = 300` (saída pequena, só `where_clause`+`limit` via tool call) e `_LLM_MAX_TOKENS_STEP3 = 1500` (motivos de até 15 títulos). Generoso o bastante pra nunca truncar uma resposta normal — só dá um teto à latência de cauda de uma resposta anormalmente verbosa.
+
+**Instrumentação de latência por passo:** `_log_step_latency(step, elapsed_seconds)` registra via `logger.info` (mesmo padrão de `_log_token_usage()`) o tempo decorrido de cada etapa — `step1_where`, `step2_athena`, `step3_reasons` — chamada em `recommend()` ao redor de cada uma. Complementa o log de tokens já existente (que mede volume, não tempo) e permite validar com dado real de produção o efeito de mudanças de latência (redução de quantidade de recomendações, polling do Athena, etc.) em vez de depender de suposição.
 
 ### Entrada alternativa — Transcrição de áudio (Whisper via litellm)
 Além de digitar, o usuário pode gravar a preferência em áudio pelo widget nativo `st.audio_input`. Ao parar a gravação, o app confirma automaticamente e transcreve por `transcribe_preference()` (`agent.py`) usando Whisper via `litellm` — modelo configurável por `TRANSCRIPTION_MODEL` (padrão: Groq Whisper Large v3 Turbo, rápido e barato), com `language="pt"` fixo. O texto resultante pré-popula o `st.text_area` de preferência, permanecendo totalmente editável antes de clicar em "Recomendar". Visualmente, o bloco de gravação aparece numa única linha logo abaixo do campo de texto: só os botões do gravador nativo (sem waveform, sem fundo/borda ao redor, direto sobre o fundo escuro do app) encolhidos ao próprio conteúdo, com o badge de timer colado logo ao lado, sem label/emoji. Divide espaço com o contador de caracteres (que fica à direita dessa mesma linha) — ordem inversa à do processamento em Python: o áudio ainda roda antes do `text_area` no script (restrição de `session_state`), mas aparece depois na tela, via containers-placeholder criados na ordem visual desejada (`text-area-slot` / `input-footer-row` em `recommendation.py`) e populados fora dessa ordem. Os dois placeholders vivem dentro de um card único (`st.container(key="input-card")`, fundo `#1a1a1a` + borda, `recommendation.css`) que substitui o fundo que antes era só da textarea — unifica textarea + gravador + contador num painel só, com glow laranja no `:focus-within` do card (não mais `:focus` da textarea) quando o usuário digita. A textarea em si (e o wrapper nativo `stTextAreaRootElement`, que carregava um fundo/borda claros próprios — zerados via CSS) ficam transparentes por dentro do card. Os avisos de transcrição (rate limit, áudio muito longo, erro, vazio, truncado — ver lista abaixo) ficam **fora** desse card, num placeholder próprio (`audio_messages_slot = st.container(key="audio-messages")`) criado logo depois do `input-card` — são feedback sobre uma ação já concluída/rejeitada, não parte do "formulário" em si. Só a mensagem transitória "🎤 Transcrevendo áudio..." continua dentro do card, junto do gravador, por ser um estado em andamento e não um aviso.
@@ -762,18 +780,23 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
     duração e "em cartaz" ficam agrupados por serem os 3 fatos rápidos/compactos sobre o título (quando, quanto
     dura, ainda tá em cartaz), antes dos campos com mais badges (gênero, provedor a seguir), que ficam mais perto
     do rodapé de ações. **Mesma linha/classe (`cinema-row`/`cinema-badge`)** cobre três estados mutuamente
-    exclusivos do título, todos com o mesmo ícone outline "calendar" (antes eram 3 emoji diferentes por estado —
-    🎬/📅/🔜 —, unificados num só ícone Lucide, ver nota geral sobre ícones acima): "Em cartaz até {data}"
-    (`in_theaters`), "T{temporada} E{episódio} estreia em {data}" quando a série tem
+    exclusivos do título, mais um 4º estado de fallback, todos com o mesmo ícone outline "calendar" (antes eram 3
+    emoji diferentes por estado — 🎬/📅/🔜 —, unificados num só ícone Lucide, ver nota geral sobre ícones acima):
+    "Em cartaz até {data}" (`in_theaters`), "T{temporada} E{episódio} estreia em {data}" quando a série tem
     `next_episode_season_number`/`next_episode_number`/`next_episode_date`
-    preenchidos, ou "Em breve · {data}" quando `upcoming_date` está preenchido (título ainda não lançado —
-    `air_date` no futuro, ver `formatting.py::_is_upcoming()`). Nos três, `{data}` já vem formatada por
-    `_format_adaptive_date()` (bullet "Formatação adaptativa de data" acima) — `DD/MM` perto de hoje, "Mês de
-    Ano" quando distante. Os três nunca coexistem no mesmo
-    registro (um título não lançado não pode estar em cartaz nem ter próximo episódio de série já no ar), então
-    o slot é reaproveitado sem checar `media_type` explicitamente. Prioridade quando mais de um bater ao mesmo
-    tempo por inconsistência de dados: em cartaz > próximo episódio > em breve. Sem nenhum dos três, a div nem é
-    gerada (meio solto)
+    preenchidos, "Em breve · {data}" quando `upcoming_date` está preenchido (título ainda não lançado —
+    `air_date` no futuro, ver `formatting.py::_is_upcoming()`), ou — quando nenhum dos três se aplica —
+    `title_status` puro (sem prefixo/data), ex: "Lançado", "Encerrada", "Cancelado". Esse 4º estado é um
+    catch-all: preenche o espaço em vez de deixar a linha ambígua entre "sem dado" e "sem informação relevante"
+    (mesmo princípio do fallback "Não disponível no streaming" mais abaixo), cobrindo tanto o caso comum (filme
+    já lançado, fora de cartaz → "Lançado") quanto os informativos (série "Encerrada"/"Cancelado" — não haverá
+    mais episódios — ou filme "Planejado"/"Em Produção"/"Pós-Produção"/"Rumor"). Nos três primeiros, `{data}` já
+    vem formatada por `_format_adaptive_date()` (bullet "Formatação adaptativa de data" acima) — `DD/MM` perto de
+    hoje, "Mês de Ano" quando distante. Os três primeiros nunca coexistem no mesmo registro (um título não
+    lançado não pode estar em cartaz nem ter próximo episódio de série já no ar), então o slot é reaproveitado
+    sem checar `media_type` explicitamente. Prioridade quando mais de um bater ao mesmo tempo: em cartaz >
+    próximo episódio > em breve > status. Sem nenhum dos quatro (incluindo `title_status` ausente/nulo — título
+    ainda não enriquecido pelo `glue_details`), a div nem é gerada (meio solto)
   - Badges de gênero, quando há pelo menos um (sem nenhum gênero a div nem é gerada — meio solto, mesmo padrão
     de duration-row/cinema-row/providers-row/row-people/row-synopsis) — máx. 6 visíveis, sem indicador para o
     restante (trunca silenciosamente; cada card quebra linha de forma independente, sem sincronia com os
@@ -796,11 +819,21 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
     `min-height`/`max-height`/toggle — faz parte
     do meio solto do card (ver item do grid, acima), sem sincronia de altura com os vizinhos da fileira, então o
     texto completo sempre aparece direto (motivo raramente varia muito de tamanho: o prompt do LLM,
-    `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~150 caracteres). Sem `reason` (título fora do fluxo de
-    recomendação da IA), a div nem é gerada — caso comum, não só borda
-  - "Onde assistir" sempre sozinho numa linha própria (com ou sem imagem), quando há pelo menos um provedor —
-    sem nenhum provedor a div nem é gerada (meio solto, mesmo padrão de duration-row/cinema-row/row-people/
-    row-synopsis). Rótulo em linha própria acima dos badges (`.providers-label-row`), com o ícone outline "tv"
+    `_REASON_SYSTEM_PROMPT` em `agent.py`, pede ~150 caracteres). `reason` ausente/`None` (título fora do
+    fluxo de recomendação da IA) não gera a div — caso comum, não só borda. `reason == ""` explícito é
+    diferente: o Passo 3 rodou mas não conseguiu gerar motivo pra este título específico (resposta
+    vazia/JSON inválido do LLM, ou `id` órfão no merge por índice — ver `agent.py::recommend()`) — nesse
+    caso a div aparece com um texto de fallback fixo (`components.py::_REASON_FALLBACK_TEXT`, "Não
+    conseguimos gerar um motivo específico para este título."), em vez de ser omitida. Sem isso, títulos
+    com e sem motivo na mesma busca pareciam inconsistência de produto em vez de degradação esperada do
+    LLM — comportamento confirmado em teste real do app pelo usuário, com alguns títulos exibindo insight
+    e outros não na mesma resposta
+  - "Onde assistir" sempre sozinho numa linha própria (com ou sem imagem) — diferente das outras seções
+    "meio soltas" do card, esta é sempre emitida: sem nenhum provedor de streaming/aluguel, o badge cai para
+    "Não disponível no streaming" (`.provider-badge.unavailable`, texto mudo `var(--text-tertiary)`, mesmo
+    formato de pílula dos demais badges de provedor) em vez de omitir a seção — evita a ambiguidade "sem
+    oferta na região" vs. "dado não carregado". Rótulo em linha própria acima dos badges
+    (`.providers-label-row`), com o ícone outline "tv"
     ao lado do texto (removido numa rodada anterior por ser emoji, reintroduzido nesta como ícone Lucide — ver
     nota geral sobre ícones acima) — mesmo princípio visual do rótulo "💡 Insight do FilmBot" acima. Streaming e
     aluguel/compra
@@ -975,7 +1008,7 @@ Em desenvolvimento local, use `LLM_API_KEY` diretamente no `.env` (fallback quan
 | `ATHENA_S3_OUTPUT` | Bucket temporário para resultados de queries Athena |
 | `GLUE_DATABASE` | Nome do banco no Glue Catalog com a tabela SPEC |
 | `SPEC_TABLE` | Nome da tabela unificada (ex: `tb_tmdb_discover_unified_prod`) |
-| `CLOUDWATCH_LOG_GROUP` | Log group do CloudWatch para envio de logs (ex: `/lightsail/tmdb-filmbot-prod`). Injetado automaticamente pelo CI/CD via Terraform output. Se ausente, logs vão apenas para stdout/journald |
+| `CLOUDWATCH_LOG_GROUP` | Log group do CloudWatch para envio de logs (ex: `/lightsail/tmdb-filmbot-prod`). Em produção é injetado automaticamente pelo CI/CD via Terraform output; localmente é gerado por `infra/config/export_env_local.sh` (lê o mesmo output para o workspace ativo, dev ou prod). Se ausente, logs vão apenas para stdout/journald |
 | `COGNITO_USER_POOL_ID` | ID do Cognito User Pool (`infra/lightsail_ia.tf:aws_cognito_user_pool.filmbot`) — usado por toda chamada `Admin*`/`ListUsers` em `infrastructure.py` |
 | `COGNITO_APP_CLIENT_ID` | ID do App Client sem secret (`aws_cognito_user_pool_client.filmbot`) — usado por `SignUp`/`ForgotPassword`/`ConfirmForgotPassword`/`AdminInitiateAuth` |
 | `SNS_NEW_SIGNUP_TOPIC_ARN` | ARN do tópico SNS de cadastro novo (`infra/sns_topics.tf:aws_sns_topic.filmbot_new_signup_notifications`) — usado por `notify_new_signup()` |

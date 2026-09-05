@@ -45,6 +45,12 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 
 ## Casos de teste — `test_agent.py`
 
+### `TestTool` — Descrição da tool `search_titles_spec` exposta ao LLM
+
+| Teste | O que verifica |
+|---|---|
+| `test_descricao_do_limit_orienta_quantidade_padrao_entre_6_e_9` | Descrição do parâmetro `limit` menciona "6", "9" (quantidade padrão orientada ao LLM) e "15" (teto) |
+
 ### `TestValidateWhere` — Validação de segurança da cláusula WHERE
 
 | Teste | O que verifica |
@@ -83,6 +89,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 |---|---|
 | `test_retorna_lista_vazia_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
 | `test_retorna_registros_como_lista_de_dicts` | Converte corretamente rows do Athena em lista de dicts |
+| `test_select_inclui_title_status` | SELECT inclui `title_status` — usado como fallback da `cinema-row` no card quando não está em cartaz, não tem próximo episódio nem é lançamento futuro |
 | `test_filtro_where_incluido_na_query` | WHERE inclui a cláusula gerada pelo LLM na query |
 | `test_vote_count_fixo_sempre_presente` | Filtro fixo `vote_count >= 50` está sempre presente na query |
 | `test_titulo_futuro_ignora_vote_count` | WHERE inclui `(vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR))` — título com `air_date` futuro passa sem exigir voto |
@@ -93,6 +100,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_filtro_plataforma_na_query` | WHERE inclui `lower(streaming_providers) LIKE '%netflix%'` para filtro de streaming |
 | `test_filtro_faixa_de_ano_na_query` | WHERE inclui `year BETWEEN '2000' AND '2010'` para faixa de ano |
 | `test_pool_maior_que_limite_solicitado_na_query` | LIMIT na query reflete o pool (`limit * _CANDIDATE_POOL_MULTIPLIER`), não o `limit` pedido |
+| `test_limite_padrao_fica_entre_6_e_9` | Sem passar `limit`, o pool gerado reflete `_DEFAULT_RECOMMENDATION_COUNT` (valor entre 6 e 9) em vez do antigo padrão de 15 |
 | `test_limite_solicitado_e_limitado_a_15_antes_do_pool` | `limit=100` é capado a 15 antes de calcular o pool (`LIMIT 45` na query, não `LIMIT 100`/`LIMIT 15`) |
 | `test_limite_minimo_e_1` | `limit=0` é capado a 1 antes de calcular o pool (`LIMIT 4` na query) |
 | `test_pool_nao_ultrapassa_maximo_absoluto` | Pool nunca ultrapassa `_CANDIDATE_POOL_MAX` (45), mesmo quando `limit * _CANDIDATE_POOL_MULTIPLIER` seria maior |
@@ -109,6 +117,8 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_chama_llm_duas_vezes` | `litellm.completion` é chamado exatamente 2 vezes (etapa 1 + etapa 3) |
 | `test_retorna_lista_de_titulos` | Resultado final é lista de dicts com campos corretos |
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | `where_clause` e `limit` extraídos na etapa 1 são passados corretamente para `search_titles_spec()` |
+| `test_passos_1_e_3_usam_retry_configurado` | As duas chamadas `litellm.completion` (etapas 1 e 3) recebem `num_retries=_LLM_NUM_RETRIES` |
+| `test_passos_1_e_3_usam_timeout_e_max_tokens_configurados` | As duas chamadas recebem `timeout`/`max_tokens` específicos por etapa (`_LLM_TIMEOUT_STEP1_SECONDS`/`_LLM_MAX_TOKENS_STEP1` na etapa 1, `_LLM_TIMEOUT_STEP3_SECONDS`/`_LLM_MAX_TOKENS_STEP3` na etapa 3), sem perder o `num_retries` já configurado |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
 | `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Mai de 1980"`) |
 | `test_campos_formatados_pelo_python` | Valida que todos os campos determinísticos são formatados corretamente pelo Python (`type`, `year`, `genres`, `overview`, `rating`, `duration`, `streaming_providers`, `in_theaters`) |
@@ -120,6 +130,8 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_motivo_funciona_com_lista_direta_sem_wrapper` | Merge funciona com resposta em lista direta `[...]`, sem o wrapper `{"titles": [...]}` |
 | `test_motivo_ignora_item_com_id_nao_conversivel` | Item com `id` que não converte para `int` (ex: `"abc"`) é ignorado no merge, sem levantar exceção |
 | `test_payload_do_motivo_inclui_campos_de_ficha_tecnica` | Payload enviado à etapa 3 inclui `director`, `actor_names`, `keywords_pt` (além dos 6 campos mínimos) |
+| `test_overview_e_truncada_no_payload_do_motivo` | `overview` com mais de `_MAX_OVERVIEW_CHARS_FOR_LLM` caracteres é truncada antes de entrar no payload da etapa 3 |
+| `test_overview_ausente_nao_quebra_o_truncamento` | `overview=None` (registro sem sinopse) não levanta exceção ao truncar |
 | `test_anexa_generos_destacados_ao_resultado` | `where_clause` com filtro de gênero → `highlighted_genres` populado e `highlighted_providers == []` no registro final |
 | `test_anexa_provedores_destacados_ao_resultado` | `where_clause` com filtro de provedor → `highlighted_providers` populado e `highlighted_genres == []` no registro final |
 | `test_destaque_vazio_sem_filtro_de_genero_ou_provedor` | `where_clause` sem filtro de gênero/provedor → ambas as chaves presentes como `[]` |
@@ -142,6 +154,19 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_loga_tokens_com_usage` | `logger.info` é chamado com `prompt_tokens`, `completion_tokens` e `step` no `extra` |
 | `test_nao_loga_sem_usage` | `logger.info` não é chamado quando a resposta não possui atributo `usage` |
 | `test_logger_tem_nivel_info_explicito` | `agent.logger.level` é `logging.INFO`, garantindo que os logs de tokens não sejam suprimidos quando `infrastructure.py` eleva o root logger para `ERROR` |
+
+### `TestLogStepLatency` — Logging de latência por passo
+
+| Teste | O que verifica |
+|---|---|
+| `test_loga_step_e_tempo_decorrido` | `_log_step_latency(step, elapsed_seconds)` chama `logger.info` com `step` e `elapsed_seconds` (arredondado a 3 casas) no `extra` |
+
+### `TestRecommendLogaLatenciaPorPasso` — Integração: `recommend()` chama `_log_step_latency` para cada etapa
+
+| Teste | O que verifica |
+|---|---|
+| `test_loga_latencia_dos_3_passos_em_cache_miss` | Em cache miss da etapa 1, `_log_step_latency` é chamado 3 vezes, nesta ordem: `step1_where`, `step2_athena`, `step3_reasons` |
+| `test_loga_apenas_step2_e_step3_em_cache_hit` | Em cache hit da etapa 1 (cláusula WHERE já cacheada), `_log_step_latency` é chamado só para `step2_athena` e `step3_reasons` — a etapa 1 é pulada e não gera log de latência |
 
 ### `TestTranscribePreference` — Transcrição de áudio (Whisper via litellm)
 
@@ -278,6 +303,9 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_ignora_redes_tv` | Card não renderiza redes de TV mesmo quando fornecidas |
 | `test_card_sem_campos_opcionais_nao_gera_divs_vazias` | Campos opcionais ausentes não geram HTML vazio |
 | `test_card_cinema_em_cartaz` | Card exibe "Em cartaz até DD/MM/YYYY" quando `in_theaters=True` |
+| `test_card_status_fallback_filme_ja_lancado` | Sem `in_theaters`/próximo episódio/`upcoming_date`, a `cinema-row` cai no 4º ramo e exibe `title_status` puro (ex: "Lançado") — inclusive no caso comum de filme já lançado e fora de cartaz |
+| `test_card_status_fallback_serie_encerrada` | Série com `title_status="Encerrada"` (sem os 3 badges anteriores) exibe "Encerrada" na `cinema-row` — informa que não haverá mais episódios |
+| `test_card_em_cartaz_tem_prioridade_sobre_status` / `test_card_proximo_episodio_tem_prioridade_sobre_status` / `test_card_em_breve_tem_prioridade_sobre_status` | `title_status` nunca aparece quando um dos 3 estados anteriores (em cartaz, próximo episódio, em breve) está presente — confirma a ordem de prioridade em cartaz > próximo episódio > em breve > status |
 | `test_card_nao_exibe_produtor` | Card não renderiza produtor mesmo quando fornecido |
 | `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
 | `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
@@ -286,6 +314,8 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_card_sem_rent_buy_providers_nao_exibe_bloco` | Sem `rent_buy_providers`, o bloco "Aluguel/Compra" não é renderizado |
 | `test_card_com_rent_buy_providers_exibe_bloco` | Com `rent_buy_providers` preenchido, o bloco "Aluguel/Compra" aparece com os nomes das plataformas |
 | `test_card_exibe_motivo` | Card exibe o motivo da recomendação (`reason`) |
+| `test_card_motivo_string_vazia_gera_texto_de_fallback` | `reason=""` (Passo 3 rodou mas não gerou motivo pra este título) exibe `_REASON_FALLBACK_TEXT` em vez de omitir a seção |
+| `test_card_motivo_string_vazia_mantem_rotulo_insight_do_filmbot` | Com `reason=""`, o rótulo "💡 Insight do FilmBot" continua aparecendo junto do texto de fallback |
 | `test_card_escapa_xss` | Valores com `<script>` são escapados via `html.escape` |
 | `test_card_escapa_xss_no_motivo` | Valor de `reason` com `<script>` é escapado via `html.escape` |
 | `test_card_genero_destacado_entra_nos_visiveis_alem_do_limite` | Gênero destacado originalmente na 6ª posição (cairia no "+1") aparece nas 5 badges visíveis, e outro gênero passa a ficar no "+1" |
@@ -391,9 +421,9 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | Teste | O que verifica |
 |---|---|
 | `test_registro_completo_filme` | Registro de filme formatado com todos os campos corretos |
-| `test_novos_campos_filme` | Campos `writers`, `composer`, `keywords` (pt) formatados corretamente |
+| `test_novos_campos_filme` | Campos `writers`, `composer`, `keywords` (pt), `title_status` formatados corretamente |
 | `test_novos_campos_crew_e_extras` | Campos `producer`, `cinematographer`, `editor`, `production_countries`, `rent_buy_providers`, `recommended`, `similar`, `alternative_titles` formatados corretamente |
-| `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_providers` (entre outros) retornam `None` quando ausentes |
+| `test_novos_campos_nulos` | Campos `writers`, `composer`, `rent_buy_providers`, `title_status` (entre outros) retornam `None` quando ausentes — `title_status` ausente representa um título ainda não enriquecido pelo `glue_details` |
 | `test_registro_serie` | Registro de série com `type="Série"` e duração formatada abreviada (`temp`/`ep`) |
 
 ## Casos de teste — `test_infrastructure.py`
