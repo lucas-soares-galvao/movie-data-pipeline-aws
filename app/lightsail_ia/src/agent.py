@@ -685,7 +685,14 @@ def recommend(preference: str) -> list[dict]:
         if not tool_calls:
             return []
         tool_call = tool_calls[0]
-        args = json.loads(tool_call.function.arguments)
+        try:
+            args = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError:
+            logger.warning(
+                "JSON inválido nos argumentos da tool call do Passo 1",
+                extra={"arguments": tool_call.function.arguments},
+            )
+            return []
         _save_cached_where(preference, args)
 
     # Reaproveita os termos de gênero/provedor que o próprio LLM já filtrou na where_clause
