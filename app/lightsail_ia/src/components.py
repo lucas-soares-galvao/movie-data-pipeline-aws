@@ -21,6 +21,11 @@ _CERTIFICATION_DESCRIPTIONS = {
 _MAX_VISIBLE_GENRES = 6
 _MAX_VISIBLE_PROVIDER_BADGES = 6
 
+# Exibido quando o agente rodou o Passo 3 (geração de motivo) mas não conseguiu produzir um
+# motivo pra este título específico (`reason == ""` explícito, ver agent.py::recommend()) —
+# diferente de `reason` ausente/None, quando a seção inteira não é gerada (ver render_card()).
+_REASON_FALLBACK_TEXT = "Não conseguimos gerar um motivo específico para este título."
+
 # Ícones outline do design system "Luminous" (Lucide, stroke-only, brancos via .icon em
 # base.css) — paths oficiais do pacote lucide-static, viewBox 24x24. Embutidos como
 # <svg> inline (não <img> base64, como o antigo ícone de marca do YouTube que isso
@@ -514,7 +519,8 @@ def render_card(title: dict, idx: int = 0) -> str:
     title_type = html.escape(title.get("type", ""))
     rating = title.get("rating")
     overview_raw = title.get("overview") or ""
-    reason = html.escape(title.get("reason") or "")
+    reason_raw = title.get("reason")
+    reason = html.escape(reason_raw or "")
     genres = title.get("genres") or []
     duration = title.get("duration") or ""
     release_date = html.escape(title.get("release_date") or "")
@@ -528,6 +534,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     next_episode_number = title.get("next_episode_number")
     next_episode_date = html.escape(title.get("next_episode_date") or "")
     upcoming_date = html.escape(title.get("upcoming_date") or "")
+    title_status = html.escape(title.get("title_status") or "")
     certification = html.escape(title.get("certification") or "")
     trailer_url = title.get("trailer_url") or ""
     cast = title.get("cast") or ""
@@ -563,8 +570,17 @@ def render_card(title: dict, idx: int = 0) -> str:
     # incompatível com estar em cartaz ou ter próximo episódio de uma série já no ar) — por
     # isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
     # Os três usam o mesmo ícone de calendário (antes eram emoji diferentes por estado —
-    # 🎬/📅/🔜 —, unificados num só ícone Lucide). Sem nenhum dos três, não emite a div — o
-    # card fica com essa linha a menos (meio solto, ver cards.css).
+    # 🎬/📅/🔜 —, unificados num só ícone Lucide). Quando nenhum dos três se aplica, entra um
+    # 4º ramo de fallback com `title_status` (já traduzido pra PT-BR na SPEC, ver
+    # glue_agg/src/queries.py) — mesmo princípio do fallback "Não disponível no streaming" mais
+    # abaixo: preencher o espaço em vez de deixar a seção ambígua entre "sem dado" e "sem
+    # informação relevante". Cobre tanto o caso comum (filme já lançado, fora de cartaz →
+    # "Lançado") quanto os incomuns (série "Encerrada"/"Cancelado" — não haverá mais episódios
+    # — ou filme "Planejado"/"Em Produção"/"Pós-Produção"/"Rumor"). Prioridade quando mais de um
+    # bate ao mesmo tempo: em cartaz > próximo episódio > em breve > status. Só quando
+    # `title_status` também está vazio (título ainda não enriquecido pelo `glue_details`, ver
+    # LEFT JOIN em queries.py) é que a div nem é emitida — o card fica com essa linha a menos
+    # (meio solto, ver cards.css).
     cinema_icon_html = f'<span class="meta-icon">{icon("calendar")}</span>'
     cinema_content = ""
     if in_theaters:
@@ -581,6 +597,10 @@ def render_card(title: dict, idx: int = 0) -> str:
         label = f"Em breve · {upcoming_date}"
         cinema_content = (
             f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
+        )
+    elif title_status:
+        cinema_content = (
+            f'{cinema_icon_html}<span class="cinema-badge">{title_status}</span>'
         )
     cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""
 
@@ -610,15 +630,21 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     # Motivo é limitado a 150 caracteres na origem (prompt do agente) — cabe sem clamp nem
     # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
-    # sincronia de altura com os vizinhos da fileira, ver cards.css). Sem motivo, a div
-    # nem é gerada (meio solto) — caso comum, não só borda: `reason` costuma vir vazio fora
-    # do fluxo de recomendação da IA. Rótulo "💡 Insight do FilmBot" acima do texto, mesmo
-    # princípio do rótulo "Onde assistir" acima dos badges de provedor — a seção agora vem
-    # depois dos gêneros (ver return, mais abaixo), não mais logo após o título.
+    # sincronia de altura com os vizinhos da fileira, ver cards.css). `reason` ausente/None
+    # (título fora do fluxo de recomendação da IA) não gera a div — meio solto, caso comum,
+    # não só borda. `reason == ""` explícito é diferente: o agente rodou o Passo 3 mas não
+    # conseguiu gerar motivo pra este título específico (resposta vazia/JSON inválido do LLM,
+    # ou id órfão no merge — ver agent.py::recommend()), e nesse caso mostra um texto de
+    # fallback (`_REASON_FALLBACK_TEXT`) em vez de omitir a seção — sem isso, títulos com e
+    # sem motivo na mesma busca pareciam inconsistência de produto, não degradação esperada.
+    # Rótulo "💡 Insight do FilmBot" acima do texto, mesmo princípio do rótulo "Onde assistir"
+    # acima dos badges de provedor — a seção agora vem depois dos gêneros (ver return, mais
+    # abaixo), não mais logo após o título.
+    reason_text = reason or (_REASON_FALLBACK_TEXT if reason_raw == "" else "")
     reason_block_html = (
         f'<div class="row-reason"><span class="reason-label">{icon("lightbulb")} Insight do FilmBot</span>'
-        f'<p class="reason">{reason}</p></div>'
-        if reason
+        f'<p class="reason">{reason_text}</p></div>'
+        if reason_text
         else ""
     )
 
@@ -696,22 +722,23 @@ def render_card(title: dict, idx: int = 0) -> str:
     provider_badges_html = _render_provider_badges(
         deduped_providers, title.get("highlighted_providers") or []
     )
+    if not provider_badges_html:
+        provider_badges_html = '<span class="provider-badge unavailable">Não disponível no streaming</span>'
 
-    # Trailer não entra mais aqui (ver comentário acima de meta_right) — esta linha é só
-    # provedores agora, com ou sem pôster. Rótulo "Onde assistir" fica em linha própria,
-    # acima dos badges (não espremido ao lado deles) — mesmo princípio do rótulo "✨
-    # Insight do FilmBot" acima de `.reason`. Faz parte do meio solto do card (ver
-    # cards.css) — só emite a div quando há algum provedor pra mostrar.
-    providers_block_html = ""
-    if provider_badges_html:
-        providers_block_html = (
-            f'<div class="providers-row">'
-            f'<div class="providers-label-row">'
-            f'<span class="meta-icon">{icon("tv")}</span>'
-            f'<span class="providers-label">Onde assistir</span></div>'
-            f'<div class="provider-badges">{provider_badges_html}</div>'
-            f'</div>'
-        )
+    # Rótulo "Onde assistir" fica em linha própria, acima dos badges (não espremido ao
+    # lado deles) — mesmo princípio do rótulo "✨ Insight do FilmBot" acima de `.reason`.
+    # Diferente das outras seções "meio soltas" do card, esta linha é sempre emitida: sem
+    # nenhum provedor real, cai no badge de indisponibilidade acima
+    # (`.provider-badge.unavailable`) em vez de omitir a seção inteira — evita a
+    # ambiguidade "sem oferta na região" vs. "dado não carregado".
+    providers_block_html = (
+        f'<div class="providers-row">'
+        f'<div class="providers-label-row">'
+        f'<span class="meta-icon">{icon("tv")}</span>'
+        f'<span class="providers-label">Onde assistir</span></div>'
+        f'<div class="provider-badges">{provider_badges_html}</div>'
+        f'</div>'
+    )
 
     # Sinopse não divide mais linha com o Trailer (que subiu pra linha de duração — ver
     # meta_right/duration_html acima) — vira uma linha só com o label do accordion.

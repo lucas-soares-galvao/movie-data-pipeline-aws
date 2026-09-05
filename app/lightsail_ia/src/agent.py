@@ -46,7 +46,7 @@ TECNOLOGIAS UTILIZADAS:
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
   FILMBOT_SECRET_ARN → ARN do segredo unificado no Secrets Manager (produção)
   LLM_API_KEY        → fallback para dev local (usado quando FILMBOT_SECRET_ARN não está definida)
-  LLM_MODEL          → modelo LLM a usar (padrão: "deepseek/deepseek-v4-flash"). Exemplos:
+  LLM_MODEL          → modelo LLM a usar (padrão: "deepseek/deepseek-v4-pro"). Exemplos:
                         "deepseek/deepseek-v4-flash" + chave DeepSeek
                         "gpt-4o"                     + chave OpenAI
                         "claude-opus-4-8"            + ANTHROPIC_API_KEY
@@ -85,8 +85,31 @@ from src.formatting import format_record
 # com as variáveis do Terraform output. Em desenvolvimento, o .env é criado manualmente.
 load_dotenv()
 
-_LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-flash")
+_LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-pro")
 _LLM_NUM_RETRIES = 3
+# Timeout por tentativa (não pelo total incluindo retries). Sem isso, o padrão do
+# litellm é 600s por tentativa — uma chamada travada (não um erro, só sem resposta)
+# ficaria esperando isso antes de sequer entrar no retry. Valores iniciais generosos
+# o bastante pra não abortar uma resposta normal só um pouco lenta (o que dispararia
+# um retry desnecessário e pioraria a latência): 10s no Passo 1 (saída pequena, só
+# where_clause + limit) e 15s no Passo 3 (saída maior, motivos de vários títulos).
+# Recalibrar depois de medir a latência real por passo em produção (_log_step_latency).
+_LLM_TIMEOUT_STEP1_SECONDS = 10
+_LLM_TIMEOUT_STEP3_SECONDS = 15
+# max_tokens generoso o bastante pra nunca truncar uma resposta normal — só existe
+# pra dar um teto à latência de cauda de uma resposta anormalmente verbosa.
+_LLM_MAX_TOKENS_STEP1 = 300
+_LLM_MAX_TOKENS_STEP3 = 1500
+# Quantidade padrão de recomendações: entre 6 e 9 (ver descrição de "limit" na TOOL),
+# ao invés do máximo de 15 sempre. Motivo: o Passo 3 gera um motivo por título (saída
+# de LLM, sequencial e o gargalo mais provável de latência), então recomendar menos
+# títulos por padrão corta quase pela metade o texto gerado. O usuário ainda pode
+# pedir explicitamente uma quantidade maior, até o teto de 15.
+_DEFAULT_RECOMMENDATION_COUNT = 8
+# Tamanho máximo do overview enviado ao Passo 3: overview é o campo que mais pesa no
+# payload (sinopses longas não ajudam a justificar melhor a recomendação do que um
+# trecho já dá).
+_MAX_OVERVIEW_CHARS_FOR_LLM = 400
 # Pool de candidatos maior que o limit pedido: search_titles_spec() sorteia um
 # subconjunto desse pool a cada busca, para não repetir sempre o mesmo top-N
 # por popularidade quando a mesma pergunta (ou uma parecida) é feita de novo.
@@ -198,6 +221,17 @@ def _log_token_usage(step: str, response: object) -> None:
         },
     )
 
+
+def _log_step_latency(step: str, elapsed_seconds: float) -> None:
+    """Registra no log o tempo decorrido (em segundos) de uma etapa do pipeline de
+    recomendação (LLM passo 1, Athena passo 2, LLM passo 3). Permite medir em produção
+    onde o tempo de uma recomendação está realmente sendo gasto, e validar o efeito de
+    mudanças de latência com dado real em vez de suposição."""
+    logger.info(
+        "Step latency",
+        extra={"step": step, "elapsed_seconds": round(elapsed_seconds, 3)},
+    )
+
 # ==============================================================================
 # DEFINIÇÃO DA TOOL (Function Calling)
 # ==============================================================================
@@ -233,7 +267,12 @@ TOOL = {
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Quantidade máxima de resultados (padrão 15, máximo 15)",
+                    "description": (
+                        "Quantidade de resultados desejada. Use um valor entre 6 e 9 "
+                        "por padrão — só use um número maior (até o máximo de 15) se "
+                        "o usuário pedir explicitamente mais opções ou uma quantidade "
+                        "específica."
+                    ),
                 },
             },
             "required": ["where_clause"],
@@ -392,7 +431,7 @@ def _extract_highlighted_terms(where_clause: str) -> dict[str, list[str]]:
 # PASSO 2: Consulta real no Athena
 # ==============================================================================
 
-def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
+def search_titles_spec(where_clause: str, limit: int = _DEFAULT_RECOMMENDATION_COUNT) -> list[dict]:
     """
     Consulta a tabela SPEC no Athena e retorna os títulos que correspondem aos filtros.
 
@@ -411,7 +450,8 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
 
     Args:
         where_clause: Cláusula WHERE gerada pelo LLM (sem a palavra WHERE).
-        limit:        Máximo de títulos retornados. Padrão 15.
+        limit:        Máximo de títulos retornados. Padrão 8 (a TOOL orienta o LLM a
+                      pedir entre 6 e 9 por padrão; teto de 15 pedidos explícitos).
 
     Returns:
         Lista de dicionários, cada um representando um título com todos os campos da SPEC.
@@ -426,7 +466,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,
                next_episode_air_date, next_episode_number, next_episode_season_number,
-               tagline, actor_names, director, screenplay, music_composer,
+               tagline, title_status, actor_names, director, screenplay, music_composer,
                producer, cinematographer, editor,
                keywords_pt, certification, trailer_url, collection_name,
                production_companies, production_countries, networks, created_by,
@@ -450,9 +490,12 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
     )
     execution_id = exec_response["QueryExecutionId"]
 
-    # Aguarda a conclusão com polling de 1s fixo.
-    # 1s é suficiente: queries do FilmBot levam ~2-5s no Athena (filtra poucos dados via WHERE).
-    # Backoff progressivo não é necessário porque o custo de cada poll é mínimo (API leve).
+    # Aguarda a conclusão com polling de 0.3s fixo.
+    # Queries do FilmBot levam ~2-5s no Athena (filtra poucos dados via WHERE); um
+    # poll mais frequente reduz a espera "morta" entre a query terminar e o próximo
+    # poll perceber isso (até ~700ms de cauda por request com o antigo intervalo de
+    # 1s). Backoff progressivo continua não sendo necessário: o custo de cada poll é
+    # mínimo (API leve) mesmo com mais chamadas.
     while True:
         status = athena.get_query_execution(QueryExecutionId=execution_id)
         state = status["QueryExecution"]["Status"]["State"]
@@ -461,7 +504,7 @@ def search_titles_spec(where_clause: str, limit: int = 15) -> list[dict]:
         if state in ("FAILED", "CANCELLED"):
             reason = status["QueryExecution"]["Status"].get("StateChangeReason", "")
             raise RuntimeError(f"Athena query {state}: {reason}")
-        time.sleep(1)
+        time.sleep(0.3)
 
     # Lê os resultados paginados e monta lista de dicionários
     paginator = athena.get_paginator("get_query_results")
@@ -568,6 +611,8 @@ def _call_llm_step1(preference: str) -> object:
         messages=messages,
         tools=[TOOL],
         num_retries=_LLM_NUM_RETRIES,
+        timeout=_LLM_TIMEOUT_STEP1_SECONDS,
+        max_tokens=_LLM_MAX_TOKENS_STEP1,
     )
     _log_token_usage("step1_where", response)
     return response
@@ -587,6 +632,8 @@ def _call_llm_step3(preference: str, titles_for_llm: list[dict]) -> object:
             },
         ],
         num_retries=_LLM_NUM_RETRIES,
+        timeout=_LLM_TIMEOUT_STEP3_SECONDS,
+        max_tokens=_LLM_MAX_TOKENS_STEP3,
     )
     _log_token_usage("step3_reasons", response)
     return response
@@ -624,7 +671,9 @@ def recommend(preference: str) -> list[dict]:
     if cached_args is not None:
         args = cached_args
     else:
+        step1_start = time.time()
         response = _call_llm_step1(preference)
+        _log_step_latency("step1_where", time.time() - step1_start)
 
         # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
         # function.arguments: string JSON com os argumentos que o LLM escolheu
@@ -643,7 +692,9 @@ def recommend(preference: str) -> list[dict]:
     # ------------------------------------------------------------------
     # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
     # ------------------------------------------------------------------
+    step2_start = time.time()
     titles_from_spec = search_titles_spec(**args)
+    _log_step_latency("step2_athena", time.time() - step2_start)
 
     if not titles_from_spec:
         return []  # nenhum título encontrado com esses filtros
@@ -658,16 +709,17 @@ def recommend(preference: str) -> list[dict]:
     # PASSO 3: LLM gera apenas o "motivo" de cada recomendação
     # ------------------------------------------------------------------
     # Envia ao LLM só os campos que ajudam a justificar a recomendação — não o
-    # registro inteiro (~35 campos). overview domina o tamanho do payload; os
-    # demais são strings curtas que cobrem os critérios de filtro mais comuns
-    # (diretor, elenco, streaming, classificação, palavras-chave) sem inflar
-    # tokens de entrada com campos que não ajudam a explicar a recomendação
-    # (produtoras, orçamento, títulos similares etc.).
+    # registro inteiro (~35 campos). overview domina o tamanho do payload (por isso
+    # é truncado a _MAX_OVERVIEW_CHARS_FOR_LLM — um trecho já dá contexto suficiente
+    # pro motivo, sem repassar sinopses inteiras); os demais são strings curtas que
+    # cobrem os critérios de filtro mais comuns (diretor, elenco, streaming,
+    # classificação, palavras-chave) sem inflar tokens de entrada com campos que não
+    # ajudam a explicar a recomendação (produtoras, orçamento, títulos similares etc.).
     titles_for_llm = [
         {
             "id": i,
             "title": r.get("title", ""),
-            "overview": r.get("overview", ""),
+            "overview": (r.get("overview") or "")[:_MAX_OVERVIEW_CHARS_FOR_LLM],
             "genre_names": r.get("genre_names", ""),
             "year": r.get("year", ""),
             "vote_average": r.get("vote_average", ""),
@@ -680,7 +732,9 @@ def recommend(preference: str) -> list[dict]:
         for i, r in enumerate(titles_from_spec)
     ]
 
+    step3_start = time.time()
     response = _call_llm_step3(preference, titles_for_llm)
+    _log_step_latency("step3_reasons", time.time() - step3_start)
     content = (response.choices[0].message.content or "").strip()
 
     # Remove blocos de código Markdown (```json ... ```) que o LLM às vezes

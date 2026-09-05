@@ -391,6 +391,13 @@
   color: var(--accent-soft-text);
 }
 
+/* Nenhum provedor de streaming/aluguel disponível pro título (dado ausente na origem ou
+   realmente sem oferta na região) — mesmo formato de pílula de .provider-badge, só com
+   texto mudo em vez de nome+logo, pra não parecer mais uma oferta real de provedor. */
+.provider-badge.unavailable {
+  color: var(--text-tertiary);
+}
+
 .cinema-badge {
   background: var(--feedback-warning-bg);
   color: var(--feedback-warning-text);
