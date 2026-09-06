@@ -884,35 +884,6 @@ resource "aws_sns_topic_policy" "glue_details_failure_topic_policy" {
   policy = data.aws_iam_policy_document.glue_details_failure_topic_policy.json
 }
 
-data "aws_iam_policy_document" "filmbot_error_topic_policy" {
-  count = local.lightsail_agent_enabled ? 1 : 0
-
-  statement {
-    sid    = "AllowEventBridgePublish"
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["events.amazonaws.com"]
-    }
-
-    actions   = ["SNS:Publish"]
-    resources = [aws_sns_topic.filmbot_error_notifications.arn]
-
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [aws_cloudwatch_event_rule.filmbot_alarm_failed_state_change[0].arn]
-    }
-  }
-}
-
-resource "aws_sns_topic_policy" "filmbot_error_topic_policy" {
-  count  = local.lightsail_agent_enabled ? 1 : 0
-  arn    = aws_sns_topic.filmbot_error_notifications.arn
-  policy = data.aws_iam_policy_document.filmbot_error_topic_policy[0].json
-}
-
 # =============================================================================
 # POLÍTICAS IAM — GLUE DETAILS
 # =============================================================================
