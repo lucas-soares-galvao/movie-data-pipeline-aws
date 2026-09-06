@@ -3,7 +3,7 @@
 #
 # Tópicos: glue_data_quality_failure/metrics, glue_etl_failure, lambda_failure,
 #          eventbridge_failure, glue_agg_success/failure, glue_details_failure,
-#          backfill_success, filmbot_new_signup
+#          backfill_success, filmbot_new_signup, filmbot_error
 # =============================================================================
 
 # =============================================================================
@@ -182,4 +182,24 @@ resource "aws_sns_topic_subscription" "filmbot_new_signup_email" {
   topic_arn = aws_sns_topic.filmbot_new_signup_notifications.arn
   protocol  = "email"
   endpoint  = var.filmbot_new_signup_notification_email
+}
+
+# =============================================================================
+# TÓPICO 11: Erro no FilmBot (busca de recomendação ou transcrição de áudio)
+# =============================================================================
+# Notifica quando o alarme filmbot_error_alarm (cloudwatch_alarms.tf) entra em
+# ALARM — agregado por incidente, não um e-mail por usuário/ocorrência (ver
+# racional em cloudwatch_alarms.tf). Tópico dedicado, não reaproveita
+# eventbridge_failure_notifications (escopado a falhas de orquestração da
+# pipeline) nem filmbot_new_signup_notifications (outro assunto).
+resource "aws_sns_topic" "filmbot_error_notifications" {
+  name         = "${local.tmdb_prefix}-filmbot-error-notifications-${var.env}"
+  display_name = "[${upper(var.env)}] FILMBOT - ERRO"
+  tags         = local.component_tags.lightsail_ia
+}
+
+resource "aws_sns_topic_subscription" "filmbot_error_email" {
+  topic_arn = aws_sns_topic.filmbot_error_notifications.arn
+  protocol  = "email"
+  endpoint  = var.filmbot_error_notification_email
 }
