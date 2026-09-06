@@ -549,6 +549,14 @@ resource "aws_iam_policy" "cicd_observability" {
           "logs:UntagResource",
           "logs:TagLogGroup",
           "logs:UntagLogGroup",
+          # Temporário — ver infra/iam_cicd.tf: permite ao Terraform destruir o metric
+          # filter órfão (tmdb-filmbot-error-filter) deixado no state pelo revert
+          # 68eb1e7c, que removeu o recurso do .tf e esta permissão no mesmo commit
+          # antes de o destroy rodar. Remover de novo após confirmar o destroy em
+          # dev e prod (ver plano error-reading-agile-knuth).
+          "logs:PutMetricFilter",
+          "logs:DeleteMetricFilter",
+          "logs:DescribeMetricFilters",
         ]
         Resource = [
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.tmdb_prefix}-*",
