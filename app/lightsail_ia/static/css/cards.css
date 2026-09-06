@@ -16,6 +16,16 @@
   margin-bottom: 8px;
 }
 
+/* Centralizado só no mobile (pedido do usuário) — no breakpoint padrão do módulo
+   (768px, ver base.css/app.css/recommendation.css/forms.css/profile.css), não no de
+   1200px logo abaixo (esse é "desktop estreito", 1 card por linha, sem relação com
+   celular real). Desktop mantém alinhamento à esquerda (padrão do navegador). */
+@media (max-width: 768px) {
+  .results-heading {
+    text-align: center;
+  }
+}
+
 .grid-titles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
