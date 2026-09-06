@@ -549,6 +549,9 @@ resource "aws_iam_policy" "cicd_observability" {
           "logs:UntagResource",
           "logs:TagLogGroup",
           "logs:UntagLogGroup",
+          "logs:PutMetricFilter",
+          "logs:DeleteMetricFilter",
+          "logs:DescribeMetricFilters",
         ]
         Resource = [
           "arn:aws:logs:sa-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.tmdb_prefix}-*",

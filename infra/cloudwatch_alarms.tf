@@ -172,6 +172,67 @@ resource "aws_cloudwatch_metric_alarm" "eventbridge_dlq_alarm" {
   tags          = local.component_tags.eventbridge
 }
 
+# Alarme de erro do FilmBot (busca de recomendação ou transcrição de áudio) — conta
+# ocorrências via filmbot_error_filter (cloudwatch_logs.tf). threshold=0 dispara já na
+# primeira ocorrência, mas o alarme só executa a ação na transição OK->ALARM, não a cada
+# período em que o valor segue alto — vira "um alerta por incidente", não um e-mail por
+# usuário/ocorrência. Sem alarm_actions direto: a notificação segue o mesmo padrão de
+# lambda_error_alarm/eventbridge_failed_alarm abaixo — EventBridge captura a mudança de
+# estado do alarme e publica no SNS com input_transformer, não o alarme publicando direto.
+resource "aws_cloudwatch_metric_alarm" "filmbot_error_alarm" {
+  count               = local.lightsail_agent_enabled ? 1 : 0
+  alarm_name          = "${local.tmdb_prefix}-filmbot-error-alarm-${var.env}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "FilmBotErrorCount"
+  namespace           = "FilmBot"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Alerta por e-mail quando o FilmBot registra erro de busca de recomendação ou transcrição de áudio."
+  tags                = local.component_tags.lightsail_ia
+}
+
+# Notificação customizada de erro do FilmBot (quando alarme entra em ALARM)
+resource "aws_cloudwatch_event_rule" "filmbot_alarm_failed_state_change" {
+  count       = local.lightsail_agent_enabled ? 1 : 0
+  name        = "${local.tmdb_prefix}-filmbot-alarm-failed-state-change-${var.env}"
+  description = "Notifica mudanças de estado de erro do FilmBot com motivo detalhado"
+
+  event_pattern = jsonencode({
+    source        = ["aws.cloudwatch"]
+    "detail-type" = ["CloudWatch Alarm State Change"]
+    detail = {
+      alarmName = [aws_cloudwatch_metric_alarm.filmbot_error_alarm[0].alarm_name]
+      state = {
+        value = ["ALARM"]
+      }
+    }
+  })
+
+  tags = local.component_tags.lightsail_ia
+}
+
+resource "aws_cloudwatch_event_target" "filmbot_alarm_failed_state_change_target" {
+  count     = local.lightsail_agent_enabled ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.filmbot_alarm_failed_state_change[0].name
+  target_id = "filmbot-alarm-failed-sns"
+  arn       = aws_sns_topic.filmbot_error_notifications.arn
+
+  input_transformer {
+    input_paths = {
+      alarm_name = "$.detail.alarmName"
+      state      = "$.detail.state.value"
+      reason     = "$.detail.state.reason"
+      timestamp  = "$.detail.state.timestamp"
+      region     = "$.region"
+    }
+
+    input_template = local.filmbot_alarm_failed_input_template
+  }
+}
+
 # Notificação customizada de falha da Lambda (quando alarme entra em ALARM)
 resource "aws_cloudwatch_event_rule" "lambda_alarm_failed_state_change" {
   name        = "${local.tmdb_prefix}-lambda-alarm-failed-state-change-${var.env}"

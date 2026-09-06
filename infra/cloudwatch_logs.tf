@@ -73,3 +73,21 @@ resource "aws_cloudwatch_log_group" "lightsail_filmbot" {
   retention_in_days = var.log_retention_days
   tags              = local.component_tags.lightsail_ia
 }
+
+# Conta ocorrências dos dois erros do agente de recomendação (recommendation.py) para
+# alimentar o alarme de erro do FilmBot (ver cloudwatch_alarms.tf). Frases completas
+# com acento — a restrição de "multi-byte não suportado" do CloudWatch Logs é
+# específica de padrões regex (entre %...%), não de frases entre aspas.
+resource "aws_cloudwatch_log_metric_filter" "filmbot_error_filter" {
+  count          = local.lightsail_agent_enabled ? 1 : 0
+  name           = "${local.tmdb_prefix}-filmbot-error-filter-${var.env}"
+  log_group_name = aws_cloudwatch_log_group.lightsail_filmbot[0].name
+  pattern        = "?\"Erro ao buscar recomendações\" ?\"Erro ao transcrever áudio\""
+
+  metric_transformation {
+    name          = "FilmBotErrorCount"
+    namespace     = "FilmBot"
+    value         = "1"
+    default_value = "0"
+  }
+}

@@ -201,7 +201,11 @@ def render_recommendation(client_ip: str) -> None:
                     except AudioMuitoLongoError:
                         st.session_state["transcription_too_long"] = True
                     except Exception:
-                        logging.exception("Erro ao transcrever áudio")
+                        logging.exception(
+                            "Erro ao transcrever áudio (user_email=%s, user_name=%s)",
+                            st.session_state.get("user_email"),
+                            st.session_state.get("user_name"),
+                        )
                         st.session_state["transcription_error"] = True
                     else:
                         if text:
@@ -314,7 +318,11 @@ def render_recommendation(client_ip: str) -> None:
                 try:
                     st.session_state["titles"] = future.result()
                 except Exception:
-                    logging.exception("Erro ao buscar recomendações")
+                    logging.exception(
+                        "Erro ao buscar recomendações (user_email=%s, user_name=%s)",
+                        st.session_state.get("user_email"),
+                        st.session_state.get("user_name"),
+                    )
                     st.session_state["search_error"] = True
                     st.session_state["titles"] = []
                 st.rerun()

@@ -195,6 +195,10 @@ EOT
 {"message":"[Pipeline Falha]\nEtapa: EventBridge\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
 EOT
 
+  filmbot_alarm_failed_input_template = <<-EOT
+{"message":"[FilmBot Erro]\nAlarme: <alarm_name>\nEstado: <state>\nMotivo: <reason>\nRegião: <region>\nHorário: <timestamp>"}
+EOT
+
   glue_etl_failed_input_template = <<-EOT
 {"message":"[Pipeline Falha]\nEtapa: Glue ETL\nJob: <job_name>\nStatus: <state>\nRunId: <job_run_id>\nMotivo: <reason>\nRegião: <region>\nHorário: <event_time>"}
 EOT
