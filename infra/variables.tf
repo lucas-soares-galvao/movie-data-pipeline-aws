@@ -392,11 +392,6 @@ variable "filmbot_new_signup_notification_email" {
   type        = string
 }
 
-variable "filmbot_error_notification_email" {
-  description = "E-mail para receber alerta quando o FilmBot registrar um erro de busca de recomendação ou transcrição de áudio"
-  type        = string
-}
-
 # =============================================================================
 # CI/CD — Role do GitHub Actions e backend do Terraform
 # =============================================================================
