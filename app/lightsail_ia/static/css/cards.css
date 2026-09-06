@@ -46,6 +46,15 @@
   }
   .grid-titles img { aspect-ratio: 16 / 9; }
 
+  /* Centralizado a partir daqui (pedido do usuário) — mesmo breakpoint que derruba
+     o grid pra 1 card por linha logo acima, já que é nessa faixa (celular real
+     incluído) que o título passa a ficar sozinho na largura toda, sem os cards
+     vizinhos ao lado pra "ancorar" um alinhamento à esquerda. Acima de 1200px
+     mantém alinhamento à esquerda (padrão do navegador). */
+  .results-heading {
+    text-align: center;
+  }
+
   /* Sem isso o único card da fileira esticaria pra largura inteira do container — em
      janelas largas (ex. 1000-1200px, onde cabe folga mas não os 3 lado a lado) o pôster
      (16:9, width:100%) ficaria desproporcionalmente grande. max-width trava o card num
