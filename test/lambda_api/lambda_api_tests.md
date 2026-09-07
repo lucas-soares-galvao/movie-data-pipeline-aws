@@ -120,7 +120,7 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 |---|---|
 | `test_retorna_status_200` | Handler retorna `{"statusCode": 200}` no modo rotation refresh |
 | `test_aciona_glue_details_uma_unica_vez` | `trigger_glue_job` é chamado exatamente uma vez |
-| `test_avanca_o_ponteiro_em_um_ano` | Com ponteiro salvo em `last_year`, a chamada usa `YEAR=END_YEAR=last_year + 1` e `FORCE_REFETCH=True` |
+| `test_avanca_o_ponteiro_em_um_ano` | Com ponteiro salvo em `last_year`, a chamada usa `YEAR=END_YEAR=last_year + 1` |
 | `test_reinicia_em_2000_ao_ultrapassar_o_limite` | Quando `last_year + 1 > current_year - 3`, a chamada usa `YEAR=2000` (reinicia o ciclo) |
 | `test_limite_recalculado_a_partir_do_ano_atual` | O mesmo `last_year` que reiniciaria o ciclo num `current_year` não reinicia no ano seguinte — o limite (`current_year - 3`) é recalculado a cada execução, nunca hardcoded |
 | `test_le_e_grava_parametro_ssm_por_content_type` | `get_parameter`/`put_parameter` usam o nome `/tmdb-pipeline/rotation-year-pointer-{content_type}` correto |

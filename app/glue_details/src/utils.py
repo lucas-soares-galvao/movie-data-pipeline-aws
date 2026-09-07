@@ -66,7 +66,7 @@ def get_parameters_glue() -> dict[str, Any]:
     # Opcional: YEAR/END_YEAR não são passados no modo changes (lambda_api aciona o job
     # sem ano — CHANGES_S3_PATH assume esse papel). O fluxo normal (discover por ano)
     # sempre os passa via glue_etl. Saíram de required_args pelo mesmo motivo de
-    # FORCE_REFETCH logo abaixo: getResolvedOptions falha para argumento ausente, sem
+    # TRANSLATE_PROVIDER logo abaixo: getResolvedOptions falha para argumento ausente, sem
     # suporte a valor padrão. setdefault preserva o valor se já vier resolvido (ex: em
     # testes que mockam get_resolved_option com o dicionário completo).
     params.setdefault("YEAR", None)
@@ -84,16 +84,6 @@ def get_parameters_glue() -> dict[str, Any]:
     for i, arg in enumerate(sys.argv):
         if arg == "--CHANGES_S3_PATH" and i + 1 < len(sys.argv):
             params["CHANGES_S3_PATH"] = sys.argv[i + 1]
-            break
-
-    # Opcional: quando True, ignora o delta mensal e re-busca todos os IDs na API.
-    # FORCE_REFETCH não pode estar em required_args porque getResolvedOptions falha para qualquer
-    # argumento não passado na chamada (sem suporte a valor padrão). Lemos manualmente aqui
-    # para mantê-lo opcional sem precisar altererar os runs normais.
-    params["FORCE_REFETCH"] = False
-    for i, arg in enumerate(sys.argv):
-        if arg == "--FORCE_REFETCH" and i + 1 < len(sys.argv):
-            params["FORCE_REFETCH"] = sys.argv[i + 1].lower() == "true"
             break
 
     # Opcional: qual serviço de tradução usar ("google" ou "aws"). "google" (padrão) é o
@@ -147,110 +137,6 @@ def fetch_ids_from_sot(
     ids = df["id"].astype(int).tolist()
     logger.info(f"IDs encontrados: {len(ids)}.")
     return ids
-
-
-def fetch_existing_ids_from_details(
-    database: str,
-    table_details: str,
-    s3_bucket_temp: str,
-) -> list[int]:
-    """
-    Retorna IDs já presentes na tabela de detalhes em qualquer partição year.
-
-    Usado para calcular o delta: apenas IDs ausentes precisam ser buscados na API.
-    Um ID processado em QUALQUER partição year neste mês é considerado existente —
-    evita re-buscar IDs cujo release_date pertence a um year diferente do discover year,
-    o que causaria escritas concorrentes na mesma partição S3.
-    Retorna lista vazia se a tabela não existir ainda (primeira execução).
-
-    Args:
-        database:       Nome do banco de dados no Glue Catalog.
-        table_details:  Nome da tabela de detalhes (movie ou tv).
-        s3_bucket_temp: Bucket S3 para resultados temporários do Athena.
-
-    Returns:
-        Lista de IDs inteiros já processados este mês (qualquer partição year).
-    """
-    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
-    # Considera "existente" qualquer ID processado este mês, independente da partição year.
-    # IDs de meses anteriores são stale e voltam para re-fetch no dia 1.
-    query = (
-        f"SELECT DISTINCT id FROM {database}.{table_details} "
-        f"WHERE processed_date >= date_trunc('month', current_date)"
-    )
-
-    logger.info(f"Verificando IDs já processados em '{table_details}' (mês atual, todas as partições year)...")
-    try:
-        df = wr.athena.read_sql_query(
-            sql=query,
-            database=database,
-            s3_output=s3_output,
-            ctas_approach=False,
-        )
-        ids = df["id"].astype(int).tolist()
-        logger.info(f"IDs já em details (mês atual, todas as partições): {len(ids)}.")
-        return ids
-    except Exception as exc:  # noqa: BLE001 — tabela pode não existir ainda, degrada graciosamente
-        logger.warning(
-            f"Não foi possível consultar '{table_details}' "
-            f"(tabela pode não existir ainda): {exc}"
-        )
-        return []
-
-
-def fetch_ids_stale_watch_providers(
-    database: str,
-    table_discover: str,
-    table_watch_providers: str,
-    s3_bucket_temp: str,
-    year: str,
-) -> list[int]:
-    """
-    Retorna IDs do discover que precisam de atualização de watch providers.
-
-    Inclui: sem registro, com updated_date nulo (migração) ou desatualizado antes do mês atual.
-
-    Args:
-        database:              Nome do banco de dados no Glue Catalog.
-        table_discover:        Nome da tabela de discover.
-        table_watch_providers: Nome da tabela de watch providers.
-        s3_bucket_temp:        Bucket S3 para resultados temporários do Athena.
-        year:                  Ano a verificar.
-
-    Returns:
-        Lista de IDs inteiros a atualizar.
-    """
-    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
-    query = f"""
-        SELECT DISTINCT d.id
-        FROM {database}.{table_discover} d
-        LEFT JOIN {database}.{table_watch_providers} wp
-            ON d.id = wp.id AND wp.year = '{year}'
-        WHERE d.year = '{year}'
-          AND (
-              wp.id IS NULL
-              OR wp.updated_date IS NULL
-              OR wp.updated_date < date_trunc('month', current_date)
-          )
-    """
-
-    logger.info(
-        f"Identificando IDs com watch providers ausentes/desatualizados "
-        f"em '{table_watch_providers}' para year={year}..."
-    )
-    try:
-        df = wr.athena.read_sql_query(
-            sql=query,
-            database=database,
-            s3_output=s3_output,
-            ctas_approach=False,
-        )
-        ids = df["id"].astype(int).tolist()
-        logger.info(f"IDs para atualizar watch providers: {len(ids)}.")
-        return ids
-    except Exception as exc:  # noqa: BLE001 — tabela pode não existir ainda, degrada graciosamente
-        logger.warning(f"Erro ao consultar watch providers desatualizados: {exc}")
-        return []
 
 
 def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
@@ -1263,13 +1149,12 @@ def run_details_and_watch_providers_for_year(
     table_details: str,
     table_watch_providers: str,
     dq_job_name: str,
-    force_refetch: bool = False,
     translate_provider: str = "google",
     trigger_dq: bool = True,
 ) -> None:
     """
     Roda o ciclo completo de enriquecimento (details + watch providers) para um media_type/year:
-    calcula o delta contra o discover, busca na API TMDB, grava no SOT, dispara o Data Quality (se
+    busca todos os IDs do discover na API TMDB, grava no SOT, dispara o Data Quality (se
     trigger_dq) e repara duplicatas quando year == end_year.
 
     Extraída de main.py para ser reutilizável fora do runtime do job Glue — ver
@@ -1289,7 +1174,6 @@ def run_details_and_watch_providers_for_year(
         table_details:          Tabela de detalhes (movie ou tv).
         table_watch_providers:  Tabela de watch providers (movie ou tv).
         dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
-        force_refetch:          Se True, ignora o delta e re-busca todos os IDs do discover.
         translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
         trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
                                  Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
@@ -1302,25 +1186,14 @@ def run_details_and_watch_providers_for_year(
         year=year,
     )
 
-    if force_refetch:
-        logger.info("FORCE_REFETCH=true — ignorando delta, re-buscando todos os IDs.")
-        new_ids = all_ids
-    else:
-        existing_ids = fetch_existing_ids_from_details(
-            database=database,
-            table_details=table_details,
-            s3_bucket_temp=s3_bucket_temp,
-        )
-        new_ids = list(set(all_ids) - set(existing_ids))
-
     logger.info(
-        f"Details: {len(new_ids)} IDs a buscar de {len(all_ids)} no discover "
+        f"Details: {len(all_ids)} IDs no discover a buscar/atualizar "
         f"({media_type}, year={year})."
     )
-    if new_ids:
+    if all_ids:
         collect_and_write_details(
             api_key=api_key,
-            ids=new_ids,
+            ids=all_ids,
             content_type=media_type,
             s3_bucket_sot=s3_bucket_sot,
             table_name=table_details,
@@ -1328,22 +1201,14 @@ def run_details_and_watch_providers_for_year(
             translate_provider=translate_provider,
         )
 
-    stale_ids = fetch_ids_stale_watch_providers(
-        database=database,
-        table_discover=table_discover,
-        table_watch_providers=table_watch_providers,
-        s3_bucket_temp=s3_bucket_temp,
-        year=year,
-    )
-
     logger.info(
-        f"Watch providers: {len(stale_ids)} IDs para atualizar "
+        f"Watch providers: {len(all_ids)} IDs no discover a atualizar "
         f"({media_type}, year={year})."
     )
-    if stale_ids:
+    if all_ids:
         collect_and_write_watch_providers(
             api_key=api_key,
-            ids=stale_ids,
+            ids=all_ids,
             content_type=media_type,
             s3_bucket_sot=s3_bucket_sot,
             table_name=table_watch_providers,

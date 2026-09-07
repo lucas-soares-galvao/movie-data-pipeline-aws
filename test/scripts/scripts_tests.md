@@ -148,7 +148,6 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 
 | Teste | O que verifica |
 |---|---|
-| `test_argumentos_padrao_sem_force_refetch` / `test_inclui_force_refetch_quando_true` | `_start_glue_job` monta `Arguments` corretos, com `--FORCE_REFETCH` apenas quando `force_refetch=True` |
 | `test_expired_token_no_start_job_run_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Regressão: `_start_glue_job` também loga/repropaga erro de token expirado (faltava, era o ponto que derrubou produção) |
 | `test_outro_client_error_no_start_job_run_repropaga_sem_log_de_credenciais` | Outro `ClientError` não gera o log específico de credenciais |
 | `test_translate_provider_default_google` / `test_translate_provider_aws_explicito` | `--TRANSLATE_PROVIDER` incluído em `Arguments` — default `"google"` (volume alto do re-enriquecimento histórico), sobrescrevível para `"aws"` |
@@ -173,12 +172,6 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | `test_nao_loga_resumo_quando_tudo_sucede` | Nenhum log de resumo de falhas quando todos os runs sucedem |
 | `test_translate_provider_default_google_propagado_ao_glue` / `test_translate_provider_aws_propagado_ao_glue` | `TRANSLATE_PROVIDER` do ambiente chega em `--TRANSLATE_PROVIDER` de cada `start_job_run` (intervalo de 1 ano) |
 | `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo maior que 1 ano é rebaixado para `"google"` antes de chegar ao Glue (`backfill_shared.apply_translate_cost_guard`) |
-
-### `TestForceRefetch`
-
-| Teste | O que verifica |
-|---|---|
-| `test_default_e_true` / `test_false_omite_o_argumento` | `FORCE_REFETCH` lido corretamente do ambiente |
 
 ### `TestErros`
 

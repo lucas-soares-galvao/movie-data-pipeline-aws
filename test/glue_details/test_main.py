@@ -17,7 +17,6 @@ _BASE = {
     "MEDIA_TYPE": "movie",
     "YEAR": "2025",
     "END_YEAR": "2025",
-    "FORCE_REFETCH": False,
     "TRANSLATE_PROVIDER": "aws",
     "CHANGES_S3_PATH": None,
 }
@@ -59,7 +58,6 @@ class TestMain:
                 table_details="tb_tmdb_details_movie_dev",
                 table_watch_providers="tb_tmdb_watch_providers_movie_dev",
                 dq_job_name="dq-job",
-                force_refetch=False,
                 translate_provider="aws",
             )
 
@@ -83,19 +81,8 @@ class TestMain:
                 table_details="tb_tmdb_details_tv_dev",
                 table_watch_providers="tb_tmdb_watch_providers_tv_dev",
                 dq_job_name="dq-job",
-                force_refetch=False,
                 translate_provider="aws",
             )
-
-    def test_force_refetch_passed_through(self):
-        args = {**_BASE, "FORCE_REFETCH": True}
-        with (
-            patch.object(m, "get_parameters_glue", return_value=args),
-            patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "run_details_and_watch_providers_for_year") as mock_run,
-        ):
-            m.main()
-            assert mock_run.call_args.kwargs["force_refetch"] is True
 
     def test_does_not_pass_trigger_dq_explicitly(self):
         """main() não informa trigger_dq — usa o default True da função

@@ -24,7 +24,8 @@
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-weekly-${var.env}"
   description         = "Dispara a Lambda para filmes com payload completo (semanal, sábados)"
-  schedule_expression = "cron(30 09 ? * SAT *)" # Sábados às 09:30 UTC / 06:30 BRT
+  # schedule_expression = "cron(30 09 ? * SAT *)" # Sábados às 09:30 UTC / 06:30 BRT
+  schedule_expression = "cron(50 14 ? * * *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -33,7 +34,8 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-weekly-${var.env}"
   description         = "Dispara a Lambda para séries com payload completo (semanal, sábados)"
-  schedule_expression = "cron(35 09 ? * SAT *)" # Sábados às 09:35 UTC / 06:35 BRT
+  # schedule_expression = "cron(35 09 ? * SAT *)" # Sábados às 09:35 UTC / 06:35 BRT
+  schedule_expression = "cron(55 14 ? * * *)"
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -191,8 +193,8 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_changes_weekly" {
 # REGRA SEMANAL — Rotation Refresh (Catálogo Antigo, Sábados)
 # =============================================================================
 # Fecha o gap de staleness que o /changes da TMDB não cobre (nem toda mudança
-# real é reportada lá): força o refresh (FORCE_REFETCH=true) de 1 ano do
-# catálogo antigo (2000 até current_year - 3) por execução, via um ponteiro
+# real é reportada lá): força o refresh de 1 ano do catálogo antigo
+# (2000 até current_year - 3) por execução, via um ponteiro
 # simples em SSM Parameter Store (ver ssm.tf e only_rotation_refresh em
 # app/lambda_api/main.py) — sem checkpoint de loop, sem ajuste manual de ano
 # em ano. Ciclo completo em ~24 semanas.

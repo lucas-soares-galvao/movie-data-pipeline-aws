@@ -85,7 +85,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             DATABASE=event["database"],
             YEAR=next_year,
             END_YEAR=next_year,
-            FORCE_REFETCH=True,
             TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
         )
         ssm.put_parameter(Name=param_name, Value=str(next_year), Overwrite=True)
@@ -140,13 +139,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # não combinam com as flags abaixo — saem cedo, direto para o Glue Details, sem
     # passar por /discover nem Glue ETL:
     #   only_changes_tables   — refresh dos ids que a TMDB reportou mudados (Changes API)
-    #   only_rotation_refresh — refresh forçado de 1 ano do catálogo antigo por vez (FORCE_REFETCH)
+    #   only_rotation_refresh — refresh de 1 ano do catálogo antigo por vez, cobrindo os
+    #                           anos que nenhum outro gatilho toca (2000..current_year-3)
     #
-    # O ano corrente e o anterior não têm um modo forçado equivalente: já são
+    # O ano corrente e o anterior não precisam desse modo dedicado: já são
     # refeitos naturalmente pelo cascade do discover semanal/mensal -> Glue ETL ->
-    # Glue Details (sem FORCE_REFETCH, mas a lógica de delta do Glue Details já
-    # refaz qualquer id não tocado no mês calendário corrente) — ver
-    # app/glue_etl/main.py (table_type == "discover").
+    # Glue Details, que sempre busca/atualiza todos os IDs do discover em toda
+    # execução (sem delta) — ver app/glue_etl/main.py (table_type == "discover").
     only_weekly_tables = event.get("only_weekly_tables", False)
     only_annual_tables = event.get("only_annual_tables", False)
     only_monthly_tables = event.get("only_monthly_tables", False)

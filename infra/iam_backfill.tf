@@ -110,8 +110,7 @@ resource "aws_iam_role_policy" "backfill_glue_jobs" {
 
 # =============================================================================
 # POLICY 2 — Athena (backfill_enriquecimento.py, via
-# run_details_and_watch_providers_for_year → fetch_ids_from_sot/
-# fetch_existing_ids_from_details/fetch_ids_stale_watch_providers; e
+# run_details_and_watch_providers_for_year → fetch_ids_from_sot; e
 # backfill_changes.py, via resolve_matched_ids_for_changed_ids, que cruza os
 # IDs mudados com a tabela discover — ambas usam wr.athena.read_sql_query).
 # Mesmo shape de glue_details_athena (infra/iam_policies.tf), já que é o mesmo
