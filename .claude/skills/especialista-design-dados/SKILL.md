@@ -85,18 +85,20 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   — comentário explícito em `app/glue_etl/src/utils.py:313-315`. SOT/SPEC/DQ são sempre Parquet via
   `wr.s3.to_parquet(..., dataset=True, database=..., table=...)`, que grava e atualiza o Glue Catalog na mesma
   chamada (`projeto-filmes-aws:65-68`).
-- **Delta é calculado por janela mensal, não por partição isolada**: `fetch_existing_ids_from_details`
-  (`app/glue_details/src/utils.py:152-198`) considera "já processado" um ID cujo `processed_date` é deste mês, **em
-  qualquer partição `year`** — não só a partição do `year` sendo processado agora — porque o `release_date` de um
-  título pode mudar de ano entre execuções, e comparar só a partição atual reprocessaria (e sobrescreveria em
-  paralelo) o mesmo ID em duas partições diferentes (comentário `:160-163`). IDs de meses anteriores são
-  considerados "stale" e voltam a ser buscados no mês seguinte. `fetch_ids_stale_watch_providers`
-  (`app/glue_details/src/utils.py:201-253`) usa um delta separado (LEFT JOIN discover × watch_providers) para o
-  mesmo motivo: ID sem registro, `updated_date` nulo, ou desatualizado antes do mês corrente. O modo changes
-  (`resolve_matched_ids_for_changed_ids`/`process_changed_ids`, `app/glue_details/src/utils.py:1250-1405`) é um
-  terceiro tipo de delta, orientado por evento (TMDB Changes API) em vez de janela de tempo — cruza IDs mudados com
-  o discover só para confirmar pertencimento ao catálogo, descartando IDs que nunca entraram via `/discover`
-  (preserva a curadoria do pipeline). O `year` usado para particionar `watch_providers`/montar `affected_years`
+- **`details`/`watch_providers` não têm mais delta por janela de tempo — todo run do fluxo `YEAR`/`END_YEAR`
+  busca/atualiza incondicionalmente todos os IDs do discover do ano** (`run_details_and_watch_providers_for_year`,
+  `app/glue_details/src/utils.py`). Isso substituiu um delta mensal antigo (que considerava "já processado" um ID
+  cujo `processed_date`/`updated_date` era do mês corrente) — removido de propósito para eliminar a janela de
+  staleness de até ~1 mês entre a mudança real de um título e o próximo refresh, ao custo de mais chamadas à API
+  TMDB em execuções mais frequentes (o ano corrente roda ~4x/mês). Continua existindo, sem relação com esse delta
+  removido, o merge read-then-write dentro de `collect_and_write_details`/`collect_and_write_watch_providers`: como
+  o `release_date`/`first_air_date` de um título pode colocá-lo num `year` diferente do `year` do discover que o
+  trouxe, cada escrita lê a partição `year` afetada e preserva os registros que não fazem parte do batch atual (ver
+  `df_existing_keep` mais abaixo) — isso é sobre **qual partição** um ID pertence, não sobre pular trabalho. O modo
+  changes (`resolve_matched_ids_for_changed_ids`/`process_changed_ids`, `app/glue_details/src/utils.py:1250-1405`)
+  continua sendo o único delta remanescente no job, orientado por evento (TMDB Changes API) em vez de janela de
+  tempo — cruza IDs mudados com o discover só para confirmar pertencimento ao catálogo, descartando IDs que nunca
+  entraram via `/discover` (preserva a curadoria do pipeline). O `year` usado para particionar `watch_providers`/montar `affected_years`
   **não** vem do discover — vem do retorno de `collect_and_write_details` (derivado do `release_date`/
   `first_air_date` real da API), justamente porque o `year` gravado na partição discover pode divergir entre
   partições para o mesmo id (discover é escrita com `overwrite_partitions`, cada run só toca a própria partição;
@@ -127,18 +129,16 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   `start_year`/`end_year` default = ano atual, `app/lambda_api/main.py:158-161`) e o changes roda domingo, um dia
   **depois** — não antes (`infra/eventbridge.tf:109-124`, comentário explícito sobre a folga evitar colisão de
   partição `year=ano_atual` e garantir catálogo atualizado antes do changes confirmar pertencimento ao catálogo).
-  O próximo discover só
-  volta a rodar 6 dias depois. Mesmo assim, o discover não "recalcula" o que o changes atualiza: `glue_etl` no modo
-  discover só escreve na tabela `discover`, com o subconjunto de campos do endpoint `/discover` (sem elenco,
-  keywords, watch providers — só existem via `/movie|tv/{id}` com `append_to_response`,
-  `app/glue_details/src/utils.py:271-274`). E o cascade discover→details/watch_providers (modo normal, sem
-  `FORCE_REFETCH`) é gated por delta **mensal** (`fetch_existing_ids_from_details`,
-  `app/glue_details/src/utils.py:152-198`; `fetch_ids_stale_watch_providers`, `:201-253`) — um id do ano atual já
-  processado neste mês calendário não é re-buscado até o mês seguinte. O `process_changed_ids` do modo changes
-  ignora esse delta mensal e atualiza incondicionalmente todo id resolvido (`:1364-1387`), sendo por isso a única
-  via que refresca `details`/`watch_providers` de lançamentos do ano atual com cadência semanal, disparada por
-  mudança real reportada pelo TMDB. Excluir o ano atual do changes deixaria o conteúdo mais mutável do catálogo
-  (lançamentos recentes) sem atualização por até ~1 mês entre ciclos do cascade normal.
+  O próximo discover só volta a rodar 6 dias depois. Mesmo assim, o discover não "recalcula" o que o changes
+  atualiza: `glue_etl` no modo discover só escreve na tabela `discover`, com o subconjunto de campos do endpoint
+  `/discover` (sem elenco, keywords, watch providers — só existem via `/movie|tv/{id}` com `append_to_response`,
+  `app/glue_details/src/utils.py:271-274`). Como o cascade discover→details/watch_providers (modo normal) não tem
+  mais delta — busca/atualiza todos os IDs do discover em toda execução —, o valor do modo changes para o ano
+  atual não é mais "fechar um gap de staleness de até 1 mês" (esse gap não existe mais no cascade normal): é cobrir
+  o intervalo entre execuções semanais do discover (6 dias) e, mais importante, capturar mudanças reportadas pelo
+  TMDB que não dependem do título aparecer de novo no `/discover` por popularidade — o changes cruza qualquer id já
+  catalogado, não só os que a página de popularidade da semana devolveria. Excluir o ano atual do changes deixaria
+  o conteúdo mais mutável do catálogo sem atualização entre um sábado de discover e o outro.
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 
@@ -187,9 +187,16 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   físico real da partição antes de migrar, nunca assumir que `wr.s3.to_parquet` detecta e evolui schema sozinho. Se
   a mudança afeta tabela histórica com anos já gravados, é backfill manual, não só alterar o código do job daqui
   para frente.
-- **Lógica de delta nova**: se "processado" pode mudar de partição entre execuções (ex.: `release_date` mudando de
-  ano), comparar contra a tabela inteira ou por janela de tempo (`processed_date >= date_trunc(...)`), nunca só
-  contra a partição do run atual — o padrão de `fetch_existing_ids_from_details`
-  (`app/glue_details/src/utils.py:152-198`) evita reprocessar/sobrescrever o mesmo ID em duas partições diferentes.
+- **Lógica de delta nova**: pense primeiro se o delta é sobre *pular trabalho* (economia de chamadas à API) ou
+  sobre *qual partição* um registro pertence. Para o segundo caso — quando "processado" pode mudar de partição
+  entre execuções (ex.: `release_date` mudando de ano) — comparar contra a tabela inteira, nunca só contra a
+  partição do run atual, e preservar (não descartar) o que já existe fora do batch atual antes de escrever; o
+  padrão de `collect_and_write_details`/`collect_and_write_watch_providers` (leitura da partição `year` afetada,
+  split em preservado vs. sobrescrito, merge antes do `wr.s3.to_parquet`) evita sobrescrever/perder o mesmo ID em
+  duas partições diferentes. Para o primeiro caso — decidir se um id precisa ser rebuscado —, `glue_details` hoje
+  só tem um delta desse tipo: o do modo changes (`resolve_matched_ids_for_changed_ids`/`process_changed_ids`),
+  orientado por evento (TMDB Changes API), não por janela de tempo — um delta por janela de calendário
+  (`processed_date >= date_trunc(...)`) foi removido de propósito do fluxo normal por criar staleness de até ~1
+  mês; não reintroduzir esse padrão sem repassar esse trade-off com quem pediu a mudança.
 - **JSON só no SOR, Parquet em tudo depois dele**: não introduzir um formato novo numa camada existente sem
   justificar contra o padrão já em vigor (`projeto-filmes-aws:65-68`).

@@ -164,7 +164,6 @@ jobs:
       - name: Run backfill (${{ inputs.table_group }})
         env:
           AWS_REGION: sa-east-1
-          FORCE_REFETCH: "true"
           TABLE_GROUP: ${{ inputs.table_group }}
           TRANSLATE_PROVIDER: ${{ inputs.translate_provider }}
 

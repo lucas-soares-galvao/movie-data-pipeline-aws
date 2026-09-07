@@ -37,7 +37,6 @@ def main() -> None:
     media_type     = args["MEDIA_TYPE"]
     year           = args["YEAR"]
     end_year       = args["END_YEAR"]
-    force_refetch  = args["FORCE_REFETCH"]
     translate_provider = args["TRANSLATE_PROVIDER"]
     changes_s3_path = args["CHANGES_S3_PATH"]
 
@@ -97,7 +96,6 @@ def main() -> None:
         table_details=table_details,
         table_watch_providers=table_watch_providers,
         dq_job_name=dq_job_name,
-        force_refetch=force_refetch,
         translate_provider=translate_provider,
     )
 

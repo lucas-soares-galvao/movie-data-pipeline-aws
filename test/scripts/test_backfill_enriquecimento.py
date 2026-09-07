@@ -184,18 +184,6 @@ class TestLoopPrincipal:
             assert c.kwargs["api_key"] == "tmdb-key"
 
 
-class TestForceRefetch:
-    def test_default_e_true(self, monkeypatch):
-        mock_run, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        assert mock_run.call_args_list[0].kwargs["force_refetch"] is True
-
-    def test_false_explicito(self, monkeypatch):
-        mock_run, *_ = _run_main(
-            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "FORCE_REFETCH": "false"}
-        )
-        assert mock_run.call_args_list[0].kwargs["force_refetch"] is False
-
-
 class TestErros:
     def test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro(self, monkeypatch):
         _set_env(monkeypatch)

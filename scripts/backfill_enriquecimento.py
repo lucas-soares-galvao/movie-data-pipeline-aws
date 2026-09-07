@@ -10,14 +10,13 @@ ambiente como em qualquer outro script de scripts/. Isso elimina o custo de Glue
 backfill — o Glue Data Quality continua sendo acionado, mas uma única vez ao final de todo o
 backfill (não mais 2x por unidade), ver "Data Quality" abaixo.
 
-Aproveitando que o delta mensal (processed_date >= date_trunc('month', current_date)) considera
-IDs de meses anteriores como stale, todos os IDs serão re-buscados com os novos campos do
-append_to_response (credits, keywords, release_dates, videos, external_ids).
+run_details_and_watch_providers_for_year busca/atualiza sempre todos os IDs do discover (sem
+delta), então todos os IDs serão re-buscados com os novos campos do append_to_response (credits,
+keywords, release_dates, videos, external_ids).
 
 Pré-requisitos:
   1. Terraform apply já executado com os novos schemas no Glue Catalog e com as permissões
      IAM de Athena/Secrets Manager/Glue Catalog na role de backfill (ver infra/iam_backfill.tf)
-  2. Rodar preferencialmente no início do mês (quando NENHUM ID tem processed_date no mês atual)
 
 Uso:
     python scripts/backfill_enriquecimento.py
@@ -47,7 +46,6 @@ Variáveis opcionais:
                            consecutivas de requisições ao TMDB; o rate limit em si já é tratado
                            por chamada individual, com retry/backoff, em
                            shared_utils.api_client.api_get)
-    FORCE_REFETCH         (padrão: true — quando true, ignora delta mensal e re-busca todos os IDs)
     TRANSLATE_PROVIDER    (padrão: "google" — grátis; volume alto por re-enriquecer o histórico
                            inteiro. "aws" usa AWS Translate, útil para testar um período menor
                            via BACKFILL_START_YEAR/BACKFILL_END_YEAR — se o intervalo cobrir
@@ -143,7 +141,6 @@ def main(trigger_agg: bool = True) -> bool:
 
     start_year, end_year = shared.read_year_range()
     wait_seconds  = int(os.environ.get("WAIT_SECONDS", 15))
-    force_refetch = os.environ.get("FORCE_REFETCH", "true").lower() == "true"
     translate_provider = shared.apply_translate_cost_guard(
         os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
     )
@@ -153,8 +150,8 @@ def main(trigger_agg: bool = True) -> bool:
     years = list(range(start_year, end_year + 1))
     total_units = len(years) * 2
     logger.info(
-        "Backfill de enriquecimento: %d anos (%d-%d) x 2 tipos = %d unidades | FORCE_REFETCH=%s",
-        len(years), start_year, end_year, total_units, force_refetch,
+        "Backfill de enriquecimento: %d anos (%d-%d) x 2 tipos = %d unidades",
+        len(years), start_year, end_year, total_units,
     )
 
     # Busca a chave uma vez antes do loop — Secrets Manager tem custo por chamada.
@@ -192,7 +189,6 @@ def main(trigger_agg: bool = True) -> bool:
                 table_details=table_details,
                 table_watch_providers=table_watch_providers,
                 dq_job_name=dq_job_name,
-                force_refetch=force_refetch,
                 translate_provider=translate_provider,
                 trigger_dq=False,
             )
