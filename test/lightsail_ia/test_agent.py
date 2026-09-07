@@ -53,7 +53,7 @@ FAKE_TITLE = {
 }
 
 COLUMNS = [
-    "title", "media_type", "year", "air_date", "genre_names", "overview",
+    "title", "media_type", "year", "air_date", "theatrical_release_date_br", "genre_names", "overview",
     "vote_average", "poster_url", "backdrop_url",
     "runtime_minutes", "number_of_seasons",
     "number_of_episodes", "episode_runtime_minutes",
@@ -332,6 +332,14 @@ class TestSearchTitlesSpec:
         assert "next_episode_air_date" in executed_sql
         assert "next_episode_number" in executed_sql
         assert "next_episode_season_number" in executed_sql
+
+    def test_select_inclui_theatrical_release_date_br(self):
+        with patch("src.agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            agent.search_titles_spec("media_type = 'movie'")
+
+        executed_sql = mock_athena.start_query_execution.call_args.kwargs["QueryString"]
+        assert "theatrical_release_date_br" in executed_sql
 
     def test_select_inclui_title_status(self):
         with patch("src.agent.boto3") as mock_boto3:

@@ -352,6 +352,24 @@ class TestFormatRecord:
         result = formatting.format_record(record)
         assert result["upcoming_date"] == "Dez de 9999"
 
+    def test_upcoming_date_prioriza_theatrical_release_date_br_sobre_air_date(self):
+        # theatrical_release_date_br (estreia teatral BR, glue_details) é mais precisa
+        # que air_date (data global do discover) — quando as duas divergem, vence a BR.
+        record = {
+            **FAKE_TITLE,
+            "air_date": "9999-11-01",
+            "theatrical_release_date_br": "9999-12-31",
+        }
+        result = formatting.format_record(record)
+        assert result["upcoming_date"] == "Dez de 9999"
+
+    def test_upcoming_date_cai_para_air_date_sem_theatrical_release_date_br(self):
+        # Título ainda não enriquecido pelo glue_details (ou sem estreia teatral BR
+        # cadastrada no TMDB): theatrical_release_date_br ausente, usa air_date.
+        record = {**FAKE_TITLE, "air_date": "9999-12-31", "theatrical_release_date_br": None}
+        result = formatting.format_record(record)
+        assert result["upcoming_date"] == "Dez de 9999"
+
     def test_novos_campos_nulos(self):
         result = formatting.format_record(FAKE_TITLE)
         assert result["tagline"] is None
