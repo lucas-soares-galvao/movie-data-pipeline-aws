@@ -151,6 +151,52 @@ class TestExtractCertificationBrMovie:
         assert u._extract_certification_br_movie({}) is None
 
 
+class TestExtractTheatricalReleaseDateBrMovie:
+    def test_prioriza_type_3(self):
+        dados = {"results": [
+            {"iso_3166_1": "BR", "release_dates": [
+                {"type": 2, "release_date": "2024-03-01T00:00:00.000Z"},
+                {"type": 3, "release_date": "2024-03-15T00:00:00.000Z"},
+            ]},
+        ]}
+        assert u._extract_theatrical_release_date_br(dados) == "2024-03-15"
+
+    def test_fallback_type_2_sem_type_3(self):
+        dados = {"results": [
+            {"iso_3166_1": "BR", "release_dates": [
+                {"type": 2, "release_date": "2024-03-01T00:00:00.000Z"},
+            ]},
+        ]}
+        assert u._extract_theatrical_release_date_br(dados) == "2024-03-01"
+
+    def test_ignora_outros_types(self):
+        dados = {"results": [
+            {"iso_3166_1": "BR", "release_dates": [
+                {"type": 4, "release_date": "2024-01-01T00:00:00.000Z"},  # Digital
+                {"type": 5, "release_date": "2024-02-01T00:00:00.000Z"},  # Physical
+            ]},
+        ]}
+        assert u._extract_theatrical_release_date_br(dados) is None
+
+    def test_sem_br(self):
+        dados = {"results": [
+            {"iso_3166_1": "US", "release_dates": [{"type": 3, "release_date": "2024-03-15T00:00:00.000Z"}]},
+        ]}
+        assert u._extract_theatrical_release_date_br(dados) is None
+
+    def test_ignora_entrada_sem_release_date(self):
+        dados = {"results": [
+            {"iso_3166_1": "BR", "release_dates": [
+                {"type": 3, "release_date": ""},
+                {"type": 3, "release_date": "2024-03-15T00:00:00.000Z"},
+            ]},
+        ]}
+        assert u._extract_theatrical_release_date_br(dados) == "2024-03-15"
+
+    def test_vazio(self):
+        assert u._extract_theatrical_release_date_br({}) is None
+
+
 class TestExtractCertificationBrTv:
     def test_encontra_br(self):
         dados = {"results": [
@@ -969,7 +1015,9 @@ class TestCollectAndWriteDetails:
             },
             "keywords": {"keywords": [{"id": 1, "name": "keyword1"}]},
             "release_dates": {"results": [
-                {"iso_3166_1": "BR", "release_dates": [{"certification": "12"}]},
+                {"iso_3166_1": "BR", "release_dates": [
+                    {"certification": "12", "type": 3, "release_date": "2023-05-10T00:00:00.000Z"},
+                ]},
             ]},
             "videos": {"results": [
                 {"type": "Trailer", "site": "YouTube", "official": True, "key": "abc123"},
@@ -1103,6 +1151,7 @@ class TestCollectAndWriteDetails:
             assert "keywords" in df_written.columns
             assert "keywords_pt" in df_written.columns
             assert "certification" in df_written.columns
+            assert df_written["theatrical_release_date_br"].iloc[0] == "2023-05-10"
             assert "tagline" in df_written.columns
             assert "tagline_pt" in df_written.columns
             assert "collection_id" in df_written.columns

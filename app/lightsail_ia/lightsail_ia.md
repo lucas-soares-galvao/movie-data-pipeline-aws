@@ -28,6 +28,8 @@ O schema informado ao LLM inclui colunas de ficha técnica como `director` e `ac
 
 **Cache de WHERE clauses:** a cláusula WHERE gerada pelo LLM é armazenada em cache em memória (dict no módulo), indexada pelo hash MD5 da preferência normalizada (lowercase + strip). Consultas repetidas (ex: "filmes de terror" digitado duas vezes) reutilizam a cláusula cacheada sem chamar o LLM novamente. TTL de 1 hora — compatível com a frequência de atualização semanal dos dados SPEC. O cache é limpo automaticamente ao reiniciar o processo Streamlit. Como o destaque de gênero/provedor (`_extract_highlighted_terms()`) é derivado da mesma `where_clause` cacheada, um cache hit reproduz exatamente o mesmo destaque de uma chamada fresca ao LLM.
 
+**Piso de nota (`vote_average >= 6.0`) com exceção para lançamentos futuros:** o `_SYSTEM_PROMPT` instrui o LLM a incluir `vote_average >= 6.0` por padrão (salvo se o usuário pedir nota diferente), como piso de qualidade para pedidos genéricos ("me recomenda um filme bom"). A exceção: quando o pedido é sobre lançamentos futuros/títulos ainda não estreados (ex: "o que vai estrear", "em breve", filtro por `theatrical_release_date_br`/`air_date` futuro ou `title_status = 'Post Production'`), o LLM é instruído a **não** incluir esse filtro — título não lançado ainda não teve chance de acumular voto, então `vote_average` baixo/zerado o excluiria do resultado mesmo estando bem posicionado por popularidade (ver Etapa 2, título com badge "Em breve").
+
 **Degradação graciosa em JSON inválido:** ocasionalmente o LLM retorna os argumentos da tool call malformados (aspas não escapadas, resposta cortada) — um `json.decoder.JSONDecodeError` já observado em produção. Esse cenário não derruba a recomendação: é tratado como "nenhum filtro extraído" (mesmo caminho de quando o LLM não chama a tool nenhuma), loga um `logger.warning` com os argumentos brutos para diagnóstico, e `recommend()` retorna lista vazia — o usuário vê "não encontramos nada com essa descrição" em vez do erro genérico. A resposta malformada não é cacheada, então uma nova tentativa pode ter sucesso.
 
 ### Etapa 2 — Consulta ao Athena
@@ -60,9 +62,12 @@ Após o Athena retornar os resultados brutos, funções puras em `formatting.py`
 - `next_episode_season_number`/`next_episode_number` (inteiros, apenas séries), `next_episode_date` (string
   formatada conforme acima, derivada de `next_episode_air_date`) — `null`/`None` quando a série não tem episódio
   futuro confirmado
-- `upcoming_date` (string formatada conforme acima, `null`/`None` caso contrário) — só preenchido quando
-  `air_date` é estritamente futuro (título ainda não lançado, `formatting.py::_is_upcoming()`) — usado pro badge
-  "Em breve" (ver seção "Interface")
+- `upcoming_date` (string formatada conforme acima, `null`/`None` caso contrário) — só preenchido quando a data
+  fonte é estritamente futura (título ainda não lançado, `formatting.py::_is_upcoming()`). A fonte prioriza
+  `theatrical_release_date_br` (data de estreia teatral BR agendada, extraída de `release_dates` pelo
+  `glue_details` — mais precisa que a data global do TMDB), com `air_date` como fallback para título sem essa
+  coluna ainda (não enriquecido, ou sem estreia teatral BR cadastrada). Usado pro badge "Em breve" (ver seção
+  "Interface")
 - `title_status` (cópia direta de `title_status` — o `status` bruto do TMDB já traduzido pra PT-BR na SPEC via
   `CASE`, ver `glue_agg/src/queries.py`: `"Lançado"`, `"Encerrada"`, `"Cancelado"`, `"Em Produção"`,
   `"Planejado"`, `"Pós-Produção"`, `"Rumor"`, `"Piloto"`) — `null`/`None` quando o título ainda não foi

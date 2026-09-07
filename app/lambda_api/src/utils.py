@@ -73,7 +73,6 @@ def save_to_s3(s3_client: S3Client, bucket: str, data: dict, s3_key: str) -> Non
         Body=body.encode("utf-8"),
         ContentType="application/json",
     )
-    logger.info(f"Arquivo salvo: s3://{bucket}/{s3_key}")
 
 
 def fetch_tmdb_reference(api_key: str, endpoint: str, params: dict | None = None) -> dict:

@@ -121,6 +121,11 @@ def format_record(record: dict, today: date | None = None) -> dict:
     "hoje") — injetável pra testes determinísticos; em produção nunca é passado, cada uma
     cai no próprio default (data real em UTC)."""
     in_theaters = str(record.get("in_theaters", "")).lower() == "true"
+    # theatrical_release_date_br (data de estreia teatral BR agendada, via release_dates
+    # do glue_details) é mais precisa que air_date (data de lançamento global do discover)
+    # para o badge "Em breve" — air_date só entra como fallback pra título sem essa
+    # coluna ainda (não enriquecido, ou sem estreia teatral BR cadastrada no TMDB).
+    upcoming_source = record.get("theatrical_release_date_br") or record.get("air_date")
     return {
         "title": record.get("title", ""),
         "type": _format_type(record.get("media_type", "")),
@@ -133,8 +138,8 @@ def format_record(record: dict, today: date | None = None) -> dict:
         "duration": _format_title_duration(record),
         "release_date": _format_release_date(record.get("air_date")),
         "upcoming_date": (
-            _format_adaptive_date(record.get("air_date"), today=today)
-            if _is_upcoming(record.get("air_date"), today=today)
+            _format_adaptive_date(upcoming_source, today=today)
+            if _is_upcoming(upcoming_source, today=today)
             else None
         ),
         "streaming_providers": record.get("streaming_providers") or None,
