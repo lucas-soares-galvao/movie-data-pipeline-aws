@@ -22,8 +22,8 @@
 
 # Agenda semanal para discover de FILMES — sábados às 06:30 BRT (09:30 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
-  name                = "${local.tmdb_prefix}-lambda-api-movie-weekly-${var.env}"
-  description         = "Dispara a Lambda para filmes com payload completo (semanal, sábados)"
+  name        = "${local.tmdb_prefix}-lambda-api-movie-weekly-${var.env}"
+  description = "Dispara a Lambda para filmes com payload completo (semanal, sábados)"
   # schedule_expression = "cron(30 09 ? * SAT *)" # Sábados às 09:30 UTC / 06:30 BRT
   schedule_expression = "cron(50 14 ? * * *)"
   state               = local.eventbridge_schedule_state
@@ -32,8 +32,8 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_weekly" {
 
 # Agenda semanal para discover de SÉRIES — sábados às 06:35 BRT (09:35 UTC)
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_weekly" {
-  name                = "${local.tmdb_prefix}-lambda-api-tv-weekly-${var.env}"
-  description         = "Dispara a Lambda para séries com payload completo (semanal, sábados)"
+  name        = "${local.tmdb_prefix}-lambda-api-tv-weekly-${var.env}"
+  description = "Dispara a Lambda para séries com payload completo (semanal, sábados)"
   # schedule_expression = "cron(35 09 ? * SAT *)" # Sábados às 09:35 UTC / 06:35 BRT
   schedule_expression = "cron(55 14 ? * * *)"
   state               = local.eventbridge_schedule_state
