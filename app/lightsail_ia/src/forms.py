@@ -210,10 +210,14 @@ def _render_login_form(client_ip: str) -> None:
         with st.container(key="login-links-row"):
             link_col1, link_col2 = st.columns(2)
             with link_col1:
-                if st.button("Esqueci a senha", key="btn_link_esqueci", use_container_width=True):
+                if st.button(
+                    "Esqueci a senha", key="btn_link_esqueci", type="tertiary", use_container_width=True,
+                ):
                     _switch_view("forgot_password")
             with link_col2:
-                if st.button("Novo cadastro", key="btn_link_cadastro", use_container_width=True):
+                if st.button(
+                    "Novo cadastro", key="btn_link_cadastro", type="tertiary", use_container_width=True,
+                ):
                     _switch_view("signup")
 
         render_form_footer()
@@ -292,11 +296,14 @@ def _render_signup(client_ip: str) -> None:
                     _switch_view("signup_confirm")
 
         if st.button(
-            "Já iniciei um cadastro e perdi o código", key="btn_link_retomar", use_container_width=True,
+            "Já iniciei um cadastro e perdi o código", key="btn_link_retomar",
+            type="tertiary", use_container_width=True,
         ):
             _switch_view("signup_resume")
 
-        if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+        if st.button(
+            "← Voltar ao login", key="btn_link_voltar", type="tertiary", use_container_width=True,
+        ):
             _switch_view("login")
 
         render_form_footer()
@@ -412,7 +419,9 @@ def _render_signup_resume_request(client_ip: str) -> None:
                             "error", "Não foi possível reenviar o código agora. Tente novamente em instantes.",
                         )
 
-        if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+        if st.button(
+            "← Voltar ao login", key="btn_link_voltar", type="tertiary", use_container_width=True,
+        ):
             _switch_view("login")
 
         render_form_footer()
@@ -530,7 +539,10 @@ def _render_signup_confirm(client_ip: str) -> None:
             with st.container(key="resend-links-row"):
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
-                    if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+                    if st.button(
+                        "← Voltar ao login", key="btn_link_voltar",
+                        type="tertiary", use_container_width=True,
+                    ):
                         st.session_state.pop("signup_email_confirmed", None)
                         st.session_state.pop("signup_name_confirmed", None)
                         st.session_state.pop("signup_resumed", None)
@@ -630,7 +642,9 @@ def _render_signup_resume_details(client_ip: str, email: str, name: str) -> None
                 st.session_state.pop("signup_resume_step", None)
                 _switch_view("signup_success")
 
-        if st.button("← Voltar", key="btn_link_voltar_codigo", use_container_width=True):
+        if st.button(
+            "← Voltar", key="btn_link_voltar_codigo", type="tertiary", use_container_width=True,
+        ):
             st.session_state["signup_resume_step"] = "code"
             st.rerun()
 
@@ -783,7 +797,9 @@ def _render_forgot_password_request(client_ip: str) -> None:
 
         _send_section()
 
-        if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+        if st.button(
+            "← Voltar ao login", key="btn_link_voltar", type="tertiary", use_container_width=True,
+        ):
             _switch_view("login")
 
         render_form_footer()
@@ -900,7 +916,10 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
             with st.container(key="resend-links-row"):
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
-                    if st.button("← Voltar ao login", key="btn_link_voltar", use_container_width=True):
+                    if st.button(
+                        "← Voltar ao login", key="btn_link_voltar",
+                        type="tertiary", use_container_width=True,
+                    ):
                         st.session_state.pop("reset_step", None)
                         st.session_state.pop("reset_email_confirmed", None)
                         _switch_view("login")
