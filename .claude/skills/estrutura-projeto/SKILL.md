@@ -1,6 +1,6 @@
 ---
 name: estrutura-projeto
-description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a 06_backfill), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
+description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a 07_sonar), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
 ---
 
 # Skill: Estrutura do Projeto proj-eng-dados-filmes-aws
@@ -21,7 +21,8 @@ proj-eng-dados-filmes-aws/
 │       ├── 03_pr_auto.yml         # Workflow reutilizável: criação automática de PR
 │       ├── 04_deploy_lightsail.yml # Deploy do app configurado via SSH no Lightsail
 │       ├── 05_lightsail_scheduler.yml # Liga/desliga (destroy/create) o Lightsail — cron em prod, manual em dev
-│       └── 06_backfill.yml        # Backfill manual sob demanda (workflow_dispatch, ambiente por branch)
+│       ├── 06_backfill.yml        # Backfill manual sob demanda (workflow_dispatch, ambiente por branch)
+│       └── 07_sonar.yml           # Análise SonarQube Cloud — independente do 00_pipeline.yml (push/pull_request nativos)
 ├── app/
 │   ├── lambda_api/
 │   │   ├── main.py                # Handler da Lambda (entry point)
@@ -347,6 +348,18 @@ Job `deploy-app` encadeia `04_deploy_lightsail.yml` (via `uses:`) só quando a a
 **Retomada automática (ExpiredTokenException):** os 5 scripts que iteram por ano diretamente (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas` — não `referencias`) gravam um checkpoint em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (`scripts/backfill_shared.py`) a cada unidade concluída, e saem com exit code 75 especificamente quando a credencial AWS expira no meio da execução. `historico` não itera por ano diretamente (delega isso aos dois scripts que encadeia), mas mantém seu próprio checkpoint de estágio (`tmdb/backfill_checkpoints/historico.json`, unidades `"discover"`/`"enriquecimento"`) para não redigitar um estágio já concluído numa retomada. O step "Run backfill" reconhece esse código: reassume a role via `aws sts assume-role-with-web-identity` inline (usando o token OIDC do job, `ACTIONS_ID_TOKEN_REQUEST_URL`/`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, já que `permissions: id-token: write` está habilitado), obtém uma nova sessão de 1h e roda o script de novo — que retoma do checkpoint em vez de recomeçar do `start_year`. Qualquer outro erro (não relacionado a token) falha o job normalmente, sem retry. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais, separado do checkpoint.
 
 Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montados dinamicamente como `<project_prefix>-...-<ambiente>` / `<prefixo>_..._<ambiente>`, usando o prefixo lido de `infra/config/project.json` e o ambiente resolvido pelo branch — nenhum nome fica hardcoded no workflow (exceto `S3_BUCKET_SOT`/`S3_BUCKET_TEMP`, que usam o prefixo de bucket `lsg`, não o prefixo do projeto).
+
+---
+
+### `07_sonar.yml` — Análise SonarQube Cloud
+
+**Trigger:** eventos nativos do GitHub — `push` em `develop` e `pull_request` com destino `develop` — **fora** da orquestração do `00_pipeline.yml` (não é chamado por ele, não usa `workflow_call`). Por isso não precisa do repasse explícito de secrets que os workflows reutilizáveis (`02_terraform.yml`, `04_deploy_lightsail.yml`) usam: `SONAR_TOKEN` está disponível direto via `secrets.SONAR_TOKEN` no job.
+
+**Por que `develop` e não `main`:** o plano Free do SonarQube Cloud só analisa a branch "principal" configurada no projeto Sonar e PRs cujo destino seja essa branch. A branch principal do projeto foi configurada como `develop` (não o default `main` do GitHub) porque o PR com o diff de código de verdade é `feature/* → develop` (criado por `03_pr_auto.yml` só depois que `01_test.yml` passa); `develop → main` é só uma promoção em lote de código já testado.
+
+**Etapas:** Checkout (`fetch-depth: 0`, necessário para blame/new code period do Sonar) → Setup Python 3.12 → instala `pytest`/`pytest-cov` + `test/**/requirements_tests.txt` + `app/*/requirements.txt` → `pytest --cov=app --cov-report=xml` (só para gerar `coverage.xml` — não repete o gate de 95%, que já é responsabilidade do `01_test.yml`) → `SonarSource/sonarqube-scan-action@v7`, lendo `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`).
+
+**Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true`, então o job nunca falha por causa do Quality Gate do Sonar — mesmo padrão dos steps informativos do `01_test.yml` (`mypy`/`bandit`/`safety`). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
 
 ---
 

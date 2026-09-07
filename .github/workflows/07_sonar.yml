@@ -1,0 +1,69 @@
+name: Sonar Analysis
+
+# =============================================================================
+# Análise de qualidade de código via SonarQube Cloud.
+#
+# Independente do 00_pipeline.yml: usa os eventos nativos push/pull_request do
+# GitHub em vez do fluxo orquestrado (push feature/* -> 01_test -> auto PR),
+# porque no plano Free do SonarQube Cloud só é possível analisar (a) a branch
+# principal configurada no projeto Sonar e (b) PRs cujo destino seja essa
+# branch. Aqui a branch principal do projeto Sonar é "develop" (não "main") —
+# o PR que carrega o diff de código de verdade é feature/* -> develop.
+#
+# Informativo: não bloqueia o merge (sem sonar.qualitygate.wait=true). Reavaliar
+# tornar bloqueante depois de calibrar o volume de achados do perfil padrão
+# "Sonar way" (o plano Free não permite quality profile customizado).
+# =============================================================================
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            app/**/requirements.txt
+            test/**/requirements_tests.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          for file in $(find test -type f -name "requirements_tests.txt"); do
+            echo "Instalando dependências de teste: $file"
+            pip install -r "$file"
+          done
+          for file in app/*/requirements.txt; do
+            if [ -f "$file" ]; then
+              echo "Instalando dependências da aplicação: $file"
+              pip install -r "$file"
+            fi
+          done
+
+      - name: Configure PYTHONPATH
+        run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
+      - name: Generate coverage report
+        run: pytest --cov=app --cov-report=xml
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
