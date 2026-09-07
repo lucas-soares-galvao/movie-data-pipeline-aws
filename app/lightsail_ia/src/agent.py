@@ -343,6 +343,9 @@ _SYSTEM_PROMPT = (
     "- in_theaters (boolean): true se está em cartaz nos cinemas\n"
     "- theater_start_date (string): data de estreia nos cinemas ('YYYY-MM-DD')\n"
     "- theater_end_date (string): data de saída dos cinemas ('YYYY-MM-DD')\n"
+    "- theatrical_release_date_br (string): data de estreia teatral no Brasil agendada pela "
+    "distribuidora ('YYYY-MM-DD'), mais precisa que air_date para lançamentos futuros. "
+    "Apenas filmes. NULL se ainda não agendada/cadastrada no TMDB.\n"
     "- adult (boolean): true se é conteúdo adulto\n\n"
     "REGRAS:\n"
     "- Gere APENAS a cláusula WHERE (sem a palavra WHERE), usando AND para combinar filtros.\n"
@@ -350,9 +353,10 @@ _SYSTEM_PROMPT = (
     "- Para idioma, use original_language com código ISO: original_language = 'ko' (coreano), 'ja' (japonês), 'en' (inglês), 'pt' (português)\n"
     "- Inclua vote_average >= 6.0 por padrão, salvo se o usuário pedir nota diferente OU "
     "se o pedido for sobre lançamentos futuros/títulos ainda não estreados (ex: 'o que vai "
-    "estrear', 'próximos lançamentos', 'ainda não saiu', 'em breve', ou filtros por air_date "
-    "futuro, title_status = 'Post Production' ou theater_start_date futuro) — nesses casos, "
-    "não inclua o filtro de vote_average, pois o título ainda não teve chance de acumular votos.\n"
+    "estrear', 'próximos lançamentos', 'ainda não saiu', 'em breve', ou filtros por "
+    "theatrical_release_date_br futuro, air_date futuro ou title_status = 'Post Production') "
+    "— nesses casos, não inclua o filtro de vote_average, pois o título ainda não teve chance "
+    "de acumular votos.\n"
     "- Se o usuário pedir APENAS filmes, use media_type = 'movie'. Se pedir APENAS séries, use media_type = 'tv'. "
     "Se pedir ambos ('filmes e séries', 'filmes ou séries') ou não especificar o tipo, NÃO inclua filtro de media_type.\n"
     "- Nunca use SELECT, INSERT, UPDATE, DELETE ou outros comandos — apenas expressões de filtro."
@@ -469,7 +473,7 @@ def search_titles_spec(where_clause: str, limit: int = _DEFAULT_RECOMMENDATION_C
     where_clause = _validate_where(where_clause)
 
     sql = f"""
-        SELECT title, media_type, year, air_date, genre_names, overview,
+        SELECT title, media_type, year, air_date, theatrical_release_date_br, genre_names, overview,
                vote_average, poster_url, backdrop_url,
                runtime_minutes, number_of_seasons,
                number_of_episodes, episode_runtime_minutes,

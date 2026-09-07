@@ -275,6 +275,30 @@ def _extract_certification_br_movie(release_dates: dict) -> str | None:
     return None
 
 
+def _extract_theatrical_release_date_br(release_dates: dict) -> str | None:
+    """Extrai a data de estreia teatral BR do endpoint release_dates (filmes).
+
+    Prioriza type=3 ("Theatrical", estreia ampla); usa type=2 ("Theatrical limited")
+    como fallback quando não há estreia ampla registrada ainda. release_date vem como
+    timestamp ISO 8601 completo (ex: "2024-03-15T00:00:00.000Z") — trunca para
+    "YYYY-MM-DD", mesmo formato das demais datas do pipeline (air_date, theater_start_date).
+    """
+    theatrical: str | None = None
+    limited: str | None = None
+    for entry in release_dates.get("results", []):
+        if entry.get("iso_3166_1") != "BR":
+            continue
+        for rd in entry.get("release_dates", []):
+            release_date = rd.get("release_date")
+            if not release_date:
+                continue
+            if rd.get("type") == 3 and theatrical is None:
+                theatrical = release_date[:10]
+            elif rd.get("type") == 2 and limited is None:
+                limited = release_date[:10]
+    return theatrical or limited
+
+
 def _extract_certification_br_tv(content_ratings: dict) -> str | None:
     """Extrai classificação indicativa BR do endpoint content_ratings (TV)."""
     for entry in content_ratings.get("results", []):
@@ -511,6 +535,7 @@ def _movie_fields(detail: dict) -> dict:
         "revenue":         detail.get("revenue") or None,
         "origin_country":  detail.get("origin_country"),
         "certification":   _extract_certification_br_movie(detail.get("release_dates", {})),
+        "theatrical_release_date_br": _extract_theatrical_release_date_br(detail.get("release_dates", {})),
     }
 
 
