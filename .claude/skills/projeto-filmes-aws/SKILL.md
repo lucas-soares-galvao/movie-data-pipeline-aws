@@ -167,7 +167,7 @@ EventBridge (schedule)
 --TABLE_WATCH_PROVIDERS_MOVIE, --TABLE_WATCH_PROVIDERS_TV
 --TMDB_SECRET_ARN, --GLUE_DATA_QUALITY_JOB_NAME
 --MEDIA_TYPE, --YEAR, --END_YEAR  (YEAR/END_YEAR opcionais — ausentes no modo changes)
---FORCE_REFETCH (opcional), --TRANSLATE_PROVIDER (opcional)
+--TRANSLATE_PROVIDER (opcional)
 --CHANGES_S3_PATH (opcional — presente só no modo changes, ver abaixo)
 ```
 
@@ -214,7 +214,7 @@ Sai cedo, antes de qualquer coleta de referência/discover: busca IDs mudados vi
 
 Também sai cedo, direto para o **Glue Details**, sem passar por `/discover` nem pelo Glue ETL. Diferente do modo
 changes (que reage a IDs que a TMDB reportou como mudados), este modo força o re-processamento de 1 ano do catálogo
-antigo por execução, com `FORCE_REFETCH=True`, via um ponteiro simples em SSM Parameter Store
+antigo por execução, via um ponteiro simples em SSM Parameter Store
 (`/tmdb-pipeline/rotation-year-pointer-{content_type}`, um parâmetro por `content_type` para não haver corrida entre
 movie e tv): lê o último ano processado, avança 1, reinicia em 2000 ao ultrapassar `current_year - 3` (o limite é
 recalculado a cada execução a partir da data corrente, nunca hardcoded). Cobre o intervalo `[2000, current_year - 3]`

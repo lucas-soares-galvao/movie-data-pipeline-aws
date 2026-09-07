@@ -452,7 +452,7 @@ class TestOnlyRotationRefresh:
       O EventBridge semanal de rotação (sábados, junto do changes) usa
       only_rotation_refresh=True. Lê o ponteiro do SSM Parameter Store
       (/tmdb-pipeline/rotation-year-pointer-{content_type}), avança 1 ano, aciona
-      o Glue Details com FORCE_REFETCH=True para esse ano, e grava o novo ponteiro.
+      o Glue Details para esse ano, e grava o novo ponteiro.
       Reinicia em 2000 ao ultrapassar current_year - 3 (recalculado a cada execução).
     """
 
@@ -489,7 +489,6 @@ class TestOnlyRotationRefresh:
         chamada = mocks["mock_trigger"].call_args
         assert chamada[1].get("YEAR") == 2005
         assert chamada[1].get("END_YEAR") == 2005
-        assert chamada[1].get("FORCE_REFETCH") is True
 
     def test_reinicia_em_2000_ao_ultrapassar_o_limite(self):
         """current_year=2026 -> limite=2023. last_year=2023 -> proximo seria 2024,

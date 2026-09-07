@@ -34,10 +34,10 @@ framework de teste automatizado no projeto), a cobertura de `app/` fica em ~95,2
    `collect_now_playing_data`/`collect_discover_data`: `except HTTPError` (retry/continue) e
    `if saved_pages == 0: raise RuntimeError`. Reaproveitar o mock de `tmdb_get`/`fetch_tmdb_data`
    levantando `HTTPError` já usado em outros testes do arquivo.
-3. **`app/glue_details/src/utils.py`** (27 linhas faltando, maior bloco isolado) — parsing de
-   `sys.argv` para `--FORCE_REFETCH`/`--TRANSLATE_PROVIDER`, a função `_fetch_collections_pt_br`
-   inteira (busca paralela de coleções em pt-BR, ainda sem nenhum teste) e o branch de merge com
-   dados existentes via `wr.s3.read_parquet` no fluxo de watch providers.
+3. **`app/glue_details/src/utils.py`** — parsing de `sys.argv` para `--TRANSLATE_PROVIDER`, a
+   função `_fetch_collections_pt_br` inteira (busca paralela de coleções em pt-BR, ainda sem
+   nenhum teste) e o branch de merge com dados existentes via `wr.s3.read_parquet` no fluxo de
+   watch providers.
 4. **`app/lightsail_ia/src/agent.py`** (12 linhas) e **`app/lightsail_ia/src/formatting.py`** (6 linhas) —
    branches de erro/edge case do agente de recomendação (LLM) e de formatação de data/duração;
    deixar por último por menor volume e maior complexidade de mock (LLM).

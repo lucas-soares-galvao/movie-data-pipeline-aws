@@ -1614,8 +1614,6 @@ class TestRunDetailsAndWatchProvidersForYear:
     def test_fetches_ids_using_discover_table(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS) as mock_ids,
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job"),
@@ -1628,11 +1626,9 @@ class TestRunDetailsAndWatchProvidersForYear:
                 year="2025",
             )
 
-    def test_collect_details_called_with_delta_ids(self):
+    def test_collect_details_called_with_discover_ids(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details") as mock_collect,
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job"),
@@ -1644,24 +1640,9 @@ class TestRunDetailsAndWatchProvidersForYear:
             assert set(call_kw.kwargs["ids"]) == set(self._IDS)
             assert call_kw.kwargs["table_name"] == "tb_tmdb_details_movie_dev"
 
-    def test_force_refetch_skips_existing_ids_check(self):
+    def test_skip_collect_details_when_discover_empty(self):
         with (
-            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details") as mock_existing,
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
-            patch("src.utils.collect_and_write_details") as mock_collect,
-            patch("src.utils.collect_and_write_watch_providers"),
-            patch("src.utils.trigger_glue_job"),
-        ):
-            u.run_details_and_watch_providers_for_year(**self._kwargs(force_refetch=True))
-            mock_existing.assert_not_called()
-            assert set(mock_collect.call_args.kwargs["ids"]) == set(self._IDS)
-
-    def test_skip_collect_details_when_no_new_ids(self):
-        with (
-            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=self._IDS),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
+            patch("src.utils.fetch_ids_from_sot", return_value=[]),
             patch("src.utils.collect_and_write_details") as mock_collect,
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job"),
@@ -1669,11 +1650,9 @@ class TestRunDetailsAndWatchProvidersForYear:
             u.run_details_and_watch_providers_for_year(**self._kwargs())
             mock_collect.assert_not_called()
 
-    def test_collect_watch_providers_called_with_stale_ids(self):
+    def test_collect_watch_providers_called_with_discover_ids(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers") as mock_wp,
             patch("src.utils.trigger_glue_job"),
@@ -1686,11 +1665,9 @@ class TestRunDetailsAndWatchProvidersForYear:
             assert call_kw.kwargs["table_name"] == "tb_tmdb_watch_providers_movie_dev"
             assert call_kw.kwargs["year"] == "2025"
 
-    def test_skip_collect_watch_providers_when_no_stale_ids(self):
+    def test_skip_collect_watch_providers_when_discover_empty(self):
         with (
-            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=[]),
+            patch("src.utils.fetch_ids_from_sot", return_value=[]),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers") as mock_wp,
             patch("src.utils.trigger_glue_job"),
@@ -1701,8 +1678,6 @@ class TestRunDetailsAndWatchProvidersForYear:
     def test_triggers_data_quality_twice_by_default(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job") as mock_trigger,
@@ -1719,8 +1694,6 @@ class TestRunDetailsAndWatchProvidersForYear:
     def test_does_not_trigger_data_quality_when_trigger_dq_false(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job") as mock_trigger,
@@ -1732,8 +1705,6 @@ class TestRunDetailsAndWatchProvidersForYear:
         call_order = []
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job"),
@@ -1755,8 +1726,6 @@ class TestRunDetailsAndWatchProvidersForYear:
     def test_repair_not_called_when_not_last_year(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
-            patch("src.utils.fetch_existing_ids_from_details", return_value=[]),
-            patch("src.utils.fetch_ids_stale_watch_providers", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job"),
@@ -2128,49 +2097,6 @@ class TestProcessChangedIds:
 
 
 # ---------------------------------------------------------------------------
-# fetch_existing_ids_from_details
-# ---------------------------------------------------------------------------
-
-
-class TestFetchExistingIdsFromDetails:
-    def _run(self, ids=None, table="tb_tmdb_details_movie_dev", raise_exc=False):
-        if raise_exc:
-            with patch("src.utils.wr.athena.read_sql_query", side_effect=Exception("err")):
-                return u.fetch_existing_ids_from_details(
-                    database="db_tmdb_movie_dev",
-                    table_details=table,
-                    s3_bucket_temp="my-temp",
-                ), None
-        df = pd.DataFrame({"id": ids if ids is not None else [1, 2]})
-        with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
-            result = u.fetch_existing_ids_from_details(
-                database="db_tmdb_movie_dev",
-                table_details=table,
-                s3_bucket_temp="my-temp",
-            )
-        return result, mock_athena
-
-    def test_sql_nao_filtra_por_ano(self):
-        """O filtro de year foi removido: IDs existentes em QUALQUER particao sao considerados."""
-        _, mock_athena = self._run()
-        sql = mock_athena.call_args.kwargs["sql"]
-        assert "WHERE year" not in sql
-
-    def test_sql_filtra_mes_atual(self):
-        _, mock_athena = self._run()
-        sql = mock_athena.call_args.kwargs["sql"]
-        assert "date_trunc('month', current_date)" in sql
-
-    def test_retorna_lista_de_ids(self):
-        result, _ = self._run(ids=[10, 20, 30])
-        assert result == [10, 20, 30]
-
-    def test_retorna_lista_vazia_em_erro(self):
-        result, _ = self._run(raise_exc=True)
-        assert result == []
-
-
-# ---------------------------------------------------------------------------
 # repair_details_duplicates
 # ---------------------------------------------------------------------------
 
@@ -2376,62 +2302,3 @@ class TestRepairWatchProvidersDuplicates:
         mock_write = self._run_repair(parquet_df=parquet_df)
         assert mock_write.call_args.kwargs["mode"] == "overwrite_partitions"
         assert mock_write.call_args.kwargs["partition_cols"] == ["year"]
-
-
-# ---------------------------------------------------------------------------
-# fetch_ids_stale_watch_providers
-# ---------------------------------------------------------------------------
-
-
-class TestFetchIdsStaleWatchProviders:
-    def _run(
-        self,
-        year="2025",
-        ids=None,
-        table_discover="tb_tmdb_discover_movie_dev",
-        table_wp="tb_tmdb_watch_providers_movie_dev",
-        raise_exc=False,
-    ):
-        if raise_exc:
-            with patch("src.utils.wr.athena.read_sql_query", side_effect=Exception("err")):
-                return u.fetch_ids_stale_watch_providers(
-                    database="db_tmdb_movie_dev",
-                    table_discover=table_discover,
-                    table_watch_providers=table_wp,
-                    s3_bucket_temp="my-temp",
-                    year=year,
-                ), None
-        df = pd.DataFrame({"id": ids if ids is not None else [1, 2]})
-        with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_athena:
-            result = u.fetch_ids_stale_watch_providers(
-                database="db_tmdb_movie_dev",
-                table_discover=table_discover,
-                table_watch_providers=table_wp,
-                s3_bucket_temp="my-temp",
-                year=year,
-            )
-        return result, mock_athena
-
-    def test_sql_filtra_pelo_ano(self):
-        _, mock_athena = self._run(year="2025")
-        sql = mock_athena.call_args.kwargs["sql"]
-        assert "d.year = '2025'" in sql
-
-    def test_sql_inclui_condicao_mensal(self):
-        _, mock_athena = self._run()
-        sql = mock_athena.call_args.kwargs["sql"]
-        assert "date_trunc('month', current_date)" in sql
-
-    def test_sql_inclui_join_com_watch_providers(self):
-        _, mock_athena = self._run(table_wp="tb_tmdb_watch_providers_movie_dev")
-        sql = mock_athena.call_args.kwargs["sql"]
-        assert "tb_tmdb_watch_providers_movie_dev" in sql
-        assert "LEFT JOIN" in sql.upper()
-
-    def test_retorna_lista_de_ids(self):
-        result, _ = self._run(ids=[5, 10])
-        assert result == [5, 10]
-
-    def test_retorna_lista_vazia_em_erro(self):
-        result, _ = self._run(raise_exc=True)
-        assert result == []
