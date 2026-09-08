@@ -103,10 +103,14 @@ jobs:
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
   sonar:
-    # Roda em paralelo ao terraform (sem needs) — Terraform provisiona infra,
-    # Sonar analisa código-fonte, nenhum depende do outro. Só em push:main
-    # porque o plano Free do SonarQube Cloud só analisa de forma contínua a
-    # branch marcada como "main" no projeto Sonar (ver sonar-project.properties).
+    # needs: resolve-env é só organizacional (agrupa visualmente no grafo da
+    # Actions, ao lado de terraform/deploy-lightsail) — sonar não consome
+    # nenhum output de resolve-env, roda em paralelo ao terraform (Terraform
+    # provisiona infra, Sonar analisa código-fonte, nenhum depende do outro).
+    # Só em push:main porque o plano Free do SonarQube Cloud só analisa de
+    # forma contínua a branch marcada como "main" no projeto Sonar (ver
+    # sonar-project.properties).
+    needs: resolve-env
     if: github.ref_name == 'main'
     uses: ./.github/workflows/sonar.yml
     secrets:
