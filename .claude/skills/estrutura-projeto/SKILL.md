@@ -1,6 +1,6 @@
 ---
 name: estrutura-projeto
-description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a 07_sonar), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
+description: Árvore de diretórios do projeto, workflows GitHub Actions (_pipeline a sonar), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
 ---
 
 # Skill: Estrutura do Projeto proj-eng-dados-filmes-aws
@@ -15,14 +15,14 @@ Você está trabalhando no projeto **proj-eng-dados-filmes-aws**. Esta skill des
 proj-eng-dados-filmes-aws/
 ├── .github/
 │   └── workflows/
-│       ├── 00_pipeline.yml        # Pipeline principal CI/CD (orquestrador)
-│       ├── 01_test.yml            # Workflow reutilizável: testes + quality gates
-│       ├── 02_terraform.yml       # Workflow reutilizável: infra Terraform
-│       ├── 03_pr_auto.yml         # Workflow reutilizável: criação automática de PR
-│       ├── 04_deploy_lightsail.yml # Deploy do app configurado via SSH no Lightsail
-│       ├── 05_lightsail_scheduler.yml # Liga/desliga (destroy/create) o Lightsail — cron em prod, manual em dev
-│       ├── 06_backfill.yml        # Backfill manual sob demanda (workflow_dispatch, ambiente por branch)
-│       └── 07_sonar.yml           # Análise SonarQube Cloud — independente do 00_pipeline.yml (push/pull_request nativos)
+│       ├── _pipeline.yml       # Pipeline principal CI/CD (orquestrador)
+│       ├── test.yml            # Workflow reutilizável: testes + quality gates
+│       ├── terraform.yml       # Workflow reutilizável: infra Terraform
+│       ├── pr_auto.yml         # Workflow reutilizável: criação automática de PR
+│       ├── deploy_lightsail.yml # Deploy do app configurado via SSH no Lightsail
+│       ├── lightsail_scheduler.yml # Liga/desliga (destroy/create) o Lightsail — cron em prod, manual em dev
+│       ├── backfill.yml        # Backfill manual sob demanda (workflow_dispatch, ambiente por branch)
+│       └── sonar.yml           # Workflow reutilizável: análise SonarQube Cloud
 ├── app/
 │   ├── lambda_api/
 │   │   ├── main.py                # Handler da Lambda (entry point)
@@ -82,7 +82,7 @@ proj-eng-dados-filmes-aws/
 │   │   │       ├── countdown.js               # Countdown MM:SS genérico (rate limit/bloqueio)
 │   │   │       └── form_button_toggle.js      # Toggle do botão "Entrar" a cada tecla
 │   │   └── deploy/
-│   │       ├── setup.sh            # Bootstrap manual legado (referência) — CI/CD usa 04_deploy_lightsail.yml
+│   │       ├── setup.sh            # Bootstrap manual legado (referência) — CI/CD usa deploy_lightsail.yml
 │   │       ├── Caddyfile           # Proxy reverso — domínio via {$FILMBOT_DOMAIN} (injetado por .env.caddy)
 │   │       ├── caddy.service       # EnvironmentFile=.env.caddy
 │   │       └── filmbot.service     # EnvironmentFile=.env
@@ -213,7 +213,7 @@ proj-eng-dados-filmes-aws/
 
 ## GitHub Actions — Workflows
 
-### `00_pipeline.yml` — Orquestrador principal
+### `_pipeline.yml` — Orquestrador principal
 
 **Gatilhos:** push em `feature/*`, `develop`, `main` e `workflow_dispatch` (manual com input de ambiente).
 
@@ -223,8 +223,11 @@ proj-eng-dados-filmes-aws/
 push em feature/*  →  test  →  auto-pr-feature (feature/* → develop)
 push em develop    →  terraform (dev)  →  deploy-lightsail sempre "skipped" (FilmBot não existe em dev) + auto-pr-environment (develop → main), em paralelo — os dois só dependem de `terraform`, não um do outro
 push em main       →  terraform (prod)  →  deploy-lightsail (prod, se a instância estiver ligada)
+                   →  sonar (SonarQube Cloud), em paralelo ao terraform — nenhum dos dois depende do outro
 workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail só roda se o ambiente escolhido for prod
 ```
+
+**Job `sonar`:** `if: github.ref_name == 'main'`, `needs: resolve-env` — mas é só organizacional/visual (agrupa no grafo da Actions ao lado de `terraform`/`deploy-lightsail`), não uma dependência real: `sonar` não consome nenhum output de `resolve-env`. Roda em paralelo ao `terraform` (nenhum `needs` entre os dois), já que um provisiona infra e o outro analisa código-fonte, sem dependência real entre eles. Chama `sonar.yml` via `uses:`, repassando `SONAR_TOKEN` como o secret `sonar-token` (mesma mecânica de repasse que `terraform`/`deploy-lightsail` já usam para os secrets AWS). Só roda em `push:main` (não em `develop` nem `feature/*`) porque o plano Free do SonarQube Cloud só analisa de forma contínua a branch marcada como "principal" no projeto Sonar — tentar analisar qualquer outra branch (`develop`, por exemplo) é rejeitado/ignorado pelo Sonar sem erro visível no CI (a branch aparece como "Not analyzed" no dashboard, atrás de um selo "Upgrade"). Não decora Pull Requests (decisão consciente: exigiria adicionar o evento `pull_request` ao trigger deste orquestrador, o que faria os jobs `terraform`/`deploy-lightsail` também serem avaliados nesse evento).
 
 **Secrets usados por ambiente (job `terraform`):**
 | Secret | dev | prod |
@@ -234,13 +237,13 @@ workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail só rod
 | `AWS_LOCK_DYNAMODB_TABLE` | `_DEV` | `_PROD` |
 | `AWS_FILMBOT_SECRET_ARN` | `_DEV` | `_PROD` |
 
-**Secrets sem sufixo de ambiente (compartilhados):** `NOTIFICATION_EMAIL` (e-mails de alerta da infra), `INFRACOST_API_KEY` (estimativa de custo no PR).
+**Secrets sem sufixo de ambiente (compartilhados):** `NOTIFICATION_EMAIL` (e-mails de alerta da infra), `INFRACOST_API_KEY` (estimativa de custo no PR), `SONAR_TOKEN` (autenticação do job `sonar` no SonarQube Cloud).
 
 ---
 
-### `01_test.yml` — Quality Gates (reutilizável)
+### `test.yml` — Quality Gates (reutilizável)
 
-Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-latest`.
+Chamado por `_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-latest`.
 
 **Etapas:**
 1. Checkout do código
@@ -256,7 +259,7 @@ Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-la
 
 ---
 
-### `02_terraform.yml` — Deploy de Infraestrutura (reutilizável)
+### `terraform.yml` — Deploy de Infraestrutura (reutilizável)
 
 **Inputs:** `environment` (dev | prod)  
 **Secrets:** `aws-assume-role-arn`, `aws-statefile-s3-bucket`, `aws-lock-dynamodb-table`
@@ -281,7 +284,7 @@ Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-la
 
 ---
 
-### `03_pr_auto.yml` — Auto Pull Request (reutilizável)
+### `pr_auto.yml` — Auto Pull Request (reutilizável)
 
 **Input:** `branch_name`
 
@@ -293,7 +296,7 @@ Valida `terraform validate` (sem backend) antes de criar o PR.
 
 ---
 
-### `04_deploy_lightsail.yml` — Deploy do App Configurado (reutilizável)
+### `deploy_lightsail.yml` — Deploy do App Configurado (reutilizável)
 
 **Inputs:** `environment` (mantido na interface do `workflow_call`, mas na prática só é chamado com `prod` — FilmBot não existe em dev)
 **Secrets:** `aws-assume-role-arn`, `aws-statefile-s3-bucket`, `aws-lock-dynamodb-table`
@@ -315,7 +318,7 @@ Por padrão (`infra/config/project.json`), `app_name=filmbot`, `app_folder=light
 
 ---
 
-### `05_lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
+### `lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
 
 Exclusivo de prod (FilmBot não existe em dev). Substitui o antigo `lightsail_scheduler.tf` (Lambda + EventBridge, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped`, então parar a instância não economia nada (confirmado via fatura AWS real). Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, em vez de só ligar/desligar.
 
@@ -323,21 +326,21 @@ Exclusivo de prod (FilmBot não existe em dev). Substitui o antigo `lightsail_sc
 - `schedule` (cron): desliga `00:00 BRT` diário e liga `08:00 BRT` diário.
 - `workflow_dispatch` (`action`: start|stop), disparado a partir de `main`.
 
-**Etapas:** resolve ambiente (sempre `prod`, falha se disparado de outro branch)/ação pelo trigger → lê `infra/config/project.json` → autenticação OIDC (secrets `_PROD`) → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `02_terraform.yml`).
+**Etapas:** resolve ambiente (sempre `prod`, falha se disparado de outro branch)/ação pelo trigger → lê `infra/config/project.json` → autenticação OIDC (secrets `_PROD`) → `terraform init` → `destroy -target` (ação `stop`, alvos: `aws_lightsail_static_ip_attachment.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_instance.filmbot`) ou `apply -target` (ação `start`, mesmos alvos + `aws_lightsail_key_pair.filmbot`) → force-unlock automático se o job for cancelado (mesmo padrão de `terraform.yml`).
 
 `aws_lightsail_static_ip.filmbot` (`local.lightsail_prod_enabled`) **nunca** entra no `-target` — o IP estático nunca é destruído, então o DNS de `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
 
-Job `deploy-app` encadeia `04_deploy_lightsail.yml` (via `uses:`) só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot).
+Job `deploy-app` encadeia `deploy_lightsail.yml` (via `uses:`) só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot).
 
-**Concorrência:** `concurrency.group: terraform-prod` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para prod, serializa com qualquer apply/destroy completo disparado por push em `main`.
+**Concorrência:** `concurrency.group: terraform-prod` — mesmo group usado pelo job `terraform` de `terraform.yml` para prod, serializa com qualquer apply/destroy completo disparado por push em `main`.
 
 **Comportamento a saber:** como `lightsail_instance_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável), um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento — um deploy de código pode religar o servidor fora da janela agendada.
 
 ---
 
-### `06_backfill.yml` — Backfill Manual
+### `backfill.yml` — Backfill Manual
 
-**Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
+**Trigger:** `workflow_dispatch` apenas (independente do `_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
 **Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `translate_provider` (google | aws)
 
@@ -351,15 +354,13 @@ Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montado
 
 ---
 
-### `07_sonar.yml` — Análise SonarQube Cloud
+### `sonar.yml` — Análise SonarQube Cloud (reutilizável)
 
-**Trigger:** eventos nativos do GitHub — `push` em `develop` e `pull_request` com destino `develop` — **fora** da orquestração do `00_pipeline.yml` (não é chamado por ele, não usa `workflow_call`). Por isso não precisa do repasse explícito de secrets que os workflows reutilizáveis (`02_terraform.yml`, `04_deploy_lightsail.yml`) usam: `SONAR_TOKEN` está disponível direto via `secrets.SONAR_TOKEN` no job.
+Chamado por `_pipeline.yml` (job `sonar`) apenas em `push:main`. Recebe o secret `sonar-token` via `workflow_call` (repassado pelo `_pipeline.yml` a partir de `secrets.SONAR_TOKEN`) — mesma mecânica de repasse explícito que `terraform.yml`/`deploy_lightsail.yml` já usam para os secrets AWS.
 
-**Por que `develop` e não `main`:** o plano Free do SonarQube Cloud só analisa a branch "principal" configurada no projeto Sonar e PRs cujo destino seja essa branch. A branch principal do projeto foi configurada como `develop` (não o default `main` do GitHub) porque o PR com o diff de código de verdade é `feature/* → develop` (criado por `03_pr_auto.yml` só depois que `01_test.yml` passa); `develop → main` é só uma promoção em lote de código já testado.
+**Etapas:** Checkout (`fetch-depth: 0`, necessário para blame/new code period do Sonar) → Setup Python 3.12 → instala `pytest`/`pytest-cov` + `test/**/requirements_tests.txt` + `app/*/requirements.txt` → `pytest --cov=app --cov-report=xml` (só para gerar `coverage.xml` — não repete o gate de 95%, que já é responsabilidade do `test.yml`) → `SonarSource/sonarqube-scan-action@v8`, lendo `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`).
 
-**Etapas:** Checkout (`fetch-depth: 0`, necessário para blame/new code period do Sonar) → Setup Python 3.12 → instala `pytest`/`pytest-cov` + `test/**/requirements_tests.txt` + `app/*/requirements.txt` → `pytest --cov=app --cov-report=xml` (só para gerar `coverage.xml` — não repete o gate de 95%, que já é responsabilidade do `01_test.yml`) → `SonarSource/sonarqube-scan-action@v7`, lendo `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`).
-
-**Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true`, então o job nunca falha por causa do Quality Gate do Sonar — mesmo padrão dos steps informativos do `01_test.yml` (`mypy`/`bandit`/`safety`). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
+**Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true`, então o job nunca falha por causa do Quality Gate do Sonar — mesmo padrão dos steps informativos do `test.yml` (`mypy`/`bandit`/`safety`). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
 
 ---
 
@@ -474,5 +475,5 @@ python_files = test_*.py
 
 ### Quality Gate
 
-O pipeline bloqueia se a cobertura de `app/` for **menor que 95%** (definido no workflow `.github/workflows/01_test.yml`, não no `pytest.ini`).  
+O pipeline bloqueia se a cobertura de `app/` for **menor que 95%** (definido no workflow `.github/workflows/test.yml`, não no `pytest.ini`).  
 Rodar localmente: `pytest --cov=app --cov-report=term-missing --cov-fail-under=95`

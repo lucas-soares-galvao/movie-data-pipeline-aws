@@ -1,6 +1,6 @@
 ---
 name: revisao-de-pr
-description: Checklist de revisão de um Pull Request completo (diff de outra sessão/pessoa, via `git diff <base>...HEAD` ou `gh pr diff <numero>`) antes do merge — cobre as mesmas camadas de revisao-pos-mudanca-codigo (testes, docs, docstrings, type hints, IAM) mais infra/Terraform, workflows GitHub, Streamlit/FilmBot e segurança, e sinaliza explicitamente o que o CI de 01_test.yml não bloqueia (mypy/bandit/safety são apenas informativos) e o que ele não verifica (sincronia de .md, testes de scripts/). Use ao revisar um PR pronto antes de aprovar/mergear — não ao terminar sua própria mudança na sessão atual (nesse caso, revisao-pos-mudanca-codigo).
+description: Checklist de revisão de um Pull Request completo (diff de outra sessão/pessoa, via `git diff <base>...HEAD` ou `gh pr diff <numero>`) antes do merge — cobre as mesmas camadas de revisao-pos-mudanca-codigo (testes, docs, docstrings, type hints, IAM) mais infra/Terraform, workflows GitHub, Streamlit/FilmBot e segurança, e sinaliza explicitamente o que o CI de test.yml não bloqueia (mypy/bandit/safety são apenas informativos) e o que ele não verifica (sincronia de .md, testes de scripts/). Use ao revisar um PR pronto antes de aprovar/mergear — não ao terminar sua própria mudança na sessão atual (nesse caso, revisao-pos-mudanca-codigo).
 ---
 
 # Skill: Revisão de PR
@@ -57,7 +57,7 @@ Classifique os arquivos alterados por camada — cada uma tem um gate e uma skil
 
 ## 3. Lacunas que o CI não cobre
 
-`01_test.yml` já bloqueia `ruff check` e `pytest --cov=app --cov-fail-under=95` — não repita esse trabalho. O
+`test.yml` já bloqueia `ruff check` e `pytest --cov=app --cov-fail-under=95` — não repita esse trabalho. O
 valor desta skill está no que passa despercebido:
 
 - **`mypy app/ --ignore-missing-imports`, `bandit -r app/ -ll` e `safety check` rodam no CI mas são apenas

@@ -55,7 +55,7 @@ Esta skill cobre o *gate* de consulta à fonte oficial; não repete o racional j
   `app/glue_data_quality/requirements.txt` listam só o nome do pacote). A única exceção pinada no projeto é
   `app/lightsail_ia/requirements.txt` (`streamlit>=1.38.0`).
 - **`pytest`/`pytest-cov` instalados sem versão pinada** (`pip install pytest pytest-cov`,
-  `.github/workflows/01_test.yml:27`) — os `test/<modulo>/requirements_tests.txt` por módulo também não listam
+  `.github/workflows/test.yml:27`) — os `test/<modulo>/requirements_tests.txt` por módulo também não listam
   `pytest`, só dependências específicas do módulo (ex. `boto3`/`requests` em
   `test/lambda_api/requirements_tests.txt`).
 - **Glue PythonShell fixado em `python_version = "3.9"`** (`infra/glue_etl.tf:19`, `infra/glue_details.tf:13`,

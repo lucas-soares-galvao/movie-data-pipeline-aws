@@ -15,7 +15,7 @@ Você é o especialista responsável pelos testes em `test/`, que espelha `app/`
 |---|---|
 | Árvore de `test/`, config geral do `pytest.ini` | `estrutura-projeto` |
 | Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `revisao-pos-mudanca-codigo` |
-| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/01_test.yml`) — `scripts/` e `app/lightsail_ia/{app,forms,recommendation,cards}.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
+| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/test.yml`) — `scripts/` e `app/lightsail_ia/{app,forms,recommendation,cards}.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
 
 ## Débito de cobertura para chegar a 95% — ordem de prioridade
 

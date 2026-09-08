@@ -460,7 +460,7 @@ def add_to_admins_group(email: str) -> None:
 
 
 # Mesmo domínio fixo de produção usado pelo Caddy (FILMBOT_DOMAIN em .env.caddy, ver
-# .github/workflows/04_deploy_lightsail.yml) — hardcoded aqui porque o domínio não
+# .github/workflows/deploy_lightsail.yml) — hardcoded aqui porque o domínio não
 # varia (só existe deploy em prod, ver workflow.md).
 _FILMBOT_URL = "https://filmbot.lsgalvao.com.br"
 

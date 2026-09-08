@@ -5,23 +5,31 @@ name: 0. Pipeline CI/CD
 #
 # Fluxo Git Flow implementado:
 #
-#   feature/* ──push──► [01] Testes (pytest, ruff, mypy, bandit)
+#   feature/* ──push──► Testes (pytest, ruff, mypy, bandit)
 #                            │
 #                            └──► Auto PR: feature/* → develop
 #
-#   develop   ──push──► [02] Terraform (infra dev)
+#   develop   ──push──► Terraform (infra dev)
 #                            │
 #                            └──► Auto PR: develop → main
 #
-#   main      ──push──► [02] Terraform (infra prod)
+#   main      ──push──► Terraform (infra prod)
 #                            │
-#                            └──► [04] Deploy Lightsail (app FilmBot)
+#                            └──► Deploy Lightsail (app FilmBot)
+#
+#   main      ──push──► sonar (SonarQube Cloud, em paralelo ao Terraform —
+#                        nenhum dos dois depende do outro)
 #
 # Workflows reutilizáveis (chamados por este arquivo):
-#   01_test.yml          — qualidade de código (testes, lint, cobertura)
-#   02_terraform.yml     — provisionamento de infraestrutura AWS
-#   03_pr_auto.yml       — criação automática de Pull Requests
-#   04_deploy_lightsail.yml — deploy do app FilmBot na instância AWS
+#   test.yml          — qualidade de código (testes, lint, cobertura)
+#   terraform.yml     — provisionamento de infraestrutura AWS
+#   pr_auto.yml       — criação automática de Pull Requests
+#   deploy_lightsail.yml — deploy do app FilmBot na instância AWS
+#   sonar.yml         — análise de qualidade de código via SonarQube Cloud
+#
+# O job "sonar" só é chamado em push:main (não em develop/feature/*) porque o
+# plano Free do SonarQube Cloud só analisa de forma contínua a branch marcada
+# como "principal" no projeto Sonar, que é "main" (ver sonar-project.properties).
 # =============================================================================
 
 on:
@@ -48,7 +56,7 @@ jobs:
 
   test:
     if: startsWith(github.ref_name, 'feature/')
-    uses: ./.github/workflows/01_test.yml
+    uses: ./.github/workflows/test.yml
 
   # Resolve o ambiente (dev/prod) uma única vez para os jobs terraform e
   # deploy-lightsail, evitando repetir a mesma ternária nos dois:
@@ -79,7 +87,7 @@ jobs:
     needs: resolve-env
     if: |
       github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/02_terraform.yml
+    uses: ./.github/workflows/terraform.yml
     with:
       environment: ${{ needs.resolve-env.outputs.environment }}
     secrets:
@@ -94,6 +102,20 @@ jobs:
       notification-email: ${{ secrets.NOTIFICATION_EMAIL }}
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
+  sonar:
+    # needs: resolve-env é só organizacional (agrupa visualmente no grafo da
+    # Actions, ao lado de terraform/deploy-lightsail) — sonar não consome
+    # nenhum output de resolve-env, roda em paralelo ao terraform (Terraform
+    # provisiona infra, Sonar analisa código-fonte, nenhum depende do outro).
+    # Só em push:main porque o plano Free do SonarQube Cloud só analisa de
+    # forma contínua a branch marcada como "main" no projeto Sonar (ver
+    # sonar-project.properties).
+    needs: resolve-env
+    if: github.ref_name == 'main'
+    uses: ./.github/workflows/sonar.yml
+    secrets:
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
+
   deploy-lightsail:
     needs: [resolve-env, terraform]
     # FilmBot (Lightsail) existe só em prod — dev não provisiona mais
@@ -104,7 +126,7 @@ jobs:
       needs.resolve-env.outputs.environment == 'prod' &&
       needs.terraform.result == 'success' &&
       needs.terraform.outputs.was_destroyed != 'true'
-    uses: ./.github/workflows/04_deploy_lightsail.yml
+    uses: ./.github/workflows/deploy_lightsail.yml
     with:
       environment: ${{ needs.resolve-env.outputs.environment }}
     secrets:
@@ -117,7 +139,7 @@ jobs:
     if: |
       startsWith(github.ref_name, 'feature/') &&
       needs.test.result == 'success'
-    uses: ./.github/workflows/03_pr_auto.yml
+    uses: ./.github/workflows/pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions:
@@ -134,7 +156,7 @@ jobs:
     if: |
       github.ref_name == 'develop' &&
       needs.terraform.result == 'success'
-    uses: ./.github/workflows/03_pr_auto.yml
+    uses: ./.github/workflows/pr_auto.yml
     with:
       branch_name: ${{ github.ref_name }}
     permissions:

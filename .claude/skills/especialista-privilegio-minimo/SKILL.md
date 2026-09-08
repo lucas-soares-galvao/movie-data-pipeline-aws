@@ -19,7 +19,7 @@ Esta skill cobre o racional de privilégio mínimo e os gaps encontrados; não d
 | Prevenção de vazamento de segredos/credenciais (tema relacionado, mas distinto) | `especialista-seguranca-segredos` |
 | Prevenção de SQL injection, abuso automatizado (bots) do FilmBot | `especialista-seguranca-filmbot` |
 | Racional já documentado de cada role/policy, incluindo o bootstrap do CI/CD | `infra/docs/iam.md` |
-| Mecânica exata do step "Bootstrap CICD IAM Policies" em YAML | `especialista-workflows-github`, `.github/workflows/02_terraform.yml` |
+| Mecânica exata do step "Bootstrap CICD IAM Policies" em YAML | `especialista-workflows-github`, `.github/workflows/terraform.yml` |
 
 ## Práticas já aplicadas — preservar
 
@@ -38,7 +38,7 @@ Esta skill cobre o racional de privilégio mínimo e os gaps encontrados; não d
 
 ## Como o bootstrap do CI/CD funciona
 
-A role de CI/CD (`aws_iam_role.github_actions`, `iam_cicd.tf`) precisa de permissão para gerenciar recursos AWS via Terraform, mas essas permissões são, elas mesmas, geridas pelo mesmo Terraform — um problema de ovo-e-galinha resolvido pelo step "Bootstrap CICD IAM Policies" em `02_terraform.yml`.
+A role de CI/CD (`aws_iam_role.github_actions`, `iam_cicd.tf`) precisa de permissão para gerenciar recursos AWS via Terraform, mas essas permissões são, elas mesmas, geridas pelo mesmo Terraform — um problema de ovo-e-galinha resolvido pelo step "Bootstrap CICD IAM Policies" em `terraform.yml`.
 
 - **As policies reais** (`cicd_backend`, `cicd_s3`, `iam_cicd`, `cicd_compute`, `cicd_observability`, `cicd_ssm`, `cicd_lightsail`), cada uma anexada via seu próprio `aws_iam_role_policy_attachment` — 7 em prod, 6 em dev, já que `cicd_lightsail` é `count = lower(var.env) == "prod" ? 1 : 0` (FilmBot não existe em dev, ver `especialista-infraestrutura-terraform`). `terraform_data.cicd_policies_ready` depende de todos os attachments, e os recursos raiz do projeto (buckets S3, roles de serviço) só são criados depois que ele existe — a dependência se propaga naturalmente para o resto. Referenciar um attachment com `count` no `depends_on` é válido mesmo quando ele resolve a 0 instâncias num ambiente (dev, no caso do `cicd_lightsail`).
 - **Atualizar uma policy já existente NUNCA precisa do bootstrap `-target`.** A policy `iam_cicd` (self-management) já concede `iam:CreatePolicy` **e** `iam:CreatePolicyVersion` sobre qualquer policy `tmdb-*`/`cicd-terraform-*`, no mesmo statement, sem diferenciar "criar" de "atualizar". `iam:AttachRolePolicy` também já é permitido por `Condition ArnLike` no mesmo padrão de nome, mesmo para uma policy ainda não anexada. Ou seja: adicionar uma `Action`/`Resource` dentro do JSON de uma das 8 policies já existentes é só um `terraform apply` normal.

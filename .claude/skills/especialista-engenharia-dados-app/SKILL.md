@@ -34,7 +34,7 @@ Todo SQL fica **embutido em Python**, executado via Athena (`awswrangler.athena.
 |---|---|---|
 | `lambda_api` | Coleta dados do TMDB → salva JSON no S3 SOR → dispara Glue ETL. Também roda o "modo changes" (`/movie\|tv/changes`), que pula o Glue ETL e aciona o Glue Details direto. | `fetch_tmdb_data`, `fetch_tmdb_reference`, `save_to_s3`, `collect_genre_data`, `collect_configuration_data`, `collect_watch_providers_ref`, `collect_now_playing_data`, `collect_discover_data`, `fetch_changed_ids`, `collect_changes_data` |
 
-O liga/desliga (destroy/create) da instância Lightsail para economizar custo não é mais um Lambda — é o workflow `.github/workflows/05_lightsail_scheduler.yml`, rodando `terraform apply`/`destroy -target` (ver `especialista-infraestrutura-terraform`, `estrutura-projeto`).
+O liga/desliga (destroy/create) da instância Lightsail para economizar custo não é mais um Lambda — é o workflow `.github/workflows/lightsail_scheduler.yml`, rodando `terraform apply`/`destroy -target` (ver `especialista-infraestrutura-terraform`, `estrutura-projeto`).
 
 Padrão comum: paginação com `for page in range(1, MAX_PAGES + 1)`, captura de `HTTPError` por página (não aborta a coleta inteira), e `raise RuntimeError` só quando **todas** as páginas falham.
 

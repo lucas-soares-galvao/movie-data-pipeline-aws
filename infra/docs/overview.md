@@ -21,13 +21,13 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Arquivo | Papel |
 |---|---|
-| `00_pipeline.yml` | Orquestrador: chama test → terraform → PR em sequência |
-| `01_test.yml` | Reusável: roda pytest, ruff (lint), mypy (tipos), bandit (segurança) |
-| `02_terraform.yml` | Reusável: `terraform init` + `apply` ou `destroy` |
-| `03_pr_auto.yml` | Reusável: cria PR automático após deploy |
-| `04_deploy_lightsail.yml` | Deploy do app FilmBot na instância Lightsail |
-| `05_lightsail_scheduler.yml` | Liga/desliga (destroy/create real) a instância Lightsail de prod via `terraform apply`/`destroy -target` — cron automático + `workflow_dispatch` manual (FilmBot não existe em dev) |
-| `06_backfill.yml` | Manual (`workflow_dispatch`): backfill pontual para 5 grupos de tabelas (discover, referencias, detalhes_e_providers, data_quality, traducao). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (`main` → prod, `develop` → dev) |
+| `_pipeline.yml` | Orquestrador: chama test → terraform → PR em sequência |
+| `test.yml` | Reusável: roda pytest, ruff (lint), mypy (tipos), bandit (segurança) |
+| `terraform.yml` | Reusável: `terraform init` + `apply` ou `destroy` |
+| `pr_auto.yml` | Reusável: cria PR automático após deploy |
+| `deploy_lightsail.yml` | Deploy do app FilmBot na instância Lightsail |
+| `lightsail_scheduler.yml` | Liga/desliga (destroy/create real) a instância Lightsail de prod via `terraform apply`/`destroy -target` — cron automático + `workflow_dispatch` manual (FilmBot não existe em dev) |
+| `backfill.yml` | Manual (`workflow_dispatch`): backfill pontual para 5 grupos de tabelas (discover, referencias, detalhes_e_providers, data_quality, traducao). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (`main` → prod, `develop` → dev) |
 
 Autenticação com AWS via **OIDC** (sem chaves de acesso hardcodadas) — o GitHub Actions assume a role `lsg-github-actions-{env}` (nome configurável em `infra/config/project.json`) com políticas de privilégio mínimo gerenciadas pelo Terraform (`iam_cicd.tf`).
 
@@ -56,4 +56,4 @@ python infra/scripts/build_lambda_package.py   # gera zip da Lambda
 python infra/scripts/build_glue_wheel.py       # gera wheel dos jobs Glue
 ```
 
-No CI/CD, o build da Lambda é automatizado pelo workflow `02_terraform.yml`. O wheel do Glue (`build_glue_wheel.py`) deve ser gerado e enviado ao bucket AUX manualmente antes do primeiro `apply` — após isso, só precisa ser regerado quando o código dos jobs Glue mudar.
+No CI/CD, o build da Lambda é automatizado pelo workflow `terraform.yml`. O wheel do Glue (`build_glue_wheel.py`) deve ser gerado e enviado ao bucket AUX manualmente antes do primeiro `apply` — após isso, só precisa ser regerado quando o código dos jobs Glue mudar.

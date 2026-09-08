@@ -439,7 +439,7 @@ resource "aws_s3_bucket_policy" "data_quality_bucket_ssl" {
 # duplicados" do Let's Encrypt (5/semana), causando ERR_SSL_PROTOCOL_ERROR
 # para quem acessa o site. Este bucket guarda um tarball do diretório de
 # certificados do Caddy, sincronizado pelo runner do GitHub Actions a cada
-# deploy (ver .github/workflows/04_deploy_lightsail.yml). Só existe quando o
+# deploy (ver .github/workflows/deploy_lightsail.yml). Só existe quando o
 # Lightsail do FilmBot está habilitado em prod (mesmo gate de local.lightsail_prod_enabled
 # usado pela instância/IP/portas em infra/lightsail_ia.tf).
 resource "aws_s3_bucket" "caddy_certs_bucket" {

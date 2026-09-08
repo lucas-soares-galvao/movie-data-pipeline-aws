@@ -23,7 +23,7 @@ O Cognito continua gerando e controlando o código internamente (mesma expiraç�
 
 ### Por que a lógica de Gmail é duplicada, não compartilhada
 
-`app/lightsail_ia/src/infrastructure.py` já tem `_load_gmail_credentials`/`_send_gmail_email`, praticamente idênticas às daqui. Não foram movidas para `shared_utils` porque o deploy do `lightsail_ia` (`.github/workflows/04_deploy_lightsail.yml`) faz um `git clone` do repositório inteiro e roda a partir de `app/lightsail_ia/` sem nenhum passo de empacotamento — diferente de Lambda/Glue, que sempre embutem `shared_utils` no `.zip`/`.whl` via `build_lambda_package.py`/`build_glue_wheel.py`. Importar `shared_utils` em `lightsail_ia` exigiria manipular `sys.path`/`PYTHONPATH` na instância Lightsail em produção — risco desnecessário para ~20 linhas de código. A duplicação aqui é deliberada.
+`app/lightsail_ia/src/infrastructure.py` já tem `_load_gmail_credentials`/`_send_gmail_email`, praticamente idênticas às daqui. Não foram movidas para `shared_utils` porque o deploy do `lightsail_ia` (`.github/workflows/deploy_lightsail.yml`) faz um `git clone` do repositório inteiro e roda a partir de `app/lightsail_ia/` sem nenhum passo de empacotamento — diferente de Lambda/Glue, que sempre embutem `shared_utils` no `.zip`/`.whl` via `build_lambda_package.py`/`build_glue_wheel.py`. Importar `shared_utils` em `lightsail_ia` exigiria manipular `sys.path`/`PYTHONPATH` na instância Lightsail em produção — risco desnecessário para ~20 linhas de código. A duplicação aqui é deliberada.
 
 ### Tratamento de erros
 
@@ -64,7 +64,7 @@ o `pip install` em `infra/scripts/build_lambda_package.py` precisa forçar a res
 arquitetura de destino — senão o pip resolve a wheel nativa do host (x86_64) e o runtime falha com
 `Runtime.ImportModuleError: ... _rust.abi3.so: cannot open shared object file`.
 
-Por isso o build desta Lambda (tanto no step do `.github/workflows/02_terraform.yml` quanto no
+Por isso o build desta Lambda (tanto no step do `.github/workflows/terraform.yml` quanto no
 `local-exec` de `infra/lambda_cognito_email_sender.tf`) passa
 `--platform manylinux2014_aarch64 --python-version 3.11 --only-binary=:all:`. Não usar
 `manylinux_2_28_aarch64`: o runtime `python3.11` do Lambda roda sobre Amazon Linux 2 (glibc 2.26),
