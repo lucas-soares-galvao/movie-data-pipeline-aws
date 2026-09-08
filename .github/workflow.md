@@ -8,11 +8,12 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 2. **Infraestrutura**: provisiona ou destrói recursos AWS via Terraform
 3. **Deploy**: publica a aplicação FilmBot no Lightsail
 4. **Promoção**: cria PRs automáticos entre branches (`feature → develop → main`)
+5. **Qualidade contínua**: análise de código via SonarQube Cloud (só na branch `main`)
 
 Além do fluxo automático acima, dois workflows são independentes do `00_pipeline.yml`:
 
-- `05_lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail de prod para economizar custo (FilmBot não existe em dev). Roda por `schedule` (cron): liga e desliga automaticamente. Também aceita `workflow_dispatch` manual.
-- `06_backfill.yml` — disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
+- `lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail de prod para economizar custo (FilmBot não existe em dev). Roda por `schedule` (cron): liga e desliga automaticamente. Também aceita `workflow_dispatch` manual.
+- `backfill.yml` — disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
 
 ---
 
@@ -22,18 +23,19 @@ Além do fluxo automático acima, dois workflows são independentes do `00_pipel
 flowchart TD
     PUSH["Push / workflow_dispatch"]
 
-    PUSH -->|feature/*| TEST["01_test.yml\nQuality gates"]
-    PUSH -->|develop ou main| TF["02_terraform.yml\nTerraform apply/destroy"]
+    PUSH -->|feature/*| TEST["test.yml\nQuality gates"]
+    PUSH -->|develop ou main| TF["terraform.yml\nTerraform apply/destroy"]
+    PUSH -->|main branch| SONAR["sonar.yml\nSonarQube Cloud (paralelo ao Terraform)"]
 
-    TEST --> PR_FEAT["03_pr_auto.yml\nPR: feature → develop"]
-    TF -->|develop branch| PR_ENV["03_pr_auto.yml\nPR: develop → main"]
-    TF -->|main branch| DEPLOY["04_deploy_lightsail.yml\nDeploy app"]
+    TEST --> PR_FEAT["pr_auto.yml\nPR: feature → develop"]
+    TF -->|develop branch| PR_ENV["pr_auto.yml\nPR: develop → main"]
+    TF -->|main branch| DEPLOY["deploy_lightsail.yml\nDeploy app"]
 
-    CRON["schedule (cron: liga/desliga prod)"] --> SCHED["05_lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
+    CRON["schedule (cron: liga/desliga prod)"] --> SCHED["lightsail_scheduler.yml\nLiga/desliga Lightsail (destroy/create)"]
     MANUAL2["workflow_dispatch manual (prod)"] --> SCHED
-    SCHED -->|action=start| DEPLOY2["04_deploy_lightsail.yml\nReidrata a instância"]
+    SCHED -->|action=start| DEPLOY2["deploy_lightsail.yml\nReidrata a instância"]
 
-    MANUAL["workflow_dispatch manual"] --> BACKFILL["06_backfill.yml\nBackfill sob demanda (ambiente por branch)"]
+    MANUAL["workflow_dispatch manual"] --> BACKFILL["backfill.yml\nBackfill sob demanda (ambiente por branch)"]
 ```
 
 ---
@@ -44,11 +46,11 @@ flowchart TD
 |---|---|---|
 | `push` | `feature/*` | test → PR feature→develop |
 | `push` | `develop` | terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
-| `push` | `main` | terraform (prod) → deploy (prod, se a instância estiver ligada) |
+| `push` | `main` | terraform (prod) → deploy (prod, se a instância estiver ligada) + sonar (SonarQube Cloud), em paralelo ao terraform |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy só se ambiente resolvido for prod |
-| `schedule` (`05_lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
-| `workflow_dispatch` (`05_lightsail_scheduler.yml`) | — | liga/desliga manual de prod (`action=start`/`stop`) |
-| `workflow_dispatch` (`06_backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
+| `schedule` (`lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
+| `workflow_dispatch` (`lightsail_scheduler.yml`) | — | liga/desliga manual de prod (`action=start`/`stop`) |
+| `workflow_dispatch` (`backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
 
 ---
 
@@ -68,7 +70,7 @@ Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `n
 
 ---
 
-### `01_test.yml` — Quality Gates
+### `test.yml` — Quality Gates
 
 Valida a qualidade do código antes de qualquer deploy. Executa **apenas em branches `feature/*`**.
 
@@ -82,7 +84,7 @@ Valida a qualidade do código antes de qualquer deploy. Executa **apenas em bran
 
 ---
 
-### `02_terraform.yml` — Infraestrutura
+### `terraform.yml` — Infraestrutura
 
 Provisiona ou destrói a infraestrutura AWS.
 
@@ -118,7 +120,7 @@ Mudar um valor para `true` faz com que o próximo push naquele ambiente execute 
 
 ---
 
-### `03_pr_auto.yml` — PR Automático
+### `pr_auto.yml` — PR Automático
 
 Cria ou atualiza um Pull Request para promover código entre branches.
 
@@ -129,13 +131,32 @@ Cria ou atualiza um Pull Request para promover código entre branches.
 | `feature/*` | `develop` |
 | `develop` | `main` |
 
-Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fmt -check` — apenas em branches `feature/*`. Em `develop`, esses checks são pulados porque o `02_terraform.yml` já os executou antes do auto-pr ser chamado.
+Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fmt -check` — apenas em branches `feature/*`. Em `develop`, esses checks são pulados porque o `terraform.yml` já os executou antes do auto-pr ser chamado.
 
 ---
 
-### `04_deploy_lightsail.yml` — Deploy da Aplicação
+### `sonar.yml` — Análise de Qualidade (SonarQube Cloud)
 
-Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml`, o job `deploy-lightsail` executa só quando o ambiente resolvido é `prod` — FilmBot não existe em dev (ver `infra/lightsail_ia.tf`), então um push em `develop` sempre resolve esse job como "skipped". Se a instância de prod estiver destruída no momento do push (fora da janela agendada), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline. Também é chamado por `05_lightsail_scheduler.yml` (job `deploy-app`), sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (agendado ou manual).
+Chamado pelo `00_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em paralelo ao job `terraform` — Terraform provisiona infra e Sonar analisa código-fonte, nenhum dos dois depende do outro.
+
+**Entrada:** secret `sonar-token` (repassado pelo `00_pipeline.yml` a partir de `SONAR_TOKEN`).
+
+**Por que só `main`:** o plano Free do SonarQube Cloud analisa de forma contínua **uma única branch** — a marcada como "principal" no projeto Sonar, travada na branch default do GitHub (`main` neste repo). Tentar analisar qualquer outra branch (`develop`, por exemplo) é recurso pago — no dashboard do Sonar ela aparece como "Not analyzed", atrás de um selo "Upgrade". Por isso este workflow não decora Pull Requests: isso exigiria o evento `pull_request`, que o `00_pipeline.yml` não escuta.
+
+**Etapas principais:**
+
+1. Checkout com `fetch-depth: 0` (histórico completo — necessário para blame/new code period do Sonar)
+2. Setup Python 3.12, instala `pytest`/`pytest-cov` + as mesmas dependências de `app/`/`test/` do `test.yml`
+3. `pytest --cov=app --cov-report=xml` — gera `coverage.xml` (não repete o gate de 95%, que já é responsabilidade do `test.yml`)
+4. `SonarSource/sonarqube-scan-action` — lê `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`) e envia a análise pro SonarQube Cloud
+
+**Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true` — o job nunca falha por causa do Quality Gate do Sonar, mesmo padrão dos steps de aviso do `test.yml` (mypy/Bandit/Safety). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
+
+---
+
+### `deploy_lightsail.yml` — Deploy da Aplicação
+
+Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml`, o job `deploy-lightsail` executa só quando o ambiente resolvido é `prod` — FilmBot não existe em dev (ver `infra/lightsail_ia.tf`), então um push em `develop` sempre resolve esse job como "skipped". Se a instância de prod estiver destruída no momento do push (fora da janela agendada), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline. Também é chamado por `lightsail_scheduler.yml` (job `deploy-app`), sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (agendado ou manual).
 
 **Entrada:** `environment` (mantido na interface do `workflow_call` por estabilidade, mas na prática só é chamado com `prod`)
 
@@ -158,7 +179,7 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `0
 
 ---
 
-### `05_lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
+### `lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
 
 Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não existe em dev). Substitui o antigo Lambda + EventBridge (`lightsail_scheduler.tf`, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` (confirmado via fatura AWS real), então só parar a instância não economizava nada. Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, o que de fato zera a cobrança fora da janela de uso.
 
@@ -176,20 +197,20 @@ Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não exis
 2. Lê `infra/config/project.json` via `jq` — `statefile_key`
 3. Autenticação AWS via OIDC (secrets `_PROD`) + `terraform init`
 4. `terraform destroy -target` (ação `stop`) **ou** `terraform apply -target` (ação `start`), sempre sobre `aws_lightsail_instance.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_static_ip_attachment.filmbot` (+ `aws_lightsail_key_pair.filmbot` no apply) — **nunca** `aws_lightsail_static_ip.filmbot`, que fica de fora do `-target` em ambas as direções
-5. Force-unlock automático em caso de cancelamento (`if: cancelled()`) — mesmo padrão do `02_terraform.yml`
-6. Job `deploy-app`: chama `04_deploy_lightsail.yml` via `uses:`, só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot)
+5. Force-unlock automático em caso de cancelamento (`if: cancelled()`) — mesmo padrão do `terraform.yml`
+6. Job `deploy-app`: chama `deploy_lightsail.yml` via `uses:`, só quando a ação foi `start` e o job anterior teve sucesso — reidrata a instância recém-criada do zero (bootstrap completo, não snapshot)
 
 **Por que destroy/create e não stop/start:** o Lightsail conta o bundle como usado (`BundleUsage` na fatura) tanto parado quanto rodando — a fatura de um mês inteiro com o scheduler antigo (stop/start) mostrou a mesma quantidade de horas cobradas de um mês sem nenhum desligamento. Destruir a instância de fato remove essas horas da fatura.
 
 **Por que o IP estático nunca é destruído:** `aws_lightsail_static_ip.filmbot` (`infra/lightsail_ia.tf`, `local.lightsail_prod_enabled`) é um recurso independente da instância no Lightsail — desanexar não o deleta, só marca como "unattached" (pequena taxa de idle se ficar assim por mais de 1h). Ao nunca incluí-lo no `-target`, o mesmo IP é sempre reanexado à instância nova, e o domínio `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
 
-**Concorrência:** `concurrency: group: terraform-prod` — mesmo group usado pelo job `terraform` de `02_terraform.yml` para prod, serializando com qualquer apply/destroy completo disparado por push em `main`.
+**Concorrência:** `concurrency: group: terraform-prod` — mesmo group usado pelo job `terraform` de `terraform.yml` para prod, serializando com qualquer apply/destroy completo disparado por push em `main`.
 
 **Comportamento a saber:** `lightsail_instance_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada; não é uma falha do cron.
 
 ---
 
-### `06_backfill.yml` — Backfill Manual
+### `backfill.yml` — Backfill Manual
 
 Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workflow_dispatch`) para reprocessar dados históricos sob demanda. O ambiente é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS.
 
@@ -243,7 +264,7 @@ feature/minha-feature
         main
 ```
 
-Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merge ainda requer aprovação manual.
+Cada promoção é feita via PR automático criado pelo `pr_auto.yml`. O merge ainda requer aprovação manual.
 
 ---
 
@@ -252,12 +273,13 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | Secret | Ambiente | Uso |
 |---|---|---|
 | `AWS_ASSUME_ROLE_ARN_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS (role de CI/CD, `00_pipeline.yml`) |
-| `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS (role de backfill manual, `06_backfill.yml`) |
+| `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS (role de backfill manual, `backfill.yml`) |
 | `AWS_STATEFILE_S3_BUCKET_DEV` / `_PROD` | dev / prod | Backend Terraform (estado) |
 | `AWS_LOCK_DYNAMODB_TABLE_DEV` / `_PROD` | dev / prod | Lock do estado Terraform |
 | `AWS_FILMBOT_SECRET_ARN_DEV` / `_PROD` | dev / prod | ARN do segredo unificado no Secrets Manager (tmdb_api_key, llm_api_key, filmbot_password) |
 | `NOTIFICATION_EMAIL` | ambos | E-mails de alerta da infra |
 | `INFRACOST_API_KEY` | ambos | Estimativa de custo no PR |
+| `SONAR_TOKEN` | ambos | Autenticação do job `sonar` (`sonar.yml`) no SonarQube Cloud |
 
 ---
 
@@ -271,7 +293,9 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | **TFLint** | Linter para código Terraform — detecta erros de configuração e boas práticas sem precisar aplicar nada na AWS. |
 | **Checkov** | Scanner de segurança para IaC (Terraform, CloudFormation) — detecta configurações inseguras como buckets S3 públicos ou IAM permissivo demais. |
 | **Infracost** | Estima o custo mensal da infraestrutura AWS antes de aplicar — exibe o delta de custo no comentário do PR. |
-| **PR automático** | Pull Request criado pelo próprio pipeline (`03_pr_auto.yml`) para promover código entre branches. O merge ainda requer aprovação manual, mas a criação do PR é automatizada para não depender de nenhum desenvolvedor. |
+| **SonarQube Cloud** | Plataforma de análise estática de código — detecta code smells, duplicação, complexidade e security hotspots que ferramentas como Ruff/Bandit não cobrem. Plano Free usado aqui: gratuito e ilimitado para repositórios públicos, mas só analisa de forma contínua uma única branch (`main`). |
+| **Quality Gate** | Conjunto de condições que o SonarQube Cloud avalia após cada análise (ex.: cobertura mínima, zero bugs novos) — aqui é só informativo (`sonar.yml` não usa `sonar.qualitygate.wait=true`), não bloqueia o pipeline. |
+| **PR automático** | Pull Request criado pelo próprio pipeline (`pr_auto.yml`) para promover código entre branches. O merge ainda requer aprovação manual, mas a criação do PR é automatizada para não depender de nenhum desenvolvedor. |
 | **`terraform destroy`** | Destrói todos os recursos AWS gerenciados pelo Terraform naquele ambiente — o inverso do `apply`. Usado para desligar o ambiente e parar de pagar. Controlado pelo `infra/config/destroy_config.json`. |
 
 ---
@@ -281,10 +305,11 @@ Cada promoção é feita via PR automático criado pelo `03_pr_auto.yml`. O merg
 | Problema | Causa provável | Solução |
 |---|---|---|
 | Terraform apply falha com "Access Denied" ou "permission denied" | A role OIDC (`lsg-github-actions-{env}`) não tem todas as 6 policies do `iam_cicd.tf` attached | Verifique com `aws iam list-attached-role-policies --role-name lsg-github-actions-{env}` e compare com as 6 policies definidas em `iam_cicd.tf` |
-| Terraform apply falha com `AccessDenied: ... iam:CreateRole ... lsg-github-actions-{env}` | O step "Import da role de CI/CD" (item 5 de `02_terraform.yml`) não rodou ou falhou antes de adotar a role existente no state | Confirme que o step de import rodou com sucesso no log; se a role realmente não existir ainda na AWS para esse ambiente, crie-a manualmente antes do próximo run (ela não pode se auto-criar) |
+| Terraform apply falha com `AccessDenied: ... iam:CreateRole ... lsg-github-actions-{env}` | O step "Import da role de CI/CD" (item 5 de `terraform.yml`) não rodou ou falhou antes de adotar a role existente no state | Confirme que o step de import rodou com sucesso no log; se a role realmente não existir ainda na AWS para esse ambiente, crie-a manualmente antes do próximo run (ela não pode se auto-criar) |
 | Testes passam no CI mas falham localmente (ImportError) | `sys.path` não está configurado corretamente | Rode `pytest` da raiz do projeto (não de dentro de `test/`). O `test/conftest.py` raiz gerencia os imports automaticamente |
 | Testes falham localmente mas passam no CI | Versão do Python diferente ou dependências desatualizadas | Verifique que está usando Python 3.12+ e instale as dependências de cada módulo: `for req in app/*/requirements.txt test/*/requirements_tests.txt; do pip install -r "$req"; done` |
-| Deploy Lightsail é pulado com warning no step "Check instance state" | Instância de prod destruída pelo `05_lightsail_scheduler.yml` (fora da janela agendada) | Verifique o estado com `aws lightsail get-instance --instance-name {nome} --region us-east-1`. Dispare `05_lightsail_scheduler.yml` via `workflow_dispatch` (`action=start`) para religar |
-| `06_backfill.yml` falha com `AccessDenied` | A role `tmdb-backfill-role-{env}` não tem a permissão específica exercida pelo `table_group` escolhido | Confira o `eventName` negado no CloudTrail e adicione a action/recurso faltante na policy inline correspondente em `infra/iam_backfill.tf` |
+| Deploy Lightsail é pulado com warning no step "Check instance state" | Instância de prod destruída pelo `lightsail_scheduler.yml` (fora da janela agendada) | Verifique o estado com `aws lightsail get-instance --instance-name {nome} --region us-east-1`. Dispare `lightsail_scheduler.yml` via `workflow_dispatch` (`action=start`) para religar |
+| `backfill.yml` falha com `AccessDenied` | A role `tmdb-backfill-role-{env}` não tem a permissão específica exercida pelo `table_group` escolhido | Confira o `eventName` negado no CloudTrail e adicione a action/recurso faltante na policy inline correspondente em `infra/iam_backfill.tf` |
+| Branch aparece como "Not analyzed"/"Upgrade" no dashboard do SonarQube Cloud | Plano Free só analisa de forma contínua a branch marcada como "principal" no projeto Sonar (`main`) — qualquer outra branch é rejeitada | Não é um bug: analise só via a branch `main`, ou faça upgrade do plano no SonarQube Cloud se precisar de mais branches |
 | `terraform destroy` rodou sem querer | Flag `true` em `infra/config/destroy_config.json` não foi revertida | Mude o valor de volta para `false` e faça push para reaplicar a infraestrutura |
 | Build Lambda falha com "directory is empty" | Erro no script `build_lambda_package.py` (dependências não instaladas) | Verifique se `pip install` no CI está usando a versão correta do Python e se o `requirements.txt` está atualizado |
