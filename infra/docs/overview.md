@@ -21,7 +21,7 @@ Cada recurso recebe o sufixo `-dev` ou `-prod` automaticamente via `locals.tf`, 
 
 | Arquivo | Papel |
 |---|---|
-| `00_pipeline.yml` | Orquestrador: chama test → terraform → PR em sequência |
+| `_pipeline.yml` | Orquestrador: chama test → terraform → PR em sequência |
 | `test.yml` | Reusável: roda pytest, ruff (lint), mypy (tipos), bandit (segurança) |
 | `terraform.yml` | Reusável: `terraform init` + `apply` ou `destroy` |
 | `pr_auto.yml` | Reusável: cria PR automático após deploy |

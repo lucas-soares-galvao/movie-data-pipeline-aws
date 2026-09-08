@@ -3,7 +3,7 @@ name: Sonar Analysis (Reusable)
 # =============================================================================
 # Análise de qualidade de código via SonarQube Cloud.
 #
-# Chamado por 00_pipeline.yml (job "sonar"), em paralelo ao terraform — nenhum
+# Chamado por _pipeline.yml (job "sonar"), em paralelo ao terraform — nenhum
 # dos dois depende do outro (Terraform provisiona infra, Sonar analisa
 # código-fonte). Só é chamado em push:main porque o plano Free do SonarQube
 # Cloud só analisa de forma contínua a branch marcada como "principal" no

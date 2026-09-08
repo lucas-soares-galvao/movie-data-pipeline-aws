@@ -1,6 +1,6 @@
 ---
 name: estrutura-projeto
-description: Árvore de diretórios do projeto, workflows GitHub Actions (00_pipeline a sonar), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
+description: Árvore de diretórios do projeto, workflows GitHub Actions (_pipeline a sonar), estrutura Terraform de infra/ e organização de testes que espelha app/. Use ao localizar onde um arquivo/módulo/script deveria morar, ao entender como os workflows de CI/CD se encadeiam, ao navegar a estrutura de infra/ pela primeira vez, ou ao decidir onde documentar algo novo. Cobre a árvore de pastas completa, o fluxo ponta-a-ponta dos workflows e as convenções de organização de testes.
 ---
 
 # Skill: Estrutura do Projeto proj-eng-dados-filmes-aws
@@ -15,7 +15,7 @@ Você está trabalhando no projeto **proj-eng-dados-filmes-aws**. Esta skill des
 proj-eng-dados-filmes-aws/
 ├── .github/
 │   └── workflows/
-│       ├── 00_pipeline.yml        # Pipeline principal CI/CD (orquestrador)
+│       ├── _pipeline.yml       # Pipeline principal CI/CD (orquestrador)
 │       ├── test.yml            # Workflow reutilizável: testes + quality gates
 │       ├── terraform.yml       # Workflow reutilizável: infra Terraform
 │       ├── pr_auto.yml         # Workflow reutilizável: criação automática de PR
@@ -213,7 +213,7 @@ proj-eng-dados-filmes-aws/
 
 ## GitHub Actions — Workflows
 
-### `00_pipeline.yml` — Orquestrador principal
+### `_pipeline.yml` — Orquestrador principal
 
 **Gatilhos:** push em `feature/*`, `develop`, `main` e `workflow_dispatch` (manual com input de ambiente).
 
@@ -243,7 +243,7 @@ workflow_dispatch  →  terraform (env escolhido)  →  deploy-lightsail só rod
 
 ### `test.yml` — Quality Gates (reutilizável)
 
-Chamado por `00_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-latest`.
+Chamado por `_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-latest`.
 
 **Etapas:**
 1. Checkout do código
@@ -340,7 +340,7 @@ Job `deploy-app` encadeia `deploy_lightsail.yml` (via `uses:`) só quando a aç�
 
 ### `backfill.yml` — Backfill Manual
 
-**Trigger:** `workflow_dispatch` apenas (independente do `00_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
+**Trigger:** `workflow_dispatch` apenas (independente do `_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
 **Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `translate_provider` (google | aws)
 
@@ -356,7 +356,7 @@ Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montado
 
 ### `sonar.yml` — Análise SonarQube Cloud (reutilizável)
 
-Chamado por `00_pipeline.yml` (job `sonar`) apenas em `push:main`. Recebe o secret `sonar-token` via `workflow_call` (repassado pelo `00_pipeline.yml` a partir de `secrets.SONAR_TOKEN`) — mesma mecânica de repasse explícito que `terraform.yml`/`deploy_lightsail.yml` já usam para os secrets AWS.
+Chamado por `_pipeline.yml` (job `sonar`) apenas em `push:main`. Recebe o secret `sonar-token` via `workflow_call` (repassado pelo `_pipeline.yml` a partir de `secrets.SONAR_TOKEN`) — mesma mecânica de repasse explícito que `terraform.yml`/`deploy_lightsail.yml` já usam para os secrets AWS.
 
 **Etapas:** Checkout (`fetch-depth: 0`, necessário para blame/new code period do Sonar) → Setup Python 3.12 → instala `pytest`/`pytest-cov` + `test/**/requirements_tests.txt` + `app/*/requirements.txt` → `pytest --cov=app --cov-report=xml` (só para gerar `coverage.xml` — não repete o gate de 95%, que já é responsabilidade do `test.yml`) → `SonarSource/sonarqube-scan-action@v8`, lendo `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`).
 

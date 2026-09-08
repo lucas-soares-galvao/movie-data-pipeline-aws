@@ -193,7 +193,7 @@ jobs:
           # Secret com a chave de API do TMDB — mesmo ARN usado por infra/glue_details.tf (argumento
           # TMDB_SECRET_ARN do job real). Este workflow é workflow_dispatch (não workflow_call), então
           # lê direto o secret do repositório por ambiente (mesmo par usado em
-          # 00_pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
+          # _pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
           # de terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Lido
           # por backfill_discover.py, backfill_enriquecimento.py, backfill_changes.py e
           # backfill_referencias.py (via get_api_secret), que precisam da chave para chamar a API

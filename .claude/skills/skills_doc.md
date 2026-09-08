@@ -59,7 +59,7 @@ dados (SOR/SOT/SPEC/DQ), as tabelas do Glue Catalog e as variáveis de ambiente 
 ### estrutura-projeto
 
 **O que é:** a árvore de diretórios completa do projeto, o encadeamento dos workflows GitHub Actions
-(`00_pipeline` a `backfill`), a estrutura de `infra/` (Terraform) e a organização de `test/` (que espelha
+(`_pipeline` a `backfill`), a estrutura de `infra/` (Terraform) e a organização de `test/` (que espelha
 `app/`).
 
 **Quando usar:**
@@ -301,7 +301,7 @@ de clareza já em vigor no projeto — não introduz convenção nova.
 
 ### especialista-workflows-github
 
-**O que é:** especialista nos workflows GitHub Actions de `.github/workflows/` (`00_pipeline`, `test`,
+**O que é:** especialista nos workflows GitHub Actions de `.github/workflows/` (`_pipeline`, `test`,
 `terraform`, `pr_auto`, `deploy_lightsail`, `lightsail_scheduler`, `backfill`) — a mecânica YAML
 que a documentação narrativa (`estrutura-projeto`, `.github/workflow.md`) não detalha.
 

@@ -10,7 +10,7 @@ O pipeline automatiza as seguintes etapas a cada push no repositório:
 4. **Promoção**: cria PRs automáticos entre branches (`feature → develop → main`)
 5. **Qualidade contínua**: análise de código via SonarQube Cloud (só na branch `main`)
 
-Além do fluxo automático acima, dois workflows são independentes do `00_pipeline.yml`:
+Além do fluxo automático acima, dois workflows são independentes do `_pipeline.yml`:
 
 - `lightsail_scheduler.yml` — liga/desliga (destroy/create real, não só stop/start) a instância Lightsail de prod para economizar custo (FilmBot não existe em dev). Roda por `schedule` (cron): liga e desliga automaticamente. Também aceita `workflow_dispatch` manual.
 - `backfill.yml` — disparado manualmente (`workflow_dispatch`), para reprocessar dados históricos sob demanda. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow.
@@ -48,15 +48,15 @@ flowchart TD
 | `push` | `develop` | terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
 | `push` | `main` | terraform (prod) → deploy (prod, se a instância estiver ligada) + sonar (SonarQube Cloud), em paralelo ao terraform |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy só se ambiente resolvido for prod |
-| `schedule` (`lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `00_pipeline.yml` |
+| `schedule` (`lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `_pipeline.yml` |
 | `workflow_dispatch` (`lightsail_scheduler.yml`) | — | liga/desliga manual de prod (`action=start`/`stop`) |
-| `workflow_dispatch` (`backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `00_pipeline.yml` |
+| `workflow_dispatch` (`backfill.yml`) | — | backfill sob demanda, ambiente resolvido pelo branch selecionado (`main`→prod, `develop`→dev) — independente do `_pipeline.yml` |
 
 ---
 
 ## Workflows
 
-### `00_pipeline.yml` — Orquestrador
+### `_pipeline.yml` — Orquestrador
 
 Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job.
 
@@ -137,11 +137,11 @@ Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fm
 
 ### `sonar.yml` — Análise de Qualidade (SonarQube Cloud)
 
-Chamado pelo `00_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em paralelo ao job `terraform` — Terraform provisiona infra e Sonar analisa código-fonte, nenhum dos dois depende do outro.
+Chamado pelo `_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em paralelo ao job `terraform` — Terraform provisiona infra e Sonar analisa código-fonte, nenhum dos dois depende do outro.
 
-**Entrada:** secret `sonar-token` (repassado pelo `00_pipeline.yml` a partir de `SONAR_TOKEN`).
+**Entrada:** secret `sonar-token` (repassado pelo `_pipeline.yml` a partir de `SONAR_TOKEN`).
 
-**Por que só `main`:** o plano Free do SonarQube Cloud analisa de forma contínua **uma única branch** — a marcada como "principal" no projeto Sonar, travada na branch default do GitHub (`main` neste repo). Tentar analisar qualquer outra branch (`develop`, por exemplo) é recurso pago — no dashboard do Sonar ela aparece como "Not analyzed", atrás de um selo "Upgrade". Por isso este workflow não decora Pull Requests: isso exigiria o evento `pull_request`, que o `00_pipeline.yml` não escuta.
+**Por que só `main`:** o plano Free do SonarQube Cloud analisa de forma contínua **uma única branch** — a marcada como "principal" no projeto Sonar, travada na branch default do GitHub (`main` neste repo). Tentar analisar qualquer outra branch (`develop`, por exemplo) é recurso pago — no dashboard do Sonar ela aparece como "Not analyzed", atrás de um selo "Upgrade". Por isso este workflow não decora Pull Requests: isso exigiria o evento `pull_request`, que o `_pipeline.yml` não escuta.
 
 **Etapas principais:**
 
@@ -156,7 +156,7 @@ Chamado pelo `00_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em
 
 ### `deploy_lightsail.yml` — Deploy da Aplicação
 
-Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `00_pipeline.yml`, o job `deploy-lightsail` executa só quando o ambiente resolvido é `prod` — FilmBot não existe em dev (ver `infra/lightsail_ia.tf`), então um push em `develop` sempre resolve esse job como "skipped". Se a instância de prod estiver destruída no momento do push (fora da janela agendada), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline. Também é chamado por `lightsail_scheduler.yml` (job `deploy-app`), sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (agendado ou manual).
+Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `_pipeline.yml`, o job `deploy-lightsail` executa só quando o ambiente resolvido é `prod` — FilmBot não existe em dev (ver `infra/lightsail_ia.tf`), então um push em `develop` sempre resolve esse job como "skipped". Se a instância de prod estiver destruída no momento do push (fora da janela agendada), o step "Check instance state" pula o deploy com warning, sem falhar o pipeline. Também é chamado por `lightsail_scheduler.yml` (job `deploy-app`), sempre que a ação foi `start` — reidrata a instância recém-criada do zero após cada ciclo de liga (agendado ou manual).
 
 **Entrada:** `environment` (mantido na interface do `workflow_call` por estabilidade, mas na prática só é chamado com `prod`)
 
@@ -181,7 +181,7 @@ Publica a aplicação Streamlit (FilmBot) na instância Lightsail via SSH. No `0
 
 ### `lightsail_scheduler.yml` — Liga/Desliga o Lightsail (custo)
 
-Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não existe em dev). Substitui o antigo Lambda + EventBridge (`lightsail_scheduler.tf`, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` (confirmado via fatura AWS real), então só parar a instância não economizava nada. Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, o que de fato zera a cobrança fora da janela de uso.
+Workflow independente do `_pipeline.yml`, exclusivo de prod (FilmBot não existe em dev). Substitui o antigo Lambda + EventBridge (`lightsail_scheduler.tf`, removido) — o Lightsail cobra a mesma tarifa do bundle tanto em `running` quanto em `stopped` (confirmado via fatura AWS real), então só parar a instância não economizava nada. Este workflow **destrói e recria** a instância via `terraform apply`/`destroy -target`, o que de fato zera a cobrança fora da janela de uso.
 
 **Triggers:**
 
@@ -212,7 +212,7 @@ Workflow independente do `00_pipeline.yml`, exclusivo de prod (FilmBot não exis
 
 ### `backfill.yml` — Backfill Manual
 
-Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workflow_dispatch`) para reprocessar dados históricos sob demanda. O ambiente é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS.
+Workflow independente do `_pipeline.yml`, disparado apenas manualmente (`workflow_dispatch`) para reprocessar dados históricos sob demanda. O ambiente é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS.
 
 **Entradas:**
 
@@ -237,7 +237,7 @@ Workflow independente do `00_pipeline.yml`, disparado apenas manualmente (`workf
 
 1. Checkout + resolve o ambiente a partir do branch (`main`→prod, `develop`→dev, outro branch → falha)
 2. Lê `infra/config/project.json` via `jq` — `project_prefix`
-3. Autenticação AWS via OIDC — assume `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` ou `AWS_ASSUME_ROLE_ARN_BACKFILL_PROD` conforme o ambiente resolvido (role dedicada e de privilégio mínimo, separada da role de CI/CD usada pelo `00_pipeline.yml` — ver `infra/docs/iam.md`)
+3. Autenticação AWS via OIDC — assume `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` ou `AWS_ASSUME_ROLE_ARN_BACKFILL_PROD` conforme o ambiente resolvido (role dedicada e de privilégio mínimo, separada da role de CI/CD usada pelo `_pipeline.yml` — ver `infra/docs/iam.md`)
 4. Setup Python 3.12, instala `boto3` (e `scripts/requirements_backfill.txt` apenas se `table_group == traducao`)
 5. Executa o script correspondente ao `table_group` escolhido, com todas as variáveis de ambiente dos recursos AWS montadas dinamicamente como `<project_prefix>-...-<ambiente>` / `<project_prefix>_..._<ambiente>` (ex.: `tmdb-glue-details-dev`, `db_tmdb_movie_prod`) — prefixo lido de `infra/config/project.json`, ambiente resolvido pelo branch
 
@@ -272,7 +272,7 @@ Cada promoção é feita via PR automático criado pelo `pr_auto.yml`. O merge a
 
 | Secret | Ambiente | Uso |
 |---|---|---|
-| `AWS_ASSUME_ROLE_ARN_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS (role de CI/CD, `00_pipeline.yml`) |
+| `AWS_ASSUME_ROLE_ARN_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS (role de CI/CD, `_pipeline.yml`) |
 | `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` / `_PROD` | dev / prod | OIDC — autenticação AWS (role de backfill manual, `backfill.yml`) |
 | `AWS_STATEFILE_S3_BUCKET_DEV` / `_PROD` | dev / prod | Backend Terraform (estado) |
 | `AWS_LOCK_DYNAMODB_TABLE_DEV` / `_PROD` | dev / prod | Lock do estado Terraform |

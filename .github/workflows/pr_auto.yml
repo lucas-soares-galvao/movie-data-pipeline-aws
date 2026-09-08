@@ -2,7 +2,7 @@ name: Auto PR Pipeline (Reusable)
 
 # =============================================================================
 # Cria ou atualiza Pull Requests automaticamente ao fazer push em uma branch.
-# Chamado pelo 00_pipeline.yml após testes (feature) ou terraform (develop).
+# Chamado pelo _pipeline.yml após testes (feature) ou terraform (develop).
 #
 # Mapeamento de branches:
 #   feature/* → PR para develop
