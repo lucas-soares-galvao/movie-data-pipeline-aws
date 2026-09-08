@@ -65,11 +65,11 @@ Junta tudo — filmes e séries, com todos os seus detalhes — em uma única ta
 ### Aplicativo de recomendações (FilmBot — Lightsail)
 Interface web onde o usuário digita o que quer assistir em linguagem natural. Um agente de IA interpreta o pedido, consulta a base de dados e retorna recomendações personalizadas com pôster, sinopse, avaliação, duração e onde assistir. Servido via HTTPS com certificado automático (Caddy + Let's Encrypt). O acesso é protegido por senha configurável, evitando uso não autorizado da API de IA e das consultas ao Athena.
 
-### Agendador do FilmBot (`05_lightsail_scheduler.yml`)
+### Agendador do FilmBot (`lightsail_scheduler.yml`)
 Liga e desliga a instância Lightsail onde o FilmBot roda (só existe em prod) — via `terraform apply`/`destroy -target`, não stop/start (o Lightsail cobra a mesma tarifa do bundle em ambos os estados; só destruir a instância reduz custo de verdade). Roda por cron automático (GitHub Actions `schedule`) tanto para ligar quanto para desligar, além de aceitar disparo manual (`workflow_dispatch`). O IP estático nunca é destruído, então o DNS não precisa ser reconfigurado a cada ciclo.
 
 ### Backfill histórico manual
-Backfill manual sob demanda via workflow `06_backfill.yml` (`workflow_dispatch`), que roda os scripts em `scripts/` para reprocessar um grupo específico de tabelas (discover, referências, detalhes/providers, data quality ou tradução). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow. Veja [`scripts/scripts.md`](scripts/scripts.md) para detalhes.
+Backfill manual sob demanda via workflow `backfill.yml` (`workflow_dispatch`), que roda os scripts em `scripts/` para reprocessar um grupo específico de tabelas (discover, referências, detalhes/providers, data quality ou tradução). O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow. Veja [`scripts/scripts.md`](scripts/scripts.md) para detalhes.
 
 ---
 

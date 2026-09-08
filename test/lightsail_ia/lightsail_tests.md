@@ -518,7 +518,7 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). `app.py`, `forms.py`, `admin.py`, `profile.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py`/`components.py` **não** estão excluídos: embora também tenham código chamado pela UI, têm funções puras, com saída antecipada, ou chamadas diretas a boto3 (Cognito/SNS) trivialmente testáveis via mock, sem depender de um script Streamlit rodando (ver `test_infrastructure.py`/`test_components.py` acima).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). `app.py`, `forms.py`, `admin.py`, `profile.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py`/`components.py` **não** estão excluídos: embora também tenham código chamado pela UI, têm funções puras, com saída antecipada, ou chamadas diretas a boto3 (Cognito/SNS) trivialmente testáveis via mock, sem depender de um script Streamlit rodando (ver `test_infrastructure.py`/`test_components.py` acima).
 
 ## Observação sobre testes de interface
 

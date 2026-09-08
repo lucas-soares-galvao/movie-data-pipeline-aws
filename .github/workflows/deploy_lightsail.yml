@@ -1,4 +1,4 @@
-name: "4. Deploy Lightsail (Reusable)"
+name: "Deploy Lightsail (Reusable)"
 
 # =============================================================================
 # Deploy do app configurado (nome/pasta em infra/config/project.json) na

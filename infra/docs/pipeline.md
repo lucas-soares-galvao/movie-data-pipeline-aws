@@ -23,7 +23,7 @@
 
 ## Disparo do Lightsail Scheduler via AWS (`lightsail_scheduler_trigger.tf`)
 
-`05_lightsail_scheduler.yml` (liga/desliga o FilmBot diariamente) não usa mais o trigger `schedule:` nativo do
+`lightsail_scheduler.yml` (liga/desliga o FilmBot diariamente) não usa mais o trigger `schedule:` nativo do
 GitHub Actions — a documentação do GitHub descreve esse trigger como sujeito a atraso em períodos de alta carga
 (especialmente no início de cada hora, exatamente o horário dos crons antigos). Duas `aws_cloudwatch_event_rule`
 (só em prod, `local.lightsail_prod_enabled`) chamam a API REST do GitHub (`workflow_dispatch`) via uma EventBridge
@@ -41,9 +41,9 @@ mesmo mecanismo de `filmbot_secret_arn`, nunca em `terraform.tfvars`). A role de
 (`lightsail_scheduler_eventbridge`) só tem `events:InvokeApiDestination`, escopada ao ARN da própria API
 Destination. Mesmos targets têm `dead_letter_config` apontando para a DLQ compartilhada (ver acima).
 
-## Backfill histórico manual (`06_backfill.yml`)
+## Backfill histórico manual (`backfill.yml`)
 
-O backfill histórico é sempre manual: via workflow `06_backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality — usado para correções pontuais em um grupo específico de tabelas. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
+O backfill histórico é sempre manual: via workflow `backfill.yml` (GitHub Actions, `workflow_dispatch`), que dispara scripts Python diretamente contra a Lambda API e os jobs Glue Details/Data Quality — usado para correções pontuais em um grupo específico de tabelas. O ambiente (dev/prod) é resolvido automaticamente pelo branch selecionado ao disparar o workflow (ver `overview.md`).
 
 ## Notificações — SNS (`sns_topics.tf`)
 

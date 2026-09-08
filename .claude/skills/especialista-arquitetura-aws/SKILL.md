@@ -54,7 +54,7 @@ mesmo que pareça "menos robusta" que a alternativa, porque a alternativa não s
 - **Amazon Lightsail (bundle fixo mínimo) em vez de ECS Fargate/EC2/App Runner** para o FilmBot — app único e
   simples, tráfego previsível, sem necessidade de auto-scaling. O bundle fixo (~$7/mês) já é mais barato que Fargate
   somado ao ALB praticamente obrigatório nesse volume. Contrapartida aceita conscientemente: deploy via SSH
-  (`04_deploy_lightsail.yml`), sem blue/green nem scale horizontal automático.
+  (`deploy_lightsail.yml`), sem blue/green nem scale horizontal automático.
 - **SNS direto via `input_transformer` em vez de uma Lambda intermediária de notificação** — não há lógica
   condicional além de montar a mensagem a partir do payload do evento (`alarmName`/`jobName`, `state`, `reason`);
   uma Lambda no meio só adicionaria custo e mais um ponto de falha entre o evento e o e-mail, sem nenhum
@@ -73,7 +73,7 @@ mesmo que pareça "menos robusta" que a alternativa, porque a alternativa não s
   heterogêneos por etapa, aprovação humana no meio do fluxo, ou fan-out mais largo que o atual (AGG esperando
   movie+tv terminarem). Não adotar preventivamente — hoje a cadeia direta resolve com menos peças.
 - **Se o tráfego do FilmBot crescer** a ponto de precisar de auto-scaling horizontal ou deploy sem downtime,
-  Fargate/App Runner vira a escolha certa — o deploy SSH atual (`04_deploy_lightsail.yml`) não sustenta isso (sem
+  Fargate/App Runner vira a escolha certa — o deploy SSH atual (`deploy_lightsail.yml`) não sustenta isso (sem
   blue/green, uma única instância).
 - **Se a concorrência de consultas na tabela SPEC crescer** (muitos usuários simultâneos do FilmBot fazendo query no
   Athena ao mesmo tempo), a próxima alavanca é Athena provisioned capacity (workgroup dedicado) ou um Redshift

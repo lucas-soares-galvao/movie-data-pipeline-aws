@@ -451,6 +451,6 @@ output "lightsail_sns_new_signup_topic_arn" {
 }
 
 output "lightsail_caddy_certs_bucket" {
-  description = "Nome do bucket S3 que persiste o certificado TLS do Caddy entre recriações da instância (ver 04_deploy_lightsail.yml)"
+  description = "Nome do bucket S3 que persiste o certificado TLS do Caddy entre recriações da instância (ver deploy_lightsail.yml)"
   value       = local.envs.s3_bucket_caddy_certs
 }

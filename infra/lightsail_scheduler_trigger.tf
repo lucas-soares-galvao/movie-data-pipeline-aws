@@ -3,7 +3,7 @@
 #
 # O GitHub Actions documenta que o trigger `schedule:` pode atrasar em
 # períodos de alta carga (especialmente no início de cada hora — exatamente
-# o horário usado pelos dois cron de 05_lightsail_scheduler.yml). Este
+# o horário usado pelos dois cron de lightsail_scheduler.yml). Este
 # arquivo substitui o `schedule:` do GitHub por uma EventBridge Rule (o
 # mesmo motor de cron já usado no resto do projeto, ver eventbridge.tf) que
 # chama a API REST do GitHub (workflow_dispatch) via API Destination —
@@ -47,8 +47,8 @@ resource "aws_cloudwatch_event_api_destination" "lightsail_scheduler_github" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                             = local.envs.lightsail_scheduler_api_destination_name
-  description                      = "Dispara 05_lightsail_scheduler.yml via workflow_dispatch"
-  invocation_endpoint              = "https://api.github.com/repos/${local.project_config.github_repo}/actions/workflows/05_lightsail_scheduler.yml/dispatches"
+  description                      = "Dispara lightsail_scheduler.yml via workflow_dispatch"
+  invocation_endpoint              = "https://api.github.com/repos/${local.project_config.github_repo}/actions/workflows/lightsail_scheduler.yml/dispatches"
   http_method                      = "POST"
   invocation_rate_limit_per_second = 1
   connection_arn                   = aws_cloudwatch_event_connection.lightsail_scheduler_github[0].arn
@@ -100,7 +100,7 @@ resource "aws_cloudwatch_event_rule" "lightsail_scheduler_stop" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                = local.envs.lightsail_scheduler_rule_stop_name
-  description         = "Dispara 05_lightsail_scheduler.yml (action=stop) às 00:00 BRT"
+  description         = "Dispara lightsail_scheduler.yml (action=stop) às 00:00 BRT"
   schedule_expression = "cron(0 3 * * ? *)" # 00:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_ia
@@ -111,7 +111,7 @@ resource "aws_cloudwatch_event_rule" "lightsail_scheduler_start" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                = local.envs.lightsail_scheduler_rule_start_name
-  description         = "Dispara 05_lightsail_scheduler.yml (action=start) às 08:00 BRT"
+  description         = "Dispara lightsail_scheduler.yml (action=start) às 08:00 BRT"
   schedule_expression = "cron(0 11 * * ? *)" # 08:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_ia

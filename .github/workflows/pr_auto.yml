@@ -1,4 +1,4 @@
-name: 3. Auto PR Pipeline (Reusable)
+name: Auto PR Pipeline (Reusable)
 
 # =============================================================================
 # Cria ou atualiza Pull Requests automaticamente ao fazer push em uma branch.
@@ -51,7 +51,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       # Valida sintaxe Terraform antes de abrir PR (sem conectar ao backend remoto)
-      # Executado apenas em feature/* — develop já passou pelo 02_terraform.yml completo
+      # Executado apenas em feature/* — develop já passou pelo terraform.yml completo
       - name: Terraform Validate
         if: startsWith(inputs.branch_name, 'feature/')
         run: |

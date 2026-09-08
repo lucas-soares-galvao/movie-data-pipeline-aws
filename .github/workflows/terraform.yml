@@ -1,4 +1,4 @@
-name: "2. Terraform (Reusable)"
+name: "Terraform (Reusable)"
 
 # =============================================================================
 # Provisionamento de infraestrutura AWS via Terraform.

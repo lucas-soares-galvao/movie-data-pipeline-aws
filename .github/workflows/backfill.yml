@@ -1,4 +1,4 @@
-name: 6. Backfill
+name: 2. Backfill
 run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ inputs.table_group }} (${{ inputs.start_year }}-${{ inputs.end_year != '' && inputs.end_year || 'atual' }})"
 
 # =============================================================================
@@ -194,7 +194,7 @@ jobs:
           # TMDB_SECRET_ARN do job real). Este workflow é workflow_dispatch (não workflow_call), então
           # lê direto o secret do repositório por ambiente (mesmo par usado em
           # 00_pipeline.yml:aws-filmbot-secret-arn), e não o secret de input "aws-filmbot-secret-arn"
-          # de 02_terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Lido
+          # de terraform.yml (esse só existe dentro do contexto workflow_call daquele workflow). Lido
           # por backfill_discover.py, backfill_enriquecimento.py, backfill_changes.py e
           # backfill_referencias.py (via get_api_secret), que precisam da chave para chamar a API
           # do TMDB fora do runtime do Glue/Lambda.
