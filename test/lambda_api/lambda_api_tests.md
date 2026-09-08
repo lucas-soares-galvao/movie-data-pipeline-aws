@@ -235,4 +235,4 @@ pytest test/lambda_api/ --cov=app/lambda_api --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). O CI falha se a cobertura ficar abaixo desse limite.
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). O CI falha se a cobertura ficar abaixo desse limite.

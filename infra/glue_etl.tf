@@ -121,12 +121,12 @@ resource "aws_s3_object" "deploy_scripts_bucket_etl" {
 # checkout), e NÃO via filemd5() sobre o .whl já construído. Isso é essencial
 # porque "terraform validate"/"plan" avaliam essa expressão antes de qualquer
 # apply — um filemd5() sobre o wheel quebraria workflows que só validam o
-# código (ex.: 03_pr_auto.yml), que não constroem o artefato.
+# código (ex.: pr_auto.yml), que não constroem o artefato.
 #
 # O "null_resource" abaixo executa o build localmente; seu provisioner
 # "local-exec" só roda durante o "apply" (não em validate/plan), então não
 # exige o wheel pronto de antemão. Como reforço extra, o CI
-# (.github/workflows/02_terraform.yml) também builda o wheel antes do
+# (.github/workflows/terraform.yml) também builda o wheel antes do
 # "terraform plan", garantindo que o arquivo exista mesmo se o Terraform
 # state considerar o build "já feito" (triggers inalterados) em um runner
 # novo onde o arquivo local não existe.

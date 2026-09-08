@@ -84,7 +84,7 @@ Esta skill cobre o *gate* de consulta à fonte oficial; não repete o racional j
   publicada** (hoje pode já ser v7+) — consultar a doc sem filtrar pela versão pinada pode sugerir um argumento
   que não existe (ou tem nome diferente) na v6.x realmente usada pelo projeto.
 - **Backend S3 configurado com `-backend-config="dynamodb_table=..."`**
-  (`.github/workflows/02_terraform.yml:165-168`) — o projeto nunca reconfirmou na doc oficial do backend `s3` se
+  (`.github/workflows/terraform.yml:165-168`) — o projeto nunca reconfirmou na doc oficial do backend `s3` se
   esse é ainda o mecanismo de locking recomendado na versão de Terraform em uso (`>= 1.5.0`), já que o próprio
   Terraform introduziu ao longo do tempo opções de locking nativo no S3. Não assumir nem que precisa mudar nem
   que deve continuar como está — apenas sinalizar que é um ponto a verificar na doc oficial antes de qualquer

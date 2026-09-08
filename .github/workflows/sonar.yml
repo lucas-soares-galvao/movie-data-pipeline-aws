@@ -1,14 +1,15 @@
-name: Sonar Analysis
+name: Sonar Analysis (Reusable)
 
 # =============================================================================
 # Análise de qualidade de código via SonarQube Cloud.
 #
-# Independente do 00_pipeline.yml: usa os eventos nativos push/pull_request do
-# GitHub em vez do fluxo orquestrado (push feature/* -> 01_test -> auto PR),
-# porque no plano Free do SonarQube Cloud só é possível analisar (a) a branch
-# principal configurada no projeto Sonar e (b) PRs cujo destino seja essa
-# branch. Aqui a branch principal do projeto Sonar é "develop" (não "main") —
-# o PR que carrega o diff de código de verdade é feature/* -> develop.
+# Chamado por _pipeline.yml (job "sonar"), em paralelo ao terraform — nenhum
+# dos dois depende do outro (Terraform provisiona infra, Sonar analisa
+# código-fonte). Só é chamado em push:main porque o plano Free do SonarQube
+# Cloud só analisa de forma contínua a branch marcada como "principal" no
+# projeto Sonar (ver sonar-project.properties na raiz do repo) — outras
+# branches são rejeitadas/ignoradas (aparecem como "Not analyzed" no
+# dashboard, atrás de um selo "Upgrade").
 #
 # Informativo: não bloqueia o merge (sem sonar.qualitygate.wait=true). Reavaliar
 # tornar bloqueante depois de calibrar o volume de achados do perfil padrão
@@ -16,10 +17,10 @@ name: Sonar Analysis
 # =============================================================================
 
 on:
-  push:
-    branches: [develop]
-  pull_request:
-    branches: [develop]
+  workflow_call:
+    secrets:
+      sonar-token:
+        required: true
 
 jobs:
   sonar:
@@ -66,4 +67,4 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.sonar-token }}

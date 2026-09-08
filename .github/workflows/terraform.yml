@@ -1,8 +1,8 @@
-name: "2. Terraform (Reusable)"
+name: "Terraform (Reusable)"
 
 # =============================================================================
 # Provisionamento de infraestrutura AWS via Terraform.
-# Chamado pelo 00_pipeline.yml para os ambientes dev (develop) e prod (main).
+# Chamado pelo _pipeline.yml para os ambientes dev (develop) e prod (main).
 #
 # Etapas principais:
 #   1. Autenticação AWS via OIDC (sem credenciais armazenadas no GitHub)
@@ -11,7 +11,7 @@ name: "2. Terraform (Reusable)"
 #   4. Terraform Plan → estimativa de custo (Infracost) → Apply
 #
 # Saída (output):
-#   was_destroyed — informa ao 00_pipeline.yml se a infra foi destruída,
+#   was_destroyed — informa ao _pipeline.yml se a infra foi destruída,
 #   para que o deploy do FilmBot seja pulado neste caso.
 # =============================================================================
 

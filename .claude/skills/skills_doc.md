@@ -59,7 +59,7 @@ dados (SOR/SOT/SPEC/DQ), as tabelas do Glue Catalog e as variáveis de ambiente 
 ### estrutura-projeto
 
 **O que é:** a árvore de diretórios completa do projeto, o encadeamento dos workflows GitHub Actions
-(`00_pipeline` a `06_backfill`), a estrutura de `infra/` (Terraform) e a organização de `test/` (que espelha
+(`_pipeline` a `backfill`), a estrutura de `infra/` (Terraform) e a organização de `test/` (que espelha
 `app/`).
 
 **Quando usar:**
@@ -161,7 +161,7 @@ permissão IAM — com ponte explícita, em cada item, para a skill irmã que en
 `git diff <base>...HEAD` ou `gh pr diff <numero>`) antes do merge — as mesmas 4 camadas de
 `revisao-pos-mudanca-codigo` (testes, `.md`, docstrings, type hints, IAM) aplicadas arquivo por arquivo sobre o
 diff, mais pontes para infra/Terraform, workflows GitHub, Streamlit/FilmBot e segurança que
-`revisao-pos-mudanca-codigo` não cobre. Sinaliza explicitamente o que `01_test.yml` roda mas não bloqueia
+`revisao-pos-mudanca-codigo` não cobre. Sinaliza explicitamente o que `test.yml` roda mas não bloqueia
 (`mypy`/`bandit`/`safety` são informativos) e o que ele não verifica (sincronia de `.md`, testes de `scripts/`).
 
 **Quando usar:**
@@ -266,7 +266,7 @@ retomada automática) e no racional de design dos 6 scripts + `backfill_shared.p
 - Ao alterar checkpoint/retry.
 - Ao decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail).
 - Ao revisar o guard de custo do `TRANSLATE_PROVIDER`, ou entender o contrato entre um script e
-  `.github/workflows/06_backfill.yml`.
+  `.github/workflows/backfill.yml`.
 
 ---
 
@@ -301,8 +301,8 @@ de clareza já em vigor no projeto — não introduz convenção nova.
 
 ### especialista-workflows-github
 
-**O que é:** especialista nos workflows GitHub Actions de `.github/workflows/` (`00_pipeline`, `01_test`,
-`02_terraform`, `03_pr_auto`, `04_deploy_lightsail`, `05_lightsail_scheduler`, `06_backfill`) — a mecânica YAML
+**O que é:** especialista nos workflows GitHub Actions de `.github/workflows/` (`_pipeline`, `test`,
+`terraform`, `pr_auto`, `deploy_lightsail`, `lightsail_scheduler`, `backfill`) — a mecânica YAML
 que a documentação narrativa (`estrutura-projeto`, `.github/workflow.md`) não detalha.
 
 **Quando usar:**

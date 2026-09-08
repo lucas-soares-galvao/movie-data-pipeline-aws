@@ -74,4 +74,4 @@ pytest test/lambda_cognito_email_sender/ --cov=app/lambda_cognito_email_sender -
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/01_test.yml`). O CI falha se a cobertura ficar abaixo desse limite.
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). O CI falha se a cobertura ficar abaixo desse limite.

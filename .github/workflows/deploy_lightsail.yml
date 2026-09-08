@@ -1,8 +1,8 @@
-name: "4. Deploy Lightsail (Reusable)"
+name: "Deploy Lightsail (Reusable)"
 
 # =============================================================================
 # Deploy do app configurado (nome/pasta em infra/config/project.json) na
-# instância AWS Lightsail. Chamado pelo 00_pipeline.yml apenas em prod, após
+# instância AWS Lightsail. Chamado pelo _pipeline.yml apenas em prod, após
 # o Terraform aplicar com sucesso — FilmBot não existe em dev (ver
 # infra/lightsail_ia.tf).
 #
@@ -206,7 +206,7 @@ jobs:
           echo "✅ Arquivo .env criado com sucesso na instância"
 
       # Domínio fixo — este workflow só é chamado para prod (ver
-      # 00_pipeline.yml). Caddyfile lê {$FILMBOT_DOMAIN} do ambiente do
+      # _pipeline.yml). Caddyfile lê {$FILMBOT_DOMAIN} do ambiente do
       # processo via EnvironmentFile=.
       - name: Create .env.caddy file on instance
         if: steps.tf.outputs.lightsail_enabled == 'true' && steps.instance_check.outputs.instance_running == 'true'

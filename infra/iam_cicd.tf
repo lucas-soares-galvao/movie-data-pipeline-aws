@@ -4,7 +4,7 @@
 #
 # A role lsg-github-actions-{env} foi originalmente criada manualmente e agora
 # é importada e gerenciada pelo Terraform (max_session_duration = 3600, 1h —
-# o workflow 06_backfill.yml usa exatamente essa duração e trata
+# o workflow backfill.yml usa exatamente essa duração e trata
 # ExpiredTokenException com retomada automática via checkpoint — ver
 # infra/docs/iam.md). Este arquivo também cria as políticas managed e as
 # anexa à role.
@@ -775,7 +775,7 @@ resource "aws_iam_policy" "cicd_lightsail" {
         # Persistência do certificado TLS do Caddy (FilmBot) entre as
         # recriações diárias da instância — ver aws_s3_bucket.caddy_certs_bucket
         # em infra/s3.tf e os passos de restore/save em
-        # .github/workflows/04_deploy_lightsail.yml.
+        # .github/workflows/deploy_lightsail.yml.
         Sid    = "CaddyCertsObjectAccess"
         Effect = "Allow"
         Action = [
