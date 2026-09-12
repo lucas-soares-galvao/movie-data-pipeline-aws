@@ -12,6 +12,12 @@
 .results-heading {
   font-weight: 700;
   line-height: 20px;
+  /* color explícito (--text-primary): sem isso o <p> herda a cor nativa que o Streamlit
+     aplica por instância (mesma regra ".st-emotion-cache-XXXXXX p" citada acima para
+     margin-top), que segue o tema do navegador em vez do data-theme custom — o título
+     sumia (texto claro sobre fundo claro) em modo claro. Não precisa de !important:
+     essa regra nativa declara só margin-top, não color. */
+  color: var(--text-primary);
   margin-top: 24px !important;
   margin-bottom: 8px;
 }

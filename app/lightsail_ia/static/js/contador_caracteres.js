@@ -32,7 +32,15 @@
             // ponta via margin-left:auto, aquele nudge também arrastava o
             // contador 12px pra esquerda do fim real do texto — medido via
             // getBoundingClientRect (Chrome DevTools).
-            counter.style.cssText = "font-size:14px;opacity:0.6;margin-left:auto;white-space:nowrap;position:relative;top:-2px;left:12px;";
+            // color: var(--text-tertiary) e sem opacity — sem o color o texto herda a cor
+            // nativa do tema do Streamlit (não os tokens custom), ficando claro sobre o
+            // fundo claro do card (--bg-input) em modo claro e sumindo; e a opacity:0.6 que
+            // havia aqui deixava o contador mais apagado que o badge do timer
+            // (.recorder-timer, recommendation.css) na mesma linha — como pedido do usuário
+            // é que os dois fiquem com a MESMA cor nos dois temas, a opacity foi removida
+            // (o .recorder-timer não tem opacity nenhuma, só var(--text-tertiary)).
+            // font-size:14px + top:-2px também batem com .recorder-timer.
+            counter.style.cssText = "font-size:14px;color:var(--text-tertiary);margin-left:auto;white-space:nowrap;position:relative;top:-2px;left:12px;";
             recorderRow.appendChild(counter);
         }
 
