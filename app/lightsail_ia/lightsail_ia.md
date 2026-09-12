@@ -607,6 +607,24 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   soma por cima do `margin-top` explícito, então `margin-top` precisa ser `alvo - 16`: era `-8`
   quando o alvo era `8`, passa a ser `0` quando o alvo é `16`. O `padding-bottom` malsucedido foi
   removido de `.query-counter-text` (não fazia nada, só CSS morto).
+  **Vigésima segunda rodada — dois textos que sumiam em modo claro (contador de caracteres e
+  "Encontramos X opções para você!"):** os dois são elementos que herdam cor nativa do Streamlit em
+  vez dos tokens custom do app (mesma causa-raiz recorrente desta seção), então ficavam invisíveis
+  contra o fundo claro do card, sem nenhum seletor nosso declarando `color` para eles. (1) O
+  contador de caracteres (`contador_caracteres.js`, div `#pref-char-counter` injetado na linha do
+  gravador) tinha só `font-size`/`opacity` inline; ganhou `color:var(--text-tertiary)` no
+  `style.cssText` e **perdeu a `opacity:0.6`** — a cor agora bate exatamente com o badge do
+  timer `00:00 / 00:15` (`.recorder-timer`, `recommendation.css`), que usa o mesmo token
+  `var(--text-tertiary)` e `font-size:14px` mas **sem opacity nenhuma** (era a opacity:0.6 do
+  contador que o deixava visivelmente mais apagado que o timer, na mesma linha — pedido explícito
+  do usuário para os dois ficarem idênticos nos dois temas). Referência do que deveria ser
+  visualmente era o próprio `.recorder-timer`, logo ao lado.
+  (2) `.results-heading` (`cards.css`, o `<p>` "Encontramos X opções para você!") ganhou `color: var(--text-primary)` —
+  sem `!important`, porque a regra nativa do Streamlit que o atinge (mesma `.st-emotion-cache p`
+  mencionada no comentário do `margin-top` logo acima) declara só `margin-top`, não `color`.
+  Diferente do `.hero-heading` da **segunda rodada** (que precisou de `!important` porque o Streamlit
+  força cor em todo `<h1>` de markdown), aqui um `<p>` comum não recebe cor forçada — basta a
+  declaração normal vencer a herança.
 - **Cabeçalho agrupado à esquerda + toggle inline + horário no rodapé** (rodada mais recente,
   substitui o parágrafo anterior desta seção sobre badge/toggle em cantos fixos da página —
   pedido do usuário revisando os mockups). Três mudanças relacionadas, já que toggle e badge
