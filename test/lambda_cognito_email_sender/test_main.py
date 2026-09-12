@@ -26,6 +26,10 @@ class TestLambdaHandler:
         mock_decrypt.assert_called_once_with(
             "Y29kaWdvLWNyaXB0b2dyYWZhZG8=", main.KMS_KEY_ARN, mock_boto3.client.return_value
         )
+        # config= passado por timeout explícito do KMS (S7618) — evita que a chamada
+        # pendure a Lambda até o limite da função.
+        assert mock_boto3.client.call_args[0] == ("kms",)
+        assert "config" in mock_boto3.client.call_args.kwargs
         mock_send.assert_called_once()
         to_email, subject, body = mock_send.call_args[0]
         assert to_email == "user@ex.com"

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import aws_encryption_sdk
 from src.utils import (
+    _SMTP_TIMEOUT_SECONDS,
     build_email_content,
     decrypt_code,
     load_gmail_credentials,
@@ -172,7 +173,7 @@ class TestSendGmailEmail:
             mock_smtp.return_value.__enter__.return_value = mock_smtp_server
             resultado = send_gmail_email("user@ex.com", "Assunto de teste", "Corpo do e-mail")
 
-        mock_smtp.assert_called_once_with("smtp.gmail.com", 465)
+        mock_smtp.assert_called_once_with("smtp.gmail.com", 465, timeout=_SMTP_TIMEOUT_SECONDS)
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "senha-de-app")
         sent_message = mock_smtp_server.send_message.call_args[0][0]
         assert sent_message["Subject"] == "Assunto de teste"
