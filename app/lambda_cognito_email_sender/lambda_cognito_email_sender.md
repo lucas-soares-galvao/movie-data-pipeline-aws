@@ -14,12 +14,12 @@ O Cognito continua gerando e controlando o código internamente (mesma expiraç�
 
 1. O Cognito gera o código de verificação e o criptografa com a chave KMS configurada em `lambda_config.kms_key_id` (`aws_kms_key.cognito_email_sender`, `infra/kms.tf`), usando o [AWS Encryption SDK](https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/introduction.html).
 2. O Cognito invoca esta Lambda com um evento contendo `triggerSource`, `request.code` (string base64 do código criptografado) e `request.userAttributes` (inclui `email`).
-3. `main.lambda_handler` descriptografa o código via `decrypt_code()` (KMS keyring + AWS Encryption SDK) quando `request.code` está presente.
+3. `main.lambda_handler` descriptografa o código via `decrypt_code()` (KMS keyring + AWS Encryption SDK) quando `request.code` está presente. O cliente KMS é criado com `connect_timeout`/`read_timeout`/`retries` explícitos (via `botocore.config.Config`) — sem isso, uma chamada sem resposta poderia pendurar a Lambda até o limite de execução.
 4. `build_email_content()` decide o assunto/corpo do e-mail a partir do `triggerSource`:
    - `CustomEmailSender_SignUp` e `CustomEmailSender_ResendCode` — mesmo texto de confirmação de cadastro que antes vivia em `verification_message_template` (`infra/lightsail_ia.tf`).
    - `CustomEmailSender_ForgotPassword` — texto de recuperação de senha.
    - Qualquer outro `triggerSource` (`Authentication`, `UpdateUserAttribute`, `VerifyUserAttribute`, `AdminCreateUser`, `AccountTakeOverNotification`) — nenhum desses corresponde a um fluxo usado pelo FilmBot hoje (sem MFA por e-mail, sem alteração de e-mail própria, sem `AdminCreateUser`, sem detecção de risco configurada). `build_email_content` retorna `None` e o handler só loga, sem enviar nada — para não quebrar caso o Cognito dispare um desses eventos por engano ou numa configuração futura.
-5. `send_gmail_email()` monta e envia o e-mail via `smtplib.SMTP_SSL("smtp.gmail.com", 465)`, autenticando com a mesma conta Gmail (`gmail_sender_email`/`gmail_app_password` no Secrets Manager) já usada pelas notificações do admin em `lightsail_ia`.
+5. `send_gmail_email()` monta e envia o e-mail via `smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)`, autenticando com a mesma conta Gmail (`gmail_sender_email`/`gmail_app_password` no Secrets Manager) já usada pelas notificações do admin em `lightsail_ia`. O `timeout` explícito evita que uma conexão que aceita o TCP mas trava no handshake fique presa até o limite da Lambda (o `smtplib` não tem timeout default).
 
 ### Por que a lógica de Gmail é duplicada, não compartilhada
 
@@ -45,7 +45,7 @@ Nenhuma exceção de envio propaga para o Cognito — `send_gmail_email` captura
 | `decrypt_code(...)` | Descriptografa `request.code` via AWS Encryption SDK + KMS keyring |
 | `build_email_content(...)` | Decide assunto/corpo do e-mail a partir do `triggerSource`, ou `None` se não tratado |
 | `load_gmail_credentials()` | Busca remetente/senha de app do Gmail (Secrets Manager, com fallback de env vars para dev local) |
-| `send_gmail_email(...)` | Monta e envia o e-mail via `smtplib.SMTP_SSL` |
+| `send_gmail_email(...)` | Monta e envia o e-mail via `smtplib.SMTP_SSL` (com `timeout` explícito) |
 
 ## Tecnologias
 

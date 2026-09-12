@@ -49,7 +49,7 @@ test/shared_src/
 
 | Teste | O que verifica |
 |---|---|
-| `test_retorna_chave_do_secrets_manager` | `boto3.client("secretsmanager")` chamado, `get_secret_value` chamado com o `SecretId` correto, e a chave certa extraída do JSON do segredo |
+| `test_retorna_chave_do_secrets_manager` | `boto3.client("secretsmanager", config=...)` chamado (com `config` de timeout explícito), `get_secret_value` chamado com o `SecretId` correto, e a chave certa extraída do JSON do segredo. Mocka `boto3.client` (objeto global) e não `shared_utils.api_client.boto3` — o `conftest.py` de `test/` apaga `shared_utils.*` de `sys.modules` ao coletar suites de `_SUITE_TO_APP`, então o patch por string poderia resolver o módulo reimportado enquanto a função executada é a referência do módulo antigo, deixando o `boto3` real vazar e tentar credenciais AWS de verdade |
 
 ## Casos de teste — `test_s3_helpers.py`
 

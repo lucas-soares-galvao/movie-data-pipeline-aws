@@ -29,7 +29,7 @@ app/shared_src/
 | Função | Responsabilidade |
 |---|---|
 | `api_get(url, params, max_retries)` | GET com retry/backoff exponencial para lidar com rate limits de APIs (429, 5xx) |
-| `get_api_secret(secret_arn, key_name)` | Busca um segredo no AWS Secrets Manager |
+| `get_api_secret(secret_arn, key_name)` | Busca um segredo no AWS Secrets Manager. Instancia o cliente com `connect_timeout`/`read_timeout`/`retries` explícitos (via `botocore.config.Config`) — sem isso, uma chamada sem resposta pode pendurar o chamador (ex.: Lambda `lambda_api`) até o limite de execução |
 
 ### `shared_utils/glue_helpers.py`
 

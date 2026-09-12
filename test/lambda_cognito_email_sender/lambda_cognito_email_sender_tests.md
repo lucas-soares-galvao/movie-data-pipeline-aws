@@ -24,7 +24,7 @@ A variável de ambiente `KMS_KEY_ARN` é definida via `os.environ.setdefault()` 
 
 | Teste | O que verifica |
 |---|---|
-| `test_descriptografa_e_envia_email_para_sign_up` | `decrypt_code` é chamado com o código base64 do evento, `KMS_KEY_ARN` e o cliente KMS; `send_gmail_email` recebe o e-mail do usuário, assunto e corpo de confirmação de cadastro |
+| `test_descriptografa_e_envia_email_para_sign_up` | `decrypt_code` é chamado com o código base64 do evento, `KMS_KEY_ARN` e o cliente KMS; o cliente KMS é criado com `config=` (timeout explícito); `send_gmail_email` recebe o e-mail do usuário, assunto e corpo de confirmação de cadastro |
 | `test_resend_code_usa_o_mesmo_texto_do_sign_up` | `triggerSource="CustomEmailSender_ResendCode"` gera o mesmo assunto/corpo do cadastro |
 | `test_forgot_password_envia_texto_de_recuperacao` | `triggerSource="CustomEmailSender_ForgotPassword"` gera assunto/corpo de recuperação de senha |
 | `test_trigger_source_nao_tratado_nao_envia_email` | `triggerSource` fora dos 3 fluxos usados pelo FilmBot (ex.: `Authentication`) não chama `send_gmail_email` |
@@ -58,7 +58,7 @@ Mesmos casos de `test/lightsail_ia/test_infrastructure.py` (`TestNotifyUserAppro
 | `test_cai_para_fallback_de_env_vars_quando_secret_arn_nao_configurado` | Sem `FILMBOT_SECRET_ARN`, usa `GMAIL_SENDER_EMAIL`/`GMAIL_APP_PASSWORD` sem chamar boto3 |
 | `test_cai_para_fallback_quando_secret_nao_tem_as_chaves_gmail` | Secret existe mas sem as chaves `gmail_*` — cai para o fallback de env vars |
 | `test_retorna_none_quando_nenhuma_credencial_esta_configurada` | Sem nenhuma fonte de credencial, retorna `None` |
-| `test_envia_email_com_sucesso` | `smtplib.SMTP_SSL` é chamado corretamente, mensagem montada com `Subject`/`From`/`To` corretos |
+| `test_envia_email_com_sucesso` | `smtplib.SMTP_SSL` é chamado com host/porta e `timeout` explícitos, mensagem montada com `Subject`/`From`/`To` corretos |
 | `test_retorna_false_sem_chamar_smtp_quando_nenhuma_credencial_esta_configurada` | Sem credenciais, não chama SMTP e retorna `False` |
 | `test_loga_erro_sem_propagar_quando_smtp_falha` | Falha de conexão SMTP é capturada, retorna `False` sem lançar |
 
