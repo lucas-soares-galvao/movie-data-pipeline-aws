@@ -124,7 +124,7 @@ for req in app/*/requirements.txt test/*/requirements_tests.txt; do pip install 
 
 ```bash
 # Todos os testes com cobertura (gate de 95%)
-pytest --cov=app --cov-report=term-missing --cov-fail-under=95
+pytest --cov=app --cov=scripts --cov-report=term-missing --cov-fail-under=95
 
 # Testes de um módulo específico
 pytest test/lambda_api/ -v

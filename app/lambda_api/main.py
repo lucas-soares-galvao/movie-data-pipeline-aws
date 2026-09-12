@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
+from botocore.config import Config as BotoConfig
 from requests.exceptions import HTTPError
 from shared_utils.api_client import get_api_secret
 from shared_utils.triggers import trigger_glue_job
@@ -24,6 +25,13 @@ from src.utils import (
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Timeout explícito nos clientes boto3 criados dentro do handler (S3, SSM): uma
+# chamada à AWS sem timeout pode pendurar a execução da Lambda até o limite da
+# função. O default do botocore (60s de connect/read) é longo demais para o
+# contexto. Mesmo padrão já usado em shared_utils.api_client (_BOTO_CONFIG) e em
+# lambda_cognito_email_sender/main.py (_KMS_BOTO_CONFIG).
+_BOTO_CONFIG = BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 3})
+
 # Variáveis de ambiente injetadas pelo Terraform (lambda_api.tf, bloco environment da aws_lambda_function).
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
@@ -34,7 +42,7 @@ S3_BUCKET_TEMP = os.environ["S3_BUCKET_TEMP"]
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Coleta dados do TMDB e dispara o Glue ETL. Payload definido em eventbridge_lambda_api.tf."""
-    s3_client = boto3.client("s3")
+    s3_client = boto3.client("s3", config=_BOTO_CONFIG)
 
     content_type = event["type"]
 
@@ -69,7 +77,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # exigir ajuste manual de ano em ano. Um parâmetro por content_type evita corrida
     # entre as execuções de movie e tv (schedules independentes no EventBridge).
     if event.get("only_rotation_refresh", False):
-        ssm = boto3.client("ssm")
+        ssm = boto3.client("ssm", config=_BOTO_CONFIG)
         param_name = f"/tmdb-pipeline/rotation-year-pointer-{content_type}"
         last_year = int(ssm.get_parameter(Name=param_name)["Parameter"]["Value"])
 

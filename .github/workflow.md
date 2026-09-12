@@ -147,7 +147,7 @@ Chamado pelo `_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em p
 
 1. Checkout com `fetch-depth: 0` (histórico completo — necessário para blame/new code period do Sonar)
 2. Setup Python 3.12, instala `pytest`/`pytest-cov` + as mesmas dependências de `app/`/`test/` do `test.yml`
-3. `pytest --cov=app --cov-report=xml` — gera `coverage.xml` (não repete o gate de 95%, que já é responsabilidade do `test.yml`)
+3. `pytest --cov=app --cov=scripts --cov-report=xml` — gera `coverage.xml` (não repete o gate de 95%, que já é responsabilidade do `test.yml`)
 4. `SonarSource/sonarqube-scan-action` — lê `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`) e envia a análise pro SonarQube Cloud
 
 **Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true` — o job nunca falha por causa do Quality Gate do Sonar, mesmo padrão dos steps de aviso do `test.yml` (mypy/Bandit/Safety). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
