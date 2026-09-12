@@ -95,3 +95,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 - **boto3** — integração com AWS (S3, Glue, Lambda, Secrets Manager)
 - **requests** — chamadas HTTP à API TMDB
 - **EventBridge** — agendamento e disparo da função
+
+## Notas de implementação
+
+- Os clientes boto3 criados dentro do `lambda_handler` (`s3` e `ssm`) usam um `botocore.config.Config` de módulo (`_BOTO_CONFIG`) com `connect_timeout=5`, `read_timeout=10` e `retries={"max_attempts": 3}`. Sem timeout explícito, o default do botocore (60s de connect/read) pode pendurar a Lambda até o limite da função numa chamada à AWS que não responde. Mesmo padrão já usado em `shared_utils.api_client` (`_BOTO_CONFIG`) e em `lambda_cognito_email_sender/main.py` (`_KMS_BOTO_CONFIG`).

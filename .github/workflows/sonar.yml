@@ -61,7 +61,7 @@ jobs:
         run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
       - name: Generate coverage report
-        run: pytest --cov=app --cov-report=xml
+        run: pytest --cov=app --cov=scripts --cov-report=xml
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v8

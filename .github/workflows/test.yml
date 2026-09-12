@@ -80,6 +80,7 @@ jobs:
       - name: Run tests with Coverage Gate
         run: |
           pytest --cov=app \
+                 --cov=scripts \
                  --cov-report=term-missing \
                  --cov-report=xml \
                  --cov-fail-under=95

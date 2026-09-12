@@ -12,7 +12,7 @@ Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis,
 
 - Lógica de negócio fica em `app/<modulo>/src/utils.py`; `main.py` apenas resolve argumentos e delega
 - Testes em `test/` espelham a estrutura de `app/` — cada módulo tem `conftest.py`, `test_main.py`, `test_utils.py`
-- Scripts de operação manual em `scripts/` também têm testes espelhados em `test/scripts/` (um `test_<script>.py` por script), mas ficam fora do gate de 95% — `scripts/` não entra em `--cov=app`. Os testes ainda rodam e bloqueiam o CI normalmente
+- Scripts de operação manual em `scripts/` também têm testes espelhados em `test/scripts/` (um `test_<script>.py` por script) e **entram** no gate de cobertura de 95% — o CI roda `pytest --cov=app --cov=scripts`. Os testes rodam e bloqueiam o CI normalmente
 - Cada módulo em `app/` tem um `.md` descrevendo o que faz, e cada módulo em `test/` tem um `*_tests.md`
 - Quality gate: cobertura de testes **>= 95%** (bloqueante no CI)
 - Infraestrutura gerenciada por **Terraform** em `infra/`
@@ -26,7 +26,7 @@ Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis,
 pytest test/<modulo>/ -v
 
 # Testes com cobertura completa (gate de 95%)
-pytest --cov=app --cov-report=term-missing --cov-fail-under=95
+pytest --cov=app --cov=scripts --cov-report=term-missing --cov-fail-under=95
 
 # Lint
 ruff check app/ test/
