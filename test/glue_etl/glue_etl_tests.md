@@ -88,7 +88,7 @@ Testa individualmente as funções utilitárias: leitura do SOR por `table_type`
 - **`TestReadFromSorNowPlaying`** (3 testes): path S3 `tmdb/now_playing/movie/`; deduplica por `id`; retorna DataFrame
 - **`TestWriteParquetToSot`** (4 testes): `awswrangler.s3.to_parquet` chamado com `partition_cols`, `mode` e `path` (`s3://{bucket}/tmdb/{table_name}/`) corretos; `mode` customizado repassado
 - **`TestDeriveCanonicalName`** (12 testes): remoção de sufixos ("Standard with Ads", "Premium", "Plus Premium", "Amazon Channel"); overrides manuais ("Paramount Plus" → "Paramount+", "Claro video" → "Claro Video"); composição ("Paramount Plus Premium" → "Paramount+", "MGM Plus Amazon Channel" → "MGM+")
-- **`TestGetParametersGlue`** (5 testes): retorna args obrigatórios; inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar); `TRANSLATE_PROVIDER` tem default `"aws"` quando ausente e é lido corretamente quando fornecido (opcional, mesmo padrão de `YEAR`/`END_YEAR` — `getResolvedOptions` levanta `SystemExit` para argumento ausente)
+- **`TestGetParametersGlue`** (6 testes): retorna args obrigatórios; publica `AWS_ACCOUNT_ID` em `os.environ` a partir do argumento do job (lido depois por `shared_utils.s3_helpers`); inclui `YEAR`/`END_YEAR` quando disponíveis nos argumentos do job; omite quando ausentes (sem quebrar); `TRANSLATE_PROVIDER` tem default `"aws"` quando ausente e é lido corretamente quando fornecido (opcional, mesmo padrão de `YEAR`/`END_YEAR` — `getResolvedOptions` levanta `SystemExit` para argumento ausente)
 
 ## Como executar
 

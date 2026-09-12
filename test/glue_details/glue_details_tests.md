@@ -348,6 +348,7 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `test_year_lido_do_sys_argv_quando_ausente_do_resolved_option` | `YEAR`/`END_YEAR` são lidos de `sys.argv` quando presentes (mesmo padrão opcional de `TRANSLATE_PROVIDER`) |
 | `test_changes_s3_path_default_none` | `CHANGES_S3_PATH` fica `None` quando ausente de `sys.argv` |
 | `test_changes_s3_path_lido_do_sys_argv` | `CHANGES_S3_PATH` é lido corretamente de `sys.argv` |
+| `test_publica_aws_account_id_em_os_environ` | Publica `AWS_ACCOUNT_ID` em `os.environ` a partir do argumento do job (lido depois por `shared_utils.s3_helpers` para o `ExpectedBucketOwner`) |
 
 > **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`), `get_api_secret` (`TestGetApiSecret`) e `reuse_existing_translation` (`TestReuseExistingTranslation`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py`, `test/shared_src/test_glue_helpers.py` e `test/shared_src/test_traducao.py` junto com a extração dessas funções para `shared_utils/`.
 

@@ -516,8 +516,21 @@ estágio encadeado).
 | `test_expired_token_loga_e_repropaga` (load/save/clear; parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Token expirado loga e repropaga nos 3 pontos de acesso a S3 |
 | `test_grava_json_esperado` | `save_checkpoint` grava `start_year`, `end_year`, `completed` (ordenado) e `updated_at` |
 | `test_chama_delete_object_com_a_chave_correta` | `clear_checkpoint` remove exatamente `tmdb/backfill_checkpoints/{table_group}.json` |
+| `test_envia_expected_bucket_owner_quando_conta_definida` (load/save/clear) | Com `AWS_ACCOUNT_ID` definida, `get_object`/`put_object`/`delete_object` recebem `ExpectedBucketOwner` (anti bucket squatting, ver `_expected_bucket_owner_kwargs`) |
 | `test_codigos_de_token_expirado_retornam_true` / `test_outros_codigos_retornam_false` (parametrizados) | `is_expired_token_error` reconhece `ExpiredTokenException` (STS) e `ExpiredToken` (S3); rejeita outros códigos |
 | `test_expired_token_retorna_codigo_retomavel` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para token expirado |
+
+### `_expected_bucket_owner_kwargs` (`TestExpectedBucketOwnerKwargs`)
+
+Duplica a lógica de `shared_utils.s3_helpers` porque os scripts de backfill não importam o pacote
+`shared_utils` (rodam como processo próprio, fora do runtime do Glue/Lambda). O valor vem da env
+var `AWS_ACCOUNT_ID`, injetada pelo workflow a partir do `ROLE_ARN` (`.github/workflows/backfill.yml`).
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_kwarg_quando_aws_account_id_definida` | Com `AWS_ACCOUNT_ID` definida, devolve `{"ExpectedBucketOwner": <id>}` |
+| `test_retorna_vazio_quando_ausente` | Sem a variável, devolve `{}` |
+| `test_retorna_vazio_quando_vazia` | String vazia é tratada como ausente |
 
 ### `TestTriggerAggLocally`
 

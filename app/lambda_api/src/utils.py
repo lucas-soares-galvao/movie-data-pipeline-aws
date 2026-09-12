@@ -7,6 +7,7 @@ from typing import Any
 
 from requests.exceptions import HTTPError
 from shared_utils.api_client import api_get as tmdb_get
+from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 
 # boto3 não tem stub de tipo para S3Client; Any permite o type checker continuar sem erro.
 S3Client = Any
@@ -67,11 +68,15 @@ def save_to_s3(s3_client: S3Client, bucket: str, data: dict, s3_key: str) -> Non
     # sem isso, "Ação" seria salvo como "ção" — ilegível para humanos
     body = json.dumps(data, ensure_ascii=False)
 
+    # ExpectedBucketOwner (ver shared_utils.s3_helpers) restringe a escrita ao bucket
+    # da própria conta — sem ele, um bucket recriado por terceiros com o mesmo nome
+    # poderia receber os dados no lugar do original (bucket squatting).
     s3_client.put_object(
         Bucket=bucket,
         Key=s3_key,
         Body=body.encode("utf-8"),
         ContentType="application/json",
+        **expected_bucket_owner_kwargs(),
     )
 
 

@@ -33,6 +33,9 @@ resource "aws_glue_job" "details_job_pythonshell" {
     "--TMDB_SECRET_ARN"             = var.filmbot_secret_arn
     "--GLUE_DATA_QUALITY_JOB_NAME"  = local.envs.glue_data_quality_job_name
     "--ENVIRONMENT"                 = var.env
+    # Account ID da própria conta, usado como ExpectedBucketOwner nas chamadas boto3
+    # ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
+    "--AWS_ACCOUNT_ID" = tostring(data.aws_caller_identity.current.account_id)
   }
 
   tags = local.component_tags.glue_details
