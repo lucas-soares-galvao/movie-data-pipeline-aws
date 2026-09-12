@@ -5,6 +5,8 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock
 
+import pytest
+
 # Adiciona app/glue_etl/ ao início de sys.path.
 # Isso permite que os módulos do job usem "from src.utils import ..."
 # da mesma forma que no runtime do AWS Glue.
@@ -26,3 +28,14 @@ awsglue_utils_module = sys.modules.setdefault(
 awsglue_utils_module.getResolvedOptions = MagicMock()  # controlável nos testes
 awsglue_utils_module.GlueArgumentError = Exception     # usa Exception como substituto simples
 awsglue_module.utils = awsglue_utils_module            # conecta awsglue.utils ao módulo pai
+
+
+@pytest.fixture(autouse=True)
+def _clear_aws_account_id(monkeypatch):
+    """Isola AWS_ACCOUNT_ID entre testes.
+
+    get_parameters_glue publica AWS_ACCOUNT_ID em os.environ (via getResolvedOptions),
+    o que vazaria entre testes e faria as asserções de get_object/put_object que não
+    esperam ExpectedBucketOwner falharem conforme a ordem de execução.
+    """
+    monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)

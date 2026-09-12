@@ -70,8 +70,8 @@ import io
 import json
 import logging
 import os
-import random
 import re
+import secrets
 import time
 import wave
 
@@ -184,9 +184,15 @@ _CACHE_TTL_SECONDS = 3600
 
 
 def _cache_key(preference: str) -> str:
-    """Gera hash MD5 da preferência normalizada para uso como chave de cache."""
+    """Gera hash SHA-256 da preferência normalizada para uso como chave de cache.
+
+    Não é um hash de segurança (é só uma chave de cache em memória, por processo),
+    mas usa SHA-256 em vez de MD5 para não disparar o achado de hashing fraco
+    (python:S4790) do SonarQube — MD5 é criptograficamente quebrado, mesmo aqui
+    onde o uso não é sensível.
+    """
     normalized = preference.strip().lower()
-    return hashlib.md5(normalized.encode()).hexdigest()
+    return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 def _get_cached_where(preference: str) -> dict | None:
@@ -532,12 +538,16 @@ def search_titles_spec(where_clause: str, limit: int = _DEFAULT_RECOMMENDATION_C
             values = [item.get("VarCharValue") for item in row["Data"]]
             records.append(dict(zip(columns, values)))
 
-    # Sorteia um subconjunto do pool para variar os títulos entre buscas
+        # Sorteia um subconjunto do pool para variar os títulos entre buscas
     # repetidas ou parecidas. Preserva a ordem por popularidade dentro do
     # subconjunto escolhido — não embaralha o resultado, só troca quais
     # títulos do pool aparecem a cada chamada.
     if len(records) > limit:
-        chosen_indices = sorted(random.sample(range(len(records)), limit))
+        # secrets.SystemRandom() em vez de random.sample: usa o CSPRNG do SO para
+        # não disparar o achado de RNG insegura (python:S2245) do SonarQube. O
+        # comportamento é o mesmo (sorteio uniforme sem reposição, ordem
+        # preservada pelo sorted a seguir) — não é um uso criptográfico.
+        chosen_indices = sorted(secrets.SystemRandom().sample(range(len(records)), limit))
         records = [records[i] for i in chosen_indices]
 
     # Libera memória dos objetos de resposta do boto3 antes de passar ao LLM

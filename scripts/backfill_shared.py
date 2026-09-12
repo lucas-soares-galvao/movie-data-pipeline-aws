@@ -79,6 +79,21 @@ def setup_logging() -> logging.Logger:
     return logging.getLogger()
 
 
+def _expected_bucket_owner_kwargs() -> dict[str, str]:
+    """Retorna o kwarg `ExpectedBucketOwner` a espalhar nas chamadas boto3 ao S3.
+
+    Mesma lógica de shared_utils.s3_helpers.expected_bucket_owner_kwargs, duplicada
+    aqui porque os scripts de backfill não importam o pacote shared_utils (rodam como
+    processo próprio, fora do runtime do Glue/Lambda, ver trigger_agg_locally).
+
+    O valor vem de AWS_ACCOUNT_ID (injetada pelo Terraform a partir de
+    data.aws_caller_identity.current.account_id). Sem essa variável definida, retorna
+    um dicionário vazio — permite rodar os scripts localmente sem configurá-la.
+    """
+    account_id = os.environ.get("AWS_ACCOUNT_ID")
+    return {"ExpectedBucketOwner": account_id} if account_id else {}
+
+
 def require_env(name: str) -> str:
     """Lê variável de ambiente obrigatória ou levanta erro."""
     value = os.environ.get(name)
@@ -232,7 +247,7 @@ def load_checkpoint(
     """
     key = _checkpoint_key(table_group)
     try:
-        response = s3_client.get_object(Bucket=bucket, Key=key)
+        response = s3_client.get_object(Bucket=bucket, Key=key, **_expected_bucket_owner_kwargs())
     except ClientError as exc:
         codigo = exc.response.get("Error", {}).get("Code")
         if codigo in ("NoSuchKey", "404"):
@@ -266,7 +281,7 @@ def save_checkpoint(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).encode()
     try:
-        s3_client.put_object(Bucket=bucket, Key=key, Body=body)
+        s3_client.put_object(Bucket=bucket, Key=key, Body=body, **_expected_bucket_owner_kwargs())
     except ClientError as exc:
         log_expired_token(exc, f"escrita do checkpoint '{key}'")
         raise
@@ -276,7 +291,7 @@ def clear_checkpoint(s3_client: Any, bucket: str, table_group: str) -> None:
     """Remove o checkpoint em S3. Chamado quando o backfill termina sem falhas pendentes."""
     key = _checkpoint_key(table_group)
     try:
-        s3_client.delete_object(Bucket=bucket, Key=key)
+        s3_client.delete_object(Bucket=bucket, Key=key, **_expected_bucket_owner_kwargs())
     except ClientError as exc:
         log_expired_token(exc, f"remoção do checkpoint '{key}'")
         raise

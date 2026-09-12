@@ -61,6 +61,9 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     "--GLUE_AGG_JOB_NAME"          = local.envs.glue_agg_job_name          # Nome do job de agregação
     "--GLUE_DETAILS_JOB_NAME"      = local.envs.glue_details_job_name      # Nome do job de enriquecimento
     "--ENVIRONMENT"                = var.env                               # "dev" ou "prod"
+    # Account ID da própria conta, usado como ExpectedBucketOwner nas chamadas boto3
+    # ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
+    "--AWS_ACCOUNT_ID" = tostring(data.aws_caller_identity.current.account_id)
   }
 
   tags = local.component_tags.glue_etl

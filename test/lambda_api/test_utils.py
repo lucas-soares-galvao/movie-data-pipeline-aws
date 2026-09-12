@@ -88,6 +88,25 @@ class TestSaveToS3:
         assert corpo["id"] == 1
         assert corpo["titulo"] == "Filme Teste"
 
+    def test_envia_expected_bucket_owner_quando_aws_account_id_definida(self, monkeypatch):
+        """ExpectedBucketOwner (shared_utils.s3_helpers) protege contra bucket squatting."""
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        mock_s3 = MagicMock()
+
+        save_to_s3(mock_s3, "meu-bucket", {"id": 1}, "tmdb/discover/movie/ano=2023/pagina_001.json")
+
+        kwargs = mock_s3.put_object.call_args[1]
+        assert kwargs["ExpectedBucketOwner"] == "123456789012"
+
+    def test_nao_envia_expected_bucket_owner_quando_aws_account_id_ausente(self, monkeypatch):
+        monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
+        mock_s3 = MagicMock()
+
+        save_to_s3(mock_s3, "meu-bucket", {"id": 1}, "tmdb/discover/movie/ano=2023/pagina_001.json")
+
+        kwargs = mock_s3.put_object.call_args[1]
+        assert "ExpectedBucketOwner" not in kwargs
+
 
 # ---------------------------------------------------------------------------
 # fetch_tmdb_reference
