@@ -147,6 +147,8 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salva
 |---|---|
 | `test_salva_json_no_s3_com_parametros_corretos` | `put_object` chamado com `Bucket`, `Key` e `ContentType="application/json"` corretos |
 | `test_conteudo_salvo_e_json_valido` | O corpo salvo pode ser desserializado como JSON e os dados são preservados |
+| `test_envia_expected_bucket_owner_quando_aws_account_id_definida` | Com `AWS_ACCOUNT_ID` definida, `put_object` recebe `ExpectedBucketOwner` (anti bucket squatting, via `shared_utils.s3_helpers`) |
+| `test_nao_envia_expected_bucket_owner_quando_aws_account_id_ausente` | Sem a variável, `ExpectedBucketOwner` não é enviado |
 
 ### `TestFetchTmdbReference`
 

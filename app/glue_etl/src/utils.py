@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -17,6 +18,7 @@ from shared_utils.idioma import (
     detect_language_langdetect,  # noqa: F401
     resolve_detect_language_fn,
 )
+from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 from shared_utils.traducao import (
     resolve_pt_translation,
     resolve_translate_fn,  # noqa: F401
@@ -118,8 +120,15 @@ def get_parameters_glue() -> dict[str, Any]:
         "TABLE_TYPE",
         "GLUE_DATA_QUALITY_JOB_NAME",
         "GLUE_DETAILS_JOB_NAME",
+        "AWS_ACCOUNT_ID",
     ]
     args = get_resolved_option(required_args)
+
+    # Publica o account ID em os.environ para que shared_utils.s3_helpers
+    # (ExpectedBucketOwner) o leia nas chamadas boto3 ao S3. Os argumentos do Glue
+    # chegam via sys.argv/getResolvedOptions, não como variável de ambiente — este
+    # é o único ponto necessário para tornar AWS_ACCOUNT_ID visível ao código.
+    os.environ["AWS_ACCOUNT_ID"] = args["AWS_ACCOUNT_ID"]
 
     # Tenta ler YEAR e END_YEAR — só presentes nos runs de discover (não em genre/config).
     # getResolvedOptions usa argparse internamente; argparse chama sys.exit() (não raise KeyError)
@@ -253,9 +262,14 @@ def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataF
 
 
 def _read_json_from_s3(bucket: str, key: str) -> list:
-    """Lê um arquivo JSON de um único objeto S3 e retorna como lista Python."""
+    """Lê um arquivo JSON de um único objeto S3 e retorna como lista Python.
+
+    `ExpectedBucketOwner` (ver shared_utils.s3_helpers) restringe a leitura ao
+    bucket da própria conta — sem ele, um bucket recriado por terceiros com o
+    mesmo nome poderia ser lido no lugar do original.
+    """
     s3_client = boto3.client("s3")
-    response = s3_client.get_object(Bucket=bucket, Key=key)
+    response = s3_client.get_object(Bucket=bucket, Key=key, **expected_bucket_owner_kwargs())
     return json.loads(response["Body"].read())
 
 

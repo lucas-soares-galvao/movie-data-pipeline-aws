@@ -125,7 +125,10 @@ def render_recommendation(client_ip: str) -> None:
                 and not st.session_state.get("audio_awaiting_confirmation")
             ):
                 audio_bytes = audio_value.getvalue()
-                audio_hash = hashlib.md5(audio_bytes).hexdigest()
+                # SHA-256 (não MD5) só para não disparar o achado de hashing fraco
+                # (python:S4790) do SonarQube — aqui o hash só detecta se a gravação
+                # mudou desde a última, não é verificação de integridade.
+                audio_hash = hashlib.sha256(audio_bytes).hexdigest()
                 if audio_hash != st.session_state.get("audio_last_hash"):
                     st.session_state["audio_last_hash"] = audio_hash
                     st.session_state["transcription_error"] = False

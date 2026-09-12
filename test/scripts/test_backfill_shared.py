@@ -83,6 +83,18 @@ class TestLoadCheckpoint:
 
         assert completed == {"movie:2000", "tv:2000"}
 
+    def test_envia_expected_bucket_owner_quando_conta_definida(self, monkeypatch):
+        """ExpectedBucketOwner (ver _expected_bucket_owner_kwargs) protege contra bucket squatting."""
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": []}
+        )
+
+        bs.load_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025)
+
+        assert client.get_object.call_args.kwargs["ExpectedBucketOwner"] == "123456789012"
+
     def test_checkpoint_range_incompativel_retorna_vazio_e_loga_aviso(self, caplog):
         client = MagicMock()
         client.get_object.return_value = _get_object_response(
@@ -129,6 +141,14 @@ class TestSaveCheckpoint:
         assert body["completed"] == ["movie:2000", "tv:2001"]
         assert "updated_at" in body
 
+    def test_envia_expected_bucket_owner_quando_conta_definida(self, monkeypatch):
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        client = MagicMock()
+
+        bs.save_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025, set())
+
+        assert client.put_object.call_args.kwargs["ExpectedBucketOwner"] == "123456789012"
+
     @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
     def test_expired_token_loga_e_repropaga(self, caplog, codigo):
         client = MagicMock()
@@ -165,7 +185,8 @@ class TestExpiredTokenExitCode:
 
 
 class TestClearCheckpoint:
-    def test_chama_delete_object_com_a_chave_correta(self):
+    def test_chama_delete_object_com_a_chave_correta(self, monkeypatch):
+        monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
         client = MagicMock()
 
         bs.clear_checkpoint(client, "bucket", "detalhes_e_providers")
@@ -173,6 +194,14 @@ class TestClearCheckpoint:
         client.delete_object.assert_called_once_with(
             Bucket="bucket", Key="tmdb/backfill_checkpoints/detalhes_e_providers.json"
         )
+
+    def test_envia_expected_bucket_owner_quando_conta_definida(self, monkeypatch):
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        client = MagicMock()
+
+        bs.clear_checkpoint(client, "bucket", "detalhes_e_providers")
+
+        assert client.delete_object.call_args.kwargs["ExpectedBucketOwner"] == "123456789012"
 
     @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
     def test_expired_token_loga_e_repropaga(self, caplog, codigo):
@@ -200,6 +229,20 @@ class TestRequireEnv:
         monkeypatch.setenv("MINHA_VAR", "")
         with pytest.raises(EnvironmentError):
             bs.require_env("MINHA_VAR")
+
+
+class TestExpectedBucketOwnerKwargs:
+    def test_retorna_kwarg_quando_aws_account_id_definida(self, monkeypatch):
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        assert bs._expected_bucket_owner_kwargs() == {"ExpectedBucketOwner": "123456789012"}
+
+    def test_retorna_vazio_quando_ausente(self, monkeypatch):
+        monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
+        assert bs._expected_bucket_owner_kwargs() == {}
+
+    def test_retorna_vazio_quando_vazia(self, monkeypatch):
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "")
+        assert bs._expected_bucket_owner_kwargs() == {}
 
 
 class TestApplyTranslateCostGuard:

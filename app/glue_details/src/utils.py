@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -26,6 +27,7 @@ from shared_utils.idioma import (
     detect_language_langdetect,
     resolve_detect_language_fn,
 )
+from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 from shared_utils.traducao import (
     resolve_pt_translation,
     resolve_translate_fn,
@@ -60,8 +62,15 @@ def get_parameters_glue() -> dict[str, Any]:
         "TMDB_SECRET_ARN",
         "GLUE_DATA_QUALITY_JOB_NAME",
         "MEDIA_TYPE",
+        "AWS_ACCOUNT_ID",
     ]
     params = get_resolved_option(required_args)
+
+    # Publica o account ID em os.environ para que shared_utils.s3_helpers
+    # (ExpectedBucketOwner) o leia nas chamadas boto3 ao S3. Os argumentos do Glue
+    # chegam via sys.argv/getResolvedOptions, não como variável de ambiente — este
+    # é o único ponto necessário para tornar AWS_ACCOUNT_ID visível ao código.
+    os.environ["AWS_ACCOUNT_ID"] = params["AWS_ACCOUNT_ID"]
 
     # Opcional: YEAR/END_YEAR não são passados no modo changes (lambda_api aciona o job
     # sem ano — CHANGES_S3_PATH assume esse papel). O fluxo normal (discover por ano)
@@ -1285,7 +1294,12 @@ def run_details_and_watch_providers_for_year(
 
 
 def _write_json_to_s3(bucket: str, key: str, data: dict) -> None:
-    """Serializa um dicionário Python para JSON e grava no S3."""
+    """Serializa um dicionário Python para JSON e grava no S3.
+
+    `ExpectedBucketOwner` (ver shared_utils.s3_helpers) restringe a escrita ao
+    bucket da própria conta — sem ele, um bucket recriado por terceiros com o
+    mesmo nome poderia receber os dados no lugar do original.
+    """
     s3_client = boto3.client("s3")
     body = json.dumps(data, ensure_ascii=False)
     s3_client.put_object(
@@ -1293,6 +1307,7 @@ def _write_json_to_s3(bucket: str, key: str, data: dict) -> None:
         Key=key,
         Body=body.encode("utf-8"),
         ContentType="application/json",
+        **expected_bucket_owner_kwargs(),
     )
     logger.info(f"Arquivo salvo: s3://{bucket}/{key}")
 
@@ -1309,7 +1324,7 @@ def fetch_ids_from_changes_file(s3_path: str) -> list[int]:
     """
     bucket, key = s3_path.replace("s3://", "", 1).split("/", 1)
     s3_client = boto3.client("s3")
-    obj = s3_client.get_object(Bucket=bucket, Key=key)
+    obj = s3_client.get_object(Bucket=bucket, Key=key, **expected_bucket_owner_kwargs())
     data = json.loads(obj["Body"].read())
     ids = data.get("ids", [])
     logger.info(f"Changes: {len(ids)} IDs lidos de {s3_path}.")

@@ -1,10 +1,12 @@
 import json
+import os
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from src.utils import (
     _add_name_pt_countries,
     _add_name_pt_languages,
+    _read_json_from_s3,
     derive_canonical_name,
     get_parameters_glue,
     read_existing_configuration,
@@ -134,6 +136,33 @@ class TestReadFromSorGenre:
             assert len(result) == 2
             assert list(result.columns) == ["id", "name"]
             assert result["id"].tolist() == [28, 12]
+
+
+# ---------------------------------------------------------------------------
+# _read_json_from_s3
+# ---------------------------------------------------------------------------
+
+
+class TestReadJsonFromS3:
+    def test_le_json_com_bucket_e_key(self, monkeypatch):
+        monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
+        s3_mock = _make_s3_mock([{"id": 28}])
+        with patch("boto3.client", return_value=s3_mock):
+            result = _read_json_from_s3("my-sor", "tmdb/genre/movie/generos_filmes.json")
+        s3_mock.get_object.assert_called_once_with(
+            Bucket="my-sor", Key="tmdb/genre/movie/generos_filmes.json"
+        )
+        assert result == [{"id": 28}]
+
+    def test_envia_expected_bucket_owner_quando_conta_definida(self, monkeypatch):
+        """ExpectedBucketOwner (shared_utils.s3_helpers) protege contra bucket squatting."""
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        s3_mock = _make_s3_mock([{"id": 1}])
+        with patch("boto3.client", return_value=s3_mock):
+            _read_json_from_s3("my-sor", "key.json")
+        s3_mock.get_object.assert_called_once_with(
+            Bucket="my-sor", Key="key.json", ExpectedBucketOwner="123456789012"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +661,7 @@ class TestGetParametersGlue:
             "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
             "GLUE_AGG_JOB_NAME": "agg-job",
             "GLUE_DETAILS_JOB_NAME": "det-job",
+            "AWS_ACCOUNT_ID": "123456789012",
         }
 
     def test_returns_required_args(self):
@@ -669,3 +699,11 @@ class TestGetParametersGlue:
         ):
             result = get_parameters_glue()
         assert result["TRANSLATE_PROVIDER"] == "google"
+
+    def test_publica_aws_account_id_em_os_environ(self, monkeypatch):
+        """O argumento do Glue (via getResolvedOptions) precisa virar variável de
+        ambiente para que shared_utils.s3_helpers o leia (ExpectedBucketOwner)."""
+        monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
+            get_parameters_glue()
+        assert os.environ["AWS_ACCOUNT_ID"] == "123456789012"

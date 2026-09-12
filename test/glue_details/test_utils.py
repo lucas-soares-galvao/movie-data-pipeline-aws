@@ -1810,6 +1810,7 @@ class TestGetParametersGlue:
             "MEDIA_TYPE": "movie",
             "YEAR": "2024",
             "END_YEAR": "2025",
+            "AWS_ACCOUNT_ID": "123456789012",
         }
 
     def test_returns_all_required_args(self):
@@ -1818,6 +1819,16 @@ class TestGetParametersGlue:
         assert result["MEDIA_TYPE"] == "movie"
         assert result["YEAR"] == "2024"
         assert result["TMDB_SECRET_ARN"] == "arn:aws:secretsmanager:us-east-1:1:secret:tmdb"
+
+    def test_publica_aws_account_id_em_os_environ(self, monkeypatch):
+        """O argumento do Glue (via getResolvedOptions) precisa virar variável de
+        ambiente para que shared_utils.s3_helpers o leia (ExpectedBucketOwner)."""
+        import os
+
+        monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
+        with patch("src.utils.get_resolved_option", return_value=self._required()):
+            u.get_parameters_glue()
+        assert os.environ["AWS_ACCOUNT_ID"] == "123456789012"
 
     def test_year_end_year_default_none_quando_ausentes(self):
         """Modo changes não passa YEAR/END_YEAR — CHANGES_S3_PATH assume esse papel."""
@@ -1875,6 +1886,16 @@ class TestWriteJsonToS3:
         assert kwargs["ContentType"] == "application/json"
         assert json.loads(kwargs["Body"].decode("utf-8")) == {"discarded_ids": [1, 2]}
 
+    def test_envia_expected_bucket_owner_quando_conta_definida(self, monkeypatch):
+        """ExpectedBucketOwner (shared_utils.s3_helpers) protege contra bucket squatting."""
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        mock_s3 = MagicMock()
+        with patch("src.utils.boto3.client", return_value=mock_s3):
+            u._write_json_to_s3("meu-bucket", "tmdb/changes/movie/2026-07-08.json", {"ids": [1]})
+
+        kwargs = mock_s3.put_object.call_args.kwargs
+        assert kwargs["ExpectedBucketOwner"] == "123456789012"
+
 
 class TestFetchIdsFromChangesFile:
     def _mock_s3_with_body(self, payload: dict) -> MagicMock:
@@ -1893,6 +1914,18 @@ class TestFetchIdsFromChangesFile:
         assert resultado == [1, 2, 3]
         mock_s3.get_object.assert_called_once_with(
             Bucket="meu-bucket", Key="tmdb/changes/movie/2026-07-08.json"
+        )
+
+    def test_envia_expected_bucket_owner_quando_conta_definida(self, monkeypatch):
+        """ExpectedBucketOwner (shared_utils.s3_helpers) protege contra bucket squatting."""
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        mock_s3 = self._mock_s3_with_body({"content_type": "movie", "ids": [1]})
+        with patch("src.utils.boto3.client", return_value=mock_s3):
+            u.fetch_ids_from_changes_file("s3://meu-bucket/tmdb/changes/movie/2026-07-08.json")
+
+        mock_s3.get_object.assert_called_once_with(
+            Bucket="meu-bucket", Key="tmdb/changes/movie/2026-07-08.json",
+            ExpectedBucketOwner="123456789012",
         )
 
     def test_retorna_lista_vazia_se_chave_ids_ausente(self):

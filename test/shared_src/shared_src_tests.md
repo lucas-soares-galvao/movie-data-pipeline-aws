@@ -12,6 +12,7 @@ test/shared_src/
 ├── conftest.py             # sys.path + stub do módulo awsglue
 ├── requirements_tests.txt  # Dependências de teste (inclui langdetect)
 ├── test_api_client.py      # Testes de api_get e get_api_secret
+├── test_s3_helpers.py      # Testes de expected_bucket_owner_kwargs (ExpectedBucketOwner)
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_traducao_google.py # Testes de translate_text (Google Translate)
 ├── test_traducao_aws.py    # Testes de translate_text_aws (AWS Translate)
@@ -49,6 +50,22 @@ test/shared_src/
 | Teste | O que verifica |
 |---|---|
 | `test_retorna_chave_do_secrets_manager` | `boto3.client("secretsmanager")` chamado, `get_secret_value` chamado com o `SecretId` correto, e a chave certa extraída do JSON do segredo |
+
+## Casos de teste — `test_s3_helpers.py`
+
+### `TestExpectedBucketOwnerKwargs`
+
+`expected_bucket_owner_kwargs` devolve o kwarg `ExpectedBucketOwner` a espalhar (`**`) nas
+chamadas boto3 ao S3, a partir de `AWS_ACCOUNT_ID`. Lê a variável a cada chamada (não cacheia
+no import) porque, nos jobs Glue, ela só é publicada em `os.environ` dentro de
+`get_parameters_glue`, depois do import do módulo.
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_kwarg_quando_aws_account_id_definida` | Com `AWS_ACCOUNT_ID` definida, devolve `{"ExpectedBucketOwner": <id>}` |
+| `test_retorna_vazio_quando_aws_account_id_ausente` | Sem a variável, devolve `{}` |
+| `test_retorna_vazio_quando_aws_account_id_vazia` | String vazia é tratada como ausente (evita `ExpectedBucketOwner=""` inválido no boto3) |
+| `test_le_valor_a_cada_chamada_nao_no_import` | O valor não é cacheado — reflete a variável corrente a cada chamada |
 
 ## Casos de teste — `test_triggers.py`
 

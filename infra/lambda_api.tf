@@ -52,6 +52,9 @@ resource "aws_lambda_function" "simple_lambda" {
       S3_BUCKET_AUX         = local.envs.s3_bucket_aux
       S3_BUCKET_TEMP        = local.envs.s3_bucket_temp
       ENVIRONMENT           = var.env
+      # Account ID da própria conta, usado como ExpectedBucketOwner nas chamadas
+      # boto3 ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
+      AWS_ACCOUNT_ID = tostring(data.aws_caller_identity.current.account_id)
     }
   }
 

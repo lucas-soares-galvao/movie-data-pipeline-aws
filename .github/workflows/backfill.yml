@@ -283,6 +283,11 @@ jobs:
           account_id=$(echo "$ROLE_ARN" | cut -d: -f5)
           export SNS_TOPIC_ARN_BACKFILL_SUCCESS="arn:aws:sns:sa-east-1:${account_id}:${{ steps.project.outputs.project_prefix }}-backfill-success-notifications-${{ steps.env.outputs.name }}"
 
+          # ExpectedBucketOwner das chamadas boto3 ao S3 dos scripts de backfill
+          # (scripts/backfill_shared.py:_expected_bucket_owner_kwargs) — mesmo account_id
+          # já extraído de ROLE_ARN, sem chamada AWS extra.
+          export AWS_ACCOUNT_ID="$account_id"
+
           LOG_FILE="$RUNNER_TEMP/backfill_output.log"
           : > "$LOG_FILE"
 

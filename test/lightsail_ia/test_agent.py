@@ -457,12 +457,13 @@ class TestSearchTitlesSpec:
         many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
         with (
             patch("src.agent.boto3") as mock_boto3,
-            patch("src.agent.random.sample", return_value=[7, 2, 5]),
+            patch("src.agent.secrets.SystemRandom") as mock_system_random,
         ):
+            mock_system_random.return_value.sample.return_value = [7, 2, 5]
             _setup_athena_mock(mock_boto3, rows_data=many_rows)
             result = agent.search_titles_spec("vote_average >= 6.0", limit=3)
 
-        # mesmo com random.sample devolvendo índices fora de ordem, o resultado
+        # mesmo com sample devolvendo índices fora de ordem, o resultado
         # final preserva a ordem original (popularidade DESC) entre os escolhidos
         assert [r["title"] for r in result] == ["Filme 2", "Filme 5", "Filme 7"]
 
