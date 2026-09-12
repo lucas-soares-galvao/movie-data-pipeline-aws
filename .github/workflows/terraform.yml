@@ -222,10 +222,22 @@ jobs:
           cd infra && terraform validate
           echo "✅ Terraform validate concluído com sucesso"
 
-      # Não falha o pipeline — apenas avisa sobre boas práticas
-      - name: Setup and Run TFLint
+            # Não falha o pipeline — apenas avisa sobre boas práticas.
+      # Instala via action oficial (terraform-linters/setup-tflint) em vez do
+      # antigo "curl .../install_linux.sh | bash": esse script foi removido do
+      # repositório do TFLint, então o curl passou a devolver "404: Not Found",
+      # que era canalizado direto para o bash e derrubava o step com exit 127
+      # ("404:: command not found").
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Init and Run TFLint
+        env:
+          # Evita rate limit do GitHub ao baixar plugins no tflint --init
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
           cd infra
           tflint --init
           tflint --format compact || echo "⚠ Avisos de TFLint detectados (verificar antes de deploy)"

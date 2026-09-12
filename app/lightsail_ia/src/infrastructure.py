@@ -377,6 +377,42 @@ def _parse_user(user: dict) -> dict:
     }
 
 
+def admin_table_sort_key(user: dict) -> tuple:
+    """Chave de ordenação da tabela de usuários do painel admin (admin.py::_build_rows).
+
+    Regra: cadastros pendentes primeiro — é a fila de ação do admin e o motivo
+    principal de a tela existir —, depois por último acesso mais recente. Quem nunca
+    acessou (`last_login` vazio, ver _parse_user) vai para o fim do seu grupo de
+    status, desempatado pelo cadastro mais recente.
+
+    IMPORTANTE — esta chave só está correta com `reverse=True` no sort do chamador,
+    porque é ele que entrega a descendência das duas datas (a string ISO 8601 ordena
+    como texto, não dá para "negar"). Por isso os dois primeiros elementos estão
+    escritos na polaridade da ordem decrescente, não na ordem "natural" crescente:
+        pendente = 1 e o resto = 0 (com reverse, o 1 vem primeiro); acessou = True e
+    nunca acessou = False (com reverse, o True vem primeiro). Escrever esses flags
+    "ao contrário" da ordem crescente natural e usar reverse=True é justamente o
+    comportamento intencional — não é um sinal invertido por engano.
+
+    `created_at`/`last_login` são ISO 8601 UTC (ver _parse_user), então ordenam como
+    string, sem parsear.
+
+        Args:
+        user: Uma linha de _build_rows — dict com `kind` ("pending"/"active"/
+            "unconfirmed"), `last_login` e `created_at`.
+
+    Returns:
+        Tupla (grupo_de_status, acessou, last_login, created_at), comparável
+        diretamente pelo `sort(..., reverse=True)` do chamador.
+    """
+    return (
+        1 if user["kind"] == "pending" else 0,
+        user["last_login"] != "",
+        user["last_login"],
+        user["created_at"],
+    )
+
+
 def list_pending_users() -> list[dict]:
     """Lista cadastros aguardando aprovação do admin: conta desabilitada
     (Enabled=False) que já confirmou a posse do e-mail (UserStatus=CONFIRMED).
