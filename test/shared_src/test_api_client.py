@@ -85,10 +85,17 @@ class TestApiGet:
 
 
 class TestGetApiSecret:
-    @patch("shared_utils.api_client.boto3")
-    def test_retorna_chave_do_secrets_manager(self, mock_boto3):
+    # Patch em "boto3.client" (objeto boto3 global), não em "shared_utils.api_client.boto3":
+    # o conftest de test/ apaga shared_utils.* de sys.modules ao coletar cada suite de
+    # _SUITE_TO_APP, então quando a suíte inteira roda de uma vez o get_api_secret chamado
+    # aqui pode ser a referência importada do módulo ANTIGO, enquanto o patch por string
+    # resolveria o módulo NOVO — deixando boto3 real vazar e a função tentar credenciais
+    # AWS de verdade. O objeto "boto3" é o mesmo nos dois casos, então patchar ali cobre
+    # ambos e mantém tudo mockado (sem tocar AWS de verdade).
+    @patch("boto3.client")
+    def test_retorna_chave_do_secrets_manager(self, mock_client_factory):
         mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        mock_client_factory.return_value = mock_client
         mock_client.get_secret_value.return_value = {
             "SecretString": json.dumps({"tmdb_api_key": "chave-teste-123"})
         }
@@ -96,7 +103,11 @@ class TestGetApiSecret:
         resultado = get_api_secret("arn:aws:secretsmanager:us-east-1:123:secret:tmdb", "tmdb_api_key")
 
         assert resultado == "chave-teste-123"
-        mock_boto3.client.assert_called_once_with("secretsmanager")
+        # config= passado por timeout explícito (S7618): assert por kwarg, não item a item,
+        # porque o valor é a constante BotoConfig do módulo.
+        mock_client_factory.assert_called_once()
+        assert mock_client_factory.call_args[0] == ("secretsmanager",)
+        assert "config" in mock_client_factory.call_args.kwargs
         mock_client.get_secret_value.assert_called_once_with(
             SecretId="arn:aws:secretsmanager:us-east-1:123:secret:tmdb"
         )

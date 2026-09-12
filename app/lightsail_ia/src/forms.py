@@ -29,6 +29,8 @@ from src.infrastructure import (
 _MAX_LOGIN_ATTEMPTS = 3
 _LOGIN_LOCKOUT_SECONDS = 60
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Texto do link secundário "voltar para o login", repetido nas 5 telas de autenticação.
+_BACK_TO_LOGIN_LABEL = "← Voltar ao login"
 
 
 @st.cache_resource
@@ -302,7 +304,7 @@ def _render_signup(client_ip: str) -> None:
             _switch_view("signup_resume")
 
         if st.button(
-            "← Voltar ao login", key="btn_link_voltar", type="tertiary", use_container_width=True,
+            _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
         ):
             _switch_view("login")
 
@@ -420,7 +422,7 @@ def _render_signup_resume_request(client_ip: str) -> None:
                         )
 
         if st.button(
-            "← Voltar ao login", key="btn_link_voltar", type="tertiary", use_container_width=True,
+            _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
         ):
             _switch_view("login")
 
@@ -540,7 +542,7 @@ def _render_signup_confirm(client_ip: str) -> None:
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
                     if st.button(
-                        "← Voltar ao login", key="btn_link_voltar",
+                        _BACK_TO_LOGIN_LABEL, key="btn_link_voltar",
                         type="tertiary", use_container_width=True,
                     ):
                         st.session_state.pop("signup_email_confirmed", None)
@@ -798,7 +800,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
         _send_section()
 
         if st.button(
-            "← Voltar ao login", key="btn_link_voltar", type="tertiary", use_container_width=True,
+            _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
         ):
             _switch_view("login")
 
@@ -917,8 +919,7 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                 link_col1, link_col2 = st.columns(2)
                 with link_col1:
                     if st.button(
-                        "← Voltar ao login", key="btn_link_voltar",
-                        type="tertiary", use_container_width=True,
+                        _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
                     ):
                         st.session_state.pop("reset_step", None)
                         st.session_state.pop("reset_email_confirmed", None)

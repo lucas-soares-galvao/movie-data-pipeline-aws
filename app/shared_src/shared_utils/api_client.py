@@ -7,9 +7,15 @@ import time
 
 import boto3
 import requests
+from botocore.config import Config as BotoConfig
 from requests.exceptions import ConnectionError, Timeout
 
 logger = logging.getLogger()
+
+# Timeout explícito no cliente boto3: get_api_secret roda dentro de Lambda (lambda_api),
+# onde uma chamada ao Secrets Manager sem timeout pode pendurar a execução até o limite
+# da função. O default do botocore (60s de connect/read) é longo demais para o contexto.
+_BOTO_CONFIG = BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 3})
 
 # Códigos HTTP que indicam problema TEMPORÁRIO no servidor — vale tentar novamente.
 # 429 = "Too Many Requests" (ultrapassou o rate limit da API)
@@ -98,7 +104,7 @@ def get_api_secret(secret_arn: str, key_name: str) -> str:
     Returns:
         O valor do segredo como string.
     """
-    client = boto3.client("secretsmanager")
+    client = boto3.client("secretsmanager", config=_BOTO_CONFIG)
     response = client.get_secret_value(SecretId=secret_arn)
     secret = json.loads(response["SecretString"])
     return secret[key_name]

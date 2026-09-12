@@ -28,6 +28,10 @@ logger.setLevel(logging.INFO)
 # detecção de risco configurada) — ver build_email_content.
 _SIGNUP_TRIGGER_SOURCES = {"CustomEmailSender_SignUp", "CustomEmailSender_ResendCode"}
 
+# timeout no SMTP: sem timeout explícito, uma conexão que aceita o TCP mas trava no
+# handshake fica presa até o limite da Lambda (o smtplib não tem timeout default).
+_SMTP_TIMEOUT_SECONDS = 10
+
 
 def decrypt_code(encrypted_code_b64: str, kms_key_arn: str, kms_client: KmsClient) -> str:
     """
@@ -129,7 +133,7 @@ def send_gmail_email(to_email: str, subject: str, body: str) -> bool:
     message["To"] = to_email
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=_SMTP_TIMEOUT_SECONDS) as server:
             server.login(sender_email, app_password)
             server.send_message(message)
     except Exception as exc:  # noqa: BLE001 — falha ao enviar não deve propagar pro Cognito
