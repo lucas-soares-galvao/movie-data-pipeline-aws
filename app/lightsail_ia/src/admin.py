@@ -77,6 +77,10 @@ def _build_rows() -> list[dict]:
     for row in rows:
         row["is_admin"] = infrastructure.is_admin(row["email"])
 
+    # Ordena a tabela: pendentes no topo (fila de ação do admin), depois por último
+    # acesso mais recente; quem nunca acessou cai no fim do próprio grupo de status,
+    # desempatado pelo cadastro mais recente — ver infrastructure.admin_table_sort_key.
+    rows.sort(key=infrastructure.admin_table_sort_key, reverse=True)
     return rows
 
 

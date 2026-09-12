@@ -604,6 +604,54 @@ class TestListUnconfirmedUsers:
         assert [user["email"] for user in resultado] == ["naoconfirmou@ex.com"]
 
 
+class TestAdminTableSortKey:
+    """Chave de ordenação da tabela do painel admin (admin.py::_build_rows).
+    Função pura — não toca AWS, então não há mock aqui (só o conftest do módulo,
+    que já configura as env vars de Cognito no import)."""
+
+    def test_pendentes_ficam_no_topo_mesmo_sem_ultimo_acesso(self):
+        # Cenário central da regra: todo pendente tem last_login="" (não pode logar
+        # antes de aprovado), então o kind precisa dominar sobre o último acesso.
+        pendente = {"kind": "pending", "last_login": "", "created_at": "2026-08-01T10:00:00+00:00"}
+        ativo = {"kind": "active", "last_login": "2026-08-20T10:00:00+00:00", "created_at": "2026-08-01T10:00:00+00:00"}
+
+        resultado = sorted([ativo, pendente], key=infrastructure.admin_table_sort_key, reverse=True)
+
+        assert [row["kind"] for row in resultado] == ["pending", "active"]
+
+    def test_ordena_por_ultimo_acesso_mais_recente_primeiro(self):
+        antigo = {"kind": "active", "last_login": "2026-08-01T10:00:00+00:00", "created_at": "2026-08-01T10:00:00+00:00"}
+        recente = {"kind": "active", "last_login": "2026-08-20T10:00:00+00:00", "created_at": "2026-08-01T10:00:00+00:00"}
+
+        resultado = sorted([antigo, recente], key=infrastructure.admin_table_sort_key, reverse=True)
+
+        assert [row["last_login"] for row in resultado] == [
+            "2026-08-20T10:00:00+00:00",
+            "2026-08-01T10:00:00+00:00",
+        ]
+
+    def test_quem_nunca_acessou_fica_no_fim_do_grupo(self):
+        # Todo pendente tem last_login="" por construção; este teste isola o efeito
+        # do flag explícito dentro de um mesmo grupo (dois ativos, um sem acesso).
+        acessou = {"kind": "active", "last_login": "2026-08-01T10:00:00+00:00", "created_at": "2026-08-01T10:00:00+00:00"}
+        nunca = {"kind": "active", "last_login": "", "created_at": "2026-08-25T10:00:00+00:00"}
+
+        resultado = sorted([nunca, acessou], key=infrastructure.admin_table_sort_key, reverse=True)
+
+        assert [row["last_login"] for row in resultado] == ["2026-08-01T10:00:00+00:00", ""]
+
+    def test_empate_de_ultimo_acesso_desempata_pelo_cadastro_mais_recente(self):
+        mais_antigo = {"kind": "active", "last_login": "", "created_at": "2026-08-01T10:00:00+00:00"}
+        mais_recente = {"kind": "active", "last_login": "", "created_at": "2026-08-25T10:00:00+00:00"}
+
+        resultado = sorted([mais_antigo, mais_recente], key=infrastructure.admin_table_sort_key, reverse=True)
+
+        assert [row["created_at"] for row in resultado] == [
+            "2026-08-25T10:00:00+00:00",
+            "2026-08-01T10:00:00+00:00",
+        ]
+
+
 class TestApproveSignup:
     def test_habilita_a_conta(self):
         with patch("src.infrastructure.boto3.client") as mock_boto:
