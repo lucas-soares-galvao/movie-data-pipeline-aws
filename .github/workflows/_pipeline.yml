@@ -54,11 +54,6 @@ permissions:
 
 jobs:
 
-  test:
-    needs: resolve-env
-    if: startsWith(github.ref_name, 'feature/')
-    uses: ./.github/workflows/test.yml
-
   # Resolve o ambiente (dev/prod) uma única vez para os jobs terraform e
   # deploy-lightsail, evitando repetir a mesma ternária nos dois:
   # - workflow_dispatch → usa o ambiente selecionado manualmente pelo usuário
@@ -90,6 +85,23 @@ jobs:
           echo "environment=$ENV" >> "$GITHUB_OUTPUT"
           echo "🌎 Ambiente resolvido: $ENV"
 
+  test:
+    needs: resolve-env
+    if: startsWith(github.ref_name, 'feature/')
+    uses: ./.github/workflows/test.yml
+
+  auto-pr-feature:
+    needs: test
+    if: |
+      startsWith(github.ref_name, 'feature/') &&
+      needs.test.result == 'success'
+    uses: ./.github/workflows/pr_auto.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pull-requests: write
+
   terraform:
     needs: resolve-env
     if: |
@@ -109,19 +121,22 @@ jobs:
       notification-email: ${{ secrets.NOTIFICATION_EMAIL }}
       infracost-api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-  sonar:
-    # needs: resolve-env é só organizacional (agrupa visualmente no grafo da
-    # Actions, ao lado de terraform/deploy-lightsail) — sonar não consome
-    # nenhum output de resolve-env, roda em paralelo ao terraform (Terraform
-    # provisiona infra, Sonar analisa código-fonte, nenhum depende do outro).
-    # Só em push:main porque o plano Free do SonarQube Cloud só analisa de
-    # forma contínua a branch marcada como "main" no projeto Sonar (ver
-    # sonar-project.properties).
-    needs: resolve-env
-    if: github.ref_name == 'main'
-    uses: ./.github/workflows/sonar.yml
-    secrets:
-      sonar-token: ${{ secrets.SONAR_TOKEN }}
+  auto-pr-environment:
+    needs: terraform
+    # deploy-lightsail roda só em prod (push em main) — nunca em develop, então
+    # não tem por que esse job esperar por ele. Antes ele ficava em needs
+    # também, e como deploy-lightsail resolve sempre "skipped" em push de
+    # develop, o GitHub Actions parava de avaliar o "if" custom e pulava este
+    # job direto — nenhuma PR develop → main era aberta.
+    if: |
+      github.ref_name == 'develop' &&
+      needs.terraform.result == 'success'
+    uses: ./.github/workflows/pr_auto.yml
+    with:
+      branch_name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      pull-requests: write
 
   deploy-lightsail:
     needs: [resolve-env, terraform]
@@ -141,31 +156,16 @@ jobs:
       aws-statefile-s3-bucket: ${{ secrets.AWS_STATEFILE_S3_BUCKET_PROD }}
       aws-lock-dynamodb-table: ${{ secrets.AWS_LOCK_DYNAMODB_TABLE_PROD }}
 
-  auto-pr-feature:
-    needs: test
-    if: |
-      startsWith(github.ref_name, 'feature/') &&
-      needs.test.result == 'success'
-    uses: ./.github/workflows/pr_auto.yml
-    with:
-      branch_name: ${{ github.ref_name }}
-    permissions:
-      contents: write
-      pull-requests: write
-
-  auto-pr-environment:
-    needs: terraform
-    # deploy-lightsail roda só em prod (push em main) — nunca em develop, então
-    # não tem por que esse job esperar por ele. Antes ele ficava em needs
-    # também, e como deploy-lightsail resolve sempre "skipped" em push de
-    # develop, o GitHub Actions parava de avaliar o "if" custom e pulava este
-    # job direto — nenhuma PR develop → main era aberta.
-    if: |
-      github.ref_name == 'develop' &&
-      needs.terraform.result == 'success'
-    uses: ./.github/workflows/pr_auto.yml
-    with:
-      branch_name: ${{ github.ref_name }}
-    permissions:
-      contents: write
-      pull-requests: write
+  sonar:
+    # needs: resolve-env é só organizacional (agrupa visualmente no grafo da
+    # Actions, ao lado de terraform/deploy-lightsail) — sonar não consome
+    # nenhum output de resolve-env, roda em paralelo ao terraform (Terraform
+    # provisiona infra, Sonar analisa código-fonte, nenhum depende do outro).
+    # Só em push:main porque o plano Free do SonarQube Cloud só analisa de
+    # forma contínua a branch marcada como "main" no projeto Sonar (ver
+    # sonar-project.properties).
+    needs: resolve-env
+    if: github.ref_name == 'main'
+    uses: ./.github/workflows/sonar.yml
+    secrets:
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
