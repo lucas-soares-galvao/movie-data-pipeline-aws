@@ -55,6 +55,7 @@ permissions:
 jobs:
 
   test:
+    needs: resolve-env
     if: startsWith(github.ref_name, 'feature/')
     uses: ./.github/workflows/test.yml
 
@@ -63,9 +64,13 @@ jobs:
   # - workflow_dispatch → usa o ambiente selecionado manualmente pelo usuário
   # - push em develop   → ambiente "dev"
   # - push em main      → ambiente "prod"
+  # - push em feature/* → não há ambiente (environment="n/a"); o job roda aqui
+  #   só para conectar "test" a este hub no grafo do Actions, igual ao
+  #   "needs: resolve-env" organizacional do job "sonar" abaixo — "test" não
+  #   consome outputs.environment
   resolve-env:
     if: |
-      github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
+      startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.resolve.outputs.environment }}
@@ -77,8 +82,10 @@ jobs:
             ENV="${{ github.event.inputs.environment }}"
           elif [ "${{ github.ref_name }}" = "develop" ]; then
             ENV="dev"
-          else
+          elif [ "${{ github.ref_name }}" = "main" ]; then
             ENV="prod"
+          else
+            ENV="n/a"
           fi
           echo "environment=$ENV" >> "$GITHUB_OUTPUT"
           echo "🌎 Ambiente resolvido: $ENV"
