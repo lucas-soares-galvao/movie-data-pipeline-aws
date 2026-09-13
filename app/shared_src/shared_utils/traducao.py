@@ -293,7 +293,11 @@ def resolve_pt_translation(
     df.loc[eligible_mask, translation_attempts_column] = df.loc[eligible_mask, translation_attempts_column] + 1
 
     success_count = sum(1 for original, result in zip(values, translated) if original and result != original)
-    logger.info(f"{success_count} registros traduzidos com sucesso ({target_column}).")
+    failure_count = len(values) - success_count
+    logger.info(
+        f"{success_count} registros traduzidos com sucesso ({target_column}); "
+        f"{failure_count} falha(s) de tradução / {len(values)} elegível(is)."
+    )
 
     df.loc[eligible_mask, detected_language_pt_column] = (
         df.loc[eligible_mask, target_column].fillna("").apply(detect_fn)

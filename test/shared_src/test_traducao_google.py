@@ -98,7 +98,11 @@ class TestTranslateText:
         assert result == "Hello"
         assert mock_translator.translate.call_count == 3
 
-    def test_log_warning_em_caso_de_excecao(self, caplog):
+    def test_log_debug_em_caso_de_excecao(self, caplog):
+        """Nível DEBUG (não WARNING): esgotar tentativas por erro é comum sob
+        alto volume (rate-limit do endpoint não-oficial) e não deve poluir o log
+        padrão do workflow com uma linha por registro — só o resumo agregado de
+        falhas/elegíveis, logado em resolve_pt_translation, aparece em INFO."""
         import logging
         mock_translator = MagicMock()
         mock_translator.translate.side_effect = Exception("timeout")
@@ -106,7 +110,7 @@ class TestTranslateText:
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep"),
         ):
-            with caplog.at_level(logging.WARNING):
+            with caplog.at_level(logging.DEBUG):
                 translate_text("Hello")
         assert "Falha ao traduzir" in caplog.text
 
@@ -118,7 +122,7 @@ class TestTranslateText:
             patch("shared_utils.traducao_google.GoogleTranslator", return_value=mock_translator),
             patch("shared_utils.traducao_google.time.sleep"),
         ):
-            with caplog.at_level(logging.WARNING):
+            with caplog.at_level(logging.DEBUG):
                 translate_text("Hello", context="países")
         assert "países" in caplog.text
 

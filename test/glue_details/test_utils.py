@@ -385,7 +385,9 @@ class TestAddTranslationsOverviewPt:
             with caplog.at_level("INFO"):
                 u._add_translations_pt(df, detect_fn=lambda t: "en")
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
-        assert resumo == ["1 registros traduzidos com sucesso (overview_pt)."]
+        assert resumo == [
+            "1 registros traduzidos com sucesso (overview_pt); 0 falha(s) de tradução / 1 elegível(is)."
+        ]
 
     def test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original(self, caplog):
         """translate_text devolve o texto original quando falha após todas as tentativas."""
@@ -398,7 +400,9 @@ class TestAddTranslationsOverviewPt:
                 result = u._add_translations_pt(df, detect_fn=lambda t: "en")
         assert result["overview_pt"].iloc[0] == "Falhou"
         resumo = [r.message for r in caplog.records if "traduzidos com sucesso" in r.message]
-        assert resumo == ["0 registros traduzidos com sucesso (overview_pt)."]
+        assert resumo == [
+            "0 registros traduzidos com sucesso (overview_pt); 1 falha(s) de tradução / 1 elegível(is)."
+        ]
 
     def test_retenta_quando_overview_pt_tmdb_igual_a_overview_en(self):
         """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é

@@ -426,6 +426,27 @@ class TestResolvePtTranslation:
 
         assert df["overview_needs_translation"].tolist() == [False]
 
+    def test_loga_resumo_agregado_de_falhas_de_traducao(self, caplog):
+        """Falhas de tradução não devem ser logadas uma a uma (isso fica em DEBUG
+        dentro de translate_text/translate_text_aws) — só o resumo agregado
+        (falhas / elegíveis) aparece aqui, em INFO."""
+        import logging
+        df = pd.DataFrame({"overview_en": ["Hello", "World"], "overview_pt": [None, None]})
+        def detect_fn(t):
+            return "en"
+        # "Hello" traduz com sucesso; "World" "falha" (tradutor devolve o próprio texto).
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá" if t == "Hello" else t)
+
+        with caplog.at_level(logging.INFO):
+            df, sucesso = resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", detect_fn, traduzir_fn,
+            )
+
+        assert sucesso == 1
+        assert "1 falha" in caplog.text
+        assert "2 elegível" in caplog.text
+
     def test_precisa_traducao_continua_true_mesmo_com_tentativas_esgotadas(self):
         """Diferente da elegibilidade (que para de tentar), a coluna de estado
         continua True: o campo ainda não está em português, mesmo que o pipeline

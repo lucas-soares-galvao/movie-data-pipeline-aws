@@ -65,7 +65,7 @@ def translate_text(text: str, context: str = "") -> str:
                 return text
         if attempt < _MAX_ATTEMPTS:
             time.sleep(attempt * 2)
-    logger.warning(
+    logger.debug(
         f"Falha ao traduzir {prefix}'{text:.80}' após {_MAX_ATTEMPTS} tentativas "
         "com erro. Mantendo original."
     )
