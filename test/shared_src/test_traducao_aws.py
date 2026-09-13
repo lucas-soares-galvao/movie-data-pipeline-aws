@@ -35,3 +35,13 @@ class TestTranslateTextAws:
         with patch("shared_utils.traducao_aws.boto3.client", return_value=mock_client) as mock_boto:
             translate_text_aws("Hello")
         mock_boto.assert_called_once_with("translate", region_name="us-east-1")
+
+    def test_log_debug_em_caso_de_excecao(self, caplog):
+        """Nível DEBUG (não WARNING): falha por item não deve poluir o log padrão
+        do workflow — só o resumo agregado de falhas/elegíveis, logado em
+        resolve_pt_translation, aparece em INFO."""
+        import logging
+        with patch("shared_utils.traducao_aws.boto3.client", side_effect=Exception("boom")):
+            with caplog.at_level(logging.DEBUG):
+                translate_text_aws("Hello", region="sa-east-1")
+        assert "Falha ao traduzir via AWS Translate" in caplog.text
