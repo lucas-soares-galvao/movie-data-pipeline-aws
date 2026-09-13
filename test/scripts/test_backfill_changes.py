@@ -11,6 +11,8 @@ Quality ao final por tabela, só se nada falhou. A lógica de negócio em si (co
 process_changed_ids) é testada em test/lambda_api/test_utils.py e test/glue_details/test_utils.py.
 """
 
+import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, call, patch
 
 import backfill_changes as bc
@@ -44,25 +46,57 @@ def _set_env(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None) -> 
         monkeypatch.setenv(key, value)
 
 
+def _window_key() -> int:
+    """Mesma data de referência ("ontem", UTC) que backfill_changes.main() usa como chave de
+    validação do checkpoint, no lugar de start_year/end_year."""
+    return int((datetime.now(timezone.utc).date() - timedelta(days=1)).strftime("%Y%m%d"))
+
+
+def _s3_client_sem_checkpoint() -> MagicMock:
+    """Cliente S3 mockado simulando ausência de checkpoint (comportamento padrão nos testes)."""
+    client = MagicMock()
+    client.get_object.side_effect = ClientError(
+        {"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject",
+    )
+    return client
+
+
+def _s3_client_com_checkpoint(completed: list) -> MagicMock:
+    """Cliente S3 mockado retornando um checkpoint existente com as unidades já concluídas."""
+    client = MagicMock()
+    body = json.dumps(
+        {"start_year": _window_key(), "end_year": _window_key(), "completed": completed}
+    ).encode()
+    client.get_object.return_value = {"Body": MagicMock(read=MagicMock(return_value=body))}
+    return client
+
+
 def _run_main(
     monkeypatch: pytest.MonkeyPatch,
     overrides: dict | None = None,
     process_side_effect=None,
     affected_years_by_type: dict | None = None,
     notify_capture: list | None = None,
+    mock_s3: MagicMock | None = None,
 ):
     """Roda bc.main() com collect_changes_data/fetch_ids_from_changes_file/process_changed_ids/
     trigger_glue_job mockados.
 
     process_side_effect define o comportamento de process_changed_ids por content_type — lista de
-    exceções/valores (na ordem movie, tv) ou uma função. affected_years_by_type sobrescreve o
-    retorno padrão (lista vazia) por content_type quando process_side_effect não é informado.
+    exceções/valores (na ordem dos content_types pendentes) ou uma função. affected_years_by_type
+    sobrescreve o retorno padrão (lista vazia) por content_type quando process_side_effect não é
+    informado.
 
     notify_capture (se passado) recebe o mock de shared.notify_backfill_success — não muda a
     tupla de mocks já retornada por esta função (consumida por unpacking fixo em alguns testes).
+
+    mock_s3 (se passado) substitui o cliente S3 padrão (sem checkpoint — ver
+    _s3_client_sem_checkpoint) — usado pelos testes de checkpoint para simular um checkpoint
+    pré-existente (ver _s3_client_com_checkpoint) ou para inspecionar put_object/delete_object.
     """
     _set_env(monkeypatch, overrides)
     affected_years_by_type = affected_years_by_type or {}
+    mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
 
     def _default_process(*, content_type, **_kwargs):
         return affected_years_by_type.get(content_type, [])
@@ -77,7 +111,7 @@ def _run_main(
         patch("backfill_changes.shared.trigger_agg_locally") as mock_agg,
         patch("backfill_changes.shared.notify_backfill_success") as mock_notify,
     ):
-        mock_boto3.client.return_value = MagicMock()
+        mock_boto3.client.return_value = mock_s3
         mock_collect.side_effect = lambda api_key, s3_client, bucket, content_type: f"tmdb/changes/{content_type}/2026-01-01.json"
         mock_fetch.return_value = [1, 2, 3]
         if process_side_effect is not None:
@@ -241,3 +275,40 @@ class TestErros:
         exc = ClientError({"Error": {"Code": codigo, "Message": "expired"}}, "StartQueryExecution")
         with pytest.raises(ClientError):
             _run_main(monkeypatch, process_side_effect=[exc])
+
+
+class TestCheckpoint:
+    def test_pula_content_type_ja_concluido(self, monkeypatch):
+        mock_s3 = _s3_client_com_checkpoint(["movie|2020,2021"])
+        _, _, mock_process, *_ = _run_main(monkeypatch, mock_s3=mock_s3)
+        tipos_processados = [c.kwargs["content_type"] for c in mock_process.call_args_list]
+        assert tipos_processados == ["tv"]
+
+    def test_salva_checkpoint_apenas_para_content_type_com_sucesso(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+        _run_main(monkeypatch, process_side_effect=[Exception("falhou"), []], mock_s3=mock_s3)
+        assert mock_s3.put_object.call_count == 1
+        body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert body["completed"] == ["tv|"]
+
+    def test_limpa_checkpoint_ao_concluir_tudo_com_sucesso(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+        _run_main(monkeypatch, mock_s3=mock_s3)
+        mock_s3.delete_object.assert_called_once()
+
+    def test_nao_limpa_checkpoint_quando_ha_falha(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+        _run_main(monkeypatch, process_side_effect=[Exception("falhou"), []], mock_s3=mock_s3)
+        mock_s3.delete_object.assert_not_called()
+
+    def test_dq_disparado_com_anos_do_content_type_retomado_do_checkpoint(self, monkeypatch):
+        """O content_type retomado do checkpoint (não reprocessado nesta execução) precisa
+        continuar disparando o Data Quality com os affected_years persistidos junto dele."""
+        mock_s3 = _s3_client_com_checkpoint(["movie|2020"])
+        _, _, mock_process, mock_trigger, *_ = _run_main(
+            monkeypatch, mock_s3=mock_s3, affected_years_by_type={"tv": ["2023"]},
+        )
+        assert [c.kwargs["content_type"] for c in mock_process.call_args_list] == ["tv"]
+        chamadas_movie = [c for c in mock_trigger.call_args_list if c.kwargs["DATABASE"] == "db_movie"]
+        assert len(chamadas_movie) == 2
+        assert all(c.kwargs["YEAR"] == "2020" for c in chamadas_movie)

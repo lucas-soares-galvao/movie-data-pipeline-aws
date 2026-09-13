@@ -62,12 +62,24 @@ Retomada automática:
     chamadas reais de Athena/S3/Secrets Manager/TMDB API no próprio processo — mais exposto a
     ExpiredTokenException/ExpiredToken em runs mais longos (semana com muitos IDs mudados). Se a
     credencial AWS expirar, o script sai com exit code 75 (backfill_shared.RETRYABLE_EXIT_CODE) e o
-    workflow renova a credencial e roda o script de novo. Sem checkpoint: só 2 unidades (movie, tv),
-    e collect_changes_data/process_changed_ids são idempotentes — refazer do zero é aceitável.
+    workflow renova a credencial e roda o script de novo.
+
+    Checkpoint por content_type (movie, tv) em S3, mesmo mecanismo de
+    backfill_shared.load_checkpoint/save_checkpoint/clear_checkpoint usado pelos demais scripts de
+    backfill. Como este script não itera por ano, a chave de validação do checkpoint (normalmente
+    start_year/end_year) é preenchida com a data de "ontem" (UTC) codificada como YYYYMMDD — a mesma
+    referência que collect_changes_data usa para calcular a janela de busca. Isso mantém um
+    checkpoint parcial válido entre retries no mesmo dia (o cenário real de token expirado), mas o
+    invalida automaticamente se um novo run manual acontecer em outro dia, evitando pular um
+    content_type que na verdade pertence a uma janela de mudanças diferente. Os affected_years de
+    cada content_type concluído são persistidos junto do próprio unit_id (formato
+    "content_type|ano1,ano2") para que o Data Quality final continue cobrindo os anos corretos
+    mesmo quando um content_type é retomado do checkpoint em vez de reprocessado nesta execução.
 """
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
@@ -94,6 +106,44 @@ import backfill_shared as shared  # noqa: E402
 logger = shared.setup_logging()
 
 
+def _parse_checkpoint(completed_raw: set[str]) -> dict[str, list[str]]:
+    """Decodifica o checkpoint salvo (unit_id "content_type|ano1,ano2") para {content_type: anos}."""
+    completed_years: dict[str, list[str]] = {}
+    for entry in completed_raw:
+        content_type, _, years_str = entry.partition("|")
+        completed_years[content_type] = years_str.split(",") if years_str else []
+    return completed_years
+
+
+def _serialize_checkpoint(completed_years: dict[str, list[str]]) -> set[str]:
+    """Codifica {content_type: anos} de volta para o formato de unit_id salvo em checkpoint."""
+    return {f"{content_type}|{','.join(years)}" for content_type, years in completed_years.items()}
+
+
+def _dq_pendente_from_checkpoint(
+    content_types: list[tuple[str, str, str, str, str]], completed_years: dict[str, list[str]],
+) -> list[tuple[str, str, list[str]]]:
+    """Reconstrói o DQ pendente dos content_types já concluídos numa tentativa anterior."""
+    dq_pendente: list[tuple[str, str, list[str]]] = []
+    for content_type, database, _table_discover, table_details, table_watch_providers in content_types:
+        if content_type not in completed_years:
+            continue
+        affected_years = completed_years[content_type]
+        dq_pendente.append((table_details, database, affected_years))
+        dq_pendente.append((table_watch_providers, database, affected_years))
+    return dq_pendente
+
+
+def _dispatch_pending_dq(dq_pendente: list[tuple[str, str, list[str]]], dq_job_name: str) -> None:
+    """Disparo único do Data Quality por tabela, cobrindo todos os anos afetados — mesmo padrão de
+    scripts/backfill_enriquecimento.py (não por ano, e só se não houve falha nenhuma)."""
+    for table_name, database, affected_years in dq_pendente:
+        if not affected_years:
+            continue
+        years_arg = ",".join(affected_years)
+        trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
+
+
 def main() -> None:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
@@ -117,6 +167,11 @@ def main() -> None:
 
     s3_client = boto3.client("s3", region_name=region)
 
+    table_group = "changes"
+    # Sem conceito de ano: usa a mesma data de referência ("ontem", UTC) que collect_changes_data
+    # usa para calcular a janela de busca, codificada como YYYYMMDD, no lugar de start_year/end_year.
+    window_key = int((datetime.now(timezone.utc).date() - timedelta(days=1)).strftime("%Y%m%d"))
+
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_api_secret(secret_arn, "tmdb_api_key")
 
@@ -125,15 +180,24 @@ def main() -> None:
         ("tv",    db_tv,    table_discover_tv,    table_details_tv,    table_watch_providers_tv),
     ]
 
+    completed_years = _parse_checkpoint(
+        shared.load_checkpoint(s3_client, s3_bucket_temp, table_group, window_key, window_key)
+    )
+    pendentes = [ct for ct in content_types if ct[0] not in completed_years]
+    shared.log_resume_progress(logger, "content_types já concluídos", len(content_types), len(pendentes))
+
     # (table_name, database, affected_years) por tabela — disparo de DQ fica pendente até o fim do
     # loop, e só acontece se nenhum content_type falhar (ver "Data Quality" no docstring).
-    dq_pendente: list[tuple[str, str, list[str]]] = []
+    # content_types já concluídos numa tentativa anterior (retomados do checkpoint) entram aqui
+    # direto, com os affected_years persistidos junto do checkpoint.
+    dq_pendente = _dq_pendente_from_checkpoint(content_types, completed_years)
+
     failures: list[tuple[str, str]] = []
 
     for i, (content_type, database, table_discover, table_details, table_watch_providers) in enumerate(
-        content_types, start=1,
+        pendentes, start=1,
     ):
-        logger.info("[%d/%d] Changes | %s", i, len(content_types), content_type)
+        logger.info("[%d/%d] Changes | %s", i, len(pendentes), content_type)
         try:
             s3_key = collect_changes_data(api_key, s3_client, s3_bucket_temp, content_type)
             changed_ids = fetch_ids_from_changes_file(f"s3://{s3_bucket_temp}/{s3_key}")
@@ -153,7 +217,7 @@ def main() -> None:
             if shared.is_expired_token_error(exc):
                 logger.error(
                     "Credenciais AWS expiraram durante o changes de %s. O workflow vai renovar a "
-                    "credencial e rodar o script de novo (sem checkpoint — refaz do zero).",
+                    "credencial e rodar o script de novo (checkpoint preserva o que já concluiu).",
                     content_type,
                 )
                 raise
@@ -164,6 +228,11 @@ def main() -> None:
             failures.append((content_type, str(exc)))
         else:
             logger.info("Changes de %s concluído com sucesso.", content_type)
+            completed_years[content_type] = affected_years
+            shared.save_checkpoint(
+                s3_client, s3_bucket_temp, table_group, window_key, window_key,
+                _serialize_checkpoint(completed_years),
+            )
             dq_pendente.append((table_details, database, affected_years))
             dq_pendente.append((table_watch_providers, database, affected_years))
 
@@ -177,13 +246,7 @@ def main() -> None:
 
     logger.info("Changes disparado com sucesso.")
 
-    # Disparo único do Data Quality por tabela, cobrindo todos os anos afetados — mesmo padrão de
-    # scripts/backfill_enriquecimento.py (não por ano, e só se não houve falha nenhuma).
-    for table_name, database, affected_years in dq_pendente:
-        if not affected_years:
-            continue
-        years_arg = ",".join(affected_years)
-        trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
+    _dispatch_pending_dq(dq_pendente, dq_job_name)
 
     shared.trigger_agg_locally(
         s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
@@ -199,6 +262,7 @@ def main() -> None:
     shared.notify_backfill_success(
         "changes", "Changes disparado com sucesso para movie e tv, Data Quality e Glue AGG disparados.",
     )
+    shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
 
 if __name__ == "__main__":
