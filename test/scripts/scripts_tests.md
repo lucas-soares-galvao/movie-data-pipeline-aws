@@ -134,7 +134,7 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | `test_dispara_dq_uma_vez_por_tabela_gravada` | `trigger_glue_job` (Data Quality) é chamado 6 vezes, uma por tabela |
 | `test_erro_em_genre_aborta_o_backfill` | Exceção em `collect_genre_data` propaga e impede `collect_configuration_data` de rodar (mesmo formato de "abortar no primeiro erro" de antes, agora por propagação direta, sem `invoke_lambda_sync`) |
 | `test_http_error_em_watch_providers_ref_nao_aborta_mas_pula_a_escrita` | `HTTPError` em `collect_watch_providers_ref` é capturado — não aborta o script, mas a tabela correspondente não é escrita nem validada |
-| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` / `test_outro_erro_nao_gera_codigo_de_retomada` / `test_expired_token_gera_codigo_75` (parametrizado) | Mesmos contratos de erro/retomada dos demais scripts sem checkpoint (`backfill_changes.py`) |
+| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` / `test_outro_erro_nao_gera_codigo_de_retomada` / `test_expired_token_gera_codigo_75` (parametrizado) | Mesmos contratos de erro/retomada dos demais scripts sem checkpoint |
 
 ### `TestGlueAgg`
 
@@ -404,7 +404,7 @@ reprocessado).
 
 ## Casos de teste — `test_backfill_changes.py`
 
-Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — sem checkpoint nem parâmetros de data, estruturalmente igual a `test_backfill_referencias.py`. A janela `[domingo passado, sábado de ontem]` é sempre resolvida dentro de `collect_changes_data` (`app/lambda_api`), fora do escopo deste script.
+Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de domingo já aciona automaticamente — sem parâmetros de data (a janela `[domingo passado, sábado de ontem]` é sempre resolvida dentro de `collect_changes_data`, `app/lambda_api`, fora do escopo deste script), mas com checkpoint próprio por `content_type` (`movie`/`tv`), diferente de `test_backfill_referencias.py`. Como não há ano, a chave de validação normalmente ocupada por `start_year`/`end_year` é preenchida com a data de "ontem" (UTC) codificada como `YYYYMMDD` — ver `_window_key`/`_s3_client_com_checkpoint` no arquivo de teste.
 
 ### `TestContratoDoPayload`
 
@@ -436,6 +436,15 @@ Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de dom
 > processo (ver docstring do script e `TestLoopPrincipal`/`TestDataQualityFinal` no arquivo de
 > teste real). Ver `test/scripts/test_backfill_changes.py` como fonte de verdade até esta seção
 > ser reescrita.
+
+### `TestCheckpoint` (`test_backfill_changes.py`)
+
+| Teste | O que verifica |
+|---|---|
+| `test_pula_content_type_ja_concluido` | `content_type` presente no checkpoint não gera nova chamada a `process_changed_ids` |
+| `test_salva_checkpoint_apenas_para_content_type_com_sucesso` | `put_object` só reflete o `content_type` concluído com sucesso; o unit_id embute os `affected_years` (formato `"content_type\|ano1,ano2"`) |
+| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` / `test_nao_limpa_checkpoint_quando_ha_falha` | `delete_object` só é chamado quando não sobra nenhuma falha |
+| `test_dq_disparado_com_anos_do_content_type_retomado_do_checkpoint` | Um `content_type` retomado do checkpoint (não reprocessado nesta execução) ainda dispara o Data Quality final com os `affected_years` persistidos junto do checkpoint — prova que eles sobrevivem ao resume |
 
 ### `TestGlueAgg` (`test_backfill_changes.py`)
 
