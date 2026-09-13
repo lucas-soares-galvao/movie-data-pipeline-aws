@@ -178,7 +178,21 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
 
 
 _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
-_TRANSLATE_MAX_WORKERS = 5  # traduções EN→PT paralelas via Google Translate
+
+# Traduções EN→PT paralelas via Google Translate. Elevado de 5 para 15 depois que o sinal
+# de changes por ID (ver _force_reuse_when_unflagged) passou a filtrar a maior parte do
+# volume no modo changes — o residual que ainda precisa traduzir de verdade é pequeno
+# (dezenas, não milhares) e paraleliza melhor com mais workers, inclusive quando o Google
+# Translate falha (menos tempo total em retry/backoff).
+_TRANSLATE_MAX_WORKERS = 15
+
+# Concorrência dedicada à consulta /movie|tv/{id}/changes (modo changes) — chamada leve
+# (resposta pequena, sem append_to_response), diferente de _TMDB_MAX_WORKERS (usado por
+# fetch_tmdb_details, 9 sub-recursos por chamada). As duas etapas rodam em sequência,
+# nunca simultâneas (ver process_changed_ids), então usar mais concorrência aqui não
+# soma com _TMDB_MAX_WORKERS para efeito de rate limit — ainda abaixo do ~40 req/s
+# documentado do TMDB.
+_TMDB_CHANGES_MAX_WORKERS = 35
 
 
 def _run_parallel(func: Any, items: list, max_workers: int = _TMDB_MAX_WORKERS) -> None:
@@ -1477,6 +1491,16 @@ def fetch_tmdb_id_changes(
 
     Returns:
         Lista de mudanças (`changes[]` da resposta), com todas as páginas concatenadas.
+
+    Nota: só busca a página seguinte quando a própria resposta confirma `total_pages`
+    maior que a página atual — a doc oficial não garante esse campo aqui (diferente de
+    /movie|tv/changes). Sem ele, assume a página 1 como única, em vez de gastar uma 2ª
+    chamada só para confirmar que não há mais nada (isso dobrava o custo desta consulta
+    para praticamente todo ID, já que a maioria não tem `total_pages` na resposta — ver
+    incidente de timeout documentado no plano de correção do modo changes). Trade-off
+    aceito: um título com muitas mudanças na janela e sem `total_pages` pode ter uma
+    página adicional não capturada — o pior caso é reaproveitar uma tradução levemente
+    desatualizada até o próximo reprocessamento desse título, não perda permanente.
     """
     endpoint = "movie" if content_type == "movie" else "tv"
     url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}/changes"
@@ -1488,16 +1512,10 @@ def fetch_tmdb_id_changes(
             url,
             {"api_key": api_key, "start_date": start_date, "end_date": end_date, "page": page},
         )
-        changes = data.get("changes", [])
-        if not changes:
-            break
-        all_changes.extend(changes)
+        all_changes.extend(data.get("changes", []))
 
-        # A doc oficial não confirma um "total_pages" nesta resposta (diferente de
-        # /movie|tv/changes) — encerra ao ver uma página vazia, com max_pages como
-        # proteção adicional caso a API pagine de outro jeito.
         total_pages = data.get("total_pages")
-        if total_pages is not None and page >= total_pages:
+        if not total_pages or page >= total_pages:
             break
         page += 1
 
@@ -1583,8 +1601,11 @@ def fetch_translatable_changes_for_ids(
         except Exception as exc:  # noqa: BLE001 — falha de rede num ID não pode travar o lote
             logger.warning(f"Falha ao consultar changes por ID para {item_id}: {exc}")
 
-    logger.info(f"Changes: consultando mudanças por ID de {len(ids)} títulos ({content_type})...")
-    _run_parallel(_fetch, ids)
+    logger.info(
+        f"Changes: consultando mudanças por ID de {len(ids)} títulos ({content_type}) "
+        f"com {_TMDB_CHANGES_MAX_WORKERS} workers..."
+    )
+    _run_parallel(_fetch, ids, max_workers=_TMDB_CHANGES_MAX_WORKERS)
     logger.info(f"Changes: sinal de mudança por campo obtido para {len(result)}/{len(ids)} IDs.")
     return result
 

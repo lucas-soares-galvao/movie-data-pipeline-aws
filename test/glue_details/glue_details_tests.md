@@ -377,10 +377,10 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `TestFetchIdsFromChangesFile.test_retorna_dict_sem_ids_quando_chave_ausente` | `resultado.get("ids", [])` fica `[]` quando o JSON não tem a chave `ids` |
 | `TestFetchTmdbIdChanges.test_calls_movie_endpoint_com_janela_correta` | URL contém `/movie/{id}/changes`; `start_date`/`end_date`/`page` corretos nos params |
 | `TestFetchTmdbIdChanges.test_calls_tv_endpoint` | URL contém `/tv/{id}/changes` |
-| `TestFetchTmdbIdChanges.test_retorna_changes_de_uma_unica_pagina` | Retorna a lista `changes[]` da resposta |
-| `TestFetchTmdbIdChanges.test_encerra_ao_ver_pagina_vazia_sem_total_pages` | Para de paginar ao ver `changes` vazio, mesmo sem `total_pages` na resposta (doc oficial não confirma esse campo aqui) |
-| `TestFetchTmdbIdChanges.test_pagina_ate_total_pages_quando_presente` | Concatena `changes[]` de todas as páginas quando `total_pages > 1` |
-| `TestFetchTmdbIdChanges.test_respeita_max_pages_como_protecao` | Não ultrapassa `max_pages` mesmo com páginas sempre não-vazias (proteção contra título com volume atípico) |
+| `TestFetchTmdbIdChanges.test_retorna_changes_de_uma_unica_pagina_sem_confirmar_pagina_vazia` | Sem `total_pages` na resposta, aceita a página 1 como única — **não** faz uma 2ª chamada para confirmar (decisão pós-incidente: essa confirmação dobrava o custo da consulta) |
+| `TestFetchTmdbIdChanges.test_para_apos_uma_pagina_quando_changes_vazio_e_sem_total_pages` | `changes` vazio na página 1, sem `total_pages` → retorna `[]` numa única chamada |
+| `TestFetchTmdbIdChanges.test_pagina_ate_total_pages_quando_presente` | Concatena `changes[]` de todas as páginas quando `total_pages > 1` confirma que há mais |
+| `TestFetchTmdbIdChanges.test_respeita_max_pages_como_protecao_quando_total_pages_e_maior` | Não ultrapassa `max_pages` mesmo com `total_pages` bem maior (proteção contra título com volume atípico) |
 | `TestExtractTranslatableChanges.test_overview_true_quando_mudou_no_idioma_de_origem` | `{"overview": True, ...}` quando há mudança de `overview` com `iso_639_1="en"` |
 | `TestExtractTranslatableChanges.test_keywords_true_quando_plot_keywords_mudou` | `key="plot_keywords"` da API mapeia para `"keywords"` do projeto |
 | `TestExtractTranslatableChanges.test_tagline_true_quando_mudou` | `{"tagline": True, ...}` quando há mudança de `tagline` |
@@ -389,6 +389,7 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `TestExtractTranslatableChanges.test_lista_vazia_retorna_tudo_false` | Lista de changes vazia → todas as flags `False` |
 | `TestFetchTranslatableChangesForIds.test_monta_dicionario_por_id` | Monta `{id: {"overview"/"tagline"/"keywords": bool}}` para cada ID consultado |
 | `TestFetchTranslatableChangesForIds.test_falha_num_id_nao_derruba_o_lote` | Falha de `fetch_tmdb_id_changes` num ID não interrompe os demais — esse ID fica de fora do dicionário |
+| `TestFetchTranslatableChangesForIds.test_usa_concorrencia_dedicada_maior_que_a_busca_de_detalhe` | Usa `_TMDB_CHANGES_MAX_WORKERS` (35, maior que `_TMDB_MAX_WORKERS`=20) — consulta leve, fases sequenciais, sem risco adicional de rate limit |
 | `TestFetchTranslatableChangesForIds.test_lista_vazia_retorna_dicionario_vazio` | Lista de IDs vazia → `{}`, sem chamar a API |
 | `TestResolveMatchedIdsForChangedIds.test_retorna_lista_vazia_para_lista_vazia` | Retorna `[]` para lista de IDs vazia, sem consultar o Athena |
 | `TestResolveMatchedIdsForChangedIds.test_retorna_ids_encontrados_na_tabela_discover` | Retorna a lista de IDs encontrados na tabela discover (a query já não devolve `year` usável, só confirmação de pertencimento) |
