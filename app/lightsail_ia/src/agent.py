@@ -39,17 +39,24 @@ POR QUE USAR "FUNCTION CALLING" (TOOL USE)?
   seja usada sem precisar mapear cada pergunta possível no código.
 
 TECNOLOGIAS UTILIZADAS:
-  - litellm: interface unificada para múltiplos provedores de LLM (OpenAI, DeepSeek, Claude, etc.)
+  - litellm: interface unificada para múltiplos provedores de LLM (OpenRouter, OpenAI, DeepSeek, Claude, etc.)
   - boto3 (Athena API nativa): executa SQL no Athena sem dependências pesadas
   - python-dotenv: carrega variáveis de ambiente do arquivo .env
 
 VARIÁVEIS DE AMBIENTE NECESSÁRIAS (arquivo .env):
   FILMBOT_SECRET_ARN → ARN do segredo unificado no Secrets Manager (produção)
   LLM_API_KEY        → fallback para dev local (usado quando FILMBOT_SECRET_ARN não está definida)
-  LLM_MODEL          → modelo LLM a usar (padrão: "deepseek/deepseek-v4-pro"). Exemplos:
-                        "deepseek/deepseek-v4-flash" + chave DeepSeek
-                        "gpt-4o"                     + chave OpenAI
-                        "claude-opus-4-8"            + ANTHROPIC_API_KEY
+  LLM_MODEL          → modelo LLM a usar (padrão: "openrouter/deepseek/deepseek-v4.1-flash").
+                        Todas as chamadas passam por uma única chave — a do provedor usado
+                        como prefixo do model (ex: OPENROUTER_API_KEY). Exemplos:
+                        "openrouter/deepseek/deepseek-v4.1-flash"   + chave OpenRouter
+                        "deepseek/deepseek-v4-flash"                + chave DeepSeek direta
+                        "gpt-4o"                                    + chave OpenAI
+  LLM_FALLBACK_MODELS → lista de model IDs do OpenRouter, separados por vírgula, usados como
+                        fallback automático (recurso nativo do OpenRouter — ver "models" no
+                        payload) se o modelo principal falhar (indisponibilidade, rate limit,
+                        erro de validação de contexto). Padrão: "qwen/qwen3.8-flash". Só tem
+                        efeito quando LLM_MODEL usa o prefixo "openrouter/". Vazio desativa.
   AWS_REGION         → região AWS (padrão: "sa-east-1")
   GLUE_DATABASE      → banco no Glue Catalog (padrão: "db_tmdb_unified_prod")
   SPEC_TABLE         → tabela SPEC (padrão: "tb_tmdb_discover_unified_prod")
@@ -85,7 +92,16 @@ from src.formatting import format_record
 # com as variáveis do Terraform output. Em desenvolvimento, o .env é criado manualmente.
 load_dotenv()
 
-_LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-pro")
+_LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/deepseek/deepseek-v4.1-flash")
+# Fallback nativo do OpenRouter: se o modelo principal falhar (indisponibilidade, rate
+# limit, erro de validação de contexto), o OpenRouter tenta o próximo da lista antes de
+# devolver erro — mesma OPENROUTER_API_KEY, sem chave adicional por empresa. Complementa
+# (não substitui) o num_retries abaixo: num_retries reforça a requisição inteira contra
+# falha transitória de rede; o fallback do OpenRouter troca de modelo dentro da mesma
+# requisição quando o modelo principal está fora do ar. Só tem efeito com
+# LLM_MODEL="openrouter/...": outros provedores ignoram o campo "models" do extra_body.
+_LLM_FALLBACK_MODELS = [m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "qwen/qwen3.8-flash").split(",") if m.strip()]
+_LLM_EXTRA_KWARGS = {"extra_body": {"models": _LLM_FALLBACK_MODELS}} if _LLM_FALLBACK_MODELS else {}
 _LLM_NUM_RETRIES = 3
 # Timeout por tentativa (não pelo total incluindo retries). Sem isso, o padrão do
 # litellm é 600s por tentativa — uma chamada travada (não um erro, só sem resposta)
@@ -635,6 +651,7 @@ def _call_llm_step1(preference: str) -> object:
         num_retries=_LLM_NUM_RETRIES,
         timeout=_LLM_TIMEOUT_STEP1_SECONDS,
         max_tokens=_LLM_MAX_TOKENS_STEP1,
+        **_LLM_EXTRA_KWARGS,
     )
     _log_token_usage("step1_where", response)
     return response
@@ -656,6 +673,7 @@ def _call_llm_step3(preference: str, titles_for_llm: list[dict]) -> object:
         num_retries=_LLM_NUM_RETRIES,
         timeout=_LLM_TIMEOUT_STEP3_SECONDS,
         max_tokens=_LLM_MAX_TOKENS_STEP3,
+        **_LLM_EXTRA_KWARGS,
     )
     _log_token_usage("step3_reasons", response)
     return response

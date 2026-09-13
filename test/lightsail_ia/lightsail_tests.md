@@ -119,6 +119,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_passa_filtros_extraidos_pelo_llm_para_athena` | `where_clause` e `limit` extraídos na etapa 1 são passados corretamente para `search_titles_spec()` |
 | `test_passos_1_e_3_usam_retry_configurado` | As duas chamadas `litellm.completion` (etapas 1 e 3) recebem `num_retries=_LLM_NUM_RETRIES` |
 | `test_passos_1_e_3_usam_timeout_e_max_tokens_configurados` | As duas chamadas recebem `timeout`/`max_tokens` específicos por etapa (`_LLM_TIMEOUT_STEP1_SECONDS`/`_LLM_MAX_TOKENS_STEP1` na etapa 1, `_LLM_TIMEOUT_STEP3_SECONDS`/`_LLM_MAX_TOKENS_STEP3` na etapa 3), sem perder o `num_retries` já configurado |
+| `test_passos_1_e_3_repassam_fallback_de_modelo_do_openrouter` | As duas chamadas recebem `extra_body={"models": _LLM_FALLBACK_MODELS}` — fallback nativo do OpenRouter, acionado se o modelo principal (`LLM_MODEL`) falhar |
 | `test_retorna_lista_vazia_se_llm_nao_chama_tool` | Retorna `[]` sem chamar Athena quando o LLM não retorna `tool_calls` (ex: modelo não escolhe usar a tool) |
 | `test_retorna_lista_vazia_se_argumentos_da_tool_call_sao_json_invalido` | Retorna `[]` sem chamar Athena quando `tool_call.function.arguments` é JSON inválido (ex: resposta cortada do LLM), sem levantar exceção — mesma degradação graciosa já usada no motivo da etapa 3 |
 | `test_retorna_data_lancamento_formatada` | Campo `release_date` formatado pelo Python (ex: `"Mai de 1980"`) |
