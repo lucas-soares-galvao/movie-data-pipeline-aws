@@ -54,8 +54,10 @@ Esta skill cobre o *gate* de consulta à API oficial; não repete o que já est�
 - **Changes API com janela de 7 dias corridos `[domingo passado, sábado de ontem]`**, contígua e sem
   sobreposição entre execuções semanais consecutivas, dentro do limite de 14 dias documentado pela própria
   API — `collect_changes_data` em `app/lambda_api/src/utils.py`.
-- **Concorrência de `_TMDB_MAX_WORKERS = 20`** mantida abaixo do rate limit de ~40 req/s do TMDB —
-  `app/glue_details/src/utils.py:285`.
+- **Concorrência de `_TMDB_MAX_WORKERS = 20`** (busca de detalhe completo, `fetch_tmdb_details`) e
+  `_TMDB_CHANGES_MAX_WORKERS = 35` (consulta leve de changes por ID, `fetch_tmdb_id_changes`) — ambas mantidas
+  abaixo do rate limit de ~40 req/s do TMDB, com valores diferentes porque as chamadas têm peso de resposta
+  diferente e rodam em fases sequenciais (nunca simultâneas) — `app/glue_details/src/utils.py`.
 - **Retry/backoff exponencial respeitando o header `Retry-After`** em 429, e tratando 500/502/503/504 como
   transitórios — `api_get` em `app/shared_src/shared_utils/api_client.py`.
 - **`watch_region=BR` / `results.BR`** usados para escopar plataformas de streaming ao Brasil —
@@ -66,10 +68,17 @@ Esta skill cobre o *gate* de consulta à API oficial; não repete o que já est�
   mudou por título na janela, e decidir se `overview`/`tagline`/`plot_keywords` (mapeado para "keywords" no
   projeto, ver `_TRANSLATABLE_CHANGE_KEYS`) precisam de tradução de verdade — em vez de assumir que todo ID
   reportado por `/movie|tv/changes` precisa retraduzir tudo. A doc oficial não confirma a taxonomia completa de
-  `key` nem se a resposta pagina com `total_pages` (só documenta `page`) — `fetch_tmdb_id_changes` trata isso
-  defensivamente (encerra ao ver uma página de `changes` vazia, com `max_pages` como proteção adicional).
+  `key` nem se a resposta pagina com `total_pages` (só documenta `page`). **Decisão deliberada e validada em
+  incidente real**: sem `total_pages` na resposta, `fetch_tmdb_id_changes` aceita a página 1 como única e NÃO
+  faz uma 2ª chamada só para confirmar — a primeira versão (paginar até ver `changes` vazio) dobrava o custo
+  desta consulta para quase todo ID (a maioria não tem `total_pages`), e essa consulta sozinha chegou a
+  consumir 66% do timeout de 30min do job num run real de prod (3839 IDs, ~20min só nesta etapa). Trade-off
+  aceito: um título com muitas mudanças na janela pode ter uma página adicional não capturada — o pior caso é
+  reaproveitar uma tradução levemente desatualizada até o próximo reprocessamento, não perda permanente.
   Validado empiricamente com IDs reais de prod: `status`/`runtime` vêm como valor escalar direto em `value`;
-  `overview` vem com `iso_639_1`/`iso_3166_1` e o texto novo completo em `value` (não uma referência).
+  `overview` vem com `iso_639_1`/`iso_3166_1` e o texto novo completo em `value` (não uma referência). Usa
+  `_TMDB_CHANGES_MAX_WORKERS=35` (não `_TMDB_MAX_WORKERS=20`, reservado para `fetch_tmdb_details`) — resposta
+  leve (sem `append_to_response`), e as duas etapas rodam em sequência, nunca simultâneas.
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 
