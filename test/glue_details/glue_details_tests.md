@@ -53,7 +53,7 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 |---|---|
 | `test_entra_no_ramo_changes_e_nao_chama_fetch_ids_from_sot` | O fluxo `YEAR`/`END_YEAR` normal (`fetch_ids_from_sot`) não é executado |
 | `test_chama_fetch_ids_from_changes_file_com_o_path_correto` | `fetch_ids_from_changes_file` é chamado com o `CHANGES_S3_PATH` recebido |
-| `test_chama_process_changed_ids_com_ids_e_tabelas_corretas` | `process_changed_ids` recebe os IDs, tabelas e `translate_provider` corretos |
+| `test_chama_process_changed_ids_com_ids_e_tabelas_corretas` | `process_changed_ids` recebe os IDs, tabelas, `start_date`/`end_date` (do payload de `fetch_ids_from_changes_file`) e `translate_provider` corretos |
 | `test_aciona_dq_uma_vez_por_tabela_com_anos_agrupados` | Glue DQ é acionado só 1x por tabela (`TABLE_DETAILS`/`TABLE_WATCH_PROVIDERS`), com `YEAR` sendo todos os anos de `process_changed_ids` juntos numa string separada por vírgula (não 1 disparo por ano) |
 | `test_nao_aciona_dq_quando_nenhum_ano_afetado` | Nenhum DQ é acionado quando `process_changed_ids` retorna lista vazia |
 | `test_modo_changes_nao_aciona_repair_discover` | `repair_discover_duplicates` **não** é acionado neste modo (nunca escreve na tabela discover) |
@@ -93,7 +93,7 @@ Testa as funções individuais:
 - `_extract_spoken_languages` (`TestExtractSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
 - `_extract_spoken_languages_iso` (`TestExtractSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None
 - `fetch_ids_from_sot`: query Athena monta SQL correto com filtro de ano
-- `collect_and_write_details`: campos de série `next_episode_air_date`/`next_episode_number`/`next_episode_season_number`/`next_episode_name`/`season_numbers`/`season_air_dates`/`season_episode_counts`/`season_names` aparecem no DataFrame final gravado (`test_tv_writes_seasons_episodes_runtime`); chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; não escreve nada quando todos os IDs falham (`test_does_not_write_when_all_ids_fail`); não escreve nada quando todos os registros ficam sem `year` após o `dropna` (`test_does_not_write_when_all_records_missing_year` — regressão do bug `EmptyDataFrame` no `wr.s3.to_parquet`); prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback via `translate_fn` (`translate_provider="google"` no teste, patchando `translate_text`) quando TMDB não tem pt-BR (TV sem translations) — em produção o default é `translate_provider="aws"`; campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG (a gravação de `spoken_languages_iso` é coberta em nível de extração por `TestExtractSpokenLanguagesIso`, não neste teste de escrita); **cache de tradução entre execuções:** não retraduz quando a fonte (`overview_en`/`tagline`/`keywords`) não mudou desde o registro existente no S3 (`test_nao_retraduz_quando_fonte_nao_mudou`); retraduz só o campo cuja fonte mudou, reaproveitando o cache dos demais (`test_retraduz_apenas_campo_cuja_fonte_mudou`, com `translate_provider="google"`); tradução nativa do TMDB no run atual sobrepõe o cache mesmo com fonte igual (`test_traducao_nativa_tmdb_sobrepoe_cache`); lê o S3 uma única vez por partição `year`, reaproveitada tanto para o cache de tradução quanto para o merge final (`test_le_s3_uma_unica_vez_por_particao_year`); as 9 colunas de diagnóstico (`overview_detected_language_en`/`_pt`/`overview_translation_attempts`, `tagline_detected_language_en`/`_pt`/`tagline_translation_attempts`, `keywords_detected_language_en`/`_pt`/`keywords_translation_attempts`) aparecem no DataFrame final gravado, e as antigas `overview_translated_pt_br`/`tagline_translated_pt_br`/`keywords_translated_pt_br` não existem mais, tanto para filmes quanto para séries; **retorno `{id: year}`:** devolve o year (derivado da API) de cada id efetivamente gravado nesta execução (`test_retorna_dict_id_para_year_dos_registros_gravados`); `{}` quando todos os IDs falham na API ou quando todos os registros ficam sem year (asserção adicional em `test_does_not_write_when_all_ids_fail`/`test_does_not_write_when_all_records_missing_year`); id preservado apenas via merge (fora do batch pedido) não aparece no dict retornado (`test_dict_retornado_nao_inclui_ids_preservados_apenas_via_merge`)
+- `collect_and_write_details`: campos de série `next_episode_air_date`/`next_episode_number`/`next_episode_season_number`/`next_episode_name`/`season_numbers`/`season_air_dates`/`season_episode_counts`/`season_names` aparecem no DataFrame final gravado (`test_tv_writes_seasons_episodes_runtime`); chamadas paralelas retornam o DataFrame esperado, IDs inválidos são ignorados; merge com dados existentes preserva IDs fora do batch e substitui IDs re-escritos; `drop_duplicates` garante unicidade no DataFrame antes da escrita; usa `mode="overwrite_partitions"`; falha no `read_parquet` grava apenas novos registros sem erro; não escreve nada quando todos os IDs falham (`test_does_not_write_when_all_ids_fail`); não escreve nada quando todos os registros ficam sem `year` após o `dropna` (`test_does_not_write_when_all_records_missing_year` — regressão do bug `EmptyDataFrame` no `wr.s3.to_parquet`); prioriza tradução pt-BR do TMDB para overview e tagline (movie com translations); fallback via `translate_fn` (`translate_provider="google"` no teste, patchando `translate_text`) quando TMDB não tem pt-BR (TV sem translations) — em produção o default é `translate_provider="aws"`; campos intermediários (`overview_pt_tmdb`, `tagline_pt_tmdb`) não aparecem no DataFrame final; grava `collection_id`, `collection_name_pt`, `production_countries_iso` para filmes; `production_countries_iso` como array de ISO codes para lookup no AGG (a gravação de `spoken_languages_iso` é coberta em nível de extração por `TestExtractSpokenLanguagesIso`, não neste teste de escrita); **cache de tradução entre execuções:** não retraduz quando a fonte (`overview_en`/`tagline`/`keywords`) não mudou desde o registro existente no S3 (`test_nao_retraduz_quando_fonte_nao_mudou`); retraduz só o campo cuja fonte mudou, reaproveitando o cache dos demais (`test_retraduz_apenas_campo_cuja_fonte_mudou`, com `translate_provider="google"`); tradução nativa do TMDB no run atual sobrepõe o cache mesmo com fonte igual (`test_traducao_nativa_tmdb_sobrepoe_cache`); lê o S3 uma única vez por partição `year`, reaproveitada tanto para o cache de tradução quanto para o merge final (`test_le_s3_uma_unica_vez_por_particao_year`); as 9 colunas de diagnóstico (`overview_detected_language_en`/`_pt`/`overview_translation_attempts`, `tagline_detected_language_en`/`_pt`/`tagline_translation_attempts`, `keywords_detected_language_en`/`_pt`/`keywords_translation_attempts`) aparecem no DataFrame final gravado, e as antigas `overview_translated_pt_br`/`tagline_translated_pt_br`/`keywords_translated_pt_br` não existem mais, tanto para filmes quanto para séries; **retorno `{id: year}`:** devolve o year (derivado da API) de cada id efetivamente gravado nesta execução (`test_retorna_dict_id_para_year_dos_registros_gravados`); `{}` quando todos os IDs falham na API ou quando todos os registros ficam sem year (asserção adicional em `test_does_not_write_when_all_ids_fail`/`test_does_not_write_when_all_records_missing_year`); id preservado apenas via merge (fora do batch pedido) não aparece no dict retornado (`test_dict_retornado_nao_inclui_ids_preservados_apenas_via_merge`); **modo changes:** com `changed_fields_by_id` confirmando que um campo não mudou, reaproveita o cache mesmo quando a fonte reextraída da API diverge da salva — não retraduz via Google/AWS (`test_modo_changes_nao_retraduz_quando_sinal_confirma_que_nao_mudou`)
 - `repair_details_duplicates` (`TestRepairDetailsDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém `processed_date` mais recente por ID; usa `overwrite_partitions`
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `updated_date` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
@@ -267,6 +267,19 @@ Testa as funções individuais:
 | `test_ignora_pt_de_portugal` | Ignora tradução pt-PT (iso_3166_1='PT'), retorna `None` |
 | `test_ignora_overview_vazio` | Retorna `None` para overview vazio, mas extrai tagline |
 
+### `TestForceReuseWhenUnflagged`
+
+| Teste | O que verifica |
+|---|---|
+| `test_reaproveita_quando_sinal_diz_que_nao_mudou` | Copia a tradução salva e marca `translation_attempts_column` como esgotado quando o sinal confirma que o campo não mudou |
+| `test_nao_forca_quando_sinal_diz_que_mudou` | Não força nada quando o sinal confirma que o campo mudou de verdade |
+| `test_nao_forca_sem_sinal_disponivel` | `changed_fields_by_id=None` (fluxo normal por ano) nunca força reaproveitamento |
+| `test_nao_forca_quando_id_ausente_do_sinal` | Id sem entrada em `changed_fields_by_id` não é afetado |
+| `test_nao_forca_quando_nao_ha_traducao_salva_para_reaproveitar` | Sem tradução válida em `previous_df`, não força nada mesmo com sinal de "não mudou" |
+| `test_nao_sobrescreve_valor_ja_preenchido` | Não sobrescreve um valor já preenchido pelo chamador (prioridade da tradução nativa do TMDB) |
+| `test_ignora_previous_df_com_schema_antigo_sem_a_coluna` | `previous_df` sem `target_column` (partição gravada antes da coluna existir) degrada graciosamente |
+| `test_ignora_previous_df_vazio_ou_none` | `previous_df` vazio ou `None` não causa erro, apenas não força nada |
+
 ### `TestAddTranslationsOverviewPt`
 
 | Teste | O que verifica |
@@ -286,6 +299,8 @@ Testa as funções individuais:
 | `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte com idioma detectado `"pt"` (sem TMDB nativo/cache) é copiada direto para `overview_pt`; `translate_fn` mockado **não** é chamado; `overview_detected_language_pt` fica `"pt"` |
 | `test_overview_precisa_traducao_true_quando_traducao_falha` | `overview_needs_translation` é `True` quando a tradução falha (resultado igual ao original, idioma continua diferente de `"pt"`) |
 | `test_overview_precisa_traducao_false_quando_ja_em_portugues` | `overview_needs_translation` é `False` quando `overview_pt` já está em português (nativo do TMDB) |
+| `test_modo_changes_pula_traducao_quando_sinal_confirma_que_nao_mudou` | Mesmo com `overview_en` divergindo do salvo (falso-positivo de string), `changed_fields_by_id` confirmando "não mudou" reaproveita o cache sem chamar `translate_fn` |
+| `test_modo_changes_traduz_normalmente_quando_sinal_confirma_mudanca` | Com `changed_fields_by_id` confirmando mudança real, traduz normalmente via `translate_fn` |
 
 ### `TestAddTranslationsKeywordsPt`
 
@@ -298,6 +313,7 @@ Testa as funções individuais:
 | `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte com idioma detectado `"pt"` é copiada direto para `keywords_pt`, sem chamar `translate_fn`; `keywords_detected_language_pt` fica `"pt"` |
 | `test_keywords_precisa_traducao_true_quando_traducao_falha` | `keywords_needs_translation` é `True` quando a tradução falha |
 | `test_keywords_precisa_traducao_false_quando_vazias` | `keywords_needs_translation` é `False` quando `keywords` está vazia/nula (nada a traduzir) |
+| `test_modo_changes_pula_traducao_quando_tmdb_so_reordenou_keywords` | TMDB reordena a lista (string concatenada difere) mas `changed_fields_by_id` confirma que `plot_keywords` não mudou — reaproveita o cache sem chamar `translate_fn` |
 
 ### `TestAddTranslationsTaglinePt`
 
@@ -311,6 +327,7 @@ Testa as funções individuais:
 | `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte com idioma detectado `"pt"` é copiada direto para `tagline_pt`, sem chamar `translate_fn`; `tagline_detected_language_pt` fica `"pt"` |
 | `test_tagline_precisa_traducao_true_quando_traducao_falha` | `tagline_needs_translation` é `True` quando a tradução falha |
 | `test_tagline_precisa_traducao_false_quando_ja_em_portugues` | `tagline_needs_translation` é `False` quando `tagline_pt` já está em português (nativo do TMDB) |
+| `test_modo_changes_pula_traducao_quando_sinal_confirma_que_nao_mudou` | `changed_fields_by_id` confirmando "tagline não mudou" reaproveita o cache sem chamar `translate_fn`, mesmo com `tagline` divergindo do salvo |
 
 As classes abaixo testam funções auxiliares de mais baixo nível que o doc anterior não cobria:
 
@@ -356,8 +373,23 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 
 | Teste | O que verifica |
 |---|---|
-| `TestFetchIdsFromChangesFile.test_le_ids_do_arquivo_json` | Lê a lista de IDs do JSON gravado pela `lambda_api` no S3 |
-| `TestFetchIdsFromChangesFile.test_retorna_lista_vazia_se_chave_ids_ausente` | Retorna `[]` quando o JSON não tem a chave `ids` |
+| `TestFetchIdsFromChangesFile.test_le_payload_completo_do_arquivo_json` | Lê o payload completo (`ids`, `start_date`, `end_date`, `content_type`) do JSON gravado pela `lambda_api` no S3 — não só a lista de IDs |
+| `TestFetchIdsFromChangesFile.test_retorna_dict_sem_ids_quando_chave_ausente` | `resultado.get("ids", [])` fica `[]` quando o JSON não tem a chave `ids` |
+| `TestFetchTmdbIdChanges.test_calls_movie_endpoint_com_janela_correta` | URL contém `/movie/{id}/changes`; `start_date`/`end_date`/`page` corretos nos params |
+| `TestFetchTmdbIdChanges.test_calls_tv_endpoint` | URL contém `/tv/{id}/changes` |
+| `TestFetchTmdbIdChanges.test_retorna_changes_de_uma_unica_pagina` | Retorna a lista `changes[]` da resposta |
+| `TestFetchTmdbIdChanges.test_encerra_ao_ver_pagina_vazia_sem_total_pages` | Para de paginar ao ver `changes` vazio, mesmo sem `total_pages` na resposta (doc oficial não confirma esse campo aqui) |
+| `TestFetchTmdbIdChanges.test_pagina_ate_total_pages_quando_presente` | Concatena `changes[]` de todas as páginas quando `total_pages > 1` |
+| `TestFetchTmdbIdChanges.test_respeita_max_pages_como_protecao` | Não ultrapassa `max_pages` mesmo com páginas sempre não-vazias (proteção contra título com volume atípico) |
+| `TestExtractTranslatableChanges.test_overview_true_quando_mudou_no_idioma_de_origem` | `{"overview": True, ...}` quando há mudança de `overview` com `iso_639_1="en"` |
+| `TestExtractTranslatableChanges.test_keywords_true_quando_plot_keywords_mudou` | `key="plot_keywords"` da API mapeia para `"keywords"` do projeto |
+| `TestExtractTranslatableChanges.test_tagline_true_quando_mudou` | `{"tagline": True, ...}` quando há mudança de `tagline` |
+| `TestExtractTranslatableChanges.test_ignora_mudanca_em_idioma_diferente_da_origem` | Mudança de `overview` com `iso_639_1="pt"` (não a língua de origem) não conta como mudança do texto fonte |
+| `TestExtractTranslatableChanges.test_ignora_chaves_nao_traduziveis` | `key="status"` (ou qualquer chave fora do mapeamento) não afeta o resultado |
+| `TestExtractTranslatableChanges.test_lista_vazia_retorna_tudo_false` | Lista de changes vazia → todas as flags `False` |
+| `TestFetchTranslatableChangesForIds.test_monta_dicionario_por_id` | Monta `{id: {"overview"/"tagline"/"keywords": bool}}` para cada ID consultado |
+| `TestFetchTranslatableChangesForIds.test_falha_num_id_nao_derruba_o_lote` | Falha de `fetch_tmdb_id_changes` num ID não interrompe os demais — esse ID fica de fora do dicionário |
+| `TestFetchTranslatableChangesForIds.test_lista_vazia_retorna_dicionario_vazio` | Lista de IDs vazia → `{}`, sem chamar a API |
 | `TestResolveMatchedIdsForChangedIds.test_retorna_lista_vazia_para_lista_vazia` | Retorna `[]` para lista de IDs vazia, sem consultar o Athena |
 | `TestResolveMatchedIdsForChangedIds.test_retorna_ids_encontrados_na_tabela_discover` | Retorna a lista de IDs encontrados na tabela discover (a query já não devolve `year` usável, só confirmação de pertencimento) |
 | `TestResolveMatchedIdsForChangedIds.test_descarta_ids_nao_encontrados_e_grava_no_s3` | IDs sem match são descartados do retorno e a lista completa é gravada em `discarded_{data}.json` |
@@ -375,6 +407,8 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `TestProcessChangedIds.test_ids_sem_year_apos_collect_and_write_details_sao_excluidos_de_watch_providers_e_affected_years` | Id sem entrada no retorno de `collect_and_write_details` (falha de API) é excluído de `collect_and_write_watch_providers` e de `affected_years` |
 | `TestProcessChangedIds.test_retorna_lista_vazia_quando_collect_and_write_details_nao_retorna_nenhum_year` | Retorna `[]` e não chama watch providers/repair quando `collect_and_write_details` não resolve nenhum year |
 | `TestProcessChangedIds.test_ambiguidade_de_year_no_discover_nao_afeta_o_year_usado_para_watch_providers` | Reproduz o bug original (id com 2 years na discover) e prova que o year usado para watch providers/`affected_years` vem sempre de `collect_and_write_details`, nunca do year ambíguo da discover |
+| `TestProcessChangedIds.test_nao_consulta_changes_por_id_sem_start_date_end_date` | Sem `start_date`/`end_date`, `fetch_translatable_changes_for_ids` não é chamado e `collect_and_write_details` recebe `changed_fields_by_id=None` — comportamento de tradução idêntico ao de antes desta mudança |
+| `TestProcessChangedIds.test_consulta_changes_por_id_quando_start_date_end_date_informados` | Com `start_date`/`end_date`, `fetch_translatable_changes_for_ids` é chamado com os `matched_ids` e a janela corretos, e o resultado é repassado a `collect_and_write_details` |
 
 ## Como executar
 

@@ -113,7 +113,7 @@ def _run_main(
     ):
         mock_boto3.client.return_value = mock_s3
         mock_collect.side_effect = lambda api_key, s3_client, bucket, content_type: f"tmdb/changes/{content_type}/2026-01-01.json"
-        mock_fetch.return_value = [1, 2, 3]
+        mock_fetch.return_value = {"ids": [1, 2, 3], "start_date": "2025-12-25", "end_date": "2026-01-01"}
         if process_side_effect is not None:
             mock_process.side_effect = process_side_effect
         else:
