@@ -531,11 +531,25 @@ class TestRecommend:
         assert step1_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
         assert step3_call.kwargs["num_retries"] == agent._LLM_NUM_RETRIES
 
+    def test_passos_1_e_3_repassam_fallback_de_modelo_do_openrouter(self):
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror")
+
+        step1_call, step3_call = mock_completion.call_args_list
+        assert step1_call.kwargs["extra_body"] == {"models": agent._LLM_FALLBACK_MODELS}
+        assert step3_call.kwargs["extra_body"] == {"models": agent._LLM_FALLBACK_MODELS}
+
     def test_propaga_erro_do_provedor_mesmo_com_retry_configurado(self):
         error = litellm.exceptions.ServiceUnavailableError(
             message="Service is too busy",
-            llm_provider="deepseek",
-            model="deepseek/deepseek-v4-flash",
+            llm_provider="openrouter",
+            model="openrouter/deepseek/deepseek-v4.1-flash",
         )
         with (
             patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
