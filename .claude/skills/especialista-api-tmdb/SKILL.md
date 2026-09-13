@@ -61,6 +61,15 @@ Esta skill cobre o *gate* de consulta à API oficial; não repete o que já est�
 - **`watch_region=BR` / `results.BR`** usados para escopar plataformas de streaming ao Brasil —
   `collect_watch_providers_ref` (`lambda_api`) e `fetch_tmdb_watch_providers`
   (`app/glue_details/src/utils.py:1076`).
+- **`/movie/{id}/changes` e `/tv/{id}/changes`** (diferente de `/movie|tv/changes`, a lista bruta de IDs) —
+  usado por `fetch_tmdb_id_changes` no modo changes do `glue_details` para saber exatamente qual campo (`key`)
+  mudou por título na janela, e decidir se `overview`/`tagline`/`plot_keywords` (mapeado para "keywords" no
+  projeto, ver `_TRANSLATABLE_CHANGE_KEYS`) precisam de tradução de verdade — em vez de assumir que todo ID
+  reportado por `/movie|tv/changes` precisa retraduzir tudo. A doc oficial não confirma a taxonomia completa de
+  `key` nem se a resposta pagina com `total_pages` (só documenta `page`) — `fetch_tmdb_id_changes` trata isso
+  defensivamente (encerra ao ver uma página de `changes` vazia, com `max_pages` como proteção adicional).
+  Validado empiricamente com IDs reais de prod: `status`/`runtime` vêm como valor escalar direto em `value`;
+  `overview` vem com `iso_639_1`/`iso_3166_1` e o texto novo completo em `value` (não uma referência).
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 

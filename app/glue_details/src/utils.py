@@ -640,20 +640,105 @@ def _add_collection_name_pt(df: pd.DataFrame, api_key: str) -> pd.DataFrame:
     return df
 
 
+_TRANSLATION_MAX_ATTEMPTS = 3  # mesmo teto default de resolve_pt_translation (shared_utils.traducao)
+
+
+def _force_reuse_when_unflagged(
+    df: pd.DataFrame,
+    previous_df: pd.DataFrame | None,
+    changed_fields_by_id: dict[int, dict[str, bool]] | None,
+    field_key: str,
+    target_column: str,
+    translation_attempts_column: str,
+) -> pd.DataFrame:
+    """
+    Força o reaproveitamento da tradução salva para um campo (overview/tagline/
+    keywords) quando /movie|tv/{id}/changes confirma que ele NÃO mudou na janela do
+    modo changes — mesmo que o texto reextraído da API divirja byte-a-byte do salvo
+    (ex.: TMDB reordena a lista de keywords sem mudança real de conteúdo, o que
+    reuse_existing_translation trataria como "mudou" por comparar string).
+
+    Só age quando (a) há sinal do /changes por ID para aquele id E ele diz que
+    field_key não mudou, E (b) já existe uma tradução válida salva para reaproveitar
+    em previous_df. Sem sinal (changed_fields_by_id None, ou id ausente — inclui
+    sempre o fluxo normal por ano, que nunca passa esse parâmetro) ou sem tradução
+    salva, não faz nada — reuse_existing_translation/resolve_pt_translation decidem
+    como antes desta mudança.
+
+    Roda ANTES de reuse_existing_translation, para que a prioridade final seja:
+    tradução nativa do TMDB (já atribuída pelo chamador) > reaproveitamento forçado
+    por sinal do /changes (aqui) > cache por comparação de string > Google/AWS.
+
+    Args:
+        df:                    DataFrame do lote atual (modificado in-place).
+        previous_df:           Registros já persistidos (df_existing_delta), com a
+                               tradução salva a reaproveitar.
+        changed_fields_by_id:  {id: {"overview"/"tagline"/"keywords": bool}}, ou
+                               None quando não há sinal disponível.
+        field_key:             Chave em changed_fields_by_id correspondente a
+                               target_column (ex.: "overview").
+        target_column:         Coluna de tradução a preencher (ex.: "overview_pt").
+        translation_attempts_column: Contador de tentativas — marcado como esgotado
+                               nas linhas forçadas, para excluí-las da elegibilidade
+                               de resolve_pt_translation.
+
+    Returns:
+        df com target_column/translation_attempts_column atualizadas nas linhas
+        elegíveis (também modificado in-place).
+    """
+    if not changed_fields_by_id or previous_df is None or previous_df.empty:
+        return df
+    if not {"id", target_column}.issubset(previous_df.columns):
+        return df
+
+    unflagged_ids = {
+        item_id for item_id, flags in changed_fields_by_id.items() if flags.get(field_key) is False
+    }
+    if not unflagged_ids:
+        return df
+
+    cache = (
+        previous_df[["id", target_column]]
+        .drop_duplicates(subset="id", keep="last")
+        .set_index("id")[target_column]
+    )
+
+    if translation_attempts_column not in df.columns:
+        df[translation_attempts_column] = 0
+
+    is_unflagged = df["id"].isin(unflagged_ids)
+    old_target = df["id"].map(cache)
+    target_still_empty = df[target_column].isna() | (df[target_column] == "")
+    can_force = is_unflagged & old_target.notna() & (old_target != "") & target_still_empty
+
+    if can_force.any():
+        df.loc[can_force, target_column] = old_target[can_force]
+        df.loc[can_force, translation_attempts_column] = _TRANSLATION_MAX_ATTEMPTS
+        logger.info(
+            f"{can_force.sum()} registro(s) com '{field_key}' sem mudança confirmada pelo "
+            f"/changes por ID — reaproveitando tradução salva de '{target_column}' sem "
+            "chamar Google/AWS."
+        )
+    return df
+
+
 def _add_translations_pt(
     df: pd.DataFrame,
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
     overview_pt, overview_translation_attempts e overview_needs_translation ao
     DataFrame de detalhes.
 
-    Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb) e, em seguida, reaproveita
-    a tradução já existente no S3 quando overview_en não mudou desde o último
-    processamento (ver reuse_existing_translation) — ambas atribuídas a overview_pt
+    Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb); em seguida, no modo
+    changes, força reaproveitamento quando /movie|tv/{id}/changes confirma que
+    overview não mudou (ver _force_reuse_when_unflagged); depois reaproveita a
+    tradução já existente no S3 quando overview_en não mudou desde o último
+    processamento (ver reuse_existing_translation) — todas atribuídas a overview_pt
     antes de resolve_pt_translation assumir o resto do fluxo (detecção de idioma,
     cópia direta quando a fonte já é pt, tradução via Google/AWS, teto de tentativas
     e a coluna overview_needs_translation — ver docstring de resolve_pt_translation em
@@ -666,6 +751,9 @@ def _add_translations_pt(
     detect_fn = detect_fn or resolve_detect_language_fn()
 
     df["overview_pt"] = df["overview_pt_tmdb"]
+    df = _force_reuse_when_unflagged(
+        df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+    )
     df = reuse_existing_translation(df, previous_df, "overview_en", "overview_pt")
 
     df, _ = resolve_pt_translation(
@@ -688,20 +776,28 @@ def _add_translations_keywords_pt(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas keywords_detected_language_en, keywords_detected_language_pt,
     keywords_pt, keywords_translation_attempts e keywords_needs_translation ao
     DataFrame de detalhes.
 
-    Sem tradução nativa do TMDB para keywords (diferente de overview/tagline) — o
-    valor inicial vem só do cache (reuse_existing_translation) antes de
-    resolve_pt_translation assumir o resto do fluxo.
+    Sem tradução nativa do TMDB para keywords (diferente de overview/tagline). No modo
+    changes, força reaproveitamento quando /movie|tv/{id}/changes confirma que
+    keywords (key "plot_keywords" na API) não mudou (ver _force_reuse_when_unflagged)
+    — isso cobre justamente o caso em que a TMDB reordena a lista sem mudança real de
+    conteúdo, que a comparação de string de reuse_existing_translation trataria como
+    "mudou". Fora isso, o valor inicial vem só do cache (reuse_existing_translation)
+    antes de resolve_pt_translation assumir o resto do fluxo.
     """
     translate_fn = translate_fn or translate_text
     detect_fn = detect_fn or resolve_detect_language_fn()
 
     df["keywords_pt"] = None
+    df = _force_reuse_when_unflagged(
+        df, previous_df, changed_fields_by_id, "keywords", "keywords_pt", "keywords_translation_attempts",
+    )
     df = reuse_existing_translation(df, previous_df, "keywords", "keywords_pt")
 
     df, _ = resolve_pt_translation(
@@ -724,20 +820,26 @@ def _add_translations_tagline_pt(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
     tagline_pt, tagline_translation_attempts e tagline_needs_translation ao DataFrame
     de detalhes.
 
-    Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb) e, em seguida, reaproveita
-    a tradução já existente no S3 (ver _add_translations_pt sobre a mesma ordem para
-    overview) antes de resolve_pt_translation assumir o resto do fluxo.
+    Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb); em seguida, no modo
+    changes, força reaproveitamento quando /movie|tv/{id}/changes confirma que tagline
+    não mudou (ver _force_reuse_when_unflagged); e por fim reaproveita a tradução já
+    existente no S3 (ver _add_translations_pt sobre a mesma ordem para overview) antes
+    de resolve_pt_translation assumir o resto do fluxo.
     """
     translate_fn = translate_fn or translate_text
     detect_fn = detect_fn or resolve_detect_language_fn()
 
     df["tagline_pt"] = df["tagline_pt_tmdb"]
+    df = _force_reuse_when_unflagged(
+        df, previous_df, changed_fields_by_id, "tagline", "tagline_pt", "tagline_translation_attempts",
+    )
     df = reuse_existing_translation(df, previous_df, "tagline", "tagline_pt")
 
     df, _ = resolve_pt_translation(
@@ -763,6 +865,7 @@ def collect_and_write_details(
     table_name: str,
     database: str,
     translate_provider: str = "google",
+    changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
 ) -> dict[int, str]:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -781,6 +884,13 @@ def collect_and_write_details(
         translate_provider: "google" ou "aws" — ver resolve_translate_fn. Default "google"
                              (caminho automático via EventBridge); o serviço não
                              escolhido é usado automaticamente como fallback.
+        changed_fields_by_id: Só no modo changes (ver process_changed_ids/
+                             fetch_translatable_changes_for_ids) — {id: {"overview"/
+                             "tagline"/"keywords": bool}} vindo de /movie|tv/{id}/changes,
+                             usado por _force_reuse_when_unflagged para pular tradução
+                             de um campo quando a TMDB confirma que ele não mudou na
+                             janela. None (default) preserva o comportamento do fluxo
+                             normal por ano, que nunca tem esse sinal disponível.
 
     Returns:
         Dicionário {id: year} dos IDs efetivamente buscados e gravados nesta execução
@@ -854,9 +964,18 @@ def collect_and_write_details(
     detect_fn = resolve_detect_language_fn(
         detect_language_langdetect, detect_language_aws, provider=translate_provider,
     )
-    df = _add_translations_pt(df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn)
-    df = _add_translations_keywords_pt(df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn)
-    df = _add_translations_tagline_pt(df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn)
+    df = _add_translations_pt(
+        df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
+        changed_fields_by_id=changed_fields_by_id,
+    )
+    df = _add_translations_keywords_pt(
+        df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
+        changed_fields_by_id=changed_fields_by_id,
+    )
+    df = _add_translations_tagline_pt(
+        df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
+        changed_fields_by_id=changed_fields_by_id,
+    )
     if content_type == "movie":
         df = _add_collection_name_pt(df, api_key)
     # Campos intermediários: usados apenas para priorizar a tradução nativa do TMDB; não vão para o SOT
@@ -1312,23 +1431,162 @@ def _write_json_to_s3(bucket: str, key: str, data: dict) -> None:
     logger.info(f"Arquivo salvo: s3://{bucket}/{key}")
 
 
-def fetch_ids_from_changes_file(s3_path: str) -> list[int]:
+def fetch_ids_from_changes_file(s3_path: str) -> dict:
     """
-    Lê a lista de IDs mudados gravada pela lambda_api no bucket TEMP.
+    Lê o payload de changes gravado pela lambda_api no bucket TEMP.
+
+    Além da lista de IDs, o arquivo já traz start_date/end_date (a janela usada
+    pela lambda_api em /movie|tv/changes) — repassados por quem chama esta função
+    para fetch_translatable_changes_for_ids, que consulta /movie|tv/{id}/changes
+    na MESMA janela, por ID.
 
     Args:
         s3_path: Caminho completo (s3://bucket/key) do arquivo JSON de changes.
 
     Returns:
-        Lista de IDs inteiros sinalizados pela Changes API do TMDB.
+        Dicionário com "ids" (lista de IDs sinalizados pela Changes API),
+        "start_date" e "end_date" (a janela de busca usada), e "content_type".
     """
     bucket, key = s3_path.replace("s3://", "", 1).split("/", 1)
     s3_client = boto3.client("s3")
     obj = s3_client.get_object(Bucket=bucket, Key=key, **expected_bucket_owner_kwargs())
     data = json.loads(obj["Body"].read())
-    ids = data.get("ids", [])
-    logger.info(f"Changes: {len(ids)} IDs lidos de {s3_path}.")
-    return ids
+    logger.info(f"Changes: {len(data.get('ids', []))} IDs lidos de {s3_path}.")
+    return data
+
+
+def fetch_tmdb_id_changes(
+    api_key: str, content_type: str, item_id: int, start_date: str, end_date: str, max_pages: int = 10,
+) -> list[dict]:
+    """
+    Busca as mudanças reportadas pela TMDB para UM título específico, numa janela de data.
+
+    Diferente de /movie|tv/changes (lista bruta de IDs mudados, sem detalhe), esse
+    endpoint diz exatamente quais campos (`key`) mudaram no título e, para vários
+    tipos, o valor novo em si — usado por extract_translatable_changes para decidir
+    se overview/tagline/keywords realmente mudaram, em vez de assumir que sim para
+    todo ID que a Changes API reportou (ver process_changed_ids).
+
+    Args:
+        api_key:      Chave de API do TMDB.
+        content_type: "movie" ou "tv".
+        item_id:      ID do título.
+        start_date:   Início da janela (mesma usada na consulta a /movie|tv/changes).
+        end_date:     Fim da janela.
+        max_pages:    Proteção contra um título com volume atípico de mudanças.
+
+    Returns:
+        Lista de mudanças (`changes[]` da resposta), com todas as páginas concatenadas.
+    """
+    endpoint = "movie" if content_type == "movie" else "tv"
+    url = f"{TMDB_BASE_URL}/{endpoint}/{item_id}/changes"
+
+    all_changes: list[dict] = []
+    page = 1
+    while page <= max_pages:
+        data = tmdb_get(
+            url,
+            {"api_key": api_key, "start_date": start_date, "end_date": end_date, "page": page},
+        )
+        changes = data.get("changes", [])
+        if not changes:
+            break
+        all_changes.extend(changes)
+
+        # A doc oficial não confirma um "total_pages" nesta resposta (diferente de
+        # /movie|tv/changes) — encerra ao ver uma página vazia, com max_pages como
+        # proteção adicional caso a API pagine de outro jeito.
+        total_pages = data.get("total_pages")
+        if total_pages is not None and page >= total_pages:
+            break
+        page += 1
+
+    return all_changes
+
+
+# Mapeia o "key" da resposta de /movie|tv/{id}/changes para a coluna traduzível
+# correspondente neste projeto. "plot_keywords" é o nome usado pela TMDB para
+# mudanças de keywords (ver doc oficial) — a coluna aqui chama "keywords" para
+# bater com _add_translations_keywords_pt.
+_TRANSLATABLE_CHANGE_KEYS = {
+    "overview": "overview",
+    "tagline": "tagline",
+    "plot_keywords": "keywords",
+}
+
+
+def extract_translatable_changes(changes: list[dict], source_lang: str = "en") -> dict[str, bool]:
+    """
+    Resolve, a partir da lista bruta de /movie|tv/{id}/changes, quais colunas
+    traduzíveis (overview, tagline, keywords) tiveram uma mudança de conteúdo na
+    língua de origem dentro da janela consultada.
+
+    Usada para decidir se vale chamar Google/AWS Translate de novo para um campo, ou
+    se a tradução já salva pode ser reaproveitada com segurança mesmo que o texto
+    reextraído da API divirja byte-a-byte do salvo (ex.: TMDB reordena a lista de
+    keywords sem mudança real de conteúdo) — ver collect_and_write_details.
+
+    Args:
+        changes:     Lista de mudanças retornada por fetch_tmdb_id_changes.
+        source_lang: Código iso_639_1 do idioma de origem monitorado (mesmo idioma
+                     usado por fetch_tmdb_details, "en").
+
+    Returns:
+        Dicionário {"overview": bool, "tagline": bool, "keywords": bool} — True
+        quando a coluna teve alguma mudança reportada na língua de origem.
+    """
+    flags = dict.fromkeys(set(_TRANSLATABLE_CHANGE_KEYS.values()), False)
+    for change in changes:
+        column = _TRANSLATABLE_CHANGE_KEYS.get(change.get("key"))
+        if column is None:
+            continue
+        for item in change.get("items", []):
+            if item.get("iso_639_1") == source_lang:
+                flags[column] = True
+                break
+    return flags
+
+
+def fetch_translatable_changes_for_ids(
+    api_key: str, content_type: str, ids: list[int], start_date: str, end_date: str,
+) -> dict[int, dict[str, bool]]:
+    """
+    Consulta /movie|tv/{id}/changes para cada ID em paralelo e resolve quais colunas
+    traduzíveis (overview/tagline/keywords) realmente mudaram na janela.
+
+    Falha de rede/formato num ID individual não derruba o lote inteiro: esse ID
+    simplesmente fica de fora do dicionário retornado. collect_and_write_details
+    trata a ausência de sinal para um ID como "decidir do jeito de sempre" (cache por
+    comparação de string via reuse_existing_translation) — a ausência de sinal nunca é
+    interpretada como "nada mudou".
+
+    Args:
+        api_key:      Chave de API do TMDB.
+        content_type: "movie" ou "tv".
+        ids:          IDs já confirmados no catálogo (matched_ids).
+        start_date:   Início da janela usada pela Changes API.
+        end_date:     Fim da janela usada pela Changes API.
+
+    Returns:
+        Dicionário {id: {"overview": bool, "tagline": bool, "keywords": bool}}, só
+        para os IDs cuja consulta teve sucesso.
+    """
+    result: dict[int, dict[str, bool]] = {}
+    lock = threading.Lock()
+
+    def _fetch(item_id: int) -> None:
+        try:
+            changes = fetch_tmdb_id_changes(api_key, content_type, item_id, start_date, end_date)
+            flags = extract_translatable_changes(changes)
+            with lock:
+                result[item_id] = flags
+        except Exception as exc:  # noqa: BLE001 — falha de rede num ID não pode travar o lote
+            logger.warning(f"Falha ao consultar changes por ID para {item_id}: {exc}")
+
+    logger.info(f"Changes: consultando mudanças por ID de {len(ids)} títulos ({content_type})...")
+    _run_parallel(_fetch, ids)
+    logger.info(f"Changes: sinal de mudança por campo obtido para {len(result)}/{len(ids)} IDs.")
+    return result
 
 
 def resolve_matched_ids_for_changed_ids(
@@ -1438,6 +1696,8 @@ def process_changed_ids(
     s3_bucket_sot: str,
     s3_bucket_temp: str,
     translate_provider: str = "google",
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> list[str]:
     """
     Orquestra o enriquecimento dos IDs sinalizados pela Changes API do TMDB.
@@ -1453,6 +1713,13 @@ def process_changed_ids(
     duplicatas por ano afetado ao final, mesma proteção contra corrida de escrita já
     usada no fluxo normal quando year == end_year.
 
+    Quando start_date/end_date são informados (payload da lambda_api já traz os dois —
+    ver fetch_ids_from_changes_file), consulta /movie|tv/{id}/changes por ID matched
+    antes de traduzir, para pular Google/AWS Translate em campos que a própria TMDB
+    confirma que não mudaram na janela (ver fetch_translatable_changes_for_ids/
+    _force_reuse_when_unflagged) — sem isso (None), o comportamento de tradução
+    permanece exatamente o de antes desta mudança.
+
     Args:
         api_key:                Chave de API do TMDB.
         database:               Nome do banco de dados no Glue Catalog.
@@ -1464,6 +1731,9 @@ def process_changed_ids(
         s3_bucket_sot:          Nome do bucket SOT de destino.
         s3_bucket_temp:         Bucket S3 para resultados temporários do Athena.
         translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
+        start_date:             Início da janela usada por /movie|tv/changes (opcional;
+                                 sem ele, pula a consulta por ID e traduz como antes).
+        end_date:                Fim da janela usada por /movie|tv/changes.
 
     Returns:
         Lista de anos afetados (para acionar o Glue Data Quality por partição).
@@ -1479,6 +1749,16 @@ def process_changed_ids(
         logger.info("Changes: nenhum ID encontrado na tabela discover. Nada a processar.")
         return []
 
+    changed_fields_by_id: dict[int, dict[str, bool]] | None = None
+    if start_date and end_date:
+        changed_fields_by_id = fetch_translatable_changes_for_ids(
+            api_key=api_key,
+            content_type=content_type,
+            ids=matched_ids,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     logger.info(f"Changes: enriquecendo {len(matched_ids)} IDs ({content_type})...")
     id_to_year = collect_and_write_details(
         api_key=api_key,
@@ -1488,6 +1768,7 @@ def process_changed_ids(
         table_name=table_details,
         database=database,
         translate_provider=translate_provider,
+        changed_fields_by_id=changed_fields_by_id,
     )
     if not id_to_year:
         logger.warning(
