@@ -200,7 +200,7 @@ def main() -> None:
         logger.info("[%d/%d] Changes | %s", i, len(pendentes), content_type)
         try:
             s3_key = collect_changes_data(api_key, s3_client, s3_bucket_temp, content_type)
-            changed_ids = fetch_ids_from_changes_file(f"s3://{s3_bucket_temp}/{s3_key}")
+            changes_data = fetch_ids_from_changes_file(f"s3://{s3_bucket_temp}/{s3_key}")
             affected_years = process_changed_ids(
                 api_key=api_key,
                 database=database,
@@ -208,7 +208,9 @@ def main() -> None:
                 table_details=table_details,
                 table_watch_providers=table_watch_providers,
                 content_type=content_type,
-                changed_ids=changed_ids,
+                changed_ids=changes_data["ids"],
+                start_date=changes_data.get("start_date"),
+                end_date=changes_data.get("end_date"),
                 s3_bucket_sot=s3_bucket_sot,
                 s3_bucket_temp=s3_bucket_temp,
                 translate_provider=translate_provider,

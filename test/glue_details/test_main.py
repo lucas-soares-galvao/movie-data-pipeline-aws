@@ -101,6 +101,10 @@ _BASE_CHANGES = {
     "CHANGES_S3_PATH": "s3://my-temp/tmdb/changes/movie/2026-07-08.json",
 }
 
+_CHANGES_PAYLOAD = {
+    "ids": [10, 20], "content_type": "movie", "start_date": "2026-07-01", "end_date": "2026-07-08",
+}
+
 
 class TestChangesMode:
     """Testa o ramo acionado quando CHANGES_S3_PATH está presente (modo changes)."""
@@ -109,7 +113,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
+            patch.object(m, "fetch_ids_from_changes_file", return_value=_CHANGES_PAYLOAD),
             patch.object(m, "process_changed_ids", return_value=["2020", "2021"]),
             patch.object(m, "trigger_glue_job"),
             patch.object(m, "run_details_and_watch_providers_for_year") as mock_run,
@@ -121,7 +125,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]) as mock_fetch,
+            patch.object(m, "fetch_ids_from_changes_file", return_value=_CHANGES_PAYLOAD) as mock_fetch,
             patch.object(m, "process_changed_ids", return_value=[]),
             patch.object(m, "trigger_glue_job"),
         ):
@@ -132,7 +136,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
+            patch.object(m, "fetch_ids_from_changes_file", return_value=_CHANGES_PAYLOAD),
             patch.object(m, "process_changed_ids", return_value=[]) as mock_process,
             patch.object(m, "trigger_glue_job"),
         ):
@@ -145,6 +149,8 @@ class TestChangesMode:
                 table_watch_providers="tb_tmdb_watch_providers_movie_dev",
                 content_type="movie",
                 changed_ids=[10, 20],
+                start_date="2026-07-01",
+                end_date="2026-07-08",
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
                 translate_provider="aws",
@@ -154,7 +160,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
+            patch.object(m, "fetch_ids_from_changes_file", return_value=_CHANGES_PAYLOAD),
             patch.object(m, "process_changed_ids", return_value=["2020", "2021"]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
@@ -168,7 +174,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE_CHANGES),
             patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[]),
+            patch.object(m, "fetch_ids_from_changes_file", return_value={"ids": []}),
             patch.object(m, "process_changed_ids", return_value=[]),
             patch.object(m, "trigger_glue_job") as mock_trigger,
         ):
@@ -180,7 +186,7 @@ class TestChangesMode:
         with (
             patch.object(m, "get_parameters_glue", return_value=args),
             patch.object(m, "get_api_secret", return_value="key-123"),
-            patch.object(m, "fetch_ids_from_changes_file", return_value=[10, 20]),
+            patch.object(m, "fetch_ids_from_changes_file", return_value=_CHANGES_PAYLOAD),
             patch.object(m, "process_changed_ids", return_value=[]) as mock_process,
             patch.object(m, "trigger_glue_job"),
         ):

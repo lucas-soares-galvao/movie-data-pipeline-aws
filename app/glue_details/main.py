@@ -53,7 +53,7 @@ def main() -> None:
     # passa CHANGES_S3_PATH com a lista de IDs mudados. Não escreve na tabela
     # discover (nunca expande o catálogo).
     if changes_s3_path:
-        changed_ids = fetch_ids_from_changes_file(changes_s3_path)
+        changes_data = fetch_ids_from_changes_file(changes_s3_path)
         affected_years = process_changed_ids(
             api_key=api_key,
             database=database,
@@ -61,7 +61,9 @@ def main() -> None:
             table_details=table_details,
             table_watch_providers=table_watch_providers,
             content_type=media_type,
-            changed_ids=changed_ids,
+            changed_ids=changes_data["ids"],
+            start_date=changes_data.get("start_date"),
+            end_date=changes_data.get("end_date"),
             s3_bucket_sot=s3_bucket_sot,
             s3_bucket_temp=s3_bucket_temp,
             translate_provider=translate_provider,

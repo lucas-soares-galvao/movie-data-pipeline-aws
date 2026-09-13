@@ -342,6 +342,86 @@ class TestExtractPtBrTranslation:
         assert result["tagline_pt_tmdb"] == "Slogan BR"
 
 
+class TestForceReuseWhenUnflagged:
+    def test_reaproveita_quando_sinal_diz_que_nao_mudou(self):
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous_df = pd.DataFrame({"id": [1], "overview_pt": ["Sinopse antiga"]})
+        changed_fields_by_id = {1: {"overview": False, "tagline": False, "keywords": False}}
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert resultado["overview_pt"].iloc[0] == "Sinopse antiga"
+        assert resultado["overview_translation_attempts"].iloc[0] == u._TRANSLATION_MAX_ATTEMPTS
+
+    def test_nao_forca_quando_sinal_diz_que_mudou(self):
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous_df = pd.DataFrame({"id": [1], "overview_pt": ["Sinopse antiga"]})
+        changed_fields_by_id = {1: {"overview": True, "tagline": False, "keywords": False}}
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+
+    def test_nao_forca_sem_sinal_disponivel(self):
+        """changed_fields_by_id=None é o caso do fluxo normal por ano — nunca deve forçar nada."""
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous_df = pd.DataFrame({"id": [1], "overview_pt": ["Sinopse antiga"]})
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, None, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+
+    def test_nao_forca_quando_id_ausente_do_sinal(self):
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous_df = pd.DataFrame({"id": [1], "overview_pt": ["Sinopse antiga"]})
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, {}, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+
+    def test_nao_forca_quando_nao_ha_traducao_salva_para_reaproveitar(self):
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous_df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        changed_fields_by_id = {1: {"overview": False}}
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+
+    def test_nao_sobrescreve_valor_ja_preenchido(self):
+        """Prioridade: nativo do TMDB (já atribuído pelo chamador) > reaproveitamento forçado."""
+        df = pd.DataFrame({"id": [1], "overview_pt": ["Tradução nativa do TMDB"]})
+        previous_df = pd.DataFrame({"id": [1], "overview_pt": ["Sinopse antiga (cache)"]})
+        changed_fields_by_id = {1: {"overview": False}}
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert resultado["overview_pt"].iloc[0] == "Tradução nativa do TMDB"
+
+    def test_ignora_previous_df_com_schema_antigo_sem_a_coluna(self):
+        """Partição gravada antes da coluna existir — nada a reaproveitar, degrada
+        graciosamente (mesmo racional de reuse_existing_translation)."""
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous_df = pd.DataFrame({"id": [1]})  # sem a coluna "overview_pt"
+        changed_fields_by_id = {1: {"overview": False}}
+        resultado = u._force_reuse_when_unflagged(
+            df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+
+    def test_ignora_previous_df_vazio_ou_none(self):
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        changed_fields_by_id = {1: {"overview": False}}
+        resultado = u._force_reuse_when_unflagged(
+            df, pd.DataFrame(), changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+        resultado_none = u._force_reuse_when_unflagged(
+            df, None, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
+        )
+        assert pd.isna(resultado_none["overview_pt"].iloc[0])
+
+
 class TestAddTranslationsOverviewPt:
     def test_prioriza_tmdb_pt_br(self):
         df = pd.DataFrame({
@@ -493,6 +573,39 @@ class TestAddTranslationsOverviewPt:
         result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert bool(result["overview_needs_translation"].iloc[0]) is False
 
+    def test_modo_changes_pula_traducao_quando_sinal_confirma_que_nao_mudou(self):
+        """Mesmo com overview_en diferente do salvo (o que reuse_existing_translation
+        trataria como 'mudou'), o sinal do /changes por ID prevalece e reaproveita
+        a tradução salva sem chamar Google/AWS."""
+        df = pd.DataFrame({
+            "id": [1],
+            "overview_en": ["A great movie (texto ligeiramente diferente)"],
+            "overview_pt_tmdb": [None],
+        })
+        previous_df = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt": ["Sinopse já traduzida"],
+        })
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_pt(
+                df, detect_fn=lambda t: "en", previous_df=previous_df,
+                changed_fields_by_id={1: {"overview": False, "tagline": False, "keywords": False}},
+            )
+        assert result["overview_pt"].iloc[0] == "Sinopse já traduzida"
+        translate_fn.assert_not_called()
+
+    def test_modo_changes_traduz_normalmente_quando_sinal_confirma_mudanca(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Texto novo"], "overview_pt_tmdb": [None]})
+        previous_df = pd.DataFrame({"id": [1], "overview_en": ["Texto antigo"], "overview_pt": ["Tradução antiga"]})
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_pt(
+                df, detect_fn=lambda t: "en", previous_df=previous_df,
+                changed_fields_by_id={1: {"overview": True, "tagline": False, "keywords": False}},
+            )
+        assert result["overview_pt"].iloc[0] == "[PT] Texto novo"
+        translate_fn.assert_called_once()
+
 
 class TestAddTranslationsKeywordsPt:
     def test_traduz_keywords(self):
@@ -542,6 +655,22 @@ class TestAddTranslationsKeywordsPt:
         df = pd.DataFrame({"keywords": [None]})
         result = u._add_translations_keywords_pt(df, detect_fn=lambda t: None)
         assert bool(result["keywords_needs_translation"].iloc[0]) is False
+
+    def test_modo_changes_pula_traducao_quando_tmdb_so_reordenou_keywords(self):
+        """Cenário real: a TMDB reordena a lista sem mudança de conteúdo — a string
+        concatenada difere ("b, a" vs "a, b"), o que reuse_existing_translation
+        trataria como 'mudou', mas o sinal do /changes (plot_keywords não mudou)
+        prevalece e reaproveita o cache sem chamar Google/AWS."""
+        df = pd.DataFrame({"id": [1], "keywords": ["b, a"]})
+        previous_df = pd.DataFrame({"id": [1], "keywords": ["a, b"], "keywords_pt": ["b, a (traduzido)"]})
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_keywords_pt(
+                df, detect_fn=lambda t: "en", previous_df=previous_df,
+                changed_fields_by_id={1: {"overview": False, "tagline": False, "keywords": False}},
+            )
+        assert result["keywords_pt"].iloc[0] == "b, a (traduzido)"
+        translate_fn.assert_not_called()
 
 
 class TestAddTranslationsTaglinePt:
@@ -621,6 +750,18 @@ class TestAddTranslationsTaglinePt:
             return "pt" if t == "Um grande filme" else "en"
         result = u._add_translations_tagline_pt(df, detect_fn=detect_fn)
         assert bool(result["tagline_needs_translation"].iloc[0]) is False
+
+    def test_modo_changes_pula_traducao_quando_sinal_confirma_que_nao_mudou(self):
+        df = pd.DataFrame({"id": [1], "tagline": ["Slogan diferente"], "tagline_pt_tmdb": [None]})
+        previous_df = pd.DataFrame({"id": [1], "tagline": ["Slogan"], "tagline_pt": ["Slogan já traduzido"]})
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text", translate_fn):
+            result = u._add_translations_tagline_pt(
+                df, detect_fn=lambda t: "en", previous_df=previous_df,
+                changed_fields_by_id={1: {"overview": False, "tagline": False, "keywords": False}},
+            )
+        assert result["tagline_pt"].iloc[0] == "Slogan já traduzido"
+        translate_fn.assert_not_called()
 
 
 class TestExtractProductionCountriesIso:
@@ -1476,6 +1617,36 @@ class TestCollectAndWriteDetails:
             assert df_written["tagline_pt"].iloc[0] == "Tagline traduzida antes"
             assert df_written["keywords_pt"].iloc[0] == "Keywords traduzidas antes"
 
+    def test_modo_changes_nao_retraduz_quando_sinal_confirma_que_nao_mudou(self):
+        """Mesmo cenário de test_retraduz_apenas_campo_cuja_fonte_mudou (overview_en
+        difere do salvo) mas, no modo changes, changed_fields_by_id confirma que
+        overview não mudou de verdade na janela — reaproveita o cache em vez de
+        chamar Google/AWS, ao contrário do fluxo normal (sem esse sinal)."""
+        existing_df = pd.DataFrame([{
+            "id": 10, "year": "2022",
+            "overview_en": "Sinopse antiga, diferente", "overview_pt": "Traduzido antes",
+            "tagline": "Tagline serie", "tagline_pt": "Tagline traduzida antes",
+            "keywords": "drama", "keywords_pt": "Keywords traduzidas antes",
+            "processed_date": "2024-01-01",
+        }])
+        pt_conhecidos = {"Traduzido antes", "Tagline traduzida antes", "Keywords traduzidas antes"}
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.translate_text") as mock_traduzir,
+            patch("src.utils.detect_language_langdetect", side_effect=lambda t: "pt" if t in pt_conhecidos else "en"),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details(
+                "key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db",
+                changed_fields_by_id={10: {"overview": False, "tagline": False, "keywords": False}},
+            )
+            df_written = mock_write.call_args.kwargs["df"]
+
+        assert df_written["overview_pt"].iloc[0] == "Traduzido antes"
+        mock_traduzir.assert_not_called()
+
     def test_traducao_nativa_tmdb_sobrepoe_cache(self):
         """Tradução nativa do TMDB no run atual sobrepõe o cache, mesmo com fonte igual."""
         existing_df = pd.DataFrame([{
@@ -1910,12 +2081,16 @@ class TestFetchIdsFromChangesFile:
         mock_s3.get_object.return_value = {"Body": mock_body}
         return mock_s3
 
-    def test_le_ids_do_arquivo_json(self):
-        mock_s3 = self._mock_s3_with_body({"content_type": "movie", "ids": [1, 2, 3]})
+    def test_le_payload_completo_do_arquivo_json(self):
+        payload = {
+            "content_type": "movie", "ids": [1, 2, 3],
+            "start_date": "2026-07-01", "end_date": "2026-07-08",
+        }
+        mock_s3 = self._mock_s3_with_body(payload)
         with patch("src.utils.boto3.client", return_value=mock_s3):
             resultado = u.fetch_ids_from_changes_file("s3://meu-bucket/tmdb/changes/movie/2026-07-08.json")
 
-        assert resultado == [1, 2, 3]
+        assert resultado == payload
         mock_s3.get_object.assert_called_once_with(
             Bucket="meu-bucket", Key="tmdb/changes/movie/2026-07-08.json"
         )
@@ -1932,12 +2107,120 @@ class TestFetchIdsFromChangesFile:
             ExpectedBucketOwner="123456789012",
         )
 
-    def test_retorna_lista_vazia_se_chave_ids_ausente(self):
+    def test_retorna_dict_sem_ids_quando_chave_ausente(self):
         mock_s3 = self._mock_s3_with_body({"content_type": "movie"})
         with patch("src.utils.boto3.client", return_value=mock_s3):
             resultado = u.fetch_ids_from_changes_file("s3://meu-bucket/tmdb/changes/movie/2026-07-08.json")
 
+        assert resultado.get("ids", []) == []
+
+
+class TestFetchTmdbIdChanges:
+    def test_calls_movie_endpoint_com_janela_correta(self):
+        with patch("src.utils.tmdb_get", return_value={"changes": []}) as mock_get:
+            u.fetch_tmdb_id_changes("key-123", "movie", 603, "2026-09-06", "2026-09-12")
+        url, params = mock_get.call_args[0]
+        assert "/movie/603/changes" in url
+        assert params["start_date"] == "2026-09-06"
+        assert params["end_date"] == "2026-09-12"
+        assert params["page"] == 1
+
+    def test_calls_tv_endpoint(self):
+        with patch("src.utils.tmdb_get", return_value={"changes": []}) as mock_get:
+            u.fetch_tmdb_id_changes("key-123", "tv", 1399, "2026-09-06", "2026-09-12")
+        url, _ = mock_get.call_args[0]
+        assert "/tv/1399/changes" in url
+
+    def test_retorna_changes_de_uma_unica_pagina(self):
+        """Sem total_pages na resposta (não confirmado pela doc oficial para este
+        endpoint), a função só sabe que acabou ao ver uma página vazia — reflete o
+        comportamento real: page 1 traz os changes, page 2 vem vazia."""
+        changes = [{"key": "status", "items": [{"value": "Released"}]}]
+        with patch("src.utils.tmdb_get", side_effect=[{"changes": changes}, {"changes": []}]):
+            resultado = u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12")
+        assert resultado == changes
+
+    def test_encerra_ao_ver_pagina_vazia_sem_total_pages(self):
+        """A doc oficial nao confirma total_pages nesta resposta — encerra quando
+        'changes' vier vazio, mesmo sem esse campo."""
+        with patch("src.utils.tmdb_get", return_value={"changes": []}) as mock_get:
+            resultado = u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12")
         assert resultado == []
+        assert mock_get.call_count == 1
+
+    def test_pagina_ate_total_pages_quando_presente(self):
+        pagina_1 = {"changes": [{"key": "images", "items": [{"value": "a"}]}], "total_pages": 2}
+        pagina_2 = {"changes": [{"key": "cast", "items": [{"value": "b"}]}], "total_pages": 2}
+        with patch("src.utils.tmdb_get", side_effect=[pagina_1, pagina_2]) as mock_get:
+            resultado = u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12")
+        assert mock_get.call_count == 2
+        assert [c["key"] for c in resultado] == ["images", "cast"]
+
+    def test_respeita_max_pages_como_protecao(self):
+        pagina_sempre_cheia = {"changes": [{"key": "images", "items": []}]}  # sem total_pages
+        with patch("src.utils.tmdb_get", return_value=pagina_sempre_cheia) as mock_get:
+            u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12", max_pages=3)
+        assert mock_get.call_count == 3
+
+
+class TestExtractTranslatableChanges:
+    def test_overview_true_quando_mudou_no_idioma_de_origem(self):
+        changes = [{"key": "overview", "items": [{"iso_639_1": "en", "iso_3166_1": "US", "value": "novo texto"}]}]
+        resultado = u.extract_translatable_changes(changes)
+        assert resultado == {"overview": True, "tagline": False, "keywords": False}
+
+    def test_keywords_true_quando_plot_keywords_mudou(self):
+        changes = [{"key": "plot_keywords", "items": [{"iso_639_1": "en", "value": {"name": "heist"}}]}]
+        resultado = u.extract_translatable_changes(changes)
+        assert resultado["keywords"] is True
+
+    def test_tagline_true_quando_mudou(self):
+        changes = [{"key": "tagline", "items": [{"iso_639_1": "en", "value": "novo slogan"}]}]
+        resultado = u.extract_translatable_changes(changes)
+        assert resultado["tagline"] is True
+
+    def test_ignora_mudanca_em_idioma_diferente_da_origem(self):
+        """Uma edicao de overview em pt (ou qualquer idioma != source_lang) nao conta
+        como 'overview mudou em ingles' — o cache do texto fonte continua valido."""
+        changes = [{"key": "overview", "items": [{"iso_639_1": "pt", "iso_3166_1": "BR", "value": "..."}]}]
+        resultado = u.extract_translatable_changes(changes)
+        assert resultado["overview"] is False
+
+    def test_ignora_chaves_nao_traduziveis(self):
+        changes = [{"key": "status", "items": [{"iso_639_1": "", "value": "Released"}]}]
+        resultado = u.extract_translatable_changes(changes)
+        assert resultado == {"overview": False, "tagline": False, "keywords": False}
+
+    def test_lista_vazia_retorna_tudo_false(self):
+        assert u.extract_translatable_changes([]) == {"overview": False, "tagline": False, "keywords": False}
+
+
+class TestFetchTranslatableChangesForIds:
+    def test_monta_dicionario_por_id(self):
+        def fake_id_changes(api_key, content_type, item_id, start_date, end_date):
+            return [{"key": "overview", "items": [{"iso_639_1": "en"}]}] if item_id == 1 else []
+
+        with patch("src.utils.fetch_tmdb_id_changes", side_effect=fake_id_changes):
+            resultado = u.fetch_translatable_changes_for_ids("key", "movie", [1, 2], "2026-09-06", "2026-09-12")
+
+        assert resultado[1]["overview"] is True
+        assert resultado[2] == {"overview": False, "tagline": False, "keywords": False}
+
+    def test_falha_num_id_nao_derruba_o_lote(self):
+        def fake_id_changes(api_key, content_type, item_id, start_date, end_date):
+            if item_id == 1:
+                raise ConnectionError("falhou")
+            return []
+
+        with patch("src.utils.fetch_tmdb_id_changes", side_effect=fake_id_changes):
+            resultado = u.fetch_translatable_changes_for_ids("key", "movie", [1, 2], "2026-09-06", "2026-09-12")
+
+        assert 1 not in resultado
+        assert 2 in resultado
+
+    def test_lista_vazia_retorna_dicionario_vazio(self):
+        resultado = u.fetch_translatable_changes_for_ids("key", "movie", [], "2026-09-06", "2026-09-12")
+        assert resultado == {}
 
 
 class TestResolveMatchedIdsForChangedIds:
@@ -2156,6 +2439,43 @@ class TestProcessChangedIds:
         mock_wp.assert_not_called()
         mock_repair_details.assert_not_called()
         mock_repair_wp.assert_not_called()
+
+    def test_nao_consulta_changes_por_id_sem_start_date_end_date(self):
+        """Sem start_date/end_date (chamador não informou), pula a consulta por ID e
+        collect_and_write_details recebe changed_fields_by_id=None — comportamento
+        de tradução idêntico ao de antes desta mudança."""
+        with (
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch("src.utils.fetch_translatable_changes_for_ids") as mock_fetch_changes,
+            patch("src.utils.collect_and_write_details", return_value={1: "2020", 2: "2021"}) as mock_details,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            u.process_changed_ids(**self._kwargs())
+
+        mock_fetch_changes.assert_not_called()
+        assert mock_details.call_args.kwargs["changed_fields_by_id"] is None
+
+    def test_consulta_changes_por_id_quando_start_date_end_date_informados(self):
+        with (
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch(
+                "src.utils.fetch_translatable_changes_for_ids",
+                return_value={1: {"overview": True}},
+            ) as mock_fetch_changes,
+            patch("src.utils.collect_and_write_details", return_value={1: "2020", 2: "2021"}) as mock_details,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            u.process_changed_ids(**self._kwargs(start_date="2026-09-06", end_date="2026-09-12"))
+
+        mock_fetch_changes.assert_called_once_with(
+            api_key="key", content_type="movie", ids=[1, 2],
+            start_date="2026-09-06", end_date="2026-09-12",
+        )
+        assert mock_details.call_args.kwargs["changed_fields_by_id"] == {1: {"overview": True}}
 
     def test_ambiguidade_de_year_no_discover_nao_afeta_o_year_usado_para_watch_providers(self):
         """Reproduz o cenario do bug original: o id tem 2 years distintos na tabela
