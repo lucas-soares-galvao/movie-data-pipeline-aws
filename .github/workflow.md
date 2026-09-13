@@ -58,12 +58,13 @@ flowchart TD
 
 ### `_pipeline.yml` — Orquestrador
 
-Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job.
+Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job. `resolve-env` também roda em push de `feature/*` para conectar o job `test` a este hub no grafo do Actions (`needs: resolve-env`) — dependência puramente organizacional, igual à de `sonar`: `test` não consome `outputs.environment`.
 
 **Lógica de ambiente (job `resolve-env`):**
 
 | Branch | Ambiente |
 |---|---|
+| `feature/*` | `n/a` (não consumido) |
 | `develop` | `dev` |
 | `main` | `prod` |
 | `workflow_dispatch` | escolha manual |
