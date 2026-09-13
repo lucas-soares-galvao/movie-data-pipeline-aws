@@ -2131,18 +2131,18 @@ class TestFetchTmdbIdChanges:
         url, _ = mock_get.call_args[0]
         assert "/tv/1399/changes" in url
 
-    def test_retorna_changes_de_uma_unica_pagina(self):
+    def test_retorna_changes_de_uma_unica_pagina_sem_confirmar_pagina_vazia(self):
         """Sem total_pages na resposta (não confirmado pela doc oficial para este
-        endpoint), a função só sabe que acabou ao ver uma página vazia — reflete o
-        comportamento real: page 1 traz os changes, page 2 vem vazia."""
+        endpoint), a função aceita a página 1 como única e NÃO faz uma 2ª chamada só
+        para confirmar — trade-off aceito para não dobrar o custo desta consulta
+        (ver nota de implementação da função)."""
         changes = [{"key": "status", "items": [{"value": "Released"}]}]
-        with patch("src.utils.tmdb_get", side_effect=[{"changes": changes}, {"changes": []}]):
+        with patch("src.utils.tmdb_get", return_value={"changes": changes}) as mock_get:
             resultado = u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12")
         assert resultado == changes
+        assert mock_get.call_count == 1
 
-    def test_encerra_ao_ver_pagina_vazia_sem_total_pages(self):
-        """A doc oficial nao confirma total_pages nesta resposta — encerra quando
-        'changes' vier vazio, mesmo sem esse campo."""
+    def test_para_apos_uma_pagina_quando_changes_vazio_e_sem_total_pages(self):
         with patch("src.utils.tmdb_get", return_value={"changes": []}) as mock_get:
             resultado = u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12")
         assert resultado == []
@@ -2156,9 +2156,11 @@ class TestFetchTmdbIdChanges:
         assert mock_get.call_count == 2
         assert [c["key"] for c in resultado] == ["images", "cast"]
 
-    def test_respeita_max_pages_como_protecao(self):
-        pagina_sempre_cheia = {"changes": [{"key": "images", "items": []}]}  # sem total_pages
-        with patch("src.utils.tmdb_get", return_value=pagina_sempre_cheia) as mock_get:
+    def test_respeita_max_pages_como_protecao_quando_total_pages_e_maior(self):
+        """Proteção contra um título com volume atípico: mesmo com total_pages alto,
+        não ultrapassa max_pages."""
+        pagina = {"changes": [{"key": "images", "items": []}], "total_pages": 100}
+        with patch("src.utils.tmdb_get", return_value=pagina) as mock_get:
             u.fetch_tmdb_id_changes("key", "movie", 1, "2026-09-06", "2026-09-12", max_pages=3)
         assert mock_get.call_count == 3
 
@@ -2217,6 +2219,15 @@ class TestFetchTranslatableChangesForIds:
 
         assert 1 not in resultado
         assert 2 in resultado
+
+    def test_usa_concorrencia_dedicada_maior_que_a_busca_de_detalhe(self):
+        """Consulta leve (sem append_to_response) — pode usar mais workers que
+        _TMDB_MAX_WORKERS (reservado para fetch_tmdb_details) sem violar o rate
+        limit, já que as duas etapas rodam em sequência, nunca simultâneas."""
+        with patch("src.utils._run_parallel") as mock_run_parallel:
+            u.fetch_translatable_changes_for_ids("key", "movie", [1, 2], "2026-09-06", "2026-09-12")
+        assert mock_run_parallel.call_args.kwargs["max_workers"] == u._TMDB_CHANGES_MAX_WORKERS
+        assert u._TMDB_CHANGES_MAX_WORKERS > u._TMDB_MAX_WORKERS
 
     def test_lista_vazia_retorna_dicionario_vazio(self):
         resultado = u.fetch_translatable_changes_for_ids("key", "movie", [], "2026-09-06", "2026-09-12")
