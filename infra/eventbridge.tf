@@ -126,7 +126,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_changes_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-changes-weekly-${var.env}"
   description         = "Dispara a Lambda em modo changes para filmes (semanal, domingos, um dia após o discover)"
-  schedule_expression = "cron(50 22 ? * SUN *)" # Domingos às 09:00 UTC / 06:00 BRT
+  schedule_expression = "cron(00 09 ? * SUN *)" # Domingos às 09:00 UTC / 06:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -134,7 +134,7 @@ resource "aws_cloudwatch_event_rule" "lambda_api_movie_changes_weekly" {
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_changes_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-changes-weekly-${var.env}"
   description         = "Dispara a Lambda em modo changes para séries (semanal, domingos, um dia após o discover)"
-  schedule_expression = "cron(55 22 ? * SUN *)" # Domingos às 09:05 UTC / 06:05 BRT
+  schedule_expression = "cron(05 09 ? * SUN *)" # Domingos às 09:05 UTC / 06:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
