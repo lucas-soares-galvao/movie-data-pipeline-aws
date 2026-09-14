@@ -542,8 +542,26 @@ class TestRecommend:
             agent.recommend("filmes de terror")
 
         step1_call, step3_call = mock_completion.call_args_list
-        assert step1_call.kwargs["extra_body"] == {"models": agent._LLM_FALLBACK_MODELS}
-        assert step3_call.kwargs["extra_body"] == {"models": agent._LLM_FALLBACK_MODELS}
+        expected_extra_body = {
+            "reasoning": {"enabled": False},
+            "models": agent._LLM_FALLBACK_MODELS,
+        }
+        assert step1_call.kwargs["extra_body"] == expected_extra_body
+        assert step3_call.kwargs["extra_body"] == expected_extra_body
+
+    def test_passos_1_e_3_desabilitam_reasoning_tokens(self):
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}
+            )
+            agent.recommend("filmes de terror")
+
+        step1_call, step3_call = mock_completion.call_args_list
+        assert step1_call.kwargs["extra_body"]["reasoning"] == {"enabled": False}
+        assert step3_call.kwargs["extra_body"]["reasoning"] == {"enabled": False}
 
     def test_propaga_erro_do_provedor_mesmo_com_retry_configurado(self):
         error = litellm.exceptions.ServiceUnavailableError(
@@ -597,11 +615,15 @@ class TestRecommend:
         with (
             patch("src.agent.search_titles_spec") as mock_search,
             patch("src.agent.litellm.completion", return_value=step1_no_tool),
+            patch("src.agent.logger") as mock_logger,
         ):
             result = agent.recommend("filmes de terror")
 
         assert result == []
         mock_search.assert_not_called()
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["preference"] == "filmes de terror"
 
     def test_retorna_lista_vazia_se_argumentos_da_tool_call_sao_json_invalido(self):
         tool_call = MagicMock()
@@ -692,6 +714,7 @@ class TestRecommend:
         with (
             patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
             patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content=""
@@ -699,11 +722,14 @@ class TestRecommend:
             result = agent.recommend("filmes de terror")
 
         assert result[0]["reason"] == ""
+        mock_logger.warning.assert_called_once()
+        assert "content vazio" in mock_logger.warning.call_args.args[0]
 
     def test_motivo_vazio_se_llm_retorna_json_invalido(self):
         with (
             patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
             patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
         ):
             mock_completion.side_effect = _mock_litellm(
                 {"where_clause": "media_type = 'movie'"}, reason_content="não é json"
@@ -711,6 +737,9 @@ class TestRecommend:
             result = agent.recommend("filmes de terror")
 
         assert result[0]["reason"] == ""
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["content"] == "não é json"
 
     def test_motivo_funciona_com_id_como_string(self):
         reason_json = json.dumps(
@@ -752,6 +781,47 @@ class TestRecommend:
             result = agent.recommend("filmes de terror")
 
         assert result[0]["reason"] == ""
+
+    def test_loga_aviso_quando_llm_nao_retorna_motivo_para_todos_os_titulos(self):
+        segundo_titulo = dict(FAKE_TITLE, title="O Exorcista")
+        reason_json = json.dumps(
+            {"titles": [{"id": 0, "reason": "Motivo só do primeiro título."}]}
+        )
+        with (
+            patch(
+                "src.agent.search_titles_spec",
+                return_value=[FAKE_TITLE, segundo_titulo],
+            ),
+            patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"}, reason_content=reason_json
+            )
+            result = agent.recommend("filmes de terror")
+
+        assert result[0]["reason"] == "Motivo só do primeiro título."
+        assert result[1]["reason"] == ""
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["missing_count"] == 1
+        assert extra["total_titles"] == 2
+
+    def test_nao_loga_aviso_quando_llm_retorna_motivo_para_todos_os_titulos(self):
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"},
+                reason_content=json.dumps(
+                    {"titles": [{"id": 0, "reason": "Nota alta e clássico do gênero."}]}
+                ),
+            )
+            agent.recommend("filmes de terror")
+
+        mock_logger.warning.assert_not_called()
 
     def test_payload_do_motivo_inclui_campos_de_ficha_tecnica(self):
         fake_title_com_ficha = dict(

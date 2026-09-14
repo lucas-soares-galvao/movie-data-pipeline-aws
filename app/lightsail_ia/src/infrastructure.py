@@ -17,6 +17,38 @@ from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
+# Atributos padrão de um logging.LogRecord — qualquer chave fora desta lista, presente
+# em record.__dict__, veio de um extra={...} passado pelo chamador do logger.
+_STANDARD_LOG_RECORD_ATTRS = frozenset({
+    "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+    "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+    "created", "msecs", "relativeCreated", "thread", "threadName",
+    "processName", "process", "message", "asctime", "taskName",
+})
+
+
+class _ExtraFieldsFormatter(logging.Formatter):
+    """Formatter que anexa ao texto do log os campos passados via extra=.
+
+    O Formatter padrão do Python só emite '%(message)s' — qualquer dado passado
+    via extra={...} (ex: logger.warning("x", extra={"content": ...})) fica só
+    como atributo do LogRecord em memória e nunca chega ao CloudWatch, a menos
+    que o formatter do handler o inclua explicitamente. Sem isso, os campos de
+    diagnóstico de agent.py (content/finish_reason/model_used etc.) e os já
+    existentes (token usage, latência por passo, cache hit) somem silenciosamente.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = super().format(record)
+        extra_fields = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _STANDARD_LOG_RECORD_ATTRS
+        }
+        if not extra_fields:
+            return base
+        return f"{base} | {json.dumps(extra_fields, ensure_ascii=False, default=str)}"
+
 
 def load_filmbot_password() -> None:
     """Busca filmbot_password do Secrets Manager e escreve em secrets.toml."""
@@ -58,6 +90,7 @@ def setup_cloudwatch_logging() -> None:
         boto3_client=boto3.client("logs", region_name=os.getenv("AWS_REGION", "sa-east-1")),
         create_log_group=False,
     )
+    cw_handler.setFormatter(_ExtraFieldsFormatter())
     logging.root.addHandler(cw_handler)
     logging.root.setLevel(logging.ERROR)
 

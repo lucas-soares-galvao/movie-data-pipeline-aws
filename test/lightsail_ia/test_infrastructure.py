@@ -1,6 +1,7 @@
 """test_infrastructure.py — testes do bootstrap de processo e rate limiting do FilmBot."""
 
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -38,6 +39,54 @@ class TestSetupCloudwatchLogging:
         with patch("src.infrastructure.watchtower.CloudWatchLogHandler") as mock_handler:
             infrastructure.setup_cloudwatch_logging()
         mock_handler.assert_not_called()
+
+    def test_registra_formatter_de_extra_fields_no_handler(self, monkeypatch):
+        monkeypatch.setenv("CLOUDWATCH_LOG_GROUP", "meu-log-group")
+        infrastructure.setup_cloudwatch_logging.clear()
+        with (
+            patch("src.infrastructure.watchtower.CloudWatchLogHandler") as mock_handler,
+            patch("src.infrastructure.logging.root.addHandler"),
+        ):
+            infrastructure.setup_cloudwatch_logging()
+        mock_handler.return_value.setFormatter.assert_called_once()
+        formatter = mock_handler.return_value.setFormatter.call_args.args[0]
+        assert isinstance(formatter, infrastructure._ExtraFieldsFormatter)
+
+
+class TestExtraFieldsFormatter:
+    def test_anexa_campos_de_extra_a_mensagem(self):
+        record = logging.LogRecord(
+            name="src.agent",
+            level=logging.WARNING,
+            pathname=__file__,
+            lineno=1,
+            msg="Passo 3 retornou JSON inválido",
+            args=(),
+            exc_info=None,
+        )
+        record.content = "resposta truncada..."
+        record.finish_reason = "length"
+
+        resultado = infrastructure._ExtraFieldsFormatter().format(record)
+
+        assert resultado.startswith("Passo 3 retornou JSON inválido | ")
+        extra = json.loads(resultado.split(" | ", 1)[1])
+        assert extra == {"content": "resposta truncada...", "finish_reason": "length"}
+
+    def test_nao_anexa_separador_sem_campos_extras(self):
+        record = logging.LogRecord(
+            name="src.agent",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="Sem dados extras",
+            args=(),
+            exc_info=None,
+        )
+
+        resultado = infrastructure._ExtraFieldsFormatter().format(record)
+
+        assert resultado == "Sem dados extras"
 
 
 class TestGetClientIp:
