@@ -46,6 +46,7 @@ class TestSetupCloudwatchLogging:
         with (
             patch("src.infrastructure.watchtower.CloudWatchLogHandler") as mock_handler,
             patch("src.infrastructure.logging.root.addHandler"),
+            patch("src.infrastructure.logging.root.setLevel"),
         ):
             infrastructure.setup_cloudwatch_logging()
         mock_handler.return_value.setFormatter.assert_called_once()
