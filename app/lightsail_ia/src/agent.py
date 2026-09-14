@@ -101,7 +101,16 @@ _LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/deepseek/deepseek-v4.1-flash")
 # requisição quando o modelo principal está fora do ar. Só tem efeito com
 # LLM_MODEL="openrouter/...": outros provedores ignoram o campo "models" do extra_body.
 _LLM_FALLBACK_MODELS = [m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "qwen/qwen3.8-flash").split(",") if m.strip()]
-_LLM_EXTRA_KWARGS = {"extra_body": {"models": _LLM_FALLBACK_MODELS}} if _LLM_FALLBACK_MODELS else {}
+# Desabilita reasoning/thinking tokens (parâmetro nativo do OpenRouter, ver
+# https://openrouter.ai/docs/use-cases/reasoning-tokens): esses tokens contam como
+# output/cobrança mesmo sem aparecer em `content` — desperdício puro nos Passos 1 e 3,
+# que só precisam de saída estruturada/curta, não de raciocínio em cadeia. Observado em
+# produção consumindo boa parte do orçamento de max_tokens do Passo 3 e causando
+# finish_reason="length" com JSON de saída incompleto.
+_LLM_EXTRA_BODY = {"reasoning": {"enabled": False}}
+if _LLM_FALLBACK_MODELS:
+    _LLM_EXTRA_BODY["models"] = _LLM_FALLBACK_MODELS
+_LLM_EXTRA_KWARGS = {"extra_body": _LLM_EXTRA_BODY}
 _LLM_NUM_RETRIES = 3
 # Timeout por tentativa (não pelo total incluindo retries). Sem isso, o padrão do
 # litellm é 600s por tentativa — uma chamada travada (não um erro, só sem resposta)
@@ -119,13 +128,13 @@ _LLM_TIMEOUT_STEP3_SECONDS = 90
 # max_tokens generoso o bastante pra nunca truncar uma resposta normal — só existe
 # pra dar um teto à latência de cauda de uma resposta anormalmente verbosa.
 _LLM_MAX_TOKENS_STEP1 = 300
-_LLM_MAX_TOKENS_STEP3 = 1500
+_LLM_MAX_TOKENS_STEP3 = 3000
 # Quantidade padrão de recomendações: entre 6 e 9 (ver descrição de "limit" na TOOL),
 # ao invés do máximo de 15 sempre. Motivo: o Passo 3 gera um motivo por título (saída
 # de LLM, sequencial e o gargalo mais provável de latência), então recomendar menos
 # títulos por padrão corta quase pela metade o texto gerado. O usuário ainda pode
 # pedir explicitamente uma quantidade maior, até o teto de 15.
-_DEFAULT_RECOMMENDATION_COUNT = 8
+_DEFAULT_RECOMMENDATION_COUNT = 9
 # Tamanho máximo do overview enviado ao Passo 3: overview é o campo que mais pesa no
 # payload (sinopses longas não ajudam a justificar melhor a recomendação do que um
 # trecho já dá).
@@ -719,6 +728,14 @@ def recommend(preference: str) -> list[dict]:
         # function.arguments: string JSON com os argumentos que o LLM escolheu
         tool_calls = response.choices[0].message.tool_calls or []
         if not tool_calls:
+            logger.warning(
+                "Passo 1 não chamou a tool — nenhum filtro extraído",
+                extra={
+                    "preference": preference,
+                    "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                    "model_used": getattr(response, "model", None),
+                },
+            )
             return []
         tool_call = tool_calls[0]
         try:
@@ -790,6 +807,13 @@ def recommend(preference: str) -> list[dict]:
         content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
     if not content:
+        logger.warning(
+            "Passo 3 retornou content vazio — motivos ficarão em branco",
+            extra={
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "model_used": getattr(response, "model", None),
+            },
+        )
         for record in formatted_records:
             record["reason"] = ""
         return formatted_records
@@ -797,6 +821,14 @@ def recommend(preference: str) -> list[dict]:
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
+        logger.warning(
+            "Passo 3 retornou JSON inválido — motivos ficarão em branco",
+            extra={
+                "content": content[:500],
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "model_used": getattr(response, "model", None),
+            },
+        )
         for record in formatted_records:
             record["reason"] = ""
         return formatted_records
@@ -814,5 +846,18 @@ def recommend(preference: str) -> list[dict]:
                 continue
     for i, record in enumerate(formatted_records):
         record["reason"] = reasons_by_id.get(i, "")
+
+    missing_count = len(formatted_records) - len(reasons_by_id)
+    if missing_count > 0:
+        logger.warning(
+            "Passo 3 não retornou motivo para todos os títulos",
+            extra={
+                "missing_count": missing_count,
+                "total_titles": len(formatted_records),
+                "content": content[:500],
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "model_used": getattr(response, "model", None),
+            },
+        )
 
     return formatted_records
