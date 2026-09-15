@@ -15,6 +15,18 @@ As regras são agrupadas por dimensão (Completude, Unicidade, Validade, Integri
 para facilitar a classificação automática feita em utils.py.
 """
 
+# Regras DQDL repetidas em várias tabelas — extraídas em constantes (python:S1192)
+# para evitar duplicação de literais e ter um único ponto de ajuste por regra.
+_ID_NOT_NULL = 'IsComplete "id"'
+_NAME_NOT_NULL = 'IsComplete "name"'
+_ID_UNIQUE = 'IsUnique "id"'
+_VOTE_AVERAGE_MIN = 'ColumnValues "vote_average" >= 0'
+_VOTE_AVERAGE_MAX = 'ColumnValues "vote_average" <= 10'
+_POPULARITY_MIN = 'ColumnValues "popularity" >= 0'
+_PROVIDER_ID_NOT_NULL = 'IsComplete "provider_id"'
+_PROVIDER_NAME_NOT_NULL = 'IsComplete "provider_name"'
+_ROWCOUNT_POSITIVE = "RowCount > 0"
+
 rulesets_dq = {
     "configuration_countries": [
         # Completude
@@ -26,7 +38,7 @@ rulesets_dq = {
         'IsUnique "iso_3166_1"',
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "configuration_languages": [
         # Completude
@@ -37,137 +49,137 @@ rulesets_dq = {
         'IsUnique "iso_639_1"',
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "genre_movie": [
         # Completude
-        'IsComplete "id"',
-        'IsComplete "name"',
+        _ID_NOT_NULL,
+        _NAME_NOT_NULL,
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "genre_tv": [
         # Completude
-        'IsComplete "id"',
-        'IsComplete "name"',
+        _ID_NOT_NULL,
+        _NAME_NOT_NULL,
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "discover_movie": [
         # Completude
-        'IsComplete "id"',
+        _ID_NOT_NULL,
         'IsComplete "title"',
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
-        'ColumnValues "vote_average" >= 0',
-        'ColumnValues "vote_average" <= 10',
-        'ColumnValues "popularity" >= 0',
+        _VOTE_AVERAGE_MIN,
+        _VOTE_AVERAGE_MAX,
+        _POPULARITY_MIN,
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "discover_tv": [
         # Completude
-        'IsComplete "id"',
-        'IsComplete "name"',
+        _ID_NOT_NULL,
+        _NAME_NOT_NULL,
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
-        'ColumnValues "vote_average" >= 0',
-        'ColumnValues "vote_average" <= 10',
-        'ColumnValues "popularity" >= 0',
+        _VOTE_AVERAGE_MIN,
+        _VOTE_AVERAGE_MAX,
+        _POPULARITY_MIN,
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "details_movie": [
         # Completude
-        'IsComplete "id"',
+        _ID_NOT_NULL,
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
         'ColumnValues "runtime" >= 0',
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "details_tv": [
         # Completude
-        'IsComplete "id"',
+        _ID_NOT_NULL,
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
         'ColumnValues "number_of_seasons" >= 1',
         'ColumnValues "number_of_episodes" >= 1',
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "watch_providers_movie": [
         # Completude
-        'IsComplete "id"',
-        'IsComplete "provider_id"',
-        'IsComplete "provider_name"',
+        _ID_NOT_NULL,
+        _PROVIDER_ID_NOT_NULL,
+        _PROVIDER_NAME_NOT_NULL,
         'IsComplete "provider_type"',
         # Unicidade
         'Uniqueness "id" "provider_id" "provider_type" = 1',
         # Validade
         'ColumnValues "provider_type" in ["flatrate", "rent", "buy"]',
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "watch_providers_tv": [
         # Completude
-        'IsComplete "id"',
-        'IsComplete "provider_id"',
-        'IsComplete "provider_name"',
+        _ID_NOT_NULL,
+        _PROVIDER_ID_NOT_NULL,
+        _PROVIDER_NAME_NOT_NULL,
         'IsComplete "provider_type"',
         # Unicidade
         'Uniqueness "id" "provider_id" "provider_type" = 1',
         # Validade
         'ColumnValues "provider_type" in ["flatrate", "rent", "buy"]',
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "watch_providers_ref_movie": [
         # Completude
-        'IsComplete "provider_id"',
-        'IsComplete "provider_name"',
+        _PROVIDER_ID_NOT_NULL,
+        _PROVIDER_NAME_NOT_NULL,
         'IsComplete "canonical_name"',
         # Unicidade
         'IsUnique "provider_id"',
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "watch_providers_ref_tv": [
         # Completude
-        'IsComplete "provider_id"',
-        'IsComplete "provider_name"',
+        _PROVIDER_ID_NOT_NULL,
+        _PROVIDER_NAME_NOT_NULL,
         'IsComplete "canonical_name"',
         # Unicidade
         'IsUnique "provider_id"',
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "now_playing_movie": [
         # Completude
-        'IsComplete "id"',
+        _ID_NOT_NULL,
         'IsComplete "theater_start_date"',
         'IsComplete "theater_end_date"',
         # Unicidade
-        'IsUnique "id"',
+        _ID_UNIQUE,
         # Validade
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
     "discover_unified": [
         # Completude
-        'IsComplete "id"',
+        _ID_NOT_NULL,
         'IsComplete "media_type"',
         'IsComplete "title"',
         'IsComplete "year"',
@@ -175,10 +187,10 @@ rulesets_dq = {
         'Uniqueness "id" "media_type" = 1',
         # Validade
         'ColumnValues "media_type" in ["movie", "tv"]',
-        'ColumnValues "vote_average" >= 0',
-        'ColumnValues "vote_average" <= 10',
-        'ColumnValues "popularity" >= 0',
+        _VOTE_AVERAGE_MIN,
+        _VOTE_AVERAGE_MAX,
+        _POPULARITY_MIN,
         # Integridade
-        "RowCount > 0",
+        _ROWCOUNT_POSITIVE,
     ],
 }

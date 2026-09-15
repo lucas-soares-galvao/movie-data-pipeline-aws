@@ -136,8 +136,8 @@ def send_gmail_email(to_email: str, subject: str, body: str) -> bool:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=_SMTP_TIMEOUT_SECONDS) as server:
             server.login(sender_email, app_password)
             server.send_message(message)
-    except Exception as exc:  # noqa: BLE001 — falha ao enviar não deve propagar pro Cognito
-        logger.error("Falha ao enviar e-mail para '%s': %s", to_email, exc)
+    except Exception:  # falha ao enviar não deve propagar pro Cognito
+        logger.exception("Falha ao enviar e-mail para '%s'", to_email)
         return False
     else:
         logger.info("E-mail enviado para '%s' (assunto: '%s').", to_email, subject)

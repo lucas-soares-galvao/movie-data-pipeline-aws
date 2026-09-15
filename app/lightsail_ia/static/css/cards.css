@@ -49,6 +49,14 @@
   .grid-titles {
     grid-template-columns: 1fr;
     gap: 12px;
+    /* Sem isso o único card da fileira esticaria pra largura inteira do container — em
+       janelas largas (ex. 1000-1200px, onde cabe folga mas não os 3 lado a lado) o pôster
+       (16:9, width:100%) ficaria desproporcionalmente grande. max-width (no .card abaixo)
+       trava o card num tamanho "normal" (mesma ordem de grandeza que ele já tem lado a
+       lado no desktop) e justify-items centraliza — em celular real (viewport mais
+       estreito que isso) não muda nada, o card já ocupa a largura toda disponível de
+       qualquer forma. */
+    justify-items: center;
   }
   .grid-titles img { aspect-ratio: 16 / 9; }
 
@@ -61,15 +69,6 @@
     text-align: center;
   }
 
-  /* Sem isso o único card da fileira esticaria pra largura inteira do container — em
-     janelas largas (ex. 1000-1200px, onde cabe folga mas não os 3 lado a lado) o pôster
-     (16:9, width:100%) ficaria desproporcionalmente grande. max-width trava o card num
-     tamanho "normal" (mesma ordem de grandeza que ele já tem lado a lado no desktop) e
-     justify-items centraliza — em celular real (viewport mais estreito que isso) não muda
-     nada, o card já ocupa a largura toda disponível de qualquer forma. */
-  .grid-titles {
-    justify-items: center;
-  }
   .card {
     width: 100%;
     max-width: 460px;
@@ -199,27 +198,17 @@
    cinema-row ficam com um respiro menor (4px, não zero) que as demais seções (16px) —
    quando aparecem, ficam mais coladas na meta-line, como continuação do mesmo bloco de
    "fatos rápidos" (data/tipo, duração, em cartaz), não como seção nova. */
-.row-reason {
-  margin-top: 16px;
-}
-.meta-line {
+.row-reason,
+.meta-line,
+.genres-container,
+.providers-row,
+.row-synopsis,
+.row-people {
   margin-top: 16px;
 }
 .duration-row,
 .cinema-row {
   margin-top: 4px;
-}
-.genres-container {
-  margin-top: 16px;
-}
-.providers-row {
-  margin-top: 16px;
-}
-.row-synopsis {
-  margin-top: 16px;
-}
-.row-people {
-  margin-top: 16px;
 }
 
 /* Alinhamento entre os 3 cards de uma fileira, só no topo do card (pôster) — todo o resto

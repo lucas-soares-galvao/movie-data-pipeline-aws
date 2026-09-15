@@ -692,86 +692,91 @@ def _call_llm_step3(preference: str, titles_for_llm: list[dict]) -> object:
 # PASSO 1 + 2 + 3: Orquestração do agente (função principal)
 # ==============================================================================
 
-def recommend(preference: str) -> list[dict]:
-    """
-    Orquestra os 3 passos do agente e retorna uma lista de recomendações.
-
-    Esta é a única função chamada pelo app.py. Ela coordena todo o fluxo:
-    LLM extrai filtros → Athena consulta → formatação Python → LLM gera motivos.
-
-    Args:
-        preference: Texto em linguagem natural do usuário.
-                     Ex: "filmes de terror dos anos 2010"
+def _resolve_where_args(preference: str) -> dict | None:
+    """Passo 1: obtém os filtros SQL via LLM (ou cache, ver _get_cached_where).
 
     Returns:
-        Lista de dicionários, cada um com: title, type, year, genres, overview,
-        rating, poster_url, backdrop_url, duration, streaming_providers,
-        streaming_provider_logos, rent_buy_providers, rent_buy_provider_logos,
-        in_theaters, theater_end_date, next_episode_season_number, next_episode_number,
-        next_episode_date, reason, highlighted_genres, highlighted_providers.
-        Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
+        Dict de argumentos da tool call (where_clause etc.), ou None se o LLM não
+        chamou a tool ou devolveu JSON inválido nos argumentos — recommend() trata
+        isso retornando lista vazia (nenhum filtro extraído).
     """
-
-    # ------------------------------------------------------------------
-    # PASSO 1: LLM analisa o texto e decide os filtros SQL (com cache)
-    # ------------------------------------------------------------------
     cached_args = _get_cached_where(preference)
-
     if cached_args is not None:
-        args = cached_args
-    else:
-        step1_start = time.time()
-        response = _call_llm_step1(preference)
-        _log_step_latency("step1_where", time.time() - step1_start)
+        return cached_args
 
-        # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
-        # function.arguments: string JSON com os argumentos que o LLM escolheu
-        tool_calls = response.choices[0].message.tool_calls or []
-        if not tool_calls:
-            logger.warning(
-                "Passo 1 não chamou a tool — nenhum filtro extraído",
-                extra={
-                    "preference": preference,
-                    "finish_reason": getattr(response.choices[0], "finish_reason", None),
-                    "model_used": getattr(response, "model", None),
-                },
-            )
-            return []
-        tool_call = tool_calls[0]
-        try:
-            args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError:
-            logger.warning(
-                "JSON inválido nos argumentos da tool call do Passo 1",
-                extra={"arguments": tool_call.function.arguments},
-            )
-            return []
-        _save_cached_where(preference, args)
+    step1_start = time.time()
+    response = _call_llm_step1(preference)
+    _log_step_latency("step1_where", time.time() - step1_start)
 
-    # Reaproveita os termos de gênero/provedor que o próprio LLM já filtrou na where_clause
-    # (cache-hit ou fresca — ambos convergem para o mesmo dict `args`) para priorizar as
-    # badges correspondentes nos cards, sem chamada extra ao LLM.
-    highlighted_terms = _extract_highlighted_terms(args.get("where_clause", ""))
+    # tool_calls[0]: o modelo pode chamar múltiplas tools, mas definimos apenas uma
+    # function.arguments: string JSON com os argumentos que o LLM escolheu
+    tool_calls = response.choices[0].message.tool_calls or []
+    if not tool_calls:
+        logger.warning(
+            "Passo 1 não chamou a tool — nenhum filtro extraído",
+            extra={
+                "preference": preference,
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "model_used": getattr(response, "model", None),
+            },
+        )
+        return None
+    tool_call = tool_calls[0]
+    try:
+        args = json.loads(tool_call.function.arguments)
+    except json.JSONDecodeError:
+        logger.warning(
+            "JSON inválido nos argumentos da tool call do Passo 1",
+            extra={"arguments": tool_call.function.arguments},
+        )
+        return None
+    _save_cached_where(preference, args)
+    return args
 
-    # ------------------------------------------------------------------
-    # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
-    # ------------------------------------------------------------------
-    step2_start = time.time()
-    titles_from_spec = search_titles_spec(**args)
-    _log_step_latency("step2_athena", time.time() - step2_start)
 
-    if not titles_from_spec:
-        return []  # nenhum título encontrado com esses filtros
-
-    # Formata todos os campos determinísticos via Python (instantâneo)
-    formatted_records = [format_record(r) for r in titles_from_spec]
+def _blank_reasons(formatted_records: list[dict]) -> list[dict]:
+    """Preenche reason="" em todos os registros — usado quando o LLM do Passo 3 não
+    colabora (content vazio ou JSON inválido)."""
     for record in formatted_records:
-        record["highlighted_genres"] = highlighted_terms["genres"]
-        record["highlighted_providers"] = highlighted_terms["providers"]
+        record["reason"] = ""
+    return formatted_records
 
-    # ------------------------------------------------------------------
-    # PASSO 3: LLM gera apenas o "motivo" de cada recomendação
-    # ------------------------------------------------------------------
+
+def _parse_reasons(content: str) -> list:
+    """Extrai a lista de motivos do JSON do Passo 3 — aceita tanto uma lista quanto um
+    dict com chave "titles" (variação de resposta do LLM). Pode levantar
+    json.JSONDecodeError (tratado pelo chamador, ver _generate_reasons)."""
+    data = json.loads(content)
+    return data if isinstance(data, list) else data.get("titles", [])
+
+
+def _merge_reasons_into_records(formatted_records: list[dict], reasons: list) -> int:
+    """Faz o merge motivo->registro por índice (posição na lista enviada ao LLM no
+    Passo 3, ver "id" em titles_for_llm). Tolerante a variações de resposta do LLM:
+    ignora itens sem "id" ou com "id" que não converte para int.
+
+    Returns:
+        Quantidade de registros que efetivamente receberam um motivo do LLM.
+    """
+    reasons_by_id = {}
+    for item in reasons:
+        if "id" in item:
+            try:
+                reasons_by_id[int(item["id"])] = item.get("reason", "")
+            except (ValueError, TypeError):
+                continue
+    for i, record in enumerate(formatted_records):
+        record["reason"] = reasons_by_id.get(i, "")
+    return len(reasons_by_id)
+
+
+def _generate_reasons(
+    preference: str, titles_from_spec: list[dict], formatted_records: list[dict]
+) -> list[dict]:
+    """Passo 3: LLM gera o "motivo" de cada recomendação e faz o merge com
+    formatted_records (mutado in-place e retornado, tanto no caminho feliz quanto
+    nos de content vazio/JSON inválido — sempre a mesma lista, motivos em branco
+    quando o LLM não colabora)."""
     # Envia ao LLM só os campos que ajudam a justificar a recomendação — não o
     # registro inteiro (~35 campos). overview domina o tamanho do payload (por isso
     # é truncado a _MAX_OVERVIEW_CHARS_FOR_LLM — um trecho já dá contexto suficiente
@@ -814,12 +819,10 @@ def recommend(preference: str) -> list[dict]:
                 "model_used": getattr(response, "model", None),
             },
         )
-        for record in formatted_records:
-            record["reason"] = ""
-        return formatted_records
+        return _blank_reasons(formatted_records)
 
     try:
-        data = json.loads(content)
+        reasons = _parse_reasons(content)
     except json.JSONDecodeError:
         logger.warning(
             "Passo 3 retornou JSON inválido — motivos ficarão em branco",
@@ -829,25 +832,11 @@ def recommend(preference: str) -> list[dict]:
                 "model_used": getattr(response, "model", None),
             },
         )
-        for record in formatted_records:
-            record["reason"] = ""
-        return formatted_records
+        return _blank_reasons(formatted_records)
 
-    reasons = data if isinstance(data, list) else data.get("titles", [])
+    matched_count = _merge_reasons_into_records(formatted_records, reasons)
 
-    # Merge: adiciona o motivo do LLM ao registro já formatado pelo Python.
-    # Tolerante a variações de resposta do LLM: aceita "id" como int ou string.
-    reasons_by_id = {}
-    for item in reasons:
-        if "id" in item:
-            try:
-                reasons_by_id[int(item["id"])] = item.get("reason", "")
-            except (ValueError, TypeError):
-                continue
-    for i, record in enumerate(formatted_records):
-        record["reason"] = reasons_by_id.get(i, "")
-
-    missing_count = len(formatted_records) - len(reasons_by_id)
+    missing_count = len(formatted_records) - matched_count
     if missing_count > 0:
         logger.warning(
             "Passo 3 não retornou motivo para todos os títulos",
@@ -861,3 +850,50 @@ def recommend(preference: str) -> list[dict]:
         )
 
     return formatted_records
+
+
+def recommend(preference: str) -> list[dict]:
+    """
+    Orquestra os 3 passos do agente e retorna uma lista de recomendações.
+
+    Esta é a única função chamada pelo app.py. Ela coordena todo o fluxo:
+    LLM extrai filtros → Athena consulta → formatação Python → LLM gera motivos.
+
+    Args:
+        preference: Texto em linguagem natural do usuário.
+                     Ex: "filmes de terror dos anos 2010"
+
+    Returns:
+        Lista de dicionários, cada um com: title, type, year, genres, overview,
+        rating, poster_url, backdrop_url, duration, streaming_providers,
+        streaming_provider_logos, rent_buy_providers, rent_buy_provider_logos,
+        in_theaters, theater_end_date, next_episode_season_number, next_episode_number,
+        next_episode_date, reason, highlighted_genres, highlighted_providers.
+        Retorna lista vazia se nenhum título for encontrado ou o modelo não responder.
+    """
+    # PASSO 1: LLM analisa o texto e decide os filtros SQL (com cache)
+    args = _resolve_where_args(preference)
+    if args is None:
+        return []
+
+    # Reaproveita os termos de gênero/provedor que o próprio LLM já filtrou na where_clause
+    # (cache-hit ou fresca — ambos convergem para o mesmo dict `args`) para priorizar as
+    # badges correspondentes nos cards, sem chamada extra ao LLM.
+    highlighted_terms = _extract_highlighted_terms(args.get("where_clause", ""))
+
+    # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
+    step2_start = time.time()
+    titles_from_spec = search_titles_spec(**args)
+    _log_step_latency("step2_athena", time.time() - step2_start)
+
+    if not titles_from_spec:
+        return []  # nenhum título encontrado com esses filtros
+
+    # Formata todos os campos determinísticos via Python (instantâneo)
+    formatted_records = [format_record(r) for r in titles_from_spec]
+    for record in formatted_records:
+        record["highlighted_genres"] = highlighted_terms["genres"]
+        record["highlighted_providers"] = highlighted_terms["providers"]
+
+    # PASSO 3: LLM gera apenas o "motivo" de cada recomendação
+    return _generate_reasons(preference, titles_from_spec, formatted_records)

@@ -45,7 +45,8 @@ def translate_text(text: str, context: str = "") -> str:
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             result = GoogleTranslator(source="auto", target="pt").translate(text)
-        except Exception as exc:  # noqa: BLE001 — chamada de API externa, tenta de novo no próximo loop
+        # Chamada de API externa, tenta de novo no próximo loop.
+        except Exception as exc:  # noqa: BLE001
             logger.debug(f"Tentativa {attempt} de traduzir {prefix}'{text}' falhou: {exc}")
         else:
             if result and result != text:

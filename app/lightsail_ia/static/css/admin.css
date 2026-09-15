@@ -142,7 +142,11 @@
   border: 1px solid #ea580c !important;
 }
 [data-testid="stDialog"] button[data-testid="stBaseButton-primary"] {
-  background: #ea580c !important;
+  /* #c2410c (não #ea580c): branco sobre #ea580c mede ~3,6:1, abaixo do mínimo de
+     4,5:1 do WCAG AA para texto normal (css:S7924). #c2410c é um tom só mais escuro
+     na mesma escala (já usado em --accent-soft-text no tema claro, theme.css) e sobe
+     o contraste pra ~5,2:1, sem trocar a identidade laranja da marca. */
+  background: #c2410c !important;
   color: #ffffff !important;
   border: none !important;
 }

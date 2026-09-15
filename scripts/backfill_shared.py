@@ -385,16 +385,16 @@ def trigger_agg_locally(
         if is_expired_token_error(exc):
             log_expired_token(exc, "execução local do Glue AGG")
             raise
-        logger.error(
-            "Falha ao rodar o Glue AGG localmente: %s. O backfill principal já terminou; o "
+        logger.exception(
+            "Falha ao rodar o Glue AGG localmente. O backfill principal já terminou; o "
             "trigger agendado (sáb/dom 08:00 BRT) e o alarme SNS de falha continuam cobrindo "
-            "este caso.", exc,
+            "este caso."
         )
-    except Exception as exc:  # noqa: BLE001 — falha do AGG não deve derrubar o backfill já concluído
-        logger.error(
-            "Falha ao rodar o Glue AGG localmente: %s. O backfill principal já terminou; o "
+    except Exception:  # falha do AGG não deve derrubar o backfill já concluído
+        logger.exception(
+            "Falha ao rodar o Glue AGG localmente. O backfill principal já terminou; o "
             "trigger agendado (sáb/dom 08:00 BRT) e o alarme SNS de falha continuam cobrindo "
-            "este caso.", exc,
+            "este caso."
         )
     else:
         # Fraseado deliberadamente para NÃO bater com a regex do workflow que extrai o
@@ -442,7 +442,7 @@ def notify_backfill_success(table_group: str, summary: str) -> None:
             Subject=f"[{environment}] BACKFILL - SUCESSO",
             Message=summary,
         )
-    except Exception as exc:  # noqa: BLE001 — falha ao notificar não deve afetar um backfill já concluído
-        logger.error("Falha ao publicar notificação de sucesso do backfill '%s': %s", table_group, exc)
+    except Exception:  # falha ao notificar não deve afetar um backfill já concluído
+        logger.exception("Falha ao publicar notificação de sucesso do backfill '%s'", table_group)
     else:
         logger.info("Notificação de sucesso do backfill '%s' enviada via SNS.", table_group)

@@ -92,7 +92,9 @@ Retomada automática:
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -121,7 +123,122 @@ import backfill_shared as shared
 logger = shared.setup_logging()
 
 
+def _process_discover_unit(
+    media_type: str,
+    year: int,
+    database: str,
+    api_key: str,
+    s3_client: Any,
+    s3_bucket_sor: str,
+    s3_bucket_sot: str,
+    table_discover: str,
+    detect_fn: Callable[[str], str | None],
+) -> str | None:
+    """Processa uma unidade (media_type, year): coleta do TMDB, transforma e grava no SOT.
+
+    Returns:
+        None em sucesso; a mensagem de erro (str) em falha não-retryable — o chamador
+        decide o que fazer (não aborta o backfill inteiro, ver main()). Deixa propagar
+        ClientError de token expirado, para acionar a retomada automática via exit code 75
+        (run_with_retry_exit).
+    """
+    try:
+        collect_discover_data(
+            api_key=api_key,
+            s3_client=s3_client,
+            bucket=s3_bucket_sor,
+            content_type=media_type,
+            folder=f"tmdb/discover/{media_type}",
+            year=year,
+        )
+        df = read_from_sor(
+            s3_bucket_sor, media_type, "discover", str(year), detect_fn=detect_fn,
+        )
+        write_parquet_to_sot(
+            df=df,
+            s3_bucket_sot=s3_bucket_sot,
+            table_name=table_discover,
+            database=database,
+            partition_cols=["year"],
+            mode="overwrite_partitions",
+        )
+    except ClientError as exc:
+        if shared.is_expired_token_error(exc):
+            logger.error(
+                "Credenciais AWS expiraram durante o discover de %s year=%d. O workflow "
+                "vai renovar a credencial e retomar do checkpoint automaticamente "
+                "(ver scripts/backfill_shared.py).",
+                media_type, year,
+            )
+            raise
+        logger.exception(
+            "Falha ao processar discover %s year=%d. Continuando com o próximo...",
+            media_type, year,
+        )
+        return str(exc)
+    except Exception as exc:  # falha de uma unidade não deve abortar o backfill inteiro
+        logger.exception(
+            "Falha ao processar discover %s year=%d. Continuando com o próximo...",
+            media_type, year,
+        )
+        return str(exc)
+    logger.info("Discover concluído com sucesso para %s year=%d.", media_type, year)
+    return None
+
+
+def _finalize_discover_success(
+    *,
+    s3_client: Any,
+    s3_bucket_temp: str,
+    table_group: str,
+    dq_job_name: str,
+    table_discover_movie: str,
+    db_movie: str,
+    table_discover_tv: str,
+    db_tv: str,
+    years: list[int],
+    start_year: int,
+    end_year: int,
+    pendentes_count: int,
+    trigger_agg: bool,
+) -> None:
+    """Etapas finais quando nenhuma unidade falhou: dispara o Data Quality uma única vez
+    cobrindo todo o range processado, roda o Glue AGG e notifica sucesso (a menos que
+    trigger_agg=False, ver docstring do módulo), e limpa o checkpoint."""
+    # Disparo único do Data Quality cobrindo todo o range processado, em vez de por unidade —
+    # mesmo padrão de backfill_enriquecimento.py (YEAR aceita lista de anos separada por vírgula).
+    years_arg = ",".join(str(year) for year in years)
+    logger.info(
+        "Disparando Glue Data Quality uma única vez (YEAR=%s) para as 2 tabelas...", years_arg,
+    )
+    for table_name, database in (
+        (table_discover_movie, db_movie),
+        (table_discover_tv, db_tv),
+    ):
+        trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
+        time.sleep(5)
+    if trigger_agg:
+        shared.trigger_agg_locally(
+            s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+            s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+            s3_bucket_temp=s3_bucket_temp,
+            db_movie=db_movie,
+            db_tv=db_tv,
+            db_unified=shared.require_env("DB_UNIFIED"),
+            table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+            dq_job_name=dq_job_name,
+            environment=shared.require_env("ENVIRONMENT"),
+        )
+        shared.notify_backfill_success(
+            table_group,
+            f"Backfill de discover concluído sem pendências: {pendentes_count} unidade(s) "
+            f"processada(s) ({start_year}-{end_year}), Data Quality e Glue AGG disparados.",
+        )
+    shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
+
+
 def main(trigger_agg: bool = True) -> bool:
+    """Ponto de entrada do backfill de discover (ver docstring do módulo)."""
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
 
@@ -174,51 +291,15 @@ def main(trigger_agg: bool = True) -> bool:
         logger.info("[%d/%d] Discover | %s | year=%d", i, len(pendentes), media_type, year)
 
         table_discover = table_discover_movie if media_type == "movie" else table_discover_tv
-
-        try:
-            collect_discover_data(
-                api_key=api_key,
-                s3_client=s3_client,
-                bucket=s3_bucket_sor,
-                content_type=media_type,
-                folder=f"tmdb/discover/{media_type}",
-                year=year,
-            )
-            df = read_from_sor(
-                s3_bucket_sor, media_type, "discover", str(year), detect_fn=detect_fn,
-            )
-            write_parquet_to_sot(
-                df=df,
-                s3_bucket_sot=s3_bucket_sot,
-                table_name=table_discover,
-                database=database,
-                partition_cols=["year"],
-                mode="overwrite_partitions",
-            )
-        except ClientError as exc:
-            if shared.is_expired_token_error(exc):
-                logger.error(
-                    "Credenciais AWS expiraram durante o discover de %s year=%d. O workflow "
-                    "vai renovar a credencial e retomar do checkpoint automaticamente "
-                    "(ver scripts/backfill_shared.py).",
-                    media_type, year,
-                )
-                raise
-            logger.error(
-                "Falha ao processar discover %s year=%d: %s. Continuando com o próximo...",
-                media_type, year, exc,
-            )
-            failures.append((media_type, year, str(exc)))
-        except Exception as exc:  # noqa: BLE001 — falha de uma unidade não deve abortar o backfill inteiro
-            logger.error(
-                "Falha ao processar discover %s year=%d: %s. Continuando com o próximo...",
-                media_type, year, exc,
-            )
-            failures.append((media_type, year, str(exc)))
-        else:
-            logger.info("Discover concluído com sucesso para %s year=%d.", media_type, year)
+        error = _process_discover_unit(
+            media_type, year, database, api_key, s3_client, s3_bucket_sor, s3_bucket_sot,
+            table_discover, detect_fn,
+        )
+        if error is None:
             completed.add(f"{media_type}:{year}")
             shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year, completed)
+        else:
+            failures.append((media_type, year, error))
 
         if i < len(pendentes) and wait_seconds > 0:
             time.sleep(wait_seconds)
@@ -231,36 +312,21 @@ def main(trigger_agg: bool = True) -> bool:
             ", ".join(f"{media_type}/{year} ({erro})" for media_type, year, erro in failures),
         )
     else:
-        # Disparo único do Data Quality cobrindo todo o range processado, em vez de por unidade —
-        # mesmo padrão de backfill_enriquecimento.py (YEAR aceita lista de anos separada por vírgula).
-        years_arg = ",".join(str(year) for year in years)
-        logger.info(
-            "Disparando Glue Data Quality uma única vez (YEAR=%s) para as 2 tabelas...", years_arg,
+        _finalize_discover_success(
+            s3_client=s3_client,
+            s3_bucket_temp=s3_bucket_temp,
+            table_group=table_group,
+            dq_job_name=dq_job_name,
+            table_discover_movie=table_discover_movie,
+            db_movie=db_movie,
+            table_discover_tv=table_discover_tv,
+            db_tv=db_tv,
+            years=years,
+            start_year=start_year,
+            end_year=end_year,
+            pendentes_count=len(pendentes),
+            trigger_agg=trigger_agg,
         )
-        for table_name, database in (
-            (table_discover_movie, db_movie),
-            (table_discover_tv, db_tv),
-        ):
-            trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
-            time.sleep(5)
-        if trigger_agg:
-            shared.trigger_agg_locally(
-                s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
-                s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
-                s3_bucket_temp=s3_bucket_temp,
-                db_movie=db_movie,
-                db_tv=db_tv,
-                db_unified=shared.require_env("DB_UNIFIED"),
-                table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
-                dq_job_name=dq_job_name,
-                environment=shared.require_env("ENVIRONMENT"),
-            )
-            shared.notify_backfill_success(
-                table_group,
-                f"Backfill de discover concluído sem pendências: {len(pendentes)} unidade(s) "
-                f"processada(s) ({start_year}-{end_year}), Data Quality e Glue AGG disparados.",
-            )
-        shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
     return not failures
 

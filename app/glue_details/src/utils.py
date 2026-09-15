@@ -510,7 +510,7 @@ def _extract_seasons(detail: dict) -> dict:
 
 def _common_fields(detail: dict, content_type: str) -> dict:
     """Campos compartilhados entre filmes e séries na resposta da API TMDB."""
-    credits = detail.get("credits", {})
+    credits_data = detail.get("credits", {})
     pt_br_translation = _extract_pt_br_translation(detail.get("translations", {}))
     return {
         "id":                       detail.get("id"),
@@ -524,13 +524,13 @@ def _common_fields(detail: dict, content_type: str) -> dict:
         "production_countries_iso": _extract_production_countries_iso(detail.get("production_countries")),
         "spoken_languages":         _extract_spoken_languages(detail.get("spoken_languages")),
         "spoken_languages_iso":     _extract_spoken_languages_iso(detail.get("spoken_languages")),
-        "actor_names":              _extract_cast(credits),
-        "director":                 _extract_director(credits),
-        "screenplay":               _extract_writers(credits),
-        "music_composer":           _extract_composer(credits),
-        "producer":                 _extract_producers(credits),
-        "cinematographer":          _extract_cinematographer(credits),
-        "editor":                   _extract_editor(credits),
+        "actor_names":              _extract_cast(credits_data),
+        "director":                 _extract_director(credits_data),
+        "screenplay":               _extract_writers(credits_data),
+        "music_composer":           _extract_composer(credits_data),
+        "producer":                 _extract_producers(credits_data),
+        "cinematographer":          _extract_cinematographer(credits_data),
+        "editor":                   _extract_editor(credits_data),
         "keywords":                 _extract_keywords(detail.get("keywords", {})),
         "trailer_url":              _extract_trailer_url(detail.get("videos", {})),
         "imdb_id":                  detail.get("external_ids", {}).get("imdb_id"),
@@ -614,7 +614,8 @@ def _fetch_collections_pt_br(api_key: str, collection_ids: list[int]) -> dict[in
             if name and name.strip():
                 with lock:
                     result[col_id] = name.strip()
-        except Exception as exc:  # noqa: BLE001 — chamada de API externa, não pode derrubar o job
+        # Chamada de API externa, não pode derrubar o job.
+        except Exception as exc:  # noqa: BLE001
             logger.warning(f"Falha ao buscar coleção {col_id} em pt-BR: {exc}")
 
     logger.info(f"Buscando {len(collection_ids)} coleções em pt-BR ({_TMDB_MAX_WORKERS} workers)...")
@@ -961,7 +962,7 @@ def collect_and_write_details(
             df_read = wr.s3.read_parquet(
                 path=s3_path,
                 dataset=True,
-                partition_filter=lambda x: x["year"] == year_str,
+                partition_filter=lambda x, year_str=year_str: x["year"] == year_str,
             )
             if not df_read.empty:
                 mask_delta = df_read["id"].isin(df["id"])
@@ -971,7 +972,8 @@ def collect_and_write_details(
                     f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
                     f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
                 )
-        except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
+        # Partição pode não existir ainda, degrada graciosamente.
+        except Exception as exc:  # noqa: BLE001
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
     translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
@@ -1058,7 +1060,8 @@ def _repair_partition_duplicates(
             dataset=True,
             partition_filter=lambda x: x["year"] == year_str,
         )
-    except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
+    # Partição pode não existir ainda, degrada graciosamente.
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"Não foi possível ler '{table_name}' year={year_str}: {exc}")
         return
 
@@ -1099,7 +1102,6 @@ def repair_details_duplicates(
     database: str,
     table_details: str,
     s3_bucket_sot: str,
-    s3_bucket_temp: str,
     year: str,
 ) -> None:
     """
@@ -1113,7 +1115,6 @@ def repair_details_duplicates(
         database:       Nome do banco de dados no Glue Catalog.
         table_details:  Nome da tabela de detalhes (movie ou tv).
         s3_bucket_sot:  Nome do bucket SOT onde os dados estão gravados.
-        s3_bucket_temp: Bucket S3 para resultados temporários do Athena (não usado; mantido por compatibilidade).
         year:           Ano da partição a reparar.
     """
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/"
@@ -1280,7 +1281,8 @@ def collect_and_write_watch_providers(
         if not df_read.empty:
             df_existing = df_read[~df_read["id"].isin(ids)]
             logger.info(f"Mantendo {len(df_existing)} registros não-stale de '{table_name}'.")
-    except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
+    # Partição pode não existir ainda, degrada graciosamente.
+    except Exception as exc:  # noqa: BLE001
         logger.info(f"Sem dados existentes para year={year} em '{table_name}': {exc}")
 
     if not df_existing.empty:
@@ -1412,7 +1414,6 @@ def run_details_and_watch_providers_for_year(
             database=database,
             table_details=table_details,
             s3_bucket_sot=s3_bucket_sot,
-            s3_bucket_temp=s3_bucket_temp,
             year=year,
         )
 
@@ -1827,7 +1828,6 @@ def process_changed_ids(
             database=database,
             table_details=table_details,
             s3_bucket_sot=s3_bucket_sot,
-            s3_bucket_temp=s3_bucket_temp,
             year=year,
         )
         repair_watch_providers_duplicates(

@@ -158,7 +158,7 @@ def render_profile_tab(profile: dict) -> None:
             with error_placeholder:
                 render_feedback("error", "O nome não pode ficar em branco.")
         elif name == profile["name"]:
-            pass
+            pass  # nome não mudou — nada a salvar
         else:
             infrastructure.update_user_name(profile["email"], name)
             st.session_state["user_name"] = name
