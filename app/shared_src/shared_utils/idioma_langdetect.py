@@ -35,6 +35,7 @@ def detect_language_langdetect(text: str) -> str | None:
         return detect(text)
     except LangDetectException:
         return None
-    except Exception as exc:  # noqa: BLE001 — fallback de última instância, não pode derrubar o job
+    # Fallback de última instância, não pode derrubar o job.
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"Falha inesperada ao detectar idioma via langdetect de '{text[:80]}': {exc}")
         return None

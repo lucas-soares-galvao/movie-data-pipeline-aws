@@ -186,10 +186,10 @@ class TestNotificacaoSucesso:
             patch("backfill_referencias.trigger_glue_job"),
             patch("backfill_referencias.shared.trigger_agg_locally"),
             patch("backfill_referencias.shared.notify_backfill_success") as mock_notify,
-            pytest.raises(RuntimeError),
         ):
             mock_boto3.client.return_value = MagicMock()
-            br.main()
+            with pytest.raises(RuntimeError):
+                br.main()
         mock_notify.assert_not_called()
 
     def test_nao_chamado_quando_erro_em_configuration_aborta_o_script(self, monkeypatch):
@@ -204,10 +204,10 @@ class TestNotificacaoSucesso:
             patch("backfill_referencias.trigger_glue_job"),
             patch("backfill_referencias.shared.trigger_agg_locally"),
             patch("backfill_referencias.shared.notify_backfill_success") as mock_notify,
-            pytest.raises(RuntimeError),
         ):
             mock_boto3.client.return_value = MagicMock()
-            br.main()
+            with pytest.raises(RuntimeError):
+                br.main()
         mock_notify.assert_not_called()
 
 
@@ -223,10 +223,10 @@ class TestErros:
             patch("backfill_referencias.write_parquet_to_sot"),
             patch("backfill_referencias.trigger_glue_job"),
             patch("backfill_referencias.shared.trigger_agg_locally") as mock_agg,
-            pytest.raises(RuntimeError),
         ):
             mock_boto3.client.return_value = MagicMock()
-            br.main()
+            with pytest.raises(RuntimeError):
+                br.main()
         mock_config.assert_not_called()
         mock_agg.assert_not_called()
 

@@ -75,11 +75,11 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
 
             wait = _calculate_wait(attempt, response)
 
-        except (ConnectionError, Timeout) as e:
+        except (ConnectionError, Timeout):
             # Erros de rede (sem conexão, timeout) também merecem retry.
             if is_last_attempt:
-                logger.error(
-                    f"Erro de conexão após {max_retries} tentativas: {e}. "
+                logger.exception(
+                    f"Erro de conexão após {max_retries} tentativas. "
                     f"Todas as tentativas esgotadas para {url}."
                 )
                 raise

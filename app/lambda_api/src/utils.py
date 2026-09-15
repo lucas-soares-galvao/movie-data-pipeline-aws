@@ -54,7 +54,7 @@ def fetch_tmdb_data(api_key: str, content_type: str, year: int, page: int) -> di
     return tmdb_get(url, params)
 
 
-def save_to_s3(s3_client: S3Client, bucket: str, data: dict, s3_key: str) -> None:
+def save_to_s3(s3_client: S3Client, bucket: str, data: dict | list, s3_key: str) -> None:
     """
     Serializa um dicionário Python para JSON e salva no S3.
 

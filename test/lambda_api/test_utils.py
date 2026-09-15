@@ -616,7 +616,8 @@ class TestCollectChangesData:
         payload = mock_save.call_args[0][2]
         assert payload["content_type"] == "tv"
         assert payload["ids"] == [10, 20]
-        assert "start_date" in payload and "end_date" in payload
+        assert "start_date" in payload
+        assert "end_date" in payload
 
         start_date, end_date = mock_fetch.call_args[0][2], mock_fetch.call_args[0][3]
         assert start_date == payload["start_date"]

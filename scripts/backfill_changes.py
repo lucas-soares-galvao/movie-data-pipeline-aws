@@ -223,10 +223,10 @@ def main() -> None:
                     content_type,
                 )
                 raise
-            logger.error("Falha ao processar changes de %s: %s.", content_type, exc)
+            logger.exception("Falha ao processar changes de %s.", content_type)
             failures.append((content_type, str(exc)))
-        except Exception as exc:  # noqa: BLE001 — falha de um content_type não deve abortar o outro
-            logger.error("Falha ao processar changes de %s: %s.", content_type, exc)
+        except Exception as exc:  # falha de um content_type não deve abortar o outro
+            logger.exception("Falha ao processar changes de %s.", content_type)
             failures.append((content_type, str(exc)))
         else:
             logger.info("Changes de %s concluído com sucesso.", content_type)

@@ -448,7 +448,7 @@ def _render_signup_confirm(client_ip: str) -> None:
     name = st.session_state.get("signup_name_confirmed", "")
     resumed = st.session_state.get("signup_resumed", False)
     if resumed and st.session_state.get("signup_resume_step") == "details":
-        _render_signup_resume_details(client_ip, email, name)
+        _render_signup_resume_details(email, name)
         return
 
     _code_locked_out = (
@@ -593,7 +593,7 @@ def _render_signup_confirm(client_ip: str) -> None:
         render_form_footer()
 
 
-def _render_signup_resume_details(client_ip: str, email: str, name: str) -> None:
+def _render_signup_resume_details(email: str, name: str) -> None:
     """Segunda tela do cadastro retomado, só depois do código já confirmado por
     _render_signup_confirm — Nome (editável, pré-preenchido com o que já estava gravado)
     + E-mail (fixo) + Senha + Confirmar Senha (vazios). Separada da tela de código porque,
@@ -790,10 +790,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
                     # consumidas por pop() no render acima.
                     st.session_state["email_not_registered"] = status is None
                     st.session_state["email_pending_approval"] = status == "UNCONFIRMED"
-                    if status is None:
-                        _reset_attempt_history.setdefault(client_ip, []).append(time.time())
-                        st.rerun(scope="fragment")
-                    elif status == "UNCONFIRMED":
+                    if status is None or status == "UNCONFIRMED":
                         _reset_attempt_history.setdefault(client_ip, []).append(time.time())
                         st.rerun(scope="fragment")
                     else:

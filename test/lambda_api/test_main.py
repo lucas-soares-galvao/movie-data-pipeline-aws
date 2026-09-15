@@ -9,7 +9,13 @@ os.environ.setdefault("GLUE_DETAILS_JOB_NAME", "test-glue-details-job")
 os.environ.setdefault("S3_BUCKET_SOR", "test-bucket-sor")
 os.environ.setdefault("S3_BUCKET_TEMP", "test-bucket-temp")
 
-import main
+# main.py cria clientes boto3 (s3, ssm) no nível de módulo (python:S6243 — evita recriar a
+# conexão a cada invocation "quente" da Lambda). Isso faz `import main` chamar boto3.client()
+# de verdade; mockar aqui evita depender de credenciais AWS resolvíveis no ambiente onde o
+# teste roda (máquina local, CI). Os testes sempre re-mockam main.s3_client/main.ssm por
+# fora, então o mock usado só neste import nunca é observado.
+with patch("boto3.client"):
+    import main
 
 EVENTO_MOVIE = {
     "type": "movie",
@@ -61,7 +67,7 @@ def _run(event: dict, *, year: int = 2025) -> dict:
         patch("main.collect_genre_data") as mock_genre,
         patch("main.collect_changes_data", return_value="tmdb/changes/movie/2026-07-08.json") as mock_changes,
         patch("main.get_api_secret", return_value="api-key-teste"),
-        patch("main.boto3") as mock_boto3,
+        patch("main.s3_client") as mock_s3_client,
         patch("main.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.year = year
@@ -77,7 +83,7 @@ def _run(event: dict, *, year: int = 2025) -> dict:
         "mock_now_playing": mock_now_playing,
         "mock_changes": mock_changes,
         "mock_dt": mock_dt,
-        "mock_boto3": mock_boto3,
+        "mock_s3_client": mock_s3_client,
     }
 
 
@@ -104,7 +110,7 @@ class TestLambdaHandler:
             patch("main.collect_configuration_data"),
             patch("main.collect_genre_data"),
             patch("main.get_api_secret", return_value="api-key-teste") as mock_get_key,
-            patch("main.boto3"),
+            patch("main.s3_client"),
             patch("main.datetime") as mock_dt,
         ):
             mock_dt.now.return_value.year = 2025
@@ -460,17 +466,17 @@ class TestOnlyRotationRefresh:
     EVENTO_ROTATION_TV = {"type": "tv", "database": "tmdb_db", "only_rotation_refresh": True}
 
     def _run_rotation(self, event: dict, *, year: int, last_year_no_ssm: int):
-        """Como only_rotation_refresh usa boto3.client("ssm") (não coberto pelo mock_trigger
-        do helper _run), mocka main.boto3 inteiro e configura o retorno do get_parameter."""
+        """Como only_rotation_refresh usa o cliente "ssm" (não coberto pelo mock_trigger
+        do helper _run), mocka main.ssm (cliente de módulo) e configura o retorno do
+        get_parameter."""
         mock_context = MagicMock()
         with (
             patch("main.trigger_glue_job") as mock_trigger,
             patch("main.get_api_secret", return_value="api-key-teste"),
-            patch("main.boto3") as mock_boto3,
+            patch("main.ssm") as mock_ssm,
             patch("main.datetime") as mock_dt,
         ):
             mock_dt.now.return_value.year = year
-            mock_ssm = mock_boto3.client.return_value
             mock_ssm.get_parameter.return_value = {"Parameter": {"Value": str(last_year_no_ssm)}}
             result = main.lambda_handler(event, mock_context)
 

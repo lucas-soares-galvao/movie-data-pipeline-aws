@@ -41,6 +41,7 @@ def detect_language_aws(text: str, region: str = "us-east-1") -> str | None:
             return None
         best = max(languages, key=lambda lang: lang.get("Score", 0))
         return best.get("LanguageCode")
-    except Exception as exc:  # noqa: BLE001 — chamada de API externa, não pode derrubar o job
+    # Chamada de API externa, não pode derrubar o job.
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"Falha ao detectar idioma via AWS Comprehend de '{text[:80]}': {exc}")
         return None

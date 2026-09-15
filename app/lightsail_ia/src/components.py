@@ -549,7 +549,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     highlighted_genres = title.get("highlighted_genres") or []
     genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
     visible_genres_raw = genres_raw[:_MAX_VISIBLE_GENRES]
-    # Todo gênero que bateu com a busca do usuário ganha "highlighted" (borda laranja, ver
+    # Cada gênero que bateu com a busca do usuário ganha "highlighted" (borda laranja, ver
     # cards.css) — não só o primeiro, mesmo padrão de _render_provider_badges.
     genres_html = "".join(
         f'<span class="genre{" highlighted" if _matches_highlighted(g, highlighted_genres) else ""}">'
@@ -618,8 +618,10 @@ def render_card(title: dict, idx: int = 0) -> str:
 
     img_html = ""
     if poster:
-        media_badges = f"{rating_chip_html}{certification_html}"
-        media_badges_html = f'<div class="media-badges-top">{media_badges}</div>' if media_badges else ""
+        media_badges_html = (
+            f'<div class="media-badges-top">{rating_chip_html}{certification_html}</div>'
+            if (rating_chip_html or certification_html) else ""
+        )
         img_html = (
             f'<div class="card-media">'
             f'<img src="{poster}" alt="{title_name}" class="card-img" loading="lazy" />'

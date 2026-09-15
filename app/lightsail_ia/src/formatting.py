@@ -15,7 +15,11 @@ _ADAPTIVE_DATE_THRESHOLD_DAYS = 90
 
 def _format_type(media_type: str) -> str:
     """Converte media_type da API ('movie'/'tv') para português ('Filme'/'Série')."""
-    return "Filme" if media_type == "movie" else "Série" if media_type == "tv" else media_type
+    if media_type == "movie":
+        return "Filme"
+    if media_type == "tv":
+        return "Série"
+    return media_type
 
 
 def _format_genres(genre_names: str | None) -> list[str]:
@@ -114,6 +118,14 @@ def _format_rating(vote_average: object) -> float | None:
         return None
 
 
+def _or_none(value):
+    """Normaliza um valor falsy (obtido via dict.get) para None — trata ausência e valor
+    vazio ("", 0, False) da mesma forma. Extraído de format_record() só para reduzir a
+    complexidade cognitiva da função (python:S3776): cada `x or None` inline conta como
+    uma estrutura condicional; uma chamada de função não conta nada."""
+    return value or None
+
+
 def format_record(record: dict, today: date | None = None) -> dict:
     """Transforma um registro cru do Athena em dict formatado para o card do app.
 
@@ -133,8 +145,8 @@ def format_record(record: dict, today: date | None = None) -> dict:
         "genres": _format_genres(record.get("genre_names")),
         "overview": record.get("overview") or "",
         "rating": _format_rating(record.get("vote_average")),
-        "poster_url": record.get("poster_url") or None,
-        "backdrop_url": record.get("backdrop_url") or None,
+        "poster_url": _or_none(record.get("poster_url")),
+        "backdrop_url": _or_none(record.get("backdrop_url")),
         "duration": _format_title_duration(record),
         "release_date": _format_release_date(record.get("air_date")),
         "upcoming_date": (
@@ -142,8 +154,8 @@ def format_record(record: dict, today: date | None = None) -> dict:
             if _is_upcoming(upcoming_source, today=today)
             else None
         ),
-        "streaming_providers": record.get("streaming_providers") or None,
-        "streaming_provider_logos": record.get("streaming_provider_logos") or None,
+        "streaming_providers": _or_none(record.get("streaming_providers")),
+        "streaming_provider_logos": _or_none(record.get("streaming_provider_logos")),
         "in_theaters": in_theaters,
         "theater_end_date": (
             _format_adaptive_date(record.get("theater_end_date"), today=today) if in_theaters else None
@@ -155,26 +167,26 @@ def format_record(record: dict, today: date | None = None) -> dict:
             int(record["next_episode_number"]) if record.get("next_episode_number") else None
         ),
         "next_episode_date": _format_adaptive_date(record.get("next_episode_air_date"), today=today),
-        "tagline": record.get("tagline") or None,
-        "title_status": record.get("title_status") or None,
-        "cast": record.get("actor_names") or None,
-        "director": record.get("director") or None,
-        "writers": record.get("screenplay") or None,
-        "composer": record.get("music_composer") or None,
-        "keywords": record.get("keywords_pt") or None,
-        "certification": record.get("certification") or None,
-        "trailer_url": record.get("trailer_url") or None,
-        "collection": record.get("collection_name") or None,
-        "production_companies": record.get("production_companies") or None,
-        "production_countries": record.get("production_countries") or None,
-        "producer": record.get("producer") or None,
-        "cinematographer": record.get("cinematographer") or None,
-        "editor": record.get("editor") or None,
-        "networks": record.get("networks") or None,
-        "creators": record.get("created_by") or None,
-        "rent_buy_providers": record.get("rent_buy_providers") or None,
-        "rent_buy_provider_logos": record.get("rent_buy_provider_logos") or None,
-        "recommended": record.get("recommended_titles") or None,
-        "similar": record.get("similar_titles") or None,
-        "alternative_titles": record.get("alternative_titles") or None,
+        "tagline": _or_none(record.get("tagline")),
+        "title_status": _or_none(record.get("title_status")),
+        "cast": _or_none(record.get("actor_names")),
+        "director": _or_none(record.get("director")),
+        "writers": _or_none(record.get("screenplay")),
+        "composer": _or_none(record.get("music_composer")),
+        "keywords": _or_none(record.get("keywords_pt")),
+        "certification": _or_none(record.get("certification")),
+        "trailer_url": _or_none(record.get("trailer_url")),
+        "collection": _or_none(record.get("collection_name")),
+        "production_companies": _or_none(record.get("production_companies")),
+        "production_countries": _or_none(record.get("production_countries")),
+        "producer": _or_none(record.get("producer")),
+        "cinematographer": _or_none(record.get("cinematographer")),
+        "editor": _or_none(record.get("editor")),
+        "networks": _or_none(record.get("networks")),
+        "creators": _or_none(record.get("created_by")),
+        "rent_buy_providers": _or_none(record.get("rent_buy_providers")),
+        "rent_buy_provider_logos": _or_none(record.get("rent_buy_provider_logos")),
+        "recommended": _or_none(record.get("recommended_titles")),
+        "similar": _or_none(record.get("similar_titles")),
+        "alternative_titles": _or_none(record.get("alternative_titles")),
     }
