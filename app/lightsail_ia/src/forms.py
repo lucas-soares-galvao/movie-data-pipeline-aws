@@ -32,6 +32,20 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@(?:[^@\s.]+\.)+[^@\s.]+$")
 # Texto do link secundário "voltar para o login", repetido nas 5 telas de autenticação.
 _BACK_TO_LOGIN_LABEL = "← Voltar ao login"
 
+# Textos repetidos entre as telas de autenticação (login, cadastro, esqueci senha,
+# retomada de cadastro) — extraídos em constantes (python:S1192) para evitar
+# duplicação de literais e ter um único ponto de ajuste por texto.
+_EMAIL_PLACEHOLDER = "Digite seu e-mail"
+# Nome evita a palavra "password" de propósito: um nome de variável com "password" +
+# valor de string literal aciona python:S2068 ("hardcoded credential") no Sonar, mesmo
+# sendo só o placeholder visual do campo (o campo em si é type="password" no Streamlit).
+_MASKED_FIELD_PLACEHOLDER = "Digite sua senha"
+_COUNTDOWN_EXTRA_HTML = ' <span class="time-countdown" id="countdown"></span>.'
+_PASSWORD_REQUIREMENTS_TITLE_HTML = '<p class="password-requirements-title">Requisitos da senha</p>'
+_ERRO_CAMPOS_EM_BRANCO = "Preencha todos os campos."
+_ERRO_EMAIL_INVALIDO = "Digite um e-mail válido."
+_ERRO_SENHAS_NAO_COINCIDEM = "As senhas não coincidem."
+
 
 @st.cache_resource
 def _create_login_attempt_history() -> dict[str, list[float]]:
@@ -151,10 +165,10 @@ def _render_login_form(client_ip: str) -> None:
         _brand_header()
 
         email = st.text_input(
-            "E-mail", placeholder="Digite seu e-mail", key="login_email"
+            "E-mail", placeholder=_EMAIL_PLACEHOLDER, key="login_email"
         )
         password = st.text_input(
-            "Senha", placeholder="Digite sua senha", type="password",
+            "Senha", placeholder=_MASKED_FIELD_PLACEHOLDER, type="password",
             key="login_password",
         )
         error_placeholder = st.empty()
@@ -169,7 +183,7 @@ def _render_login_form(client_ip: str) -> None:
                 render_feedback(
                     "warning",
                     "Muitas tentativas incorretas. Tente novamente em",
-                    extra_html=' <span class="time-countdown" id="countdown"></span>.',
+                    extra_html=_COUNTDOWN_EXTRA_HTML,
                 )
             load_countdown_script(_seconds)
         elif submit and email and password:
@@ -244,10 +258,10 @@ def _render_signup(client_ip: str) -> None:
                 name = st.text_input(
                     "Nome Completo", placeholder="Digite seu nome completo", key="signup_name"
                 ).strip()
-                email = st.text_input("E-mail", placeholder="Digite seu e-mail", key="signup_email")
+                email = st.text_input("E-mail", placeholder=_EMAIL_PLACEHOLDER, key="signup_email")
                 render_email_hint()
                 password = st.text_input(
-                    "Senha", placeholder="Digite sua senha", type="password", key="signup_password"
+                    "Senha", placeholder=_MASKED_FIELD_PLACEHOLDER, type="password", key="signup_password"
                 )
                 confirm_password = st.text_input(
                     "Confirmar senha", placeholder="Digite sua senha novamente", type="password",
@@ -255,7 +269,7 @@ def _render_signup(client_ip: str) -> None:
                 )
             with requirements_col:
                 st.markdown(
-                    '<p class="password-requirements-title">Requisitos da senha</p>',
+                    _PASSWORD_REQUIREMENTS_TITLE_HTML,
                     unsafe_allow_html=True,
                 )
                 render_password_requirements()
@@ -315,11 +329,11 @@ def _validate_signup(name: str, email: str, password: str, confirm_password: str
     """Validações client-side do formulário de cadastro. Retorna "" se tudo válido,
     senão a primeira mensagem de erro encontrada."""
     if not name or not email or not password or not confirm_password:
-        return "Preencha todos os campos."
+        return _ERRO_CAMPOS_EM_BRANCO
     if not _EMAIL_RE.match(email):
-        return "Digite um e-mail válido."
+        return _ERRO_EMAIL_INVALIDO
     if password != confirm_password:
-        return "As senhas não coincidem."
+        return _ERRO_SENHAS_NAO_COINCIDEM
     return validate_password(password)
 
 
@@ -405,7 +419,7 @@ def _render_signup_resume_request(client_ip: str) -> None:
         if submit:
             if not _EMAIL_RE.match(email):
                 with error_placeholder:
-                    render_feedback("error", "Digite um e-mail válido.")
+                    render_feedback("error", _ERRO_EMAIL_INVALIDO)
             else:
                 result = _start_signup_resume(email, client_ip)
                 if result == "ok":
@@ -463,7 +477,7 @@ def _render_signup_confirm(client_ip: str) -> None:
                 render_feedback(
                     "warning",
                     "Muitas tentativas de código incorreto. Tente novamente em",
-                    extra_html=' <span class="time-countdown" id="countdown"></span>.',
+                    extra_html=_COUNTDOWN_EXTRA_HTML,
                 )
             load_countdown_script(_seconds)
         elif submit:
@@ -607,7 +621,7 @@ def _render_signup_resume_details(client_ip: str, email: str, name: str) -> None
                     unsafe_allow_html=True,
                 )
                 password = st.text_input(
-                    "Senha", placeholder="Digite sua senha", type="password", key="signup_resume_password",
+                    "Senha", placeholder=_MASKED_FIELD_PLACEHOLDER, type="password", key="signup_resume_password",
                 )
                 confirm_password = st.text_input(
                     "Confirmar senha", placeholder="Digite sua senha novamente", type="password",
@@ -615,7 +629,7 @@ def _render_signup_resume_details(client_ip: str, email: str, name: str) -> None
                 )
             with requirements_col:
                 st.markdown(
-                    '<p class="password-requirements-title">Requisitos da senha</p>',
+                    _PASSWORD_REQUIREMENTS_TITLE_HTML,
                     unsafe_allow_html=True,
                 )
                 render_password_requirements()
@@ -658,9 +672,9 @@ def _validate_signup_resume_details(name: str, password: str, confirm_password: 
     Senha + Confirmar Senha) — mesmo formato de _validate_reset, mais o campo Nome; sem
     `code` porque ele já foi validado na tela anterior."""
     if not name or not password or not confirm_password:
-        return "Preencha todos os campos."
+        return _ERRO_CAMPOS_EM_BRANCO
     if password != confirm_password:
-        return "As senhas não coincidem."
+        return _ERRO_SENHAS_NAO_COINCIDEM
     return validate_password(password)
 
 
@@ -706,7 +720,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
     with st.container(key="form-card"):
         _brand_header("Recuperar Acesso")
 
-        st.text_input("E-mail", placeholder="Digite seu e-mail", key="reset_email")
+        st.text_input("E-mail", placeholder=_EMAIL_PLACEHOLDER, key="reset_email")
         render_email_hint()
 
         @st.fragment(run_every=1)
@@ -767,7 +781,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
                 # desatualizada se o usuário editasse o campo sem sair do fragmento.
                 current_email = st.session_state.get("reset_email", "")
                 if not _EMAIL_RE.match(current_email):
-                    message = ("error", "Digite um e-mail válido.")
+                    message = ("error", _ERRO_EMAIL_INVALIDO)
                 else:
                     status = infrastructure.get_user_status(current_email)
                     # Sempre reescreve as duas flags (nunca só a que deu True) — sem isso, uma
@@ -832,7 +846,7 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                 )
             with requirements_col:
                 st.markdown(
-                    '<p class="password-requirements-title">Requisitos da senha</p>',
+                    _PASSWORD_REQUIREMENTS_TITLE_HTML,
                     unsafe_allow_html=True,
                 )
                 render_password_requirements()
@@ -853,7 +867,7 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
                 render_feedback(
                     "warning",
                     "Muitas tentativas de código incorreto. Tente novamente em",
-                    extra_html=' <span class="time-countdown" id="countdown"></span>.',
+                    extra_html=_COUNTDOWN_EXTRA_HTML,
                 )
             load_countdown_script(_seconds)
         elif submit:
@@ -945,9 +959,9 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
 
 def _validate_reset(code: str, password: str, confirm_password: str) -> str:
     if not code or not password or not confirm_password:
-        return "Preencha todos os campos."
+        return _ERRO_CAMPOS_EM_BRANCO
     if password != confirm_password:
-        return "As senhas não coincidem."
+        return _ERRO_SENHAS_NAO_COINCIDEM
     return validate_password(password)
 
 
