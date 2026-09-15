@@ -43,7 +43,7 @@ def get_parameters_glue() -> dict[str, Any]:
     # Se não existir o argumento YEAR, o try/except evita que o job quebre
     try:
         args.update(getResolvedOptions(sys.argv, ["YEAR"]))
-    except (SystemExit, GlueArgumentError):
+    except (SystemExit, GlueArgumentError):  # NOSONAR(S5754) — opcional por padrão do Glue, não deve propagar
         pass  # não há YEAR — tabela sem partição por ano; ok continuar
 
     return args

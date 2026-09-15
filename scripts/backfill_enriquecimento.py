@@ -95,6 +95,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -119,7 +120,124 @@ import backfill_shared as shared
 logger = shared.setup_logging()
 
 
+def _process_enriquecimento_unit(
+    media_type: str,
+    year: int,
+    end_year: int,
+    database: str,
+    api_key: str,
+    s3_bucket_sot: str,
+    s3_bucket_temp: str,
+    table_discover: str,
+    table_details: str,
+    table_watch_providers: str,
+    dq_job_name: str,
+    translate_provider: str,
+) -> str | None:
+    """Processa uma unidade (media_type, year): detalhes + watch providers.
+
+    Returns:
+        None em sucesso; a mensagem de erro (str) em falha não-retryable — o chamador
+        decide o que fazer (não aborta o backfill inteiro, ver main()). Deixa propagar
+        ClientError de token expirado, para acionar a retomada automática via exit code 75
+        (run_with_retry_exit).
+    """
+    try:
+        run_details_and_watch_providers_for_year(
+            api_key=api_key,
+            database=database,
+            media_type=media_type,
+            year=str(year),
+            end_year=str(end_year),
+            s3_bucket_sot=s3_bucket_sot,
+            s3_bucket_temp=s3_bucket_temp,
+            table_discover=table_discover,
+            table_details=table_details,
+            table_watch_providers=table_watch_providers,
+            dq_job_name=dq_job_name,
+            translate_provider=translate_provider,
+            trigger_dq=False,
+        )
+    except ClientError as exc:
+        if shared.is_expired_token_error(exc):
+            logger.error(
+                "Credenciais AWS expiraram durante o enriquecimento de %s year=%d. O workflow "
+                "vai renovar a credencial e retomar do checkpoint automaticamente "
+                "(ver scripts/backfill_shared.py).",
+                media_type, year,
+            )
+            raise
+        logger.exception(
+            "Falha ao enriquecer %s year=%d. Continuando com o próximo...",
+            media_type, year,
+        )
+        return str(exc)
+    except Exception as exc:  # falha de uma unidade não deve abortar o backfill inteiro
+        logger.exception(
+            "Falha ao enriquecer %s year=%d. Continuando com o próximo...",
+            media_type, year,
+        )
+        return str(exc)
+    logger.info("Enriquecimento concluído com sucesso para %s year=%d.", media_type, year)
+    return None
+
+
+def _finalize_enriquecimento_success(
+    *,
+    s3_client: Any,
+    s3_bucket_temp: str,
+    table_group: str,
+    dq_job_name: str,
+    dq_tables: list[tuple[str, str]],
+    db_movie: str,
+    db_tv: str,
+    years: list[int],
+    start_year: int,
+    end_year: int,
+    pendentes_count: int,
+    trigger_agg: bool,
+) -> None:
+    """Etapas finais quando nenhuma unidade falhou: dispara o Data Quality uma única vez
+    cobrindo todo o range processado, roda o Glue AGG e notifica sucesso (a menos que
+    trigger_agg=False, ver docstring do módulo), e limpa o checkpoint.
+
+    Args:
+        dq_tables: Lista de (table_name, database) — as 4 tabelas de details/watch_providers
+            (movie e tv) que recebem o disparo do Data Quality.
+    """
+    # Disparo único do Data Quality cobrindo todo o range processado, em vez de 2x por
+    # unidade — mesmo padrão do modo "changes" de app/glue_details/main.py (YEAR aceita
+    # lista de anos separada por vírgula).
+    years_arg = ",".join(str(year) for year in years)
+    logger.info(
+        "Disparando Glue Data Quality uma única vez (YEAR=%s) para as 4 tabelas...", years_arg,
+    )
+    for table_name, database in dq_tables:
+        trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
+        time.sleep(5)
+    if trigger_agg:
+        shared.trigger_agg_locally(
+            s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
+            s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
+            s3_bucket_temp=s3_bucket_temp,
+            db_movie=db_movie,
+            db_tv=db_tv,
+            db_unified=shared.require_env("DB_UNIFIED"),
+            table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
+            dq_job_name=dq_job_name,
+            environment=shared.require_env("ENVIRONMENT"),
+        )
+        shared.notify_backfill_success(
+            table_group,
+            f"Backfill de enriquecimento concluído sem pendências: {pendentes_count} "
+            f"unidade(s) processada(s) ({start_year}-{end_year}), Data Quality e Glue "
+            f"AGG disparados.",
+        )
+    shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
+
+
 def main(trigger_agg: bool = True) -> bool:
+    """Ponto de entrada do backfill de enriquecimento (ver docstring do módulo)."""
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region
 
@@ -176,46 +294,15 @@ def main(trigger_agg: bool = True) -> bool:
         table_details         = table_details_movie         if media_type == "movie" else table_details_tv
         table_watch_providers = table_watch_providers_movie if media_type == "movie" else table_watch_providers_tv
 
-        try:
-            run_details_and_watch_providers_for_year(
-                api_key=api_key,
-                database=database,
-                media_type=media_type,
-                year=str(year),
-                end_year=str(end_year),
-                s3_bucket_sot=s3_bucket_sot,
-                s3_bucket_temp=s3_bucket_temp,
-                table_discover=table_discover,
-                table_details=table_details,
-                table_watch_providers=table_watch_providers,
-                dq_job_name=dq_job_name,
-                translate_provider=translate_provider,
-                trigger_dq=False,
-            )
-        except ClientError as exc:
-            if shared.is_expired_token_error(exc):
-                logger.error(
-                    "Credenciais AWS expiraram durante o enriquecimento de %s year=%d. O workflow "
-                    "vai renovar a credencial e retomar do checkpoint automaticamente "
-                    "(ver scripts/backfill_shared.py).",
-                    media_type, year,
-                )
-                raise
-            logger.error(
-                "Falha ao enriquecer %s year=%d: %s. Continuando com o próximo...",
-                media_type, year, exc,
-            )
-            failures.append((media_type, year, str(exc)))
-        except Exception as exc:  # noqa: BLE001 — falha de uma unidade não deve abortar o backfill inteiro
-            logger.error(
-                "Falha ao enriquecer %s year=%d: %s. Continuando com o próximo...",
-                media_type, year, exc,
-            )
-            failures.append((media_type, year, str(exc)))
-        else:
-            logger.info("Enriquecimento concluído com sucesso para %s year=%d.", media_type, year)
+        error = _process_enriquecimento_unit(
+            media_type, year, end_year, database, api_key, s3_bucket_sot, s3_bucket_temp,
+            table_discover, table_details, table_watch_providers, dq_job_name, translate_provider,
+        )
+        if error is None:
             completed.add(f"{media_type}:{year}")
             shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year, completed)
+        else:
+            failures.append((media_type, year, error))
 
         if i < len(pendentes) and wait_seconds > 0:
             time.sleep(wait_seconds)
@@ -228,40 +315,26 @@ def main(trigger_agg: bool = True) -> bool:
             ", ".join(f"{media_type}/{year} ({erro})" for media_type, year, erro in failures),
         )
     else:
-        # Disparo único do Data Quality cobrindo todo o range processado, em vez de 2x por
-        # unidade — mesmo padrão do modo "changes" de app/glue_details/main.py (YEAR aceita
-        # lista de anos separada por vírgula).
-        years_arg = ",".join(str(year) for year in years)
-        logger.info(
-            "Disparando Glue Data Quality uma única vez (YEAR=%s) para as 4 tabelas...", years_arg,
-        )
-        for table_name, database in (
+        dq_tables = [
             (table_details_movie, db_movie),
             (table_details_tv, db_tv),
             (table_watch_providers_movie, db_movie),
             (table_watch_providers_tv, db_tv),
-        ):
-            trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
-            time.sleep(5)
-        if trigger_agg:
-            shared.trigger_agg_locally(
-                s3_bucket_spec=shared.require_env("S3_BUCKET_SPEC"),
-                s3_prefix_spec=shared.require_env("S3_PREFIX_SPEC"),
-                s3_bucket_temp=s3_bucket_temp,
-                db_movie=db_movie,
-                db_tv=db_tv,
-                db_unified=shared.require_env("DB_UNIFIED"),
-                table_name=shared.require_env("TABLE_DISCOVER_UNIFIED"),
-                dq_job_name=dq_job_name,
-                environment=shared.require_env("ENVIRONMENT"),
-            )
-            shared.notify_backfill_success(
-                table_group,
-                f"Backfill de enriquecimento concluído sem pendências: {len(pendentes)} "
-                f"unidade(s) processada(s) ({start_year}-{end_year}), Data Quality e Glue "
-                f"AGG disparados.",
-            )
-        shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
+        ]
+        _finalize_enriquecimento_success(
+            s3_client=s3_client,
+            s3_bucket_temp=s3_bucket_temp,
+            table_group=table_group,
+            dq_job_name=dq_job_name,
+            dq_tables=dq_tables,
+            db_movie=db_movie,
+            db_tv=db_tv,
+            years=years,
+            start_year=start_year,
+            end_year=end_year,
+            pendentes_count=len(pendentes),
+            trigger_agg=trigger_agg,
+        )
 
     return not failures
 

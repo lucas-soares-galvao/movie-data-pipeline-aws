@@ -136,7 +136,7 @@ def get_parameters_glue() -> dict[str, Any]:
     # do Glue para argumentos opcionais que não fazem parte de todos os runs.
     try:
         args.update(get_resolved_option(["YEAR", "END_YEAR"]))
-    except SystemExit:
+    except SystemExit:  # NOSONAR(S5754) — opcional por padrão do Glue, não deve propagar
         pass
 
     # Opcional: qual serviço de tradução usar para name_pt de países/idiomas
@@ -144,7 +144,7 @@ def get_parameters_glue() -> dict[str, Any]:
     # passa esse argumento) — mesmo padrão de opcional usado acima para YEAR/END_YEAR.
     try:
         args.update(get_resolved_option(["TRANSLATE_PROVIDER"]))
-    except SystemExit:
+    except SystemExit:  # NOSONAR(S5754) — opcional por padrão do Glue, não deve propagar
         args["TRANSLATE_PROVIDER"] = "google"
 
     return args
@@ -256,7 +256,8 @@ def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataF
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     try:
         return wr.s3.read_parquet(path=s3_path, dataset=True)
-    except Exception as exc:  # noqa: BLE001 — partição pode não existir ainda, degrada graciosamente
+    # Partição pode não existir ainda, degrada graciosamente.
+    except Exception as exc:  # noqa: BLE001
         logger.info(f"Sem dados existentes para '{table_name}' (provavelmente primeira execução): {exc}")
         return pd.DataFrame()
 
@@ -271,6 +272,61 @@ def _read_json_from_s3(bucket: str, key: str) -> list:
     s3_client = boto3.client("s3")
     response = s3_client.get_object(Bucket=bucket, Key=key, **expected_bucket_owner_kwargs())
     return json.loads(response["Body"].read())
+
+
+def _read_discover(s3_bucket_sor: str, s3_key: str, year: str | None, detect_fn) -> pd.DataFrame:
+    """Lê a pasta inteira do discover (array JSON puro por arquivo), adiciona year, remove
+    duplicatas por id, e adiciona overview_detected_language/overview_translated_pt_br
+    (diagnóstico, ver docstring de read_from_sor)."""
+    df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
+    df["year"] = year
+    df = df.drop_duplicates(subset=["id"])
+    if "overview" in df.columns:
+        df = add_detected_language_column(df, "overview", "overview_detected_language", detect_fn)
+        df["overview_translated_pt_br"] = df["overview_detected_language"] == "pt"
+    return df
+
+
+def _read_watch_providers_ref(s3_bucket_sor: str, s3_key: str) -> pd.DataFrame:
+    """Lê o arquivo único de watch_providers_ref e deriva canonical_name."""
+    df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
+    df["canonical_name"] = df["provider_name"].apply(derive_canonical_name)
+    # Reordena para bater com a ordem de colunas do Glue Catalog (infra/glue_catalog.tf):
+    # provider_id, provider_name, display_priority_br, canonical_name, logo_path.
+    # A ordem "natural" do DataFrame (colunas do JSON + canonical_name anexada por
+    # último) deixaria logo_path antes de canonical_name — desalinhado com o Catalog,
+    # o que faz o ParquetHiveSerDe (que resolve colunas por posição) ler o valor de
+    # canonical_name como se fosse logo_path e vice-versa.
+    return df[["provider_id", "provider_name", "display_priority_br", "canonical_name", "logo_path"]]
+
+
+def _read_genre_or_configuration(
+    s3_bucket_sor: str,
+    s3_key: str,
+    media_type: str,
+    table_type: str,
+    translate_fn: Callable[[str], str] | None,
+    s3_bucket_sot: str | None,
+    table_name: str | None,
+    detect_fn: Callable[[str], str | None] | None,
+) -> pd.DataFrame:
+    """Lê o arquivo único de genre/configuration. Em configuration, adiciona name_pt
+    (países para tv, idiomas para movie) via _add_name_pt_countries/_add_name_pt_languages,
+    com cache de tradução opcional (read_existing_configuration) quando s3_bucket_sot e
+    table_name são informados."""
+    df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
+    if table_type != "configuration":
+        return df
+
+    previous_df = None
+    if s3_bucket_sot and table_name:
+        previous_df = read_existing_configuration(s3_bucket_sot, table_name)
+
+    if media_type == "tv":
+        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn)
+    if media_type == "movie":
+        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn)
+    return df
 
 
 def read_from_sor(
@@ -319,45 +375,20 @@ def read_from_sor(
     s3_key = SOR_KEYS[media_type][table_type].format(year=year)
     logger.info(f"Lendo {table_type} de s3://{s3_bucket_sor}/{s3_key}")
 
-    if table_type == "discover":
-        df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
-        df["year"] = year
-        df = df.drop_duplicates(subset=["id"])
-        if "overview" in df.columns:
-            df = add_detected_language_column(df, "overview", "overview_detected_language", detect_fn)
-            df["overview_translated_pt_br"] = df["overview_detected_language"] == "pt"
-
-    elif table_type == "now_playing":
-        df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
-        df = df.drop_duplicates(subset=["id"])
-
     # discover e now_playing: wr.s3.read_json funciona porque os arquivos são arrays JSON puros.
     # watch_providers_ref, genre e configuration: usamos _read_json_from_s3 (boto3 + json.loads)
     # porque lida melhor com arquivo único — wrangler pode ter comportamento inesperado nesses casos.
+    if table_type == "discover":
+        df = _read_discover(s3_bucket_sor, s3_key, year, detect_fn)
+    elif table_type == "now_playing":
+        df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
+        df = df.drop_duplicates(subset=["id"])
     elif table_type == "watch_providers_ref":
-        df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
-        df["canonical_name"] = df["provider_name"].apply(derive_canonical_name)
-        # Reordena para bater com a ordem de colunas do Glue Catalog (infra/glue_catalog.tf):
-        # provider_id, provider_name, display_priority_br, canonical_name, logo_path.
-        # A ordem "natural" do DataFrame (colunas do JSON + canonical_name anexada por
-        # último) deixaria logo_path antes de canonical_name — desalinhado com o Catalog,
-        # o que faz o ParquetHiveSerDe (que resolve colunas por posição) ler o valor de
-        # canonical_name como se fosse logo_path e vice-versa.
-        df = df[["provider_id", "provider_name", "display_priority_br", "canonical_name", "logo_path"]]
-
+        df = _read_watch_providers_ref(s3_bucket_sor, s3_key)
     elif table_type in ("genre", "configuration"):
-        df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
-
-        if table_type == "configuration":
-            previous_df = None
-            if s3_bucket_sot and table_name:
-                previous_df = read_existing_configuration(s3_bucket_sot, table_name)
-
-            if media_type == "tv":
-                df = _add_name_pt_countries(df, translate_fn, previous_df, detect_fn)
-
-            elif media_type == "movie":
-                df = _add_name_pt_languages(df, translate_fn, previous_df, detect_fn)
+        df = _read_genre_or_configuration(
+            s3_bucket_sor, s3_key, media_type, table_type, translate_fn, s3_bucket_sot, table_name, detect_fn
+        )
 
     logger.info(f"Lidos {len(df)} registros.")
     return df

@@ -13,7 +13,7 @@
     // script só antecipa a borda verde/vermelha antes do submit. Só a tela de
     // "esqueci a senha" passa emailKey (login não precisa: formato inválido já
     // falha na autenticação normalmente).
-    const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const EMAIL_RE = /^[^@\s]+@(?:[^@\s.]+\.)+[^@\s.]+$/;
 
     function attach() {
         // Generalizado para N campos (login: e-mail+senha, cadastro: nome+e-mail+

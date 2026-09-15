@@ -597,8 +597,8 @@ def _send_gmail_email(to_email: str, subject: str, body: str) -> bool:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, app_password)
             server.send_message(message)
-    except Exception as exc:  # noqa: BLE001 — falha ao notificar não deve afetar uma ação já concluída
-        logger.error("Falha ao enviar e-mail para '%s': %s", to_email, exc)
+    except Exception:  # falha ao notificar não deve afetar uma ação já concluída
+        logger.exception("Falha ao enviar e-mail para '%s'", to_email)
         return False
     else:
         logger.info("E-mail enviado para '%s' (assunto: '%s').", to_email, subject)

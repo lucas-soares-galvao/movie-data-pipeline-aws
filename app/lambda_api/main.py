@@ -32,6 +32,12 @@ logger.setLevel(logging.INFO)
 # lambda_cognito_email_sender/main.py (_KMS_BOTO_CONFIG).
 _BOTO_CONFIG = BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 3})
 
+# Clientes boto3 no nível de módulo (não dentro do handler): são reaproveitados entre
+# invocations "quentes" da mesma execution environment, evitando recriar a conexão a
+# cada chamada (python:S6243).
+s3_client = boto3.client("s3", config=_BOTO_CONFIG)
+ssm = boto3.client("ssm", config=_BOTO_CONFIG)
+
 # Variáveis de ambiente injetadas pelo Terraform (lambda_api.tf, bloco environment da aws_lambda_function).
 TMDB_SECRET_ARN = os.environ["TMDB_SECRET_ARN"]
 GLUE_ETL_JOB_NAME = os.environ["GLUE_ETL_JOB_NAME"]
@@ -40,67 +46,138 @@ S3_BUCKET_SOR = os.environ["S3_BUCKET_SOR"]
 S3_BUCKET_TEMP = os.environ["S3_BUCKET_TEMP"]
 
 
+def _handle_changes_mode(event: dict[str, Any], content_type: str) -> dict[str, Any]:
+    """Modo changes (Changes API do TMDB) — refresca títulos já existentes no catálogo,
+    de qualquer ano, que mudaram numa janela de data recente. Estruturalmente diferente
+    dos demais modos: não usa /discover, não escreve no SOR nem passa pelo Glue ETL —
+    produz uma lista de IDs e aciona o Glue Details diretamente. Por isso sai cedo, antes
+    da resolução de tabelas de referência (o payload desse modo não as inclui)."""
+    logger.info("Buscando chave de API do TMDB no Secrets Manager...")
+    api_key = get_api_secret(TMDB_SECRET_ARN, "tmdb_api_key")
+    s3_key = collect_changes_data(api_key, s3_client, S3_BUCKET_TEMP, content_type)
+    trigger_glue_job(
+        GLUE_DETAILS_JOB_NAME,
+        MEDIA_TYPE=content_type,
+        DATABASE=event["database"],
+        CHANGES_S3_PATH=f"s3://{S3_BUCKET_TEMP}/{s3_key}",
+        TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
+    )
+    logger.info(f"Coleta de changes de '{content_type}' finalizada com sucesso!")
+    return {
+        "statusCode": 200,
+        "body": f"Changes de '{content_type}' processados com sucesso.",
+    }
+
+
+def _handle_rotation_refresh_mode(event: dict[str, Any], content_type: str) -> dict[str, Any]:
+    """Modo rotation refresh — percorre o catálogo antigo (2000 até current_year - 3)
+    um ano por execução, via um ponteiro simples em SSM Parameter Store (não é
+    checkpoint de loop — cada invocação é independente e stateless, só lê/escreve
+    "qual foi o último ano"). O ponteiro avança 1 e reinicia em 2000 ao ultrapassar
+    o limite; o limite é recalculado a cada execução a partir da data corrente
+    (nunca hardcoded), então o range acompanha sozinho o catálogo envelhecendo, sem
+    exigir ajuste manual de ano em ano. Um parâmetro por content_type evita corrida
+    entre as execuções de movie e tv (schedules independentes no EventBridge)."""
+    param_name = f"/tmdb-pipeline/rotation-year-pointer-{content_type}"
+    last_year = int(ssm.get_parameter(Name=param_name)["Parameter"]["Value"])
+
+    current_year = datetime.now(tz=timezone.utc).year
+    oldest_active_year = current_year - 3
+    next_year = last_year + 1
+    if next_year > oldest_active_year:
+        next_year = 2000
+
+    trigger_glue_job(
+        GLUE_DETAILS_JOB_NAME,
+        MEDIA_TYPE=content_type,
+        DATABASE=event["database"],
+        YEAR=next_year,
+        END_YEAR=next_year,
+        TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
+    )
+    ssm.put_parameter(Name=param_name, Value=str(next_year), Overwrite=True)
+    logger.info(f"Rotation refresh de '{content_type}' finalizado com sucesso! Ano processado: {next_year}")
+    return {
+        "statusCode": 200,
+        "body": f"Rotation refresh de '{content_type}' (ano {next_year}) processado com sucesso.",
+    }
+
+
+def _resolve_tables_for_content_type(
+    event: dict[str, Any], content_type: str
+) -> tuple[str, str, str, str, str | None]:
+    """Resolve os nomes de tabela (Glue Catalog) específicos de movie ou tv a partir do payload.
+
+    Returns:
+        Tupla (table_genre, table_configuration, table_discover, table_watch_providers_ref,
+        table_now_playing) — o último é None para tv (TV não tem now_playing).
+    """
+    if content_type == "movie":
+        return (
+            event["table_genre_movie"],
+            event["table_configuration_languages"],
+            event["table_discover_movie"],
+            event["table_watch_providers_ref_movie"],
+            event.get("table_now_playing_movie"),
+        )
+    return (
+        event["table_genre_tv"],
+        event["table_configuration_countries"],
+        event["table_discover_tv"],
+        event["table_watch_providers_ref_tv"],
+        None,
+    )
+
+
+def _collect_reference_tables(
+    api_key: str,
+    content_type: str,
+    table_genre: str,
+    table_configuration: str,
+    table_watch_providers_ref: str,
+    glue_base_args: dict[str, Any],
+) -> None:
+    """Coleta genre/configuration/watch_providers_ref do TMDB e aciona o Glue ETL para
+    cada um. Falha em watch_providers_ref não aborta (dados anteriores no S3 continuam
+    válidos) — genre/configuration são mais estáveis e não têm esse tratamento."""
+    logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
+    collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
+    logger.info("Acionando Glue ETL para tabela de gêneros...")
+    trigger_glue_job(GLUE_ETL_JOB_NAME, TABLE_TYPE="genre", TABLE_NAME=table_genre, **glue_base_args)
+
+    logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
+    collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
+    logger.info("Acionando Glue ETL para tabela de configuração...")
+    trigger_glue_job(
+        GLUE_ETL_JOB_NAME, TABLE_TYPE="configuration", TABLE_NAME=table_configuration, **glue_base_args
+    )
+
+    logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
+    try:
+        collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
+        logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
+        trigger_glue_job(
+            GLUE_ETL_JOB_NAME,
+            TABLE_TYPE="watch_providers_ref",
+            TABLE_NAME=table_watch_providers_ref,
+            **glue_base_args,
+        )
+    except HTTPError:
+        logger.error(
+            f"Falha ao coletar watch_providers_ref para '{content_type}'. "
+            "Pulando — dados anteriores no S3 permanecem válidos."
+        )
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Coleta dados do TMDB e dispara o Glue ETL. Payload definido em eventbridge_lambda_api.tf."""
-    s3_client = boto3.client("s3", config=_BOTO_CONFIG)
-
     content_type = event["type"]
 
-    # Modo changes (Changes API do TMDB) — refresca títulos já existentes no catálogo,
-    # de qualquer ano, que mudaram numa janela de data recente. Estruturalmente diferente
-    # dos demais modos: não usa /discover, não escreve no SOR nem passa pelo Glue ETL —
-    # produz uma lista de IDs e aciona o Glue Details diretamente. Por isso sai cedo, antes
-    # da resolução de tabelas de referência (o payload desse modo não as inclui).
     if event.get("only_changes_tables", False):
-        logger.info("Buscando chave de API do TMDB no Secrets Manager...")
-        api_key = get_api_secret(TMDB_SECRET_ARN, "tmdb_api_key")
-        s3_key = collect_changes_data(api_key, s3_client, S3_BUCKET_TEMP, content_type)
-        trigger_glue_job(
-            GLUE_DETAILS_JOB_NAME,
-            MEDIA_TYPE=content_type,
-            DATABASE=event["database"],
-            CHANGES_S3_PATH=f"s3://{S3_BUCKET_TEMP}/{s3_key}",
-            TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
-        )
-        logger.info(f"Coleta de changes de '{content_type}' finalizada com sucesso!")
-        return {
-            "statusCode": 200,
-            "body": f"Changes de '{content_type}' processados com sucesso.",
-        }
+        return _handle_changes_mode(event, content_type)
 
-    # Modo rotation refresh — percorre o catálogo antigo (2000 até current_year - 3)
-    # um ano por execução, via um ponteiro simples em SSM Parameter Store (não é
-    # checkpoint de loop — cada invocação é independente e stateless, só lê/escreve
-    # "qual foi o último ano"). O ponteiro avança 1 e reinicia em 2000 ao ultrapassar
-    # o limite; o limite é recalculado a cada execução a partir da data corrente
-    # (nunca hardcoded), então o range acompanha sozinho o catálogo envelhecendo, sem
-    # exigir ajuste manual de ano em ano. Um parâmetro por content_type evita corrida
-    # entre as execuções de movie e tv (schedules independentes no EventBridge).
     if event.get("only_rotation_refresh", False):
-        ssm = boto3.client("ssm", config=_BOTO_CONFIG)
-        param_name = f"/tmdb-pipeline/rotation-year-pointer-{content_type}"
-        last_year = int(ssm.get_parameter(Name=param_name)["Parameter"]["Value"])
-
-        current_year = datetime.now(tz=timezone.utc).year
-        oldest_active_year = current_year - 3
-        next_year = last_year + 1
-        if next_year > oldest_active_year:
-            next_year = 2000
-
-        trigger_glue_job(
-            GLUE_DETAILS_JOB_NAME,
-            MEDIA_TYPE=content_type,
-            DATABASE=event["database"],
-            YEAR=next_year,
-            END_YEAR=next_year,
-            TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
-        )
-        ssm.put_parameter(Name=param_name, Value=str(next_year), Overwrite=True)
-        logger.info(f"Rotation refresh de '{content_type}' finalizado com sucesso! Ano processado: {next_year}")
-        return {
-            "statusCode": 200,
-            "body": f"Rotation refresh de '{content_type}' (ano {next_year}) processado com sucesso.",
-        }
+        return _handle_rotation_refresh_mode(event, content_type)
 
     # "google" é o default do caminho automático via EventBridge: o payload configurado em
     # eventbridge.tf nunca define translate_provider, então cai aqui — é grátis, e o AWS
@@ -116,18 +193,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "TRANSLATE_PROVIDER": translate_provider,
     }
 
-    if content_type == "movie":
-        table_genre = event["table_genre_movie"]
-        table_configuration = event["table_configuration_languages"]
-        table_discover = event["table_discover_movie"]
-        table_watch_providers_ref = event["table_watch_providers_ref_movie"]
-        table_now_playing = event.get("table_now_playing_movie")
-    else:
-        table_genre = event["table_genre_tv"]
-        table_configuration = event["table_configuration_countries"]
-        table_discover = event["table_discover_tv"]
-        table_watch_providers_ref = event["table_watch_providers_ref_tv"]
-        table_now_playing = None  # TV não tem now_playing
+    table_genre, table_configuration, table_discover, table_watch_providers_ref, table_now_playing = (
+        _resolve_tables_for_content_type(event, content_type)
+    )
 
     # Flags de controle definidas no payload do EventBridge (ver eventbridge.tf).
     # Cada flag ativa um "modo" de execução diferente:
@@ -185,41 +253,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         loop_end_year = current_year + 1
 
     if not skip_reference:
-        logger.info(f"Coletando gêneros do TMDB para '{content_type}'...")
-        collect_genre_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
-        logger.info("Acionando Glue ETL para tabela de gêneros...")
-        trigger_glue_job(
-            GLUE_ETL_JOB_NAME,
-            TABLE_TYPE="genre",
-            TABLE_NAME=table_genre,
-            **glue_base_args,
+        _collect_reference_tables(
+            api_key, content_type, table_genre, table_configuration, table_watch_providers_ref, glue_base_args
         )
-
-        logger.info(f"Coletando configurações do TMDB para '{content_type}'...")
-        collect_configuration_data(api_key, s3_client, S3_BUCKET_SOR, content_type)
-        logger.info("Acionando Glue ETL para tabela de configuração...")
-        trigger_glue_job(
-            GLUE_ETL_JOB_NAME,
-            TABLE_TYPE="configuration",
-            TABLE_NAME=table_configuration,
-            **glue_base_args,
-        )
-
-        logger.info(f"Coletando referência de watch providers do TMDB para '{content_type}'...")
-        try:
-            collect_watch_providers_ref(api_key, s3_client, S3_BUCKET_SOR, content_type)
-            logger.info("Acionando Glue ETL para tabela de watch providers de referência...")
-            trigger_glue_job(
-                GLUE_ETL_JOB_NAME,
-                TABLE_TYPE="watch_providers_ref",
-                TABLE_NAME=table_watch_providers_ref,
-                **glue_base_args,
-            )
-        except HTTPError:
-            logger.error(
-                f"Falha ao coletar watch_providers_ref para '{content_type}'. "
-                "Pulando — dados anteriores no S3 permanecem válidos."
-            )
     else:
         logger.info("skip_reference=True: pulando coleta de genre, configuration e watch_providers_ref.")
 

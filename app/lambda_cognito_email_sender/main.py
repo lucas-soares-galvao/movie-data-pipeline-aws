@@ -26,6 +26,15 @@ KMS_KEY_ARN = os.environ["KMS_KEY_ARN"]
 # até o limite da função. O default do botocore (60s de connect/read) é longo demais.
 _KMS_BOTO_CONFIG = BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 3})
 
+# Cliente boto3 no nível de módulo (não dentro do handler): reaproveitado entre invocations
+# "quentes" da mesma execution environment, evitando recriar a conexão a cada chamada
+# (python:S6243).
+kms_client = boto3.client(
+    "kms",
+    region_name=os.getenv("AWS_REGION", "sa-east-1"),
+    config=_KMS_BOTO_CONFIG,
+)
+
 
 def lambda_handler(event: dict[str, Any], context: Any) -> None:
     """
@@ -41,11 +50,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> None:
 
     plaintext_code = None
     if encrypted_code:
-        kms_client = boto3.client(
-            "kms",
-            region_name=os.getenv("AWS_REGION", "sa-east-1"),
-            config=_KMS_BOTO_CONFIG,
-        )
         plaintext_code = decrypt_code(encrypted_code, KMS_KEY_ARN, kms_client)
 
     content = build_email_content(trigger_source, plaintext_code)

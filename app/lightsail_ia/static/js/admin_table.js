@@ -8,7 +8,7 @@
 // próprio ShadowRoot. document.querySelector(...) buscaria na página INTEIRA do Streamlit, não só
 // aqui dentro — bug real encontrado num spike desta migração (pegou por engano o botão "Deploy"
 // do próprio Streamlit antes de trocar pra parentElement).
-export default function (component) {
+export default function adminTableComponent(component) {
     const { setTriggerValue, parentElement } = component;
 
     parentElement.querySelectorAll(".btn-approve").forEach((btn) => {

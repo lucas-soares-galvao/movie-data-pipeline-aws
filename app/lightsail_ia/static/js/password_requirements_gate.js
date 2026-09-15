@@ -12,7 +12,7 @@
 
     // Mesma regex de _EMAIL_RE em forms.py, que continua a fonte de verdade — este
     // script só antecipa a borda verde/vermelha antes do submit.
-    const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const EMAIL_RE = /^[^@\s]+@(?:[^@\s.]+\.)+[^@\s.]+$/;
 
     // Mesma política de infra/lightsail_ia.tf (aws_cognito_user_pool.filmbot.password_policy)
     // + teto de 16 caracteres (regra só do app — Cognito não impõe máximo). Espelha

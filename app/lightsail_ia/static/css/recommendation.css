@@ -207,12 +207,12 @@
   width: auto !important;
   overflow: visible !important;
 }
-/* Mesmo laranja escurecido dos botões "Entrar"/"Recomendar" (#ea580c) — os três são os
-   únicos pontos do app com fundo laranja cheio + branco por cima (texto ou ícone), então
-   escurecem juntos pra não cansar a vista. */
+/* Mesmo laranja escurecido dos botões "Entrar"/"Recomendar" (#c2410c, ver comentário
+   em .st-key-btn_recomendar abaixo) — únicos pontos do app com fundo laranja cheio +
+   branco por cima (texto ou ícone), então escurecem juntos pra não cansar a vista. */
 .st-key-recorder-card [data-testid="stAudioInputActionButton"] {
   border-radius: 50% !important;
-  background: #ea580c !important;
+  background: #c2410c !important;
   box-shadow: 0 0 16px -2px rgba(234,88,12,0.5);
   flex-shrink: 0;
   width: 28px !important;
@@ -384,7 +384,13 @@
 }
 .st-key-btn_recomendar button {
   width: 140px !important;
-  background: #ea580c !important;
+  /* #c2410c (não #ea580c): branco sobre #ea580c mede ~3,6:1, abaixo do mínimo de
+     4,5:1 do WCAG AA para texto normal (css:S7924). #c2410c é um tom só mais escuro
+     na mesma escala (já usado em --accent-soft-text no tema claro, theme.css) e sobe
+     o contraste pra ~5,2:1, sem trocar a identidade laranja da marca. Mesmo tom
+     aplicado junto em forms.css/profile.css/admin.css e no ícone de gravação acima,
+     pra continuarem escurecendo juntos (ver comentário original). */
+  background: #c2410c !important;
   box-shadow: 0 0 24px -4px rgba(234,88,12,0.6);
   font-weight: 600 !important;
   transition: filter 0.2s ease, transform 0.2s ease;
@@ -533,10 +539,6 @@
     justify-content: center !important;
     width: 100% !important;
   }
-  .query-counter-text {
-    text-align: center;
-  }
-
   .st-key-search-status-row {
     flex-direction: column;
     align-items: stretch;
@@ -574,6 +576,7 @@
     margin-top: 0 !important;
   }
   .query-counter-text {
+    text-align: center;
     margin-top: 0 !important;
   }
   .spinner-container {

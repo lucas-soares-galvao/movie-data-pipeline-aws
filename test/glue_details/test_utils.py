@@ -1942,7 +1942,6 @@ class TestRunDetailsAndWatchProvidersForYear:
             database="db_tmdb_movie_dev",
             table_details="tb_tmdb_details_movie_dev",
             s3_bucket_sot="my-sot",
-            s3_bucket_temp="my-temp",
             year="2025",
         )
         assert call_order == ["repair_discover", "repair_wp", "repair_details"]
@@ -2524,7 +2523,7 @@ class TestRepairDetailsDuplicates:
         if s3_exc:
             with patch("src.utils.wr.s3.read_parquet", side_effect=s3_exc):
                 u.repair_details_duplicates(
-                    "db_tmdb_movie_dev", "tb_tmdb_details_movie_dev", "sot", "tmp", year="2025"
+                    "db_tmdb_movie_dev", "tb_tmdb_details_movie_dev", "sot", year="2025"
                 )
             return None
 
@@ -2533,7 +2532,7 @@ class TestRepairDetailsDuplicates:
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.repair_details_duplicates(
-                "db_tmdb_movie_dev", "tb_tmdb_details_movie_dev", "sot", "tmp", year="2025"
+                "db_tmdb_movie_dev", "tb_tmdb_details_movie_dev", "sot", year="2025"
             )
         return mock_write
 
