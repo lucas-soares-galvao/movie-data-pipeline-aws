@@ -21,7 +21,7 @@ REPO_URL="https://github.com/lucas-soares-galvao/movie-data-pipeline-aws.git"
 APP_DIR="/opt/filmbot"
 
 # Swap de 1 GB — necessário para rodar na instância nano_3_0 (512 MB RAM)
-if [ ! -f /swapfile ]; then
+if [[ ! -f /swapfile ]]; then
   fallocate -l 1G /swapfile
   chmod 600 /swapfile
   mkswap /swapfile

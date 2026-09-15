@@ -28,7 +28,7 @@ from src.infrastructure import (
 
 _MAX_LOGIN_ATTEMPTS = 3
 _LOGIN_LOCKOUT_SECONDS = 60
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_EMAIL_RE = re.compile(r"^[^@\s]+@(?:[^@\s.]+\.)+[^@\s.]+$")
 # Texto do link secundário "voltar para o login", repetido nas 5 telas de autenticação.
 _BACK_TO_LOGIN_LABEL = "← Voltar ao login"
 
