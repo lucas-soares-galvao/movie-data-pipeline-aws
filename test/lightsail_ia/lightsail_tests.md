@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`), os rodapés (`render_footer`/`render_form_footer`, incluindo o link de contato por e-mail via `_render_contact_line()`), o helper de ícone Lucide (`icon()`/`ICON_PATHS`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_form_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação e do perfil (`sign_up`, `confirm_sign_up`, `resend_confirmation_code`, `authenticate`, `record_login`, `record_password_update`, `is_admin`, `get_user_status`, `get_user_profile`, `update_user_name`, `change_password`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `list_unconfirmed_users`, `approve_signup`, `reject_signup`, `revoke_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `forms.py`, `admin.py`, `profile.py`, `recommendation.py`, `cards.py`) não é testada diretamente — é validada via execução manual. Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
+Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as funções de formatação (`app/lightsail_ia/formatting.py`), os componentes de renderização HTML (`app/lightsail_ia/components.py`) e o bootstrap de processo/rate limiting (`app/lightsail_ia/infrastructure.py`). O `test_agent.py` cobre `recommend()`, `search_titles_spec()`, validação SQL, extração de termos de gênero/provedor para destaque nas badges, cache e logging de tokens. O `test_formatting.py` cobre as funções puras de formatação (`format_record`, `_format_type`, `_format_genres`, `_format_title_duration`, `_format_release_date`, `_format_theater_end_date`, `_format_rating`). O `test_components.py` cobre a renderização de cards e grids (`render_card`, `render_grid`), a priorização de badges por termo destacado (`_prioritize`), a caixa de mensagem de feedback padronizada (`render_feedback`), os rodapés (`render_footer`/`render_form_footer`, incluindo o link de contato por e-mail via `_render_contact_line()`), o helper de ícone Lucide (`icon()`/`ICON_PATHS`) e a injeção dos scripts `load_audio_timer_script`/`load_countdown_script`/`load_form_button_toggle_script`, incluindo escape XSS e verificação de campos exibidos/ignorados. O `test_infrastructure.py` cobre os ramos de saída antecipada de `load_filmbot_password`/`setup_cloudwatch_logging` (sem tocar AWS de verdade), as funções puras de rate limiting (`get_client_ip`, `events_in_window`, `seconds_until_available`) e as chamadas Cognito/SNS da autenticação e do perfil (`sign_up`, `confirm_sign_up`, `resend_confirmation_code`, `authenticate`, `record_login`, `record_password_update`, `is_admin`, `get_user_status`, `get_user_profile`, `update_user_name`, `change_password`, `request_password_reset`, `confirm_password_reset`, `list_pending_users`, `list_active_users`, `list_unconfirmed_users`, `approve_signup`, `reject_signup`, `revoke_access`, `add_to_admins_group`, `notify_new_signup`) — todas mockando `boto3.client` diretamente, mesmo padrão já usado pelo resto do arquivo, sem `moto`. O `test_app.py` cobre o entrypoint Streamlit (`app.py`) via `streamlit.testing.v1.AppTest` — primeiro uso desse framework no projeto (ver nota abaixo). Como `app.py` roda tudo a nível de módulo na importação (sem nenhuma função isolada pra chamar), é o único módulo da suíte que precisa dele. O `test_recommendation.py` cobre `render_recommendation()` — a tela de captura de preferência (texto/áudio) e a busca assíncrona de recomendação, a função Streamlit mais complexa do projeto (354 linhas, sem nenhuma sub-função privada extraída, ~15 chaves de `session_state`). Substitui `concurrent.futures.Future` por um fake controlável (`_FakeFuture`) para não depender de threads reais, e intercepta `st.rerun`/`time.sleep` (ver nota abaixo) — praticamente todo ramo desta função termina em `st.rerun()`. O `test_forms.py` cobre as 5 telas de autenticação de `forms.py` (login, cadastro, retomada de cadastro, confirmação de e-mail, esqueci a senha) — validações puras, dispatch de view (`render_forms`), rate limiting por IP em 5 dicts `@st.cache_resource` distintos, e os blocos `@st.fragment(run_every=1)` aninhados (mensagem de reenvio de código com contagem regressiva), substituindo `st.fragment` por um decorator identidade (ver nota abaixo). O `test_admin.py` cobre o painel administrativo (`admin.py`): as funções puras de montagem/rótulo da tabela (`_status_label`, `_revoke_kind`, `_revoke_visible`, `_build_rows`, `_build_table_data`, `_build_table_html`/`_build_table_row_html`, `_format_datetime`), o dispatch de cliques da tabela via componente customizado Shadow DOM (`_render_users_table`, com `st.components.v2.component` substituído por um fake que simula o objeto de retorno) e o modal de confirmação de ação (`_render_confirm_dialog`, chamado via `.__wrapped__` para pular a abertura real do `@st.dialog`, que precisa de um script run ativo). O `test_profile.py` cobre a edição de nome/senha do próprio usuário (`profile.py`): `_validate_new_password` (pura), `get_own_profile` (com fallback em `ClientError`), a barra de navegação reaproveitável (`render_nav_item`/`render_nav_bar`), a aba "Perfil" (`render_profile_tab`) e a aba "Senha" com rate limiting por IP (`render_password_tab`), e o dispatch entre as duas (`render_profile_panel`). O `test_cards.py` cobre `render_cards()` — a exibição da grid de resultados a partir de `st.session_state["titles"]` (singular/plural do texto de contagem, ausência/presença de títulos, um card por título). Os testes usam estilo **pytest** (classes simples, `assert` nativo, `with patch(...)` como context manager). A interface Streamlit (`app.py`, `forms.py`, `admin.py`, `profile.py`, `recommendation.py`) ainda não é testada diretamente — é validada via execução manual (ver "Observação sobre testes de interface" abaixo; `cards.py` já saiu dessa lista). Todas as chamadas externas (LLM e Athena) são substituídas por **mocks** via `unittest.mock` — objetos falsos que simulam respostas do LLM e do banco de dados sem fazer chamadas reais, evitando custos de API e tornando os testes determinísticos.
 
 ## Estrutura
 
@@ -10,10 +10,16 @@ Testa as funções do agente de recomendação (`app/lightsail_ia/agent.py`), as
 test/lightsail_ia/
 ├── conftest.py               # Fixtures locais da suite
 ├── requirements_tests.txt    # Dependências de teste
+├── test_admin.py              # Testes do painel administrativo
 ├── test_agent.py             # Testes do agente (LLM, Athena, cache, validação)
+├── test_app.py                # Testes do entrypoint Streamlit via AppTest
+├── test_cards.py              # Testes da exibição da grid de resultados
 ├── test_components.py       # Testes de renderização HTML (cards e grids)
 ├── test_formatting.py        # Testes das funções puras de formatação
-└── test_infrastructure.py    # Testes do bootstrap de processo e rate limiting
+├── test_forms.py              # Testes das telas de autenticação
+├── test_infrastructure.py    # Testes do bootstrap de processo e rate limiting
+├── test_profile.py           # Testes de edição de nome/senha do próprio usuário
+└── test_recommendation.py    # Testes da captura de preferência e busca assíncrona
 ```
 
 ## Setup (`conftest.py`)
@@ -184,6 +190,21 @@ Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que 
 | `test_levanta_erro_sem_api_key_configurada` | Levanta `ValueError` quando `_TRANSCRIPTION_API_KEY` é `None` |
 | `test_audio_dentro_do_limite_nao_levanta_erro` | Áudio com duração abaixo de `_MAX_AUDIO_SECONDS` chama `litellm.transcription` normalmente |
 | `test_audio_muito_longo_levanta_erro_sem_chamar_api` | Áudio acima de `_MAX_AUDIO_SECONDS` levanta `AudioMuitoLongoError` **sem** chamar `litellm.transcription` (`assert_not_called()`), evitando gastar crédito à toa |
+
+## Casos de teste — `test_cards.py`
+
+### `TestRenderCards` — Exibição da grid de resultados
+
+O padrão de mock aqui difere do resto da suíte: como `render_cards()` é uma função de UI que só lê `st.session_state` e chama `st.markdown`, os testes capturam todas as chamadas de `cards.st.markdown` numa lista (via `monkeypatch.setattr`), em vez de mockar um único retorno — a 1ª chamada é sempre a injeção de CSS (`load_cards_css()`), a 2ª (quando há títulos) é o texto de contagem, a 3ª é a grid.
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_titulos_nao_renderiza_heading_nem_grid` | `session_state` sem a chave `titles` → só a injeção de CSS chama `st.markdown` |
+| `test_lista_vazia_de_titulos_nao_renderiza_heading_nem_grid` | `titles=[]` → mesmo comportamento acima |
+| `test_um_titulo_usa_singular_opcao` | Um título → texto "Encontramos 1 opção para você!" (singular) |
+| `test_varios_titulos_usa_plural_opcoes` | Mais de um título → texto no plural ("opções") |
+| `test_renderiza_um_card_por_titulo_na_grid` | A grid final contém exatamente um `<article class="card">` por título, com o nome de cada um |
+| `test_ausencia_de_titles_em_session_state_equivale_a_lista_vazia` | Confirma que `.get("titles", [])` trata chave ausente igual a lista vazia |
 
 ## Casos de teste — `test_components.py`
 
@@ -507,6 +528,291 @@ Todas mockam `src.infrastructure.boto3.client` e verificam a chamada exata à AP
 | `test_adiciona_usuario_ao_grupo_admins` | `add_to_admins_group()` chama `AdminAddUserToGroup(GroupName="admins")` |
 | `test_publica_no_topico_sns_com_email_e_nome` | `notify_new_signup()` chama `sns.publish` com `TopicArn`/`Subject`/`Message` (nome e e-mail interpolados, com o link do FilmBot no corpo) |
 
+## Casos de teste — `test_app.py` (primeiro uso de `streamlit.testing.v1.AppTest` no projeto)
+
+`app.py` não expõe nenhuma função chamável isoladamente — todo o corpo roda a nível de módulo assim que é importado. `AppTest.from_file(caminho_absoluto_de_app.py)` resolve isso executando o script de verdade a cada `.run()`/`.click().run()` (widgets reais respondem, `st.session_state` é um proxy real que persiste entre reruns simulados, exatamente como uma sessão de navegador). Diferente do resto da suíte (que sempre mocka `st.*` diretamente), aqui o padrão é mockar as funções **delegadas** que `app.py` importa de outros módulos (`admin.render_admin_panel`, `profile.render_profile_panel`, `recommendation.render_recommendation`, `cards.render_cards`, `components.render_footer`) — já que os `from src.X import Y` de `app.py` são resolvidos de novo em cada execução, basta o monkeypatch estar aplicado no módulo de origem antes de chamar `.run()`.
+
+**Achado importante, validado manualmente antes de escrever os testes**: sem mockar `render_admin_panel`/`render_profile_panel`, o app tenta chamar a API real do Cognito (`list_pending_users`/`get_own_profile`) assim que a tela renderiza — e numa máquina com credenciais AWS ambiente configuradas, isso dispara uma chamada de rede real (confirmado experimentalmente: um `AccessDeniedException` real de uma identidade IAM real apareceu no meio da investigação). Por isso os 5 `render_*` delegados são **sempre** mockados neste arquivo antes de qualquer `.run()`.
+
+**Limitação encontrada e contornada**: `infrastructure.get_client_ip`/`load_filmbot_password`/`setup_cloudwatch_logging` **não são mockados** de propósito — o mecanismo de alias `src.*` do `conftest.py` global (que permite várias suítes de teste compartilharem o mesmo processo pytest, ver seção do `conftest.py` acima) carrega `infrastructure` por um caminho de import diferente do resto, porque `recommendation.py` (o módulo-âncora da suíte) importa `infrastructure` internamente **antes** do alias canônico `src → app.lightsail_ia.src` ser estabelecido — um monkeypatch aplicado no objeto `infrastructure` do lado do teste não é o mesmo objeto que `app.py` resolve durante a execução do `AppTest`. Confirmado isolando o caso: os 5 `render_*` acima respeitam o monkeypatch normalmente (cada um deles é importado por um caminho que já usa o alias canônico), só `infrastructure` diverge. Como as 3 funções já são seguras de rodar de verdade em teste (sem `FILMBOT_SECRET_ARN`/`CLOUDWATCH_LOG_GROUP` no ambiente, as duas de bootstrap retornam sem tocar AWS; `get_client_ip()` sem header `X-Forwarded-For` real — nunca presente no `AppTest` — sempre retorna `"local"`), os testes abaixo comparam contra `"local"` em vez de mockar um IP arbitrário. Se um dia isso precisar de um IP customizado de verdade, a correção pertence ao `conftest.py` global (fazer `recommendation.py` importar `infrastructure` só depois do alias, ou pré-popular o alias antes do import do módulo-âncora), não a este arquivo de teste.
+
+### `TestGateDeAutenticacao`
+
+| Teste | O que verifica |
+|---|---|
+| `test_nao_autenticado_mostra_login_e_nao_renderiza_header` | Sem `authenticated=True`, `render_forms` real (não mockado) renderiza a tela de login de verdade e chama `st.stop()` — nenhum dos 5 `render_*` delegados é chamado, confirmando que o gate de autenticação corta a execução antes do cabeçalho/dispatch |
+
+### `TestDispatchPrincipal`
+
+| Teste | O que verifica |
+|---|---|
+| `test_nao_admin_sem_view_mostra_recomendacao_e_cards` | Autenticado, não-admin, sem `current_view` → tela principal (`render_recommendation`+`render_cards`), com `render_footer` chamado ao final |
+| `test_nao_admin_view_profile_mostra_perfil` | `current_view="profile"` → só `render_profile_panel` |
+| `test_admin_sem_view_mostra_recomendacao_e_cards` | Admin também vê a tela principal por padrão, igual não-admin |
+| `test_admin_view_admin_mostra_painel` | Admin com `current_view="admin"` → só `render_admin_panel` |
+| `test_view_admin_sem_ser_admin_e_ignorado` | `current_view="admin"` sem `is_admin=True` (sobra de sessão anterior, ex.: um admin perdeu o cargo) → painel admin NUNCA abre, cai na tela principal — confirma que o dispatch exige as duas condições (`is_admin and current_view == "admin"`) juntas |
+
+### `TestBarraDeNavegacao`
+
+| Teste | O que verifica |
+|---|---|
+| `test_admin_ve_botao_painel_admin_nao_meu_perfil` / `test_nao_admin_ve_botao_meu_perfil_nao_painel_admin` | Mutuamente exclusivos — admin nunca vê "Meu Perfil", não-admin nunca vê "Painel Admin" |
+| `test_clique_no_toggle_admin_alterna_para_painel_e_de_volta` / `test_clique_no_toggle_perfil_alterna_para_perfil_e_de_volta` | Clique alterna `current_view` (`"app"`↔`"admin"`/`"profile"`) e o rótulo do botão (`"Painel Admin"`/`"Meu Perfil"` ↔ `"← App"`) |
+| `test_clique_em_sair_limpa_toda_a_sessao` | "Sair" limpa `session_state` por completo (`.clear()`, não só `authenticated`) — confirma que resquícios de uma sessão anterior (`titles`, `user_name`) não vazam pro próximo login |
+
+## Casos de teste — `test_recommendation.py`
+
+Duas técnicas de mock específicas deste módulo, no helper comum `_stub(monkeypatch, initial_state, rerun_raises=True)` (por padrão `True`, diferente de `forms.py`, porque aqui praticamente todo ramo termina em `st.rerun()` — o helper já assume isso e cada teste que não deve disparar rerun escolhe `rerun_raises=False` ou apenas confere `rerun.assert_not_called()`):
+- `concurrent.futures.Future` real (retornado por `_executor.submit`) é substituído por `_FakeFuture` (classe local com `.done()`/`.result()` controláveis), evitando depender de threads de verdade ou de tempo real de execução do LLM/Whisper.
+- `st.rerun()` sempre levanta uma exceção sentinela (`_Rerun`, capturada via `pytest.raises`) por padrão — reproduz o corte de execução real do Streamlit (sem isso, em modo bare o código depois do rerun continuaria executando e misturaria estados de branches diferentes numa única chamada, já que esta função não tem nenhuma sub-função privada para isolar os ramos). `time.sleep` também é mockado, para os dois pontos de polling (`transcribing`/`searching`) não pausarem os testes de verdade.
+
+### `TestGreeting` / `TestEstadoOcioso`
+
+Saudação com/sem primeiro nome; e o estado ocioso completo (sem áudio, sem busca) não deve chamar `st.rerun()` nenhuma vez.
+
+### `TestCapturaDeAudio` — Novo áudio gravado
+
+| Teste | O que verifica |
+|---|---|
+| `test_audio_novo_dentro_do_limite_marca_aguardando_confirmacao` | Áudio dentro do limite de duração → grava hash/bytes pendentes, `audio_awaiting_confirmation=True` |
+| `test_audio_muito_longo_marca_flag_sem_pedir_confirmacao` | Acima do limite (+ tolerância) → `transcription_too_long=True`, pula a confirmação, incrementa `audio_widget_seq` |
+| `test_mesmo_audio_de_antes_nao_reprocessa` | Hash igual ao último processado → não reprocessa, sem `st.rerun()` |
+
+### `TestConfirmacaoDeAudio` — Usar/cancelar gravação
+
+| Teste | O que verifica |
+|---|---|
+| `test_rate_limit_atingido_cancela_confirmacao_automaticamente` | Limite de transcrições/hora atingido → cancela a confirmação sozinho, marca `transcription_rate_limited` |
+| `test_usar_gravacao_submete_transcricao_no_executor` | Clique em "Usar gravação" → `_executor.submit(transcribe_preference, bytes)`, `transcribing=True` |
+| `test_cancelar_gravacao_descarta_bytes_pendentes` | Clique em "Cancelar" → descarta os bytes, sem submeter nada |
+| `test_sem_clique_mantem_estado_de_confirmacao_sem_rerun` | Nenhum clique → estado inalterado, sem `st.rerun()` |
+
+### `TestTranscricaoEmAndamento` — Polling do resultado da transcrição
+
+Cobre: ainda não concluída (mostra status, `time.sleep`, rerun); concluída com texto (grava `preference_text`); concluída sem texto (`transcription_empty`); texto acima do limite de caracteres (trunca + `transcription_truncated`); `AudioMuitoLongoError` durante a transcrição (`transcription_too_long`); e exceção genérica (`transcription_error`, logada).
+
+### `TestMensagensDeTranscricao`
+
+Cada uma das 5 flags de aviso (`transcription_rate_limited`, `transcription_too_long`, `transcription_error`, `transcription_empty`, `transcription_truncated`) renderiza a mensagem certa via `render_feedback`, isoladamente.
+
+### `TestBotaoRecomendar` — Disparo da busca
+
+Cobre o aviso de limite de consultas/hora com countdown, a classe CSS de destaque quando o contador está baixo (≤3), o clique com preferência preenchida (submete `recommend` no executor e inicia `searching`), e o clique sem preferência (guard `and preference` impede o submit).
+
+### `TestBuscaEmAndamento` — Polling do resultado da busca
+
+Cobre: ainda buscando (spinner + `time.sleep` + rerun); "Cancelar" reseta todo o estado de busca; conclusão com sucesso (grava `titles`); conclusão com erro (`search_error=True`, `titles=[]`).
+
+### `TestFeedbackDeResultado`
+
+Erro de busca e "sem resultados" renderizam a mensagem certa; resultado com títulos não renderiza nenhum feedback de erro/vazio.
+
+## Casos de teste — `test_forms.py`
+
+Duas técnicas de mock específicas deste módulo, usadas por praticamente toda classe de teste via um helper comum `_stub_common(monkeypatch, initial_state, rerun_raises=False)`:
+- **`st.fragment(run_every=1)` não executa a função decorada em modo bare** (nenhuma exceção — o agendamento de `run_every` depende do `ScriptRunContext` real, então o Streamlit simplesmente não chama o corpo). `_stub_common` substitui `forms.st.fragment` por um decorator identidade (`lambda *a, **k: (lambda f: f)`), necessário para que as 3 seções de reenvio/envio (`_resend_section` em `_render_signup_confirm`/`_render_forgot_password_confirm`, `_send_section` em `_render_forgot_password_request`) de fato executem quando a função-mãe é chamada.
+- **`st.rerun()` real não interrompe a execução em modo bare** (é um no-op) — mas em produção ele aborta o script imediatamente, então código escrito depois de um `st.rerun()` nunca roda de verdade. Onde isso importa (ex.: confirmar que a mensagem de erro NÃO aparece depois que o lockout é atingido no meio de uma tentativa), o teste passa `rerun_raises=True` para `_stub_common`, que faz o mock de `st.rerun` levantar uma exceção sentinela (`_Rerun`) capturada via `pytest.raises(_Rerun)` — reproduzindo fielmente o corte de execução real.
+
+Fixture `autouse` (`_limpar_rate_limit_histories`) limpa os 5 dicts `@st.cache_resource` de rate limiting do módulo (`_login_attempt_history`, `_reset_attempt_history`, `_code_attempt_history`, `_signup_code_send_history`, `_signup_code_attempt_history`) antes de cada teste. `st.text_input`/`st.button` são substituídos por lambdas que retornam valores fixos por `key` (`_patch_text_input`/`_patch_button`), mesmo padrão de `test_profile.py`/`test_admin.py`.
+
+### Funções puras (`TestValidateSignup`, `TestSignupErrorMessage`, `TestValidateSignupResumeDetails`, `TestSignupCodeErrorMessage`, `TestValidateReset`, `TestResetErrorMessage`, `TestSwitchView`, `TestBrandHeader`)
+
+Tabelas de validação client-side (campos em branco, e-mail inválido, senhas divergentes, delega pra `validate_password`) e de tradução de código de erro do Cognito (`CodeMismatchException`, `ExpiredCodeException`, `UsernameExistsException`, `InvalidPasswordException`, `LimitExceededException`/`TooManyFailedAttemptsException`, `AliasExistsException`, `UserNotFoundException`, código desconhecido) para cada uma das 3 telas com código (cadastro, confirmação de cadastro, redefinição de senha). `TestSwitchView` confirma que troca de view grava `session_state["auth_view"]` e chama `st.rerun()`; `TestBrandHeader` confirma a renderização condicional do título de página.
+
+### `TestStartSignupResume` — Retomada de cadastro abandonado (lógica de negócio sem widgets Streamlit)
+
+| Teste | O que verifica |
+|---|---|
+| `test_email_nao_pendente_retorna_not_pending_sem_reenviar` | E-mail não `UNCONFIRMED` no Cognito → `"not_pending"`, sem reenviar código |
+| `test_pendente_reenvia_codigo_e_retorna_ok` | E-mail pendente → reenvia código, grava `signup_email_confirmed`/`signup_name_confirmed`/`signup_resumed=True`, retorna `"ok"` |
+| `test_dentro_do_cooldown_nao_reenvia_mas_ainda_retorna_ok` | Reenvio recente (dentro do cooldown de 60s) → não reenvia de novo, mas ainda retorna `"ok"` (já tem código válido) |
+| `test_falha_ao_reenviar_retorna_resend_failed` | Erro real do Cognito ao reenviar → `"resend_failed"` |
+| `test_erro_ao_buscar_nome_usa_string_vazia_mas_ainda_retorna_ok` | Falha ao buscar nome pré-existente (`ClientError`/`IndexError`) → nome vira `""`, mas o fluxo continua (`"ok"`) |
+
+### `TestRenderForms` — Dispatch da view ativa
+
+Confirma que `authenticated=True` retorna sem renderizar nada, que cada valor de `auth_view` despacha para a função `_render_*` certa (`signup`, `signup_resume`, `signup_confirm`, `signup_success`, `forgot_password`, `password_reset_success`, e o padrão `login`), e que `st.stop()` é sempre chamado ao final (exceto no caminho já autenticado).
+
+### `TestRenderLoginForm` — Tela de login
+
+| Teste | O que verifica |
+|---|---|
+| `test_bloqueado_mostra_aviso_sem_chamar_authenticate` | 3 tentativas na janela de 60s → aviso com countdown, sem chamar `authenticate` |
+| `test_login_bem_sucedido_grava_sessao_e_chama_rerun` | Sucesso → grava `authenticated`/`user_email`/`is_admin`/`user_name`, chama `record_login`, `st.rerun()` |
+| `test_login_bem_sucedido_com_falha_ao_buscar_nome_usa_string_vazia` / `test_login_bem_sucedido_com_falha_ao_gravar_last_login_nao_propaga` | Falhas não-críticas (nome/last_login) não travam o login |
+| `test_login_pending_mostra_aviso_sem_rerun` | Cadastro ainda não aprovado → aviso, sem `st.rerun()` |
+| `test_credenciais_invalidas_registra_falha_e_mostra_erro` | Credencial errada (1ª/2ª tentativa) → registra tentativa, mostra erro, sem rerun |
+| `test_terceira_credencial_invalida_chama_rerun_sem_mostrar_erro` | 3ª tentativa errada → `st.rerun()` (mostra a tela de lockout no próximo render) SEM chegar a mostrar "E-mail ou senha incorretos." (usa `rerun_raises=True`/`pytest.raises` pra provar o corte de execução real) |
+| `test_submit_sem_preencher_campos_mostra_erro` | Campos vazios → erro local, sem chamar `authenticate` |
+| `test_link_esqueci_a_senha_troca_view` / `test_link_novo_cadastro_troca_view` | Links secundários chamam `_switch_view` com o destino certo |
+
+### `TestRenderSignup` — Formulário de cadastro
+
+| Teste | O que verifica |
+|---|---|
+| `test_cadastro_valido_chama_sign_up_e_agenda_cooldown_de_reenvio` | Cadastro válido → `sign_up`, grava e-mail/nome confirmados, inicia cooldown de reenvio, vai para `signup_confirm` |
+| `test_validacao_local_falha_nao_chama_sign_up` | Validação local falha → não chama Cognito |
+| `test_email_ja_existente_com_retomada_bem_sucedida_vai_para_confirmacao` / `test_email_ja_existente_sem_retomada_mostra_erro` | `UsernameExistsException` tenta retomar via `_start_signup_resume`; sucesso pula pra confirmação, falha mostra "já está cadastrado" |
+| `test_erro_generico_do_cognito_mostra_mensagem_de_erro` | Outro erro do Cognito → mensagem genérica |
+| `test_link_retomar_cadastro_troca_view` / `test_link_voltar_ao_login_troca_view` | Links secundários |
+
+### `TestRenderSignupResumeRequest` — Link dedicado "Já iniciei um cadastro"
+
+Cobre e-mail inválido (sem chamar `_start_signup_resume`), os 3 resultados possíveis (`ok`/`not_pending`/`resend_failed`) e o link de voltar ao login.
+
+### `TestRenderSignupConfirm` — Confirmação de e-mail (a mais complexa: código + resend fragment + retomada)
+
+| Teste | O que verifica |
+|---|---|
+| `test_retomada_na_etapa_details_delega_para_resume_details` | `signup_resumed=True` + `signup_resume_step="details"` → early return delegando pra `_render_signup_resume_details` |
+| `test_bloqueado_mostra_aviso_sem_chamar_confirm_sign_up` / `test_terceiro_codigo_incorreto_chama_rerun_sem_mensagem_de_erro` | Lockout de código (3 tentativas) — inclusive o corte de execução real via `rerun_raises=True` |
+| `test_codigo_em_branco_mostra_erro` / `test_codigo_incorreto_registra_tentativa_e_mostra_erro` | Validação de código |
+| `test_confirmacao_bem_sucedida_nao_retomada_vai_para_tela_de_sucesso` / `test_confirmacao_bem_sucedida_retomada_avanca_para_etapa_details` | Sucesso bifurca por `resumed` |
+| `test_falha_ao_notificar_admin_nao_propaga` | Falha ao notificar admin não trava a confirmação do próprio usuário |
+| `test_resend_section_sem_bloqueio_nao_mostra_mensagem` / `..._com_reenvio_recente_mostra_sucesso` / `..._com_falha_recente_mostra_erro` / `..._sem_reenvio_nem_falha_recente_mostra_aviso_generico` | Os 4 estados de mensagem do fragment de reenvio (nenhum bloqueio, sucesso recente, falha recente, bloqueio genérico) |
+| `test_clique_em_reenviar_codigo_com_sucesso` / `test_clique_em_reenviar_codigo_com_falha` | Clique em "Reenviar código" dentro do fragment |
+| `test_link_voltar_ao_login_dentro_do_resend_limpa_sessao_e_troca_view` | Link "Voltar ao login" dentro do fragment também limpa o estado de cadastro |
+| `test_sem_email_confirmado_mostra_subtitulo_generico` | Sem e-mail em sessão, mostra subtítulo genérico em vez do aviso "Enviamos um código para..." |
+
+### `TestRenderSignupResumeDetails` — Nome/senha finais do cadastro retomado
+
+Cobre aplicação bem-sucedida (`apply_resumed_signup`), falha não-propagante, validação local, o link "← Voltar" (volta pra etapa de código) e escape XSS do e-mail somente-leitura.
+
+### `TestRenderForgotPassword` / `TestRenderSignupSuccess` — Dispatch simples
+
+`TestRenderForgotPassword` cobre o dispatch por `reset_step` (`"request"`/`"confirm"`); `TestRenderSignupSuccess` cobre o único botão da tela de sucesso do cadastro.
+
+### `TestRenderForgotPasswordRequest` — Passo 1 do "Esqueci a senha" (fragment `_send_section`)
+
+| Teste | O que verifica |
+|---|---|
+| `test_bloqueado_mostra_aviso_generico` / `..._com_email_nao_registrado_mostra_mensagem_especifica` / `..._com_cadastro_pendente_mostra_mensagem_especifica` | As 3 mensagens possíveis durante o cooldown, conforme as flags `email_not_registered`/`email_pending_approval` |
+| `test_email_invalido_mostra_erro` | Valida o e-mail lido de `session_state["reset_email"]` (não da variável local — o fragment roda isolado do resto do form) |
+| `test_email_sem_cadastro_marca_flag_e_faz_rerun_de_fragmento` / `test_email_pendente_de_aprovacao_marca_flag_e_faz_rerun_de_fragmento` | `get_user_status` `None`/`"UNCONFIRMED"` → marca a flag certa, sem chamar `request_password_reset`, `st.rerun(scope="fragment")` |
+| `test_email_confirmado_solicita_reset_e_avanca_para_confirmacao` | Status confirmado → `request_password_reset`, avança pra `reset_step="confirm"` |
+| `test_falha_ao_solicitar_reset_nao_propaga` | Erro do Cognito nesse ponto não deve vazar detalhe pro usuário (anti-enumeration) |
+| `test_link_voltar_ao_login_troca_view` | Link fora do fragment |
+
+### `TestRenderForgotPasswordConfirm` — Passo 2 do "Esqueci a senha" (código + nova senha + fragment `_resend_section`)
+
+Mesmo formato de `TestRenderSignupConfirm`: lockout de código (com corte de execução via `rerun_raises=True`), validação local, sucesso (grava `record_password_update`, avança pra `password_reset_success`) com falha não-propagante, os estados do resend (sucesso recente vs. genérico), clique em reenviar (sucesso e falha não-propagante), link de voltar ao login, e o subtítulo genérico quando não há e-mail em sessão.
+
+## Casos de teste — `test_admin.py`
+
+Duas técnicas novas de mock, específicas deste módulo:
+- `_render_users_table` usa `st.components.v2.component(...)` (componente custom Shadow DOM) — os testes substituem `admin.st.components.v2.component` por uma fábrica fake que devolve um objeto (`_FakeComponentResult`) com os atributos `approve_<email>`/`revoke_<email>` que o código lê via `getattr(result, ...)`, simulando qual botão foi clicado sem precisar de um frontend real.
+- `_render_confirm_dialog` é decorado com `@st.dialog(...)`, que levanta `StreamlitAPIException` se chamado fora de uma sessão real. Os testes chamam `admin._render_confirm_dialog.__wrapped__(pending)` — o `functools.wraps` do próprio Streamlit expõe a função original sem o decorator — e substituem `st.columns` por colunas fake (`_FakeColumn`, só com `.button()`) para simular clique em "Cancelar"/"Confirmar".
+
+### `TestFormatDatetime` / `TestStatusLabel` / `TestRevokeKind` / `TestRevokeVisible` — Funções puras de rótulo/regra da tabela
+
+| Teste | O que verifica |
+|---|---|
+| `test_valor_vazio_retorna_nunca` | `_format_datetime("")` → `"Nunca"` |
+| `test_formata_timestamp_utc_para_horario_de_sao_paulo` | Timestamp ISO UTC convertido para `America/Sao_Paulo` (`DD/MM/AAAA HH:MM`) |
+| `test_unconfirmed_retorna_inativo` / `test_pending_retorna_novo` / `test_active_habilitado_retorna_ativo` / `test_active_desabilitado_retorna_revogado` | `_status_label` mapeia `kind`/`enabled` para o rótulo em português certo |
+| `test_pending_retorna_reject` / `test_unconfirmed_retorna_remove_unconfirmed` / `test_active_retorna_revoke` | `_revoke_kind` escolhe a ação de revogação certa por `kind` |
+| `test_admin_nunca_e_revogavel` | Admin nunca tem botão de revogar, independente de `kind`/`enabled` |
+| `test_pendente_nao_admin_e_revogavel` / `test_ativo_habilitado_nao_admin_e_revogavel` / `test_ativo_ja_desabilitado_nao_e_revogavel` | Regra de visibilidade do botão de revogar por combinação de `kind`/`enabled` |
+
+### `TestBuildRows` / `TestBuildTableData` / `TestBuildTableHtml` / `TestBuildTableRowHtml` — Montagem da tabela
+
+| Teste | O que verifica |
+|---|---|
+| `test_combina_e_marca_origem_das_3_listas` | `_build_rows` combina `list_pending_users`/`list_active_users`/`list_unconfirmed_users`, marcando `kind` e `is_admin` por linha |
+| `test_ordena_pelo_sort_key_de_infrastructure_em_ordem_reversa` | `_build_rows` ordena pelo `admin_table_sort_key` de `infrastructure`, decrescente |
+| `test_monta_colunas_em_portugues_com_status_e_datas_formatadas` / `test_nao_admin_gera_coluna_admin_nao` | `_build_table_data` traduz os campos do usuário pras colunas exibidas na tabela |
+| `test_colgroup_reflete_as_larguras_configuradas` / `test_cabecalho_contem_todos_os_rotulos_de_coluna` / `test_colunas_centralizadas_ganham_classe_col_center` | `_build_table_html` monta `<colgroup>`/`<thead>` consistentes com `_COLUMN_WEIGHTS`/`_COLUMN_LABELS`/`_CENTERED_COLUMNS` |
+| `test_linha_ativa_nao_admin_exibe_botao_de_revogar_sem_aprovar` / `test_linha_pendente_exibe_botao_de_aprovar_e_de_revogar` / `test_linha_admin_nunca_exibe_botao_de_revogar` | `_build_table_row_html` só inclui os botões que fazem sentido pra cada linha |
+| `test_escapa_xss_no_email_e_no_nome` | Valores da linha passam por `html.escape` antes de entrar no HTML |
+| `test_le_arquivo_estatico_real_de_admin_table` (`TestReadStatic`) | `_read_static` lê de verdade `static/css/admin_table.css` do disco |
+
+### `TestRenderTable` / `TestQueuePendingAction` / `TestRenderUsersTable` — Orquestração da seção "Usuários"
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_usuarios_exibe_mensagem_vazia` / `test_com_usuarios_chama_render_users_table` | `_render_table` alterna entre mensagem vazia e a tabela, conforme `_build_rows()` |
+| `test_feedback_pendente_e_renderizado_e_removido_da_sessao` / `test_sem_feedback_pendente_nao_chama_render_feedback` | Mensagem de resultado da última ação (`admin_action_feedback`) aparece uma única vez |
+| `test_grava_acao_pendente_e_chama_rerun` | `_queue_pending_action` grava `admin_pending_action` e força `st.rerun()` |
+| `test_sem_clique_nao_enfileira_nenhuma_acao` | Resultado vazio do componente → nenhuma ação enfileirada |
+| `test_clique_em_aprovar_enfileira_approve` / `test_clique_em_revogar_usuario_ativo_enfileira_revoke` / `test_clique_em_revogar_pendente_enfileira_reject` | Cada botão clicado no componente enfileira a ação certa |
+| `test_acao_pendente_na_sessao_abre_dialogo_de_confirmacao` / `test_sem_acao_pendente_nao_abre_dialogo` | `_render_confirm_dialog` só é chamado quando há `admin_pending_action` na sessão |
+
+### `TestRenderConfirmDialog` — Modal de confirmação (aprovar/reprovar/revogar/remover)
+
+| Teste | O que verifica |
+|---|---|
+| `test_aprovar_confirmado_com_notificacao_enviada_com_sucesso` | Aprovar + notificar marcado → `approve_signup` + `notify_user_approved`, feedback de sucesso citando "e-mail enviado com sucesso" |
+| `test_aprovar_confirmado_sem_marcar_notificar_nao_envia_email` | Notificar desmarcado → `notify_user_approved` nunca chamado, texto "e-mail não enviado (opção desmarcada)" |
+| `test_reprovar_confirmado_com_falha_no_envio_de_email_gera_warning` | Falha ao notificar → `feedback["kind"] == "warning"` em vez de `"success"` |
+| `test_remover_nao_confirmado_usa_mesmo_fluxo_de_reprovar` | `remove_unconfirmed` reaproveita `reject_signup`, com o rótulo "Cadastro não confirmado" |
+| `test_revogar_confirmado_chama_revoke_access` | Revogar chama `revoke_access`/`notify_user_revoked`, rótulo "Acesso" |
+| `test_cancelar_nao_chama_nenhuma_acao_de_infraestrutura` | Cancelar limpa `admin_pending_action` e fecha o modal sem chamar nenhuma API |
+| `test_nenhum_botao_clicado_nao_faz_nada` | Sem clique em nenhum dos dois botões, nada muda (modal continua aberto) |
+
+### `TestRenderAdminPanel` — Dispatch entre as 3 seções (Usuários/Perfil/Senha)
+
+| Teste | O que verifica |
+|---|---|
+| `test_secao_padrao_usuarios_chama_render_table` | Seção padrão (`setdefault`) é `"usuarios"` |
+| `test_secao_perfil_chama_render_profile_tab_com_proprio_perfil` | Seção "Perfil" reaproveita `render_profile_tab`/`get_own_profile` de `profile.py` para o próprio admin |
+| `test_secao_senha_chama_render_password_tab` | Seção "Senha" reaproveita `render_password_tab` de `profile.py` |
+
+## Casos de teste — `test_profile.py`
+
+Fixture `autouse` própria (`_limpar_password_reauth_history`) limpa `profile._password_reauth_history` antes de cada teste — mesmo racional do `_limpar_cache_where` de `agent.py`, necessário porque é um dict `@st.cache_resource` (singleton vivo durante todo o processo pytest). `st.session_state` é substituído por um dict Python simples via `monkeypatch` em vez do `SessionStateProxy` real (que persiste entre testes no mesmo processo); `st.text_input`/`st.button` são substituídos por lambdas que retornam valores fixos por `key`, já que em modo bare (sem `streamlit run`) sempre ecoam o `value`/retornam `False`.
+
+### `TestValidateNewPassword` — Validação local antes de chamar Cognito
+
+| Teste | O que verifica |
+|---|---|
+| `test_campo_vazio_retorna_mensagem_de_preencher_tudo` | Qualquer um dos 3 campos vazio → "Preencha todos os campos." |
+| `test_senhas_diferentes_retorna_mensagem_de_nao_coincidem` | Nova senha ≠ confirmação → "As senhas não coincidem." |
+| `test_senha_fraca_delega_para_validate_password` | Delega para a política de senha compartilhada (`validate_password`, já testada em `test_components.py`) |
+| `test_senha_valida_retorna_string_vazia` | Senha válida e confirmação igual → `""` |
+
+### `TestGetOwnProfile`
+
+| Teste | O que verifica |
+|---|---|
+| `test_retorna_perfil_quando_busca_tem_sucesso` | Retorna o dict de `infrastructure.get_user_profile` sem alteração |
+| `test_retorna_fallback_quando_busca_falha` | `ClientError` → retorna `{"name": "", "email": email}` em vez de propagar |
+
+### `TestRenderNavItem` / `TestRenderNavBar` — Barra horizontal de navegação (Perfil/Senha, reaproveitada por `admin.py`)
+
+| Teste | O que verifica |
+|---|---|
+| `test_secao_inativa_sem_clique_nao_muda_estado_nem_chama_rerun` | Sem clique, nada muda |
+| `test_secao_inativa_com_clique_ativa_e_chama_rerun` | Clique numa seção inativa grava `session_state[f"{scope}_active_section"]` e chama `st.rerun()` |
+| `test_secao_ja_ativa_com_clique_nao_chama_rerun` | Clique numa seção já ativa não chama `st.rerun()` (guard `not is_active`) |
+| `test_chama_render_nav_item_uma_vez_por_secao_com_o_scope_certo` | `render_nav_bar` chama `render_nav_item` uma vez por item de `_PROFILE_SECTIONS`, propagando o `scope` |
+
+### `TestRenderProfileTab` — Aba "Perfil" (editar nome)
+
+| Teste | O que verifica |
+|---|---|
+| `test_nome_inalterado_nao_chama_update_user_name_nem_feedback` | Nome igual ao atual → nenhuma chamada (branch `pass`) |
+| `test_nome_em_branco_mostra_erro_sem_chamar_update_user_name` | Nome em branco → erro "O nome não pode ficar em branco." |
+| `test_nome_alterado_chama_update_user_name_e_feedback_de_sucesso` | Nome novo → `infrastructure.update_user_name`, atualiza `session_state["user_name"]`, feedback de sucesso |
+| `test_botao_nao_clicado_nao_chama_update_user_name_nem_feedback` | Sem clicar em "Salvar Perfil", nada acontece |
+
+### `TestRenderPasswordTab` — Aba "Senha" (rate limiting + Cognito)
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_bloqueio_e_sem_clique_nao_chama_change_password` | Estado inicial: sem chamada a Cognito, `locked_out=False` propagado ao script de gate do botão |
+| `test_bloqueado_por_tentativas_mostra_aviso_e_nao_chama_change_password` | 3 tentativas na janela de 60s → aviso com countdown, `change_password` nunca chamado (independe do clique) |
+| `test_validacao_local_falha_nao_chama_change_password` | Confirmação diferente da nova senha → erro local, sem chamar Cognito |
+| `test_senha_atual_incorreta_registra_tentativa_e_mostra_erro` | `change_password` retorna `"invalid"` → registra timestamp em `_password_reauth_history` e mostra erro |
+| `test_senha_atualizada_com_sucesso_limpa_campos_e_mostra_sucesso` | `change_password` retorna `"ok"` → chama `record_password_update`, limpa os 3 campos de `session_state`, feedback de sucesso |
+| `test_falha_ao_gravar_password_updated_at_nao_impede_sucesso` | `record_password_update` levanta `ClientError` → não propaga, troca de senha ainda é reportada como sucesso ao usuário |
+
+### `TestRenderProfilePanel` — Dispatch entre as duas abas
+
+| Teste | O que verifica |
+|---|---|
+| `test_secao_padrao_perfil_chama_render_profile_tab` | Sem seção ativa em `session_state`, o padrão (`setdefault`) é `"perfil"` |
+| `test_secao_senha_chama_render_password_tab` | Com `profile_active_section="senha"`, chama a aba de senha em vez da de perfil |
+
 ## Como executar
 
 ```bash
@@ -519,11 +825,11 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). `app.py`, `forms.py`, `admin.py`, `profile.py`, `recommendation.py` e `cards.py` estão formalmente excluídos dessa medição via `omit=` no `.coveragerc` (ver seção abaixo) — não contam nem a favor nem contra o gate. `infrastructure.py`/`components.py` **não** estão excluídos: embora também tenham código chamado pela UI, têm funções puras, com saída antecipada, ou chamadas diretas a boto3 (Cognito/SNS) trivialmente testáveis via mock, sem depender de um script Streamlit rodando (ver `test_infrastructure.py`/`test_components.py` acima).
+**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). Nenhum arquivo de `app/lightsail_ia/` está mais excluído dessa medição via `omit=` no `.coveragerc` — a lista de exclusão (que chegou a ter 6 arquivos: `app.py`, `forms.py`, `admin.py`, `recommendation.py`, `cards.py`, `profile.py`) foi encolhendo módulo a módulo conforme cada um ganhou testes, e `app.py` (o último, e o mais difícil — script de entrypoint sem nenhuma função isolada) saiu por último usando `streamlit.testing.v1.AppTest`. Todos os módulos de UI têm cobertura real (100%/99%+) via mock direto de `st.*` (`st.markdown`/`st.session_state`/`st.button`/`st.text_input`/`st.components.v2.component`/`st.fragment`/`st.rerun`/`st.columns`) — sem depender de um script Streamlit rodando de verdade — exceto `app.py`, que precisa do `AppTest` justamente por não ter função isolada pra chamar (ver `test_infrastructure.py`/`test_components.py`/`test_cards.py`/`test_profile.py`/`test_admin.py`/`test_forms.py`/`test_recommendation.py`/`test_app.py` acima).
 
 ## Observação sobre testes de interface
 
-A interface Streamlit (`app.py`, `forms.py`, `admin.py`, `profile.py`, `recommendation.py`, `cards.py`) não é coberta por testes automatizados nesta suite — e por isso está listada em `omit=` no `.coveragerc`, no mesmo mecanismo usado para excluir `test/*`/`infra/*` do gate. Sem essa exclusão, esses arquivos ficariam em 0% de cobertura (rodam código a nível de import/execução de script, sem framework tipo `st.testing.v1.AppTest` no projeto) e derrubariam o gate de 95% sozinhos. Para validar o app visualmente, execute localmente:
+Não há mais nenhum módulo de interface do FilmBot fora do gate de cobertura — `app.py`, `forms.py`, `admin.py`, `recommendation.py`, `cards.py` e `profile.py` (a lista completa que um dia esteve em `omit=` no `.coveragerc`) têm todos teste automatizado hoje, cada um cobrindo o caso mais difícil da sua categoria: o componente Shadow DOM e o `@st.dialog` de `admin.py`; os blocos `@st.fragment(run_every=1)` aninhados de `forms.py`; a thread real via `ThreadPoolExecutor` + polling de `recommendation.py` (substituído por um `Future` fake); e o script de entrypoint sem função isolada de `app.py`, resolvido com `streamlit.testing.v1.AppTest` (framework novo pro projeto, já disponível via `streamlit==1.59.2`, sem precisar adicionar dependência — ver `test_app.py`, que também documenta uma limitação encontrada no mecanismo de alias `src.*` do `conftest.py` global). Para validar visualmente o app como um todo, além da suíte automatizada, ainda vale rodar localmente:
 
 ```bash
 cd app/lightsail_ia
