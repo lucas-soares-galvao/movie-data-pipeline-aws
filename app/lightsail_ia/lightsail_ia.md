@@ -279,6 +279,12 @@ O nudge vertical fino no ícone da barra (`.st-key-profile-nav`/`.st-key-admin-n
   nenhum estado `:disabled`/autofill do navegador — elimina a classe inteira do problema em vez de continuar
   adivinhando o seletor certo. Sem mudança de comportamento (segue somente leitura, sem elemento de formulário
   real por trás). CSS morta removida junto (`input:disabled { opacity: 0.55 }`, sem uso desde essa troca).
+  **Oitava rodada — contraste do `:disabled` (Sonar `css:S7924`):** o `rgba(234,88,12,0.5)` da quarta
+  rodada media ~1,9:1 com texto branco sobre o tema claro (fundo branco); nenhum laranja translúcido chega a
+  4,5:1 ali sem ficar quase igual ao habilitado (`#c2410c`). Trocado nos 3 lugares (`recommendation.css`,
+  `forms.css`, `profile.css`) por `#b45a33` opaco (~4,7:1): ainda "apagado" (menos saturado que o habilitado),
+  mas independente do fundo da página. Mudança visual pedida pelo usuário para fechar o achado do Sonar,
+  apesar de a WCAG 1.4.3 isentar controles desabilitados de contraste mínimo.
   **Sétima rodada — modal de confirmação do admin (`_render_confirm_dialog`, `admin.css`):** mesma
   causa-raiz do resto desta seção — `[data-testid="stDialog"] > div` (o card visível) não tinha
   `background`/`border`/texto próprios, herdando o card nativo do Streamlit dissociado do

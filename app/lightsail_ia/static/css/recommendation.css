@@ -399,13 +399,14 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
-/* Fundo translúcido explícito (não mais opacity:0.5) — mesmo padrão do "Entrar"
+/* Laranja queimado opaco (#b45a33, ~4,7:1 com texto branco) — mesmo padrão do "Entrar"
    desabilitado (forms.css) e do "Salvar Perfil"/"Salvar Senha" desabilitados
-   (profile.css): mantém a identidade visual original (laranja apagado), só sem
-   decair o texto branco junto com o fundo. Pedido do usuário: voltar a esse
-   padrão translúcido em vez do cinza neutro usado antes aqui. */
+   (profile.css). Antes era rgba(234,88,12,0.5), que sobre o tema claro (fundo branco)
+   media ~1,9:1 e o Sonar apontava (css:S7924); nenhum laranja translúcido chega a
+   4,5:1 ali sem ficar praticamente igual ao habilitado (#c2410c). Continua "apagado"
+   (menos saturado que o habilitado), sem depender do fundo da página. */
 .st-key-btn_recomendar button:disabled {
-  background: rgba(234, 88, 12, 0.5) !important;
+  background: #b45a33 !important;
   color: #fff !important;
   opacity: 1;
   box-shadow: none;

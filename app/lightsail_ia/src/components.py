@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 from itertools import zip_longest
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -848,6 +849,21 @@ def _render_people_block(
     return f'<div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>'
 
 
+def _field(title: dict, key: str, default: Any = "") -> Any:
+    """Lê `key` de `title` devolvendo `default` quando o valor for falsy (None, "", []).
+
+    Concentra o padrão `title.get(key) or default` do `render_card` num único ponto,
+    para que a função não acumule complexidade cognitiva em cada campo lido.
+    """
+    return title.get(key) or default
+
+
+def _escaped_field(title: dict, key: str) -> str:
+    """Lê `key` de `title` como texto (vazio quando ausente/falsy) já escapado com
+    `html.escape`, contra XSS ao interpolar no HTML do card."""
+    return html.escape(_field(title, key))
+
+
 def render_card(title: dict, idx: int = 0) -> str:
     """Monta o HTML de um card de título com escape contra XSS.
 
@@ -858,40 +874,40 @@ def render_card(title: dict, idx: int = 0) -> str:
     data/tipo. Cada seção é montada por um helper privado (`_render_*_block`/`_render_*_row`)
     que só lê os campos já extraídos abaixo e devolve a string HTML da seção, vazia quando
     não há o que mostrar."""
-    poster = title.get("backdrop_url") or title.get("poster_url") or ""
+    poster = _field(title, "backdrop_url") or _field(title, "poster_url")
     has_poster = bool(poster)
     title_name = html.escape(title.get("title", ""))
     year = html.escape(str(title.get("year", "")))
     title_type = html.escape(title.get("type", ""))
     rating = title.get("rating")
-    overview_raw = title.get("overview") or ""
+    overview_raw = _field(title, "overview")
     reason_raw = title.get("reason")
-    reason = html.escape(reason_raw or "")
-    genres = title.get("genres") or []
-    duration = title.get("duration") or ""
-    release_date = html.escape(title.get("release_date") or "")
-    streaming_providers = title.get("streaming_providers") or ""
-    streaming_provider_logos = title.get("streaming_provider_logos") or ""
-    rent_buy_providers = title.get("rent_buy_providers") or ""
-    rent_buy_provider_logos = title.get("rent_buy_provider_logos") or ""
-    in_theaters = title.get("in_theaters") or False
-    theater_end_date = html.escape(title.get("theater_end_date") or "")
+    reason = _escaped_field(title, "reason")
+    genres = _field(title, "genres", [])
+    duration = _field(title, "duration")
+    release_date = _escaped_field(title, "release_date")
+    streaming_providers = _field(title, "streaming_providers")
+    streaming_provider_logos = _field(title, "streaming_provider_logos")
+    rent_buy_providers = _field(title, "rent_buy_providers")
+    rent_buy_provider_logos = _field(title, "rent_buy_provider_logos")
+    in_theaters = _field(title, "in_theaters", False)
+    theater_end_date = _escaped_field(title, "theater_end_date")
     next_episode_season_number = title.get("next_episode_season_number")
     next_episode_number = title.get("next_episode_number")
-    next_episode_date = html.escape(title.get("next_episode_date") or "")
-    upcoming_date = html.escape(title.get("upcoming_date") or "")
-    title_status = html.escape(title.get("title_status") or "")
-    certification = html.escape(title.get("certification") or "")
-    trailer_url = title.get("trailer_url") or ""
-    cast = title.get("cast") or ""
-    director = title.get("director") or ""
-    creators = title.get("creators") or ""
-    writers = title.get("writers") or ""
-    composer = title.get("composer") or ""
-    producer = title.get("producer") or ""
-    cinematographer = title.get("cinematographer") or ""
-    editor = title.get("editor") or ""
-    highlighted_genres = title.get("highlighted_genres") or []
+    next_episode_date = _escaped_field(title, "next_episode_date")
+    upcoming_date = _escaped_field(title, "upcoming_date")
+    title_status = _escaped_field(title, "title_status")
+    certification = _escaped_field(title, "certification")
+    trailer_url = _field(title, "trailer_url")
+    cast = _field(title, "cast")
+    director = _field(title, "director")
+    creators = _field(title, "creators")
+    writers = _field(title, "writers")
+    composer = _field(title, "composer")
+    producer = _field(title, "producer")
+    cinematographer = _field(title, "cinematographer")
+    editor = _field(title, "editor")
+    highlighted_genres = _field(title, "highlighted_genres", [])
 
     genres_block_html = _render_genres_block(genres, highlighted_genres)
     cinema_html = _render_cinema_row(
@@ -908,7 +924,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     duration_html = _render_duration_row(duration)
     providers_block_html = _render_providers_block(
         streaming_providers, streaming_provider_logos, rent_buy_providers, rent_buy_provider_logos,
-        title.get("highlighted_providers") or [],
+        _field(title, "highlighted_providers", []),
     )
     synopsis_html = _render_synopsis_block(overview_raw, idx)
     people_html = _render_people_block(
