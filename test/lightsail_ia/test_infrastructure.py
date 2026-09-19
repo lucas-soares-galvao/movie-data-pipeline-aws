@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+import shared_utils.gmail_helpers as gmail_helpers
 from botocore.exceptions import ClientError
 from src import infrastructure
 
@@ -761,7 +762,7 @@ class TestNotifyUserApproved:
         monkeypatch.delenv("GMAIL_SENDER_EMAIL", raising=False)
         monkeypatch.delenv("GMAIL_APP_PASSWORD", raising=False)
 
-        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+        with patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp:
             resultado = infrastructure.notify_user_approved("user@ex.com", "Fulano")
 
         mock_smtp.assert_not_called()
@@ -778,8 +779,8 @@ class TestNotifyUserApproved:
         mock_smtp_server = MagicMock()
 
         with (
-            patch("src.infrastructure.boto3.client", return_value=mock_secrets_client),
-            patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp,
+            patch("shared_utils.gmail_helpers.boto3.client", return_value=mock_secrets_client),
+            patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp,
         ):
             mock_smtp.return_value.__enter__.return_value = mock_smtp_server
             resultado = infrastructure.notify_user_approved("user@ex.com", "Fulano")
@@ -787,7 +788,7 @@ class TestNotifyUserApproved:
         mock_secrets_client.get_secret_value.assert_called_once_with(
             SecretId="arn:aws:secretsmanager:sa-east-1:123456789012:secret:x"
         )
-        mock_smtp.assert_called_once_with("smtp.gmail.com", 465)
+        mock_smtp.assert_called_once_with("smtp.gmail.com", 465, timeout=gmail_helpers._SMTP_TIMEOUT_SECONDS)
         mock_smtp_server.login.assert_called_once_with("filmbot.lsgalvao@gmail.com", "abcd efgh ijkl mnop")
         mock_smtp_server.send_message.assert_called_once()
         sent_message = mock_smtp_server.send_message.call_args[0][0]
@@ -807,8 +808,8 @@ class TestNotifyUserApproved:
         mock_smtp_server = MagicMock()
 
         with (
-            patch("src.infrastructure.boto3.client") as mock_boto,
-            patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp,
+            patch("shared_utils.gmail_helpers.boto3.client") as mock_boto,
+            patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp,
         ):
             mock_smtp.return_value.__enter__.return_value = mock_smtp_server
             resultado = infrastructure.notify_user_approved("user@ex.com", "Fulano")
@@ -829,8 +830,8 @@ class TestNotifyUserApproved:
         mock_smtp_server = MagicMock()
 
         with (
-            patch("src.infrastructure.boto3.client", return_value=mock_secrets_client),
-            patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp,
+            patch("shared_utils.gmail_helpers.boto3.client", return_value=mock_secrets_client),
+            patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp,
         ):
             mock_smtp.return_value.__enter__.return_value = mock_smtp_server
             resultado = infrastructure.notify_user_approved("user@ex.com", "Fulano")
@@ -843,7 +844,7 @@ class TestNotifyUserApproved:
         monkeypatch.setenv("GMAIL_SENDER_EMAIL", "filmbot.lsgalvao@gmail.com")
         monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
 
-        with patch("src.infrastructure.smtplib.SMTP_SSL", side_effect=OSError("conexão recusada")):
+        with patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL", side_effect=OSError("conexão recusada")):
             resultado = infrastructure.notify_user_approved("user@ex.com", "Fulano")
 
         assert resultado is False
@@ -856,7 +857,7 @@ class TestNotifyUserRejected:
         monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
         mock_smtp_server = MagicMock()
 
-        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+        with patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp:
             mock_smtp.return_value.__enter__.return_value = mock_smtp_server
             resultado = infrastructure.notify_user_rejected("user@ex.com", "Fulano")
 
@@ -874,7 +875,7 @@ class TestNotifyUserRejected:
         monkeypatch.delenv("GMAIL_SENDER_EMAIL", raising=False)
         monkeypatch.delenv("GMAIL_APP_PASSWORD", raising=False)
 
-        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+        with patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp:
             resultado = infrastructure.notify_user_rejected("user@ex.com", "Fulano")
 
         mock_smtp.assert_not_called()
@@ -888,7 +889,7 @@ class TestNotifyUserRevoked:
         monkeypatch.setenv("GMAIL_APP_PASSWORD", "senha-de-app")
         mock_smtp_server = MagicMock()
 
-        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+        with patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp:
             mock_smtp.return_value.__enter__.return_value = mock_smtp_server
             resultado = infrastructure.notify_user_revoked("user@ex.com", "Fulano")
 
@@ -906,7 +907,7 @@ class TestNotifyUserRevoked:
         monkeypatch.delenv("GMAIL_SENDER_EMAIL", raising=False)
         monkeypatch.delenv("GMAIL_APP_PASSWORD", raising=False)
 
-        with patch("src.infrastructure.smtplib.SMTP_SSL") as mock_smtp:
+        with patch("shared_utils.gmail_helpers.smtplib.SMTP_SSL") as mock_smtp:
             resultado = infrastructure.notify_user_revoked("user@ex.com", "Fulano")
 
         mock_smtp.assert_not_called()

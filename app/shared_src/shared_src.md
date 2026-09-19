@@ -13,6 +13,7 @@ app/shared_src/
     ├── __init__.py
     ├── api_client.py      ← acesso a APIs externas (retry, Secrets Manager)
     ├── glue_helpers.py    ← utilitários compartilhados de jobs Glue
+    ├── gmail_helpers.py   ← credenciais e envio de e-mail via Gmail/SMTP
     ├── traducao.py        ← orquestração de tradução: elegibilidade, cache, paralelismo, escolha do serviço
     ├── traducao_google.py ← tradução via Google Translate (deep_translator)
     ├── traducao_aws.py    ← tradução via AWS Translate (boto3)
@@ -37,6 +38,13 @@ app/shared_src/
 |---|---|
 | `get_resolved_option(args)` | Wrapper de `getResolvedOptions` — converte lista de nomes em dicionário nome→valor |
 | `configure_glue_logging()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp) e retorna o logger raiz |
+
+### `shared_utils/gmail_helpers.py`
+
+| Função | Responsabilidade |
+|---|---|
+| `load_gmail_credentials()` | Busca remetente + senha de app do Gmail: do `FILMBOT_SECRET_ARN` (chaves `gmail_sender_email`/`gmail_app_password`) em produção, ou das env vars `GMAIL_SENDER_EMAIL`/`GMAIL_APP_PASSWORD` como fallback de dev local. Retorna `None` se nenhuma das duas fontes tiver as duas credenciais |
+| `send_gmail_email(to_email, subject, body)` | Monta e envia (via Gmail/SMTP, `smtplib.SMTP_SSL` com timeout de 10s) um e-mail de texto puro. Nunca lança exceção — retorna se o envio teve sucesso, para o chamador decidir o que fazer sem que uma falha de e-mail derrube uma ação já concluída (trigger do Cognito, decisão do admin) |
 
 ### `shared_utils/traducao_google.py`
 
@@ -97,6 +105,8 @@ Fachada de orquestração de detecção de idioma — papel equivalente ao de `t
 | Componente | Funções importadas |
 |---|---|
 | `lambda_api` | `api_get`, `get_api_secret`, `trigger_glue_job` |
+| `lambda_cognito_email_sender` | `load_gmail_credentials`, `send_gmail_email` |
+| `lightsail_ia` | `send_gmail_email` |
 | `glue_details` | `api_get`, `get_api_secret`, `get_resolved_option`, `translate_text`, `translate_text_aws`, `resolve_pt_translation`, `reuse_existing_translation`, `resolve_translate_fn`, `resolve_detect_language_fn`, `detect_language_langdetect`, `detect_language_aws`, `trigger_glue_job` |
 | `glue_etl` | `get_resolved_option`, `translate_text`, `translate_text_aws`, `resolve_pt_translation`, `reuse_existing_translation`, `resolve_translate_fn`, `add_detected_language_column`, `resolve_detect_language_fn`, `detect_language_langdetect`, `detect_language_aws`, `trigger_glue_job` |
 | `scripts/backfill_traducao.py` | `translate_text`, `translate_text_aws`, `resolve_pt_translation`, `resolve_translate_fn`, `resolve_detect_language_fn`, `detect_language_langdetect`, `detect_language_aws` |
@@ -109,5 +119,6 @@ Fachada de orquestração de detecção de idioma — papel equivalente ao de `t
 ## Deploy
 
 - **Glue jobs**: empacotado como wheel (`tmdb_shared-0.0.0-py3-none-any.whl`) via `build_glue_wheel.py --package shared_utils` e referenciado no `--extra-py-files` de cada job
-- **Lambda**: copiado para dentro do zip via `build_lambda_package.py --shared`
+- **Lambda** (`lambda_api`, `lambda_cognito_email_sender`): copiado para dentro do zip via `build_lambda_package.py --shared`
+- **Lightsail** (`lightsail_ia`): não é empacotado — o deploy (`deploy_lightsail.yml`) clona o repositório inteiro, então `app/shared_src` já existe em disco ao lado de `app/lightsail_ia`; `app.py` insere esse caminho em `sys.path` antes de importar `src.*` (mesmo padrão usado em `scripts/backfill_*.py`)
 - **Terraform**: build e upload em `shared_src.tf`, paths em `locals.tf`

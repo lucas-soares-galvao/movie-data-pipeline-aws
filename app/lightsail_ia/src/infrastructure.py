@@ -4,16 +4,15 @@ import json
 import logging
 import math
 import os
-import smtplib
 import time
 from datetime import datetime, timezone
-from email.mime.text import MIMEText
 from pathlib import Path
 
 import boto3
 import streamlit as st
 import watchtower
 from botocore.exceptions import ClientError
+from shared_utils.gmail_helpers import send_gmail_email as _send_gmail_email
 
 logger = logging.getLogger(__name__)
 
@@ -549,60 +548,6 @@ def notify_new_signup(email: str, name: str) -> None:
             f"Link: {_FILMBOT_URL}"
         ),
     )
-
-
-def _load_gmail_credentials() -> tuple[str, str] | None:
-    """Busca remetente + senha de app do Gmail para notify_user_approved: do
-    FILMBOT_SECRET_ARN (chaves gmail_sender_email/gmail_app_password) em produção, ou
-    das env vars GMAIL_SENDER_EMAIL/GMAIL_APP_PASSWORD como fallback de dev local —
-    mesmo padrão de load_filmbot_password/agent.py::_load_llm_api_key. Retorna None se
-    nenhuma das duas fontes tiver as duas credenciais."""
-    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
-    if secret_arn:
-        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
-        response = client.get_secret_value(SecretId=secret_arn)
-        secret = json.loads(response["SecretString"])
-        sender_email = secret.get("gmail_sender_email")
-        app_password = secret.get("gmail_app_password")
-        if sender_email and app_password:
-            return sender_email, app_password
-
-    sender_email = os.getenv("GMAIL_SENDER_EMAIL")
-    app_password = os.getenv("GMAIL_APP_PASSWORD")
-    if sender_email and app_password:
-        return sender_email, app_password
-    return None
-
-
-def _send_gmail_email(to_email: str, subject: str, body: str) -> bool:
-    """Monta e envia (via Gmail/SMTP) um e-mail de notificação — reaproveitado por
-    notify_user_approved/notify_user_rejected/notify_user_revoked. Retorna se o envio
-    teve sucesso, pra admin.py poder informar o admin (ver admin_action_feedback).
-
-    Uma falha aqui (credencial errada, Gmail fora do ar) só é reportada de volta pro
-    retorno — nunca lançada — porque não pode derrubar a ação do Cognito que já
-    aconteceu antes desta chamada."""
-    credentials = _load_gmail_credentials()
-    if credentials is None:
-        logger.warning("Credenciais do Gmail não configuradas — e-mail não enviado para '%s'.", to_email)
-        return False
-    sender_email, app_password = credentials
-
-    message = MIMEText(body)
-    message["Subject"] = subject
-    message["From"] = sender_email
-    message["To"] = to_email
-
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, app_password)
-            server.send_message(message)
-    except Exception:  # falha ao notificar não deve afetar uma ação já concluída
-        logger.exception("Falha ao enviar e-mail para '%s'", to_email)
-        return False
-    else:
-        logger.info("E-mail enviado para '%s' (assunto: '%s').", to_email, subject)
-        return True
 
 
 def notify_user_approved(email: str, name: str) -> bool:

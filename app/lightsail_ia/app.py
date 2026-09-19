@@ -1,5 +1,14 @@
 """app.py — Interface web do FilmBot (aplicativo Streamlit)."""
 
+import sys
+from pathlib import Path
+
+# src/infrastructure.py importa shared_utils.gmail_helpers — precisa estar no sys.path
+# antes desse import. O deploy (deploy_lightsail.yml) clona o repo inteiro, então
+# app/shared_src já existe em disco ao lado de app/lightsail_ia; mesmo padrão de
+# sys.path.insert já usado em scripts/backfill_*.py para o mesmo pacote.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared_src"))
+
 import streamlit as st
 from src.admin import render_admin_panel
 from src.cards import render_cards

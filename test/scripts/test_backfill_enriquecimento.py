@@ -86,7 +86,7 @@ def _run_main(
     with (
         patch("backfill_enriquecimento.boto3") as mock_boto3,
         patch("backfill_enriquecimento.time.sleep") as mock_sleep,
-        patch("backfill_enriquecimento.get_api_secret", return_value="tmdb-key") as mock_secret,
+        patch("shared_utils.api_client.get_api_secret", return_value="tmdb-key") as mock_secret,
         patch("backfill_enriquecimento.run_details_and_watch_providers_for_year") as mock_run,
         patch("backfill_enriquecimento.trigger_glue_job") as mock_trigger,
         patch("backfill_enriquecimento.shared.trigger_agg_locally") as mock_agg,
