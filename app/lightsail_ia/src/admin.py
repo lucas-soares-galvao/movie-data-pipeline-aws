@@ -273,6 +273,43 @@ _RESULT_LABELS = {
 }
 
 
+def _execute_admin_action(pending: dict, notify: bool) -> bool | None:
+    """Despacha a ação confirmada (aprovar/reprovar/revogar/remover) e, se `notify`, envia
+    o e-mail correspondente — extraído de _render_confirm_dialog(). Retorna se o e-mail foi
+    enviado com sucesso, ou None quando `notify` é False (nenhum e-mail foi tentado)."""
+    email_sent: bool | None = None
+    if pending["kind"] == "approve":
+        infrastructure.approve_signup(pending["email"])
+        if notify:
+            email_sent = infrastructure.notify_user_approved(pending["email"], pending["name"])
+    elif pending["kind"] in ("reject", "remove_unconfirmed"):
+        infrastructure.reject_signup(pending["email"])
+        if notify:
+            email_sent = infrastructure.notify_user_rejected(pending["email"], pending["name"])
+    else:
+        infrastructure.revoke_access(pending["email"])
+        if notify:
+            email_sent = infrastructure.notify_user_revoked(pending["email"], pending["name"])
+    return email_sent
+
+
+def _build_admin_action_feedback(pending: dict, email_sent: bool | None) -> dict:
+    """Monta a mensagem de feedback pós-ação (kind/text) gravada em
+    `admin_action_feedback` — extraído de _render_confirm_dialog()."""
+    if email_sent is None:
+        email_text, feedback_kind = "e-mail não enviado (opção desmarcada)", "success"
+    elif email_sent:
+        email_text, feedback_kind = "e-mail enviado com sucesso", "success"
+    else:
+        email_text, feedback_kind = "falha ao enviar o e-mail", "warning"
+
+    subject, participle = _RESULT_LABELS[pending["kind"]]
+    return {
+        "kind": feedback_kind,
+        "text": f"{subject} de {pending['name']} ({pending['email']}) {participle} — {email_text}.",
+    }
+
+
 @st.dialog("Confirmar ação", dismissible=False)
 def _render_confirm_dialog(pending: dict) -> None:
     st.write(f"Tem certeza que deseja {_CONFIRM_VERBOS[pending['kind']]} **{pending['name']}** ({pending['email']})?")
@@ -291,32 +328,8 @@ def _render_confirm_dialog(pending: dict) -> None:
     confirmed = col_confirm.button("Confirmar", type="primary", width="stretch")
 
     if confirmed:
-        email_sent: bool | None = None
-        if pending["kind"] == "approve":
-            infrastructure.approve_signup(pending["email"])
-            if notify:
-                email_sent = infrastructure.notify_user_approved(pending["email"], pending["name"])
-        elif pending["kind"] in ("reject", "remove_unconfirmed"):
-            infrastructure.reject_signup(pending["email"])
-            if notify:
-                email_sent = infrastructure.notify_user_rejected(pending["email"], pending["name"])
-        else:
-            infrastructure.revoke_access(pending["email"])
-            if notify:
-                email_sent = infrastructure.notify_user_revoked(pending["email"], pending["name"])
-
-        if email_sent is None:
-            email_text, feedback_kind = "e-mail não enviado (opção desmarcada)", "success"
-        elif email_sent:
-            email_text, feedback_kind = "e-mail enviado com sucesso", "success"
-        else:
-            email_text, feedback_kind = "falha ao enviar o e-mail", "warning"
-
-        subject, participle = _RESULT_LABELS[pending["kind"]]
-        st.session_state["admin_action_feedback"] = {
-            "kind": feedback_kind,
-            "text": f"{subject} de {pending['name']} ({pending['email']}) {participle} — {email_text}.",
-        }
+        email_sent = _execute_admin_action(pending, notify)
+        st.session_state["admin_action_feedback"] = _build_admin_action_feedback(pending, email_sent)
         st.session_state.pop("admin_pending_action", None)
         st.rerun()
     elif cancelled:

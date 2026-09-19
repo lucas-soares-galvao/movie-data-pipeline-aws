@@ -88,8 +88,8 @@ Qualquer alteração no código passa por um processo automatizado de validaçã
 | Branch | O que acontece |
 |---|---|
 | `feature/*` | Testes (lint, cobertura ≥ 95%, type check, segurança) → PR automático para `develop` |
-| `develop` | Terraform apply no ambiente `dev` → PR automático para `main` |
-| `main` | Terraform apply no ambiente `prod` → deploy do FilmBot no Lightsail |
+| `develop` | Testes (mesmo gate, não bloqueia o deploy) + Terraform apply no ambiente `dev` → PR automático para `main` |
+| `main` | Testes (mesmo gate, não bloqueia o deploy) + Terraform apply no ambiente `prod` → deploy do FilmBot no Lightsail |
 
 O pipeline é orquestrado por 7 workflows em `.github/workflows/`. Consulte [`.github/workflow.md`](.github/workflow.md) para a documentação completa.
 
