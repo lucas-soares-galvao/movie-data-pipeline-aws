@@ -86,7 +86,7 @@ def _run_main(
     with (
         patch("backfill_discover.boto3") as mock_boto3,
         patch("backfill_discover.time.sleep") as mock_sleep,
-        patch("backfill_discover.get_api_secret", return_value="tmdb-key") as mock_secret,
+        patch("shared_utils.api_client.get_api_secret", return_value="tmdb-key") as mock_secret,
         patch("backfill_discover.collect_discover_data") as mock_collect,
         patch("backfill_discover.read_from_sor", return_value="df-fake") as mock_read,
         patch("backfill_discover.write_parquet_to_sot") as mock_write,

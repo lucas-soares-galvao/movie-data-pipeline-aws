@@ -8,12 +8,13 @@ resource "null_resource" "lambda_cognito_email_sender_build" {
 
   triggers = {
     source_hash       = sha256(join("", [for f in fileset(local.lambda_cognito_email_sender_src_path, "**/*.py") : filesha256("${local.lambda_cognito_email_sender_src_path}/${f}")]))
+    shared_hash       = sha256(join("", [for f in fileset(local.shared_src_path, "shared_utils/**/*.py") : filesha256("${local.shared_src_path}/${f}")]))
     requirements_hash = filesha256(local.lambda_cognito_email_sender_requirements_path)
     builder_hash      = filesha256("${path.module}/scripts/build_lambda_package.py")
   }
 
   provisioner "local-exec" {
-    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_cognito_email_sender_src_path} --requirements ${local.lambda_cognito_email_sender_requirements_path} --dest ${local.lambda_cognito_email_sender_build_path} --platform manylinux2014_aarch64 --python-version 3.11"
+    command = "python ${path.module}/scripts/build_lambda_package.py --src ${local.lambda_cognito_email_sender_src_path} --requirements ${local.lambda_cognito_email_sender_requirements_path} --dest ${local.lambda_cognito_email_sender_build_path} --shared ${local.shared_src_path}/shared_utils --platform manylinux2014_aarch64 --python-version 3.11"
   }
 }
 
