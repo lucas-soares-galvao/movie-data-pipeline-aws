@@ -320,11 +320,11 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
-/* Fundo translúcido explícito (não mais opacity:0.5) — mesmo motivo de
-   .st-key-btn_recomendar (recommendation.css): mantém a identidade visual original
-   (laranja apagado), só sem decair o texto branco junto com o fundo. */
+/* Laranja queimado opaco (#b45a33, ~4,7:1 com texto branco) — mesmo motivo de
+   .st-key-btn_recomendar (recommendation.css): "apagado" sem depender do fundo da
+   página (o translúcido anterior media ~1,9:1 sobre o tema claro). */
 [data-testid="stButton"] > button:disabled {
-  background: rgba(234, 88, 12, 0.5) !important;
+  background: #b45a33 !important;
   color: #fff !important;
   opacity: 1;
   box-shadow: none;
