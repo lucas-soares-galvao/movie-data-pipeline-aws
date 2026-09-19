@@ -48,19 +48,18 @@ A variável de ambiente `KMS_KEY_ARN` é definida via `os.environ.setdefault()` 
 | `test_forgot_password_retorna_texto_de_recuperacao_de_senha` | `CustomEmailSender_ForgotPassword` retorna assunto "Recuperação de senha — FilmBot" |
 | `test_trigger_source_nao_tratado_retorna_none` | Os 5 `triggerSource` não usados pelo FilmBot (`Authentication`, `UpdateUserAttribute`, `VerifyUserAttribute`, `AdminCreateUser`, `AccountTakeOverNotification`) retornam `None` |
 
-### `TestLoadGmailCredentials` / `TestSendGmailEmail`
+### `TestGmailHelpersReexport`
 
-Mesmos casos de `test/lightsail_ia/test_infrastructure.py` (`TestNotifyUserApproved`, credenciais do Gmail) — duplicados aqui de propósito, ver "Por que a lógica de Gmail é duplicada, não compartilhada" em `lambda_cognito_email_sender.md`.
+`load_gmail_credentials`/`send_gmail_email` vivem em `shared_utils/gmail_helpers.py`
+(ver `test/shared_src/test_gmail_helpers.py` para os casos de borda) — `src/utils.py`
+só reexporta as duas. Aqui só confirma que a reexportação funciona (chamando por
+`src.utils`, não comparando por identidade — ver comentário no teste sobre o reload de
+`shared_utils.*` entre suites em `test/conftest.py`).
 
 | Teste | O que verifica |
 |---|---|
-| `test_busca_credenciais_do_secrets_manager` | Credenciais vêm do Secrets Manager quando `FILMBOT_SECRET_ARN` está configurado |
-| `test_cai_para_fallback_de_env_vars_quando_secret_arn_nao_configurado` | Sem `FILMBOT_SECRET_ARN`, usa `GMAIL_SENDER_EMAIL`/`GMAIL_APP_PASSWORD` sem chamar boto3 |
-| `test_cai_para_fallback_quando_secret_nao_tem_as_chaves_gmail` | Secret existe mas sem as chaves `gmail_*` — cai para o fallback de env vars |
-| `test_retorna_none_quando_nenhuma_credencial_esta_configurada` | Sem nenhuma fonte de credencial, retorna `None` |
-| `test_envia_email_com_sucesso` | `smtplib.SMTP_SSL` é chamado com host/porta e `timeout` explícitos, mensagem montada com `Subject`/`From`/`To` corretos |
-| `test_retorna_false_sem_chamar_smtp_quando_nenhuma_credencial_esta_configurada` | Sem credenciais, não chama SMTP e retorna `False` |
-| `test_loga_erro_sem_propagar_quando_smtp_falha` | Falha de conexão SMTP é capturada, retorna `False` sem lançar |
+| `test_send_gmail_email_reexportado_funciona_sem_credenciais` | `src.utils.send_gmail_email` chamado sem nenhuma credencial configurada retorna `False` |
+| `test_load_gmail_credentials_reexportado_funciona_com_env_vars` | `src.utils.load_gmail_credentials` chamado com `GMAIL_SENDER_EMAIL`/`GMAIL_APP_PASSWORD` retorna a tupla esperada |
 
 ## Como executar
 

@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`), `resolve_translate_fn`/`translate_in_parallel`/`resolve_pt_translation`/`make_capped_fallback` (`traducao.py`, a fachada que reexporta as duas funções de serviço), `detect_language_langdetect` (`idioma_langdetect.py`), `detect_language_aws` (`idioma_aws.py`) e `resolve_detect_language_fn`/`add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `GoogleTranslator`, `getResolvedOptions`, `langdetect`) são substituídas por **mocks** (exceto em testes-smoke pontuais de detecção real de idioma), mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`), `resolve_translate_fn`/`translate_in_parallel`/`resolve_pt_translation`/`make_capped_fallback` (`traducao.py`, a fachada que reexporta as duas funções de serviço), `detect_language_langdetect` (`idioma_langdetect.py`), `detect_language_aws` (`idioma_aws.py`) e `resolve_detect_language_fn`/`add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `GoogleTranslator`, `getResolvedOptions`, `langdetect`) são substituídas por **mocks** (exceto em testes-smoke pontuais de detecção real de idioma), mantendo os testes rápidos, gratuitos e isolados.
 
 ## Estrutura
 
@@ -14,6 +14,7 @@ test/shared_src/
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_s3_helpers.py      # Testes de expected_bucket_owner_kwargs (ExpectedBucketOwner)
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
+├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
 ├── test_traducao_google.py # Testes de translate_text (Google Translate)
 ├── test_traducao_aws.py    # Testes de translate_text_aws (AWS Translate)
 ├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, resolve_pt_translation e reuse_existing_translation
@@ -97,6 +98,31 @@ no import) porque, nos jobs Glue, ela só é publicada em `os.environ` dentro de
 | `test_retorna_logger` | Retorna uma instância de `logging.Logger` |
 | `test_configura_nivel_info` | Nível do logger raiz é configurado como `INFO` |
 | `test_handler_escreve_em_stdout` | Existe um handler cujo stream é `sys.stdout` |
+
+## Casos de teste — `test_gmail_helpers.py`
+
+Compartilhado entre `lambda_cognito_email_sender` (trigger `CustomEmailSender` do
+Cognito) e `lightsail_ia` (notificação de aprovação/reprovação/revogação de acesso,
+`src/infrastructure.py`) — os testes de integração de cada chamador (que o e-mail
+certo é montado e enviado) continuam em `test/lambda_cognito_email_sender/test_main.py`
+e `test/lightsail_ia/test_infrastructure.py`; aqui cobre só as duas funções em si.
+
+### `TestLoadGmailCredentials`
+
+| Teste | O que verifica |
+|---|---|
+| `test_busca_credenciais_do_secrets_manager` | Com `FILMBOT_SECRET_ARN` definida, busca `gmail_sender_email`/`gmail_app_password` no Secrets Manager |
+| `test_cai_para_fallback_de_env_vars_quando_secret_arn_nao_configurado` | Sem `FILMBOT_SECRET_ARN`, usa `GMAIL_SENDER_EMAIL`/`GMAIL_APP_PASSWORD` sem chamar `boto3.client` |
+| `test_cai_para_fallback_quando_secret_nao_tem_as_chaves_gmail` | Secret existe mas sem as chaves `gmail_*` — cai para o fallback de env vars |
+| `test_retorna_none_quando_nenhuma_credencial_esta_configurada` | Nenhuma das duas fontes configurada retorna `None` |
+
+### `TestSendGmailEmail`
+
+| Teste | O que verifica |
+|---|---|
+| `test_envia_email_com_sucesso` | Monta a mensagem (Subject/From/To) e chama `smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=_SMTP_TIMEOUT_SECONDS)` |
+| `test_retorna_false_sem_chamar_smtp_quando_nenhuma_credencial_esta_configurada` | Sem credenciais, retorna `False` sem sequer chamar `SMTP_SSL` |
+| `test_loga_erro_sem_propagar_quando_smtp_falha` | Falha de conexão SMTP é logada e retorna `False`, nunca propaga |
 
 ## Casos de teste — `test_traducao_google.py`
 

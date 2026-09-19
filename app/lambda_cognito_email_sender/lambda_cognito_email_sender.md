@@ -19,11 +19,16 @@ O Cognito continua gerando e controlando o código internamente (mesma expiraç�
    - `CustomEmailSender_SignUp` e `CustomEmailSender_ResendCode` — mesmo texto de confirmação de cadastro que antes vivia em `verification_message_template` (`infra/lightsail_ia.tf`).
    - `CustomEmailSender_ForgotPassword` — texto de recuperação de senha.
    - Qualquer outro `triggerSource` (`Authentication`, `UpdateUserAttribute`, `VerifyUserAttribute`, `AdminCreateUser`, `AccountTakeOverNotification`) — nenhum desses corresponde a um fluxo usado pelo FilmBot hoje (sem MFA por e-mail, sem alteração de e-mail própria, sem `AdminCreateUser`, sem detecção de risco configurada). `build_email_content` retorna `None` e o handler só loga, sem enviar nada — para não quebrar caso o Cognito dispare um desses eventos por engano ou numa configuração futura.
-5. `send_gmail_email()` monta e envia o e-mail via `smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)`, autenticando com a mesma conta Gmail (`gmail_sender_email`/`gmail_app_password` no Secrets Manager) já usada pelas notificações do admin em `lightsail_ia`. O `timeout` explícito evita que uma conexão que aceita o TCP mas trava no handshake fique presa até o limite da Lambda (o `smtplib` não tem timeout default).
+5. `send_gmail_email()` (de `shared_utils.gmail_helpers`, reexportada por `src/utils.py`) monta e envia o e-mail via `smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)`, autenticando com a mesma conta Gmail (`gmail_sender_email`/`gmail_app_password` no Secrets Manager) já usada pelas notificações do admin em `lightsail_ia`. O `timeout` explícito evita que uma conexão que aceita o TCP mas trava no handshake fique presa até o limite da Lambda (o `smtplib` não tem timeout default).
 
-### Por que a lógica de Gmail é duplicada, não compartilhada
+### Credenciais/envio de Gmail são compartilhados com `lightsail_ia`
 
-`app/lightsail_ia/src/infrastructure.py` já tem `_load_gmail_credentials`/`_send_gmail_email`, praticamente idênticas às daqui. Não foram movidas para `shared_utils` porque o deploy do `lightsail_ia` (`.github/workflows/deploy_lightsail.yml`) faz um `git clone` do repositório inteiro e roda a partir de `app/lightsail_ia/` sem nenhum passo de empacotamento — diferente de Lambda/Glue, que sempre embutem `shared_utils` no `.zip`/`.whl` via `build_lambda_package.py`/`build_glue_wheel.py`. Importar `shared_utils` em `lightsail_ia` exigiria manipular `sys.path`/`PYTHONPATH` na instância Lightsail em produção — risco desnecessário para ~20 linhas de código. A duplicação aqui é deliberada.
+`load_gmail_credentials`/`send_gmail_email` vivem em `shared_utils/gmail_helpers.py`
+(`app/shared_src`, ver `shared_src.md`) — usadas tanto por esta Lambda quanto pelas
+notificações do admin em `app/lightsail_ia/src/infrastructure.py`. `infra/lambda_cognito_email_sender.tf`
+passa `--shared` para `build_lambda_package.py`, que copia `shared_utils` para dentro
+do zip (mesmo mecanismo de `lambda_api.tf`); `src/utils.py` só reexporta as duas
+funções para quem importa deste módulo.
 
 ### Tratamento de erros
 
@@ -44,8 +49,8 @@ Nenhuma exceção de envio propaga para o Cognito — `send_gmail_email` captura
 |---|---|
 | `decrypt_code(...)` | Descriptografa `request.code` via AWS Encryption SDK + KMS keyring |
 | `build_email_content(...)` | Decide assunto/corpo do e-mail a partir do `triggerSource`, ou `None` se não tratado |
-| `load_gmail_credentials()` | Busca remetente/senha de app do Gmail (Secrets Manager, com fallback de env vars para dev local) |
-| `send_gmail_email(...)` | Monta e envia o e-mail via `smtplib.SMTP_SSL` (com `timeout` explícito) |
+| `load_gmail_credentials()` | Reexportada de `shared_utils.gmail_helpers` — busca remetente/senha de app do Gmail (Secrets Manager, com fallback de env vars para dev local) |
+| `send_gmail_email(...)` | Reexportada de `shared_utils.gmail_helpers` — monta e envia o e-mail via `smtplib.SMTP_SSL` (com `timeout` explícito) |
 
 ## Tecnologias
 

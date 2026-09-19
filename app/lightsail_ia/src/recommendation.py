@@ -174,31 +174,42 @@ def _handle_audio_confirmation(client_ip: str, audio_widget_seq: int, audio_rema
         st.rerun()
 
 
+def _apply_transcription_result(transcription_future: Future) -> None:
+    """Processa o resultado de uma transcrição concluída — extraído de
+    _handle_transcription_polling() para reduzir complexidade cognitiva
+    (python:S3776 do SonarQube): fora do if/else do polling, os ifs abaixo não
+    herdam aninhamento extra. Retornos antecipados no lugar do try/except/else
+    original preservam o mesmo comportamento (nada roda após uma exceção)."""
+    try:
+        text = transcription_future.result()
+    except AudioMuitoLongoError:
+        st.session_state["transcription_too_long"] = True
+        return
+    except Exception:
+        logging.exception(
+            "Erro ao transcrever áudio (user_email=%s, user_name=%s)",
+            st.session_state.get("user_email"),
+            st.session_state.get("user_name"),
+        )
+        st.session_state["transcription_error"] = True
+        return
+
+    if not text:
+        st.session_state["transcription_empty"] = True
+        return
+    if len(text) > _MAX_PREFERENCE_CHARS:
+        text = text[:_MAX_PREFERENCE_CHARS]
+        st.session_state["transcription_truncated"] = True
+    st.session_state["preference_text"] = text
+
+
 def _handle_transcription_polling(audio_messages_slot) -> None:
     """Acompanha a transcrição assíncrona em andamento — extraído de
     render_recommendation()."""
     transcription_future: Future = st.session_state.get("transcription_future")
     if transcription_future and transcription_future.done():
         st.session_state["transcribing"] = False
-        try:
-            text = transcription_future.result()
-        except AudioMuitoLongoError:
-            st.session_state["transcription_too_long"] = True
-        except Exception:
-            logging.exception(
-                "Erro ao transcrever áudio (user_email=%s, user_name=%s)",
-                st.session_state.get("user_email"),
-                st.session_state.get("user_name"),
-            )
-            st.session_state["transcription_error"] = True
-        else:
-            if text:
-                if len(text) > _MAX_PREFERENCE_CHARS:
-                    text = text[:_MAX_PREFERENCE_CHARS]
-                    st.session_state["transcription_truncated"] = True
-                st.session_state["preference_text"] = text
-            else:
-                st.session_state["transcription_empty"] = True
+        _apply_transcription_result(transcription_future)
         st.rerun()
     else:
         # audio_messages_slot (fora do card cinza, ver comentário na criação do slot em

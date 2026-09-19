@@ -26,6 +26,12 @@ from botocore.exceptions import ClientError
 # falharia com ModuleNotFoundError: No module named 'src' na primeira importação da suíte.
 sys.path.insert(0, str(bs._REPO_ROOT / "app" / "shared_src"))
 sys.path.insert(0, str(bs._REPO_ROOT / "app" / "glue_agg"))
+
+# resolve_pending_units_by_year importa get_api_secret de shared_utils.api_client dentro
+# da própria função (import local, ver docstring) — precisa do sys.path.insert acima já
+# feito antes desta importação, mesmo motivo do import de app.glue_agg.src.utils abaixo.
+import shared_utils.api_client as _api_client_module
+
 import app.glue_agg.src.utils as _glue_agg_utils
 
 
@@ -304,6 +310,75 @@ class TestRunWithRetryExit:
         main_fn = MagicMock(side_effect=_client_error("ThrottlingException"))
         with pytest.raises(ClientError):
             bs.run_with_retry_exit(main_fn)
+
+
+class TestResolvePendingUnitsByYear:
+    """resolve_pending_units_by_year importa get_api_secret de shared_utils.api_client
+    dentro da própria função (import local, mesmo racional de trigger_agg_locally) — por
+    isso os testes patcham o símbolo na origem (shared_utils.api_client.*), não em
+    backfill_shared.*."""
+
+    def _kwargs(self, s3_client: MagicMock) -> dict:
+        return dict(
+            label="discover",
+            start_year=2020,
+            end_year=2021,
+            db_movie="db_movie",
+            db_tv="db_tv",
+            secret_arn="arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb",
+            s3_client=s3_client,
+            s3_bucket_temp="bucket-temp-test",
+            table_group="discover",
+        )
+
+    def test_busca_api_key_com_o_secret_arn_recebido(self):
+        client = MagicMock()
+        client.get_object.side_effect = _client_error("NoSuchKey")
+        with patch.object(_api_client_module, "get_api_secret", return_value="tmdb-key") as mock_secret:
+            _, api_key, *_ = bs.resolve_pending_units_by_year(**self._kwargs(client))
+
+        mock_secret.assert_called_once_with(
+            "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb", "tmdb_api_key",
+        )
+        assert api_key == "tmdb-key"
+
+    def test_years_e_unidades_pendentes_sem_checkpoint(self):
+        client = MagicMock()
+        client.get_object.side_effect = _client_error("NoSuchKey")
+        with patch.object(_api_client_module, "get_api_secret", return_value="tmdb-key"):
+            years, _, completed, pendentes = bs.resolve_pending_units_by_year(**self._kwargs(client))
+
+        assert years == [2020, 2021]
+        assert completed == set()
+        assert pendentes == [
+            ("movie", 2020, "db_movie"), ("tv", 2020, "db_tv"),
+            ("movie", 2021, "db_movie"), ("tv", 2021, "db_tv"),
+        ]
+
+    def test_unidades_do_checkpoint_saem_de_pendentes(self):
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2020, "end_year": 2021, "completed": ["movie:2020"]}
+        )
+        with patch.object(_api_client_module, "get_api_secret", return_value="tmdb-key"):
+            _, _, completed, pendentes = bs.resolve_pending_units_by_year(**self._kwargs(client))
+
+        assert completed == {"movie:2020"}
+        assert ("movie", 2020, "db_movie") not in pendentes
+        assert ("tv", 2020, "db_tv") in pendentes
+
+    def test_loga_progresso_do_checkpoint(self, caplog):
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2020, "end_year": 2021, "completed": ["movie:2020"]}
+        )
+        with (
+            patch.object(_api_client_module, "get_api_secret", return_value="tmdb-key"),
+            caplog.at_level("INFO"),
+        ):
+            bs.resolve_pending_units_by_year(**self._kwargs(client))
+
+        assert any("retomando com 3 pendente(s)" in r.message for r in caplog.records)
 
 
 class TestTriggerAggLocally:

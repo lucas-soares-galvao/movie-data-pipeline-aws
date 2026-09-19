@@ -116,7 +116,6 @@ from app.glue_etl.src.utils import (  # noqa: E402
     write_parquet_to_sot,
 )
 from app.lambda_api.src.utils import collect_discover_data  # noqa: E402
-from shared_utils.api_client import get_api_secret  # noqa: E402
 
 import backfill_shared as shared
 
@@ -266,25 +265,17 @@ def main(trigger_agg: bool = True) -> bool:
 
     s3_client = boto3.client("s3", region_name=region)
 
-    years = list(range(start_year, end_year + 1))
-    total_units = len(years) * 2
-    logger.info(
-        "Backfill de discover: %d anos (%d-%d) x 2 tipos = %d unidades",
-        len(years), start_year, end_year, total_units,
+    years, api_key, completed, pendentes = shared.resolve_pending_units_by_year(
+        label="discover",
+        start_year=start_year,
+        end_year=end_year,
+        db_movie=db_movie,
+        db_tv=db_tv,
+        secret_arn=secret_arn,
+        s3_client=s3_client,
+        s3_bucket_temp=s3_bucket_temp,
+        table_group=table_group,
     )
-
-    logger.info("Buscando chave de API do TMDB no Secrets Manager...")
-    api_key = get_api_secret(secret_arn, "tmdb_api_key")
-
-    completed = shared.load_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year)
-
-    unidades = [
-        (media_type, year, database)
-        for year in years
-        for media_type, database in [("movie", db_movie), ("tv", db_tv)]
-    ]
-    pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]
-    shared.log_resume_progress(logger, "unidades já concluídas", len(unidades), len(pendentes))
 
     failures: list[tuple[str, int, str]] = []
     for i, (media_type, year, database) in enumerate(pendentes, start=1):

@@ -298,6 +298,73 @@ def clear_checkpoint(s3_client: Any, bucket: str, table_group: str) -> None:
     logger.info("Checkpoint '%s' removido — backfill concluído sem pendências.", key)
 
 
+def resolve_pending_units_by_year(
+    *,
+    label: str,
+    start_year: int,
+    end_year: int,
+    db_movie: str,
+    db_tv: str,
+    secret_arn: str,
+    s3_client: Any,
+    s3_bucket_temp: str,
+    table_group: str,
+) -> tuple[list[int], str, set[str], list[tuple[str, int, str]]]:
+    """Resolve o range de anos, a chave de API do TMDB e as unidades (media_type, year,
+    database) ainda pendentes segundo o checkpoint — sequência repetida, byte-a-byte,
+    entre backfill_discover.py e backfill_enriquecimento.py (python:S1192 do SonarQube).
+
+    Import local de shared_utils.api_client (não no topo do módulo): mesmo racional de
+    trigger_agg_locally logo abaixo — backfill_data_quality.py e
+    backfill_rename_colunas.py importam backfill_shared sem nunca ter inserido
+    app/shared_src em sys.path (não chamam esta função), então uma dependência de
+    shared_utils no topo do módulo quebraria o `import backfill_shared` deles.
+
+    Args:
+        label:          Nome do backfill para a mensagem de log (ex.: "discover",
+                         "enriquecimento").
+        start_year:     Ano inicial do range do backfill.
+        end_year:       Ano final do range do backfill.
+        db_movie:       Banco de dados de filmes no Glue Catalog.
+        db_tv:          Banco de dados de séries no Glue Catalog.
+        secret_arn:     ARN do secret com a chave de API do TMDB.
+        s3_client:      Cliente boto3 do S3 (para ler o checkpoint).
+        s3_bucket_temp: Bucket onde o checkpoint é armazenado.
+        table_group:    Identifica o checkpoint (ver load_checkpoint).
+
+    Returns:
+        Tupla (years, api_key, completed, pendentes): `years` é a lista de anos do
+        range; `api_key` é a chave TMDB já resolvida; `completed` é o conjunto mutável
+        de unit_ids já concluídos (o chamador continua atualizando e salvando via
+        save_checkpoint a cada unidade processada); `pendentes` é a lista de
+        (media_type, year, database) ainda não concluídas.
+    """
+    sys.path.insert(0, str(_REPO_ROOT / "app" / "shared_src"))
+    from shared_utils.api_client import get_api_secret
+
+    years = list(range(start_year, end_year + 1))
+    total_units = len(years) * 2
+    logger.info(
+        "Backfill de %s: %d anos (%d-%d) x 2 tipos = %d unidades",
+        label, len(years), start_year, end_year, total_units,
+    )
+
+    logger.info("Buscando chave de API do TMDB no Secrets Manager...")
+    api_key = get_api_secret(secret_arn, "tmdb_api_key")
+
+    completed = load_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year)
+
+    unidades = [
+        (media_type, year, database)
+        for year in years
+        for media_type, database in [("movie", db_movie), ("tv", db_tv)]
+    ]
+    pendentes = [u for u in unidades if f"{u[0]}:{u[1]}" not in completed]
+    log_resume_progress(logger, "unidades já concluídas", len(unidades), len(pendentes))
+
+    return years, api_key, completed, pendentes
+
+
 def trigger_agg_locally(
     *,
     s3_bucket_spec: str,
