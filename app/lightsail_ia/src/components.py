@@ -504,6 +504,350 @@ def _render_provider_badges(providers: list[tuple[str, str]], highlighted: list[
     return "".join(badges)
 
 
+def _render_genres_block(genres: list[str], highlighted_genres: list[str]) -> str:
+    """Bloco de badges de gênero (até `_MAX_VISIBLE_GENRES`, priorizando os que bateram com
+    a busca do usuário) — extraído de render_card(). Só emite a div quando há algum gênero
+    pra mostrar (meio solto do card, ver cards.css)."""
+    genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
+    visible_genres_raw = genres_raw[:_MAX_VISIBLE_GENRES]
+    # Cada gênero que bateu com a busca do usuário ganha "highlighted" (borda laranja, ver
+    # cards.css) — não só o primeiro, mesmo padrão de _render_provider_badges.
+    genres_html = "".join(
+        f'<span class="genre{" highlighted" if _matches_highlighted(g, highlighted_genres) else ""}">'
+        f"{html.escape(g)}</span>"
+        for g in visible_genres_raw
+    )
+    if not genres_html:
+        return ""
+    return f'<div class="genres-container"><span class="genre-badges">{genres_html}</span></div>'
+
+
+def _render_cinema_row(
+    in_theaters: bool,
+    theater_end_date: str,
+    next_episode_season_number: int | None,
+    next_episode_number: int | None,
+    next_episode_date: str,
+    upcoming_date: str,
+    title_status: str,
+) -> str:
+    """Badge de "Em cartaz"/próximo episódio/"Em breve"/status — extraído de render_card().
+
+    Filme (in_theaters), série (next_episode_*) e título ainda não lançado (upcoming_date)
+    nunca preenchem mais de um ao mesmo tempo (upcoming_date só existe pra air_date futuro —
+    incompatível com estar em cartaz ou ter próximo episódio de uma série já no ar) — por
+    isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
+    Os três usam o mesmo ícone de calendário (antes eram emoji diferentes por estado —
+    🎬/📅/🔜 —, unificados num só ícone Lucide). Quando nenhum dos três se aplica, entra um
+    4º ramo de fallback com `title_status` (já traduzido pra PT-BR na SPEC, ver
+    glue_agg/src/queries.py) — mesmo princípio do fallback "Não disponível no streaming" de
+    _render_providers_block: preencher o espaço em vez de deixar a seção ambígua entre "sem
+    dado" e "sem informação relevante". Cobre tanto o caso comum (filme já lançado, fora de
+    cartaz → "Lançado") quanto os incomuns (série "Encerrada"/"Cancelado" — não haverá mais
+    episódios — ou filme "Planejado"/"Em Produção"/"Pós-Produção"/"Rumor"). Prioridade quando
+    mais de um bate ao mesmo tempo: em cartaz > próximo episódio > em breve > status. Só
+    quando `title_status` também está vazio (título ainda não enriquecido pelo
+    `glue_details`, ver LEFT JOIN em queries.py) é que a div nem é emitida — o card fica com
+    essa linha a menos (meio solto, ver cards.css)."""
+    cinema_icon_html = f'<span class="meta-icon">{icon("calendar")}</span>'
+    cinema_content = ""
+    if in_theaters:
+        label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
+        cinema_content = (
+            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
+        )
+    elif next_episode_season_number is not None and next_episode_number is not None and next_episode_date:
+        label = f"T{next_episode_season_number} E{next_episode_number} estreia em {next_episode_date}"
+        cinema_content = (
+            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
+        )
+    elif upcoming_date:
+        label = f"Em breve · {upcoming_date}"
+        cinema_content = (
+            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
+        )
+    elif title_status:
+        cinema_content = (
+            f'{cinema_icon_html}<span class="cinema-badge">{title_status}</span>'
+        )
+    return f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""
+
+
+def _render_certification_badge(certification: str) -> str:
+    """Badge de classificação indicativa — extraído de render_card()."""
+    if not certification:
+        return ""
+    certification_title = html.escape(_CERTIFICATION_DESCRIPTIONS.get(certification, certification))
+    return (
+        f'<span class="certification-badge" data-rating="{certification}"'
+        f' title="{certification_title}">'
+        f'{certification}</span>'
+    )
+
+
+def _format_rating_badges(rating: float | str | None) -> tuple[str, str]:
+    """Nota formatada nas duas variantes usadas pelo card (vital, sem pôster; chip, sobre o
+    pôster) — extraído de render_card()."""
+    rating_str = html.escape(str(rating)) if rating is not None else ""
+    rating_html = f'<span class="vital vital-rating">★ {rating_str}</span>' if rating_str else ""
+    rating_chip_html = f'<span class="rating-chip">★ {rating_str}</span>' if rating_str else ""
+    return rating_html, rating_chip_html
+
+
+def _render_poster_block(poster: str, title_name: str, rating_chip_html: str, certification_html: str) -> str:
+    """Bloco de imagem do pôster, com nota/classificação sobrepostas — extraído de
+    render_card(). Sem pôster, a div nem é emitida (nota/classificação ficam na meta-row)."""
+    if not poster:
+        return ""
+    media_badges_html = (
+        f'<div class="media-badges-top">{rating_chip_html}{certification_html}</div>'
+        if (rating_chip_html or certification_html) else ""
+    )
+    return (
+        f'<div class="card-media">'
+        f'<img src="{poster}" alt="{title_name}" class="card-img" loading="lazy" />'
+        f'<div class="media-scrim"></div>'
+        f'{media_badges_html}'
+        f'</div>'
+    )
+
+
+def _render_reason_block(reason: str, reason_raw: str | None) -> str:
+    """Bloco de "Insight do FilmBot" — extraído de render_card().
+
+    Motivo é limitado a 150 caracteres na origem (prompt do agente) — cabe sem clamp nem
+    toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
+    sincronia de altura com os vizinhos da fileira, ver cards.css). `reason` ausente/None
+    (título fora do fluxo de recomendação da IA) não gera a div — meio solto, caso comum,
+    não só borda. `reason == ""` explícito é diferente: o agente rodou o Passo 3 mas não
+    conseguiu gerar motivo pra este título específico (resposta vazia/JSON inválido do LLM,
+    ou id órfão no merge — ver agent.py::recommend()), e nesse caso mostra um texto de
+    fallback (`_REASON_FALLBACK_TEXT`) em vez de omitir a seção — sem isso, títulos com e
+    sem motivo na mesma busca pareciam inconsistência de produto, não degradação esperada."""
+    reason_text = reason or (_REASON_FALLBACK_TEXT if reason_raw == "" else "")
+    if not reason_text:
+        return ""
+    return (
+        f'<div class="row-reason"><span class="reason-label">{icon("lightbulb")} Insight do FilmBot</span>'
+        f'<p class="reason">{reason_text}</p></div>'
+    )
+
+
+def _render_meta_line(
+    title_type: str,
+    release_date: str,
+    year: str,
+    has_poster: bool,
+    certification_html: str,
+    trailer_url: str,
+    rating_html: str,
+) -> str:
+    """Linha de tipo/data + Trailer (+ nota, quando sem pôster) — extraído de render_card().
+
+    Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo (+
+    Trailer); sem pôster a nota continua no slot direito, como sempre foi. Faz parte do
+    meio solto do card (ver cards.css) — só emite a div quando há data/tipo, Trailer ou
+    nota (sem pôster) pra mostrar. Ícone e Trailer ficam dentro de .meta-info (não como
+    irmãos soltos de .meta-row) porque .meta-line usa justify-content:space-between pra
+    separar meta-info/nota — um filho a mais direto do .meta-row empurraria pra ponta
+    esquerda/direita, longe do resto do grupo, em vez de ficarem juntos à esquerda."""
+    date_type_parts = []
+    if title_type:
+        date_type_parts.append(title_type)
+    if release_date:
+        date_type_parts.append(release_date)
+    elif year:
+        date_type_parts.append(f"({year})")
+    meta_left = " · ".join(date_type_parts)
+    if not has_poster and certification_html:
+        meta_left = f"{meta_left} {certification_html}" if meta_left else certification_html
+
+    trailer_html = ""
+    if trailer_url:
+        safe_url = html.escape(trailer_url)
+        trailer_html = (
+            f'<span class="vital vital-trailer">{icon("play")}'
+            f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
+            f'Trailer</a></span>'
+        )
+
+    meta_icon_html = f'<span class="meta-icon">{icon("info")}</span>' if meta_left else ""
+    meta_right = "" if has_poster else rating_html
+    if not (meta_left or trailer_html or meta_right):
+        return ""
+    return (
+        f'<div class="meta-row meta-line">'
+        f'<span class="meta-info">{meta_icon_html}{meta_left}{trailer_html}</span>'
+        f'{meta_right}</div>'
+    )
+
+
+def _render_duration_row(duration: str) -> str:
+    """Linha própria de duração — extraído de render_card(). Só quando há duração pra
+    mostrar (Trailer mora na meta-line, ver _render_meta_line); meio solto do card."""
+    if not duration:
+        return ""
+    duration_escaped = html.escape(duration)
+    return (
+        f'<div class="meta-row duration-row">'
+        f'<span class="meta-info"><span class="meta-icon">{icon("clock")}</span>'
+        f'{duration_escaped}</span></div>'
+    )
+
+
+def _dedupe_providers(
+    streaming_providers: str,
+    streaming_provider_logos: str,
+    rent_buy_providers: str,
+    rent_buy_provider_logos: str,
+) -> list[tuple[str, str]]:
+    """Combina streaming + aluguel/compra num único conjunto (nome, logo) sem duplicar
+    provedores presentes nos dois — extraído de render_card().
+
+    Nome e logo são pareados posicionalmente (zip_longest com fillvalue vazio — a logo
+    pode faltar/estar desalinhada em dados legados sem quebrar o pareamento) antes da
+    deduplicação por nome, que já existia — assim uma logo nunca duplica quando o mesmo
+    provedor aparece em streaming e aluguel/compra ao mesmo tempo, mesmo esquema que já
+    deduplicava os nomes."""
+    provider_pairs = list(
+        zip_longest(_parse_provider_names(streaming_providers), _parse_provider_logos(streaming_provider_logos), fillvalue="")
+    )
+    provider_pairs += list(
+        zip_longest(_parse_provider_names(rent_buy_providers), _parse_provider_logos(rent_buy_provider_logos), fillvalue="")
+    )
+    seen_providers: set[str] = set()
+    deduped_providers: list[tuple[str, str]] = []
+    for name, logo_url in provider_pairs:
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen_providers:
+            continue
+        seen_providers.add(key)
+        deduped_providers.append((name, logo_url))
+    return deduped_providers
+
+
+def _render_providers_block(
+    streaming_providers: str,
+    streaming_provider_logos: str,
+    rent_buy_providers: str,
+    rent_buy_provider_logos: str,
+    highlighted_providers: list[str],
+) -> str:
+    """Bloco "Onde assistir" (rótulo + badges de provedor) — extraído de render_card().
+
+    Rótulo fica em linha própria, acima dos badges (não espremido ao lado deles) — mesmo
+    princípio do rótulo "💡 Insight do FilmBot" de _render_reason_block. Diferente das
+    outras seções "meio soltas" do card, esta linha é sempre emitida: sem nenhum provedor
+    real, cai no badge de indisponibilidade (`.provider-badge.unavailable`) em vez de omitir
+    a seção inteira — evita a ambiguidade "sem oferta na região" vs. "dado não carregado"."""
+    deduped_providers = _dedupe_providers(
+        streaming_providers, streaming_provider_logos, rent_buy_providers, rent_buy_provider_logos,
+    )
+    provider_badges_html = _render_provider_badges(deduped_providers, highlighted_providers)
+    if not provider_badges_html:
+        provider_badges_html = '<span class="provider-badge unavailable">Não disponível no streaming</span>'
+    return (
+        f'<div class="providers-row">'
+        f'<div class="providers-label-row">'
+        f'<span class="meta-icon">{icon("tv")}</span>'
+        f'<span class="providers-label">Onde assistir</span></div>'
+        f'<div class="provider-badges">{provider_badges_html}</div>'
+        f'</div>'
+    )
+
+
+def _render_synopsis_block(overview_raw: str, idx: int) -> str:
+    """Bloco de sinopse em accordion (checkbox hack, sem JS) — extraído de render_card().
+
+    Sinopse não divide linha com o Trailer (que mora na meta-line, ver _render_meta_line) —
+    vira uma linha só com o label do accordion. Checkbox fica fora da .synopsis-row, como
+    sibling direto de .synopsis-text, pra o seletor CSS ~ continuar funcionando. Ícone+texto
+    ficam à esquerda e o chevron ⌄/⌃ na ponta direita do label
+    (`justify-content:space-between` em `.synopsis-label`, ver cards.css) — mesmo padrão
+    visual de `.people-label` (Ficha Técnica, ver _render_people_block). Meio solto do card,
+    sem sincronia de altura com os vizinhos da fileira — só emite a div quando há de fato
+    sinopse pra mostrar."""
+    toggle_id = f"synopsis-toggle-{idx}"
+    synopsis_toggle_html = ""
+    synopsis_label_html = ""
+    synopsis_text_html = ""
+    if overview_raw:
+        overview_escaped = html.escape(overview_raw)
+        synopsis_toggle_html = f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
+        synopsis_label_html = (
+            f'<label for="{toggle_id}" class="synopsis-label">'
+            f'<span class="synopsis-icon-text"><span class="synopsis-icon">{icon("file-text")}</span> Sinopse</span>'
+            f'<span class="synopsis-arrow-closed">⌄</span>'
+            f'<span class="synopsis-arrow-open">⌃</span></label>'
+        )
+        synopsis_text_html = f'<p class="synopsis-text">{overview_escaped}</p>'
+
+    synopsis_row_html = (
+        f'<div class="meta-row synopsis-row">{synopsis_label_html}</div>' if synopsis_label_html else ""
+    )
+    if not (synopsis_toggle_html or synopsis_row_html):
+        return ""
+    return (
+        f'<div class="row-synopsis">'
+        f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>'
+    )
+
+
+def _render_people_block(
+    director: str,
+    creators: str,
+    cast: str,
+    writers: str,
+    composer: str,
+    producer: str,
+    cinematographer: str,
+    editor: str,
+    idx: int,
+) -> str:
+    """Bloco de ficha técnica em accordion — extraído de render_card().
+
+    Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS, ver
+    _render_synopsis_block), posicionado ANTES dela — todo o elenco/equipe técnica já
+    formatado em `title` aparece aqui, um bullet por papel, com o rótulo em negrito pra
+    escanear rápido. Faz parte do "meio solto" do card (ver cards.css) — só emite a div
+    quando há algum campo preenchido. Ícone+texto à esquerda, chevron ⌄/⌃ na ponta direita,
+    mesmo padrão de `.synopsis-label`."""
+    people_toggle_id = f"people-toggle-{idx}"
+    people_fields = [
+        ("Diretor", director),
+        ("Criador(es)", creators),
+        ("Elenco", cast),
+        ("Roteiro", writers),
+        ("Trilha sonora", composer),
+        ("Produção", producer),
+        ("Fotografia", cinematographer),
+        ("Montagem", editor),
+    ]
+    if not any(value for _, value in people_fields):
+        return ""
+    people_toggle_html = (
+        f'<input type="checkbox" id="{people_toggle_id}" class="people-toggle" hidden>'
+    )
+    people_row_html = (
+        f'<div class="meta-row people-row">'
+        f'<label for="{people_toggle_id}" class="people-label">'
+        f'<span class="people-icon-text"><span class="people-icon">{icon("users")}</span> Ficha Técnica</span>'
+        f'<span class="people-arrow-closed">⌄</span>'
+        f'<span class="people-arrow-open">⌃</span>'
+        f'</label>'
+        f'</div>'
+    )
+    people_items = "".join(
+        f"<li><strong>{label}:</strong> {html.escape(value)}</li>"
+        for label, value in people_fields
+        if value
+    )
+    people_text_html = f'<ul class="people-list">{people_items}</ul>'
+    return f'<div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>'
+
+
 def render_card(title: dict, idx: int = 0) -> str:
     """Monta o HTML de um card de título com escape contra XSS.
 
@@ -511,7 +855,9 @@ def render_card(title: dict, idx: int = 0) -> str:
     na imagem — layout "at a glance" estilo Netflix/JustWatch. Sem pôster não há onde
     sobrepor, então nota/classificação ficam na meta-row. Em ambos os casos, duração e
     Trailer sempre dividem uma linha própria (duration-row), separada da meta-line de
-    data/tipo."""
+    data/tipo. Cada seção é montada por um helper privado (`_render_*_block`/`_render_*_row`)
+    que só lê os campos já extraídos abaixo e devolve a string HTML da seção, vazia quando
+    não há o que mostrar."""
     poster = title.get("backdrop_url") or title.get("poster_url") or ""
     has_poster = bool(poster)
     title_name = html.escape(title.get("title", ""))
@@ -545,273 +891,29 @@ def render_card(title: dict, idx: int = 0) -> str:
     producer = title.get("producer") or ""
     cinematographer = title.get("cinematographer") or ""
     editor = title.get("editor") or ""
-
     highlighted_genres = title.get("highlighted_genres") or []
-    genres_raw = _prioritize([g.strip() for g in genres if g.strip()], highlighted_genres)
-    visible_genres_raw = genres_raw[:_MAX_VISIBLE_GENRES]
-    # Cada gênero que bateu com a busca do usuário ganha "highlighted" (borda laranja, ver
-    # cards.css) — não só o primeiro, mesmo padrão de _render_provider_badges.
-    genres_html = "".join(
-        f'<span class="genre{" highlighted" if _matches_highlighted(g, highlighted_genres) else ""}">'
-        f"{html.escape(g)}</span>"
-        for g in visible_genres_raw
+
+    genres_block_html = _render_genres_block(genres, highlighted_genres)
+    cinema_html = _render_cinema_row(
+        in_theaters, theater_end_date, next_episode_season_number,
+        next_episode_number, next_episode_date, upcoming_date, title_status,
     )
-    # Faz parte do meio solto do card (ver cards.css) — só emite a div quando há algum
-    # gênero pra mostrar.
-    genres_block_html = ""
-    if genres_html:
-        genres_block_html = (
-            f'<div class="genres-container">'
-            f'<span class="genre-badges">{genres_html}</span></div>'
-        )
-
-    # Filme (in_theaters), série (next_episode_*) e título ainda não lançado (upcoming_date)
-    # nunca preenchem mais de um ao mesmo tempo (upcoming_date só existe pra air_date futuro —
-    # incompatível com estar em cartaz ou ter próximo episódio de uma série já no ar) — por
-    # isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
-    # Os três usam o mesmo ícone de calendário (antes eram emoji diferentes por estado —
-    # 🎬/📅/🔜 —, unificados num só ícone Lucide). Quando nenhum dos três se aplica, entra um
-    # 4º ramo de fallback com `title_status` (já traduzido pra PT-BR na SPEC, ver
-    # glue_agg/src/queries.py) — mesmo princípio do fallback "Não disponível no streaming" mais
-    # abaixo: preencher o espaço em vez de deixar a seção ambígua entre "sem dado" e "sem
-    # informação relevante". Cobre tanto o caso comum (filme já lançado, fora de cartaz →
-    # "Lançado") quanto os incomuns (série "Encerrada"/"Cancelado" — não haverá mais episódios
-    # — ou filme "Planejado"/"Em Produção"/"Pós-Produção"/"Rumor"). Prioridade quando mais de um
-    # bate ao mesmo tempo: em cartaz > próximo episódio > em breve > status. Só quando
-    # `title_status` também está vazio (título ainda não enriquecido pelo `glue_details`, ver
-    # LEFT JOIN em queries.py) é que a div nem é emitida — o card fica com essa linha a menos
-    # (meio solto, ver cards.css).
-    cinema_icon_html = f'<span class="meta-icon">{icon("calendar")}</span>'
-    cinema_content = ""
-    if in_theaters:
-        label = f"Em cartaz até {theater_end_date}" if theater_end_date else "Em cartaz"
-        cinema_content = (
-            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
-        )
-    elif next_episode_season_number is not None and next_episode_number is not None and next_episode_date:
-        label = f"T{next_episode_season_number} E{next_episode_number} estreia em {next_episode_date}"
-        cinema_content = (
-            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
-        )
-    elif upcoming_date:
-        label = f"Em breve · {upcoming_date}"
-        cinema_content = (
-            f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
-        )
-    elif title_status:
-        cinema_content = (
-            f'{cinema_icon_html}<span class="cinema-badge">{title_status}</span>'
-        )
-    cinema_html = f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""
-
-    certification_title = html.escape(_CERTIFICATION_DESCRIPTIONS.get(certification, certification))
-    certification_html = (
-        f'<span class="certification-badge" data-rating="{certification}"'
-        f' title="{certification_title}">'
-        f'{certification}</span>'
-        if certification else ""
+    certification_html = _render_certification_badge(certification)
+    rating_html, rating_chip_html = _format_rating_badges(rating)
+    img_html = _render_poster_block(poster, title_name, rating_chip_html, certification_html)
+    reason_block_html = _render_reason_block(reason, reason_raw)
+    meta_html = _render_meta_line(
+        title_type, release_date, year, has_poster, certification_html, trailer_url, rating_html,
     )
-
-    rating_str = html.escape(str(rating)) if rating is not None else ""
-    rating_html = f'<span class="vital vital-rating">★ {rating_str}</span>' if rating_str else ""
-    rating_chip_html = f'<span class="rating-chip">★ {rating_str}</span>' if rating_str else ""
-
-    img_html = ""
-    if poster:
-        media_badges_html = (
-            f'<div class="media-badges-top">{rating_chip_html}{certification_html}</div>'
-            if (rating_chip_html or certification_html) else ""
-        )
-        img_html = (
-            f'<div class="card-media">'
-            f'<img src="{poster}" alt="{title_name}" class="card-img" loading="lazy" />'
-            f'<div class="media-scrim"></div>'
-            f'{media_badges_html}'
-            f'</div>'
-        )
-
-    # Motivo é limitado a 150 caracteres na origem (prompt do agente) — cabe sem clamp nem
-    # toggle na altura que o próprio card pede (faz parte do "meio solto" do card, sem
-    # sincronia de altura com os vizinhos da fileira, ver cards.css). `reason` ausente/None
-    # (título fora do fluxo de recomendação da IA) não gera a div — meio solto, caso comum,
-    # não só borda. `reason == ""` explícito é diferente: o agente rodou o Passo 3 mas não
-    # conseguiu gerar motivo pra este título específico (resposta vazia/JSON inválido do LLM,
-    # ou id órfão no merge — ver agent.py::recommend()), e nesse caso mostra um texto de
-    # fallback (`_REASON_FALLBACK_TEXT`) em vez de omitir a seção — sem isso, títulos com e
-    # sem motivo na mesma busca pareciam inconsistência de produto, não degradação esperada.
-    # Rótulo "💡 Insight do FilmBot" acima do texto, mesmo princípio do rótulo "Onde assistir"
-    # acima dos badges de provedor — a seção agora vem depois dos gêneros (ver return, mais
-    # abaixo), não mais logo após o título.
-    reason_text = reason or (_REASON_FALLBACK_TEXT if reason_raw == "" else "")
-    reason_block_html = (
-        f'<div class="row-reason"><span class="reason-label">{icon("lightbulb")} Insight do FilmBot</span>'
-        f'<p class="reason">{reason_text}</p></div>'
-        if reason_text
-        else ""
+    duration_html = _render_duration_row(duration)
+    providers_block_html = _render_providers_block(
+        streaming_providers, streaming_provider_logos, rent_buy_providers, rent_buy_provider_logos,
+        title.get("highlighted_providers") or [],
     )
-
-    date_type_parts = []
-    if title_type:
-        date_type_parts.append(title_type)
-    if release_date:
-        date_type_parts.append(release_date)
-    elif year:
-        date_type_parts.append(f"({year})")
-    meta_left = " · ".join(date_type_parts)
-    if not has_poster and certification_html:
-        meta_left = f"{meta_left} {certification_html}" if meta_left else certification_html
-
-    trailer_html = ""
-    if trailer_url:
-        safe_url = html.escape(trailer_url)
-        trailer_html = (
-            f'<span class="vital vital-trailer">{icon("play")}'
-            f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer" class="trailer-link">'
-            f'Trailer</a></span>'
-        )
-
-    # Com pôster a nota já saiu pra imagem, então a meta-line fica só com data/tipo (+
-    # Trailer); sem pôster a nota continua no slot direito, como sempre foi. Faz parte do
-    # meio solto do card (ver cards.css) — só emite a div quando há data/tipo, Trailer ou
-    # nota (sem pôster) pra mostrar. Ícone e Trailer ficam dentro de .meta-info (não como
-    # irmãos soltos de .meta-row) porque .meta-line usa justify-content:space-between pra
-    # separar meta-info/nota — um filho a mais direto do .meta-row empurraria pra ponta
-    # esquerda/direita, longe do resto do grupo, em vez de ficarem juntos à esquerda.
-    meta_icon_html = f'<span class="meta-icon">{icon("info")}</span>' if meta_left else ""
-    duration_escaped = html.escape(duration) if duration else ""
-
-    meta_right = "" if has_poster else rating_html
-    meta_html = ""
-    if meta_left or trailer_html or meta_right:
-        meta_html = (
-            f'<div class="meta-row meta-line">'
-            f'<span class="meta-info">{meta_icon_html}{meta_left}{trailer_html}</span>'
-            f'{meta_right}</div>'
-        )
-
-    # Duração em linha própria — só quando há duração pra mostrar (o Trailer não entra mais
-    # aqui, subiu pra meta-line acima, do lado esquerdo, junto de data/tipo). Faz parte do
-    # meio solto do card (ver cards.css) — sem duração, a div nem é gerada.
-    duration_html = ""
-    if duration:
-        duration_html = (
-            f'<div class="meta-row duration-row">'
-            f'<span class="meta-info"><span class="meta-icon">{icon("clock")}</span>'
-            f'{duration_escaped}</span></div>'
-        )
-
-    # Nome e logo são pareados posicionalmente (zip_longest com fillvalue vazio — a logo
-    # pode faltar/estar desalinhada em dados legados sem quebrar o pareamento) antes da
-    # deduplicação por nome, que já existia — assim uma logo nunca duplica quando o mesmo
-    # provedor aparece em streaming e aluguel/compra ao mesmo tempo, mesmo esquema que já
-    # deduplicava os nomes.
-    provider_pairs = list(
-        zip_longest(_parse_provider_names(streaming_providers), _parse_provider_logos(streaming_provider_logos), fillvalue="")
+    synopsis_html = _render_synopsis_block(overview_raw, idx)
+    people_html = _render_people_block(
+        director, creators, cast, writers, composer, producer, cinematographer, editor, idx,
     )
-    provider_pairs += list(
-        zip_longest(_parse_provider_names(rent_buy_providers), _parse_provider_logos(rent_buy_provider_logos), fillvalue="")
-    )
-    seen_providers: set[str] = set()
-    deduped_providers: list[tuple[str, str]] = []
-    for name, logo_url in provider_pairs:
-        if not name:
-            continue
-        key = name.lower()
-        if key in seen_providers:
-            continue
-        seen_providers.add(key)
-        deduped_providers.append((name, logo_url))
-    provider_badges_html = _render_provider_badges(
-        deduped_providers, title.get("highlighted_providers") or []
-    )
-    if not provider_badges_html:
-        provider_badges_html = '<span class="provider-badge unavailable">Não disponível no streaming</span>'
-
-    # Rótulo "Onde assistir" fica em linha própria, acima dos badges (não espremido ao
-    # lado deles) — mesmo princípio do rótulo "✨ Insight do FilmBot" acima de `.reason`.
-    # Diferente das outras seções "meio soltas" do card, esta linha é sempre emitida: sem
-    # nenhum provedor real, cai no badge de indisponibilidade acima
-    # (`.provider-badge.unavailable`) em vez de omitir a seção inteira — evita a
-    # ambiguidade "sem oferta na região" vs. "dado não carregado".
-    providers_block_html = (
-        f'<div class="providers-row">'
-        f'<div class="providers-label-row">'
-        f'<span class="meta-icon">{icon("tv")}</span>'
-        f'<span class="providers-label">Onde assistir</span></div>'
-        f'<div class="provider-badges">{provider_badges_html}</div>'
-        f'</div>'
-    )
-
-    # Sinopse não divide mais linha com o Trailer (que subiu pra linha de duração — ver
-    # meta_right/duration_html acima) — vira uma linha só com o label do accordion.
-    # Checkbox fica fora da .synopsis-row, como sibling direto de .synopsis-text, pra o
-    # seletor CSS ~ continuar funcionando. Ícone+texto ficam à esquerda e o chevron ⌄/⌃ na
-    # ponta direita do label (`justify-content:space-between` em `.synopsis-label`, ver
-    # cards.css) — mesmo padrão visual de `.people-label` (Ficha Técnica) abaixo.
-    toggle_id = f"synopsis-toggle-{idx}"
-    synopsis_toggle_html = ""
-    synopsis_label_html = ""
-    synopsis_text_html = ""
-    if overview_raw:
-        overview_escaped = html.escape(overview_raw)
-        synopsis_toggle_html = f'<input type="checkbox" id="{toggle_id}" class="synopsis-toggle" hidden>'
-        synopsis_label_html = (
-            f'<label for="{toggle_id}" class="synopsis-label">'
-            f'<span class="synopsis-icon-text"><span class="synopsis-icon">{icon("file-text")}</span> Sinopse</span>'
-            f'<span class="synopsis-arrow-closed">⌄</span>'
-            f'<span class="synopsis-arrow-open">⌃</span></label>'
-        )
-        synopsis_text_html = f'<p class="synopsis-text">{overview_escaped}</p>'
-
-    synopsis_row_html = (
-        f'<div class="meta-row synopsis-row">{synopsis_label_html}</div>' if synopsis_label_html else ""
-    )
-    # Sinopse faz parte do meio solto do card (ver cards.css), sem sincronia de altura
-    # com os vizinhos da fileira — só emite a div quando há de fato sinopse pra mostrar.
-    synopsis_html = ""
-    if synopsis_toggle_html or synopsis_row_html:
-        synopsis_html = (
-            f'<div class="row-synopsis">'
-            f'{synopsis_toggle_html}{synopsis_row_html}{synopsis_text_html}</div>'
-        )
-
-    # Mesmo mecanismo de accordion da sinopse (checkbox hack, sem JS), posicionada ANTES da
-    # sinopse — todo o elenco/equipe técnica já formatado em `title` aparece aqui, um bullet
-    # por papel, com o rótulo em negrito pra escanear rápido. Faz parte do "meio solto" do
-    # card (ver cards.css) — só emite a div quando há algum campo preenchido. Ícone+texto
-    # à esquerda, chevron ⌄/⌃ na ponta direita, mesmo padrão de `.synopsis-label` acima.
-    people_toggle_id = f"people-toggle-{idx}"
-    people_html = ""
-    people_fields = [
-        ("Diretor", director),
-        ("Criador(es)", creators),
-        ("Elenco", cast),
-        ("Roteiro", writers),
-        ("Trilha sonora", composer),
-        ("Produção", producer),
-        ("Fotografia", cinematographer),
-        ("Montagem", editor),
-    ]
-    if any(value for _, value in people_fields):
-        people_toggle_html = (
-            f'<input type="checkbox" id="{people_toggle_id}" class="people-toggle" hidden>'
-        )
-        people_row_html = (
-            f'<div class="meta-row people-row">'
-            f'<label for="{people_toggle_id}" class="people-label">'
-            f'<span class="people-icon-text"><span class="people-icon">{icon("users")}</span> Ficha Técnica</span>'
-            f'<span class="people-arrow-closed">⌄</span>'
-            f'<span class="people-arrow-open">⌃</span>'
-            f'</label>'
-            f'</div>'
-        )
-        people_items = "".join(
-            f"<li><strong>{label}:</strong> {html.escape(value)}</li>"
-            for label, value in people_fields
-            if value
-        )
-        people_text_html = f'<ul class="people-list">{people_items}</ul>'
-        people_html = f'<div class="row-people">{people_toggle_html}{people_row_html}{people_text_html}</div>'
 
     return f"""
     <article class="card">

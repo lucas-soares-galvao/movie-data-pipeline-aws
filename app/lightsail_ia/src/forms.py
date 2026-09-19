@@ -157,9 +157,86 @@ def _brand_header(title: str | None = None) -> None:
         st.markdown(f'<p class="form-page-title">{title}</p>', unsafe_allow_html=True)
 
 
+def _render_login_locked_out(client_ip: str, error_placeholder) -> None:
+    """Aviso de lockout de login (3 tentativas incorretas) com countdown — extraído de
+    _render_login_form()."""
+    _seconds = seconds_until_available(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS)
+    with error_placeholder:
+        render_feedback(
+            "warning",
+            "Muitas tentativas incorretas. Tente novamente em",
+            extra_html=_COUNTDOWN_EXTRA_HTML,
+        )
+    load_countdown_script(_seconds)
+
+
+def _handle_login_success(email: str) -> None:
+    """Popula a sessão autenticada e grava o login — extraído de _render_login_form()."""
+    st.session_state["authenticated"] = True
+    st.session_state["user_email"] = email
+    st.session_state["is_admin"] = infrastructure.is_admin(email)
+    try:
+        st.session_state["user_name"] = infrastructure.get_user_profile(email)["name"]
+    except ClientError:
+        # Falha ao buscar o nome não deve travar o login — a tela de
+        # recomendação trata user_name vazio como "sem saudação".
+        logging.exception("Erro ao buscar nome do perfil no login")
+        st.session_state["user_name"] = ""
+    try:
+        infrastructure.record_login(email)
+    except ClientError:
+        # Falha ao gravar o timestamp não deve travar o login do usuário —
+        # só loga, não propaga.
+        logging.exception("Erro ao gravar last_login")
+
+
+def _handle_login_failure(client_ip: str, result: str, error_placeholder) -> None:
+    """Trata os dois resultados de falha de `authenticate()` ("pending"/credenciais
+    inválidas) — extraído de _render_login_form()."""
+    if result == "pending":
+        with error_placeholder:
+            render_feedback(
+                "warning",
+                "Seu cadastro ainda não está liberado para acesso. Confirme seu "
+                "e-mail (confira também o spam) ou aguarde a aprovação do admin.",
+            )
+    else:
+        _login_attempt_history.setdefault(client_ip, []).append(time.time())
+        if events_in_window(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS) >= _MAX_LOGIN_ATTEMPTS:
+            st.rerun()
+        with error_placeholder:
+            render_feedback("error", "E-mail ou senha incorretos.")
+
+
+def _handle_login_submit(client_ip: str, email: str, password: str, error_placeholder) -> None:
+    """Autentica e despacha para sucesso/falha — extraído de _render_login_form()."""
+    result = infrastructure.authenticate(email, password)
+    if result == "ok":
+        _handle_login_success(email)
+        st.rerun()
+    else:
+        _handle_login_failure(client_ip, result, error_placeholder)
+
+
+def _render_login_links() -> None:
+    """Links secundários "Esqueci a senha"/"Novo cadastro" — extraído de
+    _render_login_form()."""
+    with st.container(key="login-links-row"):
+        link_col1, link_col2 = st.columns(2)
+        with link_col1:
+            if st.button(
+                "Esqueci a senha", key="btn_link_esqueci", type="tertiary", use_container_width=True,
+            ):
+                _switch_view("forgot_password")
+        with link_col2:
+            if st.button(
+                "Novo cadastro", key="btn_link_cadastro", type="tertiary", use_container_width=True,
+            ):
+                _switch_view("signup")
+
+
 def _render_login_form(client_ip: str) -> None:
-    _failed_attempts = events_in_window(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS)
-    _locked_out = _failed_attempts >= _MAX_LOGIN_ATTEMPTS
+    _locked_out = events_in_window(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS) >= _MAX_LOGIN_ATTEMPTS
 
     with st.container(key="form-card"):
         _brand_header()
@@ -178,64 +255,14 @@ def _render_login_form(client_ip: str) -> None:
         load_form_button_toggle_script(_locked_out, button_key="btn_entrar")
 
         if _locked_out:
-            _seconds = seconds_until_available(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS)
-            with error_placeholder:
-                render_feedback(
-                    "warning",
-                    "Muitas tentativas incorretas. Tente novamente em",
-                    extra_html=_COUNTDOWN_EXTRA_HTML,
-                )
-            load_countdown_script(_seconds)
+            _render_login_locked_out(client_ip, error_placeholder)
         elif submit and email and password:
-            result = infrastructure.authenticate(email, password)
-            if result == "ok":
-                st.session_state["authenticated"] = True
-                st.session_state["user_email"] = email
-                st.session_state["is_admin"] = infrastructure.is_admin(email)
-                try:
-                    st.session_state["user_name"] = infrastructure.get_user_profile(email)["name"]
-                except ClientError:
-                    # Falha ao buscar o nome não deve travar o login — a tela de
-                    # recomendação trata user_name vazio como "sem saudação".
-                    logging.exception("Erro ao buscar nome do perfil no login")
-                    st.session_state["user_name"] = ""
-                try:
-                    infrastructure.record_login(email)
-                except ClientError:
-                    # Falha ao gravar o timestamp não deve travar o login do usuário —
-                    # só loga, não propaga.
-                    logging.exception("Erro ao gravar last_login")
-                st.rerun()
-            elif result == "pending":
-                with error_placeholder:
-                    render_feedback(
-                        "warning",
-                        "Seu cadastro ainda não está liberado para acesso. Confirme seu "
-                        "e-mail (confira também o spam) ou aguarde a aprovação do admin.",
-                    )
-            else:
-                _login_attempt_history.setdefault(client_ip, []).append(time.time())
-                if events_in_window(_login_attempt_history, client_ip, _LOGIN_LOCKOUT_SECONDS) >= _MAX_LOGIN_ATTEMPTS:
-                    st.rerun()
-                with error_placeholder:
-                    render_feedback("error", "E-mail ou senha incorretos.")
+            _handle_login_submit(client_ip, email, password, error_placeholder)
         elif submit:
             with error_placeholder:
                 render_feedback("error", "Preencha e-mail e senha.")
 
-        with st.container(key="login-links-row"):
-            link_col1, link_col2 = st.columns(2)
-            with link_col1:
-                if st.button(
-                    "Esqueci a senha", key="btn_link_esqueci", type="tertiary", use_container_width=True,
-                ):
-                    _switch_view("forgot_password")
-            with link_col2:
-                if st.button(
-                    "Novo cadastro", key="btn_link_cadastro", type="tertiary", use_container_width=True,
-                ):
-                    _switch_view("signup")
-
+        _render_login_links()
         render_form_footer()
 
 
@@ -248,31 +275,87 @@ def _render_password_reset_success() -> None:
         render_form_footer()
 
 
+def _render_signup_fields() -> tuple[str, str, str, str]:
+    """Campos de nome/e-mail/senha/confirmação + coluna de requisitos — extraído de
+    _render_signup()."""
+    with st.container(key="password-fields-row"):
+        fields_col, requirements_col = st.columns(2, gap="medium")
+        with fields_col:
+            name = st.text_input(
+                "Nome Completo", placeholder="Digite seu nome completo", key="signup_name"
+            ).strip()
+            email = st.text_input("E-mail", placeholder=_EMAIL_PLACEHOLDER, key="signup_email")
+            render_email_hint()
+            password = st.text_input(
+                "Senha", placeholder=_MASKED_FIELD_PLACEHOLDER, type="password", key="signup_password"
+            )
+            confirm_password = st.text_input(
+                "Confirmar senha", placeholder="Digite sua senha novamente", type="password",
+                key="signup_confirm_password",
+            )
+        with requirements_col:
+            st.markdown(
+                _PASSWORD_REQUIREMENTS_TITLE_HTML,
+                unsafe_allow_html=True,
+            )
+            render_password_requirements()
+    return name, email, password, confirm_password
+
+
+def _handle_signup_submit(
+    name: str, email: str, password: str, confirm_password: str, client_ip: str, error_placeholder,
+) -> None:
+    """Valida e envia o cadastro — extraído de _render_signup()."""
+    error = _validate_signup(name, email, password, confirm_password)
+    if error:
+        with error_placeholder:
+            render_feedback("error", error)
+        return
+
+    try:
+        infrastructure.sign_up(email, password, name)
+    except ClientError as exc:
+        resumed = (
+            exc.response["Error"]["Code"] == "UsernameExistsException"
+            and _start_signup_resume(email, client_ip) == "ok"
+        )
+        if resumed:
+            _switch_view("signup_confirm")
+        else:
+            with error_placeholder:
+                render_feedback("error", _signup_error_message(exc))
+    else:
+        # O código de confirmação já foi enviado como efeito colateral do
+        # sign_up() — marca o cooldown de reenvio a partir de agora, não de
+        # uma ação de "enviar" separada (não existe uma, ao contrário do
+        # reset de senha).
+        _signup_code_send_history.setdefault(client_ip, []).append(time.time())
+        st.session_state["signup_email_confirmed"] = email
+        st.session_state["signup_name_confirmed"] = name
+        st.session_state.pop("signup_resumed", None)
+        _switch_view("signup_confirm")
+
+
+def _render_signup_links() -> None:
+    """Links secundários "Já iniciei um cadastro"/"Voltar ao login" — extraído de
+    _render_signup()."""
+    if st.button(
+        "Já iniciei um cadastro e perdi o código", key="btn_link_retomar",
+        type="tertiary", use_container_width=True,
+    ):
+        _switch_view("signup_resume")
+
+    if st.button(
+        _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
+    ):
+        _switch_view("login")
+
+
 def _render_signup(client_ip: str) -> None:
     with st.container(key="form-card"):
         _brand_header("Criar uma Conta Nova")
 
-        with st.container(key="password-fields-row"):
-            fields_col, requirements_col = st.columns(2, gap="medium")
-            with fields_col:
-                name = st.text_input(
-                    "Nome Completo", placeholder="Digite seu nome completo", key="signup_name"
-                ).strip()
-                email = st.text_input("E-mail", placeholder=_EMAIL_PLACEHOLDER, key="signup_email")
-                render_email_hint()
-                password = st.text_input(
-                    "Senha", placeholder=_MASKED_FIELD_PLACEHOLDER, type="password", key="signup_password"
-                )
-                confirm_password = st.text_input(
-                    "Confirmar senha", placeholder="Digite sua senha novamente", type="password",
-                    key="signup_confirm_password",
-                )
-            with requirements_col:
-                st.markdown(
-                    _PASSWORD_REQUIREMENTS_TITLE_HTML,
-                    unsafe_allow_html=True,
-                )
-                render_password_requirements()
+        name, email, password, confirm_password = _render_signup_fields()
         error_placeholder = st.empty()
         submit = st.button("Criar cadastro →", use_container_width=True, key="btn_cadastrar")
         load_password_requirements_gate_script(
@@ -283,45 +366,9 @@ def _render_signup(client_ip: str) -> None:
         )
 
         if submit:
-            error = _validate_signup(name, email, password, confirm_password)
-            if error:
-                with error_placeholder:
-                    render_feedback("error", error)
-            else:
-                try:
-                    infrastructure.sign_up(email, password, name)
-                except ClientError as exc:
-                    resumed = (
-                        exc.response["Error"]["Code"] == "UsernameExistsException"
-                        and _start_signup_resume(email, client_ip) == "ok"
-                    )
-                    if resumed:
-                        _switch_view("signup_confirm")
-                    else:
-                        with error_placeholder:
-                            render_feedback("error", _signup_error_message(exc))
-                else:
-                    # O código de confirmação já foi enviado como efeito colateral do
-                    # sign_up() — marca o cooldown de reenvio a partir de agora, não de
-                    # uma ação de "enviar" separada (não existe uma, ao contrário do
-                    # reset de senha).
-                    _signup_code_send_history.setdefault(client_ip, []).append(time.time())
-                    st.session_state["signup_email_confirmed"] = email
-                    st.session_state["signup_name_confirmed"] = name
-                    st.session_state.pop("signup_resumed", None)
-                    _switch_view("signup_confirm")
+            _handle_signup_submit(name, email, password, confirm_password, client_ip, error_placeholder)
 
-        if st.button(
-            "Já iniciei um cadastro e perdi o código", key="btn_link_retomar",
-            type="tertiary", use_container_width=True,
-        ):
-            _switch_view("signup_resume")
-
-        if st.button(
-            _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
-        ):
-            _switch_view("login")
-
+        _render_signup_links()
         render_form_footer()
 
 
@@ -443,6 +490,136 @@ def _render_signup_resume_request(client_ip: str) -> None:
         render_form_footer()
 
 
+def _render_signup_confirm_locked_out(client_ip: str, error_placeholder) -> None:
+    """Aviso de lockout de código de cadastro (3 tentativas) — extraído de
+    _render_signup_confirm()."""
+    _seconds = seconds_until_available(_signup_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
+    with error_placeholder:
+        render_feedback(
+            "warning",
+            "Muitas tentativas de código incorreto. Tente novamente em",
+            extra_html=_COUNTDOWN_EXTRA_HTML,
+        )
+    load_countdown_script(_seconds)
+
+
+def _handle_signup_code_submit(
+    client_ip: str, email: str, name: str, code: str, resumed: bool, error_placeholder,
+) -> None:
+    """Valida e confirma o código de cadastro — extraído de _render_signup_confirm()."""
+    if not code:
+        with error_placeholder:
+            render_feedback("error", "Digite o código recebido por e-mail.")
+        return
+
+    try:
+        infrastructure.confirm_sign_up(email, code)
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "CodeMismatchException":
+            _signup_code_attempt_history.setdefault(client_ip, []).append(time.time())
+            if (
+                events_in_window(_signup_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
+                >= _MAX_CODE_ATTEMPTS
+            ):
+                st.rerun()
+        with error_placeholder:
+            render_feedback("error", _signup_code_error_message(exc))
+    else:
+        try:
+            infrastructure.notify_new_signup(email, name)
+        except ClientError:
+            # Mesmo racional de record_login (_render_login_form): falha ao
+            # notificar o admin não deve travar a confirmação do próprio
+            # usuário — só loga, não propaga. Chamado aqui (não só no caso
+            # não-retomado) porque a conta já vira CONFIRMED+Disabled assim
+            # que o código é validado, independente de quando a pessoa
+            # termina de preencher nome/senha na tela seguinte.
+            logging.exception("Erro ao notificar novo cadastro")
+        if resumed:
+            # Nome/senha entram só na próxima tela (_render_signup_resume_details),
+            # depois do código já validado — mesmo racional de segurança
+            # documentado em _start_signup_resume/apply_resumed_signup: a posse
+            # do código é a prova de identidade necessária antes de gravar
+            # qualquer coisa no Cognito.
+            st.session_state["signup_resume_step"] = "details"
+            st.rerun()
+        else:
+            st.session_state.pop("signup_email_confirmed", None)
+            st.session_state.pop("signup_name_confirmed", None)
+            st.session_state.pop("signup_resumed", None)
+            _switch_view("signup_success")
+
+
+@st.fragment(run_every=1)
+def _render_signup_resend_section(client_ip: str, email: str) -> None:
+    """Reenvio do código de confirmação de cadastro, com contagem regressiva — extraído de
+    _render_signup_confirm() (era uma função aninhada; virou função de módulo pra reduzir a
+    complexidade cognitiva da chamadora, recebendo client_ip/email como parâmetro em vez de
+    fechar sobre eles por closure — mesmo padrão de _render_forgot_password_resend_section).
+    Recalcula 1x/s a partir do tempo real decorrido, sem depender de reload de página."""
+    _resend_locked = (
+        events_in_window(_signup_code_send_history, client_ip, _RESEND_LOCKOUT_SECONDS)
+        >= _MAX_RESEND_ATTEMPTS
+    )
+    message: tuple[str, str] | None = None
+    if _resend_locked:
+        _seconds = seconds_until_available(_signup_code_send_history, client_ip, _RESEND_LOCKOUT_SECONDS)
+        mm, ss = divmod(_seconds, 60)
+        countdown = f"{mm:02d}:{ss:02d}"
+        if st.session_state.get("signup_resend_failed", False):
+            message = (
+                "error",
+                f"Não foi possível reenviar o código agora. Tente de novo em {countdown}.",
+            )
+        elif st.session_state.get("signup_code_just_resent", False):
+            message = (
+                "success",
+                "Novo código enviado. Confira a caixa de entrada e o spam. "
+                f"Aguarde {countdown} para pedir outro.",
+            )
+        else:
+            message = ("warning", f"Aguarde {countdown} para pedir um novo código.")
+
+    if message:
+        render_feedback(*message)
+
+    with st.container(key="resend-links-row"):
+        link_col1, link_col2 = st.columns(2)
+        with link_col1:
+            if st.button(
+                _BACK_TO_LOGIN_LABEL, key="btn_link_voltar",
+                type="tertiary", use_container_width=True,
+            ):
+                st.session_state.pop("signup_email_confirmed", None)
+                st.session_state.pop("signup_name_confirmed", None)
+                st.session_state.pop("signup_resumed", None)
+                st.session_state.pop("signup_resume_step", None)
+                _switch_view("login")
+        with link_col2:
+            if st.button(
+                "Reenviar código", key="btn_reenviar_codigo", type="tertiary",
+                disabled=_resend_locked, use_container_width=True,
+            ):
+                # Diferente do reenvio de reset de senha (anti user-enumeration —
+                # ali faz sentido fingir sucesso mesmo em erro, pra não revelar se o
+                # e-mail existe), aqui o e-mail já é uma conta sabidamente existente
+                # (o próprio usuário acabou de se cadastrar com ele, exibido na tela).
+                # Engolir o erro silenciosamente escondia falhas reais do Cognito
+                # (ex.: LimitExceededException da cota própria de reenvio) atrás de
+                # uma mensagem de sucesso falsa — por isso loga e avisa o usuário.
+                try:
+                    infrastructure.resend_confirmation_code(email)
+                except ClientError:
+                    logging.exception("Erro ao reenviar código de confirmação de cadastro")
+                    st.session_state["signup_resend_failed"] = True
+                    st.session_state["signup_code_just_resent"] = False
+                else:
+                    st.session_state["signup_code_just_resent"] = True
+                    st.session_state.pop("signup_resend_failed", None)
+                _signup_code_send_history.setdefault(client_ip, []).append(time.time())
+                st.rerun(scope="fragment")
+
+
 def _render_signup_confirm(client_ip: str) -> None:
     email = st.session_state.get("signup_email_confirmed", "")
     name = st.session_state.get("signup_name_confirmed", "")
@@ -472,123 +649,11 @@ def _render_signup_confirm(client_ip: str) -> None:
         load_form_button_toggle_script(_code_locked_out, button_key="btn_confirmar_email")
 
         if _code_locked_out:
-            _seconds = seconds_until_available(_signup_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
-            with error_placeholder:
-                render_feedback(
-                    "warning",
-                    "Muitas tentativas de código incorreto. Tente novamente em",
-                    extra_html=_COUNTDOWN_EXTRA_HTML,
-                )
-            load_countdown_script(_seconds)
+            _render_signup_confirm_locked_out(client_ip, error_placeholder)
         elif submit:
-            if not code:
-                with error_placeholder:
-                    render_feedback("error", "Digite o código recebido por e-mail.")
-            else:
-                try:
-                    infrastructure.confirm_sign_up(email, code)
-                except ClientError as exc:
-                    if exc.response["Error"]["Code"] == "CodeMismatchException":
-                        _signup_code_attempt_history.setdefault(client_ip, []).append(time.time())
-                        if (
-                            events_in_window(_signup_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
-                            >= _MAX_CODE_ATTEMPTS
-                        ):
-                            st.rerun()
-                    with error_placeholder:
-                        render_feedback("error", _signup_code_error_message(exc))
-                else:
-                    try:
-                        infrastructure.notify_new_signup(email, name)
-                    except ClientError:
-                        # Mesmo racional de record_login (_render_login_form): falha ao
-                        # notificar o admin não deve travar a confirmação do próprio
-                        # usuário — só loga, não propaga. Chamado aqui (não só no caso
-                        # não-retomado) porque a conta já vira CONFIRMED+Disabled assim
-                        # que o código é validado, independente de quando a pessoa
-                        # termina de preencher nome/senha na tela seguinte.
-                        logging.exception("Erro ao notificar novo cadastro")
-                    if resumed:
-                        # Nome/senha entram só na próxima tela (_render_signup_resume_details),
-                        # depois do código já validado — mesmo racional de segurança
-                        # documentado em _start_signup_resume/apply_resumed_signup: a posse
-                        # do código é a prova de identidade necessária antes de gravar
-                        # qualquer coisa no Cognito.
-                        st.session_state["signup_resume_step"] = "details"
-                        st.rerun()
-                    else:
-                        st.session_state.pop("signup_email_confirmed", None)
-                        st.session_state.pop("signup_name_confirmed", None)
-                        st.session_state.pop("signup_resumed", None)
-                        _switch_view("signup_success")
+            _handle_signup_code_submit(client_ip, email, name, code, resumed, error_placeholder)
 
-        @st.fragment(run_every=1)
-        def _resend_section() -> None:
-            # Mesmo racional de _resend_section em _render_forgot_password_confirm: recalcula
-            # 1x/s a partir do tempo real decorrido, sem depender de reload de página.
-            _resend_locked = (
-                events_in_window(_signup_code_send_history, client_ip, _RESEND_LOCKOUT_SECONDS)
-                >= _MAX_RESEND_ATTEMPTS
-            )
-            message: tuple[str, str] | None = None
-            if _resend_locked:
-                _seconds = seconds_until_available(_signup_code_send_history, client_ip, _RESEND_LOCKOUT_SECONDS)
-                mm, ss = divmod(_seconds, 60)
-                countdown = f"{mm:02d}:{ss:02d}"
-                if st.session_state.get("signup_resend_failed", False):
-                    message = (
-                        "error",
-                        f"Não foi possível reenviar o código agora. Tente de novo em {countdown}.",
-                    )
-                elif st.session_state.get("signup_code_just_resent", False):
-                    message = (
-                        "success",
-                        "Novo código enviado. Confira a caixa de entrada e o spam. "
-                        f"Aguarde {countdown} para pedir outro.",
-                    )
-                else:
-                    message = ("warning", f"Aguarde {countdown} para pedir um novo código.")
-
-            if message:
-                render_feedback(*message)
-
-            with st.container(key="resend-links-row"):
-                link_col1, link_col2 = st.columns(2)
-                with link_col1:
-                    if st.button(
-                        _BACK_TO_LOGIN_LABEL, key="btn_link_voltar",
-                        type="tertiary", use_container_width=True,
-                    ):
-                        st.session_state.pop("signup_email_confirmed", None)
-                        st.session_state.pop("signup_name_confirmed", None)
-                        st.session_state.pop("signup_resumed", None)
-                        st.session_state.pop("signup_resume_step", None)
-                        _switch_view("login")
-                with link_col2:
-                    if st.button(
-                        "Reenviar código", key="btn_reenviar_codigo", type="tertiary",
-                        disabled=_resend_locked, use_container_width=True,
-                    ):
-                        # Diferente do reenvio de reset de senha (anti user-enumeration —
-                        # ali faz sentido fingir sucesso mesmo em erro, pra não revelar se o
-                        # e-mail existe), aqui o e-mail já é uma conta sabidamente existente
-                        # (o próprio usuário acabou de se cadastrar com ele, exibido na tela).
-                        # Engolir o erro silenciosamente escondia falhas reais do Cognito
-                        # (ex.: LimitExceededException da cota própria de reenvio) atrás de
-                        # uma mensagem de sucesso falsa — por isso loga e avisa o usuário.
-                        try:
-                            infrastructure.resend_confirmation_code(email)
-                        except ClientError:
-                            logging.exception("Erro ao reenviar código de confirmação de cadastro")
-                            st.session_state["signup_resend_failed"] = True
-                            st.session_state["signup_code_just_resent"] = False
-                        else:
-                            st.session_state["signup_code_just_resent"] = True
-                            st.session_state.pop("signup_resend_failed", None)
-                        _signup_code_send_history.setdefault(client_ip, []).append(time.time())
-                        st.rerun(scope="fragment")
-
-        _resend_section()
+        _render_signup_resend_section(client_ip, email)
 
         render_form_footer()
 
@@ -716,6 +781,111 @@ def _render_forgot_password(client_ip: str) -> None:
         _render_forgot_password_request(client_ip)
 
 
+def _forgot_password_send_message(client_ip: str) -> tuple[str, str]:
+    """Mensagem de cooldown do passo 1 de "Esqueci a senha" (e-mail não cadastrado /
+    cadastro pendente / cooldown genérico) — extraído do fragment
+    _render_forgot_password_send_section (_render_forgot_password_request).
+
+    .get() (não .pop()) nas duas flags — o fragmento se auto-atualiza a cada 1s
+    (run_every=1) durante todo o cooldown, e popar a flag no primeiro desses re-renders a
+    apagaria quase instantaneamente, substituída pelo aviso genérico de contagem
+    regressiva no tick seguinte. A flag some sozinha porque cada novo envio já reescreve as
+    duas para o valor correto (True/False) antes de qualquer rerun (ver
+    _handle_forgot_password_submit)."""
+    _seconds = seconds_until_available(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS)
+    mm, ss = divmod(_seconds, 60)
+    countdown = f"{mm:02d}:{ss:02d}"
+    if st.session_state.get("email_not_registered", False):
+        return (
+            "error",
+            "Esse e-mail ainda não tem cadastro. Crie uma conta para continuar, "
+            f"ou tente outro e-mail em {countdown}.",
+        )
+    if st.session_state.get("email_pending_approval", False):
+        return ("warning", "Seu cadastro ainda está aguardando aprovação do admin.")
+    return ("warning", f"Aguarde para tentar novamente em {countdown}.")
+
+
+def _handle_forgot_password_submit(client_ip: str) -> tuple[str, str] | None:
+    """Valida o e-mail e dispara o pedido de redefinição de senha (passo 1) — extraído do
+    fragment _render_forgot_password_send_section (_render_forgot_password_request). Lê o
+    e-mail via session_state (não por parâmetro/closure): um clique aqui dispara rerun só
+    do fragmento, que não reexecuta o st.text_input() de fora — a variável fechada por
+    closure poderia estar desatualizada se o usuário editasse o campo sem sair do
+    fragmento."""
+    current_email = st.session_state.get("reset_email", "")
+    if not _EMAIL_RE.match(current_email):
+        return ("error", _ERRO_EMAIL_INVALIDO)
+
+    status = infrastructure.get_user_status(current_email)
+    # Sempre reescreve as duas flags (nunca só a que deu True) — sem isso, uma
+    # flag deixada True por uma tentativa anterior (outro e-mail, outro cooldown)
+    # vazaria pro aviso desta tentativa, já que agora elas não são mais
+    # consumidas por pop() no render acima.
+    st.session_state["email_not_registered"] = status is None
+    st.session_state["email_pending_approval"] = status == "UNCONFIRMED"
+    if status is None or status == "UNCONFIRMED":
+        _reset_attempt_history.setdefault(client_ip, []).append(time.time())
+        st.rerun(scope="fragment")
+        return None
+
+    try:
+        infrastructure.request_password_reset(current_email)
+    except ClientError:
+        # Erro real do Cognito depois que já confirmamos o status do e-mail
+        # (get_user_status acima) — não expor detalhe interno ao usuário.
+        pass
+    _reset_attempt_history.setdefault(client_ip, []).append(time.time())
+    st.session_state["reset_email_confirmed"] = current_email
+    st.session_state["reset_step"] = "confirm"
+    st.rerun()
+    return None
+
+
+@st.fragment(run_every=1)
+def _render_forgot_password_send_section(client_ip: str) -> None:
+    """Botão + mensagem de envio do código de redefinição de senha — extraído de
+    _render_forgot_password_request() (era uma função aninhada; virou função de módulo pra
+    reduzir a complexidade cognitiva da chamadora, recebendo client_ip como parâmetro em
+    vez de fechar sobre ele por closure — mesmo padrão de _render_signup_resend_section).
+
+    Rate limit compartilhado com o reenvio (_reset_attempt_history/_RESEND_LOCKOUT_SECONDS
+    em _render_forgot_password_confirm) — cobre também este passo porque get_user_status()
+    (chamado por _handle_forgot_password_submit) revela existência/status do e-mail
+    (decisão consciente do projeto), e list_users não tem a mesma cota nativa que protege
+    ForgotPassword/ConfirmForgotPassword no Cognito. Recalculado a cada tick do fragmento
+    (1x/s) a partir do tempo real decorrido — em vez de só uma vez por rerun completo — pra
+    que o botão fique genuinamente clicável (disabled=False do ponto de vista do backend)
+    assim que os 60s passam, mesmo sem nenhuma outra interação na página. Ver
+    load_countdown_script() em components.py: o mecanismo antigo (reenable_button_key) só
+    reabilitava o botão via DOM no navegador, sem avisar o backend — o clique nunca chegava
+    a request_password_reset().
+
+    Mensagem renderizada uma única vez, no fim, sem st.empty(): um placeholder recriado a
+    cada tick (run_every=1) e preenchido logo em seguida vira duas escritas separadas (uma
+    "limpa o slot", outra "preenche") — o Streamlit às vezes manda essas duas atualizações
+    em frames distintos pro navegador, piscando a mensagem por ~200ms a cada segundo
+    (medido via poll de 50ms no DOM). Um único elemento condicional, na mesma posição do
+    script em todo tick, atualiza no lugar sem esse "clear" intermediário — mesmo padrão já
+    usado pelo st.button acima, que nunca piscou."""
+    _send_locked = (
+        events_in_window(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
+    )
+    submit = st.button(
+        "Enviar código →", use_container_width=True, key="btn_enviar_codigo", disabled=_send_locked,
+    )
+    load_form_button_toggle_script(_send_locked, button_key="btn_enviar_codigo", email_key="reset_email")
+
+    message: tuple[str, str] | None = None
+    if _send_locked:
+        message = _forgot_password_send_message(client_ip)
+    elif submit:
+        message = _handle_forgot_password_submit(client_ip)
+
+    if message:
+        render_feedback(*message)
+
+
 def _render_forgot_password_request(client_ip: str) -> None:
     with st.container(key="form-card"):
         _brand_header("Recuperar Acesso")
@@ -723,92 +893,7 @@ def _render_forgot_password_request(client_ip: str) -> None:
         st.text_input("E-mail", placeholder=_EMAIL_PLACEHOLDER, key="reset_email")
         render_email_hint()
 
-        @st.fragment(run_every=1)
-        def _send_section() -> None:
-            # Rate limit compartilhado com o reenvio (_reset_attempt_history/
-            # _RESEND_LOCKOUT_SECONDS em _render_forgot_password_confirm) — cobre também este
-            # passo porque get_user_status() abaixo revela existência/status do e-mail (decisão
-            # consciente do projeto), e list_users não tem a mesma cota nativa que protege
-            # ForgotPassword/ConfirmForgotPassword no Cognito. Recalculado a cada tick do
-            # fragmento (1x/s) a partir do tempo real decorrido — em vez de só uma vez por
-            # rerun completo — pra que o botão fique genuinamente clicável (disabled=False do
-            # ponto de vista do backend) assim que os 60s passam, mesmo sem nenhuma outra
-            # interação na página. Ver load_countdown_script() em components.py: o mecanismo
-            # antigo (reenable_button_key) só reabilitava o botão via DOM no navegador, sem
-            # avisar o backend — o clique nunca chegava a request_password_reset().
-            _send_locked = (
-                events_in_window(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
-            )
-            submit = st.button(
-                "Enviar código →", use_container_width=True, key="btn_enviar_codigo", disabled=_send_locked,
-            )
-            load_form_button_toggle_script(_send_locked, button_key="btn_enviar_codigo", email_key="reset_email")
-
-            # Mensagem computada aqui e só renderizada uma vez, no fim, sem st.empty(): um
-            # placeholder recriado a cada tick (run_every=1) e preenchido logo em seguida vira
-            # duas escritas separadas (uma "limpa o slot", outra "preenche") — o Streamlit às
-            # vezes manda essas duas atualizações em frames distintos pro navegador, piscando
-            # a mensagem por ~200ms a cada segundo (medido via poll de 50ms no DOM). Um único
-            # elemento condicional, na mesma posição do script em todo tick, atualiza no lugar
-            # sem esse "clear" intermediário — mesmo padrão já usado pelo st.button acima, que
-            # nunca piscou.
-            message: tuple[str, str] | None = None
-
-            if _send_locked:
-                _seconds = seconds_until_available(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS)
-                mm, ss = divmod(_seconds, 60)
-                countdown = f"{mm:02d}:{ss:02d}"
-                # .get() (não .pop()) — o fragmento se auto-atualiza a cada 1s (run_every=1)
-                # durante todo o cooldown, e popar a flag no primeiro desses re-renders a
-                # apagaria quase instantaneamente, substituída pelo aviso genérico de
-                # contagem regressiva no tick seguinte. A flag some sozinha porque cada novo
-                # envio já reescreve as duas para o valor correto (True/False) antes de
-                # qualquer rerun (ver `elif submit` abaixo).
-                if st.session_state.get("email_not_registered", False):
-                    message = (
-                        "error",
-                        "Esse e-mail ainda não tem cadastro. Crie uma conta para continuar, "
-                        f"ou tente outro e-mail em {countdown}.",
-                    )
-                elif st.session_state.get("email_pending_approval", False):
-                    message = ("warning", "Seu cadastro ainda está aguardando aprovação do admin.")
-                else:
-                    message = ("warning", f"Aguarde para tentar novamente em {countdown}.")
-            elif submit:
-                # Lido via session_state (não pela variável local `email` do escopo externo):
-                # um clique aqui dentro dispara rerun só do fragmento, que não reexecuta o
-                # st.text_input() de fora — a variável fechada por closure poderia estar
-                # desatualizada se o usuário editasse o campo sem sair do fragmento.
-                current_email = st.session_state.get("reset_email", "")
-                if not _EMAIL_RE.match(current_email):
-                    message = ("error", _ERRO_EMAIL_INVALIDO)
-                else:
-                    status = infrastructure.get_user_status(current_email)
-                    # Sempre reescreve as duas flags (nunca só a que deu True) — sem isso, uma
-                    # flag deixada True por uma tentativa anterior (outro e-mail, outro cooldown)
-                    # vazaria pro aviso desta tentativa, já que agora elas não são mais
-                    # consumidas por pop() no render acima.
-                    st.session_state["email_not_registered"] = status is None
-                    st.session_state["email_pending_approval"] = status == "UNCONFIRMED"
-                    if status is None or status == "UNCONFIRMED":
-                        _reset_attempt_history.setdefault(client_ip, []).append(time.time())
-                        st.rerun(scope="fragment")
-                    else:
-                        try:
-                            infrastructure.request_password_reset(current_email)
-                        except ClientError:
-                            # Erro real do Cognito depois que já confirmamos o status do e-mail
-                            # (get_user_status acima) — não expor detalhe interno ao usuário.
-                            pass
-                        _reset_attempt_history.setdefault(client_ip, []).append(time.time())
-                        st.session_state["reset_email_confirmed"] = current_email
-                        st.session_state["reset_step"] = "confirm"
-                        st.rerun()
-
-            if message:
-                render_feedback(*message)
-
-        _send_section()
+        _render_forgot_password_send_section(client_ip)
 
         if st.button(
             _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
@@ -816,6 +901,113 @@ def _render_forgot_password_request(client_ip: str) -> None:
             _switch_view("login")
 
         render_form_footer()
+
+
+def _render_forgot_password_confirm_locked_out(client_ip: str, error_placeholder) -> None:
+    """Aviso de lockout de código de redefinição de senha (3 tentativas) — extraído de
+    _render_forgot_password_confirm()."""
+    _seconds = seconds_until_available(_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
+    with error_placeholder:
+        render_feedback(
+            "warning",
+            "Muitas tentativas de código incorreto. Tente novamente em",
+            extra_html=_COUNTDOWN_EXTRA_HTML,
+        )
+    load_countdown_script(_seconds)
+
+
+def _handle_password_reset_submit(
+    client_ip: str, email: str, code: str, password: str, confirm_password: str, error_placeholder,
+) -> None:
+    """Valida e confirma a redefinição de senha — extraído de
+    _render_forgot_password_confirm()."""
+    error = _validate_reset(code, password, confirm_password)
+    if error:
+        with error_placeholder:
+            render_feedback("error", error)
+        return
+
+    try:
+        infrastructure.confirm_password_reset(email, code, password)
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "CodeMismatchException":
+            _code_attempt_history.setdefault(client_ip, []).append(time.time())
+            if events_in_window(_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS) >= _MAX_CODE_ATTEMPTS:
+                st.rerun()
+        with error_placeholder:
+            render_feedback("error", _reset_error_message(exc))
+    else:
+        try:
+            infrastructure.record_password_update(email)
+        except ClientError:
+            # Mesmo racional de record_login (_render_login_form): falha ao
+            # gravar o timestamp não deve travar a confirmação da troca de
+            # senha — só loga, não propaga.
+            logging.exception("Erro ao gravar password_updated_at")
+        st.session_state.pop("reset_step", None)
+        st.session_state.pop("reset_email_confirmed", None)
+        _switch_view("password_reset_success")
+
+
+@st.fragment(run_every=1)
+def _render_forgot_password_resend_section(client_ip: str, email: str) -> None:
+    """Reenvio do código de redefinição de senha, com contagem regressiva — extraído de
+    _render_forgot_password_confirm() (era uma função aninhada; virou função de módulo pra
+    reduzir a complexidade cognitiva da chamadora, recebendo client_ip/email como parâmetro
+    em vez de fechar sobre eles por closure — mesmo padrão de
+    _render_signup_resend_section). Recalculado a cada tick do fragmento (1x/s) a partir do
+    tempo real decorrido — ver o comentário equivalente em _send_section
+    (_render_forgot_password_request) sobre por que isso substitui o antigo
+    reenable_button_key/DOM hack."""
+    _resend_locked = (
+        events_in_window(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
+    )
+    # Mensagem computada e renderizada uma única vez, sem st.empty() — mesmo racional
+    # de _send_section (_render_forgot_password_request): um placeholder recriado a
+    # cada tick e preenchido logo em seguida pisca por ~200ms a cada segundo, porque o
+    # Streamlit às vezes manda "limpa" e "preenche" em frames separados pro navegador.
+    message: tuple[str, str] | None = None
+    if _resend_locked:
+        _seconds = seconds_until_available(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS)
+        mm, ss = divmod(_seconds, 60)
+        countdown = f"{mm:02d}:{ss:02d}"
+        # .get() (não .pop()) — mesmo racional de _send_section: com run_every=1,
+        # popar a flag no primeiro re-render a apagaria quase na hora, substituída
+        # pelo aviso genérico no tick seguinte, antes do usuário conseguir ler.
+        if st.session_state.get("code_just_resent", False):
+            message = (
+                "success",
+                "Novo código enviado. Confira a caixa de entrada e o spam. "
+                f"Aguarde {countdown} para pedir outro.",
+            )
+        else:
+            message = ("warning", f"Aguarde {countdown} para pedir um novo código.")
+
+    if message:
+        render_feedback(*message)
+
+    with st.container(key="resend-links-row"):
+        link_col1, link_col2 = st.columns(2)
+        with link_col1:
+            if st.button(
+                _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
+            ):
+                st.session_state.pop("reset_step", None)
+                st.session_state.pop("reset_email_confirmed", None)
+                _switch_view("login")
+        with link_col2:
+            if st.button(
+                "Reenviar código", key="btn_reenviar_codigo", type="tertiary",
+                disabled=_resend_locked, use_container_width=True,
+            ):
+                try:
+                    infrastructure.request_password_reset(email)
+                except ClientError:
+                    # Mesmo racional anti-enumeration do passo 1 (request_password_reset acima).
+                    pass
+                _reset_attempt_history.setdefault(client_ip, []).append(time.time())
+                st.session_state["code_just_resent"] = True
+                st.rerun(scope="fragment")
 
 
 def _render_forgot_password_confirm(client_ip: str) -> None:
@@ -859,97 +1051,11 @@ def _render_forgot_password_confirm(client_ip: str) -> None:
         )
 
         if _code_locked_out:
-            _seconds = seconds_until_available(_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS)
-            with error_placeholder:
-                render_feedback(
-                    "warning",
-                    "Muitas tentativas de código incorreto. Tente novamente em",
-                    extra_html=_COUNTDOWN_EXTRA_HTML,
-                )
-            load_countdown_script(_seconds)
+            _render_forgot_password_confirm_locked_out(client_ip, error_placeholder)
         elif submit:
-            error = _validate_reset(code, password, confirm_password)
-            if error:
-                with error_placeholder:
-                    render_feedback("error", error)
-            else:
-                try:
-                    infrastructure.confirm_password_reset(email, code, password)
-                except ClientError as exc:
-                    if exc.response["Error"]["Code"] == "CodeMismatchException":
-                        _code_attempt_history.setdefault(client_ip, []).append(time.time())
-                        if events_in_window(_code_attempt_history, client_ip, _CODE_LOCKOUT_SECONDS) >= _MAX_CODE_ATTEMPTS:
-                            st.rerun()
-                    with error_placeholder:
-                        render_feedback("error", _reset_error_message(exc))
-                else:
-                    try:
-                        infrastructure.record_password_update(email)
-                    except ClientError:
-                        # Mesmo racional de record_login (_render_login_form): falha ao
-                        # gravar o timestamp não deve travar a confirmação da troca de
-                        # senha — só loga, não propaga.
-                        logging.exception("Erro ao gravar password_updated_at")
-                    st.session_state.pop("reset_step", None)
-                    st.session_state.pop("reset_email_confirmed", None)
-                    _switch_view("password_reset_success")
+            _handle_password_reset_submit(client_ip, email, code, password, confirm_password, error_placeholder)
 
-        @st.fragment(run_every=1)
-        def _resend_section() -> None:
-            # Recalculado a cada tick do fragmento (1x/s) a partir do tempo real decorrido —
-            # ver o comentário equivalente em _send_section (_render_forgot_password_request)
-            # sobre por que isso substitui o antigo reenable_button_key/DOM hack.
-            _resend_locked = (
-                events_in_window(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS) >= _MAX_RESEND_ATTEMPTS
-            )
-            # Mensagem computada e renderizada uma única vez, sem st.empty() — mesmo racional
-            # de _send_section (_render_forgot_password_request): um placeholder recriado a
-            # cada tick e preenchido logo em seguida pisca por ~200ms a cada segundo, porque o
-            # Streamlit às vezes manda "limpa" e "preenche" em frames separados pro navegador.
-            message: tuple[str, str] | None = None
-            if _resend_locked:
-                _seconds = seconds_until_available(_reset_attempt_history, client_ip, _RESEND_LOCKOUT_SECONDS)
-                mm, ss = divmod(_seconds, 60)
-                countdown = f"{mm:02d}:{ss:02d}"
-                # .get() (não .pop()) — mesmo racional de _send_section: com run_every=1,
-                # popar a flag no primeiro re-render a apagaria quase na hora, substituída
-                # pelo aviso genérico no tick seguinte, antes do usuário conseguir ler.
-                if st.session_state.get("code_just_resent", False):
-                    message = (
-                        "success",
-                        "Novo código enviado. Confira a caixa de entrada e o spam. "
-                        f"Aguarde {countdown} para pedir outro.",
-                    )
-                else:
-                    message = ("warning", f"Aguarde {countdown} para pedir um novo código.")
-
-            if message:
-                render_feedback(*message)
-
-            with st.container(key="resend-links-row"):
-                link_col1, link_col2 = st.columns(2)
-                with link_col1:
-                    if st.button(
-                        _BACK_TO_LOGIN_LABEL, key="btn_link_voltar", type="tertiary", use_container_width=True,
-                    ):
-                        st.session_state.pop("reset_step", None)
-                        st.session_state.pop("reset_email_confirmed", None)
-                        _switch_view("login")
-                with link_col2:
-                    if st.button(
-                        "Reenviar código", key="btn_reenviar_codigo", type="tertiary",
-                        disabled=_resend_locked, use_container_width=True,
-                    ):
-                        try:
-                            infrastructure.request_password_reset(email)
-                        except ClientError:
-                            # Mesmo racional anti-enumeration do passo 1 (request_password_reset acima).
-                            pass
-                        _reset_attempt_history.setdefault(client_ip, []).append(time.time())
-                        st.session_state["code_just_resent"] = True
-                        st.rerun(scope="fragment")
-
-        _resend_section()
+        _render_forgot_password_resend_section(client_ip, email)
 
         render_form_footer()
 

@@ -9,16 +9,27 @@ name: 0. Pipeline CI/CD
 #                            │
 #                            └──► Auto PR: feature/* → develop
 #
-#   develop   ──push──► Terraform (infra dev)
+#   develop   ──push──► Testes (pytest, ruff, mypy, bandit) + Terraform (infra dev)
 #                            │
 #                            └──► Auto PR: develop → main
 #
-#   main      ──push──► Terraform (infra prod)
+#   main      ──push──► Testes (pytest, ruff, mypy, bandit) + Terraform (infra prod)
 #                            │
 #                            └──► Deploy Lightsail (app FilmBot)
 #
 #   main      ──push──► sonar (SonarQube Cloud, em paralelo ao Terraform —
 #                        nenhum dos dois depende do outro)
+#
+# O job "test" roda nas 3 branches (feature/*, develop, main) desde que se
+# descobriu que o gate de cobertura (--cov-fail-under=95) só rodava em
+# feature/* — uma vez que o código chegava em develop/main (via PR automático
+# do pr_auto.yml, que só valida sintaxe Terraform, nunca teste/cobertura),
+# nada reexecutava o gate, e uma regressão de cobertura podia ficar parada em
+# main sem que o pipeline acusasse. Continua não bloqueando terraform/
+# deploy-lightsail (nenhum dos dois tem "needs: test") — o objetivo aqui é dar
+# visibilidade (falha aparece no Actions), não travar o deploy; travar
+# exigiria decidir separadamente se uma regressão de cobertura deve impedir
+# deploy em prod.
 #
 # Workflows reutilizáveis (chamados por este arquivo):
 #   test.yml          — qualidade de código (testes, lint, cobertura)
@@ -87,7 +98,8 @@ jobs:
 
   test:
     needs: resolve-env
-    if: startsWith(github.ref_name, 'feature/')
+    if: |
+      startsWith(github.ref_name, 'feature/') || github.ref_name == 'develop' || github.ref_name == 'main'
     uses: ./.github/workflows/test.yml
 
   auto-pr-feature:

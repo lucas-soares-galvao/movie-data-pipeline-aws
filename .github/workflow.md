@@ -23,7 +23,7 @@ Além do fluxo automático acima, dois workflows são independentes do `_pipelin
 flowchart TD
     PUSH["Push / workflow_dispatch"]
 
-    PUSH -->|feature/*| TEST["test.yml\nQuality gates"]
+    PUSH -->|feature/*, develop ou main| TEST["test.yml\nQuality gates"]
     PUSH -->|develop ou main| TF["terraform.yml\nTerraform apply/destroy"]
     PUSH -->|main branch| SONAR["sonar.yml\nSonarQube Cloud (paralelo ao Terraform)"]
 
@@ -45,8 +45,8 @@ flowchart TD
 | Evento | Branch | Workflows executados |
 |---|---|---|
 | `push` | `feature/*` | test → PR feature→develop |
-| `push` | `develop` | terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
-| `push` | `main` | terraform (prod) → deploy (prod, se a instância estiver ligada) + sonar (SonarQube Cloud), em paralelo ao terraform |
+| `push` | `develop` | test (não bloqueia terraform) + terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
+| `push` | `main` | test (não bloqueia terraform/deploy) + terraform (prod) → deploy (prod, se a instância estiver ligada) + sonar (SonarQube Cloud), em paralelo ao terraform |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy só se ambiente resolvido for prod |
 | `schedule` (`lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `_pipeline.yml` |
 | `workflow_dispatch` (`lightsail_scheduler.yml`) | — | liga/desliga manual de prod (`action=start`/`stop`) |
@@ -59,6 +59,8 @@ flowchart TD
 ### `_pipeline.yml` — Orquestrador
 
 Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job. `resolve-env` também roda em push de `feature/*` para conectar o job `test` a este hub no grafo do Actions (`needs: resolve-env`) — dependência puramente organizacional, igual à de `sonar`: `test` não consome `outputs.environment`.
+
+O job `test` roda nas 3 branches (`feature/*`, `develop`, `main`), não só em `feature/*`: o gate de cobertura (`--cov-fail-under=95`) só reexecuta quando `test` roda, e como o PR automático do `pr_auto.yml` (`develop`→`main`) só valida sintaxe Terraform, uma regressão de cobertura introduzida depois da branch de feature podia chegar em `main` sem que nada acusasse. `test` não tem `needs`/`if` amarrado a `terraform`/`deploy-lightsail` — continua sem bloquear infraestrutura ou deploy, só dá visibilidade (falha aparece no Actions) em `develop`/`main`.
 
 **Lógica de ambiente (job `resolve-env`):**
 
@@ -73,7 +75,7 @@ Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `n
 
 ### `test.yml` — Quality Gates
 
-Valida a qualidade do código antes de qualquer deploy. Executa **apenas em branches `feature/*`**.
+Valida a qualidade do código. Executa em `feature/*`, `develop` e `main` — nas duas últimas, roda em paralelo a `terraform`/`sonar`/`deploy-lightsail`, sem bloqueá-los (serve como alerta de regressão, não como gate de deploy).
 
 | Etapa | Ferramenta | Comportamento |
 |---|---|---|
