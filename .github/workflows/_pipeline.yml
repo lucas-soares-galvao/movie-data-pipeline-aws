@@ -9,13 +9,17 @@ name: 0. Pipeline CI/CD
 #                            │
 #                            └──► Auto PR: feature/* → develop
 #
-#   develop   ──push──► Testes (pytest, ruff, mypy, bandit) + Terraform (infra dev)
+#   develop   ──push──► Testes (pytest, ruff, mypy, bandit)
 #                            │
-#                            └──► Auto PR: develop → main
+#                            └──► Terraform (infra dev)
+#                                     │
+#                                     └──► Auto PR: develop → main
 #
-#   main      ──push──► Testes (pytest, ruff, mypy, bandit) + Terraform (infra prod)
+#   main      ──push──► Testes (pytest, ruff, mypy, bandit)
 #                            │
-#                            └──► Deploy Lightsail (app FilmBot)
+#                            └──► Terraform (infra prod)
+#                                     │
+#                                     └──► Deploy Lightsail (app FilmBot)
 #
 #   main      ──push──► sonar (SonarQube Cloud, em paralelo ao Terraform —
 #                        nenhum dos dois depende do outro)
@@ -25,11 +29,11 @@ name: 0. Pipeline CI/CD
 # feature/* — uma vez que o código chegava em develop/main (via PR automático
 # do pr_auto.yml, que só valida sintaxe Terraform, nunca teste/cobertura),
 # nada reexecutava o gate, e uma regressão de cobertura podia ficar parada em
-# main sem que o pipeline acusasse. Continua não bloqueando terraform/
-# deploy-lightsail (nenhum dos dois tem "needs: test") — o objetivo aqui é dar
-# visibilidade (falha aparece no Actions), não travar o deploy; travar
-# exigiria decidir separadamente se uma regressão de cobertura deve impedir
-# deploy em prod.
+# main sem que o pipeline acusasse.
+#
+# Em develop/main, "terraform" espera "test" passar (needs: test, ver
+# comentário no job abaixo) — travando também "deploy-lightsail" e
+# "auto-pr-environment" em cascata, já que os dois dependem de "terraform".
 #
 # Workflows reutilizáveis (chamados por este arquivo):
 #   test.yml          — qualidade de código (testes, lint, cobertura)
@@ -114,10 +118,20 @@ jobs:
       contents: write
       pull-requests: write
 
+  # needs: test — terraform.yml constrói e aplica na AWS o pacote da Lambda e
+  # os wheels dos jobs Glue direto do app/ (build_lambda_package.py,
+  # build_glue_wheel.py); sem esperar "test", uma regressão de teste/cobertura
+  # podia ser aplicada em dev/prod antes (ou independente) do gate acusar.
+  # "needs.test.result == 'skipped'" cobre o workflow_dispatch disparado a
+  # partir de uma branch fora de feature/*|develop|main, onde "test" nem
+  # chega a rodar (sua condição só olha ref_name) — nesse caso não há
+  # resultado de teste para checar, então não bloqueia. Se o dispatch vier de
+  # develop/main (o caso normal), "test" roda e precisa ter sucesso.
   terraform:
-    needs: resolve-env
+    needs: [resolve-env, test]
     if: |
-      github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch'
+      (github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
     uses: ./.github/workflows/terraform.yml
     with:
       environment: ${{ needs.resolve-env.outputs.environment }}
