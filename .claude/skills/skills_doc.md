@@ -24,6 +24,7 @@ roteamento rápido em uma linha; este explica quando exatamente cada skill entra
 | [especialista-documentacao](#especialista-documentacao) | Templates de docs por módulo/teste/skill e ciclo de vida das skills |
 | [revisao-pos-mudanca-codigo](#revisao-pos-mudanca-codigo) | Checklist obrigatório pós-mudança: testes, `.md`, docstrings, type hints, permissão IAM, e ponte para as skills de qualidade/teste/doc/IAM |
 | [revisao-de-pr](#revisao-de-pr) | Checklist de revisão de um PR completo antes do merge, por camada do diff, com o que o CI não bloqueia/verifica |
+| [revisao-pendencias-sonarqube](#revisao-pendencias-sonarqube) | Consulta das pendências do SonarQube Cloud (Overall Code: Security, Reliability, Maintainability, Accepted, Coverage, Duplications, Hotspots) |
 | [especialista-arquitetura-aws](#especialista-arquitetura-aws) | Qual serviço AWS escolher para uma necessidade nova |
 | [especialista-finops-aws](#especialista-finops-aws) | Custo x benefício dos recursos AWS já escolhidos |
 | [especialista-infraestrutura-terraform](#especialista-infraestrutura-terraform) | Argumentos exatos de recurso Terraform por serviço AWS |
@@ -271,6 +272,23 @@ retomada automática) e no racional de design dos 6 scripts + `backfill_shared.p
 ---
 
 ## Qualidade e testes
+
+### revisao-pendencias-sonarqube
+
+**O que é:** consulta **somente leitura** das pendências do SonarQube Cloud na aba Overall Code — Security,
+Reliability, Maintainability, Accepted Issues, Coverage, Duplications e Security Hotspots — via API pública do
+SonarCloud (sem token), mais o status do Quality Gate (calculado em New Code). Produz um relatório por
+`arquivo:linha` e aponta a skill que guia a correção de cada tipo de achado. Registra as particularidades do repo
+(`sonar.python.version=3.9,3.12`, exclusões de `design/` e de coverage do JS) e a ressalva de que o Sonar só
+analisa `main`, então uma correção só aparece depois do merge.
+
+**Quando usar:**
+- Ao ser pedido para verificar/listar as pendências do Sonar.
+- Antes de começar a corrigir achados do Sonar.
+- Depois de um merge em `main`, para confirmar que a análise zerou o que foi corrigido.
+
+**Quando pular:** a tarefa é corrigir um achado específico já conhecido (usar a skill de ponte direto) ou o achado
+vem do `ruff`/`mypy`/`bandit` do CI, não do Sonar.
 
 ### especialista-testes-app
 

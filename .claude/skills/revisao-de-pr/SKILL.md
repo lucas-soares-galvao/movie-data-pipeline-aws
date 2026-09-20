@@ -63,6 +63,9 @@ valor desta skill está no que passa despercebido:
 - **`mypy app/ --ignore-missing-imports`, `bandit -r app/ -ll` e `safety check` rodam no CI mas são apenas
   informativos** — nada os torna bloqueantes. Antes de aprovar, olhar o resultado desses três steps e decidir se
   algum achado ali é bloqueante de fato para este PR específico.
+- **O SonarQube (`sonar.yml`) também é informativo e só analisa `main`** — não há resultado do Sonar para o PR
+  antes do merge. Para conferir as pendências já existentes em `main` (e se o PR as agrava), usar
+  `revisao-pendencias-sonarqube`.
 - **Sincronia de documentação não é verificada por nada automatizado.** Se um módulo, tabela, variável de
   ambiente, regra EventBridge ou modo de execução mudou, confirmar que o `.md` do módulo, o `.md` de teste, a
   skill de domínio relevante, `skills_doc.md` e o índice do `CLAUDE.md` foram todos atualizados juntos.
