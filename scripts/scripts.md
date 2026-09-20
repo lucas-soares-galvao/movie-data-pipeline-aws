@@ -13,7 +13,7 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
 | `backfill_discover.py` | Popula as tabelas discover de 2000 até o ano atual; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue ETL), usando `TRANSLATE_PROVIDER` (default `google`) só para o detector de idioma do overview. Não dispara o Glue Details — usar `backfill_enriquecimento.py` à parte para popular details/watch_providers. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, langdetect |
-| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma vez por tabela gravada | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma vez por tabela gravada. Grava checkpoint por tabela (6 unidades `"{media_type}:{table_type}"`) para retomar depois de token expirado sem refazer a tradução já concluída | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords; também usado para popular `next_episode_air_date`/`season_air_dates` — campos de próximo episódio/temporada de série — no catálogo já existente, já que são colunas novas ausentes em linha gravada antes da mudança); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, deep_translator, langdetect |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** roda o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
 | `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB; também é o caminho de reparo em massa das colunas `*_pt` gravadas com a página de erro do Google — o passo 0 de `resolve_pt_translation` as descarta e retraduz, e o Glue AGG final regrava a SPEC) | S3 (direto) | awswrangler, pandas, deep_translator |
@@ -33,7 +33,11 @@ o checkpoint de retomada automática (ver seção "Retomada automática"
 abaixo). `backfill_historico.py` não itera por ano diretamente — delega essa
 iteração aos dois scripts que encadeia — mas também usa o checkpoint
 genérico de `backfill_shared.py`, só que com unidade "nome do estágio"
-(`discover`/`enriquecimento`) em vez de "ano+tipo".
+(`discover`/`enriquecimento`) em vez de "ano+tipo". `backfill_changes.py`
+(unidade `content_type`) e `backfill_referencias.py` (unidade
+`"{media_type}:{table_type}"`) também o usam, sem ano: a chave de validação
+que os demais preenchem com `start_year`/`end_year` recebe uma data
+`YYYYMMDD`.
 
 ## Pré-requisitos
 
@@ -89,11 +93,11 @@ diretamente no processo em vez de delegar a um recurso gerenciado.
 `TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV`, `TABLE_DETAILS_MOVIE`/`TABLE_DETAILS_TV`,
 `TABLE_WATCH_PROVIDERS_MOVIE`/`TABLE_WATCH_PROVIDERS_TV`, `S3_BUCKET_SOT`,
 `S3_BUCKET_TEMP`, `TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` e,
-opcionalmente, `TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (não grava checkpoint,
-ver "Retomada automática" abaixo). `S3_BUCKET_TEMP` aqui **não** é para
-checkpoint (que este script não tem) — é o handoff efêmero da lista de IDs
-mudados (`tmdb/changes/{content_type}/{data}.json`), mesmo bucket/prefixo que
-o modo changes automático (via Lambda) já usa. Fica fora da proteção de custo
+opcionalmente, `TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (o `table_group` do
+checkpoint, `"changes"`, é fixo no código, ver "Retomada automática" abaixo).
+`S3_BUCKET_TEMP` aqui serve tanto ao checkpoint quanto ao handoff efêmero da
+lista de IDs mudados (`tmdb/changes/{content_type}/{data}.json`), mesmo
+bucket/prefixo que o modo changes automático (via Lambda) já usa. Fica fora da proteção de custo
 `apply_translate_cost_guard` (ver abaixo) pelo mesmo motivo que sempre esteve:
 o volume do modo changes é limitado aos IDs que a própria TMDB reporta como
 alterados na janela de 7 dias, não o catálogo inteiro.
@@ -116,14 +120,15 @@ quando chamado) — nenhuma variável nova. Diferente dos demais, **não** lê
 `TABLE_GROUP` não deve ser passada por quem chama este script.
 
 `backfill_referencias.py` exige `AWS_REGION`, `S3_BUCKET_SOR`, `S3_BUCKET_SOT`,
-`S3_BUCKET_TEMP` (só usado como área de resultados temporários do Athena pela
-chamada ao Glue AGG — este script não tem checkpoint),
+`S3_BUCKET_TEMP` (checkpoint de retomada e área de resultados temporários do
+Athena usada pela chamada ao Glue AGG),
 `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`, `TABLE_GENRE_MOVIE`/`TABLE_GENRE_TV`,
 `TABLE_CONFIGURATION_LANGUAGES`/`TABLE_CONFIGURATION_COUNTRIES`,
 `TABLE_WATCH_PROVIDERS_REF_MOVIE`/`TABLE_WATCH_PROVIDERS_REF_TV`,
 `TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` e, opcionalmente,
-`TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (não grava checkpoint, mesmo motivo
-de `backfill_changes.py`: poucas unidades, sem dependência de ano).
+`TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (o `table_group` do checkpoint,
+`"referencias"`, é fixo no código, mesmo motivo de `backfill_changes.py`:
+sem dependência de ano).
 `S3_BUCKET_SOR` é exclusivo deste script — nenhum outro grava JSON bruto
 diretamente (os demais só leem/escrevem parquet no SOT).
 
@@ -204,10 +209,23 @@ para as unidades ainda pendentes em vez de recomeçar do `BACKFILL_START_YEAR`.
 75 em caso de token expirado (fazem chamadas reais de S3/Secrets Manager/TMDB
 API — e Athena, no caso de `backfill_changes.py` — no processo, não mais uma
 única invocação curta de Lambda) e são retomados pelo mesmo loop genérico do
-workflow — mas **sem checkpoint**: poucas unidades (2 em `backfill_changes.py`,
-6 em `backfill_referencias.py`), e as funções chamadas em ambos são
-idempotentes, então a retomada simplesmente refaz tudo do zero em vez de
-pular direto para o pendente.
+workflow. Como não iteram por ano, a chave de validação do checkpoint
+(`start_year`/`end_year` nos demais) recebe uma data `YYYYMMDD`, o que mantém
+o checkpoint válido entre retries no mesmo dia e o invalida num run manual de
+outro dia:
+
+- `backfill_changes.py`: uma unidade por `content_type` (`movie`/`tv`), data de
+  "ontem" (UTC), a mesma referência da janela de busca do changes.
+- `backfill_referencias.py`: uma unidade por tabela, `"{media_type}:{table_type}"`
+  (`movie:genre`, `movie:configuration`, `movie:watch_providers_ref` e o mesmo
+  para `tv` — 6 no total), data de hoje (UTC). A granularidade por tabela (e não por
+  `content_type`) é necessária: a tradução de `configuration` (languages/countries)
+  leva ~30 min cada, uma passada completa passa de 1h e, sem checkpoint, a
+  credencial expirava sempre antes de `tv:configuration` terminar — o loop do
+  workflow refazia tudo do zero a cada tentativa, sem nunca concluir. Uma unidade
+  só entra no checkpoint depois de escrita com sucesso (um `watch_providers_ref`
+  com `HTTPError` fica de fora e é tentado de novo). Um retry que cruze a
+  meia-noite UTC ignora o checkpoint e recomeça do zero.
 
 `backfill_historico.py` não grava checkpoint por ano/tipo — quem faz isso são
 `backfill_discover.py`/`backfill_enriquecimento.py`, chamados por ele. Mantém
@@ -231,8 +249,8 @@ faltaram. Em `backfill_discover.py`, `backfill_enriquecimento.py` e
 `backfill_changes.py`, o Glue Data Quality também só é disparado (uma vez, ao
 final, por tabela) quando não sobra nenhuma falha — um range/content_type com
 unidades pendentes não é validado até ser reprocessado com sucesso
-(`backfill_changes.py` não tem checkpoint, então "reprocessado" aqui
-significa disparar o workflow de novo do zero, não retomar de onde parou).
+(em `backfill_changes.py` o checkpoint por `content_type` só vale no mesmo
+dia UTC: disparar o workflow de novo em outro dia reprocessa os dois do zero).
 
 ## Glue AGG: roda em processo, uma única vez, ao final
 
