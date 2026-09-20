@@ -362,6 +362,8 @@ Chamado por `_pipeline.yml` (job `sonar`) apenas em `push:main`. Recebe o secret
 
 **Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true`, então o job nunca falha por causa do Quality Gate do Sonar — mesmo padrão dos steps informativos do `test.yml` (`mypy`/`bandit`/`safety`). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
 
+**Consultar as pendências:** skill `revisao-pendencias-sonarqube` (API pública do SonarCloud, aba Overall Code).
+
 ---
 
 ## Infra — Terraform
