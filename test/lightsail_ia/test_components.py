@@ -852,26 +852,27 @@ class TestRenderCard:
         assert "Em breve" not in html
 
     def test_card_sem_em_cartaz_proximo_episodio_nem_lancamento_futuro_nao_gera_cinema_row(self):
-        # Sem conteúdo pra nenhum dos quatro badges (os 3 primeiros e o fallback de
-        # title_status), a div nem é gerada (meio solto, ver cards.css). BASE_TITLE já tem
-        # "title_status": None, então cai nesse caso.
+        # Sem conteúdo pra nenhum dos três badges (em cartaz, próximo episódio, em breve), a
+        # div nem é gerada (meio solto, ver cards.css).
         html = components.render_card(BASE_TITLE)
         assert "cinema-row" not in html
 
-    def test_card_status_fallback_filme_ja_lancado(self):
-        # Sem in_theaters/próximo episódio/upcoming_date, o 4º ramo (title_status) preenche a
-        # cinema-row mesmo no caso comum — filme já lançado e fora de cartaz.
+    def test_card_status_filme_ja_lancado_nao_gera_cinema_row(self):
+        # title_status (ex: "Lançado") não é mais exibido: filme já lançado e fora de cartaz
+        # fica sem a linha, em vez de um selo que só confirma o que o usuário já espera.
         t = {**BASE_TITLE, "title_status": "Lançado"}
         html = components.render_card(t)
-        assert "cinema-row" in html
-        assert "Lançado" in html
+        assert "cinema-row" not in html
+        assert "Lançado" not in html
 
-    def test_card_status_fallback_serie_encerrada(self):
+    def test_card_status_serie_encerrada_nao_gera_cinema_row(self):
         t = {**BASE_TITLE, "type": "Série", "title_status": "Encerrada"}
         html = components.render_card(t)
-        assert "Encerrada" in html
+        assert "cinema-row" not in html
+        assert "Encerrada" not in html
 
-    def test_card_em_cartaz_tem_prioridade_sobre_status(self):
+    def test_card_status_nunca_aparece_junto_dos_badges_de_cinema(self):
+        # Regressão: title_status não volta a aparecer quando um dos 3 badges está ativo.
         t = {
             **BASE_TITLE,
             "in_theaters": True,
@@ -881,25 +882,6 @@ class TestRenderCard:
         html = components.render_card(t)
         assert "Em cartaz até 15/07" in html
         assert "Lançado" not in html
-
-    def test_card_proximo_episodio_tem_prioridade_sobre_status(self):
-        t = {
-            **BASE_TITLE,
-            "type": "Série",
-            "next_episode_season_number": 3,
-            "next_episode_number": 1,
-            "next_episode_date": "15/09",
-            "title_status": "Em Exibição",
-        }
-        html = components.render_card(t)
-        assert "T3 E1 estreia em 15/09" in html
-        assert "Em Exibição" not in html
-
-    def test_card_em_breve_tem_prioridade_sobre_status(self):
-        t = {**BASE_TITLE, "upcoming_date": "Set de 2026", "title_status": "Planejado"}
-        html = components.render_card(t)
-        assert "Em breve · Set de 2026" in html
-        assert "Planejado" not in html
 
     def test_card_exibe_produtor_na_ficha_tecnica(self):
         t = {**BASE_TITLE, "producer": "Kevin Feige"}
