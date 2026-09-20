@@ -12,7 +12,7 @@ from typing import TypeVar
 import pandas as pd
 
 from shared_utils.traducao_aws import translate_text_aws
-from shared_utils.traducao_google import translate_text
+from shared_utils.traducao_google import is_google_error_page, translate_text
 
 __all__ = [
     "translate_text",
@@ -220,6 +220,14 @@ def resolve_pt_translation(
     respectivamente — em vez da antiga heurística de string-diff, que não
     distinguia "não precisava traduzir" de "tradução falhou silenciosamente".
 
+    Passo 0 (auto-reparo): descarta de target_column o que for a página de erro do Google
+    (ver is_google_error_page) — gravada como "tradução" por versões anteriores de
+    translate_text, que não validavam o conteúdo — e zera detected_language_pt_column e
+    translation_attempts_column dessas linhas. Sem zerar o contador, uma linha que já
+    tivesse esgotado o teto de tentativas ficaria com o texto de erro para sempre;
+    zerando, ela volta a ser elegível em qualquer job que chame esta função (inclusive
+    quando o texto veio do cache de reuse_existing_translation, que não filtra).
+
     Passos: (1) detecta detected_language_en_column a partir de source_column, só onde
     ainda vazia; (2) detecta detected_language_pt_column a partir do valor atual de
     target_column, só onde ainda vazia — cobre tradução nativa/cache já presentes antes
@@ -264,6 +272,16 @@ def resolve_pt_translation(
     """
     if translation_attempts_column not in df.columns:
         df[translation_attempts_column] = 0
+
+    polluted = df[target_column].apply(is_google_error_page).astype(bool)
+    if polluted.any():
+        df.loc[polluted, target_column] = None
+        df.loc[polluted, detected_language_pt_column] = None
+        df.loc[polluted, translation_attempts_column] = 0
+        logger.info(
+            f"{polluted.sum()} valor(es) de '{target_column}' eram a página de erro do "
+            "Google Translate, não uma tradução — descartado(s) para retradução."
+        )
 
     df = _detect_missing(df, source_column, detected_language_en_column, detect_fn)
     df = _detect_missing(df, target_column, detected_language_pt_column, detect_fn)
@@ -327,7 +345,9 @@ def reuse_existing_translation(
     resolve_pt_translation; esta função só fornece o valor de cache para essa
     checagem localizar. Se o valor reaproveitado for igual à fonte (falha de
     tradução de um run anterior), o chamador vai marcá-lo como pendente e
-    retentar sozinho.
+    retentar sozinho. Se o valor reaproveitado for a página de erro do Google (gravada
+    por versões antigas de translate_text), esta função ainda o reaproveita — quem o
+    descarta é resolve_pt_translation (passo 0), para a checagem morar num só lugar.
 
     Compartilhada entre glue_details (key_column="id", default) e glue_etl
     (key_column="iso_3166_1"/"iso_639_1" para a tabela configuration).

@@ -10,6 +10,12 @@ from shared_utils.traducao import (
     translate_in_parallel,
 )
 
+# Texto real observado nas tabelas do dev (name_pt/overview_pt) no lugar da tradução.
+GOOGLE_ERROR_PAGE = (
+    "Error 500 (Server Error)!!1500.That’s an error.There was an error. "
+    "Please try again later.That’s all we know."
+)
+
 
 class TestResolveTranslateFn:
     def test_resolve_google_usa_google_como_primario(self):
@@ -200,6 +206,15 @@ class TestReuseExistingTranslation:
         )
         assert pd.isna(result["name_pt"].iloc[0])
 
+    def test_reuse_existing_translation_ainda_reaproveita_pagina_de_erro_do_cache(self):
+        """Contrato documentado: o cache não filtra — quem descarta é resolve_pt_translation."""
+        novo = pd.DataFrame({"iso": ["ja"], "english_name": ["Japanese"], "name_pt": [None]})
+        anterior = pd.DataFrame({"iso": ["ja"], "english_name": ["Japanese"], "name_pt": [GOOGLE_ERROR_PAGE]})
+
+        resultado = reuse_existing_translation(novo, anterior, "english_name", "name_pt", key_column="iso")
+
+        assert resultado["name_pt"].iloc[0] == GOOGLE_ERROR_PAGE
+
 
 class TestResolvePtTranslation:
     def _detect_fn(self, mapping):
@@ -338,6 +353,112 @@ class TestResolvePtTranslation:
         assert sucesso == 0
         traduzir_fn.assert_not_called()
         assert df["overview_tentativas"].iloc[0] == 3
+
+    def test_descarta_pagina_de_erro_do_google_e_retraduz(self):
+        """Página de erro gravada como tradução (versões antigas de translate_text) é
+        tratada como destino vazio: limpa, zera o idioma detectado e retraduz."""
+        df = pd.DataFrame({
+            "overview_en": ["Hello"],
+            "overview_pt": [GOOGLE_ERROR_PAGE],
+            "overview_idioma_pt": ["en"],
+            "overview_tentativas": [1],
+        })
+        detect_fn = self._detect_fn({"Hello": "en", "Olá": "pt"})
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn,
+        )
+
+        assert sucesso == 1
+        assert df["overview_pt"].iloc[0] == "Olá"
+        assert df["overview_idioma_pt"].iloc[0] == "pt"
+        assert df["overview_tentativas"].iloc[0] == 1  # zerado e incrementado pela nova tentativa
+
+    def test_pagina_de_erro_com_tentativas_esgotadas_volta_a_ser_elegivel(self):
+        """O ponto do auto-reparo: sem zerar o contador, a linha que já bateu o teto de
+        tentativas ficaria com o texto de erro para sempre."""
+        df = pd.DataFrame({
+            "overview_en": ["Hello"],
+            "overview_pt": [GOOGLE_ERROR_PAGE],
+            "overview_idioma_pt": ["en"],
+            "overview_tentativas": [3],
+        })
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá")
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", self._detect_fn({"Hello": "en", "Olá": "pt"}), traduzir_fn,
+            max_attempts=3,
+        )
+
+        traduzir_fn.assert_called_once_with("Hello")
+        assert sucesso == 1
+        assert df["overview_pt"].iloc[0] == "Olá"
+
+    def test_pagina_de_erro_que_falha_de_novo_fica_vazia_e_nao_com_o_texto_de_erro(self):
+        """Se a retradução também falhar (tradutor devolve o original), o destino fica com
+        o original em inglês — nunca de volta com a página de erro."""
+        df = pd.DataFrame({
+            "overview_en": ["Hello"],
+            "overview_pt": [GOOGLE_ERROR_PAGE],
+        })
+        traduzir_fn = MagicMock(side_effect=lambda t: t)
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en", traduzir_fn,
+        )
+
+        assert sucesso == 0
+        assert df["overview_pt"].iloc[0] == "Hello"
+
+    def test_nao_toca_em_destinos_que_nao_sao_pagina_de_erro(self):
+        df = pd.DataFrame({
+            "overview_en": ["Hello", "World"],
+            "overview_pt": ["Olá", GOOGLE_ERROR_PAGE],
+            "overview_idioma_pt": ["pt", "en"],
+            "overview_tentativas": [2, 3],
+        })
+        traduzir_fn = MagicMock(side_effect=lambda t: "Mundo")
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", self._detect_fn({"Hello": "en", "World": "en", "Mundo": "pt"}),
+            traduzir_fn,
+        )
+
+        traduzir_fn.assert_called_once_with("World")
+        assert df["overview_pt"].tolist() == ["Olá", "Mundo"]
+        assert df["overview_tentativas"].tolist() == [2, 1]
+
+    def test_loga_quantidade_de_paginas_de_erro_descartadas(self, caplog):
+        import logging
+        df = pd.DataFrame({
+            "overview_en": ["a", "b"],
+            "overview_pt": [GOOGLE_ERROR_PAGE, GOOGLE_ERROR_PAGE],
+        })
+
+        with caplog.at_level(logging.INFO):
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "en", MagicMock(side_effect=lambda t: t),
+            )
+
+        assert "2 valor(es) de 'overview_pt'" in caplog.text
+
+    def test_sem_pagina_de_erro_nao_loga_descarte(self, caplog):
+        import logging
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Olá"]})
+
+        with caplog.at_level(logging.INFO):
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "pt", MagicMock(),
+            )
+
+        assert "página de erro" not in caplog.text
 
     def test_cria_coluna_tentativas_como_zero_quando_ausente(self):
         df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
