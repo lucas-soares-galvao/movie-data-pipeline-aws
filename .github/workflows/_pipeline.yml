@@ -21,7 +21,8 @@ name: 0. Pipeline CI/CD
 #                                     │
 #                                     └──► Deploy Lightsail (app FilmBot)
 #
-#   main      ──push──► sonar (SonarQube Cloud, em paralelo ao Terraform —
+#   main      ──push──► Testes ──► sonar (SonarQube Cloud, reaproveita o
+#                        coverage.xml dos testes; em paralelo ao Terraform —
 #                        nenhum dos dois depende do outro)
 #
 # O job "test" roda nas 3 branches (feature/*, develop, main) desde que se
@@ -45,6 +46,8 @@ name: 0. Pipeline CI/CD
 # O job "sonar" só é chamado em push:main (não em develop/feature/*) porque o
 # plano Free do SonarQube Cloud só analisa de forma contínua a branch marcada
 # como "principal" no projeto Sonar, que é "main" (ver sonar-project.properties).
+# Ele espera "test" passar (needs: test) e reaproveita o coverage.xml que o
+# test.yml publica como artifact, em vez de rodar o pytest de novo.
 # =============================================================================
 
 on:
@@ -185,13 +188,21 @@ jobs:
   sonar:
     # needs: resolve-env é só organizacional (agrupa visualmente no grafo da
     # Actions, ao lado de terraform/deploy-lightsail) — sonar não consome
-    # nenhum output de resolve-env, roda em paralelo ao terraform (Terraform
-    # provisiona infra, Sonar analisa código-fonte, nenhum depende do outro).
+    # nenhum output de resolve-env. needs: test porque o sonar.yml não roda
+    # pytest: baixa o coverage.xml gerado pelo test.yml (artifact
+    # "coverage-xml", só publicado em main) — e não faz sentido analisar um
+    # commit que o gate de testes/cobertura já reprovou. Roda em paralelo ao
+    # terraform (Terraform provisiona infra, Sonar analisa código-fonte,
+    # nenhum depende do outro; ambos esperam só "test"), então não atrasa o
+    # deploy.
     # Só em push:main porque o plano Free do SonarQube Cloud só analisa de
     # forma contínua a branch marcada como "main" no projeto Sonar (ver
-    # sonar-project.properties).
-    needs: resolve-env
-    if: github.ref_name == 'main'
+    # sonar-project.properties). O workflow_dispatch em main também passa por
+    # aqui — o artifact é publicado por ref_name, não por event_name.
+    needs: [resolve-env, test]
+    if: |
+      github.ref_name == 'main' &&
+      needs.test.result == 'success'
     uses: ./.github/workflows/sonar.yml
     secrets:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
