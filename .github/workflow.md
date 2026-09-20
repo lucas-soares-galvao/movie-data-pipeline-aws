@@ -25,9 +25,9 @@ flowchart TD
 
     PUSH -->|feature/*, develop ou main| TEST["test.yml\nQuality gates"]
     PUSH -->|develop ou main| TF["terraform.yml\nTerraform apply/destroy"]
-    PUSH -->|main branch| SONAR["sonar.yml\nSonarQube Cloud (paralelo ao Terraform)"]
 
     TEST --> PR_FEAT["pr_auto.yml\nPR: feature → develop"]
+    TEST -->|main branch, se passar| SONAR["sonar.yml\nSonarQube Cloud (paralelo ao Terraform)"]
     TF -->|develop branch| PR_ENV["pr_auto.yml\nPR: develop → main"]
     TF -->|main branch| DEPLOY["deploy_lightsail.yml\nDeploy app"]
 
@@ -45,8 +45,8 @@ flowchart TD
 | Evento | Branch | Workflows executados |
 |---|---|---|
 | `push` | `feature/*` | test → PR feature→develop |
-| `push` | `develop` | test (não bloqueia terraform) + terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
-| `push` | `main` | test (não bloqueia terraform/deploy) + terraform (prod) → deploy (prod, se a instância estiver ligada) + sonar (SonarQube Cloud), em paralelo ao terraform |
+| `push` | `develop` | test → terraform (dev) → PR develop→main (FilmBot não existe em dev — deploy-lightsail sempre "skipped") |
+| `push` | `main` | test → terraform (prod) → deploy (prod, se a instância estiver ligada); test → sonar (SonarQube Cloud, reaproveita o `coverage.xml` do test), em paralelo ao terraform |
 | `workflow_dispatch` | — | terraform (dev **ou** prod) → deploy só se ambiente resolvido for prod |
 | `schedule` (`lightsail_scheduler.yml`) | — | liga/desliga a instância Lightsail de prod (cron BRT) — independente do `_pipeline.yml` |
 | `workflow_dispatch` (`lightsail_scheduler.yml`) | — | liga/desliga manual de prod (`action=start`/`stop`) |
@@ -60,7 +60,7 @@ flowchart TD
 
 Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job. `resolve-env` também roda em push de `feature/*` para conectar o job `test` a este hub no grafo do Actions (`needs: resolve-env`) — dependência puramente organizacional, igual à de `sonar`: `test` não consome `outputs.environment`.
 
-O job `test` roda nas 3 branches (`feature/*`, `develop`, `main`), não só em `feature/*`: o gate de cobertura (`--cov-fail-under=95`) só reexecuta quando `test` roda, e como o PR automático do `pr_auto.yml` (`develop`→`main`) só valida sintaxe Terraform, uma regressão de cobertura introduzida depois da branch de feature podia chegar em `main` sem que nada acusasse. `test` não tem `needs`/`if` amarrado a `terraform`/`deploy-lightsail` — continua sem bloquear infraestrutura ou deploy, só dá visibilidade (falha aparece no Actions) em `develop`/`main`.
+O job `test` roda nas 3 branches (`feature/*`, `develop`, `main`), não só em `feature/*`: o gate de cobertura (`--cov-fail-under=95`) só reexecuta quando `test` roda, e como o PR automático do `pr_auto.yml` (`develop`→`main`) só valida sintaxe Terraform, uma regressão de cobertura introduzida depois da branch de feature podia chegar em `main` sem que nada acusasse. Em `develop`/`main`, `terraform` (e em cascata `deploy-lightsail` e `auto-pr-environment`) e `sonar` esperam `test` passar (`needs: test`) — `terraform` porque constrói e aplica na AWS o código de `app/`, `sonar` porque reaproveita o `coverage.xml` do `test` e não faz sentido analisar um commit que o gate já reprovou. `terraform` e `sonar` continuam em paralelo entre si.
 
 **Lógica de ambiente (job `resolve-env`):**
 
@@ -75,7 +75,9 @@ O job `test` roda nas 3 branches (`feature/*`, `develop`, `main`), não só em `
 
 ### `test.yml` — Quality Gates
 
-Valida a qualidade do código. Executa em `feature/*`, `develop` e `main` — nas duas últimas, roda em paralelo a `terraform`/`sonar`/`deploy-lightsail`, sem bloqueá-los (serve como alerta de regressão, não como gate de deploy).
+Valida a qualidade do código. Executa em `feature/*`, `develop` e `main` — nas duas últimas, é o gate de `terraform` e `sonar` (e, em cascata, de `deploy-lightsail`): se falhar, nenhum deles roda.
+
+Em `main`, ao fim do pytest, publica o `coverage.xml` como artifact `coverage-xml` (retenção de 1 dia) para o job `sonar` reaproveitar.
 
 | Etapa | Ferramenta | Comportamento |
 |---|---|---|
@@ -140,7 +142,7 @@ Antes de criar o PR, executa `terraform validate -backend=false` e `terraform fm
 
 ### `sonar.yml` — Análise de Qualidade (SonarQube Cloud)
 
-Chamado pelo `_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em paralelo ao job `terraform` — Terraform provisiona infra e Sonar analisa código-fonte, nenhum dos dois depende do outro.
+Chamado pelo `_pipeline.yml` (job `sonar`) apenas em push na branch `main` (ou `workflow_dispatch` a partir dela), depois de `test` passar (`needs: test`) e em paralelo ao job `terraform` — Terraform provisiona infra e Sonar analisa código-fonte, nenhum dos dois depende do outro (ambos esperam só `test`), então o Sonar não atrasa o deploy. Se `test` falhar, o Sonar não roda.
 
 **Entrada:** secret `sonar-token` (repassado pelo `_pipeline.yml` a partir de `SONAR_TOKEN`).
 
@@ -149,9 +151,8 @@ Chamado pelo `_pipeline.yml` (job `sonar`) apenas em push na branch `main`, em p
 **Etapas principais:**
 
 1. Checkout com `fetch-depth: 0` (histórico completo — necessário para blame/new code period do Sonar)
-2. Setup Python 3.12, instala `pytest`/`pytest-cov` + as mesmas dependências de `app/`/`test/` do `test.yml`
-3. `pytest --cov=app --cov=scripts --cov-report=xml` — gera `coverage.xml` (não repete o gate de 95%, que já é responsabilidade do `test.yml`)
-4. `SonarSource/sonarqube-scan-action` — lê `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`) e envia a análise pro SonarQube Cloud
+2. `actions/download-artifact` — baixa o artifact `coverage-xml` (gerado pelo `test.yml` no mesmo run) para a raiz do workspace, onde `sonar.python.coverage.reportPaths` espera o `coverage.xml`. Não roda pytest nem instala dependências: a cobertura no Sonar é exatamente a do gate de 95% do `test.yml`, sem uma segunda execução da suíte
+3. `SonarSource/sonarqube-scan-action` — lê `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`) e envia a análise pro SonarQube Cloud
 
 **Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true` — o job nunca falha por causa do Quality Gate do Sonar, mesmo padrão dos steps de aviso do `test.yml` (mypy/Bandit/Safety). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
 
