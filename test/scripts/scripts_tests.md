@@ -576,4 +576,4 @@ pytest test/scripts/ -v
 
 ## Cobertura
 
-Os scripts de backfill **entram** no gate de cobertura de 95%: o CI roda `pytest --cov=app --cov=scripts` (ver `.github/workflows/test.yml` e `.github/workflows/sonar.yml`), e o `coverage.xml` resultante alimenta o Sonar (`sonar.sources=app,scripts`). Os testes cobrem 98% de `scripts/` — a medição é feita de fato, não só rodada. Os testes também são **bloqueantes**: uma falha aqui reprova o step "Run tests with Coverage Gate" do CI do mesmo jeito que uma falha em `app/`.
+Os scripts de backfill **entram** no gate de cobertura de 95%: o CI roda `pytest --cov=app --cov=scripts` (ver `.github/workflows/test.yml`), e o `coverage.xml` resultante (publicado como artifact e reaproveitado por `.github/workflows/sonar.yml`) alimenta o Sonar (`sonar.sources=app,scripts`). Os testes cobrem 98% de `scripts/` — a medição é feita de fato, não só rodada. Os testes também são **bloqueantes**: uma falha aqui reprova o step "Run tests with Coverage Gate" do CI do mesmo jeito que uma falha em `app/`.

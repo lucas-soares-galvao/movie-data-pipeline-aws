@@ -86,6 +86,17 @@ jobs:
                  --cov-fail-under=95
           echo "✅ Testes e coverage gate (≥95%) concluídos com sucesso"
 
+      # Só em main: o job "sonar" (sonar.yml) baixa este coverage.xml em vez de
+      # rodar o pytest de novo. Só roda se o step anterior passou (gate de 95%).
+      - name: Upload coverage report for Sonar
+        if: github.ref_name == 'main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Quality Gate Summary
         if: always()
         run: |
