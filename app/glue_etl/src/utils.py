@@ -202,9 +202,11 @@ def _add_translation(
         df, previous_df, "english_name", "name_pt", key_column=key_column
     )
 
-    # Loop sequencial (max_workers=1): genre e configuration têm no máximo ~250 itens.
-    # Para volumes pequenos, o overhead do ThreadPoolExecutor supera o ganho de paralelismo.
-    # O glue_details usa mais workers porque processa milhares de IDs por execução.
+    # 2 workers: genre e configuration têm no máximo ~250 itens, então poucos workers bastam.
+    # O ganho não é de vazão, e sim sobrepor o backoff do Google Translate (até ~20 s por nome
+    # quando ele devolve erro/página de erro); o teto baixo evita pressionar o endpoint não
+    # oficial, que já bloqueia sob carga. O glue_details usa mais workers porque processa
+    # milhares de IDs por execução.
     df, _ = resolve_pt_translation(
         df,
         source_column="english_name",
@@ -214,7 +216,7 @@ def _add_translation(
         translation_attempts_column="name_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=fn,
-        max_workers=1,
+        max_workers=2,
     )
     return df
 
