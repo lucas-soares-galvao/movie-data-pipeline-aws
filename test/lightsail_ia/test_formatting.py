@@ -110,6 +110,12 @@ class TestFormatReleaseDate:
     def test_data_curta(self):
         assert formatting._format_release_date("1980") is None
 
+    def test_mes_fora_do_intervalo_retorna_none(self):
+        assert formatting._format_release_date("1980-13-01") is None
+
+    def test_ano_nao_numerico_retorna_none(self):
+        assert formatting._format_release_date("abcd-05-01") is None
+
 
 class TestFormatAdaptiveDate:
     """Cobre a formatação compartilhada por theater_end_date, next_episode_date e
@@ -197,6 +203,12 @@ class TestFormatRating:
 
     def test_string_vazia(self):
         assert formatting._format_rating("") is None
+
+    def test_string_nao_numerica_retorna_none(self):
+        assert formatting._format_rating("sem nota") is None
+
+    def test_tipo_invalido_retorna_none(self):
+        assert formatting._format_rating([8.4]) is None
 
 
 class TestFormatRecord:

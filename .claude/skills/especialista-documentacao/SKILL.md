@@ -50,7 +50,7 @@ Esta skill cobre convenções e racional de documentação; não duplica o conte
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 
-- **Nada no CI verifica se um `.md` ainda bate com o código.** A suíte de testes (`pytest --cov=app`) cobre `app/`;
+- **Nada no CI verifica se um `.md` ainda bate com o código.** A suíte de testes (`pytest --cov=app --cov=scripts`) cobre `app/` e `scripts/`;
   não existe um lint ou teste que confira se um número, nome de variável ou fluxo citado numa skill/doc ainda existe
   no código. Confirmado nesta mesma sessão: `projeto-filmes-aws` e `estrutura-projeto` (as duas skills
   "agregadoras" listadas em `CLAUDE.md`) acumularam divergências reais — contagem de policies do CI/CD desatualizada,

@@ -97,7 +97,8 @@ Testa as funções individuais:
 - `repair_details_duplicates` (`TestRepairDetailsDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém `processed_date` mais recente por ID; usa `overwrite_partitions`
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `updated_date` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
-- `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado
+- `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado; merge com a partição existente (mantém IDs não reprocessados e substitui os reprocessados; partição existente vazia grava só os novos)
+- `_fetch_collections_pt_br` (`TestFetchCollectionsPtBr`): lista vazia não chama a API; nome é devolvido sem espaços extras por ID (com `language=pt-BR`); nome ausente ou em branco é ignorado; falha de um ID é logada e não derruba os demais
 
 ### `TestExtractCast`
 
@@ -365,6 +366,8 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `test_year_lido_do_sys_argv_quando_ausente_do_resolved_option` | `YEAR`/`END_YEAR` são lidos de `sys.argv` quando presentes (mesmo padrão opcional de `TRANSLATE_PROVIDER`) |
 | `test_changes_s3_path_default_none` | `CHANGES_S3_PATH` fica `None` quando ausente de `sys.argv` |
 | `test_changes_s3_path_lido_do_sys_argv` | `CHANGES_S3_PATH` é lido corretamente de `sys.argv` |
+| `test_translate_provider_default_google` | Sem `--TRANSLATE_PROVIDER` em `sys.argv`, o provedor de tradução é `"google"` |
+| `test_translate_provider_lido_do_sys_argv` | `--TRANSLATE_PROVIDER aws` em `sys.argv` sobrescreve o padrão (usado pelos backfills manuais) |
 | `test_publica_aws_account_id_em_os_environ` | Publica `AWS_ACCOUNT_ID` em `os.environ` a partir do argumento do job (lido depois por `shared_utils.s3_helpers` para o `ExpectedBucketOwner`) |
 
 > **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`), `get_api_secret` (`TestGetApiSecret`) e `reuse_existing_translation` (`TestReuseExistingTranslation`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py`, `test/shared_src/test_glue_helpers.py` e `test/shared_src/test_traducao.py` junto com a extração dessas funções para `shared_utils/`.
@@ -423,4 +426,4 @@ pytest test/glue_details/ --cov=app/glue_details --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`).
+**100%** — definido via `--cov-fail-under=100` no workflow de CI (`.github/workflows/test.yml`).

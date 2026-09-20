@@ -4,4 +4,12 @@ omit =
     test/*
     infra/*
     setup.py
-    
+
+[report]
+# O gate do CI é 100% (--cov-fail-under=100): linha realmente intestável só passa com
+# "# pragma: no cover" JUSTIFICADO em comentário — nunca com teste que só executa a linha.
+# Definir exclude_lines substitui o default do coverage.py, então "pragma: no cover" é repetido.
+# A guarda de entrypoint só delega a main(); testá-la exigiria executar o main real via runpy.
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

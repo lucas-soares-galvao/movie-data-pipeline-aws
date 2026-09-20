@@ -136,6 +136,23 @@ class TestRenamePartitionColumn:
         assert "dt_processamento" not in df_escrito.columns
         assert list(df_escrito["processed_date"]) == ["2020-05-01", "2020-05-02"]
 
+    def test_registros_sem_valor_nas_duas_colunas_geram_aviso_mas_ainda_migram(self, caplog):
+        df = pd.DataFrame({
+            "id":               [1,            2],
+            "processed_date":   [None,         None],
+            "dt_processamento": ["2020-05-01", None],
+        })
+        with patch("backfill_rename_colunas.wr") as mock_wr:
+            mock_wr.s3.read_parquet.return_value = df
+            with caplog.at_level("WARNING", logger="backfill_rename_colunas"):
+                resultado = brc._rename_partition_column(
+                    "db_movie", "details_movie", "2020", "bucket-sot-test", "dt_processamento", "processed_date",
+                )
+
+        assert resultado is True
+        assert any("continuam sem 'processed_date'" in r.message for r in caplog.records)
+        mock_wr.s3.to_parquet.assert_called_once()
+
     def test_particao_mista_preserva_coluna_nova_e_usa_antiga_so_para_os_nulos(self):
         """Caso do IDs que saíram do discover atual: parte dos registros já foi
         reprocessada pelo pipeline normal (tem processed_date), parte ainda só

@@ -6,6 +6,7 @@ import pandas as pd
 from src.utils import (
     _add_name_pt_countries,
     _add_name_pt_languages,
+    _read_genre_or_configuration,
     _read_json_from_s3,
     derive_canonical_name,
     get_parameters_glue,
@@ -478,6 +479,22 @@ class TestReadFromSorConfigurationLanguages:
             df = read_from_sor("my-sor", "movie", "configuration")
         assert "name_pt" in df.columns
         assert df["name_pt"].iloc[0] == "[PT] English"
+
+    def test_media_type_desconhecido_retorna_configuration_sem_name_pt(self):
+        """Só movie (idiomas) e tv (países) ganham name_pt; qualquer outro media_type devolve o df cru."""
+        payload = [{"iso_639_1": "en", "english_name": "English", "name": "English"}]
+        with (
+            patch("src.utils.boto3.client", return_value=_make_s3_mock(payload)),
+            patch("src.utils.translate_text") as mock_translate,
+        ):
+            df = _read_genre_or_configuration(
+                "my-sor", "tmdb/configuration/languages/idiomas.json", "person", "configuration",
+                None, None, None, None,
+            )
+
+        assert "name_pt" not in df.columns
+        assert len(df) == 1
+        mock_translate.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -279,6 +279,32 @@ class TestSearchTitlesSpec:
         assert len(result) == 1
         assert result[0]["title"] == "O Iluminado"
 
+    @pytest.mark.parametrize("estado", ["FAILED", "CANCELLED"])
+    def test_levanta_erro_quando_athena_falha_ou_e_cancelada(self, estado):
+        with patch("src.agent.boto3") as mock_boto3:
+            mock_athena = _setup_athena_mock(mock_boto3)
+            mock_athena.get_query_execution.return_value = {
+                "QueryExecution": {"Status": {"State": estado, "StateChangeReason": "SYNTAX_ERROR"}}
+            }
+            with pytest.raises(RuntimeError, match=f"Athena query {estado}: SYNTAX_ERROR"):
+                agent.search_titles_spec("vote_average >= 6.0")
+
+        mock_athena.get_paginator.assert_not_called()
+
+    def test_aguarda_e_repete_o_polling_enquanto_a_query_esta_em_execucao(self):
+        with patch("src.agent.boto3") as mock_boto3, patch("src.agent.time.sleep") as mock_sleep:
+            mock_athena = _setup_athena_mock(mock_boto3, rows_data=[FAKE_TITLE])
+            mock_athena.get_query_execution.side_effect = [
+                {"QueryExecution": {"Status": {"State": "QUEUED"}}},
+                {"QueryExecution": {"Status": {"State": "RUNNING"}}},
+                {"QueryExecution": {"Status": {"State": "SUCCEEDED"}}},
+            ]
+            result = agent.search_titles_spec("vote_average >= 6.0")
+
+        assert mock_athena.get_query_execution.call_count == 3
+        assert mock_sleep.call_count == 2
+        assert len(result) == 1
+
     def test_filtro_where_incluido_na_query(self):
         where_clause = "media_type = 'movie' AND lower(genre_names) LIKE '%terror%'"
         with patch("src.agent.boto3") as mock_boto3:
@@ -1141,3 +1167,48 @@ class TestTranscribePreference:
                 agent.transcribe_preference(audio_bytes)
 
         mock_transcription.assert_not_called()
+
+
+class TestLoadApiKeys:
+    """Chaves lidas do Secrets Manager (produção) ou do ambiente (desenvolvimento)."""
+
+    _ARN = "arn:aws:secretsmanager:sa-east-1:123456789012:secret:filmbot"
+
+    def _mock_secret(self, mock_boto3, secret: dict) -> MagicMock:
+        client = MagicMock()
+        client.get_secret_value.return_value = {"SecretString": json.dumps(secret)}
+        mock_boto3.client.return_value = client
+        return client
+
+    def test_llm_key_vem_do_secrets_manager_quando_arn_configurado(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
+        with patch("src.agent.boto3") as mock_boto3:
+            client = self._mock_secret(mock_boto3, {"llm_api_key": "chave-llm"})
+            assert agent._load_llm_api_key() == "chave-llm"
+
+        client.get_secret_value.assert_called_once_with(SecretId=self._ARN)
+
+    def test_llm_key_vem_do_ambiente_sem_arn(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("LLM_API_KEY", "chave-env")
+        with patch("src.agent.boto3") as mock_boto3:
+            assert agent._load_llm_api_key() == "chave-env"
+
+        mock_boto3.client.assert_not_called()
+
+    def test_transcription_key_vem_do_secrets_manager_quando_arn_configurado(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
+        with patch("src.agent.boto3") as mock_boto3:
+            self._mock_secret(mock_boto3, {"llm_api_key": "x", "transcription_api_key": "chave-stt"})
+            assert agent._load_transcription_api_key() == "chave-stt"
+
+    def test_transcription_key_ausente_no_secret_retorna_none_sem_derrubar_o_app(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
+        with patch("src.agent.boto3") as mock_boto3:
+            self._mock_secret(mock_boto3, {"llm_api_key": "x"})
+            assert agent._load_transcription_api_key() is None
+
+    def test_transcription_key_vem_do_ambiente_sem_arn(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("TRANSCRIPTION_API_KEY", "stt-env")
+        assert agent._load_transcription_api_key() == "stt-env"

@@ -19,10 +19,65 @@ QUANDO ADICIONAR UM NOVO MÓDULO:
   importar o utils.py de outro job.
 """
 
+import socket
 import sys
 from pathlib import Path
 
 _TEST_ROOT = Path(__file__).parent
+
+# ── Bloqueio de rede ────────────────────────────────────────────────────────────
+# "Mockado" nos testes é convenção, não garantia: nada impedia um teste esquecido de chamar
+# a AWS/TMDB/LLM de verdade (e, com um .env local, com credencial real). Estas duas funções
+# fazem qualquer resolução de DNS ou conexão para fora da máquina falhar na hora, com o
+# destino no erro. Loopback e AF_UNIX continuam liberados: o asyncio (usado pelo AppTest do
+# Streamlit) cria um socketpair local internamente.
+_LOCAL_HOSTS = frozenset({"", "localhost", "127.0.0.1", "::1"})
+_AF_UNIX = getattr(socket, "AF_UNIX", None)  # ausente no Python/Windows
+_REAL_CONNECT = socket.socket.connect
+_REAL_CONNECT_EX = socket.socket.connect_ex
+_REAL_GETADDRINFO = socket.getaddrinfo
+
+
+def _is_local_host(host: object) -> bool:
+    """Indica se o host é a própria máquina (ou ausente, como em bind/socketpair)."""
+    if host is None:
+        return True
+    if isinstance(host, bytes):
+        host = host.decode("ascii", errors="replace")
+    return str(host).lower() in _LOCAL_HOSTS
+
+
+def _block_external(destination: object) -> None:
+    """Levanta RuntimeError se o destino (host ou tupla (host, porta)) não for local."""
+    # connect() recebe (host, porta, ...); getaddrinfo() recebe o host solto.
+    host = (destination[0] if destination else None) if isinstance(destination, tuple) else destination
+    if not _is_local_host(host):
+        raise RuntimeError(
+            f"Teste tentou acessar a rede: {destination!r}. Mocke o cliente/HTTP (boto3, requests, "
+            "litellm, awswrangler...) em vez de chamar o serviço real."
+        )
+
+
+def _guarded_connect(self: socket.socket, address: object) -> None:
+    if self.family != _AF_UNIX:
+        _block_external(address)
+    return _REAL_CONNECT(self, address)  # type: ignore[arg-type]
+
+
+def _guarded_connect_ex(self: socket.socket, address: object) -> int:
+    if self.family != _AF_UNIX:
+        _block_external(address)
+    return _REAL_CONNECT_EX(self, address)  # type: ignore[arg-type]
+
+
+def _guarded_getaddrinfo(host: object, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+    _block_external(host)
+    return _REAL_GETADDRINFO(host, *args, **kwargs)  # type: ignore[arg-type]
+
+
+socket.socket.connect = _guarded_connect  # type: ignore[method-assign,assignment]
+socket.socket.connect_ex = _guarded_connect_ex  # type: ignore[method-assign,assignment]
+socket.getaddrinfo = _guarded_getaddrinfo  # type: ignore[assignment]
 _APP_ROOT = _TEST_ROOT.parent / "app"
 _SHARED_DIR = str(_APP_ROOT / "shared_src")
 

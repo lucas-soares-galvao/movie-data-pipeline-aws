@@ -33,6 +33,40 @@ class TestLoadFilmbotPassword:
         mock_client.assert_not_called()
 
 
+class TestLoadFilmbotPasswordGravaSecretsToml:
+    _ARN = "arn:aws:secretsmanager:sa-east-1:123456789012:secret:x"
+
+    def _executa(self, monkeypatch, tmp_path, secret: dict):
+        """Roda load_filmbot_password com __file__ apontando para tmp_path, para nunca escrever
+        no .streamlit/ real do repositório (o secrets.toml real é git-ignored, mas não deve ser tocado)."""
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
+        monkeypatch.setattr(infrastructure, "__file__", str(tmp_path / "src" / "infrastructure.py"))
+        with patch("src.infrastructure.boto3.client") as mock_client:
+            mock_client.return_value.get_secret_value.return_value = {"SecretString": json.dumps(secret)}
+            infrastructure.load_filmbot_password()
+        return mock_client
+
+    def test_grava_secrets_toml_com_a_senha_do_secret(self, monkeypatch, tmp_path):
+        mock_client = self._executa(monkeypatch, tmp_path, {"filmbot_password": "s3nha"})
+
+        secrets_file = tmp_path / ".streamlit" / "secrets.toml"
+        assert secrets_file.read_text(encoding="utf-8") == '[auth]\npassword = "s3nha"\n'
+        mock_client.return_value.get_secret_value.assert_called_once_with(SecretId=self._ARN)
+
+    def test_secrets_toml_fica_com_permissao_restrita_ao_dono(self, monkeypatch, tmp_path):
+        import os
+        import stat
+
+        self._executa(monkeypatch, tmp_path, {"filmbot_password": "s3nha"})
+
+        secrets_file = tmp_path / ".streamlit" / "secrets.toml"
+        if os.name == "nt":
+            # chmod no Windows só controla o bit somente-leitura; 0o600 não é observável.
+            assert secrets_file.exists()
+        else:
+            assert stat.S_IMODE(secrets_file.stat().st_mode) == 0o600
+
+
 class TestSetupCloudwatchLogging:
     def test_retorna_sem_registrar_handler_quando_log_group_nao_configurado(self, monkeypatch):
         monkeypatch.delenv("CLOUDWATCH_LOG_GROUP", raising=False)

@@ -212,6 +212,20 @@ class TestErros:
                 unit_side_effect=[exc],
             )
 
+    def test_clienterror_que_nao_e_token_expirado_e_falha_soft_e_backfill_continua(self, monkeypatch):
+        """ClientError comum (ex.: AccessDenied) de uma unidade não aborta o backfill: a
+        unidade vira falha e as demais seguem (só token expirado precisa propagar)."""
+        exc = ClientError({"Error": {"Code": "AccessDenied", "Message": "negado"}}, "StartQueryExecution")
+        resultado: list = []
+        mock_collect, *_ = _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            unit_side_effect=[exc, None],
+            resultado=resultado,
+        )
+        assert mock_collect.call_count == 2
+        assert resultado == [False]
+
 
 class TestCheckpoint:
     def test_pula_unidades_ja_concluidas(self, monkeypatch):

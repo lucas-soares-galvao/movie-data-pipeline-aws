@@ -141,7 +141,8 @@ proj-eng-dados-filmes-aws/
 │   ├── backfill_changes.py           # Dispara sob demanda o mesmo modo changes do cron semanal de domingo
 │   └── backfill_historico.py         # Encadeia backfill_discover.py + backfill_enriquecimento.py num único run
 └── test/
-    ├── conftest.py                 # Fixtures globais
+    ├── conftest.py                 # Fixtures globais + bloqueio de rede (nenhum teste chama serviço real)
+    ├── test_bloqueio_de_rede.py    # Garante que o bloqueio de rede do conftest raiz funciona
     ├── lambda_api/
     │   ├── __init__.py
     │   ├── conftest.py
@@ -193,7 +194,7 @@ proj-eng-dados-filmes-aws/
     │   ├── test_glue_helpers.py
     │   ├── test_traducao.py
     │   └── test_triggers.py
-    └── scripts/                    # Espelha scripts/ — roda no CI, mas fora do gate de 95% (não entra em --cov=app)
+    └── scripts/                    # Espelha scripts/ — roda no CI e entra no gate de 100% (`--cov=scripts`)
         ├── __init__.py
         ├── conftest.py
         ├── requirements_tests.txt
@@ -255,7 +256,7 @@ Chamado por `_pipeline.yml` apenas em branches `feature/*`. Roda em `ubuntu-late
 7. **mypy** — type check de `app/` (informativo, não bloqueia)
 8. **Bandit** — scan de segurança em `app/` (informativo)
 9. **Safety** — vulnerabilidades em dependências (informativo)
-10. **pytest** — testes com cobertura; **quality gate: ≥ 95% de cobertura** (`--cov-fail-under=95`, bloqueia se falhar)
+10. **pytest** — testes com cobertura; **quality gate: 100% de cobertura** (`--cov-fail-under=100`, bloqueia se falhar)
 
 ---
 
@@ -358,7 +359,7 @@ Os nomes de recursos (`GLUE_*_JOB_NAME`, `*_DATABASE_*`, `TABLE_*`) são montado
 
 Chamado por `_pipeline.yml` (job `sonar`) apenas em `push:main` (ou `workflow_dispatch` a partir dela), depois de `test` passar. Recebe o secret `sonar-token` via `workflow_call` (repassado pelo `_pipeline.yml` a partir de `secrets.SONAR_TOKEN`) — mesma mecânica de repasse explícito que `terraform.yml`/`deploy_lightsail.yml` já usam para os secrets AWS.
 
-**Etapas:** Checkout (`fetch-depth: 0`, necessário para blame/new code period do Sonar) → `actions/download-artifact@v4` (artifact `coverage-xml`, gerado pelo `test.yml` no mesmo run, para a raiz do workspace — sem Setup Python, sem instalar dependências, sem pytest: a cobertura no Sonar é exatamente a do gate de 95% do `test.yml`) → `SonarSource/sonarqube-scan-action@v8`, lendo `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`).
+**Etapas:** Checkout (`fetch-depth: 0`, necessário para blame/new code period do Sonar) → `actions/download-artifact@v4` (artifact `coverage-xml`, gerado pelo `test.yml` no mesmo run, para a raiz do workspace — sem Setup Python, sem instalar dependências, sem pytest: a cobertura no Sonar é exatamente a do gate de 100% do `test.yml`) → `SonarSource/sonarqube-scan-action@v8`, lendo `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`).
 
 **Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true`, então o job nunca falha por causa do Quality Gate do Sonar — mesmo padrão dos steps informativos do `test.yml` (`mypy`/`bandit`/`safety`). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.
 
@@ -477,5 +478,5 @@ python_files = test_*.py
 
 ### Quality Gate
 
-O pipeline bloqueia se a cobertura de `app/` for **menor que 95%** (definido no workflow `.github/workflows/test.yml`, não no `pytest.ini`).  
-Rodar localmente: `pytest --cov=app --cov-report=term-missing --cov-fail-under=95`
+O pipeline bloqueia se a cobertura de `app/` e `scripts/` for **menor que 100%** (definido no workflow `.github/workflows/test.yml`, não no `pytest.ini`).  
+Rodar localmente: `pytest --cov=app --cov=scripts --cov-report=term-missing --cov-fail-under=100`

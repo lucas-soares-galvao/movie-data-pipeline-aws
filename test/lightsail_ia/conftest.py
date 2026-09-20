@@ -17,6 +17,24 @@ import os
 
 import pytest
 
+# Isolamento do .env local: load_dotenv() (agent.py) NÃO sobrescreve variável já definida, nem
+# vazia. Um app/lightsail_ia/.env de desenvolvimento com estas duas preenchidas faria o
+# AppTest (test_app.py) rodar setup_cloudwatch_logging()/load_filmbot_password() de verdade:
+# handler real do CloudWatch, chamada real ao Secrets Manager e root logger derrubado para
+# ERROR pelo resto da sessão pytest — o que quebrava os testes de log (caplog) de
+# test/scripts e test/shared_src só na máquina do desenvolvedor, nunca no CI (sem .env).
+os.environ["FILMBOT_SECRET_ARN"] = ""
+os.environ["CLOUDWATCH_LOG_GROUP"] = ""
+
+# Mesma razão para as credenciais AWS: o .env de desenvolvimento traz chaves reais, e uma chamada
+# boto3 esquecida sem mock usaria essas chaves. Valores falsos (convenção do moto) fazem a
+# chamada falhar por credencial inválida — e o bloqueio de rede de test/conftest.py já barra a
+# conexão antes disso. AWS_PROFILE sai para o boto3 não procurar um perfil real em ~/.aws.
+os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+os.environ["AWS_SESSION_TOKEN"] = "testing"
+os.environ.pop("AWS_PROFILE", None)
+
 # setdefault preserva valores reais se os testes rodarem com env vars configuradas
 os.environ.setdefault("LLM_API_KEY", "test-llm-key")
 os.environ.setdefault("TRANSCRIPTION_API_KEY", "test-transcription-key")

@@ -1,6 +1,6 @@
 ---
 name: revisao-de-pr
-description: Checklist de revisão de um Pull Request completo (diff de outra sessão/pessoa, via `git diff <base>...HEAD` ou `gh pr diff <numero>`) antes do merge — cobre as mesmas camadas de revisao-pos-mudanca-codigo (testes, docs, docstrings, type hints, IAM) mais infra/Terraform, workflows GitHub, Streamlit/FilmBot e segurança, e sinaliza explicitamente o que o CI de test.yml não bloqueia (mypy/bandit/safety são apenas informativos) e o que ele não verifica (sincronia de .md, testes de scripts/). Use ao revisar um PR pronto antes de aprovar/mergear — não ao terminar sua própria mudança na sessão atual (nesse caso, revisao-pos-mudanca-codigo).
+description: Checklist de revisão de um Pull Request completo (diff de outra sessão/pessoa, via `git diff <base>...HEAD` ou `gh pr diff <numero>`) antes do merge — cobre as mesmas camadas de revisao-pos-mudanca-codigo (testes, docs, docstrings, type hints, IAM) mais infra/Terraform, workflows GitHub, Streamlit/FilmBot e segurança, e sinaliza explicitamente o que o CI de test.yml não bloqueia (mypy/bandit/safety são apenas informativos) e o que ele não verifica (sincronia de .md). Use ao revisar um PR pronto antes de aprovar/mergear — não ao terminar sua própria mudança na sessão atual (nesse caso, revisao-pos-mudanca-codigo).
 ---
 
 # Skill: Revisão de PR
@@ -46,8 +46,8 @@ Classifique os arquivos alterados por camada — cada uma tem um gate e uma skil
 | `app/<modulo>/src/utils.py` ou `main.py` | Testes correspondentes existem (`revisao-pos-mudanca-codigo` seção 1), docstrings completas, type hints em toda função, e — se a mudança chama um serviço/action AWS novo/diferente — a policy IAM da role já cobre isso em `infra/*.tf` | `especialista-engenharia-dados-app`, `especialista-legibilidade-codigo`, `especialista-privilegio-minimo` |
 | Particionamento, `mode` de escrita (`overwrite`/`overwrite_partitions`/merge manual) em job Glue | Idempotência preservada — rodar o job duas vezes não duplica dados | `especialista-design-dados` |
 | Chamada a `api.themoviedb.org` nova ou com parâmetro alterado | Comportamento confirmado contra a doc oficial do TMDB, não por memória | `especialista-api-tmdb` |
-| `test/<modulo>/test_*.py`, `conftest.py` | Cobertura do diff não caiu abaixo de 95% em `app/`; mocks de boto3/awswrangler/Athena/PySpark corretos | `especialista-testes-app` |
-| `scripts/*.py` | Teste espelhado em `test/scripts/test_<script>.py` existe e passa — **não aparece no gate de 95%** (`scripts/` fica fora de `--cov=app`), então o CI não avisa se faltar | — |
+| `test/<modulo>/test_*.py`, `conftest.py` | Cobertura total segue em 100% (`app/` e `scripts/`); mocks de boto3/awswrangler/Athena/PySpark corretos — o `test/conftest.py` bloqueia rede, então teste sem mock falha com "Teste tentou acessar a rede" | `especialista-testes-app` |
+| `scripts/*.py` | Teste espelhado em `test/scripts/test_<script>.py` existe e passa — **entra no gate de 100%** (`--cov=scripts`), então o CI reprova se faltar cobertura | — |
 | `infra/*.tf` | Argumentos do recurso corretos, `depends_on` coerente, privilégio mínimo na policy IAM (nunca `Resource: "*"` sem justificativa), custo do recurso novo/alterado | `especialista-infraestrutura-terraform`, `especialista-privilegio-minimo`, `especialista-finops-aws` |
 | `.github/workflows/*.yml` | Contrato de `workflow_call` (inputs/secrets/outputs) respeitado, `permissions:` no menor escopo, pin de ação de terceiro sem regressão de supply-chain | `especialista-workflows-github` |
 | `app/lightsail_ia/` (Streamlit, `agent.py`, `static/*.css\|js`) | Design system "Luminous" preservado, responsividade desktop/mobile; se mexeu no system prompt/tools/modelo do LLM, custo de tokens avaliado; se mexeu em input do usuário, sem abertura para SQL injection ou abuso automatizado | `especialista-streamlit-filmbot`, `especialista-custo-llm-agente`, `especialista-seguranca-filmbot` |
@@ -57,7 +57,7 @@ Classifique os arquivos alterados por camada — cada uma tem um gate e uma skil
 
 ## 3. Lacunas que o CI não cobre
 
-`test.yml` já bloqueia `ruff check` e `pytest --cov=app --cov-fail-under=95` — não repita esse trabalho. O
+`test.yml` já bloqueia `ruff check` e `pytest --cov=app --cov=scripts --cov-fail-under=100` — não repita esse trabalho. O
 valor desta skill está no que passa despercebido:
 
 - **`mypy app/ --ignore-missing-imports`, `bandit -r app/ -ll` e `safety check` rodam no CI mas são apenas
@@ -69,8 +69,6 @@ valor desta skill está no que passa despercebido:
 - **Sincronia de documentação não é verificada por nada automatizado.** Se um módulo, tabela, variável de
   ambiente, regra EventBridge ou modo de execução mudou, confirmar que o `.md` do módulo, o `.md` de teste, a
   skill de domínio relevante, `skills_doc.md` e o índice do `CLAUDE.md` foram todos atualizados juntos.
-- **`scripts/` fica fora do gate de 95%** (`--cov=app` não inclui `scripts/`) — os testes espelhados em
-  `test/scripts/` ainda precisam existir e passar; o CI não falha se faltarem.
 
 ---
 
@@ -78,8 +76,8 @@ valor desta skill está no que passa despercebido:
 
 Achados ordenados por severidade (mais grave primeiro), citando `arquivo:linha`, separados em dois grupos:
 
-- **Bloqueia o merge** — equivalente ao que o CI já trata como gate: teste quebrado, cobertura de `app/` abaixo
-  de 95%, violação de `ruff`, permissão IAM insuficiente para uma chamada AWS nova, DQDL faltando para tabela
+- **Bloqueia o merge** — equivalente ao que o CI já trata como gate: teste quebrado, cobertura abaixo
+  de 100% (`app/` ou `scripts/`), violação de `ruff`, permissão IAM insuficiente para uma chamada AWS nova, DQDL faltando para tabela
   nova.
 - **Recomendação, não bloqueia** — achados de `mypy`/`bandit`/`safety` (informativos no CI), gap de
   documentação, legibilidade, oportunidade de reaproveitar utilitário existente.
