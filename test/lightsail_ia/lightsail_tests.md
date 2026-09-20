@@ -115,7 +115,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_limite_padrao_fica_entre_6_e_9` | Sem passar `limit`, o pool gerado reflete `_DEFAULT_RECOMMENDATION_COUNT` (valor entre 6 e 9) em vez do antigo padrão de 15 |
 | `test_limite_solicitado_e_limitado_a_15_antes_do_pool` | `limit=100` é capado a 15 antes de calcular o pool (`LIMIT 45` na query, não `LIMIT 100`/`LIMIT 15`) |
 | `test_limite_minimo_e_1` | `limit=0` é capado a 1 antes de calcular o pool (`LIMIT 4` na query) |
-| `test_pool_nao_ultrapassa_maximo_absoluto` | Pool nunca ultrapassa `_CANDIDATE_POOL_MAX` (45), mesmo quando `limit * _CANDIDATE_POOL_MULTIPLIER` seria maior |
+| `test_pool_nao_ultrapassa_maximo_absoluto` | Pool nunca ultrapassa `_CANDIDATE_POOL_MAX` (30), mesmo quando `limit * _CANDIDATE_POOL_MULTIPLIER` seria maior |
 | `test_amostra_e_limitada_ao_limit_solicitado_quando_pool_maior` | Pool com mais linhas que `limit` → resultado final tem exatamente `limit` títulos |
 | `test_retorna_todos_quando_pool_nao_excede_limit` | Pool com menos linhas que `limit` → retorna todas, sem erro |
 | `test_amostra_preserva_ordem_de_popularidade_do_subconjunto` | Mesmo com as menores chaves de `secrets.randbits` caindo em índices fora de ordem, o resultado final preserva a ordem original (popularidade DESC) entre os títulos escolhidos |
@@ -181,6 +181,27 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 |---|---|
 | `test_loga_latencia_dos_3_passos_em_cache_miss` | Em cache miss da etapa 1, `_log_step_latency` é chamado 3 vezes, nesta ordem: `step1_where`, `step2_athena`, `step3_reasons` |
 | `test_loga_apenas_step2_e_step3_em_cache_hit` | Em cache hit da etapa 1 (cláusula WHERE já cacheada), `_log_step_latency` é chamado só para `step2_athena` e `step3_reasons` — a etapa 1 é pulada e não gera log de latência |
+
+### `TestFiltroDeRelevanciaNoPasso3` — `relevant: false` do Passo 3 descarta títulos
+
+| Teste | O que verifica |
+|---|---|
+| `test_descarta_titulo_marcado_como_irrelevante_e_mantem_os_demais` | Título com `relevant: false` sai do resultado; os demais ficam com o `reason` correto (alinhamento por índice preservado) |
+| `test_loga_titulos_descartados_como_info` | Descarte parcial loga `logger.info` com `discarded_count`, `total_titles`, `discarded_titles` e `preference` |
+| `test_retorna_lista_vazia_e_loga_aviso_quando_todos_sao_irrelevantes` | Todos descartados → `[]` + `logger.warning` (sinal de `WHERE` ruim) |
+| `test_mantem_titulo_quando_relevant_nao_e_false_literal` | `relevant` `None`/`"false"`/`0`/`"no"` não descarta — só `False` literal |
+| `test_mantem_titulo_quando_relevant_esta_ausente` | Item sem a chave `relevant` mantém o título (tolerância a variação de resposta do LLM) |
+| `test_ignora_relevant_false_de_item_com_id_invalido_ou_ausente` | `relevant: false` em item com `id` não conversível ou ausente não descarta nada |
+| `test_id_como_string_tambem_descarta` | `id` como string (`"1"`) também identifica o título a descartar |
+| `test_prompt_do_passo_3_pede_o_campo_relevant` | `_REASON_SYSTEM_PROMPT` menciona `relevant` e a regra "na dúvida, marque true" |
+
+### `TestLogsDeDiagnosticoDaBusca` — Logs que ligam o `WHERE` ao pool do Athena
+
+| Teste | O que verifica |
+|---|---|
+| `test_loga_where_clause_e_limit_do_passo_1` | `recommend()` loga "Filtros do Passo 1" com `preference`, `where_clause` e `limit` vindos do LLM |
+| `test_loga_limit_padrao_quando_llm_nao_informa` | Sem `limit` nos argumentos, o log usa `_DEFAULT_RECOMMENDATION_COUNT` |
+| `test_loga_tamanho_do_pool_devolvido_pelo_athena` | `search_titles_spec` loga `pool_size`, `pool_returned` (antes do sorteio) e `limit` |
 
 ### `TestLoadApiKeys` — Chaves de LLM/transcrição (Secrets Manager × ambiente)
 
