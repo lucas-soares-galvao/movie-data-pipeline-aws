@@ -455,15 +455,18 @@ class TestSearchTitlesSpec:
 
     def test_amostra_preserva_ordem_de_popularidade_do_subconjunto(self):
         many_rows = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(10)]
+        # chaves por índice (0..9): as 3 menores estão nos índices 7, 2 e 5
         with (
             patch("src.agent.boto3") as mock_boto3,
-            patch("src.agent.secrets.SystemRandom") as mock_system_random,
+            patch(
+                "src.agent.secrets.randbits",
+                side_effect=[90, 80, 2, 70, 60, 3, 50, 1, 40, 30],
+            ),
         ):
-            mock_system_random.return_value.sample.return_value = [7, 2, 5]
             _setup_athena_mock(mock_boto3, rows_data=many_rows)
             result = agent.search_titles_spec("vote_average >= 6.0", limit=3)
 
-        # mesmo com sample devolvendo índices fora de ordem, o resultado
+        # mesmo com as menores chaves em índices fora de ordem, o resultado
         # final preserva a ordem original (popularidade DESC) entre os escolhidos
         assert [r["title"] for r in result] == ["Filme 2", "Filme 5", "Filme 7"]
 

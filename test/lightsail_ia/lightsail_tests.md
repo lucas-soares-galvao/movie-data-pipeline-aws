@@ -112,7 +112,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_pool_nao_ultrapassa_maximo_absoluto` | Pool nunca ultrapassa `_CANDIDATE_POOL_MAX` (45), mesmo quando `limit * _CANDIDATE_POOL_MULTIPLIER` seria maior |
 | `test_amostra_e_limitada_ao_limit_solicitado_quando_pool_maior` | Pool com mais linhas que `limit` → resultado final tem exatamente `limit` títulos |
 | `test_retorna_todos_quando_pool_nao_excede_limit` | Pool com menos linhas que `limit` → retorna todas, sem erro |
-| `test_amostra_preserva_ordem_de_popularidade_do_subconjunto` | Mesmo com `random.sample` retornando índices fora de ordem, o resultado final preserva a ordem original (popularidade DESC) entre os títulos escolhidos |
+| `test_amostra_preserva_ordem_de_popularidade_do_subconjunto` | Mesmo com as menores chaves de `secrets.randbits` caindo em índices fora de ordem, o resultado final preserva a ordem original (popularidade DESC) entre os títulos escolhidos |
 | `test_rejeita_where_com_sql_perigoso` | Levanta `ValueError` quando a cláusula WHERE contém SQL perigoso |
 
 ### `TestRecommend` — Fluxo completo de recomendação

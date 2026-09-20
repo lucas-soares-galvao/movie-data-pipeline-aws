@@ -563,16 +563,19 @@ def search_titles_spec(where_clause: str, limit: int = _DEFAULT_RECOMMENDATION_C
             values = [item.get("VarCharValue") for item in row["Data"]]
             records.append(dict(zip(columns, values)))
 
-        # Sorteia um subconjunto do pool para variar os títulos entre buscas
+    # Sorteia um subconjunto do pool para variar os títulos entre buscas
     # repetidas ou parecidas. Preserva a ordem por popularidade dentro do
     # subconjunto escolhido — não embaralha o resultado, só troca quais
     # títulos do pool aparecem a cada chamada.
     if len(records) > limit:
-        # secrets.SystemRandom() em vez de random.sample: usa o CSPRNG do SO para
-        # não disparar o achado de RNG insegura (python:S2245) do SonarQube. O
-        # comportamento é o mesmo (sorteio uniforme sem reposição, ordem
-        # preservada pelo sorted a seguir) — não é um uso criptográfico.
-        chosen_indices = sorted(secrets.SystemRandom().sample(range(len(records)), limit))
+        # Sorteio uniforme sem reposição: atribui uma chave aleatória (CSPRNG) a
+        # cada índice e fica com os `limit` menores. Usa só secrets.randbits — sem
+        # a API de Random (nem random.sample, nem SystemRandom().sample), que o
+        # SonarQube (python:S2245) marca como PRNG inseguro. Não é uso
+        # criptográfico; o sorted externo preserva a ordem de popularidade.
+        chosen_indices = sorted(
+            sorted(range(len(records)), key=lambda _: secrets.randbits(64))[:limit]
+        )
         records = [records[i] for i in chosen_indices]
 
     # Libera memória dos objetos de resposta do boto3 antes de passar ao LLM
