@@ -310,12 +310,14 @@ class TestCollectDiscoverData:
         import pytest
         from requests.exceptions import HTTPError
 
+        mock_s3 = MagicMock()
+
         with (
             patch("src.utils.fetch_tmdb_data", side_effect=HTTPError("erro")),
             patch("src.utils.save_to_s3") as mock_save,
             pytest.raises(RuntimeError, match="Nenhuma página coletada"),
         ):
-            collect_discover_data("key", MagicMock(), "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+            collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
 
         mock_save.assert_not_called()
 
@@ -419,12 +421,14 @@ class TestCollectNowPlayingData:
         import pytest
         from requests.exceptions import HTTPError
 
+        mock_s3 = MagicMock()
+
         with (
             patch("src.utils.tmdb_get", side_effect=HTTPError("erro")),
             patch("src.utils.save_to_s3") as mock_save,
             pytest.raises(RuntimeError, match="Nenhuma página coletada para now_playing"),
         ):
-            collect_now_playing_data("api-key", MagicMock(), "meu-bucket")
+            collect_now_playing_data("api-key", mock_s3, "meu-bucket")
 
         mock_save.assert_not_called()
 
