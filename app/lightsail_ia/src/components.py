@@ -530,26 +530,19 @@ def _render_cinema_row(
     next_episode_number: int | None,
     next_episode_date: str,
     upcoming_date: str,
-    title_status: str,
 ) -> str:
-    """Badge de "Em cartaz"/próximo episódio/"Em breve"/status — extraído de render_card().
+    """Badge de "Em cartaz"/próximo episódio/"Em breve" — extraído de render_card().
 
     Filme (in_theaters), série (next_episode_*) e título ainda não lançado (upcoming_date)
     nunca preenchem mais de um ao mesmo tempo (upcoming_date só existe pra air_date futuro —
     incompatível com estar em cartaz ou ter próximo episódio de uma série já no ar) — por
     isso a mesma linha/classe serve pros três badges, sem checar media_type explicitamente.
     Os três usam o mesmo ícone de calendário (antes eram emoji diferentes por estado —
-    🎬/📅/🔜 —, unificados num só ícone Lucide). Quando nenhum dos três se aplica, entra um
-    4º ramo de fallback com `title_status` (já traduzido pra PT-BR na SPEC, ver
-    glue_agg/src/queries.py) — mesmo princípio do fallback "Não disponível no streaming" de
-    _render_providers_block: preencher o espaço em vez de deixar a seção ambígua entre "sem
-    dado" e "sem informação relevante". Cobre tanto o caso comum (filme já lançado, fora de
-    cartaz → "Lançado") quanto os incomuns (série "Encerrada"/"Cancelado" — não haverá mais
-    episódios — ou filme "Planejado"/"Em Produção"/"Pós-Produção"/"Rumor"). Prioridade quando
-    mais de um bate ao mesmo tempo: em cartaz > próximo episódio > em breve > status. Só
-    quando `title_status` também está vazio (título ainda não enriquecido pelo
-    `glue_details`, ver LEFT JOIN em queries.py) é que a div nem é emitida — o card fica com
-    essa linha a menos (meio solto, ver cards.css)."""
+    🎬/📅/🔜 —, unificados num só ícone Lucide). Prioridade quando mais de um bate ao mesmo
+    tempo: em cartaz > próximo episódio > em breve. Quando nenhum se aplica a div nem é
+    emitida — o card fica com essa linha a menos (meio solto, ver cards.css). Não há
+    fallback com o status do título ("Lançado", "Encerrada"...): só informa algo que o
+    usuário já espera de uma recomendação, então virava poluição visual."""
     cinema_icon_html = f'<span class="meta-icon">{icon("calendar")}</span>'
     cinema_content = ""
     if in_theaters:
@@ -566,10 +559,6 @@ def _render_cinema_row(
         label = f"Em breve · {upcoming_date}"
         cinema_content = (
             f'{cinema_icon_html}<span class="cinema-badge">{html.escape(label)}</span>'
-        )
-    elif title_status:
-        cinema_content = (
-            f'{cinema_icon_html}<span class="cinema-badge">{title_status}</span>'
         )
     return f'<div class="meta-row cinema-row">{cinema_content}</div>' if cinema_content else ""
 
@@ -896,7 +885,6 @@ def render_card(title: dict, idx: int = 0) -> str:
     next_episode_number = title.get("next_episode_number")
     next_episode_date = _escaped_field(title, "next_episode_date")
     upcoming_date = _escaped_field(title, "upcoming_date")
-    title_status = _escaped_field(title, "title_status")
     certification = _escaped_field(title, "certification")
     trailer_url = _field(title, "trailer_url")
     cast = _field(title, "cast")
@@ -912,7 +900,7 @@ def render_card(title: dict, idx: int = 0) -> str:
     genres_block_html = _render_genres_block(genres, highlighted_genres)
     cinema_html = _render_cinema_row(
         in_theaters, theater_end_date, next_episode_season_number,
-        next_episode_number, next_episode_date, upcoming_date, title_status,
+        next_episode_number, next_episode_date, upcoming_date,
     )
     certification_html = _render_certification_badge(certification)
     rating_html, rating_chip_html = _format_rating_badges(rating)

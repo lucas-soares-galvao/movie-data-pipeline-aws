@@ -1048,6 +1048,24 @@ class TestFiltroDeRelevanciaNoPasso3:
         assert "relevant" in agent._REASON_SYSTEM_PROMPT
         assert "na dúvida, marque true" in agent._REASON_SYSTEM_PROMPT
 
+    def test_prompt_do_passo_1_descreve_title_status_em_pt_br(self):
+        # A SPEC traduz o status do TMDB via CASE (glue_agg/queries.py); o prompt precisa
+        # listar os valores traduzidos, senão o LLM gera title_status = 'Post Production'
+        # (valor que não existe na tabela) e o filtro nunca casa.
+        for valor in ("Lançado", "Pós-Produção", "Em Exibição", "Encerrada"):
+            assert f"'{valor}'" in agent._SYSTEM_PROMPT
+        for valor_em_ingles in ("Released", "Post Production", "Returning Series", "Ended", "Canceled"):
+            assert valor_em_ingles not in agent._SYSTEM_PROMPT
+
+    def test_prompt_do_passo_1_exemplos_de_pais_e_idioma_em_pt_br(self):
+        # language_name/origin_country_name/production_countries/spoken_languages saem em
+        # português da SPEC (COALESCE com name_pt/*_pt) — exemplos em inglês induziriam LIKE
+        # que não casa.
+        assert "'Inglês'" in agent._SYSTEM_PROMPT
+        assert "'Estados Unidos'" in agent._SYSTEM_PROMPT
+        assert "English" not in agent._SYSTEM_PROMPT
+        assert "United States" not in agent._SYSTEM_PROMPT
+
 
 class TestLogsDeDiagnosticoDaBusca:
     """Logs que ligam o WHERE gerado no Passo 1 ao pool devolvido pelo Athena."""

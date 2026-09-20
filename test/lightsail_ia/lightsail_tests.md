@@ -99,7 +99,7 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 |---|---|
 | `test_retorna_lista_vazia_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
 | `test_retorna_registros_como_lista_de_dicts` | Converte corretamente rows do Athena em lista de dicts |
-| `test_select_inclui_title_status` | SELECT inclui `title_status` — usado como fallback da `cinema-row` no card quando não está em cartaz, não tem próximo episódio nem é lançamento futuro |
+| `test_select_inclui_title_status` | SELECT inclui `title_status` — coluna que o agente usa em filtros SQL; o card não a exibe mais (a `cinema-row` não tem mais fallback de status) |
 | `test_levanta_erro_quando_athena_falha_ou_e_cancelada` (parametrizado: `FAILED`/`CANCELLED`) | Estado terminal de erro do Athena levanta `RuntimeError` com o `StateChangeReason` e não lê resultados |
 | `test_aguarda_e_repete_o_polling_enquanto_a_query_esta_em_execucao` | `QUEUED`/`RUNNING` repetem o polling (com `time.sleep` mockado) até `SUCCEEDED` |
 | `test_filtro_where_incluido_na_query` | WHERE inclui a cláusula gerada pelo LLM na query |
@@ -193,6 +193,8 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_mantem_titulo_quando_relevant_esta_ausente` | Item sem a chave `relevant` mantém o título (tolerância a variação de resposta do LLM) |
 | `test_ignora_relevant_false_de_item_com_id_invalido_ou_ausente` | `relevant: false` em item com `id` não conversível ou ausente não descarta nada |
 | `test_id_como_string_tambem_descarta` | `id` como string (`"1"`) também identifica o título a descartar |
+| `test_prompt_do_passo_1_descreve_title_status_em_pt_br` | `_SYSTEM_PROMPT` lista os valores de `title_status` em português ('Lançado', 'Pós-Produção', 'Em Exibição', 'Encerrada' — espelho do `CASE` da SPEC) e não contém os valores em inglês do TMDB ('Released', 'Post Production', ...) |
+| `test_prompt_do_passo_1_exemplos_de_pais_e_idioma_em_pt_br` | Exemplos de `language_name`/`origin_country_name`/`production_countries`/`spoken_languages` no `_SYSTEM_PROMPT` estão em português ('Inglês', 'Estados Unidos'), sem 'English'/'United States' |
 | `test_prompt_do_passo_3_pede_o_campo_relevant` | `_REASON_SYSTEM_PROMPT` menciona `relevant` e a regra "na dúvida, marque true" |
 
 ### `TestLogsDeDiagnosticoDaBusca` — Logs que ligam o `WHERE` ao pool do Athena
@@ -374,9 +376,9 @@ O padrão de mock aqui difere do resto da suíte: como `render_cards()` é uma f
 | `test_card_ignora_redes_tv` | Card não renderiza redes de TV mesmo quando fornecidas |
 | `test_card_sem_campos_opcionais_nao_gera_divs_vazias` | Campos opcionais ausentes não geram HTML vazio |
 | `test_card_cinema_em_cartaz` | Card exibe "Em cartaz até DD/MM/YYYY" quando `in_theaters=True` |
-| `test_card_status_fallback_filme_ja_lancado` | Sem `in_theaters`/próximo episódio/`upcoming_date`, a `cinema-row` cai no 4º ramo e exibe `title_status` puro (ex: "Lançado") — inclusive no caso comum de filme já lançado e fora de cartaz |
-| `test_card_status_fallback_serie_encerrada` | Série com `title_status="Encerrada"` (sem os 3 badges anteriores) exibe "Encerrada" na `cinema-row` — informa que não haverá mais episódios |
-| `test_card_em_cartaz_tem_prioridade_sobre_status` / `test_card_proximo_episodio_tem_prioridade_sobre_status` / `test_card_em_breve_tem_prioridade_sobre_status` | `title_status` nunca aparece quando um dos 3 estados anteriores (em cartaz, próximo episódio, em breve) está presente — confirma a ordem de prioridade em cartaz > próximo episódio > em breve > status |
+| `test_card_status_filme_ja_lancado_nao_gera_cinema_row` | Filme com `title_status="Lançado"` e sem `in_theaters`/próximo episódio/`upcoming_date` não gera `cinema-row` nem exibe "Lançado" — o status deixou de ser fallback (poluição visual) |
+| `test_card_status_serie_encerrada_nao_gera_cinema_row` | Série com `title_status="Encerrada"` (sem os 3 badges) também não gera `cinema-row` nem exibe "Encerrada" |
+| `test_card_status_nunca_aparece_junto_dos_badges_de_cinema` | Regressão: com `in_theaters=True` o card exibe "Em cartaz até ..." e `title_status` ("Lançado") não aparece |
 | `test_card_nao_exibe_produtor` | Card não renderiza produtor mesmo quando fornecido |
 | `test_card_nao_exibe_cinematografo` | Card não renderiza cinematógrafo mesmo quando fornecido |
 | `test_card_nao_exibe_montador` | Card não renderiza montador mesmo quando fornecido |
