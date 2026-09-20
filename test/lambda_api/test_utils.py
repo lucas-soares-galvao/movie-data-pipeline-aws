@@ -286,6 +286,39 @@ class TestCollectDiscoverData:
         assert "page" not in dado_salvo
         assert "total_pages" not in dado_salvo
 
+    def test_pagina_com_erro_http_e_ignorada_e_avisa_no_final(self, caplog):
+        from requests.exceptions import HTTPError
+
+        mock_s3 = MagicMock()
+        with (
+            patch("src.utils.fetch_tmdb_data") as mock_fetch,
+            patch("src.utils.save_to_s3") as mock_save,
+            caplog.at_level("WARNING"),
+        ):
+            mock_fetch.side_effect = [
+                HTTPError("erro na pagina 1"),
+                {"page": 2, "results": [], "total_pages": 2},
+                {"page": 3, "results": [], "total_pages": 2},
+            ]
+            collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+
+        assert mock_save.call_count == 1
+        assert mock_save.call_args[0][3] == "tmdb/discover/movie/ano=2023/pagina_002.json"
+        assert "1 página(s) com erro" in caplog.text
+
+    def test_levanta_erro_quando_todas_as_paginas_falham(self):
+        import pytest
+        from requests.exceptions import HTTPError
+
+        with (
+            patch("src.utils.fetch_tmdb_data", side_effect=HTTPError("erro")),
+            patch("src.utils.save_to_s3") as mock_save,
+            pytest.raises(RuntimeError, match="Nenhuma página coletada"),
+        ):
+            collect_discover_data("key", MagicMock(), "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+
+        mock_save.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # collect_now_playing_data
@@ -362,6 +395,38 @@ class TestCollectNowPlayingData:
 
         s3_key = mock_save.call_args[0][3]
         assert s3_key == "tmdb/now_playing/movie/pagina_001.json"
+
+    def test_pagina_com_erro_http_e_ignorada_e_avisa_no_final(self, caplog):
+        from requests.exceptions import HTTPError
+
+        with (
+            patch("src.utils.tmdb_get") as mock_get,
+            patch("src.utils.save_to_s3") as mock_save,
+            caplog.at_level("WARNING"),
+        ):
+            mock_get.side_effect = [
+                HTTPError("erro na pagina 1"),
+                self._page_response(2, 2),
+                self._page_response(3, 2),
+            ]
+            collect_now_playing_data("api-key", MagicMock(), "meu-bucket")
+
+        assert mock_save.call_count == 1
+        assert mock_save.call_args[0][3] == "tmdb/now_playing/movie/pagina_002.json"
+        assert "1 página(s) com erro" in caplog.text
+
+    def test_levanta_erro_quando_todas_as_paginas_falham(self):
+        import pytest
+        from requests.exceptions import HTTPError
+
+        with (
+            patch("src.utils.tmdb_get", side_effect=HTTPError("erro")),
+            patch("src.utils.save_to_s3") as mock_save,
+            pytest.raises(RuntimeError, match="Nenhuma página coletada para now_playing"),
+        ):
+            collect_now_playing_data("api-key", MagicMock(), "meu-bucket")
+
+        mock_save.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

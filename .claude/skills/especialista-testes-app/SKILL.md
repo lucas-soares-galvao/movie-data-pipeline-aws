@@ -15,32 +15,7 @@ Você é o especialista responsável pelos testes em `test/`, que espelha `app/`
 |---|---|
 | Árvore de `test/`, config geral do `pytest.ini` | `estrutura-projeto` |
 | Checklist pós-mudança, mapeamento `app/<modulo>/src/utils.py → test/<modulo>/test_utils.py`, comandos de validação | `revisao-pos-mudanca-codigo` |
-| Quality gate: cobertura de testes **>= 95%** (bloqueante no CI, `--cov-fail-under=95` em `.github/workflows/test.yml`) — `scripts/` e `app/lightsail_ia/{app,forms,recommendation,cards}.py` ficam fora desse gate via `omit=` no `.coveragerc` | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
-
-## Débito de cobertura para chegar a 95% — ordem de prioridade
-
-Com `app.py`/`forms.py`/`recommendation.py`/`cards.py` excluídos do gate (telas Streamlit, sem
-framework de teste automatizado no projeto), a cobertura de `app/` fica em ~95,25% — margem mínima
-(poucas linhas). Ao fechar essa lacuna, seguir esta ordem (do mais barato ao mais caro):
-
-1. **`app/lightsail_ia/src/components.py`** — funções wrapper finas em torno de
-   `st.markdown`/`components.html` (`_inject_css`, `load_base_css`, `load_forms_css`, `load_app_css`,
-   `load_recommendation_css`, `load_cards_css`, `load_preference_counter_script`,
-   `load_audio_cancel_script`, `render_footer`, `render_form_footer`). Reaproveitar o mock de
-   `streamlit` que já cobre `render_card`/`render_grid` no mesmo arquivo. (Contagem de linhas
-   faltando não recalculada nesta edição — mudou com o split de `app.py` em `forms.py`/
-   `recommendation.py`/`cards.py`/`infrastructure.py`; ver `pytest --cov` para o número atual.)
-2. **`app/lambda_api/src/utils.py`** (12 linhas faltando) — branches de erro em
-   `collect_now_playing_data`/`collect_discover_data`: `except HTTPError` (retry/continue) e
-   `if saved_pages == 0: raise RuntimeError`. Reaproveitar o mock de `tmdb_get`/`fetch_tmdb_data`
-   levantando `HTTPError` já usado em outros testes do arquivo.
-3. **`app/glue_details/src/utils.py`** — parsing de `sys.argv` para `--TRANSLATE_PROVIDER`, a
-   função `_fetch_collections_pt_br` inteira (busca paralela de coleções em pt-BR, ainda sem
-   nenhum teste) e o branch de merge com dados existentes via `wr.s3.read_parquet` no fluxo de
-   watch providers.
-4. **`app/lightsail_ia/src/agent.py`** (12 linhas) e **`app/lightsail_ia/src/formatting.py`** (6 linhas) —
-   branches de erro/edge case do agente de recomendação (LLM) e de formatação de data/duração;
-   deixar por último por menor volume e maior complexidade de mock (LLM).
+| Quality gate: cobertura de testes **100%** (bloqueante no CI, `--cov-fail-under=100` em `.github/workflows/test.yml`) — o CI roda `pytest --cov=app --cov=scripts`; o `.coveragerc` só omite `test/*`, `infra/*` e `setup.py` e exclui a guarda `if __name__ == \"__main__\":` (linha realmente intestável só com `# pragma: no cover` justificado em comentário) | `CLAUDE.md`, `revisao-pos-mudanca-codigo` |
 | Enumeração caso a caso de testes e fixtures de cada módulo | `test/<modulo>/<modulo>_tests.md` |
 | Código Python/SQL/PySpark/awswrangler exercitado pelos testes | `especialista-engenharia-dados-app` |
 
@@ -107,3 +82,4 @@ Athena é acessado via `boto3` cru (não awswrangler) — mockar a sequência de
 - No job Spark (`glue_data_quality`): nunca instalar/importar PySpark real — manter módulos falsos em `sys.modules` + `MagicMock()` encadeável; funções chamadas diretamente no código de produção (`col`, `when`, `StringType`) precisam ser `MagicMock()` desde o conftest, as demais podem ser `None` no conftest e mockadas por teste
 - `lightsail_ia`: setar env vars no `conftest.py` antes de qualquer import do módulo sob teste; limpar `agent._WHERE_CACHE` entre testes que dependem de cache limpo
 - Nome de método de teste novo: descritivo, em português, no padrão `test_<comportamento>`
+- **Rede bloqueada**: `test/conftest.py` faz qualquer resolução de DNS/conexão para fora do loopback levantar `RuntimeError("Teste tentou acessar a rede: ...")`. Se um teste novo falhar com essa mensagem, falta mockar o cliente (boto3, requests, litellm, awswrangler...) — não afrouxe o bloqueio. `test_bloqueio_de_rede.py` testa a própria trava. Não existe `moto`/`pytest-socket` no projeto: a trava é só esse bloqueio de `socket`

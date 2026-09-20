@@ -7,7 +7,7 @@ name: Sonar Analysis (Reusable)
 # paralelo ao terraform — nenhum dos dois depende do outro (Terraform
 # provisiona infra, Sonar analisa código-fonte). Não roda pytest: baixa o
 # coverage.xml que o test.yml publica como artifact "coverage-xml" (só em
-# main), então a cobertura no Sonar é exatamente a do gate de 95%.
+# main), então a cobertura no Sonar é exatamente a do gate de 100%.
 #
 # Só é chamado em push:main porque o plano Free do SonarQube
 # Cloud só analisa de forma contínua a branch marcada como "principal" no

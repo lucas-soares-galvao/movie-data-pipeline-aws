@@ -276,6 +276,11 @@ class TestErros:
         with pytest.raises(ClientError):
             _run_main(monkeypatch, process_side_effect=[exc])
 
+    def test_clienterror_que_nao_e_token_expirado_de_um_content_type_nao_aborta_o_outro(self, monkeypatch):
+        exc = ClientError({"Error": {"Code": "AccessDenied", "Message": "negado"}}, "StartQueryExecution")
+        _, _, mock_process, *_ = _run_main(monkeypatch, process_side_effect=[exc, []])
+        assert mock_process.call_count == 2
+
 
 class TestCheckpoint:
     def test_pula_content_type_ja_concluido(self, monkeypatch):

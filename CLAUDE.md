@@ -12,9 +12,9 @@ Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis,
 
 - Lógica de negócio fica em `app/<modulo>/src/utils.py`; `main.py` apenas resolve argumentos e delega
 - Testes em `test/` espelham a estrutura de `app/` — cada módulo tem `conftest.py`, `test_main.py`, `test_utils.py`
-- Scripts de operação manual em `scripts/` também têm testes espelhados em `test/scripts/` (um `test_<script>.py` por script) e **entram** no gate de cobertura de 95% — o CI roda `pytest --cov=app --cov=scripts`. Os testes rodam e bloqueiam o CI normalmente
+- Scripts de operação manual em `scripts/` também têm testes espelhados em `test/scripts/` (um `test_<script>.py` por script) e **entram** no gate de cobertura de 100% — o CI roda `pytest --cov=app --cov=scripts`. Os testes rodam e bloqueiam o CI normalmente
 - Cada módulo em `app/` tem um `.md` descrevendo o que faz, e cada módulo em `test/` tem um `*_tests.md`
-- Quality gate: cobertura de testes **>= 95%** (bloqueante no CI)
+- Quality gate: cobertura de testes **100%** (bloqueante no CI). Linha realmente intestável só passa com `# pragma: no cover` **justificado em comentário** — nunca com teste que só executa a linha
 - Infraestrutura gerenciada por **Terraform** em `infra/`
 - CI/CD via **GitHub Actions** com OIDC (sem Access Keys fixas)
 - Ambientes isolados: `dev` e `prod` em contas AWS separadas
@@ -25,8 +25,8 @@ Identificadores de código — nomes de colunas de tabela/DataFrame, variáveis,
 # Testes de um módulo específico
 pytest test/<modulo>/ -v
 
-# Testes com cobertura completa (gate de 95%)
-pytest --cov=app --cov=scripts --cov-report=term-missing --cov-fail-under=95
+# Testes com cobertura completa (gate de 100%)
+pytest --cov=app --cov=scripts --cov-report=term-missing --cov-fail-under=100
 
 # Lint
 ruff check app/ test/

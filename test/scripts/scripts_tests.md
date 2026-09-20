@@ -4,7 +4,7 @@
 
 Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_historico.py`) + o módulo compartilhado `backfill_shared.py`, acionados pelo workflow `6. Backfill` (`.github/workflows/backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
 
-O foco principal é o **contrato dos argumentos** enviados a cada serviço (Glue) ou às funções internas replicadas no processo (coleta TMDB, transformação equivalente ao Glue ETL/Details), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado. Ainda assim, a cobertura deles **entra no gate de 95%**: o CI roda `pytest --cov=app --cov=scripts` (ver "Cobertura" abaixo).
+O foco principal é o **contrato dos argumentos** enviados a cada serviço (Glue) ou às funções internas replicadas no processo (coleta TMDB, transformação equivalente ao Glue ETL/Details), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado. Ainda assim, a cobertura deles **entra no gate de 100%**: o CI roda `pytest --cov=app --cov=scripts` (ver "Cobertura" abaixo).
 
 Dois bugs reais motivaram este módulo, ambos numa época em que `backfill_discover.py` e `backfill_referencias.py` ainda montavam um payload de Lambda (nenhum dos dois invoca mais a Lambda API hoje, ver seções próprias abaixo): `backfill_discover.py` enviava a chave `only_discover` e `backfill_referencias.py` enviava `skip_discover` — nenhuma das duas era lida por `app/lambda_api/main.py` (que só reconhecia `only_annual_tables` e `skip_weekly`, este último removido do handler junto com o payload de `backfill_referencias.py`). Como uma chave de dict inexistente não gera erro, o bug só apareceria revisando logs de uma execução real de horas contra prod.
 
@@ -83,6 +83,7 @@ custo por intervalo de anos de `backfill_enriquecimento.py`/`backfill_traducao.p
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
 | `test_expired_token_gera_codigo_75` (parametrizado) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado (retomável) de outros erros |
 | `test_token_expirado_em_uma_unidade_propaga_sem_ser_capturado_como_falha_soft` (parametrizado) | Token expirado numa unidade propaga (para `run_with_retry_exit` tratar como exit 75), não vira falha soft-fail-continue |
+| `test_clienterror_que_nao_e_token_expirado_e_falha_soft_e_backfill_continua` | `ClientError` comum (ex.: `AccessDenied`) numa unidade não propaga: vira falha, as demais unidades rodam e `main()` retorna `False` |
 
 ### `TestCheckpoint`
 
@@ -179,6 +180,7 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 |---|---|
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
 | `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
+| `test_clienterror_que_nao_e_token_expirado_e_falha_soft_e_backfill_continua` | `ClientError` comum (ex.: `AccessDenied`) numa unidade não propaga: vira falha, as demais unidades rodam e `main()` retorna `False` |
 
 ### `TestCheckpoint`
 
@@ -366,6 +368,7 @@ reprocessado).
 | `test_particao_ja_migrada_sem_coluna_antiga_retorna_false_e_nao_escreve` | Guard central: partição sem a coluna antiga no schema físico (já migrada) não é regravada de novo |
 | `test_outras_excecoes_sao_repropagadas` | Exceções que não são `NoFilesFound` são relançadas |
 | `test_expired_token_na_leitura_loga_e_repropaga` / `test_expired_token_na_escrita_loga_e_repropaga` (parametrizados: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura ou na escrita loga aviso de credenciais e repropaga |
+| `test_registros_sem_valor_nas_duas_colunas_geram_aviso_mas_ainda_migram` | Registros nulos nas colunas nova e antiga geram `logger.warning` ("continuam sem ..."), mas a partição ainda é gravada |
 | `test_particao_totalmente_nao_migrada_preenche_coluna_nova_e_descarta_antiga` | Partição nunca tocada pelo pipeline desde o rename (só tem a coluna antiga) — todo registro ganha a coluna nova, coluna antiga é descartada |
 | `test_particao_mista_preserva_coluna_nova_e_usa_antiga_so_para_os_nulos` | Caso dos IDs que saíram do discover atual: registros já reprocessados (coluna nova preenchida) não são sobrescritos pelo coalesce; só os ainda nulos usam o valor da coluna antiga |
 | `test_escreve_com_particao_e_modo_overwrite_partitions` | `wr.s3.to_parquet` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
@@ -429,6 +432,7 @@ Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de dom
 |---|---|
 | `test_erro_da_lambda_interrompe_o_backfill` | `RuntimeError` (Lambda com erro) propaga e para o script |
 | `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
+| `test_clienterror_que_nao_e_token_expirado_de_um_content_type_nao_aborta_o_outro` | `ClientError` comum (ex.: `AccessDenied`) em um `content_type` vira falha e o outro ainda é processado |
 
 > Nota: as seções `TestContratoDoPayload`/`TestInvocacoes` acima descrevem o payload de invocação
 > da Lambda API (`only_changes_tables`) de uma versão anterior do script — `backfill_changes.py`
@@ -576,4 +580,4 @@ pytest test/scripts/ -v
 
 ## Cobertura
 
-Os scripts de backfill **entram** no gate de cobertura de 95%: o CI roda `pytest --cov=app --cov=scripts` (ver `.github/workflows/test.yml`), e o `coverage.xml` resultante (publicado como artifact e reaproveitado por `.github/workflows/sonar.yml`) alimenta o Sonar (`sonar.sources=app,scripts`). Os testes cobrem 98% de `scripts/` — a medição é feita de fato, não só rodada. Os testes também são **bloqueantes**: uma falha aqui reprova o step "Run tests with Coverage Gate" do CI do mesmo jeito que uma falha em `app/`.
+Os scripts de backfill **entram** no gate de cobertura de 100%: o CI roda `pytest --cov=app --cov=scripts` (ver `.github/workflows/test.yml`), e o `coverage.xml` resultante (publicado como artifact e reaproveitado por `.github/workflows/sonar.yml`) alimenta o Sonar (`sonar.sources=app,scripts`). Os testes cobrem 100% de `scripts/` — a medição é feita de fato, não só rodada. Os testes também são **bloqueantes**: uma falha aqui reprova o step "Run tests with Coverage Gate" do CI do mesmo jeito que uma falha em `app/`.

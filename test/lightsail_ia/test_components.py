@@ -159,6 +159,55 @@ class TestLoadAudioTimerScript:
         assert "const maxSeconds = 15;" in captured["content"]
 
 
+class TestLoadCssPorTela:
+    """Cada load_*_css só delega a _inject_css com o arquivo da tela correspondente."""
+
+    def test_cada_loader_injeta_o_css_da_sua_tela(self, monkeypatch):
+        injetados = []
+        monkeypatch.setattr(components, "_inject_css", injetados.append)
+
+        components.load_recommendation_css()
+        components.load_cards_css()
+        components.load_admin_css()
+        components.load_profile_css()
+
+        assert injetados == ["recommendation.css", "cards.css", "admin.css", "profile.css"]
+
+
+class TestLoadScriptsEstaticos:
+    def _captura_html(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            components.components, "html",
+            lambda content, height=0: captured.update(content=content, height=height),
+        )
+        return captured
+
+    def test_contador_substitui_placeholders_com_rate_limit_desligado(self, monkeypatch):
+        captured = self._captura_html(monkeypatch)
+        components.load_preference_counter_script(500)
+        assert "const maxChars = 500;" in captured["content"]
+        assert "const rateLimited = false;" in captured["content"]
+        assert captured["height"] == 0
+
+    def test_contador_marca_rate_limited_quando_ativo(self, monkeypatch):
+        captured = self._captura_html(monkeypatch)
+        components.load_preference_counter_script(500, rate_limited=True)
+        assert "const rateLimited = true;" in captured["content"]
+
+    def test_audio_cancel_injeta_script_com_altura_zero(self, monkeypatch):
+        captured = self._captura_html(monkeypatch)
+        components.load_audio_cancel_script()
+        assert captured["content"].startswith("<script>")
+        assert captured["height"] == 0
+
+    def test_textarea_autogrow_injeta_script_com_altura_zero(self, monkeypatch):
+        captured = self._captura_html(monkeypatch)
+        components.load_textarea_autogrow_script()
+        assert captured["content"].startswith("<script>")
+        assert captured["height"] == 0
+
+
 class TestLoadScrollLockScript:
     def test_injeta_script_via_components_html(self, monkeypatch):
         captured = {}
