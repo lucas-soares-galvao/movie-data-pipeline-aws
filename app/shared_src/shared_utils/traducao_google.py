@@ -33,6 +33,52 @@ class _GoogleErrorPageError(Exception):
     """O Google respondeu com a página de erro em vez de uma tradução."""
 
 
+def _translate_once(text: str) -> str:
+    """Faz uma única chamada ao Google Translate e devolve o resultado.
+
+    Levanta _GoogleErrorPageError se o Google devolver a página de erro no lugar da
+    tradução. Só é falha se o próprio texto de entrada não for uma página de erro
+    (senão nunca haveria como "traduzir" e cada tentativa seria descartada em vão).
+    """
+    result = GoogleTranslator(source="auto", target="pt").translate(text)
+    if is_google_error_page(result) and not is_google_error_page(text):
+        raise _GoogleErrorPageError(result)
+    return result
+
+
+def _log_exhausted(prefix: str, text: str, error_page: str | None) -> None:
+    """Loga o esgotamento das tentativas com erro.
+
+    WARNING quando a última falha foi a página de erro do Google (bloqueio real, não
+    visível de outra forma); DEBUG para o desfecho geral.
+    """
+    if error_page is not None:
+        logger.warning(
+            f"Google Translate devolveu a página de erro em vez de traduzir {prefix}'{text:.80}': "
+            f"'{error_page:.80}'. Mantendo original."
+        )
+    logger.debug(
+        f"Falha ao traduzir {prefix}'{text:.80}' após {_MAX_ATTEMPTS} tentativas "
+        "com erro. Mantendo original."
+    )
+
+
+def _is_new_translation(result: str, text: str) -> bool:
+    """True se `result` é uma tradução aproveitável: não vazio e diferente do original."""
+    return bool(result) and result != text
+
+
+def _log_prefix(context: str) -> str:
+    """Prefixo dos logs: o contexto do item seguido de espaço, ou vazio se não houver."""
+    return f"{context} " if context else ""
+
+
+def _backoff(attempt: int) -> None:
+    """Espera `attempt * 2` segundos antes da próxima tentativa; a última não espera."""
+    if attempt < _MAX_ATTEMPTS:
+        time.sleep(attempt * 2)
+
+
 def translate_text(text: str, context: str = "") -> str:
     """
     Traduz texto para português via Google Translate, detectando automaticamente
@@ -66,16 +112,12 @@ def translate_text(text: str, context: str = "") -> str:
     """
     if not text:
         return ""
-    prefix = f"{context} " if context else ""
+    prefix = _log_prefix(context)
     attempts_no_error = 0
     error_page: str | None = None
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
-            result = GoogleTranslator(source="auto", target="pt").translate(text)
-            # Só é falha se o próprio texto de entrada não for uma página de erro (senão
-            # nunca haveria como "traduzir" e cada tentativa seria descartada em vão).
-            if is_google_error_page(result) and not is_google_error_page(text):
-                raise _GoogleErrorPageError(result)
+            result = _translate_once(text)
         except _GoogleErrorPageError as exc:
             error_page = str(exc)
             logger.debug(f"Tentativa {attempt} de traduzir {prefix}'{text:.80}' devolveu a página de erro do Google.")
@@ -83,7 +125,7 @@ def translate_text(text: str, context: str = "") -> str:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"Tentativa {attempt} de traduzir {prefix}'{text}' falhou: {exc}")
         else:
-            if result and result != text:
+            if _is_new_translation(result, text):
                 return result
             attempts_no_error += 1
             logger.debug(
@@ -98,15 +140,6 @@ def translate_text(text: str, context: str = "") -> str:
                     "Mantendo original."
                 )
                 return text
-        if attempt < _MAX_ATTEMPTS:
-            time.sleep(attempt * 2)
-    if error_page is not None:
-        logger.warning(
-            f"Google Translate devolveu a página de erro em vez de traduzir {prefix}'{text:.80}': "
-            f"'{error_page:.80}'. Mantendo original."
-        )
-    logger.debug(
-        f"Falha ao traduzir {prefix}'{text:.80}' após {_MAX_ATTEMPTS} tentativas "
-        "com erro. Mantendo original."
-    )
+        _backoff(attempt)
+    _log_exhausted(prefix, text, error_page)
     return text
