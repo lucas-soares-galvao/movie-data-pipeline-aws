@@ -398,16 +398,26 @@ _SYSTEM_PROMPT = (
 # ~150 caracteres mantém o bloco "reason" da UI compacto (card não tem clamp
 # nem toggle — o texto sempre aparece completo, "meio solto" do card, ver
 # cards.css/components.py) e controla o custo de tokens de completion.
+# O campo "relevant" é o único filtro de relevância do pipeline: a query do Passo 2
+# só ordena por popularidade e sorteia do pool, então um WHERE frouxo devolve títulos
+# populares sem relação com o pedido. Só "relevant": false explícito descarta o título
+# (ver _generate_reasons) — a instrução pede para marcar false apenas em incompatibilidade
+# clara, para o LLM não cortar títulos bons por critério que o usuário nem mencionou.
 _REASON_SYSTEM_PROMPT = (
     "Você é um curador de filmes e séries. "
-    "Para cada título na lista, escreva um motivo curto (1 frase, no máximo "
-    "~150 caracteres) explicando por que ele é uma boa recomendação para o "
-    "pedido do usuário. "
+    "Para cada título na lista, avalie se ele atende ao pedido do usuário. "
+    "Se atende, escreva um motivo curto (1 frase, no máximo ~150 caracteres) "
+    "explicando por que ele é uma boa recomendação para o pedido. "
     "Cite diretor, elenco, plataforma de streaming, classificação indicativa ou "
     "palavras-chave apenas quando fizerem parte do motivo real — não force menção "
     "a um campo que não tenha relação com o pedido. "
+    "Se o título claramente NÃO atende ao pedido (gênero, tema, idioma ou época "
+    "contrários ao que foi pedido), marque 'relevant' como false e deixe 'reason' "
+    "vazio. Não marque false por critério que o pedido não mencionou nem por "
+    "dúvida — na dúvida, marque true. "
     "Retorne APENAS um JSON com a chave 'titles': uma lista de objetos com "
-    "'id' (inteiro, índice do título na lista) e 'reason' (string em português). "
+    "'id' (inteiro, índice do título na lista), 'relevant' (booleano) e 'reason' "
+    "(string em português). "
     "Não inclua texto fora do JSON."
 )
 
@@ -493,7 +503,7 @@ def search_titles_spec(where_clause: str, limit: int = _DEFAULT_RECOMMENDATION_C
 
     Args:
         where_clause: Cláusula WHERE gerada pelo LLM (sem a palavra WHERE).
-        limit:        Máximo de títulos retornados. Padrão 8 (a TOOL orienta o LLM a
+        limit:        Máximo de títulos retornados. Padrão 9 (a TOOL orienta o LLM a
                       pedir entre 6 e 9 por padrão; teto de 15 pedidos explícitos).
 
     Returns:
@@ -562,6 +572,14 @@ def search_titles_spec(where_clause: str, limit: int = _DEFAULT_RECOMMENDATION_C
         for row in rows:
             values = [item.get("VarCharValue") for item in row["Data"]]
             records.append(dict(zip(columns, values)))
+
+    # Quantas linhas o Athena devolveu do pool antes do sorteio: um pool cheio (== pool_size)
+    # com WHERE frouxo indica que há candidatos além dos `limit` sorteados, sem relação
+    # garantida com o pedido (a ordem é só por popularidade).
+    logger.info(
+        "Pool de candidatos do Athena",
+        extra={"pool_size": pool_size, "pool_returned": len(records), "limit": limit},
+    )
 
     # Sorteia um subconjunto do pool para variar os títulos entre buscas
     # repetidas ou parecidas. Preserva a ordem por popularidade dentro do
@@ -753,6 +771,17 @@ def _parse_reasons(content: str) -> list:
     return data if isinstance(data, list) else data.get("titles", [])
 
 
+def _parse_item_id(item: dict) -> int | None:
+    """Índice do título (campo "id") de um item da resposta do Passo 3, ou None se o item
+    não tem "id" ou ele não converte para int (variação de resposta do LLM)."""
+    if "id" not in item:
+        return None
+    try:
+        return int(item["id"])
+    except (ValueError, TypeError):
+        return None
+
+
 def _merge_reasons_into_records(formatted_records: list[dict], reasons: list) -> int:
     """Faz o merge motivo->registro por índice (posição na lista enviada ao LLM no
     Passo 3, ver "id" em titles_for_llm). Tolerante a variações de resposta do LLM:
@@ -763,14 +792,26 @@ def _merge_reasons_into_records(formatted_records: list[dict], reasons: list) ->
     """
     reasons_by_id = {}
     for item in reasons:
-        if "id" in item:
-            try:
-                reasons_by_id[int(item["id"])] = item.get("reason", "")
-            except (ValueError, TypeError):
-                continue
+        item_id = _parse_item_id(item)
+        if item_id is not None:
+            reasons_by_id[item_id] = item.get("reason", "")
     for i, record in enumerate(formatted_records):
         record["reason"] = reasons_by_id.get(i, "")
     return len(reasons_by_id)
+
+
+def _irrelevant_indices(reasons: list) -> set[int]:
+    """Índices dos títulos que o LLM do Passo 3 marcou explicitamente com "relevant": false.
+
+    Só `False` literal descarta: campo ausente, null, string ("false") ou qualquer outro
+    valor conta como relevante — um LLM que ignora o formato não pode esvaziar o resultado.
+    """
+    indices = set()
+    for item in reasons:
+        item_id = _parse_item_id(item)
+        if item_id is not None and item.get("relevant") is False:
+            indices.add(item_id)
+    return indices
 
 
 def _generate_reasons(
@@ -852,7 +893,34 @@ def _generate_reasons(
             },
         )
 
-    return formatted_records
+    return _drop_irrelevant(preference, formatted_records, _irrelevant_indices(reasons))
+
+
+def _drop_irrelevant(
+    preference: str, formatted_records: list[dict], irrelevant: set[int]
+) -> list[dict]:
+    """Remove de formatted_records os títulos que o Passo 3 marcou como irrelevantes.
+
+    Se todos forem descartados retorna lista vazia (a UI trata como "nenhum título
+    encontrado") e loga warning: o pool já passou pelo WHERE do Passo 1, então o LLM
+    rejeitar tudo indica um WHERE ruim para o pedido, não falta de títulos.
+    """
+    if not irrelevant:
+        return formatted_records
+    kept = [r for i, r in enumerate(formatted_records) if i not in irrelevant]
+    extra = {
+        "preference": preference,
+        "discarded_count": len(formatted_records) - len(kept),
+        "total_titles": len(formatted_records),
+        "discarded_titles": [
+            r.get("title") for i, r in enumerate(formatted_records) if i in irrelevant
+        ],
+    }
+    if kept:
+        logger.info("Passo 3 descartou títulos irrelevantes", extra=extra)
+    else:
+        logger.warning("Passo 3 descartou todos os títulos como irrelevantes", extra=extra)
+    return kept
 
 
 def recommend(preference: str) -> list[dict]:
@@ -883,6 +951,17 @@ def recommend(preference: str) -> list[dict]:
     # (cache-hit ou fresca — ambos convergem para o mesmo dict `args`) para priorizar as
     # badges correspondentes nos cards, sem chamada extra ao LLM.
     highlighted_terms = _extract_highlighted_terms(args.get("where_clause", ""))
+
+    # Registra o WHERE efetivamente usado (cache-hit ou fresco): sem isso não dá para ligar
+    # uma recomendação irrelevante ao filtro que a produziu.
+    logger.info(
+        "Filtros do Passo 1",
+        extra={
+            "preference": preference,
+            "where_clause": args.get("where_clause"),
+            "limit": args.get("limit", _DEFAULT_RECOMMENDATION_COUNT),
+        },
+    )
 
     # PASSO 2: Consulta o Athena com os filtros (do cache ou do LLM)
     step2_start = time.time()

@@ -942,6 +942,159 @@ class TestRecommend:
         assert result[0]["highlighted_providers"] == []
 
 
+class TestFiltroDeRelevanciaNoPasso3:
+    """O Passo 3 pode marcar um título com "relevant": false; só isso o descarta."""
+
+    @staticmethod
+    def _recommend_com_motivos(titulos, titles_json):
+        with (
+            patch("src.agent.search_titles_spec", return_value=titulos),
+            patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
+        ):
+            mock_completion.side_effect = _mock_litellm(
+                {"where_clause": "media_type = 'movie'"},
+                reason_content=json.dumps({"titles": titles_json}),
+            )
+            result = agent.recommend("filmes de terror")
+        return result, mock_logger
+
+    def test_descarta_titulo_marcado_como_irrelevante_e_mantem_os_demais(self):
+        segundo = dict(FAKE_TITLE, title="Toy Story")
+        terceiro = dict(FAKE_TITLE, title="O Exorcista")
+        result, mock_logger = self._recommend_com_motivos(
+            [FAKE_TITLE, segundo, terceiro],
+            [
+                {"id": 0, "relevant": True, "reason": "Clássico de terror."},
+                {"id": 1, "relevant": False, "reason": ""},
+                {"id": 2, "relevant": True, "reason": "Possessão demoníaca."},
+            ],
+        )
+
+        assert [r["title"] for r in result] == ["O Iluminado", "O Exorcista"]
+        assert [r["reason"] for r in result] == ["Clássico de terror.", "Possessão demoníaca."]
+        mock_logger.warning.assert_not_called()
+
+    def test_loga_titulos_descartados_como_info(self):
+        segundo = dict(FAKE_TITLE, title="Toy Story")
+        _, mock_logger = self._recommend_com_motivos(
+            [FAKE_TITLE, segundo],
+            [
+                {"id": 0, "relevant": True, "reason": "Clássico de terror."},
+                {"id": 1, "relevant": False, "reason": ""},
+            ],
+        )
+
+        chamadas = [c for c in mock_logger.info.call_args_list if "descartou" in c.args[0]]
+        assert len(chamadas) == 1
+        extra = chamadas[0].kwargs["extra"]
+        assert extra["discarded_count"] == 1
+        assert extra["total_titles"] == 2
+        assert extra["discarded_titles"] == ["Toy Story"]
+        assert extra["preference"] == "filmes de terror"
+
+    def test_retorna_lista_vazia_e_loga_aviso_quando_todos_sao_irrelevantes(self):
+        segundo = dict(FAKE_TITLE, title="Toy Story")
+        result, mock_logger = self._recommend_com_motivos(
+            [FAKE_TITLE, segundo],
+            [
+                {"id": 0, "relevant": False, "reason": ""},
+                {"id": 1, "relevant": False, "reason": ""},
+            ],
+        )
+
+        assert result == []
+        mock_logger.warning.assert_called_once()
+        assert "todos os títulos" in mock_logger.warning.call_args.args[0]
+        assert mock_logger.warning.call_args.kwargs["extra"]["discarded_count"] == 2
+
+    @pytest.mark.parametrize("relevant", [None, "false", 0, "no"])
+    def test_mantem_titulo_quando_relevant_nao_e_false_literal(self, relevant):
+        result, _ = self._recommend_com_motivos(
+            [FAKE_TITLE],
+            [{"id": 0, "relevant": relevant, "reason": "Combina com o pedido."}],
+        )
+
+        assert len(result) == 1
+        assert result[0]["reason"] == "Combina com o pedido."
+
+    def test_mantem_titulo_quando_relevant_esta_ausente(self):
+        result, _ = self._recommend_com_motivos(
+            [FAKE_TITLE], [{"id": 0, "reason": "Combina com o pedido."}]
+        )
+
+        assert len(result) == 1
+
+    def test_ignora_relevant_false_de_item_com_id_invalido_ou_ausente(self):
+        result, _ = self._recommend_com_motivos(
+            [FAKE_TITLE],
+            [
+                {"id": "abc", "relevant": False, "reason": ""},
+                {"relevant": False, "reason": ""},
+            ],
+        )
+
+        assert len(result) == 1
+
+    def test_id_como_string_tambem_descarta(self):
+        result, _ = self._recommend_com_motivos(
+            [FAKE_TITLE, dict(FAKE_TITLE, title="Toy Story")],
+            [{"id": "1", "relevant": False, "reason": ""}],
+        )
+
+        assert [r["title"] for r in result] == ["O Iluminado"]
+
+    def test_prompt_do_passo_3_pede_o_campo_relevant(self):
+        assert "relevant" in agent._REASON_SYSTEM_PROMPT
+        assert "na dúvida, marque true" in agent._REASON_SYSTEM_PROMPT
+
+
+class TestLogsDeDiagnosticoDaBusca:
+    """Logs que ligam o WHERE gerado no Passo 1 ao pool devolvido pelo Athena."""
+
+    def test_loga_where_clause_e_limit_do_passo_1(self):
+        filters = {"where_clause": "lower(genre_names) LIKE '%terror%'", "limit": 7}
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
+        ):
+            mock_completion.side_effect = _mock_litellm(filters)
+            agent.recommend("filmes de terror")
+
+        chamadas = [c for c in mock_logger.info.call_args_list if c.args[0] == "Filtros do Passo 1"]
+        assert len(chamadas) == 1
+        extra = chamadas[0].kwargs["extra"]
+        assert extra["preference"] == "filmes de terror"
+        assert extra["where_clause"] == filters["where_clause"]
+        assert extra["limit"] == 7
+
+    def test_loga_limit_padrao_quando_llm_nao_informa(self):
+        with (
+            patch("src.agent.search_titles_spec", return_value=[FAKE_TITLE]),
+            patch("src.agent.litellm.completion") as mock_completion,
+            patch("src.agent.logger") as mock_logger,
+        ):
+            mock_completion.side_effect = _mock_litellm({"where_clause": "media_type = 'movie'"})
+            agent.recommend("filmes")
+
+        chamadas = [c for c in mock_logger.info.call_args_list if c.args[0] == "Filtros do Passo 1"]
+        assert chamadas[0].kwargs["extra"]["limit"] == agent._DEFAULT_RECOMMENDATION_COUNT
+
+    def test_loga_tamanho_do_pool_devolvido_pelo_athena(self):
+        titulos = [dict(FAKE_TITLE, title=f"Filme {i}") for i in range(12)]
+        with patch("src.agent.boto3") as mock_boto3, patch("src.agent.logger") as mock_logger:
+            _setup_athena_mock(mock_boto3, rows_data=titulos)
+            result = agent.search_titles_spec("media_type = 'movie'", limit=4)
+
+        assert len(result) == 4
+        chamadas = [
+            c for c in mock_logger.info.call_args_list if c.args[0] == "Pool de candidatos do Athena"
+        ]
+        assert len(chamadas) == 1
+        assert chamadas[0].kwargs["extra"] == {"pool_size": 12, "pool_returned": 12, "limit": 4}
+
+
 class TestCacheWhere:
 
     def test_chave_cache_normaliza_entrada(self):
