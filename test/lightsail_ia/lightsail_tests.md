@@ -38,6 +38,10 @@ O `conftest.py` configura variáveis de ambiente obrigatórias antes do import d
 | `COGNITO_APP_CLIENT_ID` | `"test-app-client-id"` |
 | `SNS_NEW_SIGNUP_TOPIC_ARN` | `"arn:aws:sns:sa-east-1:123456789012:test-new-signup-topic"` |
 
+As variáveis acima usam `setdefault` (preservam um valor real já exportado). Já `FILMBOT_SECRET_ARN` e `CLOUDWATCH_LOG_GROUP` são **forçadas para vazio** (`os.environ[...] = ""`): `agent.py` chama `load_dotenv()`, que não sobrescreve variável já definida (nem vazia), e um `app/lightsail_ia/.env` de desenvolvimento com elas preenchidas fazia o `AppTest` (`test_app.py`) executar `setup_cloudwatch_logging()`/`load_filmbot_password()` de verdade — handler real do CloudWatch, chamada real ao Secrets Manager e root logger derrubado para `ERROR` pelo resto da sessão, o que quebrava os testes de log (`caplog`) de `test/scripts` e `test/shared_src` só na máquina do desenvolvedor (o CI não tem `.env`).
+
+As credenciais AWS (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) também são forçadas para `"testing"` e `AWS_PROFILE` é removido: uma chamada `boto3` esquecida sem mock falha por credencial inválida em vez de usar as chaves reais do `.env`. Além disso, `test/conftest.py` bloqueia qualquer conexão de rede para fora do loopback durante toda a suíte (`test/test_bloqueio_de_rede.py` cobre essa trava).
+
 | Fixture | Escopo | Descrição |
 |---|---|---|
 | `_limpar_cache_where` | `autouse` | Limpa `agent._WHERE_CACHE` antes de cada teste para garantir isolamento entre testes |
@@ -96,6 +100,8 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_retorna_lista_vazia_sem_resultados` | Retorna `[]` quando Athena não encontra resultados |
 | `test_retorna_registros_como_lista_de_dicts` | Converte corretamente rows do Athena em lista de dicts |
 | `test_select_inclui_title_status` | SELECT inclui `title_status` — usado como fallback da `cinema-row` no card quando não está em cartaz, não tem próximo episódio nem é lançamento futuro |
+| `test_levanta_erro_quando_athena_falha_ou_e_cancelada` (parametrizado: `FAILED`/`CANCELLED`) | Estado terminal de erro do Athena levanta `RuntimeError` com o `StateChangeReason` e não lê resultados |
+| `test_aguarda_e_repete_o_polling_enquanto_a_query_esta_em_execucao` | `QUEUED`/`RUNNING` repetem o polling (com `time.sleep` mockado) até `SUCCEEDED` |
 | `test_filtro_where_incluido_na_query` | WHERE inclui a cláusula gerada pelo LLM na query |
 | `test_vote_count_fixo_sempre_presente` | Filtro fixo `vote_count >= 50` está sempre presente na query |
 | `test_titulo_futuro_ignora_vote_count` | WHERE inclui `(vote_count >= 50 OR air_date > CAST(CURRENT_DATE AS VARCHAR))` — título com `air_date` futuro passa sem exigir voto |
@@ -176,6 +182,14 @@ Gênero e provedor são extraídos por regex independentes (`_HIGHLIGHT_FIELD_PA
 | `test_loga_latencia_dos_3_passos_em_cache_miss` | Em cache miss da etapa 1, `_log_step_latency` é chamado 3 vezes, nesta ordem: `step1_where`, `step2_athena`, `step3_reasons` |
 | `test_loga_apenas_step2_e_step3_em_cache_hit` | Em cache hit da etapa 1 (cláusula WHERE já cacheada), `_log_step_latency` é chamado só para `step2_athena` e `step3_reasons` — a etapa 1 é pulada e não gera log de latência |
 
+### `TestLoadApiKeys` — Chaves de LLM/transcrição (Secrets Manager × ambiente)
+
+| Teste | O que verifica |
+|---|---|
+| `test_llm_key_vem_do_secrets_manager_quando_arn_configurado` / `test_llm_key_vem_do_ambiente_sem_arn` | `_load_llm_api_key` lê `llm_api_key` do secret com `FILMBOT_SECRET_ARN`, ou `LLM_API_KEY` do ambiente sem ele (sem chamar `boto3`) |
+| `test_transcription_key_vem_do_secrets_manager_quando_arn_configurado` / `test_transcription_key_vem_do_ambiente_sem_arn` | Idem para `_load_transcription_api_key` / `TRANSCRIPTION_API_KEY` |
+| `test_transcription_key_ausente_no_secret_retorna_none_sem_derrubar_o_app` | Campo opcional ausente no secret → `None` (usa `.get()`, não indexação), sem `KeyError` |
+
 ### `TestTranscribePreference` — Transcrição de áudio (Whisper via litellm)
 
 Usa `_make_wav_bytes(duration_seconds)`, helper do próprio `test_agent.py` que gera um WAV de teste (silêncio) com a duração informada via módulo padrão `wave`. Qualquer falha é tratada pelo chamador (`recommendation.py`).
@@ -207,6 +221,19 @@ O padrão de mock aqui difere do resto da suíte: como `render_cards()` é uma f
 | `test_ausencia_de_titles_em_session_state_equivale_a_lista_vazia` | Confirma que `.get("titles", [])` trata chave ausente igual a lista vazia |
 
 ## Casos de teste — `test_components.py`
+
+### `TestLoadCssPorTela` — Loaders de CSS por tela
+
+| Teste | O que verifica |
+|---|---|
+| `test_cada_loader_injeta_o_css_da_sua_tela` | `load_recommendation_css`/`load_cards_css`/`load_admin_css`/`load_profile_css` delegam a `_inject_css` com o arquivo correto |
+
+### `TestLoadScriptsEstaticos` — Loaders de scripts JS estáticos
+
+| Teste | O que verifica |
+|---|---|
+| `test_contador_substitui_placeholders_com_rate_limit_desligado` / `test_contador_marca_rate_limited_quando_ativo` | `load_preference_counter_script` substitui `__MAX_CHARS__` e `__RATE_LIMITED__` (`false` por padrão, `true` quando rate limited) |
+| `test_audio_cancel_injeta_script_com_altura_zero` / `test_textarea_autogrow_injeta_script_com_altura_zero` | Scripts sem placeholder são injetados via `components.html` com `height=0` |
 
 ### `TestLoadAudioTimerScript` — Injeção do script do timer de áudio
 
@@ -421,6 +448,8 @@ O padrão de mock aqui difere do resto da suíte: como `render_cards()` é uma f
 | `test_data_none` | `None` → `None` |
 | `test_data_vazia` | `""` → `None` |
 | `test_data_curta` | `"1980"` (sem mês) → `None` |
+| `test_mes_fora_do_intervalo_retorna_none` | `"1980-13-01"` → `None` |
+| `test_ano_nao_numerico_retorna_none` | `"abcd-05-01"` → `None` |
 
 ### `TestFormatTheaterEndDate` — Formatação de data de saída do cinema
 
@@ -438,6 +467,8 @@ O padrão de mock aqui difere do resto da suíte: como `render_cards()` é uma f
 | `test_string_valida` | `"7.5"` → `7.5` |
 | `test_none` | `None` → `None` |
 | `test_string_vazia` | `""` → `None` |
+| `test_string_nao_numerica_retorna_none` | `"sem nota"` → `None` |
+| `test_tipo_invalido_retorna_none` | Tipo não conversível (ex.: lista) → `None` |
 
 ### `TestFormatRecord` — Formatação completa de um registro
 
@@ -457,6 +488,13 @@ O padrão de mock aqui difere do resto da suíte: como `render_cards()` é uma f
 |---|---|
 | `test_retorna_sem_chamar_secrets_manager_quando_secret_arn_nao_configurado` | Sem `FILMBOT_SECRET_ARN`, retorna sem chamar `boto3.client` |
 | `test_retorna_sem_chamar_secrets_manager_quando_secrets_toml_ja_existe` | Com `secrets.toml` já existente (mockado), retorna sem chamar `boto3.client` |
+
+### `TestLoadFilmbotPasswordGravaSecretsToml` — Ramo que grava `secrets.toml`
+
+| Teste | O que verifica |
+|---|---|
+| `test_grava_secrets_toml_com_a_senha_do_secret` | Com `boto3` mockado e `infrastructure.__file__` apontando para `tmp_path` (nunca o `.streamlit/` real), grava `[auth]\npassword = "..."` |
+| `test_secrets_toml_fica_com_permissao_restrita_ao_dono` | Em POSIX o arquivo fica `0o600`; no Windows só confirma que foi criado (`chmod` não expressa 0o600 lá) |
 
 ### `TestSetupCloudwatchLogging` — Bootstrap do logging CloudWatch
 
@@ -825,7 +863,7 @@ pytest test/lightsail_ia/ --cov=app/lightsail_ia --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). Nenhum arquivo de `app/lightsail_ia/` está mais excluído dessa medição via `omit=` no `.coveragerc` — a lista de exclusão (que chegou a ter 6 arquivos: `app.py`, `forms.py`, `admin.py`, `recommendation.py`, `cards.py`, `profile.py`) foi encolhendo módulo a módulo conforme cada um ganhou testes, e `app.py` (o último, e o mais difícil — script de entrypoint sem nenhuma função isolada) saiu por último usando `streamlit.testing.v1.AppTest`. Todos os módulos de UI têm cobertura real (100%/99%+) via mock direto de `st.*` (`st.markdown`/`st.session_state`/`st.button`/`st.text_input`/`st.components.v2.component`/`st.fragment`/`st.rerun`/`st.columns`) — sem depender de um script Streamlit rodando de verdade — exceto `app.py`, que precisa do `AppTest` justamente por não ter função isolada pra chamar (ver `test_infrastructure.py`/`test_components.py`/`test_cards.py`/`test_profile.py`/`test_admin.py`/`test_forms.py`/`test_recommendation.py`/`test_app.py` acima).
+**100%** — definido via `--cov-fail-under=100` no workflow de CI (`.github/workflows/test.yml`). Nenhum arquivo de `app/lightsail_ia/` está mais excluído dessa medição via `omit=` no `.coveragerc` — a lista de exclusão (que chegou a ter 6 arquivos: `app.py`, `forms.py`, `admin.py`, `recommendation.py`, `cards.py`, `profile.py`) foi encolhendo módulo a módulo conforme cada um ganhou testes, e `app.py` (o último, e o mais difícil — script de entrypoint sem nenhuma função isolada) saiu por último usando `streamlit.testing.v1.AppTest`. Todos os módulos de UI têm cobertura real (100%/99%+) via mock direto de `st.*` (`st.markdown`/`st.session_state`/`st.button`/`st.text_input`/`st.components.v2.component`/`st.fragment`/`st.rerun`/`st.columns`) — sem depender de um script Streamlit rodando de verdade — exceto `app.py`, que precisa do `AppTest` justamente por não ter função isolada pra chamar (ver `test_infrastructure.py`/`test_components.py`/`test_cards.py`/`test_profile.py`/`test_admin.py`/`test_forms.py`/`test_recommendation.py`/`test_app.py` acima).
 
 ## Observação sobre testes de interface
 

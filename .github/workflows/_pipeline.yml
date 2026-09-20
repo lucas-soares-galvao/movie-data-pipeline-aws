@@ -26,7 +26,7 @@ name: 0. Pipeline CI/CD
 #                        nenhum dos dois depende do outro)
 #
 # O job "test" roda nas 3 branches (feature/*, develop, main) desde que se
-# descobriu que o gate de cobertura (--cov-fail-under=95) só rodava em
+# descobriu que o gate de cobertura (--cov-fail-under=100) só rodava em
 # feature/* — uma vez que o código chegava em develop/main (via PR automático
 # do pr_auto.yml, que só valida sintaxe Terraform, nunca teste/cobertura),
 # nada reexecutava o gate, e uma regressão de cobertura podia ficar parada em

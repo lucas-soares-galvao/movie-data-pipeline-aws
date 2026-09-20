@@ -18,8 +18,8 @@ que já rodam essa lógica em processo — ver "Práticas já aplicadas"), mante
 — o único caso que não pode ser internalizado, porque depende do motor `awsgluedq`, exclusivo do runtime Spark do Glue.
 `scripts/` também é estruturalmente diferente de `app/<modulo>/src/utils.py` +
 `main.py` (cada script concentra `main()` e helpers privados no próprio arquivo, sem pasta `src/`) — decisão
-deliberada, não descuido: são runbooks de operação manual fora do gate de cobertura de 95%, não código do pipeline
-deployado. Esta skill não descreve o que cada script faz linha a linha (isso é `scripts/scripts.md`) nem os testes
+deliberada, não descuido: são runbooks de operação manual, não código do pipeline
+deployado (mesmo assim, entram no gate de cobertura de 100%: `--cov=scripts`). Esta skill não descreve o que cada script faz linha a linha (isso é `scripts/scripts.md`) nem os testes
 (`test/scripts/scripts_tests.md`) — foca no racional de design: por que a unidade de checkpoint é o que é, por que
 existem 3 padrões diferentes de tratamento de erro entre os 8 scripts, e o que um script novo precisa reaproveitar
 de `backfill_shared.py` para não reintroduzir um bug já corrigido.

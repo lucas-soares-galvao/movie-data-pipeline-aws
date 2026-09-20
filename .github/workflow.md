@@ -60,7 +60,7 @@ flowchart TD
 
 Ponto de entrada do pipeline. Chama os outros workflows na ordem certa usando `needs:` e condicionais de branch. Um job `resolve-env` resolve o ambiente uma única vez (evitando repetir a mesma lógica nos jobs `terraform` e `deploy-lightsail`); a seleção de secrets `_DEV`/`_PROD` continua feita em cada job, pois secrets não devem transitar por outputs de job. `resolve-env` também roda em push de `feature/*` para conectar o job `test` a este hub no grafo do Actions (`needs: resolve-env`) — dependência puramente organizacional, igual à de `sonar`: `test` não consome `outputs.environment`.
 
-O job `test` roda nas 3 branches (`feature/*`, `develop`, `main`), não só em `feature/*`: o gate de cobertura (`--cov-fail-under=95`) só reexecuta quando `test` roda, e como o PR automático do `pr_auto.yml` (`develop`→`main`) só valida sintaxe Terraform, uma regressão de cobertura introduzida depois da branch de feature podia chegar em `main` sem que nada acusasse. Em `develop`/`main`, `terraform` (e em cascata `deploy-lightsail` e `auto-pr-environment`) e `sonar` esperam `test` passar (`needs: test`) — `terraform` porque constrói e aplica na AWS o código de `app/`, `sonar` porque reaproveita o `coverage.xml` do `test` e não faz sentido analisar um commit que o gate já reprovou. `terraform` e `sonar` continuam em paralelo entre si.
+O job `test` roda nas 3 branches (`feature/*`, `develop`, `main`), não só em `feature/*`: o gate de cobertura (`--cov-fail-under=100`) só reexecuta quando `test` roda, e como o PR automático do `pr_auto.yml` (`develop`→`main`) só valida sintaxe Terraform, uma regressão de cobertura introduzida depois da branch de feature podia chegar em `main` sem que nada acusasse. Em `develop`/`main`, `terraform` (e em cascata `deploy-lightsail` e `auto-pr-environment`) e `sonar` esperam `test` passar (`needs: test`) — `terraform` porque constrói e aplica na AWS o código de `app/`, `sonar` porque reaproveita o `coverage.xml` do `test` e não faz sentido analisar um commit que o gate já reprovou. `terraform` e `sonar` continuam em paralelo entre si.
 
 **Lógica de ambiente (job `resolve-env`):**
 
@@ -82,7 +82,7 @@ Em `main`, ao fim do pytest, publica o `coverage.xml` como artifact `coverage-xm
 | Etapa | Ferramenta | Comportamento |
 |---|---|---|
 | Lint | Ruff | **Bloqueia** se falhar |
-| Cobertura de testes | pytest-cov | **Bloqueia** se < 95% |
+| Cobertura de testes | pytest-cov | **Bloqueia** se < 100% |
 | Type check | mypy | Aviso (não bloqueia) |
 | Segurança do código | Bandit | Aviso (não bloqueia) |
 | Vulnerabilidades em deps | Safety | Aviso (não bloqueia) |
@@ -151,7 +151,7 @@ Chamado pelo `_pipeline.yml` (job `sonar`) apenas em push na branch `main` (ou `
 **Etapas principais:**
 
 1. Checkout com `fetch-depth: 0` (histórico completo — necessário para blame/new code period do Sonar)
-2. `actions/download-artifact` — baixa o artifact `coverage-xml` (gerado pelo `test.yml` no mesmo run) para a raiz do workspace, onde `sonar.python.coverage.reportPaths` espera o `coverage.xml`. Não roda pytest nem instala dependências: a cobertura no Sonar é exatamente a do gate de 95% do `test.yml`, sem uma segunda execução da suíte
+2. `actions/download-artifact` — baixa o artifact `coverage-xml` (gerado pelo `test.yml` no mesmo run) para a raiz do workspace, onde `sonar.python.coverage.reportPaths` espera o `coverage.xml`. Não roda pytest nem instala dependências: a cobertura no Sonar é exatamente a do gate de 100% do `test.yml`, sem uma segunda execução da suíte
 3. `SonarSource/sonarqube-scan-action` — lê `sonar-project.properties` (raiz do repo: `sonar.sources=app,scripts`, `sonar.tests=test`) e envia a análise pro SonarQube Cloud
 
 **Informativo, não bloqueante:** não usa `sonar.qualitygate.wait=true` — o job nunca falha por causa do Quality Gate do Sonar, mesmo padrão dos steps de aviso do `test.yml` (mypy/Bandit/Safety). Motivo: o plano Free não permite quality profile customizado (fica preso ao perfil padrão "Sonar way"), então convém calibrar o volume de achados antes de considerar torná-lo bloqueante.

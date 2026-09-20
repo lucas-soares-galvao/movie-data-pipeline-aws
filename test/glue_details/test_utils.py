@@ -1804,6 +1804,69 @@ class TestCollectAndWriteWatchProviders:
             df_written = mock_write.call_args.kwargs["df"]
             assert df_written.iloc[0]["year"] == "2023"
 
+    def test_preserva_ids_nao_stale_da_particao_existente(self):
+        """Registros já gravados no ano cujo ID não foi reprocessado são mantidos no merge;
+        os IDs reprocessados são substituídos pelos dados novos."""
+        existente = pd.DataFrame([
+            {"id": 1, "provider_name": "Antigo", "year": "2025"},
+            {"id": 2, "provider_name": "Mantido", "year": "2025"},
+        ])
+        with (
+            patch("src.utils.fetch_tmdb_watch_providers", return_value=self._BR_DATA),
+            patch("src.utils.wr.s3.read_parquet", return_value=existente),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_watch_providers("key", [1], "movie", "sot", "tb_wp_movie", "db", "2025")
+
+        df_written = mock_write.call_args.kwargs["df"]
+        assert sorted(df_written["id"]) == [1, 2]
+        assert "Antigo" not in set(df_written["provider_name"])
+        assert "Mantido" in set(df_written["provider_name"])
+        assert "Netflix" in set(df_written["provider_name"])
+
+    def test_particao_existente_vazia_grava_so_os_novos(self):
+        with (
+            patch("src.utils.fetch_tmdb_watch_providers", return_value=self._BR_DATA),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_watch_providers("key", [1], "movie", "sot", "tb_wp_movie", "db", "2025")
+
+        assert list(mock_write.call_args.kwargs["df"]["id"]) == [1]
+
+
+class TestFetchCollectionsPtBr:
+    def test_lista_vazia_retorna_dict_vazio_sem_chamar_api(self):
+        with patch("src.utils.tmdb_get") as mock_get:
+            assert u._fetch_collections_pt_br("key", []) == {}
+        mock_get.assert_not_called()
+
+    def test_retorna_nome_sem_espacos_extras_por_id(self):
+        with patch("src.utils.tmdb_get", side_effect=lambda url, _p: {"name": f"  Colecao {url[-1]}  "}) as mock_get:
+            resultado = u._fetch_collections_pt_br("key", [1, 2])
+
+        assert resultado == {1: "Colecao 1", 2: "Colecao 2"}
+        assert mock_get.call_args.args[1] == {"api_key": "key", "language": "pt-BR"}
+
+    def test_ignora_nome_ausente_ou_em_branco(self):
+        respostas = {1: {"name": "   "}, 2: {}, 3: {"name": "Trilogia"}}
+        with patch("src.utils.tmdb_get", side_effect=lambda url, _p: respostas[int(url.rsplit("/", 1)[1])]):
+            resultado = u._fetch_collections_pt_br("key", [1, 2, 3])
+
+        assert resultado == {3: "Trilogia"}
+
+    def test_falha_de_um_id_nao_derruba_os_demais(self, caplog):
+        def _get(url, _params):
+            if url.endswith("/1"):
+                raise RuntimeError("timeout")
+            return {"name": "Trilogia"}
+
+        with patch("src.utils.tmdb_get", side_effect=_get), caplog.at_level("WARNING"):
+            resultado = u._fetch_collections_pt_br("key", [1, 2])
+
+        assert resultado == {2: "Trilogia"}
+        assert "Falha ao buscar coleção 1" in caplog.text
+
 
 # ---------------------------------------------------------------------------
 # run_details_and_watch_providers_for_year
@@ -2040,6 +2103,22 @@ class TestGetParametersGlue:
         ):
             result = u.get_parameters_glue()
         assert result["CHANGES_S3_PATH"] == "s3://bucket/key.json"
+
+    def test_translate_provider_default_google(self):
+        with (
+            patch("src.utils.get_resolved_option", return_value=self._required()),
+            patch.object(sys, "argv", ["main.py"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["TRANSLATE_PROVIDER"] == "google"
+
+    def test_translate_provider_lido_do_sys_argv(self):
+        with (
+            patch("src.utils.get_resolved_option", return_value=self._required()),
+            patch.object(sys, "argv", ["main.py", "--TRANSLATE_PROVIDER", "aws"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["TRANSLATE_PROVIDER"] == "aws"
 
 
 # ---------------------------------------------------------------------------

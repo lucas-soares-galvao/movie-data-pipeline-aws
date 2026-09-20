@@ -126,6 +126,12 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_le_e_grava_parametro_ssm_por_content_type` | `get_parameter`/`put_parameter` usam o nome `/tmdb-pipeline/rotation-year-pointer-{content_type}` correto |
 | `test_translate_provider_default_google` | Sem `translate_provider` no evento, `TRANSLATE_PROVIDER="google"` |
 
+### `TestCollectReferenceTables` — falha isolada em `watch_providers_ref`
+
+| Teste | O que verifica |
+|---|---|
+| `test_falha_http_em_watch_providers_ref_nao_aborta_nem_aciona_glue_dele` | `HTTPError` em `collect_watch_providers_ref` é logado e engolido: genre e configuration já foram acionados, e o Glue de `watch_providers_ref` não é disparado |
+
 ## Casos de teste — `test_utils.py`
 
 Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salvamento no S3. Cada método usa `with patch(...)` como context manager para substituir dependências externas. Verifica contratos de chamada (argumentos corretos passados para boto3 e requests) e tratamento de erros (API retorna vazio, falha de rede).
@@ -180,6 +186,8 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salva
 | `test_para_quando_so_ha_uma_pagina` | Para corretamente quando `total_pages = 1` |
 | `test_s3_key_tem_formato_correto` | Chave S3 segue o padrão `tmdb/discover/{type}/ano={ano}/pagina_NNN.json` |
 | `test_salva_apenas_results_sem_metadados_de_paginacao` | Dados salvos no S3 são apenas o campo `results`, sem metadados de paginação (`page`, `total_pages`, `total_results`) |
+| `test_pagina_com_erro_http_e_ignorada_e_avisa_no_final` | `HTTPError` numa página é pulado (`continue`), as demais são salvas e o resumo final loga o número de páginas com erro |
+| `test_levanta_erro_quando_todas_as_paginas_falham` | Se nenhuma página for coletada, levanta `RuntimeError` e não chama `save_to_s3` |
 
 ### `TestCollectWatchProvidersRef`
 
@@ -202,6 +210,8 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salva
 | `test_multiplas_paginas_salva_cada_uma` | Número de arquivos salvos no S3 corresponde ao número de páginas retornadas |
 | `test_para_quando_page_maior_que_total_pages` | Paginação para quando `page > total_pages` retornado pela API |
 | `test_s3_key_tem_formato_correto` | Chave S3 segue o padrão `tmdb/now_playing/movie/pagina_001.json` |
+| `test_pagina_com_erro_http_e_ignorada_e_avisa_no_final` | `HTTPError` numa página é pulado, as demais são salvas e o resumo final loga o número de páginas com erro |
+| `test_levanta_erro_quando_todas_as_paginas_falham` | Se nenhuma página for coletada, levanta `RuntimeError` e não chama `save_to_s3` |
 
 ### `TestFetchChangedIds`
 
@@ -237,4 +247,4 @@ pytest test/lambda_api/ --cov=app/lambda_api --cov-report=term-missing
 
 ## Cobertura mínima
 
-**95%** — definido via `--cov-fail-under=95` no workflow de CI (`.github/workflows/test.yml`). O CI falha se a cobertura ficar abaixo desse limite.
+**100%** — definido via `--cov-fail-under=100` no workflow de CI (`.github/workflows/test.yml`). O CI falha se a cobertura ficar abaixo desse limite.

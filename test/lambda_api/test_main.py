@@ -523,3 +523,24 @@ class TestOnlyRotationRefresh:
         mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2004)
         chamada = mocks["mock_trigger"].call_args
         assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
+
+
+class TestCollectReferenceTables:
+    def test_falha_http_em_watch_providers_ref_nao_aborta_nem_aciona_glue_dele(self, caplog):
+        from requests.exceptions import HTTPError
+
+        with (
+            patch("main.trigger_glue_job") as mock_trigger,
+            patch("main.collect_genre_data"),
+            patch("main.collect_configuration_data"),
+            patch("main.collect_watch_providers_ref", side_effect=HTTPError("503")),
+            patch("main.s3_client"),
+            caplog.at_level("ERROR"),
+        ):
+            main._collect_reference_tables(
+                "api-key", "movie", "genre_movie", "configuration_languages", "watch_providers_ref_movie", {}
+            )
+
+        tipos_acionados = [c.kwargs["TABLE_TYPE"] for c in mock_trigger.call_args_list]
+        assert tipos_acionados == ["genre", "configuration"]
+        assert "Falha ao coletar watch_providers_ref" in caplog.text

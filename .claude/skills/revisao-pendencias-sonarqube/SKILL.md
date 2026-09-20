@@ -113,9 +113,9 @@ curl -s "$B/qualitygates/project_status?projectKey=$P" | python -c "import sys,j
 - **`sonar.exclusions=app/lightsail_ia/design/**`**: mockups de design ficam fora da análise.
 - **`sonar.coverage.exclusions=app/lightsail_ia/static/js/**`**: JS estático não conta no Coverage (só Python é
   medido), mas continua analisado para bugs/smells/duplicação.
-- **Coverage do Sonar ≠ gate do pytest.** O gate de 95% do CI vem de `pytest --cov=app --cov=scripts`; o `coverage`
-  do Sonar usa o mesmo `coverage.xml`, mas é reportado por arquivo. Um arquivo abaixo de 95% no Sonar não quebra o CI
-  enquanto o total ficar >= 95%.
+- **Coverage do Sonar ≠ gate do pytest.** O gate de 100% do CI vem de `pytest --cov=app --cov=scripts`; o `coverage`
+  do Sonar usa o mesmo `coverage.xml`, mas é reportado por arquivo. Com o gate em 100%, todo arquivo
+  precisa estar em 100% para o CI passar.
 
 ---
 
