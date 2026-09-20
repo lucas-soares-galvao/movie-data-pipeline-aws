@@ -73,15 +73,21 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   em `.github/workflows/backfill.yml:201-222` é o único lugar que interpreta esse número — reconhece 75 como
   "renovar credencial e tentar de novo" e qualquer outro código `!= 0` como falha real (`exit $codigo`, sem retry).
   Um script novo que capture uma exceção e chame `sys.exit` com outro número quebraria esse contrato
-  silenciosamente. `backfill_referencias.py` é o único script sem checkpoint — não itera por ano nem grava
-  progresso (não depende de `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`), então não há nada a retomar além de
-  recomeçar do zero. `backfill_changes.py` também não itera por ano, mas mantém checkpoint por `content_type`
-  (`movie`/`tv`): como não há ano, a chave de validação normalmente ocupada por `start_year`/`end_year` é
-  preenchida com a data de "ontem" (UTC) codificada como `YYYYMMDD` — mesma referência que
-  `collect_changes_data` usa para calcular a janela de busca —, o que mantém o checkpoint válido entre retries
-  no mesmo dia mas o invalida automaticamente num run manual em outro dia. Os `affected_years` de cada
-  `content_type` concluído ficam embutidos no próprio unit_id (`"content_type|ano1,ano2"`) para que o Data
-  Quality final continue cobrindo os anos certos ao retomar um `content_type` do checkpoint.
+  silenciosamente. `backfill_referencias.py` e `backfill_changes.py` não iteram por ano, mas mantêm
+  checkpoint: como não há ano, a chave de validação normalmente ocupada por `start_year`/`end_year` é
+  preenchida com uma data codificada como `YYYYMMDD`, o que mantém o checkpoint válido entre retries no mesmo
+  dia mas o invalida automaticamente num run manual em outro dia (um retry que cruze a meia-noite UTC recomeça
+  do zero). `backfill_changes.py` usa uma unidade por `content_type` (`movie`/`tv`) com a data de "ontem" (UTC)
+  — mesma referência que `collect_changes_data` usa para calcular a janela de busca — e embute os
+  `affected_years` no próprio unit_id (`"content_type|ano1,ano2"`) para que o Data Quality final continue
+  cobrindo os anos certos ao retomar um `content_type` do checkpoint. `backfill_referencias.py` usa uma unidade
+  por tabela, `"{media_type}:{table_type}"` (6 no total), com a data de hoje (UTC). **A granularidade por
+  tabela é deliberada**: a tradução de `configuration` leva ~30 min por tabela e uma passada completa passa
+  de 1h; quando o script não tinha checkpoint (era o único), a credencial de 1h expirava sempre antes de
+  `tv:configuration` terminar e o loop do workflow refazia tudo do zero a cada tentativa, sem nunca concluir
+  (livelock observado em 2026-09-20 no DEV e no PROD, com o Data Quality de `genre_movie` disparado de novo a
+  cada ~1h05). Regra geral: **uma unidade de checkpoint nunca deve durar perto de 1h**, senão a retomada não
+  converge — ainda é o risco de `backfill_enriquecimento.py`, cuja unidade `media_type:ano` chegou a levar ~1h.
 - **`is_expired_token_error` reconhece dois códigos de erro distintos para a mesma causa raiz**
   (`scripts/backfill_shared.py:49-54, 227-239`): `ExpiredTokenException` (STS — Glue, Athena, Secrets Manager) e
   `ExpiredToken` (S3 — `ListObjectsV2`/`get_object`/`put_object`/`delete_object`) — correção de um bug real de

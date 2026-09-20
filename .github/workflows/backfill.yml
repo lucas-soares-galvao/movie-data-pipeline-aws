@@ -265,15 +265,18 @@ jobs:
             export AWS_SESSION_TOKEN=$(echo "$creds" | cut -f3)
           }
 
-          # Nota: backfill_referencias.py não itera por ano nem grava checkpoint (só 6 unidades,
-          # idempotentes). Faz chamadas reais de S3/Secrets/TMDB diretamente no processo (não mais
-          # uma invocação curta de Lambda) e pode sair com código 75 se a credencial expirar no
-          # meio do run — esse loop genérico já cobre o retry, sem checkpoint: a próxima tentativa
-          # refaz tudo do zero. backfill_changes.py também não itera por ano (só 2 content_types,
-          # movie/tv), mas tem checkpoint próprio por content_type (chave de validação preenchida
-          # com a data em vez de um ano) — uma expiração de credencial retoma só o content_type
-          # pendente, sem refazer o que já concluiu. backfill_rename_colunas.py itera por tabela x
-          # ano (não por media_type) e usa o mesmo checkpoint/retry dos demais.
+          # Nota: backfill_referencias.py não itera por ano, mas tem checkpoint por tabela (6
+          # unidades "media_type:table_type", chave de validação preenchida com a data de hoje em vez
+          # de um ano). Faz chamadas reais de S3/Secrets/TMDB diretamente no processo (não mais uma
+          # invocação curta de Lambda) e pode sair com código 75 se a credencial expirar no meio do
+          # run — esse loop genérico cobre o retry e a próxima tentativa retoma só as unidades
+          # pendentes. O checkpoint é essencial aqui: a tradução de configuration leva ~30 min por
+          # tabela, uma passada completa passa de 1h, e sem ele a credencial expirava sempre antes
+          # de terminar e cada tentativa refazia tudo do zero. backfill_changes.py também não itera
+          # por ano (só 2 content_types, movie/tv), mas tem checkpoint próprio por content_type
+          # (mesma ideia, com a data de ontem) — uma expiração de credencial retoma só o
+          # content_type pendente, sem refazer o que já concluiu. backfill_rename_colunas.py itera
+          # por tabela x ano (não por media_type) e usa o mesmo checkpoint/retry dos demais.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
           # se o timeout mudar, ajustar aqui também.
           # ARN do tópico SNS de sucesso do backfill (scripts/backfill_shared.py:

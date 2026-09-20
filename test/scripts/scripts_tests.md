@@ -135,13 +135,34 @@ os testes mockam as funções chamadas (`collect_genre_data`,
 | `test_dispara_dq_uma_vez_por_tabela_gravada` | `trigger_glue_job` (Data Quality) é chamado 6 vezes, uma por tabela |
 | `test_erro_em_genre_aborta_o_backfill` | Exceção em `collect_genre_data` propaga e impede `collect_configuration_data` de rodar (mesmo formato de "abortar no primeiro erro" de antes, agora por propagação direta, sem `invoke_lambda_sync`) |
 | `test_http_error_em_watch_providers_ref_nao_aborta_mas_pula_a_escrita` | `HTTPError` em `collect_watch_providers_ref` é capturado — não aborta o script, mas a tabela correspondente não é escrita nem validada |
-| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` / `test_outro_erro_nao_gera_codigo_de_retomada` / `test_expired_token_gera_codigo_75` (parametrizado) | Mesmos contratos de erro/retomada dos demais scripts sem checkpoint |
+| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` / `test_outro_erro_nao_gera_codigo_de_retomada` / `test_expired_token_gera_codigo_75` (parametrizado) | Mesmos contratos de erro/retomada dos demais scripts |
+
+Os testes usam o context manager `_patched_main`, que mocka também `load/save/clear_checkpoint` e devolve os mocks mesmo quando `main()` levanta exceção. `save_checkpoint` é capturado com instantâneos do conjunto (o mesmo `set` é mutado a cada unidade, então `call_args_list` sozinho só mostraria o estado final).
+
+### `TestCheckpoint`
+
+Checkpoint por unidade `"{media_type}:{table_type}"` (6 unidades), motivado por um livelock real: uma passada completa passa de 1h e, sem checkpoint, a credencial expirava sempre antes de `tv:configuration` terminar.
+
+| Teste | O que verifica |
+|---|---|
+| `test_valida_o_checkpoint_com_a_data_utc_de_hoje_como_chave` | `load_checkpoint` recebe a data UTC de hoje (`YYYYMMDD`) nos dois argumentos de ano |
+| `test_sem_checkpoint_grava_uma_vez_por_unidade_na_ordem_de_processamento` | 6 gravações de checkpoint, cada uma acrescentando uma unidade, na ordem de processamento |
+| `test_grava_o_checkpoint_no_bucket_temp_com_o_mesmo_valor_nos_dois_argumentos_de_ano` | Bucket `S3_BUCKET_TEMP`, `table_group="referencias"` e `start_key == end_key` |
+| `test_retoma_pulando_as_unidades_de_movie_ja_concluidas` | Com as 3 unidades de `movie` concluídas, só `tv` é coletado, escrito e validado (3 disparos de DQ) |
+| `test_pula_somente_a_unidade_ja_concluida` (parametrizado por `genre`/`configuration`/`watch_providers_ref`) | Cada ramo de "pular" é independente: só a unidade concluída deixa de rodar para `movie` |
+| `test_retomada_preserva_no_checkpoint_as_unidades_anteriores` | Unidades vindas do checkpoint continuam no conjunto gravado |
+| `test_com_todas_as_unidades_concluidas_nao_recoleta_mas_roda_agg_notifica_e_limpa` | Retomada depois de um crash no fim: sem coleta/escrita/DQ, mas AGG, notificação e limpeza rodam |
+| `test_limpa_o_checkpoint_ao_final_depois_do_agg_e_da_notificacao` | Ordem `agg` → `notify` → `clear_checkpoint` |
+| `test_nao_limpa_o_checkpoint_quando_erro_em_configuration_aborta` | Erro não retomável mantém o checkpoint com o que já concluiu |
+| `test_http_error_em_watch_providers_ref_nao_entra_no_checkpoint` | `HTTPError` pula a unidade sem marcá-la (um retry tenta de novo); o script termina e limpa |
+| `test_token_expirado_na_escrita_preserva_o_checkpoint_e_sai_com_codigo_75` | Token expirado no meio: `SystemExit(75)` via `run_with_retry_exit`, checkpoint preservado, sem AGG/notificação/limpeza |
+| `test_retry_apos_token_expirado_nao_refaz_a_unidade_ja_concluida` | A tentativa seguinte não recoleta `movie:genre` e continua em `movie:configuration` |
 
 ### `TestGlueAgg`
 
 | Teste | O que verifica |
 |---|---|
-| `test_chamado_uma_vez_ao_final` | `trigger_agg_locally` chamado uma vez ao final de `main()`, com os argumentos corretos — este script não tem `failures`/checkpoint; "sem falhas" = chegou ao fim sem exceção |
+| `test_chamado_uma_vez_ao_final` | `trigger_agg_locally` chamado uma vez ao final de `main()`, com os argumentos corretos — "sem falhas" = chegou ao fim sem exceção |
 
 ## Casos de teste — `test_backfill_enriquecimento.py`
 
