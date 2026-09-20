@@ -95,6 +95,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   `backfill_traducao.py` — não existe mais um wrapper comum tipo `build_base_payloads` (removido junto com
   `invoke_lambda_sync`, ver histórico do módulo); cada script chama o guard diretamente antes de resolver
   `translate_fn`/`detect_fn`.
+- `backfill_traducao.py` também serve de **reparo em massa** de tradução poluída: `resolve_pt_translation` (passo 0) descarta `*_pt` que seja a página de erro do Google e zera o contador de tentativas, então rodar o script (dev primeiro) retraduz essas linhas e o Glue AGG final regrava a SPEC. Não há script novo para isso.
 - **3 padrões de tratamento de erro coexistem deliberadamente**, cada um adequado ao tipo de chamada AWS por trás:
   1. **Abortar no primeiro erro** (`backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_referencias.py`):
      qualquer exceção não tratada como token expirado propaga até o processo, que sai com código `!= 0` e
