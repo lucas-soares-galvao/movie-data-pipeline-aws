@@ -556,6 +556,10 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "string"
     }
     columns {
+      name = "theatrical_release_date_br"
+      type = "string"
+    }
+    columns {
       name = "trailer_url"
       type = "string"
     }
