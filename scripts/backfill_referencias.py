@@ -31,7 +31,8 @@ Variáveis de ambiente obrigatórias:
     TABLE_WATCH_PROVIDERS_REF_TV
     TMDB_SECRET_ARN                 (ARN do secret com a chave de API do TMDB)
     GLUE_DATA_QUALITY_JOB_NAME      (disparado uma vez por tabela gravada, ver "Data Quality" abaixo)
-    S3_BUCKET_TEMP                  (área de resultados temporários do Athena usada pelo Glue AGG)
+    S3_BUCKET_TEMP                  (checkpoint de retomada e área de resultados temporários do
+                                     Athena usada pelo Glue AGG)
     S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
                                      (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
@@ -71,15 +72,35 @@ Erros:
     já existente em app/lambda_api/main.py).
 
 Retomada automática:
-    Não grava checkpoint (só 6 unidades, sem dependência de ano). Se a credencial AWS expirar
-    (ExpiredTokenException do STS ou ExpiredToken do S3/Secrets Manager), o script sai com exit
-    code 75 (backfill_shared.RETRYABLE_EXIT_CODE) e o workflow renova a credencial e roda o
-    script de novo — como não há checkpoint, a próxima tentativa refaz tudo do zero.
+    Se a credencial AWS expirar (ExpiredTokenException do STS ou ExpiredToken do S3/Secrets
+    Manager), o script sai com exit code 75 (backfill_shared.RETRYABLE_EXIT_CODE) e o workflow
+    renova a credencial e roda o script de novo.
+
+    Checkpoint por unidade "{media_type}:{table_type}" (movie:genre, movie:configuration,
+    movie:watch_providers_ref e o mesmo para tv — 6 unidades), gravado em S3 logo após a escrita
+    de cada tabela e do respectivo disparo de Data Quality, com o mesmo mecanismo de
+    backfill_shared.load_checkpoint/save_checkpoint/clear_checkpoint usado pelos demais scripts.
+    A granularidade é por tabela (e não por content_type) de propósito: a tradução de
+    configuration (languages/countries) leva ~30 min cada e, sozinha, cabe numa sessão AWS de 1h;
+    uma passada completa passa de 1h, e sem checkpoint a credencial expirava sempre antes de
+    tv:configuration terminar, refazendo tudo do zero a cada tentativa.
+
+    Como este script não itera por ano, a chave de validação do checkpoint (normalmente
+    start_year/end_year) é preenchida com a data de hoje (UTC) codificada como YYYYMMDD. Isso
+    mantém o checkpoint parcial válido entre retries no mesmo dia (o cenário real de token
+    expirado) e o invalida automaticamente num run manual de outro dia. Limitação: um retry que
+    cruze a meia-noite UTC ignora o checkpoint e recomeça do zero.
+
+    Uma unidade só entra no checkpoint depois de escrita com sucesso — watch_providers_ref que
+    falha com HTTPError (ver "Erros") fica de fora e é tentada de novo numa retomada. O checkpoint
+    é removido ao final, depois do Glue AGG e da notificação (mesma ordem de backfill_changes.py:
+    se o AGG propagasse token expirado depois da limpeza, a retomada reprocessaria tudo).
 """
 
 import os
 import sys
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -168,60 +189,75 @@ def _process_content_type(
     s3_bucket_sot: str,
     dq_job_name: str,
     translate_provider: str,
+    completed: set[str],
+    on_unit_done: Callable[[str], None],
 ) -> None:
-    logger.info("Coletando gêneros do TMDB para '%s'...", media_type)
-    collect_genre_data(api_key, s3_client, s3_bucket_sor, media_type)
-    _write_table(
-        media_type=media_type,
-        table_type="genre",
-        table_name=table_genre,
-        database=database,
-        s3_bucket_sor=s3_bucket_sor,
-        s3_bucket_sot=s3_bucket_sot,
-        dq_job_name=dq_job_name,
-    )
+    """Processa as 3 unidades (genre, configuration, watch_providers_ref) de um content_type.
 
-    # Resolvidos uma vez por content_type (não uma vez só para o script inteiro), mesmo padrão
-    # de backfill_enriquecimento.py/backfill_changes.py — evita que a primeira content_type
-    # esgote sozinha o orçamento de fallback ao AWS Translate.
-    translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
-    detect_fn = resolve_detect_language_fn(
-        detect_language_langdetect, detect_language_aws, provider=translate_provider,
-    )
-
-    logger.info("Coletando configurações do TMDB para '%s'...", media_type)
-    collect_configuration_data(api_key, s3_client, s3_bucket_sor, media_type)
-    _write_table(
-        media_type=media_type,
-        table_type="configuration",
-        table_name=table_configuration,
-        database=database,
-        s3_bucket_sor=s3_bucket_sor,
-        s3_bucket_sot=s3_bucket_sot,
-        dq_job_name=dq_job_name,
-        translate_fn=translate_fn,
-        detect_fn=detect_fn,
-    )
-
-    logger.info("Coletando referência de watch providers do TMDB para '%s'...", media_type)
-    try:
-        collect_watch_providers_ref(api_key, s3_client, s3_bucket_sor, media_type)
-    except HTTPError:
-        logger.error(
-            "Falha ao coletar watch_providers_ref para '%s'. Pulando — dados anteriores no "
-            "S3 permanecem válidos.", media_type,
+    `completed` traz os unit_ids "{media_type}:{table_type}" já concluídos segundo o checkpoint
+    (não são refeitos); `on_unit_done` é chamado com o unit_id logo após cada unidade escrita com
+    sucesso, para o chamador persistir o checkpoint.
+    """
+    if f"{media_type}:genre" not in completed:
+        logger.info("Coletando gêneros do TMDB para '%s'...", media_type)
+        collect_genre_data(api_key, s3_client, s3_bucket_sor, media_type)
+        _write_table(
+            media_type=media_type,
+            table_type="genre",
+            table_name=table_genre,
+            database=database,
+            s3_bucket_sor=s3_bucket_sor,
+            s3_bucket_sot=s3_bucket_sot,
+            dq_job_name=dq_job_name,
         )
-        return
+        on_unit_done(f"{media_type}:genre")
 
-    _write_table(
-        media_type=media_type,
-        table_type="watch_providers_ref",
-        table_name=table_watch_providers_ref,
-        database=database,
-        s3_bucket_sor=s3_bucket_sor,
-        s3_bucket_sot=s3_bucket_sot,
-        dq_job_name=dq_job_name,
-    )
+    if f"{media_type}:configuration" not in completed:
+        # Resolvidos uma vez por content_type (não uma vez só para o script inteiro), mesmo
+        # padrão de backfill_enriquecimento.py/backfill_changes.py — evita que a primeira
+        # content_type esgote sozinha o orçamento de fallback ao AWS Translate.
+        translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
+        detect_fn = resolve_detect_language_fn(
+            detect_language_langdetect, detect_language_aws, provider=translate_provider,
+        )
+
+        logger.info("Coletando configurações do TMDB para '%s'...", media_type)
+        collect_configuration_data(api_key, s3_client, s3_bucket_sor, media_type)
+        _write_table(
+            media_type=media_type,
+            table_type="configuration",
+            table_name=table_configuration,
+            database=database,
+            s3_bucket_sor=s3_bucket_sor,
+            s3_bucket_sot=s3_bucket_sot,
+            dq_job_name=dq_job_name,
+            translate_fn=translate_fn,
+            detect_fn=detect_fn,
+        )
+        on_unit_done(f"{media_type}:configuration")
+
+    if f"{media_type}:watch_providers_ref" not in completed:
+        logger.info("Coletando referência de watch providers do TMDB para '%s'...", media_type)
+        try:
+            collect_watch_providers_ref(api_key, s3_client, s3_bucket_sor, media_type)
+        except HTTPError:
+            # Não entra no checkpoint: uma retomada tenta coletar de novo.
+            logger.error(
+                "Falha ao coletar watch_providers_ref para '%s'. Pulando — dados anteriores no "
+                "S3 permanecem válidos.", media_type,
+            )
+            return
+
+        _write_table(
+            media_type=media_type,
+            table_type="watch_providers_ref",
+            table_name=table_watch_providers_ref,
+            database=database,
+            s3_bucket_sor=s3_bucket_sor,
+            s3_bucket_sot=s3_bucket_sot,
+            dq_job_name=dq_job_name,
+        )
+        on_unit_done(f"{media_type}:watch_providers_ref")
 
 
 def main() -> None:
@@ -247,6 +283,11 @@ def main() -> None:
 
     s3_client = boto3.client("s3", region_name=region)
 
+    table_group = "referencias"
+    # Sem conceito de ano: a data de hoje (UTC), codificada como YYYYMMDD, ocupa o lugar de
+    # start_year/end_year na validação do checkpoint (ver "Retomada automática" no docstring).
+    window_key = int(datetime.now(timezone.utc).strftime("%Y%m%d"))
+
     logger.info("Buscando chave de API do TMDB no Secrets Manager...")
     api_key = get_api_secret(secret_arn, "tmdb_api_key")
 
@@ -254,6 +295,14 @@ def main() -> None:
         ("movie", db_movie, table_genre_movie, table_configuration_languages, table_watch_providers_ref_movie),
         ("tv",    db_tv,    table_genre_tv,    table_configuration_countries, table_watch_providers_ref_tv),
     ]
+
+    completed = shared.load_checkpoint(s3_client, s3_bucket_temp, table_group, window_key, window_key)
+    total_units = len(content_types) * 3
+    shared.log_resume_progress(logger, "unidades já concluídas", total_units, total_units - len(completed))
+
+    def mark_unit_done(unit_id: str) -> None:
+        completed.add(unit_id)
+        shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, window_key, window_key, completed)
 
     logger.info("Atualizando referências (genre, configuration, watch_providers_ref) — movie e tv")
 
@@ -273,6 +322,8 @@ def main() -> None:
             s3_bucket_sot=s3_bucket_sot,
             dq_job_name=dq_job_name,
             translate_provider=translate_provider,
+            completed=completed,
+            on_unit_done=mark_unit_done,
         )
 
     logger.info("Referências atualizadas.")
@@ -293,6 +344,7 @@ def main() -> None:
         "Backfill de referências concluído: genre, configuration e watch_providers_ref "
         "atualizadas (movie e tv), Data Quality e Glue AGG disparados.",
     )
+    shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
 
 if __name__ == "__main__":
