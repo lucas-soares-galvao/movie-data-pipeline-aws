@@ -91,7 +91,7 @@ proj-eng-dados-filmes-aws/
 │           ├── __init__.py
 │           ├── api_client.py          # API client genérico com retry/backoff e Secrets Manager
 │           ├── glue_helpers.py        # Utilitários compartilhados de jobs Glue (getResolvedOptions, logging)
-│           ├── traducao.py            # Tradução inglês → português via Google Translate
+│           ├── traducao.py            # Tradução inglês → português, primário/fallback configurável (AWS Translate/Google)
 │           └── triggers.py            # Disparo genérico de Glue jobs
 ├── infra/
 │   ├── envs/

@@ -81,7 +81,7 @@ Usado por todas as Lambdas e jobs Glue; empacotado como wheel (Glue) ou copiado 
 |---|---|---|
 | `api_client.py` | `api_get`, `get_api_secret`, `_calculate_wait` | Cliente HTTP genérico com retry/backoff exponencial e leitura de secret no Secrets Manager |
 | `glue_helpers.py` | `get_resolved_option`, `configure_glue_logging` | Wrapper de `getResolvedOptions` com tratamento de args opcionais (`SystemExit`) |
-| `traducao.py` / `traducao_google.py` / `traducao_aws.py` | `resolve_translate_fn`, `resolve_pt_translation`, `translate_in_parallel`, `reuse_existing_translation`, `make_capped_fallback` | Tradução EN→PT com fallback Google→AWS Translate, paralelismo e cache/reuso |
+| `traducao.py` / `traducao_google.py` / `traducao_aws.py` | `resolve_translate_fn`, `resolve_pt_translation`, `translate_in_parallel`, `reuse_existing_translation`, `make_capped_fallback`, `get_translate_chars_used_this_month` | Tradução EN→PT primário/fallback configurável (`var.translate_provider`, hoje `"aws"` — Google como fallback grátis e sem teto; o inverso usa um orçamento **mensal** consultado via CloudWatch), paralelismo e cache/reuso |
 | `idioma.py` / `idioma_langdetect.py` / `idioma_aws.py` | `resolve_detect_language_fn`, `add_detected_language_column`, `detect_language_langdetect`, `detect_language_aws` | Detecção de idioma (langdetect local ou AWS Comprehend) |
 | `triggers.py` | `trigger_glue_job` | Disparo genérico de outro job Glue ao final de uma execução |
 
