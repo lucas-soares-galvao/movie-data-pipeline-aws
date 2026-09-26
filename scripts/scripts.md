@@ -145,9 +145,13 @@ e `backfill_changes.py`, todos via env var própria) aceitam opcionalmente
 `TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
 instável sob alto volume; `"aws"` usa AWS Translate, pago por caractere, útil
 para testar um período menor via `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) —
-exposto no workflow como o input `translate_provider`. `"google"` também é o
-default do caminho automático via EventBridge (`lambda_api` → `glue_etl` →
-`glue_details`) — em ambos os casos o serviço não escolhido é usado
+exposto no workflow como o input `translate_provider`. `"google"` é só o default
+do *código* do caminho automático via EventBridge (`lambda_api` → `glue_etl` →
+`glue_details`) — o deploy via Terraform (`infra/glue_etl.tf`/`infra/glue_details.tf`,
+`var.translate_provider`) hoje passa `"aws"` como primário nos dois jobs, com
+Comprehend como detector primário por acoplamento (mesmo `TRANSLATE_PROVIDER`
+decide os dois — ver `resolve_detect_language_fn` abaixo). Independente de qual
+lado é o primário, o serviço não escolhido é usado
 automaticamente como fallback caso o primário falhe (ver `resolve_translate_fn`
 em `shared_utils.traducao`), com o fallback ao AWS Translate limitado pelo que
 sobrar de um orçamento **mensal** (default 2_000_000 caracteres == free tier

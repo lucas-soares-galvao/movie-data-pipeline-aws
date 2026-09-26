@@ -612,6 +612,28 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
         Resource = "arn:aws:sns:sa-east-1:${data.aws_caller_identity.current.account_id}:${local.tmdb_prefix}-*"
       },
+      {
+        # Gerencia o aws_budgets_budget.translate_monthly_cost (infra/budgets.tf) — a trava
+        # de custo do AWS Translate/Comprehend como primário. AWS Budgets não suporta
+        # restrição por ARN de recurso específico nas actions de gerenciamento (só
+        # Resource = "*"); melhor esforço de confirmação via IAM Service Authorization
+        # Reference nesta sessão — reconfirmar se algum dia parecer não bater.
+        Sid    = "Budgets"
+        Effect = "Allow"
+        Action = [
+          "budgets:CreateBudget",
+          "budgets:ModifyBudget",
+          "budgets:DescribeBudgets",
+          "budgets:DeleteBudget",
+          "budgets:CreateNotification",
+          "budgets:DeleteNotification",
+          "budgets:DescribeNotificationsForBudget",
+          "budgets:CreateSubscriber",
+          "budgets:DeleteSubscriber",
+          "budgets:DescribeSubscribersForNotification",
+        ]
+        Resource = "*"
+      },
     ]
   })
 

@@ -84,6 +84,14 @@ variable "backfill_notification_email" {
   type        = string
 }
 
+# Cross-cutting (glue_details + glue_etl, não pertence a um componente só) — usada só pelo
+# aws_budgets_budget em infra/budgets.tf, por isso uma variável própria em vez de reaproveitar
+# glue_details_notification_email/glue_etl_notification_email.
+variable "translate_cost_notification_email" {
+  description = "E-mail para alertar quando o gasto mensal com AWS Translate ultrapassar o limite do budget"
+  type        = string
+}
+
 # =============================================================================
 # BUCKETS S3 — ARQUITETURA MEDALHÃO
 # =============================================================================
@@ -253,6 +261,25 @@ variable "aws_translate_monthly_max_chars" {
   description = "Teto mensal de caracteres para o fallback ao AWS Translate (default = free tier mensal)"
   type        = number
   default     = 2000000
+}
+
+# Serviço de tradução/detecção de idioma PRIMÁRIO do pipeline automático (glue_details +
+# glue_etl) — ver shared_utils.traducao.resolve_translate_fn/shared_utils.idioma.
+# resolve_detect_language_fn (a mesma escolha determina os dois, por acoplamento de design já
+# existente no código). "aws" usa AWS Translate/Comprehend como primário (sem teto — só o
+# fallback tem cap, ver aws_translate_monthly_max_chars acima) e Google como fallback grátis
+# sem limite; "google" é o inverso. Exposto como variável (não hardcoded em app/) para poder
+# reverter no futuro só com terraform apply, sem alterar código — o default do próprio código
+# continua "google" como rede de segurança caso este argumento não seja passado.
+variable "translate_provider" {
+  description = "Serviço primário de tradução/detecção de idioma do pipeline automático: \"aws\" ou \"google\""
+  type        = string
+  default     = "aws"
+
+  validation {
+    condition     = contains(["aws", "google"], var.translate_provider)
+    error_message = "translate_provider deve ser \"aws\" ou \"google\" (ver shared_utils.traducao.resolve_translate_fn)."
+  }
 }
 
 # =============================================================================

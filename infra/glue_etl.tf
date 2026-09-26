@@ -64,6 +64,13 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     # Account ID da própria conta, usado como ExpectedBucketOwner nas chamadas boto3
     # ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
     "--AWS_ACCOUNT_ID" = tostring(data.aws_caller_identity.current.account_id)
+    # Serviço primário de tradução/detecção de idioma (tabela de referência
+    # "configuration" — nomes de países/idiomas) — "aws" por padrão (var.translate_provider).
+    # main.py repassa este mesmo valor ao acionar glue_details (trigger_glue_job(...,
+    # TRANSLATE_PROVIDER=translate_provider)), então é esta variável — não a de
+    # glue_details.tf — que decide o provider do caminho normal de discover; a de
+    # glue_details.tf só vale para o modo changes, disparado direto pela lambda_api.
+    "--TRANSLATE_PROVIDER" = var.translate_provider
   }
 
   tags = local.component_tags.glue_etl

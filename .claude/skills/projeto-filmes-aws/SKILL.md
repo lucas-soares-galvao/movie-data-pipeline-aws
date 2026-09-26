@@ -90,7 +90,7 @@ EventBridge (schedule)
 |--------|----------|-----------|
 | `tb_tmdb_discover_movie_{env}` | Filmes descobertos | `year` |
 | `tb_tmdb_genre_movie_{env}` | Gêneros de filmes | — |
-| `tb_tmdb_configuration_languages_{env}` | Idiomas (com `name_pt` traduzido via Google Translate) | — |
+| `tb_tmdb_configuration_languages_{env}` | Idiomas (com `name_pt` traduzido via AWS Translate, primário; Google como fallback) | — |
 | `tb_tmdb_details_movie_{env}` | Detalhes de filmes (runtime, streaming) | `year` |
 | `tb_tmdb_watch_providers_movie_{env}` | Plataformas de streaming (filmes) | `year` |
 | `tb_tmdb_watch_providers_ref_movie_{env}` | Referência de provedores (filmes) | — |
@@ -101,7 +101,7 @@ EventBridge (schedule)
 |--------|----------|-----------|
 | `tb_tmdb_discover_tv_{env}` | Séries descobertas | `year` |
 | `tb_tmdb_genre_tv_{env}` | Gêneros de séries | — |
-| `tb_tmdb_configuration_countries_{env}` | Países (com `name_pt` traduzido via Google Translate) | — |
+| `tb_tmdb_configuration_countries_{env}` | Países (com `name_pt` traduzido via AWS Translate, primário; Google como fallback) | — |
 | `tb_tmdb_details_tv_{env}` | Detalhes de séries (temporadas, episódios, streaming) | `year` |
 | `tb_tmdb_watch_providers_tv_{env}` | Plataformas de streaming (séries) | `year` |
 | `tb_tmdb_watch_providers_ref_tv_{env}` | Referência de provedores (séries) | — |
@@ -226,7 +226,7 @@ discover → ETL → Details). Regras EventBridge: `lambda_api_movie_rotation_we
 
 ## Segurança e Observabilidade
 
-- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 7 policies em prod/6 em dev scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`; a de Lightsail só existe em prod, FilmBot não existe em dev); `glue_details_role`, `glue_etl_role` e a role de backfill também têm `translate:TranslateText` (fallback de tradução via AWS Translate — `Resource = "*"`, AWS não restringe esse action por recurso)
+- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 7 policies em prod/6 em dev scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`; a de Lightsail só existe em prod, FilmBot não existe em dev); `glue_details_role`, `glue_etl_role` e a role de backfill também têm `translate:TranslateText`/`comprehend:DetectDominantLanguage` (tradução/detecção, hoje primário via `var.translate_provider="aws"` — `Resource = "*"`, AWS não restringe essas actions por recurso) e `cloudwatch:ListMetrics`/`GetMetricStatistics` (orçamento mensal do fallback quando `"google"` é o primário); a policy `cicd-terraform-observability-{env}` da role de CI/CD também ganhou `budgets:*` para gerenciar `aws_budgets_budget.translate_monthly_cost` (trava de custo do Translate como primário, `infra/budgets.tf`)
 - **Secrets Manager**: secret unificado (`filmbot_secret_arn`) com `tmdb_api_key`, `llm_api_key` (LLM do FilmBot) e `filmbot_password`; `glue_details` recebe esse ARN como `TMDB_SECRET_ARN`
 - **CloudWatch Alarms**: Alarmes configurados para cada etapa do pipeline, com notificações por e-mail via SNS
 - **Glue DQ CloudWatch Metrics**: `enableDataQualityCloudWatchMetrics: True` no job de DQ

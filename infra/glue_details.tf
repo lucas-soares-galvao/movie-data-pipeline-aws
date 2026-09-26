@@ -37,11 +37,19 @@ resource "aws_glue_job" "details_job_pythonshell" {
     # ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
     "--AWS_ACCOUNT_ID" = tostring(data.aws_caller_identity.current.account_id)
     # Teto MENSAL (não por execução) de caracteres pro fallback ao AWS Translate quando
-    # TRANSLATE_PROVIDER="google" (padrão do caminho automático) — ver
-    # shared_utils.traducao.resolve_translate_fn/get_translate_chars_used_this_month.
-    # Exposto como variável (em vez de hardcoded no código) pra poder ser ajustado sem
-    # alterar app/, só terraform apply.
+    # TRANSLATE_PROVIDER="google" — ver
+    # shared_utils.traducao.resolve_translate_fn/get_translate_chars_used_this_month. Só
+    # importa de fato quando var.translate_provider="google" logo abaixo (com "aws" primário,
+    # o fallback é o Google, grátis e sem cap). Exposto como variável (em vez de hardcoded no
+    # código) pra poder ser ajustado sem alterar app/, só terraform apply.
     "--AWS_FALLBACK_MONTHLY_MAX_CHARS" = tostring(var.aws_translate_monthly_max_chars)
+    # Serviço primário de tradução/detecção de idioma — "aws" por padrão (var.translate_provider).
+    # Sem este argumento, o job cairia no default "google" do código
+    # (get_parameters_glue()). glue_etl também precisa da mesma variável: ele repassa seu
+    # próprio TRANSLATE_PROVIDER ao acionar este job para o caminho normal de discover
+    # (glue_etl/main.py), então esse valor aqui só vale de fato para o modo changes
+    # (lambda_api aciona glue_details direto, sem passar por glue_etl).
+    "--TRANSLATE_PROVIDER" = var.translate_provider
   }
 
   tags = local.component_tags.glue_details
