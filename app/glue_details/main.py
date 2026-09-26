@@ -38,6 +38,7 @@ def main() -> None:
     year           = args["YEAR"]
     end_year       = args["END_YEAR"]
     translate_provider = args["TRANSLATE_PROVIDER"]
+    aws_fallback_monthly_max_chars = int(args["AWS_FALLBACK_MONTHLY_MAX_CHARS"])
     changes_s3_path = args["CHANGES_S3_PATH"]
 
     table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
@@ -67,6 +68,7 @@ def main() -> None:
             s3_bucket_sot=s3_bucket_sot,
             s3_bucket_temp=s3_bucket_temp,
             translate_provider=translate_provider,
+            aws_fallback_monthly_max_chars=aws_fallback_monthly_max_chars,
         )
         # Um disparo por tabela com todos os anos agrupados (não um disparo por ano):
         # o DQ paga o overhead fixo de startup do Spark uma vez só, iterando os anos
@@ -99,6 +101,7 @@ def main() -> None:
         table_watch_providers=table_watch_providers,
         dq_job_name=dq_job_name,
         translate_provider=translate_provider,
+        aws_fallback_monthly_max_chars=aws_fallback_monthly_max_chars,
     )
 
     logger.info("Job Glue Details finalizado com sucesso!")

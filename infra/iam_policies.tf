@@ -350,6 +350,27 @@ resource "aws_iam_role_policy" "glue_etl_translate" {
   })
 }
 
+# Consulta o CharacterCount do AWS Translate no CloudWatch para calcular quanto do teto
+# MENSAL do fallback (default do módulo, 2_000_000 caracteres — este job não expõe
+# AWS_FALLBACK_MONTHLY_MAX_CHARS como argumento próprio) já foi consumido antes de
+# decidir se ainda pode traduzir via AWS neste run — ver
+# shared_utils.traducao.get_translate_chars_used_this_month. Nenhuma das duas actions
+# suporta restrição por recurso na AWS (Resource = "*"), mesmo padrão já aceito acima
+# para translate:TranslateText/comprehend:DetectDominantLanguage.
+resource "aws_iam_role_policy" "glue_etl_translate_budget" {
+  name = "${local.tmdb_prefix}-glue-etl-translate-budget-${var.env}"
+  role = aws_iam_role.glue_etl_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics"]
+      Resource = "*"
+    }]
+  })
+}
+
 # Permite que o Glue ETL inicie o job de Data Quality ao final do processamento.
 resource "aws_iam_role_policy" "glue_etl_start_dq" {
   name = "${local.tmdb_prefix}-glue-etl-start-dq-${var.env}"
@@ -1072,6 +1093,27 @@ resource "aws_iam_role_policy" "glue_details_translate" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
+      Resource = "*"
+    }]
+  })
+}
+
+# Consulta o CharacterCount do AWS Translate no CloudWatch para calcular quanto do teto
+# MENSAL do fallback (var.aws_translate_monthly_max_chars) já foi consumido antes de
+# decidir se ainda pode traduzir via AWS neste run — ver
+# shared_utils.traducao.get_translate_chars_used_this_month. Nenhuma das duas actions
+# suporta restrição por recurso na AWS (Resource = "*"), confirmado no IAM Service
+# Authorization Reference — mesmo padrão já aceito acima para translate:TranslateText/
+# comprehend:DetectDominantLanguage.
+resource "aws_iam_role_policy" "glue_details_translate_budget" {
+  name = "${local.tmdb_prefix}-glue-details-translate-budget-${var.env}"
+  role = aws_iam_role.glue_details_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics"]
       Resource = "*"
     }]
   })
