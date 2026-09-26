@@ -107,6 +107,17 @@ def get_parameters_glue() -> dict[str, Any]:
             params["TRANSLATE_PROVIDER"] = sys.argv[i + 1]
             break
 
+    # Opcional: teto MENSAL de caracteres pro fallback ao AWS Translate quando
+    # TRANSLATE_PROVIDER="google" (ver shared_utils.traducao.resolve_translate_fn e
+    # get_translate_chars_used_this_month). Default "2000000" == free tier mensal do AWS
+    # Translate; passado explicitamente via infra/glue_details.tf (var.
+    # aws_translate_monthly_max_chars) pra poder ser ajustado sem alterar código.
+    params["AWS_FALLBACK_MONTHLY_MAX_CHARS"] = "2000000"
+    for i, arg in enumerate(sys.argv):
+        if arg == "--AWS_FALLBACK_MONTHLY_MAX_CHARS" and i + 1 < len(sys.argv):
+            params["AWS_FALLBACK_MONTHLY_MAX_CHARS"] = sys.argv[i + 1]
+            break
+
     return params
 
 
@@ -881,6 +892,7 @@ def collect_and_write_details(
     database: str,
     translate_provider: str = "google",
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
+    aws_fallback_monthly_max_chars: int = 2_000_000,
 ) -> dict[int, str]:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -906,6 +918,11 @@ def collect_and_write_details(
                              de um campo quando a TMDB confirma que ele não mudou na
                              janela. None (default) preserva o comportamento do fluxo
                              normal por ano, que nunca tem esse sinal disponível.
+        aws_fallback_monthly_max_chars: Teto MENSAL de caracteres pro fallback ao AWS
+                             Translate quando translate_provider="google" — ver
+                             resolve_translate_fn. Default 2_000_000 (free tier mensal do
+                             AWS Translate); configurável via
+                             infra/glue_details.tf (var.aws_translate_monthly_max_chars).
 
     Returns:
         Dicionário {id: year} dos IDs efetivamente buscados e gravados nesta execução
@@ -976,7 +993,10 @@ def collect_and_write_details(
         except Exception as exc:  # noqa: BLE001
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
-    translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
+    translate_fn = resolve_translate_fn(
+        translate_provider, translate_text, translate_text_aws,
+        aws_fallback_max_chars=aws_fallback_monthly_max_chars,
+    )
     detect_fn = resolve_detect_language_fn(
         detect_language_langdetect, detect_language_aws, provider=translate_provider,
     )
@@ -1319,6 +1339,7 @@ def run_details_and_watch_providers_for_year(
     table_watch_providers: str,
     dq_job_name: str,
     translate_provider: str = "google",
+    aws_fallback_monthly_max_chars: int = 2_000_000,
     trigger_dq: bool = True,
 ) -> None:
     """
@@ -1344,6 +1365,9 @@ def run_details_and_watch_providers_for_year(
         table_watch_providers:  Tabela de watch providers (movie ou tv).
         dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
         translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
+        aws_fallback_monthly_max_chars: Teto MENSAL de caracteres pro fallback ao AWS
+                                 Translate quando translate_provider="google" — ver
+                                 collect_and_write_details/resolve_translate_fn.
         trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
                                  Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
                                  passa False e dispara o DQ uma única vez ao final do backfill inteiro.
@@ -1368,6 +1392,7 @@ def run_details_and_watch_providers_for_year(
             table_name=table_details,
             database=database,
             translate_provider=translate_provider,
+            aws_fallback_monthly_max_chars=aws_fallback_monthly_max_chars,
         )
 
     logger.info(
@@ -1718,6 +1743,7 @@ def process_changed_ids(
     s3_bucket_sot: str,
     s3_bucket_temp: str,
     translate_provider: str = "google",
+    aws_fallback_monthly_max_chars: int = 2_000_000,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[str]:
@@ -1753,6 +1779,9 @@ def process_changed_ids(
         s3_bucket_sot:          Nome do bucket SOT de destino.
         s3_bucket_temp:         Bucket S3 para resultados temporários do Athena.
         translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
+        aws_fallback_monthly_max_chars: Teto MENSAL de caracteres pro fallback ao AWS
+                                 Translate quando translate_provider="google" — ver
+                                 collect_and_write_details/resolve_translate_fn.
         start_date:             Início da janela usada por /movie|tv/changes (opcional;
                                  sem ele, pula a consulta por ID e traduz como antes).
         end_date:                Fim da janela usada por /movie|tv/changes.
@@ -1791,6 +1820,7 @@ def process_changed_ids(
         database=database,
         translate_provider=translate_provider,
         changed_fields_by_id=changed_fields_by_id,
+        aws_fallback_monthly_max_chars=aws_fallback_monthly_max_chars,
     )
     if not id_to_year:
         logger.warning(

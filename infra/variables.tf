@@ -242,6 +242,19 @@ variable "glue_details_job_name" {
   default     = "glue-details"
 }
 
+# Teto MENSAL (não por execução) de caracteres pro fallback ao AWS Translate quando
+# TRANSLATE_PROVIDER="google" — ver shared_utils.traducao.resolve_translate_fn/
+# get_translate_chars_used_this_month (app/glue_details, scripts/backfill_traducao.py).
+# 2_000_000 == free tier mensal do AWS Translate nos primeiros 12 meses da conta; acima
+# disso o excedente é cobrado a US$15/milhão de caracteres. Exposto como variável (e não
+# hardcoded em app/) justamente para poder ser ajustado sem alterar código, só terraform
+# apply com um valor novo em .tfvars.
+variable "aws_translate_monthly_max_chars" {
+  description = "Teto mensal de caracteres para o fallback ao AWS Translate (default = free tier mensal)"
+  type        = number
+  default     = 2000000
+}
+
 # =============================================================================
 # GLUE CATALOG — Registro de Tabelas
 # =============================================================================

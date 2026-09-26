@@ -74,6 +74,12 @@ Variáveis opcionais:
                             como fallback capado; "aws" usa Comprehend primeiro (sem
                             cap) com langdetect como fallback — ver
                             shared_utils.idioma.resolve_detect_language_fn)
+    AWS_FALLBACK_MONTHLY_MAX_CHARS (padrão: 2_000_000 == free tier mensal do AWS
+                            Translate) — teto MENSAL (não por execução/partição) de
+                            caracteres pro fallback ao AWS Translate quando
+                            TRANSLATE_PROVIDER="google"; consultado ao vivo via
+                            CloudWatch a cada partição — ver
+                            shared_utils.traducao.get_translate_chars_used_this_month.
 
 Glue AGG:
     Ao final, antes de limpar o checkpoint, roda o Glue AGG (query Athena de unificação +
@@ -297,10 +303,14 @@ def main() -> None:
     translate_provider = shared.apply_translate_cost_guard(
         os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
     )
+    aws_fallback_monthly_max_chars = int(os.environ.get("AWS_FALLBACK_MONTHLY_MAX_CHARS", 2_000_000))
     # Valida translate_provider cedo (fail-fast) antes de qualquer I/O — resolve_translate_fn
     # é recriado por partição dentro do loop abaixo, mas um provider inválido deve
     # interromper o backfill antes de tocar o S3.
-    resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
+    resolve_translate_fn(
+        translate_provider, translate_text, translate_text_aws,
+        aws_fallback_max_chars=aws_fallback_monthly_max_chars,
+    )
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
@@ -324,12 +334,20 @@ def main() -> None:
     total_translated = 0
     for i, (content_type, year, database, table_details) in enumerate(pending, start=1):
         logger.info("[%d/%d] %s | year=%d", i, len(pending), content_type, year)
-        # translate_fn/detect_fn recriados a cada partição — cada ano+tipo tem seu
-        # próprio orçamento de fallback ao AWS Translate/Comprehend, em vez de
-        # compartilhar um único orçamento com todas as partições do run (que a
-        # primeira partição processada poderia esgotar sozinha, deixando as demais
-        # sem fallback).
-        translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
+        # translate_fn/detect_fn recriados a cada partição — não pra isolar orçamentos
+        # (o fallback ao AWS Translate agora é um teto MENSAL, consultado ao vivo via
+        # CloudWatch a cada chamada, então todas as partições deste run — e de outras
+        # execuções no mesmo mês — naturalmente compartilham o mesmo teto real; ver
+        # shared_utils.traducao.get_translate_chars_used_this_month), mas porque o
+        # detector de idioma (resolve_detect_language_fn) ainda usa um cap por chamada
+        # independente para o fallback do Comprehend. Nota: o CloudWatch tem alguns
+        # minutos de atraso de propagação — traduções desta própria partição podem não
+        # aparecer ainda na consulta da partição seguinte, então o teto mensal não é
+        # instantaneamente preciso dentro de um mesmo run, só ao longo do mês.
+        translate_fn = resolve_translate_fn(
+            translate_provider, translate_text, translate_text_aws,
+            aws_fallback_max_chars=aws_fallback_monthly_max_chars,
+        )
         detect_fn = resolve_detect_language_fn(
             detect_language_langdetect, detect_language_aws, provider=translate_provider,
         )

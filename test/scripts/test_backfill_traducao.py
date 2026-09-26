@@ -548,21 +548,63 @@ class TestMain:
         translate_fn = mock_backfill.call_args_list[0].kwargs["translate_fn"]
         assert translate_fn("Hello") == "[G]Hello"
 
-    def test_traduzir_fn_tem_orcamento_independente_por_particao(self, monkeypatch):
-        """Cada partição (ano+tipo) recebe seu próprio translate_fn, com orçamento de
-        fallback ao AWS Translate independente — evita que a primeira partição
-        processada esgote sozinha o orçamento de toda a execução."""
-        texto = "x" * 6000  # consome o orçamento padrão de aws_fallback_max_chars inteiro
+    def test_translate_fn_recriada_por_particao_consulta_orcamento_mensal(self, monkeypatch):
+        """translate_fn é recriada a cada partição (ano+tipo) — não pra isolar orçamentos
+        (o fallback ao AWS Translate hoje é um teto MENSAL, consultado ao vivo via
+        CloudWatch a cada chamada de resolve_translate_fn — ver
+        shared_utils.traducao.get_translate_chars_used_this_month), mas porque o detector
+        de idioma ainda usa um cap por chamada independente. Aqui simula "nada consumido
+        ainda no mês" (CloudWatch mockado) — cada partição enxerga o teto configurado
+        (AWS_FALLBACK_MONTHLY_MAX_CHARS) inteiro disponível."""
+        texto = "x" * 10
         with (
             patch("backfill_traducao.translate_text", side_effect=lambda t: t),  # google sempre "falha"
             patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
+            patch("shared_utils.traducao.boto3") as mock_cw_boto3,
         ):
-            mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+            mock_cw_client = MagicMock()
+            mock_cw_boto3.client.return_value = mock_cw_client
+            paginator = MagicMock()
+            mock_cw_client.get_paginator.return_value = paginator
+            paginator.paginate.return_value = [{"Metrics": []}]  # nada consumido ainda no mês
+
+            mock_backfill, _, _, _ = _run_main(
+                monkeypatch,
+                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            )
             translate_fn_movie = mock_backfill.call_args_list[0].kwargs["translate_fn"]
             translate_fn_tv = mock_backfill.call_args_list[1].kwargs["translate_fn"]
 
             assert translate_fn_movie(texto) == f"[A]{texto}"
-            assert translate_fn_tv(texto) == f"[A]{texto}"  # orçamento próprio, não esgotado pela partição anterior
+            assert translate_fn_tv(texto) == f"[A]{texto}"  # mesmo teto mensal, ainda não consumido
+            mock_cw_boto3.client.assert_called_with("cloudwatch", region_name="us-east-1")
+
+    def test_aws_fallback_monthly_max_chars_configuravel_via_env(self, monkeypatch):
+        """AWS_FALLBACK_MONTHLY_MAX_CHARS (padrão 2_000_000) some com o consumo já
+        reportado pelo CloudWatch pra definir o que sobra pro fallback nesta partição."""
+        texto = "x" * 10
+        with (
+            patch("backfill_traducao.translate_text", side_effect=lambda t: t),  # google sempre "falha"
+            patch("backfill_traducao.translate_text_aws", side_effect=lambda t: f"[A]{t}"),
+            patch("shared_utils.traducao.boto3") as mock_cw_boto3,
+        ):
+            mock_cw_client = MagicMock()
+            mock_cw_boto3.client.return_value = mock_cw_client
+            paginator = MagicMock()
+            mock_cw_client.get_paginator.return_value = paginator
+            paginator.paginate.return_value = [{"Metrics": []}]  # nada consumido ainda no mês
+
+            mock_backfill, _, _, _ = _run_main(
+                monkeypatch,
+                {
+                    "BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020",
+                    "AWS_FALLBACK_MONTHLY_MAX_CHARS": "5",  # menor que len(texto) == 10
+                },
+            )
+            translate_fn_movie = mock_backfill.call_args_list[0].kwargs["translate_fn"]
+
+            # teto de 5 caracteres, nada consumido -> "x"*10 excede o restante, fallback não chamado
+            assert translate_fn_movie(texto) == texto
 
     def test_translate_provider_invalido_levanta_erro(self, monkeypatch):
         _set_env(monkeypatch, {"TRANSLATE_PROVIDER": "deepl"})

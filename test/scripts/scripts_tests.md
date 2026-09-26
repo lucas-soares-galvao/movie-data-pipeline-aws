@@ -345,7 +345,8 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_translate_provider_default_google` | `translate_fn` repassado a `_backfill_year` usa Google como primário (default) |
 | `test_translate_provider_aws_explicito_janela_de_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo de 1 ano: `translate_fn` usa AWS como primário |
 | `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo maior que 1 ano: rebaixado para Google como primário (`backfill_shared.apply_translate_cost_guard`) |
-| `test_traduzir_fn_tem_orcamento_independente_por_particao` | `translate_fn` é recriado a cada partição (ano+tipo) — o orçamento de fallback ao AWS Translate de uma partição não é consumido pela anterior |
+| `test_translate_fn_recriada_por_particao_consulta_orcamento_mensal` | `translate_fn` é recriado a cada partição (ano+tipo) — não pra isolar orçamentos (o fallback ao AWS Translate hoje é um teto MENSAL, consultado ao vivo via CloudWatch a cada chamada de `resolve_translate_fn`), mas porque o detector de idioma ainda usa um cap por chamada independente; com CloudWatch mockado ("nada consumido no mês"), as duas partições enxergam o mesmo teto configurado disponível |
+| `test_aws_fallback_monthly_max_chars_configuravel_via_env` | `AWS_FALLBACK_MONTHLY_MAX_CHARS` (padrão 2_000_000) some com o consumo do mês (CloudWatch, mockado) pra definir o restante disponível ao fallback nesta partição |
 | `test_translate_provider_invalido_levanta_erro` | `TRANSLATE_PROVIDER` fora de `"google"`/`"aws"` propaga o `ValueError` de `resolve_translate_fn` |
 
 ### `TestErros`

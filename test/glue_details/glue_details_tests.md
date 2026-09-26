@@ -368,6 +368,8 @@ As classes abaixo testam funções auxiliares de mais baixo nível que o doc ant
 | `test_changes_s3_path_lido_do_sys_argv` | `CHANGES_S3_PATH` é lido corretamente de `sys.argv` |
 | `test_translate_provider_default_google` | Sem `--TRANSLATE_PROVIDER` em `sys.argv`, o provedor de tradução é `"google"` |
 | `test_translate_provider_lido_do_sys_argv` | `--TRANSLATE_PROVIDER aws` em `sys.argv` sobrescreve o padrão (usado pelos backfills manuais) |
+| `test_aws_fallback_monthly_max_chars_default_2000000` | Sem `--AWS_FALLBACK_MONTHLY_MAX_CHARS` em `sys.argv`, o teto mensal do fallback é `"2000000"` (== free tier mensal do AWS Translate) |
+| `test_aws_fallback_monthly_max_chars_lido_do_sys_argv` | `--AWS_FALLBACK_MONTHLY_MAX_CHARS 500000` em `sys.argv` sobrescreve o padrão |
 | `test_publica_aws_account_id_em_os_environ` | Publica `AWS_ACCOUNT_ID` em `os.environ` a partir do argumento do job (lido depois por `shared_utils.s3_helpers` para o `ExpectedBucketOwner`) |
 
 > **Nota:** os testes de `trigger_glue_job`/DQ (`TestTriggerDataQuality`), `get_resolved_option` (`TestGetResolvedOption`), `get_api_secret` (`TestGetApiSecret`) e `reuse_existing_translation` (`TestReuseExistingTranslation`) não vivem mais em `test_utils.py` deste módulo — migraram para `test/shared_src/test_api_client.py`, `test/shared_src/test_glue_helpers.py` e `test/shared_src/test_traducao.py` junto com a extração dessas funções para `shared_utils/`.

@@ -1,14 +1,24 @@
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 from shared_utils.traducao import (
+    get_translate_chars_used_this_month,
     resolve_pt_translation,
     resolve_translate_fn,
     reuse_existing_translation,
     translate_in_parallel,
 )
+
+
+def _sem_consumo_no_mes() -> int:
+    """get_chars_used_this_month que devolve sempre 0 — substitui
+    get_translate_chars_used_this_month nos testes que não testam o cálculo do orçamento
+    em si (a maioria), evitando que resolve_translate_fn(provider="google", ...) sem esse
+    parâmetro explícito acabe fazendo uma chamada real ao CloudWatch."""
+    return 0
 
 # Texto real observado nas tabelas do dev (name_pt/overview_pt) no lugar da tradução.
 GOOGLE_ERROR_PAGE = (
@@ -19,7 +29,10 @@ GOOGLE_ERROR_PAGE = (
 
 class TestResolveTranslateFn:
     def test_resolve_google_usa_google_como_primario(self):
-        fn = resolve_translate_fn("google", lambda t: f"[G]{t}", lambda t: f"[A]{t}")
+        fn = resolve_translate_fn(
+            "google", lambda t: f"[G]{t}", lambda t: f"[A]{t}",
+            get_chars_used_this_month=_sem_consumo_no_mes,
+        )
         assert fn("Hello") == "[G]Hello"
 
     def test_resolve_aws_usa_aws_como_primario(self):
@@ -37,7 +50,9 @@ class TestResolveTranslateFn:
         fn_google = MagicMock(side_effect=lambda t: f"[G]{t}")
         fn_aws = MagicMock(side_effect=lambda t: f"[A]{t}")
 
-        resolve_translate_fn("google", fn_google, fn_aws)("Hello")
+        resolve_translate_fn(
+            "google", fn_google, fn_aws, get_chars_used_this_month=_sem_consumo_no_mes,
+        )("Hello")
         fn_google.assert_called_once_with("Hello")
 
         resolve_translate_fn("aws", fn_google, fn_aws)("Hello")
@@ -78,12 +93,42 @@ class TestResolveTranslateFn:
 
         fn = resolve_translate_fn(
             "google", translate_google=primario_google, translate_aws=fallback_aws,
-            aws_fallback_max_chars=5,
+            aws_fallback_max_chars=5, get_chars_used_this_month=_sem_consumo_no_mes,
         )
 
         assert fn("Hello") == "[aws]Hello"  # consome os 5 caracteres do orçamento
         assert fn("Hi") == "Hi"  # orçamento esgotado — devolve o texto original sem chamar o fallback
         fallback_aws.assert_called_once_with("Hello")
+
+    def test_orcamento_restante_desconta_consumo_ja_feito_no_mes(self):
+        """aws_fallback_max_chars agora é um teto MENSAL: o que resolve_translate_fn
+        realmente aplica é o restante, descontado o que get_chars_used_this_month já
+        reporta como consumido no mês corrente (ver get_translate_chars_used_this_month)."""
+        primario_google = MagicMock(side_effect=lambda t: t)
+        fallback_aws = MagicMock(side_effect=lambda t: f"[aws]{t}")
+
+        fn = resolve_translate_fn(
+            "google", translate_google=primario_google, translate_aws=fallback_aws,
+            aws_fallback_max_chars=10, get_chars_used_this_month=lambda: 8,
+        )
+
+        assert fn("Hi") == "[aws]Hi"  # sobraram 2 caracteres do teto de 10 — "Hi" cabe
+        assert fn("Hi") == "Hi"  # os 2 caracteres restantes já foram consumidos acima
+        fallback_aws.assert_called_once_with("Hi")
+
+    def test_orcamento_ja_esgotado_no_mes_nao_chama_fallback(self):
+        """Se o mês já consumiu mais que o teto, o restante é 0 (nunca negativo) — o
+        fallback nem chega a ser chamado."""
+        primario_google = MagicMock(side_effect=lambda t: t)
+        fallback_aws = MagicMock()
+
+        fn = resolve_translate_fn(
+            "google", translate_google=primario_google, translate_aws=fallback_aws,
+            aws_fallback_max_chars=10, get_chars_used_this_month=lambda: 999,
+        )
+
+        assert fn("Hi") == "Hi"
+        fallback_aws.assert_not_called()
 
     def test_cap_nao_se_aplica_quando_aws_e_primario(self):
         """provider="aws": Google é o fallback (grátis) — sem limite de caracteres."""
@@ -106,7 +151,7 @@ class TestResolveTranslateFn:
 
         fn = resolve_translate_fn(
             "google", translate_google=primario_google, translate_aws=fallback_aws,
-            aws_fallback_max_chars=10,
+            aws_fallback_max_chars=10, get_chars_used_this_month=_sem_consumo_no_mes,
         )
         textos = ["ab"] * 20  # 20 x 2 caracteres = 40 caracteres pedidos, orçamento de 10
 
@@ -115,6 +160,69 @@ class TestResolveTranslateFn:
 
         # orçamento de 10 caracteres / textos de 2 caracteres cada = no máximo 5 chamadas ao fallback
         assert fallback_aws.call_count <= 5
+
+
+class TestGetTranslateCharsUsedThisMonth:
+    """get_translate_chars_used_this_month soma o CharacterCount (CloudWatch,
+    namespace AWS/Translate) de todos os pares de idioma publicados, desde o início do
+    mês corrente — ver docstring da função em shared_utils.traducao."""
+
+    def _client_com_pares(self, pares_e_totais: dict[str, int]) -> MagicMock:
+        """Monta um client CloudWatch mockado: list_metrics devolve um par por chave de
+        pares_e_totais, e get_metric_statistics devolve o total correspondente em Sum."""
+        client = MagicMock()
+        paginator = MagicMock()
+        client.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{
+            "Metrics": [
+                {
+                    "Dimensions": [
+                        {"Name": "LanguagePair", "Value": pair},
+                        {"Name": "Operation", "Value": "TranslateText"},
+                    ],
+                }
+                for pair in pares_e_totais
+            ],
+        }]
+
+        def _get_metric_statistics(**kwargs):
+            pair = next(d["Value"] for d in kwargs["Dimensions"] if d["Name"] == "LanguagePair")
+            return {"Datapoints": [{"Sum": pares_e_totais[pair]}]}
+
+        client.get_metric_statistics.side_effect = _get_metric_statistics
+        return client
+
+    def test_soma_caracteres_de_todos_os_pares_de_idioma(self):
+        client = self._client_com_pares({"en-pt": 100, "es-pt": 50})
+
+        total = get_translate_chars_used_this_month(cloudwatch_client=client)
+
+        assert total == 150
+
+    def test_sem_metricas_publicadas_retorna_zero(self):
+        client = self._client_com_pares({})
+
+        assert get_translate_chars_used_this_month(cloudwatch_client=client) == 0
+
+    def test_falha_no_cloudwatch_assume_orcamento_esgotado(self):
+        """Sem visibilidade do consumo real, assume o pior caso (orçamento esgotado) em
+        vez de assumir consumo zero e arriscar gastar sem controle."""
+        client = MagicMock()
+        client.get_paginator.side_effect = Exception("ThrottlingException simulada")
+
+        assert get_translate_chars_used_this_month(cloudwatch_client=client) == sys.maxsize
+
+    def test_cria_client_proprio_quando_nao_informado(self):
+        """Sem cloudwatch_client explícito, cria um client boto3 na região informada —
+        us-east-1 por padrão, mesma região de translate_text_aws (AWS Translate não
+        está disponível em sa-east-1)."""
+        with patch("shared_utils.traducao.boto3") as mock_boto3:
+            mock_client = self._client_com_pares({})
+            mock_boto3.client.return_value = mock_client
+
+            get_translate_chars_used_this_month()
+
+            mock_boto3.client.assert_called_once_with("cloudwatch", region_name="us-east-1")
 
 
 class TestTranslateInParallel:

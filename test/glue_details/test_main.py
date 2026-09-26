@@ -18,6 +18,7 @@ _BASE = {
     "YEAR": "2025",
     "END_YEAR": "2025",
     "TRANSLATE_PROVIDER": "aws",
+    "AWS_FALLBACK_MONTHLY_MAX_CHARS": "2000000",
     "CHANGES_S3_PATH": None,
 }
 
@@ -59,6 +60,7 @@ class TestMain:
                 table_watch_providers="tb_tmdb_watch_providers_movie_dev",
                 dq_job_name="dq-job",
                 translate_provider="aws",
+                aws_fallback_monthly_max_chars=2000000,
             )
 
     def test_delegates_to_run_details_and_watch_providers_for_year_for_tv(self):
@@ -82,6 +84,7 @@ class TestMain:
                 table_watch_providers="tb_tmdb_watch_providers_tv_dev",
                 dq_job_name="dq-job",
                 translate_provider="aws",
+                aws_fallback_monthly_max_chars=2000000,
             )
 
     def test_does_not_pass_trigger_dq_explicitly(self):
@@ -154,6 +157,7 @@ class TestChangesMode:
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
                 translate_provider="aws",
+                aws_fallback_monthly_max_chars=2000000,
             )
 
     def test_aciona_dq_uma_vez_por_tabela_com_anos_agrupados(self):
