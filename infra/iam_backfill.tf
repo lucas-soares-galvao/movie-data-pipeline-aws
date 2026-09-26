@@ -643,12 +643,26 @@ resource "aws_iam_role_policy" "backfill_translate" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid      = "TranslateFallback"
-      Effect   = "Allow"
-      Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Sid      = "TranslateFallback"
+        Effect   = "Allow"
+        Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
+        Resource = "*"
+      },
+      {
+        # Consulta o CharacterCount do AWS Translate no CloudWatch pra saber quanto
+        # do teto MENSAL do fallback (var.aws_translate_monthly_max_chars) já foi
+        # consumido antes de traduzir via AWS nesta partição — ver
+        # shared_utils.traducao.get_translate_chars_used_this_month, chamada por
+        # resolve_translate_fn sempre que TRANSLATE_PROVIDER="google" (default de
+        # backfill_traducao.py). Nenhuma das duas actions suporta restrição por recurso.
+        Sid      = "TranslateBudget"
+        Effect   = "Allow"
+        Action   = ["cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics"]
+        Resource = "*"
+      },
+    ]
   })
 }
 

@@ -2120,6 +2120,22 @@ class TestGetParametersGlue:
             result = u.get_parameters_glue()
         assert result["TRANSLATE_PROVIDER"] == "aws"
 
+    def test_aws_fallback_monthly_max_chars_default_2000000(self):
+        with (
+            patch("src.utils.get_resolved_option", return_value=self._required()),
+            patch.object(sys, "argv", ["main.py"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["AWS_FALLBACK_MONTHLY_MAX_CHARS"] == "2000000"
+
+    def test_aws_fallback_monthly_max_chars_lido_do_sys_argv(self):
+        with (
+            patch("src.utils.get_resolved_option", return_value=self._required()),
+            patch.object(sys, "argv", ["main.py", "--AWS_FALLBACK_MONTHLY_MAX_CHARS", "500000"]),
+        ):
+            result = u.get_parameters_glue()
+        assert result["AWS_FALLBACK_MONTHLY_MAX_CHARS"] == "500000"
+
 
 # ---------------------------------------------------------------------------
 # Modo changes (TMDB Changes API)

@@ -194,11 +194,13 @@ Resolve `"google"`/`"aws"` para uma função **composta primário+fallback** —
 escolhido (default `"google"` em todo o pipeline, `glue_details`/`glue_etl` via
 EventBridge e os backfills manuais) é tentado primeiro; se falhar (resultado igual ao
 texto original), o outro serviço é tentado automaticamente. Quando AWS Translate é o
-fallback (`provider="google"`), as chamadas são limitadas por `aws_fallback_max_chars`
-caracteres nesta execução (pago por caractere); quando é o primário (`provider="aws"`),
-o fallback para Google não tem limite (grátis). `translate_google`/`translate_aws` são
-parâmetros opcionais (default `translate_text`/`translate_text_aws`) para que um
-chamador que faça patch da própria referência local (ex.:
+fallback (`provider="google"`), as chamadas são limitadas pelo que sobrar do orçamento
+**mensal** `aws_fallback_max_chars` (default 2.000.000, consultado ao vivo via
+`get_chars_used_this_month` — não mais um teto fixo resetado por execução); quando é o
+primário (`provider="aws"`), o fallback para Google não tem limite (grátis).
+`translate_google`/`translate_aws`/`get_chars_used_this_month` são parâmetros opcionais
+(default `translate_text`/`translate_text_aws`/`get_translate_chars_used_this_month`)
+para que um chamador que faça patch da própria referência local (ex.:
 `patch("src.utils.translate_text", ...)`) continue funcionando.
 
 | Teste | O que verifica |
@@ -210,9 +212,25 @@ chamador que faça patch da própria referência local (ex.:
 | `test_fallback_disparado_quando_primario_falha` | Primário devolve o próprio texto (sinal de falha) — o fallback é chamado e seu resultado é devolvido |
 | `test_fallback_nao_disparado_quando_primario_funciona` | Primário traduz com sucesso — fallback nunca é chamado |
 | `test_texto_vazio_nao_dispara_fallback` | Texto vazio nunca aciona o fallback |
-| `test_cap_por_caracteres_bloqueia_excedente` | `provider="google"`: o orçamento de caracteres do fallback (AWS) é consumido por chamada; texto que excederia o restante é pulado (devolve original) sem chamar o fallback |
-| `test_cap_nao_se_aplica_quando_aws_e_primario` | `provider="aws"`: o fallback (Google) é chamado sem limite, mesmo com `aws_fallback_max_chars` pequeno |
+| `test_cap_por_caracteres_bloqueia_excedente` | `provider="google"`, `get_chars_used_this_month` mockado para 0: o orçamento mensal é consumido por chamada; texto que excederia o restante é pulado (devolve original) sem chamar o fallback |
+| `test_orcamento_restante_desconta_consumo_ja_feito_no_mes` | O restante realmente aplicado é `aws_fallback_max_chars - get_chars_used_this_month()`, não o teto cheio |
+| `test_orcamento_ja_esgotado_no_mes_nao_chama_fallback` | Consumo do mês (mockado) maior que o teto: restante é `0` (nunca negativo), fallback nem é chamado |
+| `test_cap_nao_se_aplica_quando_aws_e_primario` | `provider="aws"`: o fallback (Google) é chamado sem limite, mesmo com `aws_fallback_max_chars` pequeno (e sem nunca chamar `get_chars_used_this_month`, já que o bloco que a invoca só roda quando `provider="google"`) |
 | `test_cap_thread_safe_sob_concorrencia` | Disparado via `ThreadPoolExecutor`, o total de caracteres passados ao fallback nunca ultrapassa o orçamento (valida o lock) |
+
+### `TestGetTranslateCharsUsedThisMonth`
+
+Soma o `CharacterCount` (CloudWatch, namespace `AWS/Translate`) de todos os pares de
+idioma publicados, desde o início do mês corrente — a mesma métrica que a AWS usa para
+faturar, consultada ao vivo em vez de um contador próprio persistido (ver docstring da
+função e o racional de não usar S3 — lifecycle de 1 dia do bucket TEMP).
+
+| Teste | O que verifica |
+|---|---|
+| `test_soma_caracteres_de_todos_os_pares_de_idioma` | Soma `Sum` de `get_metric_statistics` de cada `LanguagePair` publicado (`list_metrics`) |
+| `test_sem_metricas_publicadas_retorna_zero` | Nenhum par publicado ainda no mês retorna `0` |
+| `test_falha_no_cloudwatch_assume_orcamento_esgotado` | Exceção na consulta ao CloudWatch retorna `sys.maxsize` (orçamento esgotado) — não `0` (consumo zero seria mais arriscado financeiramente) |
+| `test_cria_client_proprio_quando_nao_informado` | Sem `cloudwatch_client` explícito, cria um `boto3.client("cloudwatch", region_name="us-east-1")` — mesma região de `translate_text_aws` |
 
 ### `TestTranslateInParallel`
 

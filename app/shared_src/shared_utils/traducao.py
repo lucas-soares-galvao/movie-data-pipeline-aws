@@ -4,11 +4,14 @@ paralelismo e escolha do serviço (Google Translate ou AWS Translate)."""
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import TypeVar
 
+import boto3
 import pandas as pd
 
 from shared_utils.traducao_aws import translate_text_aws
@@ -17,6 +20,7 @@ from shared_utils.traducao_google import is_google_error_page, translate_text
 __all__ = [
     "translate_text",
     "translate_text_aws",
+    "get_translate_chars_used_this_month",
     "resolve_translate_fn",
     "translate_in_parallel",
     "reuse_existing_translation",
@@ -28,14 +32,21 @@ T = TypeVar("T")
 
 logger = logging.getLogger()
 
-# Orçamento de caracteres por execução para o fallback ao AWS Translate (pago por
-# caractere) quando ele não é o serviço escolhido — ver resolve_translate_fn. Medido
-# em caracteres (não em número de chamadas) porque é isso que a AWS cobra: uma sinopse
-# longa pesa muito mais que uma keyword curta. 6_000 dimensionado para manter o gasto
-# do caminho automático (~11 execuções/mês do Glue Details via EventBridge — semanal +
-# mensal, ver infra/eventbridge.tf) abaixo de US$1/mês mesmo no pior caso (cap
-# totalmente consumido em toda execução), a US$15/milhão de caracteres do AWS Translate.
-_AWS_FALLBACK_MAX_CHARS_DEFAULT = 6_000
+# Orçamento MENSAL de caracteres para o fallback ao AWS Translate (pago por caractere)
+# quando ele não é o serviço escolhido — ver resolve_translate_fn e
+# get_translate_chars_used_this_month. Medido em caracteres (não em número de chamadas)
+# porque é isso que a AWS cobra: uma sinopse longa pesa muito mais que uma keyword curta.
+# 2_000_000 == o free tier mensal do AWS Translate (primeiros 12 meses da conta) — acima
+# disso o excedente passa a ser cobrado a US$15/milhão de caracteres.
+#
+# Era um teto POR EXECUÇÃO (6_000) até esta constante ser revista: o Glue Details roda
+# ~11x/mês (EventBridge — semanal + mensal, ver infra/eventbridge.tf), e 6_000/execução
+# provou ser pequeno demais pra resgatar o que o Google falha (ver
+# get_translate_chars_used_this_month) — o orçamento estourava antes de cobrir o volume
+# real de falhas. Agora resolve_translate_fn consulta o consumo real do mês (via
+# CloudWatch) a cada chamada e usa o que sobrar do teto mensal, em vez de resetar um teto
+# fixo a cada execução.
+_AWS_FALLBACK_MAX_CHARS_DEFAULT = 2_000_000
 
 # Teto de tentativas de tradução por linha antes de desistir dela (ver
 # resolve_pt_translation). Sem esse teto, conteúdo genuinamente não traduzível (nomes
@@ -91,11 +102,91 @@ def make_capped_fallback(
     return _capped
 
 
+def get_translate_chars_used_this_month(
+    cloudwatch_client: object = None, region: str = "us-east-1",
+) -> int:
+    """
+    Soma o `CharacterCount` que o próprio AWS Translate publica no CloudWatch (namespace
+    `AWS/Translate`) desde o dia 1 do mês corrente (UTC) até agora — a mesma métrica que a
+    AWS usa pra faturar, consultada ao vivo em vez de mantida num contador próprio.
+
+    Um contador próprio precisaria persistir entre execuções (o Glue Details roda como
+    processo novo a cada disparo, sem estado em memória compartilhado). O bucket TEMP, onde
+    hoje vive o checkpoint de backfill (`scripts.backfill_shared`), não serviria: seu
+    lifecycle apaga tudo em 1 dia, sem filtro de prefixo (`infra/s3.tf`,
+    `delete-after-1-day`) — um contador mensal não sobreviveria até o fim do mês.
+    Consultar o CloudWatch evita esse problema (nenhum estado novo pra persistir) e nunca
+    diverge do consumo real faturado (diferente de um contador próprio, que dessincroniza
+    se uma execução falhar depois de traduzir mas antes de salvar).
+
+    `CharacterCount` é publicado com as dimensões `LanguagePair` (par de idiomas, um por
+    idioma de origem detectado automaticamente — sempre "<origem>-pt" neste projeto) e
+    `Operation` — não existe uma dimensão "todos os pares", então é preciso enumerar os
+    pares publicados (`list_metrics`) e somar `Sum` de cada um.
+
+    Se a consulta ao CloudWatch falhar (permissão ausente, erro transitório): loga e
+    devolve `sys.maxsize`, fazendo `resolve_translate_fn` tratar o orçamento como
+    esgotado — mais seguro financeiramente do que assumir consumo zero e arriscar gastar
+    sem visibilidade de quanto já foi usado no mês.
+
+    Args:
+        cloudwatch_client: Cliente boto3 do CloudWatch já pronto (criado sob demanda, com
+                           `region`, se None) — recebido como parâmetro pra os testes
+                           poderem mockar, mesmo racional de `translate_google`/
+                           `translate_aws` em `resolve_translate_fn`.
+        region:            Região do CloudWatch a consultar. AWS Translate não está
+                           disponível em sa-east-1 (região principal do pipeline — ver
+                           `traducao_aws.translate_text_aws`), então a métrica só existe
+                           em us-east-1.
+
+    Returns:
+        Caracteres traduzidos via AWS Translate (`TranslateText`) desde o início do mês
+        corrente, ou `sys.maxsize` se a consulta ao CloudWatch falhar.
+    """
+    client = cloudwatch_client or boto3.client("cloudwatch", region_name=region)
+    now = datetime.now(timezone.utc)
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    try:
+        pairs: set[str] = set()
+        paginator = client.get_paginator("list_metrics")
+        for page in paginator.paginate(Namespace="AWS/Translate", MetricName="CharacterCount"):
+            for metric in page["Metrics"]:
+                dims = {d["Name"]: d["Value"] for d in metric["Dimensions"]}
+                if "LanguagePair" in dims:
+                    pairs.add(dims["LanguagePair"])
+
+        total = 0
+        for pair in pairs:
+            response = client.get_metric_statistics(
+                Namespace="AWS/Translate",
+                MetricName="CharacterCount",
+                Dimensions=[
+                    {"Name": "LanguagePair", "Value": pair},
+                    {"Name": "Operation", "Value": "TranslateText"},
+                ],
+                StartTime=start_of_month,
+                EndTime=now,
+                Period=2_592_000,  # 30 dias — o mês corrente cabe num único datapoint
+                Statistics=["Sum"],
+            )
+            total += sum(datapoint["Sum"] for datapoint in response["Datapoints"])
+        return int(total)
+    # Consulta de observabilidade, não pode derrubar o job de tradução.
+    except Exception:
+        logger.exception(
+            "Falha ao consultar CharacterCount do AWS Translate no CloudWatch — "
+            "assumindo orçamento mensal esgotado (mais seguro que assumir consumo zero)."
+        )
+        return sys.maxsize
+
+
 def resolve_translate_fn(
     provider: str,
     translate_google: Callable[[str], str] = translate_text,
     translate_aws: Callable[[str], str] = translate_text_aws,
     aws_fallback_max_chars: int = _AWS_FALLBACK_MAX_CHARS_DEFAULT,
+    get_chars_used_this_month: Callable[[], int] = get_translate_chars_used_this_month,
 ) -> Callable[[str], str]:
     """
     Resolve o provedor de tradução (`"google"` ou `"aws"`) para uma função composta
@@ -105,8 +196,11 @@ def resolve_translate_fn(
     desistir.
 
     `provider="google"` → primário=Google (grátis), fallback=AWS Translate — pago por
-    caractere, por isso limitado a aws_fallback_max_chars caracteres nesta execução
-    (rede de segurança de custo; ver make_capped_fallback).
+    caractere, por isso limitado ao que sobrar do orçamento MENSAL de
+    aws_fallback_max_chars (rede de segurança de custo; ver make_capped_fallback e
+    get_translate_chars_used_this_month). O orçamento é consultado ao vivo a cada chamada
+    — não é mais um teto fixo resetado por execução — então chamadas concorrentes/
+    sucessivas dentro do mesmo mês naturalmente compartilham o teto real já consumido.
     `provider="aws"` → primário=AWS Translate, fallback=Google (grátis) — sem limite,
     já que quem escolheu "aws" explicitamente já aceitou o custo do primário.
 
@@ -117,15 +211,19 @@ def resolve_translate_fn(
     referência direta ao módulo quebraria esse patch.
 
     Args:
-        provider:               `"google"` (deep_translator, grátis) ou `"aws"` (AWS
-                                Translate, pago por caractere).
-        translate_google:       Função de tradução via Google.
-        translate_aws:          Função de tradução via AWS.
-        aws_fallback_max_chars: Orçamento de caracteres para o fallback ao AWS
-                                Translate nesta execução, aplicado somente quando
-                                `provider="google"` (AWS é o fallback). Ignorado quando
-                                `provider="aws"` (AWS já é o primário escolhido
-                                explicitamente).
+        provider:                  `"google"` (deep_translator, grátis) ou `"aws"` (AWS
+                                   Translate, pago por caractere).
+        translate_google:          Função de tradução via Google.
+        translate_aws:             Função de tradução via AWS.
+        aws_fallback_max_chars:    Orçamento MENSAL de caracteres para o fallback ao AWS
+                                   Translate, aplicado somente quando `provider="google"`
+                                   (AWS é o fallback). Ignorado quando `provider="aws"`
+                                   (AWS já é o primário escolhido explicitamente).
+        get_chars_used_this_month: Função sem argumentos que devolve quantos caracteres já
+                                   foram consumidos no mês corrente — recebida como
+                                   parâmetro pelo mesmo motivo de translate_google/
+                                   translate_aws (testes mockam sem tocar o CloudWatch de
+                                   verdade).
 
     Returns:
         Função (texto) -> texto traduzido que tenta o primário e cai para o fallback
@@ -145,7 +243,8 @@ def resolve_translate_fn(
         ) from None
 
     if provider == "google":
-        fallback = make_capped_fallback(fallback, aws_fallback_max_chars, on_over_budget=lambda text: text)
+        remaining_budget = max(0, aws_fallback_max_chars - get_chars_used_this_month())
+        fallback = make_capped_fallback(fallback, remaining_budget, on_over_budget=lambda text: text)
 
     def _translate_with_fallback(text: str) -> str:
         result = primary(text)

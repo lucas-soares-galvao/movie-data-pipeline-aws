@@ -149,8 +149,13 @@ exposto no workflow como o input `translate_provider`. `"google"` também é o
 default do caminho automático via EventBridge (`lambda_api` → `glue_etl` →
 `glue_details`) — em ambos os casos o serviço não escolhido é usado
 automaticamente como fallback caso o primário falhe (ver `resolve_translate_fn`
-em `shared_utils.traducao`), com o fallback ao AWS Translate limitado por um
-orçamento de caracteres (é pago por caractere). `TRANSLATE_PROVIDER` também
+em `shared_utils.traducao`), com o fallback ao AWS Translate limitado pelo que
+sobrar de um orçamento **mensal** (default 2_000_000 caracteres == free tier
+mensal do AWS Translate, consultado ao vivo via CloudWatch — ver
+`get_translate_chars_used_this_month` — em vez de um teto fixo por execução).
+Só `backfill_traducao.py` expõe esse teto como env var própria
+(`AWS_FALLBACK_MONTHLY_MAX_CHARS`); os demais scripts usam o default do módulo.
+`TRANSLATE_PROVIDER` também
 determina o detector de idioma primário (`resolve_detect_language_fn` em
 `shared_utils.idioma`): `"google"` usa `langdetect` primeiro com Comprehend como
 fallback capado por caracteres; `"aws"` usa Comprehend primeiro (sem cap) com
