@@ -150,6 +150,17 @@ def get_parameters_glue() -> dict[str, Any]:
     return args
 
 
+# Teto de workers da tradução de configuration/genre (~250 itens no máximo) por
+# translate_provider — ver _add_translation. "google": teto baixo de propósito, não para
+# ganhar vazão, e sim para não pressionar o endpoint não-oficial (que bloqueia sob carga,
+# chegando a ~20s de backoff por chamada). "aws": AWS Translate é API oficial, sem esse
+# bloqueio, e a doc oficial não publica uma cota fixa de TPS para TranslateText síncrono (só
+# orienta monitorar ThrottlingException e abrir chamado de aumento se for sustentado) — valor
+# mais alto é só um ponto de partida conservador, a revisar com a duração real em prod.
+_TRANSLATE_MAX_WORKERS_GOOGLE = 2
+_TRANSLATE_MAX_WORKERS_AWS = 10
+
+
 def _add_translation(
     df: pd.DataFrame,
     description: str,
@@ -157,6 +168,7 @@ def _add_translation(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt,
@@ -183,6 +195,9 @@ def _add_translation(
                       usada como cache de tradução, ou None se não há histórico.
         detect_fn:    Função de detecção de idioma (texto) -> idioma detectado (ou
                       None). Por padrão usa resolve_detect_language_fn().
+        translate_provider: "google" ou "aws" — determina o teto de workers da tradução
+                      (ver _TRANSLATE_MAX_WORKERS_GOOGLE/_TRANSLATE_MAX_WORKERS_AWS), não o
+                      serviço em si (esse já foi resolvido em translate_fn pelo chamador).
 
     Returns:
         DataFrame com as colunas name_detected_language_en, name_detected_language_pt,
@@ -202,11 +217,9 @@ def _add_translation(
         df, previous_df, "english_name", "name_pt", key_column=key_column
     )
 
-    # 2 workers: genre e configuration têm no máximo ~250 itens, então poucos workers bastam.
-    # O ganho não é de vazão, e sim sobrepor o backoff do Google Translate (até ~20 s por nome
-    # quando ele devolve erro/página de erro); o teto baixo evita pressionar o endpoint não
-    # oficial, que já bloqueia sob carga. O glue_details usa mais workers porque processa
-    # milhares de IDs por execução.
+    max_workers = (
+        _TRANSLATE_MAX_WORKERS_AWS if translate_provider == "aws" else _TRANSLATE_MAX_WORKERS_GOOGLE
+    )
     df, _ = resolve_pt_translation(
         df,
         source_column="english_name",
@@ -216,7 +229,7 @@ def _add_translation(
         translation_attempts_column="name_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=fn,
-        max_workers=2,
+        max_workers=max_workers,
     )
     return df
 
@@ -226,9 +239,12 @@ def _add_name_pt_countries(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """Traduz english_name dos países para português e grava como name_pt."""
-    return _add_translation(df, "países", "iso_3166_1", translate_fn, previous_df, detect_fn)
+    return _add_translation(
+        df, "países", "iso_3166_1", translate_fn, previous_df, detect_fn, translate_provider
+    )
 
 
 def _add_name_pt_languages(
@@ -236,9 +252,12 @@ def _add_name_pt_languages(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """Traduz english_name dos idiomas para português e grava como name_pt."""
-    return _add_translation(df, "idiomas", "iso_639_1", translate_fn, previous_df, detect_fn)
+    return _add_translation(
+        df, "idiomas", "iso_639_1", translate_fn, previous_df, detect_fn, translate_provider
+    )
 
 
 def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataFrame:
@@ -311,6 +330,7 @@ def _read_genre_or_configuration(
     s3_bucket_sot: str | None,
     table_name: str | None,
     detect_fn: Callable[[str], str | None] | None,
+    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """Lê o arquivo único de genre/configuration. Em configuration, adiciona name_pt
     (países para tv, idiomas para movie) via _add_name_pt_countries/_add_name_pt_languages,
@@ -325,9 +345,9 @@ def _read_genre_or_configuration(
         previous_df = read_existing_configuration(s3_bucket_sot, table_name)
 
     if media_type == "tv":
-        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn)
+        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn, translate_provider)
     if media_type == "movie":
-        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn)
+        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn, translate_provider)
     return df
 
 
@@ -340,6 +360,7 @@ def read_from_sor(
     s3_bucket_sot: str | None = None,
     table_name: str | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
@@ -370,6 +391,9 @@ def read_from_sor(
         detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
                        name_detected_language_pt (configuration) e overview_detected_language
                        (discover). Por padrão usa resolve_detect_language_fn().
+        translate_provider: "google" ou "aws" — só relevante para table_type="configuration";
+                       determina o teto de workers da tradução (ver _add_translation),
+                       não o serviço em si (translate_fn já vem resolvido pelo chamador).
 
     Returns:
         DataFrame com os dados lidos e prontos para gravação no SOT
@@ -389,7 +413,8 @@ def read_from_sor(
         df = _read_watch_providers_ref(s3_bucket_sor, s3_key)
     elif table_type in ("genre", "configuration"):
         df = _read_genre_or_configuration(
-            s3_bucket_sor, s3_key, media_type, table_type, translate_fn, s3_bucket_sot, table_name, detect_fn
+            s3_bucket_sor, s3_key, media_type, table_type, translate_fn, s3_bucket_sot, table_name, detect_fn,
+            translate_provider,
         )
 
     logger.info(f"Lidos {len(df)} registros.")

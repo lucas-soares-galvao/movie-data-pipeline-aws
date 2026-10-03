@@ -1265,6 +1265,40 @@ class TestCollectAndWriteDetails:
             assert df["overview_pt"].iloc[0] == "[GT] Sinopse A"
             assert df["tagline_pt"].iloc[0] == "[GT] Tagline serie"
 
+    def test_translate_provider_aws_usa_teto_maior_de_workers(self):
+        """translate_provider="aws" repassa _TRANSLATE_MAX_WORKERS_AWS às 3 traduções
+        (overview/keywords/tagline) — ver _TRANSLATE_MAX_WORKERS_AWS/_GOOGLE."""
+        response = self._mock_tv_response(10)
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet"),
+            patch("src.utils.resolve_pt_translation", side_effect=lambda df, **kw: (df, 0)) as mock_resolve,
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db", translate_provider="aws")
+
+        assert mock_resolve.call_count == 3
+        for call_args in mock_resolve.call_args_list:
+            assert call_args.kwargs["max_workers"] == u._TRANSLATE_MAX_WORKERS_AWS
+
+    def test_translate_provider_google_padrao_usa_teto_conservador_de_workers(self):
+        """Sem translate_provider informado (default "google"), usa o teto conservador —
+        não pressionar o endpoint não-oficial do Google sob carga."""
+        response = self._mock_tv_response(10)
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet"),
+            patch("src.utils.resolve_pt_translation", side_effect=lambda df, **kw: (df, 0)) as mock_resolve,
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db")
+
+        assert mock_resolve.call_count == 3
+        for call_args in mock_resolve.call_args_list:
+            assert call_args.kwargs["max_workers"] == u._TRANSLATE_MAX_WORKERS_GOOGLE
+
     def test_movie_writes_runtime_and_year(self):
         ids = [1, 2]
         responses = [self._mock_movie_response(i) for i in ids]
