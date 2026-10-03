@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from src.utils import (
+    _TRANSLATE_MAX_WORKERS_AWS,
+    _TRANSLATE_MAX_WORKERS_GOOGLE,
     _add_name_pt_countries,
     _add_name_pt_languages,
     _read_genre_or_configuration,
@@ -276,6 +278,16 @@ class TestReadFromSorConfiguration:
             assert result["name_pt"].iloc[0] == "[PT] Brazil"
             assert result["name_pt"].iloc[1] == "[PT] United States"
 
+    def test_translate_provider_chega_ate_resolve_pt_translation(self):
+        s3_mock = _make_s3_mock([{"iso_3166_1": "BR", "english_name": "Brazil"}])
+        df_passthrough = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        with (
+            patch("boto3.client", return_value=s3_mock),
+            patch("src.utils.resolve_pt_translation", return_value=(df_passthrough, 0)) as mock_resolve,
+        ):
+            read_from_sor("my-sor", "tv", "configuration", translate_provider="aws")
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_AWS
+
     def test_reaproveita_name_pt_quando_english_name_nao_mudou(self):
         """Cache de tradução: english_name idêntico ao já gravado na SOT não é retraduzido."""
         s3_mock = _make_s3_mock([
@@ -384,6 +396,29 @@ class TestAddNamePtCountries:
         assert result["name_pt"].iloc[0] == "Nome já em português"
         assert result["name_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
+
+
+class TestAddNamePtCountriesMaxWorkersPorProvider:
+    """translate_provider determina o teto de workers repassado a resolve_pt_translation —
+    conservador (Google, endpoint não-oficial) por padrão, maior quando AWS Translate."""
+
+    def test_usa_teto_conservador_do_google_quando_provider_nao_informado(self):
+        df = pd.DataFrame({"english_name": ["Japan"]})
+        with patch("src.utils.resolve_pt_translation", return_value=(df, 0)) as mock_resolve:
+            _add_name_pt_countries(df)
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_GOOGLE
+
+    def test_usa_teto_maior_quando_provider_e_aws(self):
+        df = pd.DataFrame({"english_name": ["Japan"]})
+        with patch("src.utils.resolve_pt_translation", return_value=(df, 0)) as mock_resolve:
+            _add_name_pt_countries(df, translate_provider="aws")
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_AWS
+
+    def test_add_name_pt_languages_tambem_repassa_translate_provider(self):
+        df = pd.DataFrame({"english_name": ["English"]})
+        with patch("src.utils.resolve_pt_translation", return_value=(df, 0)) as mock_resolve:
+            _add_name_pt_languages(df, translate_provider="aws")
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_AWS
 
 
 # ---------------------------------------------------------------------------

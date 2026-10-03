@@ -190,12 +190,19 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
 
 _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
 
-# Traduções EN→PT paralelas via Google Translate. Elevado de 5 para 15 depois que o sinal
-# de changes por ID (ver _force_reuse_when_unflagged) passou a filtrar a maior parte do
-# volume no modo changes — o residual que ainda precisa traduzir de verdade é pequeno
-# (dezenas, não milhares) e paraleliza melhor com mais workers, inclusive quando o Google
-# Translate falha (menos tempo total em retry/backoff).
-_TRANSLATE_MAX_WORKERS = 15
+# Traduções EN→PT paralelas via resolve_translate_fn, teto de workers por
+# translate_provider (ver collect_and_write_details). No fluxo normal de discover (fora do
+# modo changes) o volume elegível observado em prod é de até ~500 registros por
+# coluna/execução (overview_pt/keywords_pt/tagline_pt, traduzidos em passagens sequenciais).
+# "google": teto baixo de propósito — não é para ganhar vazão, e sim para não pressionar o
+# endpoint não-oficial, que bloqueia sob carga (cada chamada pagando até ~20s de backoff),
+# o que já estourou o timeout do job inteiro. "aws": API oficial, sem esse bloqueio — o
+# gargalo de latência desaparece; a doc oficial não publica uma cota fixa de TPS para
+# TranslateText síncrono (só orienta monitorar ThrottlingException e contatar o AWS Support
+# se for sustentado), por isso 25 é só um ponto de partida conservador, a revisar com a
+# duração real das primeiras execuções em prod.
+_TRANSLATE_MAX_WORKERS_GOOGLE = 15
+_TRANSLATE_MAX_WORKERS_AWS = 25
 
 # Concorrência dedicada à consulta /movie|tv/{id}/changes (modo changes) — chamada leve
 # (resposta pequena, sem append_to_response), diferente de _TMDB_MAX_WORKERS (usado por
@@ -754,6 +761,7 @@ def _add_translations_pt(
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
+    max_workers: int = _TRANSLATE_MAX_WORKERS_GOOGLE,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
@@ -791,7 +799,7 @@ def _add_translations_pt(
         translation_attempts_column="overview_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=translate_fn,
-        max_workers=_TRANSLATE_MAX_WORKERS,
+        max_workers=max_workers,
         needs_translation_column="overview_needs_translation",
     )
     return df
@@ -803,6 +811,7 @@ def _add_translations_keywords_pt(
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
+    max_workers: int = _TRANSLATE_MAX_WORKERS_GOOGLE,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas keywords_detected_language_en, keywords_detected_language_pt,
@@ -835,7 +844,7 @@ def _add_translations_keywords_pt(
         translation_attempts_column="keywords_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=translate_fn,
-        max_workers=_TRANSLATE_MAX_WORKERS,
+        max_workers=max_workers,
         needs_translation_column="keywords_needs_translation",
     )
     return df
@@ -847,6 +856,7 @@ def _add_translations_tagline_pt(
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
+    max_workers: int = _TRANSLATE_MAX_WORKERS_GOOGLE,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
@@ -877,7 +887,7 @@ def _add_translations_tagline_pt(
         translation_attempts_column="tagline_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=translate_fn,
-        max_workers=_TRANSLATE_MAX_WORKERS,
+        max_workers=max_workers,
         needs_translation_column="tagline_needs_translation",
     )
     return df
@@ -1000,17 +1010,20 @@ def collect_and_write_details(
     detect_fn = resolve_detect_language_fn(
         detect_language_langdetect, detect_language_aws, provider=translate_provider,
     )
+    translate_max_workers = (
+        _TRANSLATE_MAX_WORKERS_AWS if translate_provider == "aws" else _TRANSLATE_MAX_WORKERS_GOOGLE
+    )
     df = _add_translations_pt(
         df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
-        changed_fields_by_id=changed_fields_by_id,
+        changed_fields_by_id=changed_fields_by_id, max_workers=translate_max_workers,
     )
     df = _add_translations_keywords_pt(
         df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
-        changed_fields_by_id=changed_fields_by_id,
+        changed_fields_by_id=changed_fields_by_id, max_workers=translate_max_workers,
     )
     df = _add_translations_tagline_pt(
         df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
-        changed_fields_by_id=changed_fields_by_id,
+        changed_fields_by_id=changed_fields_by_id, max_workers=translate_max_workers,
     )
     if content_type == "movie":
         df = _add_collection_name_pt(df, api_key)

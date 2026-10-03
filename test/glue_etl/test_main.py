@@ -202,6 +202,19 @@ class TestRunConfiguration:
             mock_read.assert_called_once()
             assert mock_read.call_args.args[:4] == ("my-sor", "movie", "configuration", None)
 
+    def test_translate_provider_repassado_ao_read_from_sor(self):
+        """TRANSLATE_PROVIDER determina o teto de workers da tradução de configuration
+        (ver _add_translation) — precisa chegar até read_from_sor, não só até o details."""
+        df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args(TRANSLATE_PROVIDER="aws")),
+            patch.object(m, "read_from_sor", return_value=df_mock) as mock_read,
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_glue_job"),
+        ):
+            m.main()
+            assert mock_read.call_args.kwargs["translate_provider"] == "aws"
+
     def test_writes_to_configuration_table_without_partition(self):
         df_mock = pd.DataFrame([{"iso_639_1": "pt"}])
         with (
