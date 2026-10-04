@@ -254,7 +254,8 @@ texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem
 | `test_detecta_cada_texto_e_preserva_a_ordem` | Resultado na mesma ordem dos textos |
 | `test_lista_vazia_nao_chama_detect_fn` | Lista vazia devolve `[]` sem chamar `detect_fn` nem logar |
 | `test_roda_em_paralelo` | 2 workers esperam um ao outro numa `threading.Barrier` (timeout 5 s) — se rodasse em série, a primeira chamada nunca sairia dela |
-| `test_loga_resumo_com_detectados_e_falhas` | Resumo `1 detectado(s), 1 falha(s) em 3 texto(s)`; texto vazio devolve `None` sem chamada de rede e não conta como falha |
+| `test_loga_resumo_com_detectados_e_falhas` | Resumo `1 detectado(s), 1 falha(s), 1 vazio(s) em 3 texto(s)`; texto vazio devolve `None` sem chamada de rede, não conta como falha e aparece à parte |
+| `test_resumo_nao_mostra_vazios_quando_nao_ha` | Sem textos vazios o resumo não traz a parcela `vazio(s)` |
 | `test_sem_label_nao_loga_resumo` | Sem `label`, nenhum resumo |
 
 ### `TestReuseDetectedLanguage`
@@ -314,19 +315,24 @@ um manter sua própria cópia da orquestração.
 | `test_only_missing_nao_recalcula_idioma_en_ja_preenchido` | Não redetecta o idioma da fonte quando a coluna já está preenchida (evita recomputar à toa em reruns) |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
 | `test_detecta_idioma_em_paralelo_com_max_workers_informado` | As 3 detecções (fonte, destino inicial e redetecção do recém-traduzido) passam por `detect_in_parallel` com o mesmo `max_workers` da tradução |
-| `test_destino_preenchido_com_deteccao_indisponivel_nao_e_sobrescrito` | Destino com texto (ex.: tradução nativa) e detecção do idioma dele nula **não** vai ao tradutor: texto intacto, tentativas em 0, `needs_translation=True` e log `N registro(s) de '<coluna>' mantidos como estão` |
+| `test_destino_preenchido_com_deteccao_indisponivel_nao_e_sobrescrito` | Destino com texto (ex.: tradução nativa) e detecção do idioma dele nula **não** vai ao tradutor: texto intacto, tentativas em 0, `needs_translation=False` (o texto difere da fonte, logo foi traduzido) e log `N registro(s) de '<coluna>' mantidos como estão` |
 | `test_destino_vazio_com_deteccao_nula_continua_elegivel` | Destino vazio tem idioma nulo por definição (texto vazio não é detectado) — continua sendo traduzido |
 | `test_destino_com_idioma_diferente_de_pt_detectado_continua_elegivel` | Sem regressão: idioma detectado e diferente de `"pt"` (o TMDB devolveu inglês no lugar do pt-BR) continua indo ao tradutor |
 | `test_so_as_linhas_com_deteccao_indisponivel_sao_poupadas` | Num mesmo DataFrame, só a linha com detecção nula é poupada; a outra é traduzida normalmente |
 | `test_loga_balanco_com_contagens_e_ids_de_exemplo_das_pendentes` | A linha `Balanço '<coluna>'` traz as contagens exatas (com fonte, já em pt, traduzidas ok/igual, mantidas, pendentes) e até 3 ids de exemplo das pendentes (`sample_id_column`); as mesmas contagens são somadas em `llm_metrics` |
-| `test_balanco_sem_elegiveis_conta_as_mantidas_por_deteccao_indisponivel` | O balanço também é logado quando ninguém foi ao tradutor, contando as linhas mantidas por detecção indisponível |
+| `test_balanco_sem_elegiveis_conta_as_mantidas_por_deteccao_indisponivel` | O balanço também é logado quando ninguém foi ao tradutor, contando as linhas mantidas por detecção indisponível (que, com destino já traduzido, não contam como pendentes) |
 | `test_balanco_ignora_sample_id_column_ausente_no_dataframe` | `sample_id_column` inexistente no `df` não quebra nem mostra `ex.:` |
 | `test_balanco_sem_pendentes_nao_mostra_exemplos` | Sem pendentes não há exemplos de ids |
-| `test_deteccao_refeita_na_proxima_execucao_resolve_a_pendencia` | Duas execuções seguidas: na 1ª a detecção falha (`needs_translation=True`); na 2ª é refeita, o destino é `"pt"` e nada é traduzido (`needs_translation=False`) |
+| `test_deteccao_refeita_na_proxima_execucao_confirma_o_idioma` | Duas execuções seguidas: na 1ª a detecção falha (idioma nulo; o destino difere da fonte, então `needs_translation=False`); na 2ª é refeita, o idioma vira `"pt"` e nada é traduzido |
 | `test_precisa_traducao_column_none_nao_cria_coluna` | Parâmetro `needs_translation_column` omitido (`None`, default) não cria coluna nova no DataFrame |
 | `test_precisa_traducao_true_quando_resultado_ainda_nao_e_pt` | Fonte preenchida e idioma do resultado ainda diferente de `"pt"` após a tentativa de tradução → `True` |
 | `test_precisa_traducao_false_quando_resultado_ja_e_pt` | Fonte já detectada como `"pt"` (cópia direta) → `False` |
 | `test_precisa_traducao_false_quando_fonte_vazia` | Fonte vazia/nula → `False` (nada a traduzir) |
+| `test_precisa_traducao_false_quando_texto_traduzido_mesmo_com_idioma_detectado_diferente_de_pt` | Destino traduzido (texto ≠ fonte) mas detectado como `"tr"` → `False` e `0 pendente(s)` no balanço (o detector erra em listas curtas); a linha continua elegível/traduzida como antes |
+| `test_precisa_traducao_true_quando_destino_igual_a_fonte_ignorando_caixa_e_espacos` | `"sexy"` → `" Sexy "` conta como não alterado → `True` |
+| `test_precisa_traducao_true_quando_destino_vazio_e_nada_traduziu` | Destino vazio com fonte preenchida → `True` |
+| `test_precisa_traducao_usa_a_mesma_regra_sem_linhas_elegiveis` | Retorno antecipado (ninguém elegível): destino já traduzido com detecção indisponível → `False` |
+| `test_precisa_traducao_true_quando_deteccao_indisponivel_e_destino_igual_a_fonte` | Detecção nula e destino igual à fonte → `True` |
 | `test_precisa_traducao_continua_true_mesmo_com_tentativas_esgotadas` | Diferente da elegibilidade, continua `True` mesmo após `translation_attempts_column` atingir `max_attempts` — reflete o estado atual do dado, não se o pipeline ainda vai retentar |
 | `test_loga_resumo_agregado_de_falhas_de_traducao` | Resumo agregado ("N falha(s) / M elegível(is)") em INFO, não uma linha por registro |
 

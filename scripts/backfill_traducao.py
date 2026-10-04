@@ -28,9 +28,11 @@ tradutor — sem esse teto, conteúdo genuinamente não traduzível (nomes
 próprios, termos curtos que o tradutor devolve sem alterar) seria retentado
 para sempre, já que seu idioma detectado nunca vira "pt" (ver docstring de
 resolve_pt_translation). *_needs_translation (booleano) grava o mesmo
-critério de elegibilidade acima, mas SEM o teto de *_translation_attempts —
-reflete se o campo, como está agora, ainda não está em português, mesmo
-esgotado o número de tentativas automáticas. Não é gerado collection_name_pt
+critério de elegibilidade acima — mais "texto do destino não alterado em
+relação à fonte", porque o detector de idioma erra em textos curtos e uma
+tradução correta detectada como outro idioma não é pendência — mas SEM o
+teto de *_translation_attempts: reflete se o campo, como está agora, ainda
+não está em português, mesmo esgotado o número de tentativas automáticas. Não é gerado collection_name_pt
 — diferente dos demais, ele vem de uma chamada à API do TMDB (não de tradução
 por LLM) e foi deixado fora deste script. Não re-chama a API do TMDB para
 os campos acima.

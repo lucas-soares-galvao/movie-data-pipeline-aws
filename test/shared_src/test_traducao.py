@@ -99,7 +99,14 @@ class TestDetectInParallel:
             detect_in_parallel(["Hello", "", "Falha"], respostas.get, label="Detecção x")
         resumo = [r.message for r in caplog.records if r.message.startswith("Detecção x: ")]
         assert len(resumo) == 1
-        assert "1 detectado(s), 1 falha(s) em 3 texto(s)" in resumo[0]
+        assert "1 detectado(s), 1 falha(s), 1 vazio(s) em 3 texto(s)" in resumo[0]
+
+    def test_resumo_nao_mostra_vazios_quando_nao_ha(self, caplog):
+        with caplog.at_level(logging.INFO):
+            detect_in_parallel(["Hello", "Falha"], {"Hello": "en"}.get, label="Detecção x")
+        resumo = next(r.message for r in caplog.records if r.message.startswith("Detecção x: "))
+        assert "1 detectado(s), 1 falha(s) em 2 texto(s)" in resumo
+        assert "vazio" not in resumo
 
     def test_sem_label_nao_loga_resumo(self, caplog):
         with caplog.at_level(logging.INFO):
@@ -555,7 +562,8 @@ class TestResolvePtTranslation:
         assert sucesso == 0
         assert df["overview_pt"].tolist() == ["Olá nativo"]
         assert df["overview_tentativas"].tolist() == [0]
-        assert df["overview_precisa"].tolist() == [True]
+        # O texto do destino difere da fonte (alguém o traduziu): a dúvida do detector não reabre a pendência.
+        assert df["overview_precisa"].tolist() == [False]
         assert "1 registro(s) de 'overview_pt' mantidos como estão" in caplog.text
 
     def test_destino_vazio_com_deteccao_nula_continua_elegivel(self):
@@ -600,8 +608,8 @@ class TestResolvePtTranslation:
         assert df["overview_pt"].tolist() == ["Um nativo", "Dois"]
         assert df["overview_tentativas"].tolist() == [0, 1]
 
-    def test_deteccao_refeita_na_proxima_execucao_resolve_a_pendencia(self):
-        """A pendência se corrige sozinha: o valor nulo nunca é reaproveitado, então a próxima
+    def test_deteccao_refeita_na_proxima_execucao_confirma_o_idioma(self):
+        """O idioma nulo se corrige sozinho: o valor nulo nunca é reaproveitado, então a próxima
         execução redetecta e, se o destino já é "pt", não há tradução nenhuma."""
         df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Olá nativo"]})
         args = ("overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt", "overview_tentativas")
@@ -609,7 +617,8 @@ class TestResolvePtTranslation:
             df, *args, lambda t: "en" if t == "Hello" else None, MagicMock(),
             needs_translation_column="overview_precisa",
         )
-        assert df["overview_precisa"].tolist() == [True]
+        assert df["overview_idioma_pt"].isna().all()
+        assert df["overview_precisa"].tolist() == [False]
 
         traduzir_fn = MagicMock()
         df, sucesso = resolve_pt_translation(
@@ -656,7 +665,8 @@ class TestResolvePtTranslation:
             )
         balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'"))
         assert "0 traduzida(s) (0 ok, 0 igual(is) à fonte)" in balanco
-        assert "1 mantida(s) por detecção indisponível | 1 pendente(s) (ex.: id 1)" in balanco
+        assert "1 mantida(s) por detecção indisponível | 0 pendente(s)" in balanco
+        assert "ex.:" not in balanco
 
     def test_balanco_ignora_sample_id_column_ausente_no_dataframe(self, caplog):
         df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
@@ -679,6 +689,47 @@ class TestResolvePtTranslation:
         balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'"))
         assert "0 pendente(s)" in balanco
         assert "ex.:" not in balanco
+
+    def _resolver_precisa(self, fonte, destino, detectar, traduzir=None, **kwargs):
+        df = pd.DataFrame({"id": [1], "campo_en": [fonte], "campo_pt": [destino]})
+        df, _ = resolve_pt_translation(
+            df, "campo_en", "campo_pt", "campo_idioma_en", "campo_idioma_pt", "campo_tentativas",
+            detectar, traduzir or MagicMock(side_effect=lambda t: t),
+            needs_translation_column="campo_precisa", sample_id_column="id", **kwargs,
+        )
+        return df
+
+    def test_precisa_traducao_false_quando_texto_traduzido_mesmo_com_idioma_detectado_diferente_de_pt(self, caplog):
+        """O detector erra em listas curtas de termos ("drama turco" detectado como "tr"): se o texto
+        do destino difere da fonte, ele foi traduzido e não conta como pendente."""
+        with caplog.at_level(logging.INFO):
+            df = self._resolver_precisa(
+                "turkish drama", "turkish drama", lambda t: "tr", traduzir=lambda t: "drama turco",
+            )
+        assert df["campo_pt"].tolist() == ["drama turco"]
+        assert df["campo_idioma_pt"].tolist() == ["tr"]
+        assert df["campo_precisa"].tolist() == [False]
+        balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'campo_pt'"))
+        assert "0 pendente(s)" in balanco
+
+    def test_precisa_traducao_true_quando_destino_igual_a_fonte_ignorando_caixa_e_espacos(self):
+        df = self._resolver_precisa("sexy", " Sexy ", lambda t: "en", traduzir=lambda t: t)
+        assert df["campo_precisa"].tolist() == [True]
+
+    def test_precisa_traducao_true_quando_destino_vazio_e_nada_traduziu(self):
+        df = self._resolver_precisa("sexy", None, lambda t: "en", traduzir=lambda t: "")
+        assert df["campo_precisa"].tolist() == [True]
+
+    def test_precisa_traducao_usa_a_mesma_regra_sem_linhas_elegiveis(self):
+        """Caminho de retorno antecipado: destino já traduzido e detecção indisponível (nula)."""
+        df = self._resolver_precisa(
+            "Hello", "Olá nativo", lambda t: "en" if t == "Hello" else None, traduzir=MagicMock(),
+        )
+        assert df["campo_precisa"].tolist() == [False]
+
+    def test_precisa_traducao_true_quando_deteccao_indisponivel_e_destino_igual_a_fonte(self):
+        df = self._resolver_precisa("Hello", "Hello", lambda t: None, traduzir=MagicMock())
+        assert df["campo_precisa"].tolist() == [True]
 
     def test_loga_resumo_agregado_de_falhas_de_traducao(self, caplog):
         """Falhas de tradução não devem ser logadas uma a uma (isso fica em DEBUG
