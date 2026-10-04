@@ -15,6 +15,7 @@ app/shared_src/
     ├── glue_helpers.py    ← utilitários compartilhados de jobs Glue
     ├── gmail_helpers.py   ← credenciais e envio de e-mail via Gmail/SMTP
     ├── llm_client.py      ← carregamento compartilhado da chave de API do LLM (OpenRouter)
+    ├── secret_redaction.py ← mascaramento de segredos (api_key do TMDB etc.) em logs e exceções
     ├── llm_metrics.py     ← uso do LLM (chamadas, falhas por causa, modelo, tokens, custo) e balanço de tradução, para os logs
     ├── traducao.py        ← orquestração de tradução: elegibilidade, cache, paralelismo
     ├── traducao_llm.py    ← tradução via LLM (OpenRouter, litellm)
@@ -29,15 +30,27 @@ app/shared_src/
 
 | Função | Responsabilidade |
 |---|---|
-| `api_get(url, params, max_retries)` | GET com retry/backoff exponencial para lidar com rate limits de APIs (429, 5xx) |
-| `get_api_secret(secret_arn, key_name)` | Busca um segredo no AWS Secrets Manager. Instancia o cliente com `connect_timeout`/`read_timeout`/`retries` explícitos (via `botocore.config.Config`) — sem isso, uma chamada sem resposta pode pendurar o chamador (ex.: Lambda `lambda_api`) até o limite de execução |
+| `api_get(url, params, max_retries)` | GET com retry/backoff exponencial para lidar com rate limits de APIs (429, 5xx). As exceções que propaga (`HTTPError` e `ConnectionError`/`Timeout`) saem **sem a chave de API**: a mensagem do `requests` embute a URL completa com a query (`...for url: ...?api_key=...`), e o TMDB recebe a chave como parâmetro de query — por isso `scrub_exception` limpa a exceção antes de logar/propagar. Foi o que vazou num log público do Actions (`logger.warning(f"...: {exc}")`) |
+| `get_api_secret(secret_arn, key_name)` | Busca um segredo no AWS Secrets Manager e o registra em `secret_redaction.register_secret`, para ser mascarado por valor em qualquer log/exceção. Instancia o cliente com `connect_timeout`/`read_timeout`/`retries` explícitos (via `botocore.config.Config`) — sem isso, uma chamada sem resposta pode pendurar o chamador (ex.: Lambda `lambda_api`) até o limite de execução |
 
 ### `shared_utils/glue_helpers.py`
 
 | Função | Responsabilidade |
 |---|---|
 | `get_resolved_option(args)` | Wrapper de `getResolvedOptions` — converte lista de nomes em dicionário nome→valor |
-| `configure_glue_logging()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp) e retorna o logger raiz |
+| `configure_glue_logging()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp), instala a máscara de segredos nos handlers (`install_log_redaction`) e retorna o logger raiz |
+
+### `shared_utils/secret_redaction.py`
+
+Mascaramento de segredos em logs e exceções. A API v3 do TMDB recebe a chave como parâmetro de query e as exceções do `requests` embutem a URL completa na mensagem, então qualquer `logger.warning(f"...: {exc}")`, `logger.exception(...)` ou traceback não tratado imprime a chave — num repositório público, no log público do Actions (aconteceu num run de backfill de dev; a chave foi rotacionada e o log apagado). Defesa em camadas: na origem (`scrub_exception`, que também cobre tracebacks que o `logging` não vê, como os do Lambda/Glue), no log (`RedactingFormatter`) e por valor (`register_secret`).
+
+| Função | Responsabilidade |
+|---|---|
+| `register_secret(value)` | Registra um segredo (e a versão URL-encoded) para ser mascarado onde quer que apareça. Ignora não-string e valores com menos de 8 caracteres (mascarariam trechos comuns). Chamada por `get_api_secret` e `load_llm_api_key` |
+| `redact(text)` | Troca por `***` os segredos registrados e padrões conhecidos que funcionam mesmo sem registro: `api_key=`/`access_token=` (query), `Bearer <token>`, chaves OpenRouter `sk-or-…` e Access Key IDs AWS (`AKIA…`/`ASIA…`) |
+| `scrub_exception(exc)` | Limpa `exc.args` com `redact` e **corta a cadeia** `__cause__`/`__context__` (o traceback encadeado imprimiria a mensagem original). Uso: `raise scrub_exception(exc)` dentro do próprio `except` |
+| `RedactingFormatter(inner=None)` | Formatter que envolve outro e aplica `redact` ao texto final (mensagem **e** traceback) |
+| `install_log_redaction(logger=None)` | Envolve o formatter de cada handler do logger (raiz por padrão) num `RedactingFormatter`, preservando o formato (inclusive o do handler que o runtime do Lambda já instala). Idempotente. Chamada por `configure_glue_logging` (4 jobs Glue), `backfill_shared.setup_logging` (scripts) e `lambda_api/main.py` |
 
 ### `shared_utils/gmail_helpers.py`
 
@@ -50,7 +63,7 @@ app/shared_src/
 
 | Função | Responsabilidade |
 |---|---|
-| `load_llm_api_key(secret_field, env_var, region="sa-east-1", required=True)` | Busca uma chave de API de LLM do secret unificado (`FILMBOT_SECRET_ARN`, em produção) ou de uma variável de ambiente (dev local/CI). `secret_field` indexa qual campo buscar dentro do secret (ex.: `"llm_api_key"`, `"transcription_api_key"`) — diferentes chamadores (agente de recomendação em `lightsail_ia`, tradução via LLM em `traducao_llm.py`/`idioma_llm.py`) reaproveitam o mesmo secret sem duplicar a lógica de busca. `required=True` indexa direto (levanta `KeyError` se ausente); `required=False` usa `.get()` (devolve `None` se ausente, para campo opcional) |
+| `load_llm_api_key(secret_field, env_var, region="sa-east-1", required=True)` | Registra o valor lido em `secret_redaction.register_secret` (mascarado nos logs) e busca uma chave de API de LLM do secret unificado (`FILMBOT_SECRET_ARN`, em produção) ou de uma variável de ambiente (dev local/CI). `secret_field` indexa qual campo buscar dentro do secret (ex.: `"llm_api_key"`, `"transcription_api_key"`) — diferentes chamadores (agente de recomendação em `lightsail_ia`, tradução via LLM em `traducao_llm.py`/`idioma_llm.py`) reaproveitam o mesmo secret sem duplicar a lógica de busca. `required=True` indexa direto (levanta `KeyError` se ausente); `required=False` usa `.get()` (devolve `None` se ausente, para campo opcional) |
 
 ### `shared_utils/llm_metrics.py`
 

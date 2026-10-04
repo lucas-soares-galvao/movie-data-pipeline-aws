@@ -1,4 +1,6 @@
 import json
+import logging
+import traceback
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -79,6 +81,57 @@ class TestApiGet:
         assert mock_get.call_count == 5
 
 
+# Valor obviamente falso: nunca reusar uma chave que já apareceu num ambiente real.
+_FAKE_KEY = "0123456789abcdef0123456789abcdef"
+
+
+def _resposta_real(status_code: int) -> requests.Response:
+    """Response real do requests: raise_for_status() monta a mensagem com a URL completa — que no
+    TMDB carrega a api_key como parâmetro de query."""
+    response = requests.Response()
+    response.status_code = status_code
+    response.reason = "Not Found" if status_code == 404 else "Internal Server Error"
+    response.url = f"https://api.themoviedb.org/3/collection/1?api_key={_FAKE_KEY}&language=pt-BR"
+    return response
+
+
+class TestApiGetNaoVazaChaveDeApi:
+    """As exceções de api_get saem sem a chave: a mensagem do requests embute a URL com a query, e
+    um log de `{exc}` num repositório público a vazou no log do GitHub Actions."""
+
+    @patch("shared_utils.api_client.time.sleep")
+    @patch("shared_utils.api_client.requests.get")
+    def test_http_nao_transiente_levanta_sem_a_chave(self, mock_get, mock_sleep):
+        mock_get.return_value = _resposta_real(404)
+        with pytest.raises(requests.exceptions.HTTPError) as info:
+            api_get("https://api.themoviedb.org/3/collection/1", {"api_key": _FAKE_KEY})
+        assert _FAKE_KEY not in str(info.value)
+        assert "api_key=***" in str(info.value)
+        assert _FAKE_KEY not in "".join(traceback.format_exception(info.value))
+
+    @patch("shared_utils.api_client.time.sleep")
+    @patch("shared_utils.api_client.requests.get")
+    def test_http_transiente_com_tentativas_esgotadas_levanta_sem_a_chave(self, mock_get, mock_sleep):
+        mock_get.return_value = _resposta_real(500)
+        with pytest.raises(requests.exceptions.HTTPError) as info:
+            api_get("https://api.themoviedb.org/3/collection/1", {"api_key": _FAKE_KEY})
+        assert mock_get.call_count == 5
+        assert _FAKE_KEY not in str(info.value)
+        assert _FAKE_KEY not in "".join(traceback.format_exception(info.value))
+
+    @patch("shared_utils.api_client.time.sleep")
+    @patch("shared_utils.api_client.requests.get")
+    def test_connection_error_esgotado_loga_e_levanta_sem_a_chave(self, mock_get, mock_sleep, caplog):
+        mock_get.side_effect = requests.exceptions.ConnectionError(
+            OSError(f"HTTPSConnectionPool(host='api.themoviedb.org'): Max retries exceeded with url: /3/x?api_key={_FAKE_KEY}")
+        )
+        with caplog.at_level(logging.INFO), pytest.raises(requests.exceptions.ConnectionError) as info:
+            api_get("https://api.themoviedb.org/3/x", {"api_key": _FAKE_KEY})
+        assert _FAKE_KEY not in str(info.value)
+        assert _FAKE_KEY not in "".join(traceback.format_exception(info.value))
+        assert _FAKE_KEY not in caplog.text  # inclui o traceback de logger.exception
+
+
 # ---------------------------------------------------------------------------
 # get_api_secret
 # ---------------------------------------------------------------------------
@@ -111,3 +164,14 @@ class TestGetApiSecret:
         mock_client.get_secret_value.assert_called_once_with(
             SecretId="arn:aws:secretsmanager:us-east-1:123:secret:tmdb"
         )
+
+    @patch("shared_utils.api_client.register_secret")
+    @patch("boto3.client")
+    def test_registra_o_valor_para_mascaramento_nos_logs(self, mock_client_factory, mock_register):
+        mock_client = MagicMock()
+        mock_client_factory.return_value = mock_client
+        mock_client.get_secret_value.return_value = {"SecretString": json.dumps({"tmdb_api_key": _FAKE_KEY})}
+
+        get_api_secret("arn:aws:secretsmanager:us-east-1:123:secret:tmdb", "tmdb_api_key")
+
+        mock_register.assert_called_once_with(_FAKE_KEY)

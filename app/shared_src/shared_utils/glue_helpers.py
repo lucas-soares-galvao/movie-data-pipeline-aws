@@ -6,6 +6,8 @@ import logging
 import sys
 from typing import Any
 
+from shared_utils.secret_redaction import install_log_redaction
+
 logger = logging.getLogger()
 
 
@@ -30,7 +32,8 @@ def get_resolved_option(args: list) -> dict[str, Any]:
 
 def configure_glue_logging() -> logging.Logger:
     """
-    Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp).
+    Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp) e mascara
+    segredos (api_key e afins) em tudo o que é logado, inclusive tracebacks.
 
     Returns:
         O logger raiz configurado.
@@ -41,4 +44,7 @@ def configure_glue_logging() -> logging.Logger:
         format="%(asctime)s %(levelname)s %(message)s",
         force=True,
     )
+    # Segredos (ex.: api_key do TMDB dentro da URL de uma exceção do requests) nunca vão ao
+    # CloudWatch em texto claro — ver shared_utils.secret_redaction.
+    install_log_redaction()
     return logging.getLogger()

@@ -10,6 +10,8 @@ import requests
 from botocore.config import Config as BotoConfig
 from requests.exceptions import ConnectionError, Timeout
 
+from shared_utils.secret_redaction import register_secret, scrub_exception
+
 logger = logging.getLogger()
 
 # Timeout explícito no cliente boto3: get_api_secret roda dentro de Lambda (lambda_api),
@@ -36,6 +38,20 @@ def _calculate_wait(attempt: int, response=None) -> float:
     return (2 ** attempt) + random.uniform(0, 1)
 
 
+def _raise_for_status(response: requests.Response) -> None:
+    """raise_for_status() que propaga a exceção sem a chave de API.
+
+    A mensagem do HTTPError do requests embute a URL completa ("...for url: ...?api_key=..."),
+    e a chave do TMDB viaja como parâmetro de query: sem limpar, qualquer log da exceção a vaza
+    (ver shared_utils.secret_redaction).
+    """
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        # scrub_exception corta a cadeia de causas de propósito (ela repetiria a chave no traceback).
+        raise scrub_exception(exc)
+
+
 def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
     """
     GET com retry e backoff exponencial em erros transientes.
@@ -51,6 +67,9 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
     Raises:
         HTTPError: Se o servidor responder com erro não-transiente ou tentativas esgotadas.
         ConnectionError / Timeout: Se não conseguir conectar após max_retries tentativas.
+
+    As exceções saem sem a chave de API: a mensagem do requests embute a URL com os parâmetros de
+    query (inclusive api_key do TMDB), então ela é limpa antes de ser logada ou propagada.
     """
     for attempt in range(max_retries):
         is_last_attempt = attempt == max_retries - 1
@@ -63,7 +82,7 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
             if response.status_code not in _TRANSIENT_HTTP_CODES:
                 # Status não é transiente: raise_for_status() lança exceção para 4xx/5xx
                 # permanentes (ex: 401, 404). Para 200 OK, não faz nada e retorna o JSON.
-                response.raise_for_status()
+                _raise_for_status(response)
                 return response.json()
 
             if is_last_attempt:
@@ -71,13 +90,16 @@ def api_get(url: str, params: dict, max_retries: int = 5) -> dict:
                     f"HTTP {response.status_code} após {max_retries} tentativas. "
                     f"Todas as tentativas esgotadas para {url}."
                 )
-                response.raise_for_status()
+                _raise_for_status(response)
 
             wait = _calculate_wait(attempt, response)
 
-        except (ConnectionError, Timeout):
+        except (ConnectionError, Timeout) as exc:
             # Erros de rede (sem conexão, timeout) também merecem retry.
             if is_last_attempt:
+                # Limpa antes de logar: logger.exception imprime o traceback com a mensagem da
+                # exceção, que embute a URL com a chave.
+                scrub_exception(exc)
                 logger.exception(
                     f"Erro de conexão após {max_retries} tentativas. "
                     f"Todas as tentativas esgotadas para {url}."
@@ -107,4 +129,7 @@ def get_api_secret(secret_arn: str, key_name: str) -> str:
     client = boto3.client("secretsmanager", config=_BOTO_CONFIG)
     response = client.get_secret_value(SecretId=secret_arn)
     secret = json.loads(response["SecretString"])
-    return secret[key_name]
+    value = secret[key_name]
+    # Mascara o valor onde quer que apareça em logs/exceções, mesmo fora dos padrões conhecidos.
+    register_secret(value)
+    return value

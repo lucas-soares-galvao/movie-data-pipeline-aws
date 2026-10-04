@@ -49,3 +49,14 @@ class TestConfigureGlueLogging:
             getattr(h, "stream", None) is sys.stdout
             for h in handlers
         )
+
+    def test_mascara_segredos_no_que_e_logado(self, capsys):
+        """Um log de exceção do requests embute a URL com a api_key: nunca deve chegar ao CloudWatch."""
+        configure_glue_logging()
+        logging.getLogger().warning(
+            "Falha ao buscar coleção 1: 404 for url: https://api.themoviedb.org/3/collection/1"
+            "?api_key=0123456789abcdef0123456789abcdef&language=pt-BR"
+        )
+        saida = capsys.readouterr().out
+        assert "0123456789abcdef0123456789abcdef" not in saida
+        assert "api_key=***&language=pt-BR" in saida

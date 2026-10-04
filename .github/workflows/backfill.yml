@@ -155,6 +155,27 @@ jobs:
             pip install -r scripts/requirements_backfill.txt
           fi
 
+      - name: Mask secrets from Secrets Manager
+        # Registra no Actions (::add-mask::) cada valor do secret unificado (tmdb_api_key,
+        # llm_api_key, ...) ANTES do backfill: o log de um repositório público é público, e a
+        # chave do TMDB viaja como parâmetro de query, então a mensagem de qualquer exceção do
+        # requests a carrega (foi o que vazou num run de dev). Fica num step separado de
+        # propósito — o comando ::add-mask:: não pode sair no stdout do script, porque o `tee` do
+        # step de backfill o gravaria em $LOG_FILE, de onde sai o step summary. É a última camada:
+        # o código já mascara segredos na origem (shared_utils.secret_redaction).
+        env:
+          FILMBOT_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
+        run: |
+          secret_json=$(aws secretsmanager get-secret-value \
+            --secret-id "$FILMBOT_SECRET_ARN" --region sa-east-1 \
+            --query SecretString --output text)
+          # Só valores string com 8+ caracteres: um valor curto mascararia trechos comuns do log.
+          echo "$secret_json" \
+            | jq -r 'to_entries[] | select((.value | type) == "string" and (.value | length) >= 8) | .value' \
+            | while IFS= read -r valor; do
+                echo "::add-mask::$valor"
+              done
+
       - name: Run backfill (${{ inputs.table_group }})
         env:
           AWS_REGION: sa-east-1
@@ -334,7 +355,9 @@ jobs:
             echo "- $resumo_final" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          erros=$(grep " ERROR " "$LOG_FILE" || true)
+          # sed: último recurso — o step summary de um repositório público também é público, e
+          # estas linhas vêm de exceções do requests, que embutem a URL com a api_key.
+          erros=$(grep " ERROR " "$LOG_FILE" | sed -E 's/(api_key=)[^& ]+/\1***/g' || true)
           if [ -n "$erros" ]; then
             echo "::warning::Backfill terminou com exit 0, mas há linha(s) de ERROR no log — revisar antes de considerar 100% completo."
             {

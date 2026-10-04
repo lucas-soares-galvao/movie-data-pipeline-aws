@@ -73,3 +73,25 @@ class TestLoadLlmApiKey:
             self._mock_secret(mock_boto3, {"llm_api_key": "x"})
             load_llm_api_key("llm_api_key", "LLM_API_KEY", region="us-east-1")
         mock_boto3.client.assert_called_once_with("secretsmanager", region_name="us-east-1")
+
+    def test_registra_a_chave_do_secrets_manager_para_mascaramento(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
+        with patch("shared_utils.llm_client.boto3") as mock_boto3, patch(
+            "shared_utils.llm_client.register_secret"
+        ) as mock_register:
+            self._mock_secret(mock_boto3, {"llm_api_key": "chave-llm-fake-1234"})
+            load_llm_api_key("llm_api_key", "LLM_API_KEY")
+        mock_register.assert_called_once_with("chave-llm-fake-1234")
+
+    def test_registra_a_chave_vinda_do_ambiente_para_mascaramento(self, monkeypatch):
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        monkeypatch.setenv("LLM_API_KEY", "chave-env-fake-1234")
+        with patch("shared_utils.llm_client.register_secret") as mock_register:
+            assert load_llm_api_key("llm_api_key", "LLM_API_KEY") == "chave-env-fake-1234"
+        mock_register.assert_called_once_with("chave-env-fake-1234")
+
+    def test_campo_opcional_ausente_devolve_none_sem_quebrar_o_registro(self, monkeypatch):
+        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
+        with patch("shared_utils.llm_client.boto3") as mock_boto3:
+            self._mock_secret(mock_boto3, {"llm_api_key": "x"})
+            assert load_llm_api_key("transcription_api_key", "T_KEY", required=False) is None
