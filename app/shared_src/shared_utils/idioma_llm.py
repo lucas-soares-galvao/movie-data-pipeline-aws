@@ -8,11 +8,11 @@ import re
 import litellm
 
 from shared_utils.traducao_llm import (
-    _get_llm_api_key,
     _LLM_EXTRA_BODY,
     _LLM_FALLBACK_MODELS,  # noqa: F401 — reexportado só para os testes inspecionarem
     _LLM_MODEL,
     _LLM_NUM_RETRIES,
+    _get_llm_api_key,
 )
 
 logger = logging.getLogger()
