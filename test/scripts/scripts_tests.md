@@ -75,6 +75,19 @@ processo, sem invocar Lambda nem acionar o job Glue ETL — os testes mockam ess
 | `test_token_expirado_em_uma_unidade_propaga_sem_ser_capturado_como_falha_soft` (parametrizado) | Token expirado numa unidade propaga (para `run_with_retry_exit` tratar como exit 75), não vira falha soft-fail-continue |
 | `test_clienterror_que_nao_e_token_expirado_e_falha_soft_e_backfill_continua` | `ClientError` comum (ex.: `AccessDenied`) numa unidade não propaga: vira falha, as demais unidades rodam e `main()` retorna `False` |
 
+### `TestLimpezaSor`
+
+Reprocessamento total: as páginas antigas do ano no SOR são apagadas antes da coleta.
+
+| Teste | O que verifica |
+|---|---|
+| `test_limpa_o_prefixo_do_ano_e_tipo_antes_de_coletar` | `delete_objects` roda antes de `collect_discover_data`, nos prefixos `tmdb/discover/<tipo>/ano=<ano>/` |
+| `test_loga_quantas_paginas_antigas_foram_removidas` | Loga `SOR limpo antes da coleta: N página(s) antiga(s) removida(s)` |
+| `test_falha_na_limpeza_vira_falha_soft_e_nao_coleta_a_unidade` | `ClientError` na limpeza vira falha da unidade (sem coletar/ler/gravar) e `main()` retorna `False` |
+| `test_sem_paginas_antigas_nao_chama_delete_objects` | Pasta vazia → retorna 0 e não chama `delete_objects` |
+| `test_apaga_em_lotes_de_mil_chaves` | 2500 chaves → 3 chamadas (1000/1000/500) |
+| `test_repassa_expected_bucket_owner_quando_a_conta_esta_definida` | `ExpectedBucketOwner` repassado ao listar e ao apagar quando `AWS_ACCOUNT_ID` está definida |
+
 ### `TestCheckpoint`
 
 | Teste | O que verifica |
@@ -177,6 +190,7 @@ Checkpoint por unidade `"{media_type}:{table_type}"` (6 unidades), motivado por 
 |---|---|
 | `test_total_de_runs_e_anos_vezes_dois_tipos` | Total de runs = anos × 2 |
 | `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_discover.py` |
+| `test_passa_refresh_existing_ids_true_para_reprocessar_tambem_os_ids_fora_do_discover` | `run_details_and_watch_providers_for_year` é chamado com `refresh_existing_ids=True` em todas as unidades (reprocessamento total) |
 | `test_falha_em_um_run_nao_interrompe_o_backfill` | Um estado `FAILED` é logado mas **não** aborta o loop (diferente de `backfill_discover.py`, que aborta no primeiro erro) |
 | `test_nao_pausa_apos_ultimo_run` | Sem `time.sleep` após o último run |
 | `test_loga_resumo_das_falhas_ao_final` | Ao final, loga um resumo único com todas as unidades (`media_type`/`year`/`state`) que falharam |

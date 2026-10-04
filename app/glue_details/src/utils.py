@@ -138,6 +138,39 @@ def fetch_ids_from_sot(
     return ids
 
 
+def fetch_existing_ids_from_sot(s3_bucket_sot: str, table_name: str, year: str) -> list[int]:
+    """
+    Lê os IDs já gravados na partição year de uma tabela do SOT (ex.: details).
+
+    Usado pelo backfill (reprocessamento total) para re-buscar também os IDs que já estavam
+    na partição mas não estão mais no discover do ano — sem isso, o merge de
+    collect_and_write_details/collect_and_write_watch_providers os preserva sem atualizar.
+
+    Args:
+        s3_bucket_sot: Nome do bucket SOT.
+        table_name:    Nome da tabela no Glue Catalog (pasta tmdb/<table_name>/ no SOT).
+        year:          Ano (partição) a ler.
+
+    Returns:
+        Lista de IDs inteiros únicos; vazia se a partição ainda não existir.
+    """
+    try:
+        df = wr.s3.read_parquet(
+            path=f"s3://{s3_bucket_sot}/tmdb/{table_name}/",
+            dataset=True,
+            columns=["id"],
+            partition_filter=lambda x: x["year"] == year,
+        )
+    # Partição pode não existir ainda, degrada graciosamente.
+    except Exception as exc:  # noqa: BLE001
+        logger.info(f"Sem IDs existentes para year={year} em '{table_name}': {exc}")
+        return []
+
+    ids = df["id"].astype(int).unique().tolist()
+    logger.info(f"IDs já existentes em '{table_name}' year={year}: {len(ids)}.")
+    return ids
+
+
 def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
     """
     Busca os detalhes de um filme ou série pelo ID na API do TMDB.
@@ -1335,6 +1368,7 @@ def run_details_and_watch_providers_for_year(
     table_watch_providers: str,
     dq_job_name: str,
     trigger_dq: bool = True,
+    refresh_existing_ids: bool = False,
 ) -> None:
     """
     Roda o ciclo completo de enriquecimento (details + watch providers) para um media_type/year:
@@ -1361,6 +1395,11 @@ def run_details_and_watch_providers_for_year(
         trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
                                  Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
                                  passa False e dispara o DQ uma única vez ao final do backfill inteiro.
+        refresh_existing_ids:   Se True (reprocessamento total, usado só por
+                                 scripts/backfill_enriquecimento.py), re-busca também os IDs já
+                                 existentes na partição de details que não estão mais no discover
+                                 do ano — o merge de collect_and_write_* os preservaria sem
+                                 atualizar. Default False mantém o comportamento do job Glue.
     """
     all_ids = fetch_ids_from_sot(
         database=database,
@@ -1368,6 +1407,9 @@ def run_details_and_watch_providers_for_year(
         s3_bucket_temp=s3_bucket_temp,
         year=year,
     )
+    if refresh_existing_ids:
+        existing_ids = fetch_existing_ids_from_sot(s3_bucket_sot, table_details, year)
+        all_ids = sorted(set(all_ids) | set(existing_ids))
 
     logger.info(
         f"Details: {len(all_ids)} IDs no discover a buscar/atualizar "

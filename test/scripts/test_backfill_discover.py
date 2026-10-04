@@ -275,6 +275,90 @@ class TestErros:
         assert resultado == [False]
 
 
+def _s3_com_paginas(keys_por_pagina: list[list[str]]) -> MagicMock:
+    """Cliente S3 mockado cujo paginator de list_objects_v2 devolve as páginas dadas."""
+    client = _s3_client_sem_checkpoint()
+    client.get_paginator.return_value.paginate.return_value = [
+        {"Contents": [{"Key": k} for k in keys]} if keys else {} for keys in keys_por_pagina
+    ]
+    return client
+
+
+class TestLimpezaSor:
+    """Reprocessamento total: as páginas antigas do ano no SOR são apagadas antes da coleta,
+    para read_from_sor não reler páginas sobrando de uma coleta anterior."""
+
+    def test_limpa_o_prefixo_do_ano_e_tipo_antes_de_coletar(self, monkeypatch):
+        mock_s3 = _s3_com_paginas([["tmdb/discover/movie/ano=2020/pagina_001.json"]])
+        ordem: list[str] = []
+        mock_s3.delete_objects.side_effect = lambda **k: ordem.append("limpeza")
+
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            unit_side_effect=lambda **k: ordem.append("coleta"),
+            mock_s3=mock_s3,
+        )
+
+        assert ordem[:2] == ["limpeza", "coleta"]
+        prefixos = [c.kwargs["Prefix"] for c in mock_s3.get_paginator.return_value.paginate.call_args_list]
+        assert prefixos == ["tmdb/discover/movie/ano=2020/", "tmdb/discover/tv/ano=2020/"]
+
+    def test_loga_quantas_paginas_antigas_foram_removidas(self, monkeypatch, caplog):
+        mock_s3 = _s3_com_paginas([["a.json", "b.json"], ["c.json"]])
+        with caplog.at_level("INFO"):
+            _run_main(
+                monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3,
+            )
+        assert any(
+            r.message == "[movie 2020] SOR limpo antes da coleta: 3 página(s) antiga(s) removida(s)."
+            for r in caplog.records
+        )
+
+    def test_falha_na_limpeza_vira_falha_soft_e_nao_coleta_a_unidade(self, monkeypatch):
+        mock_s3 = _s3_com_paginas([["a.json"]])
+        mock_s3.delete_objects.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "negado"}}, "DeleteObjects",
+        )
+        resultado: list = []
+        mock_collect, mock_read, mock_write, *_ = _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+            mock_s3=mock_s3,
+            resultado=resultado,
+        )
+        assert mock_collect.call_count == 0
+        assert mock_read.call_count == 0
+        assert mock_write.call_count == 0
+        assert resultado == [False]
+
+    def test_sem_paginas_antigas_nao_chama_delete_objects(self):
+        mock_s3 = _s3_com_paginas([[]])
+        removidos = bd._clear_discover_sor_year(mock_s3, "bucket-sor-test", "movie", 2020)
+        assert removidos == 0
+        mock_s3.delete_objects.assert_not_called()
+
+    def test_apaga_em_lotes_de_mil_chaves(self):
+        keys = [f"tmdb/discover/movie/ano=2020/pagina_{i:04d}.json" for i in range(2500)]
+        mock_s3 = _s3_com_paginas([keys[:1200], keys[1200:]])
+
+        removidos = bd._clear_discover_sor_year(mock_s3, "bucket-sor-test", "movie", 2020)
+
+        assert removidos == 2500
+        tamanhos = [len(c.kwargs["Delete"]["Objects"]) for c in mock_s3.delete_objects.call_args_list]
+        assert tamanhos == [1000, 1000, 500]
+        assert all(c.kwargs["Bucket"] == "bucket-sor-test" for c in mock_s3.delete_objects.call_args_list)
+
+    def test_repassa_expected_bucket_owner_quando_a_conta_esta_definida(self, monkeypatch):
+        monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+        mock_s3 = _s3_com_paginas([["a.json"]])
+
+        bd._clear_discover_sor_year(mock_s3, "bucket-sor-test", "tv", 2021)
+
+        assert mock_s3.get_paginator.return_value.paginate.call_args.kwargs["ExpectedBucketOwner"] == "123456789012"
+        assert mock_s3.delete_objects.call_args.kwargs["ExpectedBucketOwner"] == "123456789012"
+
+
 class TestCheckpoint:
     def test_pula_unidades_ja_concluidas(self, monkeypatch):
         mock_s3 = MagicMock()

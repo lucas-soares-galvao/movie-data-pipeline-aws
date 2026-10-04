@@ -1109,6 +1109,31 @@ class TestFetchIdsFromSot:
 
 
 # ---------------------------------------------------------------------------
+# fetch_existing_ids_from_sot
+# ---------------------------------------------------------------------------
+
+
+class TestFetchExistingIdsFromSot:
+    def test_retorna_ids_unicos_da_particao_do_ano(self):
+        df = pd.DataFrame({"id": [1, 2, 2, 3]})
+        with patch("src.utils.wr.s3.read_parquet", return_value=df) as mock_read:
+            result = u.fetch_existing_ids_from_sot("my-sot", "tb_tmdb_details_movie_dev", "2025")
+
+        assert result == [1, 2, 3]
+        kwargs = mock_read.call_args.kwargs
+        assert kwargs["path"] == "s3://my-sot/tmdb/tb_tmdb_details_movie_dev/"
+        assert kwargs["columns"] == ["id"]
+        assert kwargs["partition_filter"]({"year": "2025"}) is True
+        assert kwargs["partition_filter"]({"year": "2024"}) is False
+
+    def test_particao_inexistente_devolve_lista_vazia(self):
+        with patch("src.utils.wr.s3.read_parquet", side_effect=Exception("sem partição")):
+            result = u.fetch_existing_ids_from_sot("my-sot", "tb_tmdb_details_movie_dev", "2025")
+
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
 # fetch_tmdb_details
 # ---------------------------------------------------------------------------
 
@@ -1987,6 +2012,42 @@ class TestRunDetailsAndWatchProvidersForYear:
             assert call_kw.kwargs["content_type"] == "movie"
             assert set(call_kw.kwargs["ids"]) == set(self._IDS)
             assert call_kw.kwargs["table_name"] == "tb_tmdb_details_movie_dev"
+
+    def test_nao_busca_ids_existentes_por_padrao(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.fetch_existing_ids_from_sot") as mock_existing,
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+            mock_existing.assert_not_called()
+            assert mock_collect.call_args.kwargs["ids"] == self._IDS
+
+    def test_refresh_existing_ids_busca_uniao_do_discover_com_os_ids_ja_existentes(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=[1, 2]),
+            patch("src.utils.fetch_existing_ids_from_sot", return_value=[2, 3, 4]) as mock_existing,
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers") as mock_wp,
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs(refresh_existing_ids=True))
+            mock_existing.assert_called_once_with("my-sot", "tb_tmdb_details_movie_dev", "2025")
+            assert mock_collect.call_args.kwargs["ids"] == [1, 2, 3, 4]
+            assert mock_wp.call_args.kwargs["ids"] == [1, 2, 3, 4]
+
+    def test_refresh_existing_ids_sem_discover_ainda_re_busca_os_existentes(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=[]),
+            patch("src.utils.fetch_existing_ids_from_sot", return_value=[7]),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs(refresh_existing_ids=True))
+            assert mock_collect.call_args.kwargs["ids"] == [7]
 
     def test_skip_collect_details_when_discover_empty(self):
         with (
