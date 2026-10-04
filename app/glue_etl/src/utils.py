@@ -12,20 +12,11 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 from shared_utils.glue_helpers import get_resolved_option
-from shared_utils.idioma import (
-    add_detected_language_column,
-    detect_language_aws,  # noqa: F401
-    detect_language_langdetect,  # noqa: F401
-    resolve_detect_language_fn,
-)
+from shared_utils.idioma import add_detected_language_column
+from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
-from shared_utils.traducao import (
-    resolve_pt_translation,
-    resolve_translate_fn,  # noqa: F401
-    reuse_existing_translation,
-    translate_text,
-    translate_text_aws,  # noqa: F401
-)
+from shared_utils.traducao import resolve_pt_translation, reuse_existing_translation
+from shared_utils.traducao_llm import translate_text_llm
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 
 # Caminhos no S3 SOR organizados por media_type e table_type.
@@ -121,6 +112,7 @@ def get_parameters_glue() -> dict[str, Any]:
         "GLUE_DATA_QUALITY_JOB_NAME",
         "GLUE_DETAILS_JOB_NAME",
         "AWS_ACCOUNT_ID",
+        "FILMBOT_SECRET_ARN",
     ]
     args = get_resolved_option(required_args)
 
@@ -129,6 +121,13 @@ def get_parameters_glue() -> dict[str, Any]:
     # chegam via sys.argv/getResolvedOptions, não como variável de ambiente — este
     # é o único ponto necessário para tornar AWS_ACCOUNT_ID visível ao código.
     os.environ["AWS_ACCOUNT_ID"] = args["AWS_ACCOUNT_ID"]
+
+    # Mesmo racional acima, para shared_utils.llm_client.load_llm_api_key (usada por
+    # traducao_llm.py/idioma_llm.py, acionadas na tradução de name_pt da tabela
+    # configuration) ler llm_api_key do secret unificado (var.filmbot_secret_arn, ver
+    # infra/glue_etl.tf) — diferente de glue_details, este job não chama a API do
+    # TMDB, então não tinha nenhum argumento de secret antes desta mudança.
+    os.environ["FILMBOT_SECRET_ARN"] = args["FILMBOT_SECRET_ARN"]
 
     # Tenta ler YEAR e END_YEAR — só presentes nos runs de discover (não em genre/config).
     # getResolvedOptions usa argparse internamente; argparse chama sys.exit() (não raise KeyError)
@@ -139,36 +138,22 @@ def get_parameters_glue() -> dict[str, Any]:
     except SystemExit:  # NOSONAR(S5754) — opcional por padrão do Glue, não deve propagar
         pass
 
-    # Opcional: qual serviço de tradução usar para name_pt de países/idiomas
-    # ("google" ou "aws"). Ausente = "google" (caminho automático via EventBridge não
-    # passa esse argumento) — mesmo padrão de opcional usado acima para YEAR/END_YEAR.
-    try:
-        args.update(get_resolved_option(["TRANSLATE_PROVIDER"]))
-    except SystemExit:  # NOSONAR(S5754) — opcional por padrão do Glue, não deve propagar
-        args["TRANSLATE_PROVIDER"] = "google"
-
     return args
 
 
-# Teto de workers da tradução de configuration/genre (~250 itens no máximo) por
-# translate_provider — ver _add_translation. "google": teto baixo de propósito, não para
-# ganhar vazão, e sim para não pressionar o endpoint não-oficial (que bloqueia sob carga,
-# chegando a ~20s de backoff por chamada). "aws": AWS Translate é API oficial, sem esse
-# bloqueio, e a doc oficial não publica uma cota fixa de TPS para TranslateText síncrono (só
-# orienta monitorar ThrottlingException e abrir chamado de aumento se for sustentado) — valor
-# mais alto é só um ponto de partida conservador, a revisar com a duração real em prod.
-_TRANSLATE_MAX_WORKERS_GOOGLE = 2
-_TRANSLATE_MAX_WORKERS_AWS = 10
+# Teto de workers da tradução de configuration/genre (~250 itens no máximo) via LLM —
+# ver _add_translation. Chamadas de LLM (1-5s+) são bem mais lentas que uma API de
+# tradução estruturada; valor inicial conservador, a recalibrar com a duração real do
+# job em produção (ver app/glue_etl/glue_etl.md).
+_TRANSLATE_MAX_WORKERS_LLM = 5
 
 
 def _add_translation(
     df: pd.DataFrame,
-    description: str,
     key_column: str,
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
-    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt,
@@ -179,25 +164,20 @@ def _add_translation(
     english_name não mudou desde a última execução (ver reuse_existing_translation em
     shared_utils.traducao) — evita chamar a API de tradução para países/idiomas cujo
     nome em inglês é idêntico ao já processado. O resto do fluxo (detecção de idioma,
-    cópia direta quando a fonte já é pt, tradução via Google/AWS e teto de tentativas)
-    é responsabilidade de resolve_pt_translation — ver sua docstring em
+    cópia direta quando a fonte já é pt, tradução via LLM e teto de tentativas) é
+    responsabilidade de resolve_pt_translation — ver sua docstring em
     shared_utils.traducao.
 
     Args:
         df:           DataFrame com coluna english_name.
-        description:  Descrição dos itens para o log (ex: "países", "idiomas").
         key_column:   Coluna usada para casar registros antigos e novos no cache
                       de tradução (ex: "iso_3166_1" para países, "iso_639_1" para idiomas).
         translate_fn: Função de tradução (texto) -> texto traduzido. Por padrão usa
-                      translate_text puro (Google Translate); os chamadores em produção
-                      passam o resultado de resolve_translate_fn (google ou aws).
+                      translate_text_llm.
         previous_df:  Tabela configuration já gravada na SOT (ver read_existing_configuration),
                       usada como cache de tradução, ou None se não há histórico.
         detect_fn:    Função de detecção de idioma (texto) -> idioma detectado (ou
-                      None). Por padrão usa resolve_detect_language_fn().
-        translate_provider: "google" ou "aws" — determina o teto de workers da tradução
-                      (ver _TRANSLATE_MAX_WORKERS_GOOGLE/_TRANSLATE_MAX_WORKERS_AWS), não o
-                      serviço em si (esse já foi resolvido em translate_fn pelo chamador).
+                      None). Por padrão usa detect_language_llm.
 
     Returns:
         DataFrame com as colunas name_detected_language_en, name_detected_language_pt,
@@ -206,20 +186,17 @@ def _add_translation(
     if "english_name" not in df.columns:
         return df
 
-    # translate_fn resolvido em runtime (não como default de parâmetro) para que
-    # patch("src.utils.translate_text", ...) nos testes continue funcionando quando
-    # o chamador não passa um translate_fn explícito.
-    fn = translate_fn or (lambda t: translate_text(t, context=description))
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    # translate_fn/detect_fn resolvidos em runtime (não como default de parâmetro) para
+    # que patch("src.utils.translate_text_llm"/"detect_language_llm", ...) nos testes
+    # continue funcionando quando o chamador não passa uma função explícita.
+    fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
 
     df["name_pt"] = None
     df = reuse_existing_translation(
         df, previous_df, "english_name", "name_pt", key_column=key_column
     )
 
-    max_workers = (
-        _TRANSLATE_MAX_WORKERS_AWS if translate_provider == "aws" else _TRANSLATE_MAX_WORKERS_GOOGLE
-    )
     df, _ = resolve_pt_translation(
         df,
         source_column="english_name",
@@ -229,7 +206,7 @@ def _add_translation(
         translation_attempts_column="name_translation_attempts",
         detect_fn=detect_fn,
         translate_fn=fn,
-        max_workers=max_workers,
+        max_workers=_TRANSLATE_MAX_WORKERS_LLM,
     )
     return df
 
@@ -239,12 +216,9 @@ def _add_name_pt_countries(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
-    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """Traduz english_name dos países para português e grava como name_pt."""
-    return _add_translation(
-        df, "países", "iso_3166_1", translate_fn, previous_df, detect_fn, translate_provider
-    )
+    return _add_translation(df, "iso_3166_1", translate_fn, previous_df, detect_fn)
 
 
 def _add_name_pt_languages(
@@ -252,12 +226,9 @@ def _add_name_pt_languages(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
-    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """Traduz english_name dos idiomas para português e grava como name_pt."""
-    return _add_translation(
-        df, "idiomas", "iso_639_1", translate_fn, previous_df, detect_fn, translate_provider
-    )
+    return _add_translation(df, "iso_639_1", translate_fn, previous_df, detect_fn)
 
 
 def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataFrame:
@@ -330,7 +301,6 @@ def _read_genre_or_configuration(
     s3_bucket_sot: str | None,
     table_name: str | None,
     detect_fn: Callable[[str], str | None] | None,
-    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """Lê o arquivo único de genre/configuration. Em configuration, adiciona name_pt
     (países para tv, idiomas para movie) via _add_name_pt_countries/_add_name_pt_languages,
@@ -345,9 +315,9 @@ def _read_genre_or_configuration(
         previous_df = read_existing_configuration(s3_bucket_sot, table_name)
 
     if media_type == "tv":
-        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn, translate_provider)
+        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn)
     if media_type == "movie":
-        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn, translate_provider)
+        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn)
     return df
 
 
@@ -360,7 +330,6 @@ def read_from_sor(
     s3_bucket_sot: str | None = None,
     table_name: str | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
-    translate_provider: str = "google",
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
@@ -383,6 +352,7 @@ def read_from_sor(
         year:          Ano para o discover (ex: "2024")
         translate_fn:  Função de tradução usada para name_pt em configuration (ver
                        _add_translation); só relevante para table_type="configuration".
+                       Por padrão usa translate_text_llm.
         s3_bucket_sot: Bucket SOT, usado para ler a tabela configuration já gravada
                        (cache de tradução, ver read_existing_configuration); só
                        relevante para table_type="configuration". Se omitido, a
@@ -390,10 +360,7 @@ def read_from_sor(
         table_name:    Nome da tabela configuration no Glue Catalog; ver s3_bucket_sot.
         detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
                        name_detected_language_pt (configuration) e overview_detected_language
-                       (discover). Por padrão usa resolve_detect_language_fn().
-        translate_provider: "google" ou "aws" — só relevante para table_type="configuration";
-                       determina o teto de workers da tradução (ver _add_translation),
-                       não o serviço em si (translate_fn já vem resolvido pelo chamador).
+                       (discover). Por padrão usa detect_language_llm.
 
     Returns:
         DataFrame com os dados lidos e prontos para gravação no SOT
@@ -414,7 +381,6 @@ def read_from_sor(
     elif table_type in ("genre", "configuration"):
         df = _read_genre_or_configuration(
             s3_bucket_sor, s3_key, media_type, table_type, translate_fn, s3_bucket_sot, table_name, detect_fn,
-            translate_provider,
         )
 
     logger.info(f"Lidos {len(df)} registros.")

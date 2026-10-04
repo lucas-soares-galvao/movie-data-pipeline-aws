@@ -2,4 +2,4 @@
 
 awswrangler
 requests
-langdetect
+litellm==1.96.2

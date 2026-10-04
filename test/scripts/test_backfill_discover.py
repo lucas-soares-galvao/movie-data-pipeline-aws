@@ -204,31 +204,6 @@ class TestPipelineDiscover:
         assert tv_call.kwargs["database"] == "db_tv"
 
 
-class TestTranslateProviderGuard:
-    def test_translate_provider_default_google_propagado(self, monkeypatch):
-        with patch("backfill_discover.resolve_detect_language_fn") as mock_resolve:
-            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        assert mock_resolve.call_args.kwargs["provider"] == "google"
-
-    def test_translate_provider_aws_propagado_para_intervalo_de_1_ano(self, monkeypatch):
-        with patch("backfill_discover.resolve_detect_language_fn") as mock_resolve:
-            _run_main(
-                monkeypatch,
-                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"},
-            )
-        assert mock_resolve.call_args.kwargs["provider"] == "aws"
-
-    def test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano(self, monkeypatch):
-        """Proteção de custo: aws só é aceito para um intervalo de 1 ano — ver
-        backfill_shared.apply_translate_cost_guard."""
-        with patch("backfill_discover.resolve_detect_language_fn") as mock_resolve:
-            _run_main(
-                monkeypatch,
-                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "TRANSLATE_PROVIDER": "aws"},
-            )
-        assert mock_resolve.call_args.kwargs["provider"] == "google"
-
-
 class TestErros:
     def test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro(self, monkeypatch):
         _set_env(monkeypatch)

@@ -22,19 +22,10 @@ from shared_utils.api_client import api_get as tmdb_get
 # re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option
-from shared_utils.idioma import (
-    detect_language_aws,
-    detect_language_langdetect,
-    resolve_detect_language_fn,
-)
+from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
-from shared_utils.traducao import (
-    resolve_pt_translation,
-    resolve_translate_fn,
-    reuse_existing_translation,
-    translate_text,
-    translate_text_aws,
-)
+from shared_utils.traducao import resolve_pt_translation, reuse_existing_translation
+from shared_utils.traducao_llm import translate_text_llm
 from shared_utils.triggers import trigger_glue_job
 
 logger = logging.getLogger()
@@ -72,12 +63,18 @@ def get_parameters_glue() -> dict[str, Any]:
     # é o único ponto necessário para tornar AWS_ACCOUNT_ID visível ao código.
     os.environ["AWS_ACCOUNT_ID"] = params["AWS_ACCOUNT_ID"]
 
+    # Mesmo racional acima, para shared_utils.llm_client.load_llm_api_key (usada por
+    # traducao_llm.py/idioma_llm.py) ler llm_api_key do secret unificado — TMDB_SECRET_ARN
+    # já É esse secret (var.filmbot_secret_arn, ver infra/glue_details.tf), só com outro
+    # nome de argumento por ter sido criado antes de o secret ganhar o campo llm_api_key.
+    os.environ["FILMBOT_SECRET_ARN"] = params["TMDB_SECRET_ARN"]
+
     # Opcional: YEAR/END_YEAR não são passados no modo changes (lambda_api aciona o job
     # sem ano — CHANGES_S3_PATH assume esse papel). O fluxo normal (discover por ano)
-    # sempre os passa via glue_etl. Saíram de required_args pelo mesmo motivo de
-    # TRANSLATE_PROVIDER logo abaixo: getResolvedOptions falha para argumento ausente, sem
-    # suporte a valor padrão. setdefault preserva o valor se já vier resolvido (ex: em
-    # testes que mockam get_resolved_option com o dicionário completo).
+    # sempre os passa via glue_etl. Saíram de required_args porque getResolvedOptions
+    # falha para argumento ausente, sem suporte a valor padrão. setdefault preserva o
+    # valor se já vier resolvido (ex: em testes que mockam get_resolved_option com o
+    # dicionário completo).
     params.setdefault("YEAR", None)
     params.setdefault("END_YEAR", None)
     for i, arg in enumerate(sys.argv):
@@ -93,29 +90,6 @@ def get_parameters_glue() -> dict[str, Any]:
     for i, arg in enumerate(sys.argv):
         if arg == "--CHANGES_S3_PATH" and i + 1 < len(sys.argv):
             params["CHANGES_S3_PATH"] = sys.argv[i + 1]
-            break
-
-    # Opcional: qual serviço de tradução usar ("google" ou "aws"). "google" (padrão) é o
-    # comportamento do caminho automático via EventBridge — não passado nesse caminho,
-    # então cai no default; é grátis, com AWS Translate como fallback automático
-    # (capado por caracteres — ver shared_utils.traducao.resolve_translate_fn).
-    # Backfills manuais (scripts/) podem sobrescrever para "aws" para testar tradução
-    # real da AWS num período curto.
-    params["TRANSLATE_PROVIDER"] = "google"
-    for i, arg in enumerate(sys.argv):
-        if arg == "--TRANSLATE_PROVIDER" and i + 1 < len(sys.argv):
-            params["TRANSLATE_PROVIDER"] = sys.argv[i + 1]
-            break
-
-    # Opcional: teto MENSAL de caracteres pro fallback ao AWS Translate quando
-    # TRANSLATE_PROVIDER="google" (ver shared_utils.traducao.resolve_translate_fn e
-    # get_translate_chars_used_this_month). Default "2000000" == free tier mensal do AWS
-    # Translate; passado explicitamente via infra/glue_details.tf (var.
-    # aws_translate_monthly_max_chars) pra poder ser ajustado sem alterar código.
-    params["AWS_FALLBACK_MONTHLY_MAX_CHARS"] = "2000000"
-    for i, arg in enumerate(sys.argv):
-        if arg == "--AWS_FALLBACK_MONTHLY_MAX_CHARS" and i + 1 < len(sys.argv):
-            params["AWS_FALLBACK_MONTHLY_MAX_CHARS"] = sys.argv[i + 1]
             break
 
     return params
@@ -190,19 +164,14 @@ def fetch_tmdb_details(api_key: str, content_type: str, item_id: int) -> dict:
 
 _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limit de ~40 req/s do TMDB
 
-# Traduções EN→PT paralelas via resolve_translate_fn, teto de workers por
-# translate_provider (ver collect_and_write_details). No fluxo normal de discover (fora do
-# modo changes) o volume elegível observado em prod é de até ~500 registros por
-# coluna/execução (overview_pt/keywords_pt/tagline_pt, traduzidos em passagens sequenciais).
-# "google": teto baixo de propósito — não é para ganhar vazão, e sim para não pressionar o
-# endpoint não-oficial, que bloqueia sob carga (cada chamada pagando até ~20s de backoff),
-# o que já estourou o timeout do job inteiro. "aws": API oficial, sem esse bloqueio — o
-# gargalo de latência desaparece; a doc oficial não publica uma cota fixa de TPS para
-# TranslateText síncrono (só orienta monitorar ThrottlingException e contatar o AWS Support
-# se for sustentado), por isso 25 é só um ponto de partida conservador, a revisar com a
-# duração real das primeiras execuções em prod.
-_TRANSLATE_MAX_WORKERS_GOOGLE = 15
-_TRANSLATE_MAX_WORKERS_AWS = 25
+# Traduções EN→PT paralelas via translate_text_llm (ver collect_and_write_details). No
+# fluxo normal de discover (fora do modo changes) o volume elegível observado em prod é
+# de até ~500 registros por coluna/execução (overview_pt/keywords_pt/tagline_pt,
+# traduzidos em passagens sequenciais). Chamadas de LLM (1-5s+ por requisição) são bem
+# mais lentas que uma API de tradução estruturada (Translate/Comprehend, ~100-300ms);
+# valor inicial conservador, a recalibrar com a duração real do job em produção (ver
+# app/glue_details/glue_details.md).
+_TRANSLATE_MAX_WORKERS_LLM = 10
 
 # Concorrência dedicada à consulta /movie|tv/{id}/changes (modo changes) — chamada leve
 # (resposta pequena, sem append_to_response), diferente de _TMDB_MAX_WORKERS (usado por
@@ -761,7 +730,7 @@ def _add_translations_pt(
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
-    max_workers: int = _TRANSLATE_MAX_WORKERS_GOOGLE,
+    max_workers: int = _TRANSLATE_MAX_WORKERS_LLM,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
@@ -774,15 +743,15 @@ def _add_translations_pt(
     tradução já existente no S3 quando overview_en não mudou desde o último
     processamento (ver reuse_existing_translation) — todas atribuídas a overview_pt
     antes de resolve_pt_translation assumir o resto do fluxo (detecção de idioma,
-    cópia direta quando a fonte já é pt, tradução via Google/AWS, teto de tentativas
+    cópia direta quando a fonte já é pt, tradução via LLM, teto de tentativas
     e a coluna overview_needs_translation — ver docstring de resolve_pt_translation em
     shared_utils.traducao).
     """
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
-    # patch("src.utils.translate_text", ...) nos testes continue funcionando quando
+    # patch("src.utils.translate_text_llm", ...) nos testes continue funcionando quando
     # o chamador não passa um translate_fn explícito.
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
 
     df["overview_pt"] = df["overview_pt_tmdb"]
     df = _force_reuse_when_unflagged(
@@ -811,7 +780,7 @@ def _add_translations_keywords_pt(
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
-    max_workers: int = _TRANSLATE_MAX_WORKERS_GOOGLE,
+    max_workers: int = _TRANSLATE_MAX_WORKERS_LLM,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas keywords_detected_language_en, keywords_detected_language_pt,
@@ -826,8 +795,8 @@ def _add_translations_keywords_pt(
     "mudou". Fora isso, o valor inicial vem só do cache (reuse_existing_translation)
     antes de resolve_pt_translation assumir o resto do fluxo.
     """
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
 
     df["keywords_pt"] = None
     df = _force_reuse_when_unflagged(
@@ -856,7 +825,7 @@ def _add_translations_tagline_pt(
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
-    max_workers: int = _TRANSLATE_MAX_WORKERS_GOOGLE,
+    max_workers: int = _TRANSLATE_MAX_WORKERS_LLM,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
@@ -869,8 +838,8 @@ def _add_translations_tagline_pt(
     existente no S3 (ver _add_translations_pt sobre a mesma ordem para overview) antes
     de resolve_pt_translation assumir o resto do fluxo.
     """
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
 
     df["tagline_pt"] = df["tagline_pt_tmdb"]
     df = _force_reuse_when_unflagged(
@@ -900,9 +869,7 @@ def collect_and_write_details(
     s3_bucket_sot: str,
     table_name: str,
     database: str,
-    translate_provider: str = "google",
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
-    aws_fallback_monthly_max_chars: int = 2_000_000,
 ) -> dict[int, str]:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -918,9 +885,6 @@ def collect_and_write_details(
         s3_bucket_sot:      Nome do bucket SOT de destino.
         table_name:         Nome da tabela no Glue Catalog.
         database:           Nome do banco de dados no Glue Catalog.
-        translate_provider: "google" ou "aws" — ver resolve_translate_fn. Default "google"
-                             (caminho automático via EventBridge); o serviço não
-                             escolhido é usado automaticamente como fallback.
         changed_fields_by_id: Só no modo changes (ver process_changed_ids/
                              fetch_translatable_changes_for_ids) — {id: {"overview"/
                              "tagline"/"keywords": bool}} vindo de /movie|tv/{id}/changes,
@@ -928,11 +892,6 @@ def collect_and_write_details(
                              de um campo quando a TMDB confirma que ele não mudou na
                              janela. None (default) preserva o comportamento do fluxo
                              normal por ano, que nunca tem esse sinal disponível.
-        aws_fallback_monthly_max_chars: Teto MENSAL de caracteres pro fallback ao AWS
-                             Translate quando translate_provider="google" — ver
-                             resolve_translate_fn. Default 2_000_000 (free tier mensal do
-                             AWS Translate); configurável via
-                             infra/glue_details.tf (var.aws_translate_monthly_max_chars).
 
     Returns:
         Dicionário {id: year} dos IDs efetivamente buscados e gravados nesta execução
@@ -1003,27 +962,17 @@ def collect_and_write_details(
         except Exception as exc:  # noqa: BLE001
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
-    translate_fn = resolve_translate_fn(
-        translate_provider, translate_text, translate_text_aws,
-        aws_fallback_max_chars=aws_fallback_monthly_max_chars,
-    )
-    detect_fn = resolve_detect_language_fn(
-        detect_language_langdetect, detect_language_aws, provider=translate_provider,
-    )
-    translate_max_workers = (
-        _TRANSLATE_MAX_WORKERS_AWS if translate_provider == "aws" else _TRANSLATE_MAX_WORKERS_GOOGLE
-    )
     df = _add_translations_pt(
-        df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
-        changed_fields_by_id=changed_fields_by_id, max_workers=translate_max_workers,
+        df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
+        changed_fields_by_id=changed_fields_by_id,
     )
     df = _add_translations_keywords_pt(
-        df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
-        changed_fields_by_id=changed_fields_by_id, max_workers=translate_max_workers,
+        df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
+        changed_fields_by_id=changed_fields_by_id,
     )
     df = _add_translations_tagline_pt(
-        df, translate_fn, previous_df=df_existing_delta, detect_fn=detect_fn,
-        changed_fields_by_id=changed_fields_by_id, max_workers=translate_max_workers,
+        df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
+        changed_fields_by_id=changed_fields_by_id,
     )
     if content_type == "movie":
         df = _add_collection_name_pt(df, api_key)
@@ -1351,8 +1300,6 @@ def run_details_and_watch_providers_for_year(
     table_details: str,
     table_watch_providers: str,
     dq_job_name: str,
-    translate_provider: str = "google",
-    aws_fallback_monthly_max_chars: int = 2_000_000,
     trigger_dq: bool = True,
 ) -> None:
     """
@@ -1377,10 +1324,6 @@ def run_details_and_watch_providers_for_year(
         table_details:          Tabela de detalhes (movie ou tv).
         table_watch_providers:  Tabela de watch providers (movie ou tv).
         dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
-        translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
-        aws_fallback_monthly_max_chars: Teto MENSAL de caracteres pro fallback ao AWS
-                                 Translate quando translate_provider="google" — ver
-                                 collect_and_write_details/resolve_translate_fn.
         trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
                                  Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
                                  passa False e dispara o DQ uma única vez ao final do backfill inteiro.
@@ -1404,8 +1347,6 @@ def run_details_and_watch_providers_for_year(
             s3_bucket_sot=s3_bucket_sot,
             table_name=table_details,
             database=database,
-            translate_provider=translate_provider,
-            aws_fallback_monthly_max_chars=aws_fallback_monthly_max_chars,
         )
 
     logger.info(
@@ -1755,8 +1696,6 @@ def process_changed_ids(
     changed_ids: list[int],
     s3_bucket_sot: str,
     s3_bucket_temp: str,
-    translate_provider: str = "google",
-    aws_fallback_monthly_max_chars: int = 2_000_000,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[str]:
@@ -1776,7 +1715,7 @@ def process_changed_ids(
 
     Quando start_date/end_date são informados (payload da lambda_api já traz os dois —
     ver fetch_ids_from_changes_file), consulta /movie|tv/{id}/changes por ID matched
-    antes de traduzir, para pular Google/AWS Translate em campos que a própria TMDB
+    antes de traduzir, para pular a chamada ao LLM em campos que a própria TMDB
     confirma que não mudaram na janela (ver fetch_translatable_changes_for_ids/
     _force_reuse_when_unflagged) — sem isso (None), o comportamento de tradução
     permanece exatamente o de antes desta mudança.
@@ -1791,10 +1730,6 @@ def process_changed_ids(
         changed_ids:            IDs mudados retornados pela Changes API.
         s3_bucket_sot:          Nome do bucket SOT de destino.
         s3_bucket_temp:         Bucket S3 para resultados temporários do Athena.
-        translate_provider:     "google" ou "aws" — ver resolve_translate_fn.
-        aws_fallback_monthly_max_chars: Teto MENSAL de caracteres pro fallback ao AWS
-                                 Translate quando translate_provider="google" — ver
-                                 collect_and_write_details/resolve_translate_fn.
         start_date:             Início da janela usada por /movie|tv/changes (opcional;
                                  sem ele, pula a consulta por ID e traduz como antes).
         end_date:                Fim da janela usada por /movie|tv/changes.
@@ -1831,9 +1766,7 @@ def process_changed_ids(
         s3_bucket_sot=s3_bucket_sot,
         table_name=table_details,
         database=database,
-        translate_provider=translate_provider,
         changed_fields_by_id=changed_fields_by_id,
-        aws_fallback_monthly_max_chars=aws_fallback_monthly_max_chars,
     )
     if not id_to_year:
         logger.warning(

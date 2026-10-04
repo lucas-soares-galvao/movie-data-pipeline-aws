@@ -209,22 +209,6 @@ class TestLambdaHandler:
         for chamada in mocks["mock_trigger"].call_args_list[3:]:
             assert chamada[1].get("END_YEAR") == 2026
 
-    def test_translate_provider_default_google_quando_ausente_do_evento(self):
-        """Payload do EventBridge nunca define translate_provider — cai no default
-        "google" (caminho automático, grátis; AWS Translate fica disponível como
-        fallback automático), repassado a todas as chamadas do Glue ETL."""
-        mocks = _run(EVENTO_MOVIE, year=2025)
-        for chamada in mocks["mock_trigger"].call_args_list:
-            assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
-
-    def test_translate_provider_repassado_quando_informado_no_evento(self):
-        """Backfills manuais podem sobrescrever translate_provider para "aws"
-        (testar tradução real da AWS)."""
-        mocks = _run({**EVENTO_MOVIE, "translate_provider": "aws"}, year=2025)
-        for chamada in mocks["mock_trigger"].call_args_list:
-            assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"
-
-
 class TestOnlyDiscover:
     """
     Testa o flag only_weekly_tables que pula as coletas de referencia.
@@ -439,17 +423,6 @@ class TestOnlyChangesTables:
         assert "YEAR" not in chamada[1]
         assert "END_YEAR" not in chamada[1]
 
-    def test_translate_provider_default_google(self):
-        mocks = _run(self.EVENTO_CHANGES_MOVIE)
-        chamada = mocks["mock_trigger"].call_args
-        assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
-
-    def test_translate_provider_repassado_quando_informado(self):
-        mocks = _run({**self.EVENTO_CHANGES_MOVIE, "translate_provider": "aws"})
-        chamada = mocks["mock_trigger"].call_args
-        assert chamada[1].get("TRANSLATE_PROVIDER") == "aws"
-
-
 class TestOnlyRotationRefresh:
     """
     Testa o flag only_rotation_refresh (refresh forçado do catálogo antigo, 1 ano por vez).
@@ -518,12 +491,6 @@ class TestOnlyRotationRefresh:
         mocks["mock_ssm"].put_parameter.assert_called_once_with(
             Name="/tmdb-pipeline/rotation-year-pointer-tv", Value="2005", Overwrite=True
         )
-
-    def test_translate_provider_default_google(self):
-        mocks = self._run_rotation(self.EVENTO_ROTATION_MOVIE, year=2026, last_year_no_ssm=2004)
-        chamada = mocks["mock_trigger"].call_args
-        assert chamada[1].get("TRANSLATE_PROVIDER") == "google"
-
 
 class TestCollectReferenceTables:
     def test_falha_http_em_watch_providers_ref_nao_aborta_nem_aciona_glue_dele(self, caplog):

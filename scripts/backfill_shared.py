@@ -102,36 +102,6 @@ def require_env(name: str) -> str:
     return value
 
 
-def apply_translate_cost_guard(translate_provider: str, start_year: int, end_year: int) -> str:
-    """Rebaixa "aws" para "google" quando o intervalo pedido cobre mais de 1 ano.
-
-    Proteção contra custo alto do AWS Translate (pago por caractere) para o caso de o
-    operador escolher "aws" para testar um período curto e esquecer de voltar para
-    "google" antes de disparar um backfill do catálogo histórico inteiro. AWS Translate
-    continua disponível como fallback capado por caracteres via
-    shared_utils.traducao.resolve_translate_fn, mesmo quando rebaixado aqui — só deixa
-    de ser o serviço primário.
-
-    Args:
-        translate_provider: Valor pedido ("google" ou "aws").
-        start_year:         Ano inicial do backfill.
-        end_year:           Ano final do backfill.
-
-    Returns:
-        "google" se translate_provider="aws" e end_year > start_year; caso contrário,
-        translate_provider sem alteração.
-    """
-    if translate_provider == "aws" and end_year > start_year:
-        logger.warning(
-            "TRANSLATE_PROVIDER='aws' pedido para %d-%d (mais de 1 ano) — rebaixando "
-            "para 'google' automaticamente para evitar custo alto. AWS Translate "
-            "continua disponível como fallback (capado) em resolve_translate_fn.",
-            start_year, end_year,
-        )
-        return "google"
-    return translate_provider
-
-
 def read_year_range(
     start_env: str = "BACKFILL_START_YEAR",
     end_env: str = "BACKFILL_END_YEAR",

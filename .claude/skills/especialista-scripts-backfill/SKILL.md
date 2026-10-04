@@ -1,6 +1,6 @@
 ---
 name: especialista-scripts-backfill
-description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), revisar o guard de custo do `TRANSLATE_PROVIDER`, encadear scripts existentes (ver `backfill_historico.py`), entender o contrato entre um script e `.github/workflows/backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`), ou a notificação de sucesso por e-mail (`backfill_shared.notify_backfill_success`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
+description: Especialista no mecanismo de backfill manual em `scripts/` (checkpoint em S3, exit code 75, retomada automática) e no racional de design por trás dos 8 scripts + `backfill_shared.py`. Use ao criar um script de backfill novo, alterar checkpoint/retry, decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail), encadear scripts existentes (ver `backfill_historico.py`), entender o contrato entre um script e `.github/workflows/backfill.yml` (inclui a chamada local ao Glue AGG via `backfill_shared.trigger_agg_locally`, uma única vez por script, ver `trigger_agg`/`backfill_historico.py`), ou a notificação de sucesso por e-mail (`backfill_shared.notify_backfill_success`). Cobre a granularidade de `unit_id` por script, os 3 padrões de tratamento de erro já em uso, e o gap entre "unidade marcada como concluída" e "unidade realmente bem-sucedida" em `backfill_data_quality.py`.
 ---
 
 # Especialista em Scripts de Backfill
@@ -33,7 +33,7 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
 | Mecânica YAML do workflow, loop de retry, renovação de credencial via OIDC | `especialista-workflows-github`, `.github/workflows/backfill.yml` |
 | Funções reaproveitadas dos jobs reais (`collect_discover_data` em `app/lambda_api/src/utils.py`; `read_from_sor`/`write_parquet_to_sot` em `app/glue_etl/src/utils.py`; `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`; `run_athena_query`/`write_parquet_to_spec` em `app/glue_agg/src/utils.py`, via `backfill_shared.trigger_agg_locally`) | `especialista-engenharia-dados-app` |
 | Padrões de mock específicos de `test/scripts/` (parametrização `ExpiredTokenException`/`ExpiredToken`) | `especialista-testes-app` |
-| Guard de custo do AWS Translate como decisão de FinOps | `especialista-finops-aws` |
+| Custo de tradução/detecção via LLM (OpenRouter) como decisão de FinOps | `especialista-finops-aws` |
 
 ## Práticas já aplicadas — preservar
 
@@ -93,15 +93,13 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   `ExpiredToken` (S3 — `ListObjectsV2`/`get_object`/`put_object`/`delete_object`) — correção de um bug real de
   produção (bug #4 em `test/scripts/scripts_tests.md`) em que só o primeiro código era reconhecido e um backfill de
   tradução caiu sem acionar o retry automático.
-- **`apply_translate_cost_guard` (`scripts/backfill_shared.py:87-114`) rebaixa `TRANSLATE_PROVIDER=aws` para
-  `google` automaticamente quando o intervalo de anos pedido é maior que 1** — proteção contra o operador esquecer
-  de voltar para `google` (grátis) depois de testar `aws` (pago por caractere) num intervalo curto, antes de
-  disparar um backfill do catálogo histórico inteiro. Chamado explicitamente pelos 3 scripts que iteram por ano e
-  dependem de tradução/detecção de idioma: `backfill_discover.py`, `backfill_enriquecimento.py:129-131` e
-  `backfill_traducao.py` — não existe mais um wrapper comum tipo `build_base_payloads` (removido junto com
-  `invoke_lambda_sync`, ver histórico do módulo); cada script chama o guard diretamente antes de resolver
-  `translate_fn`/`detect_fn`.
-- `backfill_traducao.py` também serve de **reparo em massa** de tradução poluída: `resolve_pt_translation` (passo 0) descarta `*_pt` que seja a página de erro do Google e zera o contador de tentativas, então rodar o script (dev primeiro) retraduz essas linhas e o Glue AGG final regrava a SPEC. Não há script novo para isso.
+- Tradução/detecção de idioma nos 5 scripts que precisam (`backfill_discover.py`, `backfill_enriquecimento.py`,
+  `backfill_referencias.py`, `backfill_traducao.py`, `backfill_changes.py`) usa `translate_text_llm`/
+  `detect_language_llm` (`shared_utils.traducao_llm`/`idioma_llm`, OpenRouter via `litellm`) direto — não existe
+  mais guard de custo por intervalo de anos (`apply_translate_cost_guard`, removido): não havia mais a distinção
+  "provider pago vs. grátis" que o guard existia para proteger. O controle de gasto do LLM é feito direto no
+  painel do OpenRouter.
+- `backfill_traducao.py` também serve de **reparo em massa** de tradução poluída: `resolve_pt_translation` (passo 0) descarta `*_pt` que seja a página de erro histórica do Google (dado legado, de antes da migração para LLM) e zera o contador de tentativas, então rodar o script (dev primeiro) retraduz essas linhas e o Glue AGG final regrava a SPEC. Não há script novo para isso.
 - **3 padrões de tratamento de erro coexistem deliberadamente**, cada um adequado ao tipo de chamada AWS por trás:
   1. **Abortar no primeiro erro** (`backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_referencias.py`):
      qualquer exceção não tratada como token expirado propaga até o processo, que sai com código `!= 0` e
@@ -221,9 +219,9 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   também atualizar o loop bash em `backfill.yml` que o interpreta.
 - **`table_group` novo**: adicionar nas 3 pontas (choices do `workflow_dispatch`, `case` do bash, docstring do
   script) mais `scripts/scripts.md` no mesmo PR — nada valida a string em runtime hoje (ver "Lacunas encontradas").
-- **Guard de custo de tradução**: se o script novo aceitar `TRANSLATE_PROVIDER` e depender de range de anos, chamar
-  `apply_translate_cost_guard` explicitamente antes de resolver `translate_fn`/`detect_fn` — não assumir que o
-  operador vai lembrar de usar `"google"` para backfills longos.
+- **Tradução/detecção de idioma num script novo**: usar `translate_text_llm`/`detect_language_llm`
+  (`shared_utils.traducao_llm`/`idioma_llm`) direto, sem reintroduzir um guard de custo por intervalo de anos — o
+  controle de gasto do LLM é externo (painel do OpenRouter), não uma decisão do código.
 - **Script de backfill novo deve chamar `shared.notify_backfill_success(table_group, summary)`** no mesmo ponto em
   que já considera o backfill "sucesso total" (junto de `clear_checkpoint`/`trigger_agg_locally`, nunca antes de uma
   falha propagar ou de um `return` antecipado) — não reimplementar publicação SNS própria nem inventar um tópico

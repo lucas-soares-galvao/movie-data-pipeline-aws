@@ -153,25 +153,6 @@ class TestLoopPrincipal:
         resumo = [r.message for r in caplog.records if "precisam ser re-executadas" in r.message]
         assert resumo == []
 
-    def test_translate_provider_default_google_propagado(self, monkeypatch):
-        mock_run, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        assert mock_run.call_args_list[0].kwargs["translate_provider"] == "google"
-
-    def test_translate_provider_aws_propagado(self, monkeypatch):
-        mock_run, *_ = _run_main(
-            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "TRANSLATE_PROVIDER": "aws"}
-        )
-        assert mock_run.call_args_list[0].kwargs["translate_provider"] == "aws"
-
-    def test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano(self, monkeypatch):
-        """Proteção de custo: aws só é aceito para um intervalo de 1 ano — ver
-        backfill_shared.apply_translate_cost_guard."""
-        mock_run, *_ = _run_main(
-            monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "TRANSLATE_PROVIDER": "aws"}
-        )
-        for c in mock_run.call_args_list:
-            assert c.kwargs["translate_provider"] == "google"
-
     def test_busca_api_key_uma_unica_vez_fora_do_loop(self, monkeypatch):
         _, _, _, mock_secret, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         mock_secret.assert_called_once_with(

@@ -12,19 +12,18 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 
 | Script | Descrição | Serviço AWS | Dependências extras |
 |---|---|---|---|
-| `backfill_discover.py` | Popula as tabelas discover de 2000 até o ano atual; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue ETL), usando `TRANSLATE_PROVIDER` (default `google`) só para o detector de idioma do overview. Não dispara o Glue Details — usar `backfill_enriquecimento.py` à parte para popular details/watch_providers. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, langdetect |
-| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma vez por tabela gravada. Grava checkpoint por tabela (6 unidades `"{media_type}:{table_type}"`) para retomar depois de token expirado sem refazer a tradução já concluída | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
-| `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords; também usado para popular `next_episode_air_date`/`season_air_dates` — campos de próximo episódio/temporada de série — no catálogo já existente, já que são colunas novas ausentes em linha gravada antes da mudança); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, deep_translator, langdetect |
+| `backfill_discover.py` | Popula as tabelas discover de 2000 até o ano atual; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue ETL), usando LLM só para o detector de idioma do overview. Não dispara o Glue Details — usar `backfill_enriquecimento.py` à parte para popular details/watch_providers. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, litellm |
+| `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via LLM. Dispara o Glue Data Quality uma vez por tabela gravada. Grava checkpoint por tabela (6 unidades `"{media_type}:{table_type}"`) para retomar depois de token expirado sem refazer a tradução já concluída | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, litellm |
+| `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords; também usado para popular `next_episode_air_date`/`season_air_dates` — campos de próximo episódio/temporada de série — no catálogo já existente, já que são colunas novas ausentes em linha gravada antes da mudança); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via LLM. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, litellm |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** roda o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
-| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via Google Translate ou AWS Translate (`TRANSLATE_PROVIDER`; não gera collection_name_pt, que depende da API do TMDB; também é o caminho de reparo em massa das colunas `*_pt` gravadas com a página de erro do Google — o passo 0 de `resolve_pt_translation` as descarta e retraduz, e o Glue AGG final regrava a SPEC) | S3 (direto) | awswrangler, pandas, deep_translator |
+| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via LLM (OpenRouter); não gera collection_name_pt, que depende da API do TMDB; também é o caminho de reparo em massa das colunas `*_pt` gravadas com a página de erro histórica do Google (dado legado de antes da migração para LLM) — o passo 0 de `resolve_pt_translation` as descarta e retraduz, e o Glue AGG final regrava a SPEC | S3 (direto) | awswrangler, pandas, litellm |
 | `backfill_rename_colunas.py` | Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para `processed_date`/`updated_date` nos parquets de details/watch_providers já gravados no S3 — sem chamar a API do TMDB, cobre inclusive IDs que já saíram do discover atual | S3 (direto) | awswrangler, pandas |
-| `backfill_changes.py` | Dispara sob demanda o mesmo modo changes que o cron semanal de domingo já aciona automaticamente — 2 content_types (movie, tv), janela sempre `[domingo passado, sábado de ontem]` (não configurável); roda a coleta de IDs mudados e o enriquecimento diretamente no processo do script (sem acionar Lambda nem o job Glue Details — ver `collect_changes_data`/`process_changed_ids` em `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"), traduzindo via `TRANSLATE_PROVIDER` (default `google`). Dispara o Glue Data Quality uma única vez ao final por tabela (não por ano); útil quando o cron falha ou é pulado | Athena, Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, deep_translator, langdetect |
+| `backfill_changes.py` | Dispara sob demanda o mesmo modo changes que o cron semanal de domingo já aciona automaticamente — 2 content_types (movie, tv), janela sempre `[domingo passado, sábado de ontem]` (não configurável); roda a coleta de IDs mudados e o enriquecimento diretamente no processo do script (sem acionar Lambda nem o job Glue Details — ver `collect_changes_data`/`process_changed_ids` em `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"), traduzindo via LLM. Dispara o Glue Data Quality uma única vez ao final por tabela (não por ano); útil quando o cron falha ou é pulado | Athena, Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, litellm |
 | `backfill_historico.py` | Encadeia `backfill_discover.py` e, na sequência, `backfill_enriquecimento.py`, chamando o `main()` de cada um diretamente neste processo (nunca via subprocess) — simula fora do EventBridge o mesmo encadeamento `discover → detalhes/providers` do pipeline automático. Não introduz variável de ambiente nova (união das exigidas pelos dois) nem reimplementa nenhuma lógica de coleta/transformação — só orquestra a ordem. Mantém um checkpoint próprio (`TABLE_GROUP="historico"` interno, unidades `"discover"`/`"enriquecimento"`) por cima dos dois checkpoints internos, para não redigitar um estágio já concluído numa retomada. Se `discover` terminar com falha soft, `enriquecimento` não roda. Herda os 2 disparos de Glue Data Quality dos dois scripts (não dispara um terceiro consolidado) | Secrets Manager, Athena, TMDB API, S3 (direto), Glue Data Quality | mesmas de `backfill_discover.py` + `backfill_enriquecimento.py` |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
 por todos os 8 scripts acima: leitura de variável de ambiente obrigatória,
-setup de logging, leitura do range de anos, proteção de custo do AWS
-Translate por intervalo de anos (`apply_translate_cost_guard`), wrapper de
+setup de logging, leitura do range de anos, wrapper de
 retry do exit code 75, notificação por e-mail de sucesso
 (`notify_backfill_success`, ver seção "Notificação de sucesso" abaixo) e,
 para os 5 scripts que iteram por ano diretamente (todos exceto
@@ -92,15 +91,12 @@ diretamente no processo em vez de delegar a um recurso gerenciado.
 `backfill_changes.py` exige `AWS_REGION`, `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`,
 `TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV`, `TABLE_DETAILS_MOVIE`/`TABLE_DETAILS_TV`,
 `TABLE_WATCH_PROVIDERS_MOVIE`/`TABLE_WATCH_PROVIDERS_TV`, `S3_BUCKET_SOT`,
-`S3_BUCKET_TEMP`, `TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` e,
-opcionalmente, `TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (o `table_group` do
-checkpoint, `"changes"`, é fixo no código, ver "Retomada automática" abaixo).
+`S3_BUCKET_TEMP`, `TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` — sem
+`TABLE_GROUP` (o `table_group` do checkpoint, `"changes"`, é fixo no código,
+ver "Retomada automática" abaixo).
 `S3_BUCKET_TEMP` aqui serve tanto ao checkpoint quanto ao handoff efêmero da
 lista de IDs mudados (`tmdb/changes/{content_type}/{data}.json`), mesmo
-bucket/prefixo que o modo changes automático (via Lambda) já usa. Fica fora da proteção de custo
-`apply_translate_cost_guard` (ver abaixo) pelo mesmo motivo que sempre esteve:
-o volume do modo changes é limitado aos IDs que a própria TMDB reporta como
-alterados na janela de 7 dias, não o catálogo inteiro.
+bucket/prefixo que o modo changes automático (via Lambda) já usa.
 
 `backfill_traducao.py` exige adicionalmente `S3_BUCKET_SOT`, usado para ler e
 escrever os parquets reais de `tb_discover_movie/tv_tmdb` e
@@ -125,10 +121,9 @@ Athena usada pela chamada ao Glue AGG),
 `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV`, `TABLE_GENRE_MOVIE`/`TABLE_GENRE_TV`,
 `TABLE_CONFIGURATION_LANGUAGES`/`TABLE_CONFIGURATION_COUNTRIES`,
 `TABLE_WATCH_PROVIDERS_REF_MOVIE`/`TABLE_WATCH_PROVIDERS_REF_TV`,
-`TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` e, opcionalmente,
-`TRANSLATE_PROVIDER` — sem `TABLE_GROUP` (o `table_group` do checkpoint,
-`"referencias"`, é fixo no código, mesmo motivo de `backfill_changes.py`:
-sem dependência de ano).
+`TMDB_SECRET_ARN`, `GLUE_DATA_QUALITY_JOB_NAME` — sem `TABLE_GROUP` (o
+`table_group` do checkpoint, `"referencias"`, é fixo no código, mesmo motivo
+de `backfill_changes.py`: sem dependência de ano).
 `S3_BUCKET_SOR` é exclusivo deste script — nenhum outro grava JSON bruto
 diretamente (os demais só leem/escrevem parquet no SOT).
 
@@ -141,52 +136,15 @@ DQ antes; a chamada ao AGG dispara o DQ sobre a tabela unificada ao final).
 
 Todos os backfills que traduzem ou detectam idioma (`backfill_discover.py`,
 `backfill_enriquecimento.py`, `backfill_referencias.py`, `backfill_traducao.py`
-e `backfill_changes.py`, todos via env var própria) aceitam opcionalmente
-`TRANSLATE_PROVIDER` (default `"google"` — grátis, mas
-instável sob alto volume; `"aws"` usa AWS Translate, pago por caractere, útil
-para testar um período menor via `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) —
-exposto no workflow como o input `translate_provider`. `"google"` é só o default
-do *código* do caminho automático via EventBridge (`lambda_api` → `glue_etl` →
-`glue_details`) — o deploy via Terraform (`infra/glue_etl.tf`/`infra/glue_details.tf`,
-`var.translate_provider`) hoje passa `"aws"` como primário nos dois jobs, com
-Comprehend como detector primário por acoplamento (mesmo `TRANSLATE_PROVIDER`
-decide os dois — ver `resolve_detect_language_fn` abaixo). Independente de qual
-lado é o primário, o serviço não escolhido é usado
-automaticamente como fallback caso o primário falhe (ver `resolve_translate_fn`
-em `shared_utils.traducao`), com o fallback ao AWS Translate limitado pelo que
-sobrar de um orçamento **mensal** (default 2_000_000 caracteres == free tier
-mensal do AWS Translate, consultado ao vivo via CloudWatch — ver
-`get_translate_chars_used_this_month` — em vez de um teto fixo por execução).
-Só `backfill_traducao.py` expõe esse teto como env var própria
-(`AWS_FALLBACK_MONTHLY_MAX_CHARS`); os demais scripts usam o default do módulo.
-`TRANSLATE_PROVIDER` também
-determina o detector de idioma primário (`resolve_detect_language_fn` em
-`shared_utils.idioma`): `"google"` usa `langdetect` primeiro com Comprehend como
-fallback capado por caracteres; `"aws"` usa Comprehend primeiro (sem cap) com
-`langdetect` como fallback. `backfill_discover.py` resolve `detect_fn` uma
-única vez antes do loop (não traduz nenhum campo — só sinaliza o idioma do
-overview), enquanto `backfill_enriquecimento.py`, `backfill_referencias.py`,
-`backfill_traducao.py` e `backfill_changes.py` resolvem
-`resolve_translate_fn`/`resolve_detect_language_fn` (ou, no caso de
-`backfill_enriquecimento.py`/`backfill_changes.py`, o `translate_provider`
-recebido por `collect_and_write_details` dentro de
-`run_details_and_watch_providers_for_year`/`process_changed_ids`) a cada
-partição ano+tipo (ou content_type, no caso de
-`backfill_referencias.py`/`backfill_changes.py`), para que a primeira
-partição processada não esgote sozinha o orçamento de fallback ao AWS
-Translate de todo o backfill. Todos rodam suas partições dentro do mesmo
-processo Python — nenhum invoca a Lambda API.
-
-**Proteção de custo por intervalo de anos:** nos 3 backfills que iteram por
-ano e dependem disso (`backfill_discover.py`, `backfill_enriquecimento.py`,
-`backfill_traducao.py`), se `TRANSLATE_PROVIDER=aws` for escolhido mas o
-intervalo (`BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`) cobrir mais de 1 ano, o
-provider é rebaixado automaticamente para `"google"` (com um aviso no log) —
-ver `backfill_shared.apply_translate_cost_guard()`. Protege contra o cenário
-de escolher `"aws"` para testar um período curto e esquecer de voltar para
-`"google"` antes de disparar um backfill do catálogo histórico inteiro.
-`backfill_referencias.py` fica fora dessa proteção por não depender de ano
-(volume sempre pequeno, ~250 itens).
+e `backfill_changes.py`) usam `translate_text_llm`/`detect_language_llm`
+(`shared_utils.traducao_llm`/`idioma_llm`, OpenRouter via `litellm`, com
+fallback nativo de modelo embutido na própria chamada) — sem variável de
+ambiente própria para escolher serviço, já que só existe um caminho. A chave
+de API é lida do secret unificado via `FILMBOT_SECRET_ARN` (ver
+`shared_utils.llm_client.load_llm_api_key`), exposta no workflow do backfill
+(`.github/workflows/backfill.yml`) como env var, mesmo valor de
+`TMDB_SECRET_ARN`. Todos rodam suas partições dentro do mesmo processo Python
+— nenhum invoca a Lambda API.
 
 Todos os 8 scripts aceitam opcionalmente `SNS_TOPIC_ARN_BACKFILL_SUCCESS` —
 ver seção "Notificação de sucesso" abaixo. Ausente, o script só loga um

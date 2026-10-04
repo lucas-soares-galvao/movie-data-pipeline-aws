@@ -85,6 +85,7 @@ import wave
 import boto3
 import litellm
 from dotenv import load_dotenv
+from shared_utils.llm_client import load_llm_api_key
 from src.formatting import format_record
 
 # Carrega as variáveis de ambiente do arquivo .env (na mesma pasta do app).
@@ -163,31 +164,21 @@ _AUDIO_DURATION_TOLERANCE_SECONDS = 1
 
 def _load_llm_api_key() -> str | None:
     """Busca a LLM_API_KEY do Secrets Manager (produção) ou do .env (desenvolvimento)."""
-    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
-    if secret_arn:
-        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
-        response = client.get_secret_value(SecretId=secret_arn)
-        secret = json.loads(response["SecretString"])
-        return secret["llm_api_key"]
-    return os.getenv("LLM_API_KEY")
+    return load_llm_api_key("llm_api_key", "LLM_API_KEY", region=os.getenv("AWS_REGION", "sa-east-1"))
 
 
 def _load_transcription_api_key() -> str | None:
     """Busca a TRANSCRIPTION_API_KEY do Secrets Manager (produção) ou do .env (desenvolvimento).
 
-    Diferente de _load_llm_api_key(), usa secret.get() em vez de indexação direta:
-    transcription_api_key é um campo opcional, adicionado ao secret depois que ele já
-    existia em produção. Retornar None em vez de KeyError permite que o app suba
-    normalmente antes do operador popular o campo — a transcrição fica apenas
-    indisponível (ver transcribe_preference()), sem derrubar o app.
+    Diferente de _load_llm_api_key(), required=False: transcription_api_key é um campo
+    opcional, adicionado ao secret depois que ele já existia em produção. Retornar None
+    em vez de levantar permite que o app suba normalmente antes do operador popular o
+    campo — a transcrição fica apenas indisponível (ver transcribe_preference()), sem
+    derrubar o app.
     """
-    secret_arn = os.getenv("FILMBOT_SECRET_ARN")
-    if secret_arn:
-        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "sa-east-1"))
-        response = client.get_secret_value(SecretId=secret_arn)
-        secret = json.loads(response["SecretString"])
-        return secret.get("transcription_api_key")
-    return os.getenv("TRANSCRIPTION_API_KEY")
+    return load_llm_api_key(
+        "transcription_api_key", "TRANSCRIPTION_API_KEY", region=os.getenv("AWS_REGION", "sa-east-1"), required=False
+    )
 
 
 _LLM_API_KEY = _load_llm_api_key()

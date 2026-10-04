@@ -114,7 +114,7 @@ genre_names AS (
 
 -- Duração dos filmes em minutos, vinda da tabela de detalhes coletada pelo Glue Details.
 -- overview_pt é a tradução pt-BR gravada pelo Glue Details (nativa do TMDB, cache do S3 ou
--- Google/AWS Translate — qualquer original_language, ver shared_utils/traducao.py).
+-- LLM via OpenRouter — qualquer original_language, ver shared_utils/traducao_llm.py).
 -- ROW_NUMBER() deduplica IDs que aparecem mais de uma vez (cada refresh mensal insere novas linhas
 -- via append); ORDER BY processed_date DESC mantém o registro mais recente.
 movie_details_ranked AS (
