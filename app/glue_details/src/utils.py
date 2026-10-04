@@ -167,8 +167,7 @@ _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limi
 # Traduções EN→PT paralelas via translate_text_llm (ver collect_and_write_details). No
 # fluxo normal de discover (fora do modo changes) o volume elegível observado em prod é
 # de até ~500 registros por coluna/execução (overview_pt/keywords_pt/tagline_pt,
-# traduzidos em passagens sequenciais). Chamadas de LLM (1-5s+ por requisição) são bem
-# mais lentas que uma API de tradução estruturada (Translate/Comprehend, ~100-300ms);
+# traduzidos em passagens sequenciais). Chamadas de LLM levam 1-5s+ por requisição;
 # valor inicial conservador, a recalibrar com a duração real do job em produção (ver
 # app/glue_details/glue_details.md).
 _TRANSLATE_MAX_WORKERS_LLM = 10
@@ -1519,7 +1518,7 @@ def extract_translatable_changes(changes: list[dict], source_lang: str = "en") -
     traduzíveis (overview, tagline, keywords) tiveram uma mudança de conteúdo na
     língua de origem dentro da janela consultada.
 
-    Usada para decidir se vale chamar Google/AWS Translate de novo para um campo, ou
+    Usada para decidir se vale chamar o LLM de novo para traduzir um campo, ou
     se a tradução já salva pode ser reaproveitada com segurança mesmo que o texto
     reextraído da API divirja byte-a-byte do salvo (ex.: TMDB reordena a lista de
     keywords sem mudança real de conteúdo) — ver collect_and_write_details.

@@ -612,6 +612,36 @@ resource "aws_iam_policy" "cicd_observability" {
         ]
         Resource = "arn:aws:sns:sa-east-1:${data.aws_caller_identity.current.account_id}:${local.tmdb_prefix}-*"
       },
+      {
+        # TEMPORÁRIO — permite ao Terraform fazer refresh e destruir o budget órfão
+        # tmdb-translate-monthly-cost-{env} (aws_budgets_budget removido de infra/budgets.tf
+        # no commit 430e3b4c, mas ainda presente no state de dev). Sem estas actions o plan
+        # falha com AccessDenied em budgets:ViewBudget. Remover este statement e o
+        # BudgetsTags abaixo num commit seguinte, depois que o apply destruir o budget.
+        # AWS Budgets não suporta restrição por ARN nas actions de gerenciamento.
+        Sid    = "BudgetsCleanup"
+        Effect = "Allow"
+        Action = [
+          "budgets:ViewBudget",
+          "budgets:DescribeBudgets",
+          "budgets:DeleteBudget",
+          "budgets:DescribeNotificationsForBudget",
+          "budgets:DeleteNotification",
+          "budgets:DescribeSubscribersForNotification",
+          "budgets:DeleteSubscriber",
+        ]
+        Resource = "*"
+      },
+      {
+        # TEMPORÁRIO — ver BudgetsCleanup acima. O provider lê as tags do budget no refresh.
+        Sid    = "BudgetsCleanupTags"
+        Effect = "Allow"
+        Action = [
+          "budgets:ListTagsForResource",
+          "budgets:UntagResource",
+        ]
+        Resource = "arn:aws:budgets::${data.aws_caller_identity.current.account_id}:budget/${local.tmdb_prefix}-translate-monthly-cost-${var.env}"
+      },
     ]
   })
 

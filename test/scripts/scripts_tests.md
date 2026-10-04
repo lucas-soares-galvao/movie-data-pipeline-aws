@@ -316,6 +316,16 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_expired_token_na_leitura_loga_e_repropaga` / `test_expired_token_na_escrita_loga_e_repropaga` (parametrizados: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura ou na escrita loga aviso de credenciais e repropaga |
 | `test_escreve_com_particao_e_modo_overwrite_partitions` | `wr.s3.to_parquet` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
 | `test_soma_traduzidos_de_overview_tagline_e_keywords` | `traduzidos` retornado por `_backfill_year` soma os três campos (`overview_pt` + `tagline_pt` + `keywords_pt`), não só `overview_pt` |
+| `test_reset_polluted_retraduz_pagina_de_erro_mesmo_com_tentativas_esgotadas` | Com `reset_polluted=True`, `overview_pt` com o texto de erro legado e `overview_translation_attempts=3` é descartado e retraduzido pelo LLM (contador volta a 1) |
+| `test_sem_reset_polluted_respeita_o_teto_de_tentativas` | Com o padrão (`reset_polluted=False`), `_reset_polluted_translations` não é chamada e a linha que já esgotou o teto de tentativas não é retraduzida |
+
+### `TestResetPollutedTranslations`
+
+| Teste | O que verifica |
+|---|---|
+| `test_descarta_so_a_pagina_de_erro_e_zera_idioma_e_tentativas` | Só a linha com o texto de erro legado tem `*_pt` nulo, idioma detectado nulo e tentativas 0; traduções boas e nulas ficam intactas; devolve a quantidade descartada |
+| `test_nao_casa_com_traducao_que_apenas_menciona_error` | Texto que só menciona "Error 500 (Server Error)!!1" no meio não é descartado (padrão ancorado no início) |
+| `test_soma_os_tres_campos_e_ignora_coluna_ausente` | Soma `overview_pt` + `tagline_pt` + `keywords_pt` e não quebra quando uma das colunas não existe |
 
 ### `TestMain`
 
@@ -323,6 +333,7 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 |---|---|
 | `test_backfill_year_chamado_para_cada_ano_e_tipo` / `test_alterna_movie_e_tv_por_ano` / `test_nao_pausa_apos_ultima_chamada` | Orquestração de `main()` (via mock de `_backfill_year`) |
 | `test_nao_pausa_quando_particao_nao_traduziu_nada` | `translated_count == 0` (partição vazia/já 100% traduzida, sem chamada de API) não paga a pausa de `BACKFILL_WAIT_SECONDS` — evita desperdiçar tempo num backfill de anos antigos ou de range grande |
+| `test_reset_polluted_vem_de_backfill_reset_attempts` (parametrizado: ausente/`true`/`TRUE`/`false`) | `main()` passa `reset_polluted=True` a `_backfill_year` só quando `BACKFILL_RESET_ATTEMPTS` é `true` (sem diferenciar maiúsculas) |
 | `test_pausa_apenas_apos_particoes_que_traduziram_algo` | Mistura de partições com e sem tradução: pausa só depois das que traduziram algo, nunca depois da última |
 | `test_loga_total_de_traduzidos_com_sucesso_acumulado` | O log final soma os traduzidos com sucesso de cada partição (`_backfill_year` retorna `(escreveu, traduzidos)`), não a quantidade de partições |
 

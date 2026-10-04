@@ -27,8 +27,7 @@ def add_detected_language_column(
 
     Aplica detect_fn (default: detect_language_llm) a cada valor de source_column,
     tratando nulo/NaN como string vazia (mesmo tratamento já usado em
-    resolve_pt_translation). Sem ThreadPoolExecutor: diferente do langdetect local
-    (CPU-bound, removido — ver histórico), toda chamada agora é uma requisição de
+    resolve_pt_translation). Sem ThreadPoolExecutor: toda chamada é uma requisição de
     rede ao LLM; o paralelismo real desse caminho é delegado ao chamador (ex.:
     resolve_pt_translation/translate_in_parallel), não a esta função, usada hoje só
     para colunas de baixo volume (overview do discover, name_pt da configuration).

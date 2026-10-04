@@ -17,7 +17,7 @@ test/shared_src/
 ├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
 ├── test_llm_client.py      # Testes de load_llm_api_key (chave do LLM via Secrets Manager/ambiente)
 ├── test_traducao_llm.py    # Testes de translate_text_llm (LLM via OpenRouter)
-├── test_traducao.py        # Testes de _is_google_error_page, translate_in_parallel, resolve_pt_translation e reuse_existing_translation
+├── test_traducao.py        # Testes de translate_in_parallel, resolve_pt_translation e reuse_existing_translation
 ├── test_idioma_llm.py      # Testes de detect_language_llm (LLM via OpenRouter)
 ├── test_idioma.py          # Testes de add_detected_language_column
 └── test_triggers.py        # Testes de trigger_glue_job
@@ -149,7 +149,7 @@ via LLM (`traducao_llm.py`/`idioma_llm.py`).
 
 `translate_text_llm(text)` traduz via LLM (OpenRouter, `litellm.completion`), com
 fallback nativo de modelo (`extra_body.models`) se o primário falhar. Nunca lança
-exceção — mesmo contrato do antigo `translate_text_aws`.
+exceção — devolve o texto original em caso de erro.
 
 | Teste | O que verifica |
 |---|---|
@@ -182,21 +182,6 @@ texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem
 | `test_passa_modelo_e_chave_configurados` / `test_repassa_fallback_de_modelo_no_extra_body` | Mesmo modelo/fallback de `translate_text_llm` |
 
 ## Casos de teste — `test_traducao.py`
-
-### `TestIsGoogleErrorPage`
-
-`_is_google_error_page` (função privada) higieniza dado **legado**: a página de erro do
-Google (`Error <status> (<motivo>)!!<n>`) que versões anteriores do código — de antes da
-migração para LLM — gravavam como se fosse a tradução (ver `GOOGLE_ERROR_PAGE`, texto
-real observado no dev).
-
-| Teste | O que verifica |
-|---|---|
-| `test_casa_o_texto_de_erro_real_observado` | O texto real encontrado nas tabelas do dev (`Error 500 (Server Error)!!1500.That’s an error...`) é reconhecido |
-| `test_casa_outro_status_http` | O padrão vale para outro status (`Error 404 (Not Found)!!1...`) |
-| `test_nao_casa_traducao_normal_nem_prefixo_incompleto` | Parametrizado: tradução normal, `""`, `"Error"`, `"Error 500"` e `"Erro 500 (Server Error)!!1"` (pt) não casam |
-| `test_nao_casa_quando_erro_aparece_so_no_meio_do_texto` | Regex ancorada no início: "Error 500..." no meio do texto não casa |
-| `test_nao_string_devolve_false` | Parametrizado: `None`, NaN, `int` e `list` devolvem `False` (valor vem de coluna de DataFrame) |
 
 ### `TestTranslateInParallel`
 
@@ -241,11 +226,6 @@ um manter sua própria cópia da orquestração.
 | `test_precisa_traducao_false_quando_resultado_ja_e_pt` | Fonte já detectada como `"pt"` (cópia direta) → `False` |
 | `test_precisa_traducao_false_quando_fonte_vazia` | Fonte vazia/nula → `False` (nada a traduzir) |
 | `test_precisa_traducao_continua_true_mesmo_com_tentativas_esgotadas` | Diferente da elegibilidade, continua `True` mesmo após `translation_attempts_column` atingir `max_attempts` — reflete o estado atual do dado, não se o pipeline ainda vai retentar |
-| `test_descarta_pagina_de_erro_do_google_e_retraduz` | Passo 0: destino com a página de erro histórica do Google é limpo, tem idioma detectado zerado e é retraduzido (contador zerado e incrementado pela nova tentativa) |
-| `test_pagina_de_erro_com_tentativas_esgotadas_volta_a_ser_elegivel` | O ponto do auto-reparo: mesmo com `translation_attempts >= max_attempts`, a linha com página de erro volta a ser elegível (contador zerado) |
-| `test_pagina_de_erro_que_falha_de_novo_fica_vazia_e_nao_com_o_texto_de_erro` | Se a retradução também falhar (tradutor devolve o original), o destino fica com o original e nunca volta com a página de erro |
-| `test_nao_toca_em_destinos_que_nao_sao_pagina_de_erro` | Só a linha poluída é retraduzida; a tradução válida e o contador da outra linha ficam intactos |
-| `test_loga_quantidade_de_paginas_de_erro_descartadas` / `test_sem_pagina_de_erro_nao_loga_descarte` | Log INFO com a quantidade descartada; nenhum log quando não há página de erro |
 | `test_loga_resumo_agregado_de_falhas_de_traducao` | Resumo agregado ("N falha(s) / M elegível(is)") em INFO, não uma linha por registro |
 
 ### `TestReuseExistingTranslation`
@@ -269,7 +249,6 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_ids_duplicados_no_df_anterior_usa_ultimo` | Com chaves duplicadas em `previous_df`, usa o último valor |
 | `test_coluna_chave_customizada` | Funciona com `key_column="iso_3166_1"` (caso de uso do `glue_etl`) |
 | `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `previous_df` não reaproveita |
-| `test_reuse_existing_translation_ainda_reaproveita_pagina_de_erro_do_cache` | Contrato documentado: o cache não filtra a página de erro — quem a descarta é o passo 0 de `resolve_pt_translation` |
 
 ## Casos de teste — `test_idioma.py`
 

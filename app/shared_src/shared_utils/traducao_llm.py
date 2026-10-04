@@ -84,12 +84,12 @@ def translate_text_llm(text: str) -> str:
     (extra_body.models) se o primário falhar.
 
     Nunca lança exceção — devolve o texto original em caso de erro, para não
-    interromper o job (mesmo contrato de translate_text_aws).
+    interromper o job.
 
-    Diferente do AWS Translate (CloudWatch CharacterCount), não há aqui uma forma de
-    detectar "orçamento esgotado" distinta de uma falha de chamada comum — esgotamento
-    de crédito no OpenRouter aparece como uma exceção HTTP (402/429) igual a qualquer
-    outra falha transitória, e cai no mesmo branch genérico abaixo.
+    Não há aqui uma forma de detectar "orçamento esgotado" distinta de uma falha de
+    chamada comum — esgotamento de crédito no OpenRouter aparece como uma exceção HTTP
+    (402/429) igual a qualquer outra falha transitória, e cai no mesmo branch genérico
+    abaixo.
 
     Args:
         text: Texto a ser traduzido (idioma de origem detectado automaticamente pelo

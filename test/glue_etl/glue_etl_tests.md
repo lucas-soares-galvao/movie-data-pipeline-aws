@@ -31,7 +31,7 @@ Usa a constante `_BASE` (dict com args comuns: buckets, nomes de jobs, databases
 
 | Teste | O que verifica |
 |---|---|
-| `test_calls_read_from_sor_with_discover_args` | `read_from_sor` chamado com `(bucket, media_type, "discover", year)` nos 4 primeiros posicionais, mais um `translate_fn` callable como 5º (fallback via AWS Translate, montado uma vez em `main()`) |
+| `test_calls_read_from_sor_with_discover_args` | `read_from_sor` chamado com `(bucket, media_type, "discover", year)` nos 4 primeiros posicionais, mais um `translate_fn` callable como 5º (`translate_text_llm`, passado por `main()`) |
 | `test_writes_to_discover_table_with_year_partition` | `write_parquet_to_sot` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
 | `test_tv_media_type_forwarded_to_read_from_sor` | Para `MEDIA_TYPE="tv"`, lê e escreve com os argumentos corretos de tv |
 | `test_write_is_called_exactly_once` | `write_parquet_to_sot` é chamado exatamente uma vez por execução |

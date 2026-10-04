@@ -34,6 +34,9 @@ ENV_BASE = {
 }
 
 
+ERRO_LEGADO = "Error 500 (Server Error)!!1500.That’s an error."
+
+
 def _set_env(monkeypatch: pytest.MonkeyPatch, overrides: dict | None = None) -> None:
     for key, value in {**ENV_BASE, **(overrides or {})}.items():
         monkeypatch.setenv(key, value)
@@ -433,6 +436,88 @@ class TestBackfillYear:
         assert df_escrito.loc[0, "tagline_pt"] == "Tagline_PT"
         assert df_escrito.loc[0, "keywords_pt"] == "space, alien_PT"
 
+    def test_reset_polluted_retraduz_pagina_de_erro_mesmo_com_tentativas_esgotadas(self):
+        """Com reset_polluted=True, o texto de erro legado é descartado e o contador
+        zerado, então a linha é retraduzida pelo LLM mesmo tendo esgotado o teto."""
+        details_df = pd.DataFrame({
+            "id": [1],
+            "overview_en": ["Overview"],
+            "overview_pt": [ERRO_LEGADO],
+            "overview_translation_attempts": [3],
+        })
+
+        with (
+            patch("backfill_traducao.wr") as mock_wr,
+            patch("backfill_traducao.translate_text_llm", side_effect=lambda t: f"{t}_PT") as mock_translate,
+        ):
+            mock_wr.s3.read_parquet.return_value = details_df
+            bt._backfill_year(
+                "db_movie", "details_movie", "2020", "bucket-sot-test",
+                detect_fn=lambda t: "pt" if t.endswith("_PT") else "en",
+                reset_polluted=True,
+            )
+
+        mock_translate.assert_called_once_with("Overview")
+        df_escrito = mock_wr.s3.to_parquet.call_args.kwargs["df"]
+        assert df_escrito.loc[0, "overview_pt"] == "Overview_PT"
+        assert df_escrito.loc[0, "overview_translation_attempts"] == 1
+
+    def test_sem_reset_polluted_respeita_o_teto_de_tentativas(self):
+        """Comportamento padrão (reset desligado): _reset_polluted_translations não roda e
+        a linha que já esgotou o teto de tentativas não é retraduzida."""
+        details_df = pd.DataFrame({
+            "id": [1],
+            "overview_en": ["Overview"],
+            "overview_pt": [ERRO_LEGADO],
+            "overview_translation_attempts": [3],
+        })
+
+        with (
+            patch("backfill_traducao.wr") as mock_wr,
+            patch("backfill_traducao.translate_text_llm") as mock_translate,
+            patch("backfill_traducao._reset_polluted_translations") as mock_reset,
+        ):
+            mock_wr.s3.read_parquet.return_value = details_df
+            bt._backfill_year(
+                "db_movie", "details_movie", "2020", "bucket-sot-test",
+                detect_fn=lambda t: "en",
+            )
+
+        mock_reset.assert_not_called()
+        mock_translate.assert_not_called()
+
+
+class TestResetPollutedTranslations:
+    def test_descarta_so_a_pagina_de_erro_e_zera_idioma_e_tentativas(self):
+        df = pd.DataFrame({
+            "overview_pt": [ERRO_LEGADO, "Tradução boa", None],
+            "overview_detected_language_pt": ["en", "pt", None],
+            "overview_translation_attempts": [3, 1, 0],
+        })
+
+        descartados = bt._reset_polluted_translations(df)
+
+        assert descartados == 1
+        assert pd.isna(df.loc[0, "overview_pt"])
+        assert pd.isna(df.loc[0, "overview_detected_language_pt"])
+        assert df.loc[0, "overview_translation_attempts"] == 0
+        assert df.loc[1, "overview_pt"] == "Tradução boa"
+        assert df.loc[1, "overview_detected_language_pt"] == "pt"
+        assert df.loc[1, "overview_translation_attempts"] == 1
+
+    def test_nao_casa_com_traducao_que_apenas_menciona_error(self):
+        df = pd.DataFrame({"overview_pt": ["Mensagem: Error 500 (Server Error)!!1 no meio"]})
+        assert bt._reset_polluted_translations(df) == 0
+        assert df.loc[0, "overview_pt"] == "Mensagem: Error 500 (Server Error)!!1 no meio"
+
+    def test_soma_os_tres_campos_e_ignora_coluna_ausente(self):
+        df = pd.DataFrame({
+            "overview_pt": [ERRO_LEGADO],
+            "tagline_pt": [ERRO_LEGADO],
+            # keywords_pt ausente: não deve quebrar
+        })
+        assert bt._reset_polluted_translations(df) == 2
+
 
 def _run_main(
     monkeypatch: pytest.MonkeyPatch,
@@ -464,6 +549,16 @@ class TestMain:
     def test_backfill_year_chamado_para_cada_ano_e_tipo(self, monkeypatch):
         mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2022"})
         assert mock_backfill.call_count == 6  # 3 anos x 2 tipos
+
+    @pytest.mark.parametrize("valor, esperado", [(None, False), ("true", True), ("TRUE", True), ("false", False)])
+    def test_reset_polluted_vem_de_backfill_reset_attempts(self, monkeypatch, valor, esperado):
+        overrides = {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}
+        if valor is None:
+            monkeypatch.delenv("BACKFILL_RESET_ATTEMPTS", raising=False)
+        else:
+            overrides["BACKFILL_RESET_ATTEMPTS"] = valor
+        mock_backfill, _, _, _ = _run_main(monkeypatch, overrides)
+        assert all(c.kwargs["reset_polluted"] is esperado for c in mock_backfill.call_args_list)
 
     def test_alterna_movie_e_tv_por_ano(self, monkeypatch):
         mock_backfill, _, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})

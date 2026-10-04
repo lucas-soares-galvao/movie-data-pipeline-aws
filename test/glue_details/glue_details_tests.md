@@ -86,7 +86,7 @@ Testa as funções individuais:
 - `_extract_next_episode_to_air` (`TestExtractNextEpisodeToAir`): próximo episódio presente, chave ausente, chave `None` (série sem episódio futuro), campos parciais
 - `_extract_seasons` (`TestExtractSeasons`): lista vazia, uma temporada, múltiplas temporadas, temporada futura sem `air_date`/`episode_count` preservando alinhamento posicional entre as 4 colunas paralelas
 - `_extract_pt_br_translation` (`TestExtractPtBrTranslation`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
-- `_add_translations_pt` (`TestAddTranslationsOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, retenta quando `overview_pt_tmdb` fica igual a `overview_en`, grava `overview_detected_language_en` (a partir de `overview_en`) e `overview_detected_language_pt` (a partir do resultado final em `overview_pt` — `"pt"` para nativo TMDB/sucesso Google, diferente de `"pt"` para falha/fonte vazia), copia `overview_en` direto para `overview_pt` sem chamar tradução quando o idioma já é detectado como `"pt"` (otimização contra retradução infinita), e grava `overview_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
+- `_add_translations_pt` (`TestAddTranslationsOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, retenta quando `overview_pt_tmdb` fica igual a `overview_en`, grava `overview_detected_language_en` (a partir de `overview_en`) e `overview_detected_language_pt` (a partir do resultado final em `overview_pt` — `"pt"` para nativo TMDB/sucesso do LLM, diferente de `"pt"` para falha/fonte vazia), copia `overview_en` direto para `overview_pt` sem chamar tradução quando o idioma já é detectado como `"pt"` (otimização contra retradução infinita), e grava `overview_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
 - `_add_translations_keywords_pt` (`TestAddTranslationsKeywordsPt`): traduz via LLM, traduz mesmo quando `original_language` já é `pt` (TMDB não localiza keywords), não traduz quando `keywords` vazia (`keywords_detected_language_pt` fica nulo), copia direto sem chamar tradução quando idioma já detectado como `"pt"`, e grava `keywords_needs_translation` (`True` quando a tradução falha, `False` quando `keywords` está vazia)
 - `_add_translations_tagline_pt` (`TestAddTranslationsTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, ignora vazia/nula, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), retenta quando `tagline_pt_tmdb` fica igual a `tagline`, copia direto sem chamar tradução quando idioma já detectado como `"pt"`, e grava `tagline_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
 - `_extract_production_countries_iso` (`TestExtractProductionCountriesIso`): extrai códigos ISO, retorna None para lista vazia e None
@@ -286,8 +286,8 @@ Testa as funções individuais:
 | Teste | O que verifica |
 |---|---|
 | `test_prioriza_tmdb_pt_br` | Usa `overview_pt_tmdb` quando presente, sem chamar o LLM |
-| `test_fallback_para_google_translator` | Traduz via LLM quando não há `overview_pt_tmdb` |
-| `test_traduz_mesmo_com_idioma_original_pt` | Chama `translate_text` mesmo quando `original_language == "pt"` — não é critério de elegibilidade (idioma detectado do texto é forçado para `"en"` via `detect_fn`, isolando do comportamento real do `langdetect`) |
+| `test_fallback_para_llm` | Traduz via LLM quando não há `overview_pt_tmdb` |
+| `test_traduz_mesmo_com_idioma_original_pt` | Chama `translate_text` mesmo quando `original_language == "pt"` — não é critério de elegibilidade (idioma detectado do texto é forçado para `"en"` via `detect_fn`, sem chamada real ao LLM) |
 | `test_loga_resumo_de_sucesso` | Loga `"1 registros traduzidos com sucesso (overview_pt)."` em INFO |
 | `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `translate_text` devolve o original em caso de falha; log reporta `"0 registros traduzidos com sucesso"` |
 | `test_retenta_quando_overview_pt_tmdb_igual_a_overview_en` | Caso de borda: `overview_pt_tmdb` idêntico a `overview_en` é reenviado ao LLM (mesma regra de retry do backfill) |
@@ -295,7 +295,7 @@ Testa as funções individuais:
 | `test_idioma_detectado_pt_calculado_a_partir_do_resultado` | `overview_detected_language_pt` chama `detect_fn` com o valor final de `overview_pt` (o resultado), não com `overview_en` |
 | `test_idioma_detectado_en_none_quando_fonte_vazia` | `overview_en` vazio/nulo → `overview_detected_language_en` fica nulo |
 | `test_idioma_detectado_pt_none_quando_destino_vazio` | `overview_pt` continua vazio (sem TMDB/cache/tradução) → `overview_detected_language_pt` fica nulo |
-| `test_idioma_detectado_pt_e_pt_apos_sucesso_google` | `overview_detected_language_pt` é `"pt"` após tradução via Google bem-sucedida |
+| `test_idioma_detectado_pt_e_pt_apos_sucesso_llm` | `overview_detected_language_pt` é `"pt"` após tradução via LLM bem-sucedida |
 | `test_idioma_detectado_pt_nao_e_pt_quando_traducao_falha` | `overview_detected_language_pt` não é `"pt"` quando a tradução falha e mantém o texto original |
 | `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte com idioma detectado `"pt"` (sem TMDB nativo/cache) é copiada direto para `overview_pt`; `translate_fn` mockado **não** é chamado; `overview_detected_language_pt` fica `"pt"` |
 | `test_overview_precisa_traducao_true_quando_traducao_falha` | `overview_needs_translation` é `True` quando a tradução falha (resultado igual ao original, idioma continua diferente de `"pt"`) |
@@ -321,7 +321,7 @@ Testa as funções individuais:
 | Teste | O que verifica |
 |---|---|
 | `test_prioriza_tmdb_pt_br` | Usa `tagline_pt_tmdb` quando presente, sem chamar o LLM |
-| `test_fallback_para_google_translator` | Traduz via LLM quando não há `tagline_pt_tmdb` |
+| `test_fallback_para_llm` | Traduz via LLM quando não há `tagline_pt_tmdb` |
 | `test_nao_traduz_quando_tudo_vazio` | `tagline`/`tagline_pt_tmdb` vazios → `tagline_pt` fica nulo, `tagline_detected_language_pt` fica nulo para todos os registros |
 | `test_traduz_mesmo_com_idioma_original_pt` | Chama `translate_text` mesmo quando `original_language == "pt"` (idioma detectado do texto forçado para `"en"`) |
 | `test_retenta_quando_tagline_pt_tmdb_igual_a_tagline` | Caso de borda: `tagline_pt_tmdb` idêntico a `tagline` é reenviado ao LLM |

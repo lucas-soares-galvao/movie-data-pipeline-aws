@@ -26,7 +26,9 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #                             scripts/backfill_enriquecimento.py), disparando o Glue Data Quality
 #                             uma única vez ao final, cobrindo todo o range de anos processado
 #   - data_quality          — re-executa DQ via Glue
-#   - traducao              — adiciona overview_pt nos details (sem API TMDB)
+#   - traducao              — adiciona overview_pt nos details (sem API TMDB); com o input
+#                             reset_attempts ligado, repara antes os *_pt gravados com texto
+#                             de erro legado (ver scripts/backfill_traducao.py)
 #   - rename_colunas        — migra dt_processamento/dt_atualizacao para
 #                             processed_date/updated_date nos parquets já gravados
 #                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
@@ -88,6 +90,11 @@ on:
         required: false
         default: ""
         type: string
+      reset_attempts:
+        description: "Só para traducao: descarta *_pt com texto de erro legado e zera as tentativas dessas linhas para retraduzir via LLM (reparo pontual; limpar o checkpoint antes)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -220,6 +227,8 @@ jobs:
           TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_movie_${{ steps.env.outputs.name }}
           TABLE_WATCH_PROVIDERS_REF_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_tv_${{ steps.env.outputs.name }}
           BACKFILL_START_YEAR: ${{ inputs.start_year }}
+          # Lida só por backfill_traducao.py (os demais scripts ignoram); "true"/"false"
+          BACKFILL_RESET_ATTEMPTS: ${{ inputs.reset_attempts }}
         run: |
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"
