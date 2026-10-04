@@ -433,7 +433,7 @@ class TestAddTranslationsOverviewPt:
         result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert result["overview_pt"].iloc[0] == "Um grande filme"
 
-    def test_fallback_para_google_translator(self):
+    def test_fallback_para_llm(self):
         df = pd.DataFrame({
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": [None],
@@ -486,7 +486,7 @@ class TestAddTranslationsOverviewPt:
 
     def test_retenta_quando_overview_pt_tmdb_igual_a_overview_en(self):
         """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
-        reenviada ao Google Translate (mesma regra de retry usada no backfill)."""
+        reenviada ao LLM (mesma regra de retry usada no backfill)."""
         df = pd.DataFrame({
             "overview_en": ["Same text"],
             "overview_pt_tmdb": ["Same text"],
@@ -528,7 +528,7 @@ class TestAddTranslationsOverviewPt:
         result = u._add_translations_pt(df, detect_fn=lambda t: "en" if t else None)
         assert pd.isna(result["overview_detected_language_pt"].iloc[0])
 
-    def test_idioma_detectado_pt_e_pt_apos_sucesso_google(self):
+    def test_idioma_detectado_pt_e_pt_apos_sucesso_llm(self):
         df = pd.DataFrame({"overview_en": ["A great movie"], "overview_pt_tmdb": [None]})
         def detect_fn(t):
             return "pt" if t.startswith("[PT]") else ("en" if t else None)
@@ -545,7 +545,7 @@ class TestAddTranslationsOverviewPt:
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
         """Otimização: se overview_en já está em português (idioma detectado 'pt') e
         não há tradução nativa/cache, copia direto para overview_pt sem chamar
-        Google/AWS — evita retradução infinita de texto já correto."""
+        o LLM — evita retradução infinita de texto já correto."""
         df = pd.DataFrame({
             "overview_en": ["Já em português"],
             "overview_pt_tmdb": [None],
@@ -576,7 +576,7 @@ class TestAddTranslationsOverviewPt:
     def test_modo_changes_pula_traducao_quando_sinal_confirma_que_nao_mudou(self):
         """Mesmo com overview_en diferente do salvo (o que reuse_existing_translation
         trataria como 'mudou'), o sinal do /changes por ID prevalece e reaproveita
-        a tradução salva sem chamar Google/AWS."""
+        a tradução salva sem chamar o LLM."""
         df = pd.DataFrame({
             "id": [1],
             "overview_en": ["A great movie (texto ligeiramente diferente)"],
@@ -660,7 +660,7 @@ class TestAddTranslationsKeywordsPt:
         """Cenário real: a TMDB reordena a lista sem mudança de conteúdo — a string
         concatenada difere ("b, a" vs "a, b"), o que reuse_existing_translation
         trataria como 'mudou', mas o sinal do /changes (plot_keywords não mudou)
-        prevalece e reaproveita o cache sem chamar Google/AWS."""
+        prevalece e reaproveita o cache sem chamar o LLM."""
         df = pd.DataFrame({"id": [1], "keywords": ["b, a"]})
         previous_df = pd.DataFrame({"id": [1], "keywords": ["a, b"], "keywords_pt": ["b, a (traduzido)"]})
         translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
@@ -684,7 +684,7 @@ class TestAddTranslationsTaglinePt:
         result = u._add_translations_tagline_pt(df, detect_fn=detect_fn)
         assert result["tagline_pt"].iloc[0] == "Um grande filme"
 
-    def test_fallback_para_google_translator(self):
+    def test_fallback_para_llm(self):
         df = pd.DataFrame({
             "tagline": ["A great movie"],
             "tagline_pt_tmdb": [None],
@@ -714,7 +714,7 @@ class TestAddTranslationsTaglinePt:
 
     def test_retenta_quando_tagline_pt_tmdb_igual_a_tagline(self):
         """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
-        reenviada ao Google Translate (mesma regra de retry usada no backfill)."""
+        reenviada ao LLM (mesma regra de retry usada no backfill)."""
         df = pd.DataFrame({
             "tagline": ["Same text"],
             "tagline_pt_tmdb": ["Same text"],
@@ -1255,20 +1255,20 @@ class TestCollectAndWriteDetails:
             assert df["overview_pt"].iloc[0] == "Sinopse em português do TMDB"
             assert df["tagline_pt"].iloc[0] == "Slogan em português do TMDB"
 
-    def test_tv_fallback_google_translator_sem_tmdb_pt_br(self):
-        """Quando o TMDB não tem tradução pt-BR, usa GoogleTranslator como fallback."""
+    def test_tv_fallback_llm_sem_tmdb_pt_br(self):
+        """Quando o TMDB não tem tradução pt-BR, usa o LLM como fallback."""
         response = self._mock_tv_response(10)
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
-            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[GT] {t}"),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[LLM] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
         ):
             u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db")
             df = mock_write.call_args.kwargs["df"]
-            assert df["overview_pt"].iloc[0] == "[GT] Sinopse A"
-            assert df["tagline_pt"].iloc[0] == "[GT] Tagline serie"
+            assert df["overview_pt"].iloc[0] == "[LLM] Sinopse A"
+            assert df["tagline_pt"].iloc[0] == "[LLM] Tagline serie"
 
     def test_usa_teto_de_workers_llm_nas_3_traducoes(self):
         """_TRANSLATE_MAX_WORKERS_LLM é repassado às 3 traduções (overview/keywords/tagline) —
@@ -1587,9 +1587,8 @@ class TestCollectAndWriteDetails:
             "keywords": "drama", "keywords_pt": "Keywords traduzidas antes",
             "processed_date": "2024-01-01",
         }])
-        # Textos curtos de fixture não são detectados de forma confiável pelo langdetect
-        # real (ver conversa sobre a instabilidade do langdetect em textos curtos) — mocka
-        # a detecção para exercitar a lógica de cache isoladamente dessa limitação.
+        # A detecção de idioma é mockada (sem chamada real ao LLM) para exercitar a
+        # lógica de cache de forma determinística.
         pt_conhecidos = {"Traduzido antes", "Tagline traduzida antes", "Keywords traduzidas antes"}
 
         with (
@@ -1625,7 +1624,7 @@ class TestCollectAndWriteDetails:
 
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
-            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[GT] {t}"),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[LLM] {t}"),
             patch("src.utils.detect_language_llm", new=detect_fn),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
             patch("src.utils.wr.s3.to_parquet") as mock_write,
@@ -1633,7 +1632,7 @@ class TestCollectAndWriteDetails:
             u.collect_and_write_details("key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db")
             df_written = mock_write.call_args.kwargs["df"]
 
-            assert df_written["overview_pt"].iloc[0] == "[GT] Sinopse A"
+            assert df_written["overview_pt"].iloc[0] == "[LLM] Sinopse A"
             assert df_written["tagline_pt"].iloc[0] == "Tagline traduzida antes"
             assert df_written["keywords_pt"].iloc[0] == "Keywords traduzidas antes"
 
@@ -1641,7 +1640,7 @@ class TestCollectAndWriteDetails:
         """Mesmo cenário de test_retraduz_apenas_campo_cuja_fonte_mudou (overview_en
         difere do salvo) mas, no modo changes, changed_fields_by_id confirma que
         overview não mudou de verdade na janela — reaproveita o cache em vez de
-        chamar Google/AWS, ao contrário do fluxo normal (sem esse sinal)."""
+        chamar o LLM, ao contrário do fluxo normal (sem esse sinal)."""
         existing_df = pd.DataFrame([{
             "id": 10, "year": "2022",
             "overview_en": "Sinopse antiga, diferente", "overview_pt": "Traduzido antes",

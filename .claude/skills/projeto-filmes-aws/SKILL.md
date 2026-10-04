@@ -226,7 +226,7 @@ discover → ETL → Details). Regras EventBridge: `lambda_api_movie_rotation_we
 
 ## Segurança e Observabilidade
 
-- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 7 policies em prod/6 em dev scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`; a de Lightsail só existe em prod, FilmBot não existe em dev); tradução/detecção de idioma é via LLM (OpenRouter), não mais `translate:TranslateText`/`comprehend:DetectDominantLanguage` — `glue_details_role` e `glue_etl_role` têm só `secretsmanager:GetSecretValue` (campo `llm_api_key` do secret unificado) para isso; não há mais budget de custo do Translate (`infra/budgets.tf` removido)
+- **IAM**: Roles e policies com privilégio mínimo por componente (Lambda, Glue ETL, Glue DQ) e para a role do GitHub Actions (`iam_cicd.tf` — 7 policies em prod/6 em dev scoped a `tmdb-*` e `lsg-sa-east-1-bucket-*`; a de Lightsail só existe em prod, FilmBot não existe em dev); tradução/detecção de idioma é via LLM (OpenRouter) — `glue_details_role` e `glue_etl_role` têm só `secretsmanager:GetSecretValue` (campo `llm_api_key` do secret unificado) para isso
 - **Secrets Manager**: secret unificado (`filmbot_secret_arn`) com `tmdb_api_key`, `llm_api_key` (LLM do FilmBot e da tradução/detecção de idioma) e `filmbot_password`; `glue_details`/`glue_etl` recebem esse ARN como `TMDB_SECRET_ARN`/`FILMBOT_SECRET_ARN`
 - **CloudWatch Alarms**: Alarmes configurados para cada etapa do pipeline, com notificações por e-mail via SNS
 - **Glue DQ CloudWatch Metrics**: `enableDataQualityCloudWatchMetrics: True` no job de DQ

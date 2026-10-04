@@ -4,7 +4,6 @@ paralelismo (serviço de tradução via LLM, ver traducao_llm.py)."""
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
@@ -24,25 +23,6 @@ logger = logging.getLogger()
 # detected_language_pt_column == "pt" e seria reenviado ao LLM a cada execução,
 # para sempre.
 _MAX_TRANSLATION_ATTEMPTS_DEFAULT = 3
-
-# Página de erro do Google Translate, histórica: gravada como "tradução" por versões
-# anteriores do código (quando o serviço de tradução ainda era Google Translate, ver
-# traducao_google.py — removido), que não validavam o conteúdo antes de persistir.
-# Mantida aqui só para higienizar dado LEGADO já gravado no SOT (ver Passo 0 de
-# resolve_pt_translation) — não tem relação com o LLM, que não produz esse tipo de
-# resposta. Ancorada no início e no formato "Error <status> (<motivo>)!!<n>" para não
-# casar com uma tradução legítima que apenas mencione "Error".
-_GOOGLE_ERROR_PAGE_PATTERN = re.compile(r"^Error \d{3} \([^)]*\)!!\d")
-
-
-def _is_google_error_page(text: object) -> bool:
-    """True se `text` é a página de erro histórica do Google Translate, e não uma
-    tradução — usado só para higienizar dado legado (ver _GOOGLE_ERROR_PAGE_PATTERN).
-
-    Aceita qualquer tipo (o valor vem de colunas de DataFrame, onde pode ser None/NaN);
-    só uma string que começa com o padrão de erro conta.
-    """
-    return isinstance(text, str) and _GOOGLE_ERROR_PAGE_PATTERN.match(text) is not None
 
 
 def translate_in_parallel(
@@ -109,14 +89,6 @@ def resolve_pt_translation(
     respectivamente — em vez da antiga heurística de string-diff, que não
     distinguia "não precisava traduzir" de "tradução falhou silenciosamente".
 
-    Passo 0 (auto-reparo): descarta de target_column o que for a página de erro
-    histórica do Google Translate (ver _is_google_error_page) — dado legado gravado
-    antes da migração para tradução via LLM — e zera detected_language_pt_column e
-    translation_attempts_column dessas linhas. Sem zerar o contador, uma linha que já
-    tivesse esgotado o teto de tentativas ficaria com o texto de erro para sempre;
-    zerando, ela volta a ser elegível em qualquer job que chame esta função (inclusive
-    quando o texto veio do cache de reuse_existing_translation, que não filtra).
-
     Passos: (1) detecta detected_language_en_column a partir de source_column, só onde
     ainda vazia; (2) detecta detected_language_pt_column a partir do valor atual de
     target_column, só onde ainda vazia — cobre tradução nativa/cache já presentes antes
@@ -162,16 +134,6 @@ def resolve_pt_translation(
     """
     if translation_attempts_column not in df.columns:
         df[translation_attempts_column] = 0
-
-    polluted = df[target_column].apply(_is_google_error_page).astype(bool)
-    if polluted.any():
-        df.loc[polluted, target_column] = None
-        df.loc[polluted, detected_language_pt_column] = None
-        df.loc[polluted, translation_attempts_column] = 0
-        logger.info(
-            f"{polluted.sum()} valor(es) de '{target_column}' eram a página de erro do "
-            "Google Translate, não uma tradução — descartado(s) para retradução."
-        )
 
     df = _detect_missing(df, source_column, detected_language_en_column, detect_fn)
     df = _detect_missing(df, target_column, detected_language_pt_column, detect_fn)
@@ -235,9 +197,7 @@ def reuse_existing_translation(
     resolve_pt_translation; esta função só fornece o valor de cache para essa
     checagem localizar. Se o valor reaproveitado for igual à fonte (falha de
     tradução de um run anterior), o chamador vai marcá-lo como pendente e
-    retentar sozinho. Se o valor reaproveitado for a página de erro histórica do
-    Google (dado legado), esta função ainda o reaproveita — quem o descarta é
-    resolve_pt_translation (passo 0), para a checagem morar num só lugar.
+    retentar sozinho.
 
     Compartilhada entre glue_details (key_column="id", default) e glue_etl
     (key_column="iso_3166_1"/"iso_639_1" para a tabela configuration).

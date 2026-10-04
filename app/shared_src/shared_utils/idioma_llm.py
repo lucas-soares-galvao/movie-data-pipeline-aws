@@ -41,7 +41,7 @@ def detect_language_llm(text: str) -> str | None:
 
     Nunca lança exceção — devolve None em qualquer erro ou resposta fora do padrão
     ISO 639-1, para não interromper o job nem poluir detected_language_*_column com
-    um valor inválido (mesmo contrato de detect_language_aws).
+    um valor inválido.
 
     Args:
         text: Texto a ter o idioma detectado.

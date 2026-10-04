@@ -65,8 +65,8 @@ Esta skill cobre o *gate* de consulta à fonte oficial; não repete o racional j
   us-east-1") — afirmação sobre comportamento da API que já foi confirmada, mas que deveria ser reconfirmada na
   doc oficial se algum dia parecer não bater (ex.: AWS expandir a API para outras regiões).
 - **IAM `Resource = "*"` só em actions que a doc oficial confirma não suportar escopo por recurso**
-  (`translate:TranslateText`/`comprehend:DetectDominantLanguage`, `infra/iam_policies.tf:284` e `:972`) — aceito
-  porque o IAM Service Authorization Reference confirma a ausência de suporte a ARN nessas actions, não por
+  (`cloudwatch:PutMetricData`, `infra/iam_policies.tf:94`) — aceito
+  porque o IAM Service Authorization Reference confirma a ausência de suporte a ARN nessa action, não por
   conveniência (ver `especialista-privilegio-minimo`).
 - **`required_version = ">= 1.5.0"`** (`infra/provider.tf:28`) — piso mínimo de versão do Terraform core exigido
   pelo projeto; qualquer sintaxe/feature nova usada em `.tf` precisa ser suportada a partir dessa versão, não
