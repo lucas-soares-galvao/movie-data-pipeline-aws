@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -12,7 +13,7 @@ from shared_utils.secret_redaction import install_log_redaction
 
 logger = logging.getLogger()
 
-PROCESSING_DATETIME_COLUMN = "processing_datetime"
+PROCESSED_DATE_COLUMN = "processed_date"
 PROCESSING_TIMEZONE = "America/Sao_Paulo"
 
 
@@ -55,13 +56,23 @@ def configure_glue_logging() -> logging.Logger:
     return logging.getLogger()
 
 
-def add_processing_datetime(df: pd.DataFrame) -> pd.DataFrame:
+def current_processed_date() -> date:
     """
-    Adiciona ao DataFrame a coluna processing_datetime (timestamp de processamento).
+    Data de hoje em America/Sao_Paulo, usada como valor de processed_date.
 
-    O valor é único para todas as linhas e fica em hora local de America/Sao_Paulo, sem
-    informação de fuso — mesmo padrão de datetime_process em glue_data_quality. O fuso é
-    resolvido por pytz (dependência do pandas), sem depender de tzdata do sistema.
+    Fonte única do fuso de processed_date em todas as tabelas. O fuso é resolvido por pytz
+    (dependência do pandas), sem depender de tzdata do sistema no Python Shell do Glue.
+    """
+    return pd.Timestamp.now(tz=PROCESSING_TIMEZONE).date()
+
+
+def add_processed_date(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona ao DataFrame a coluna processed_date (date, YYYY-MM-DD, hora de São Paulo).
+
+    O valor é único para todas as linhas. Só deve ser usada onde a partição/tabela é
+    reconstruída por completo (glue_etl e glue_agg); details e watch_providers carimbam
+    processed_date por registro, na criação, porque preservam registros antigos no merge.
 
     A coluna é atribuída no próprio DataFrame (sem copiar) e fica por último: o
     ParquetHiveSerDe resolve colunas por posição, então a ordem precisa bater com a do
@@ -71,7 +82,7 @@ def add_processing_datetime(df: pd.DataFrame) -> pd.DataFrame:
         df: DataFrame que será gravado.
 
     Returns:
-        O mesmo DataFrame recebido, com processing_datetime preenchida.
+        O mesmo DataFrame recebido, com processed_date preenchida.
     """
-    df[PROCESSING_DATETIME_COLUMN] = pd.Timestamp.now(tz=PROCESSING_TIMEZONE).tz_localize(None)
+    df[PROCESSED_DATE_COLUMN] = current_processed_date()
     return df

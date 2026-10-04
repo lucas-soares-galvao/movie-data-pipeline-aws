@@ -151,7 +151,7 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 
 ### `TestEvaluateDataQuality`
 
-Verifica a lógica de avaliação Spark (mocka `EvaluateDataQuality.apply`, `DynamicFrame`, funções `col`, `lit`, `current_timestamp`, `when`, `StringType`). Cobre: contexto Glue passado corretamente, DynamicFrame recebido, ruleset, nome e banco da tabela, comportamento com `year=None` vs `year` fornecido, enriquecimento de resultados com colunas `source_table`, `source_database`, `datetime_process` e `year`, e que o DataFrame retornado contém colunas esperadas.
+Verifica a lógica de avaliação Spark (mocka `EvaluateDataQuality.apply`, `DynamicFrame`, funções `col`, `lit`, `current_timestamp`, `to_date`, `when`, `StringType`). Cobre: contexto Glue passado corretamente, DynamicFrame recebido, ruleset, nome e banco da tabela, comportamento com `year=None` vs `year` fornecido, enriquecimento de resultados com colunas `source_table`, `source_database`, `processed_date` (data de São Paulo via `to_date`) e `year`, e que o DataFrame retornado contém colunas esperadas.
 
 ### `TestWriteResultsToS3`
 

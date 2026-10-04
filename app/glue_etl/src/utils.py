@@ -11,7 +11,7 @@ from typing import Any
 import awswrangler as wr
 import boto3
 import pandas as pd
-from shared_utils.glue_helpers import add_processing_datetime, get_resolved_option
+from shared_utils.glue_helpers import add_processed_date, get_resolved_option
 from shared_utils.idioma import add_detected_language_column
 from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
@@ -264,7 +264,7 @@ def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataF
 
 def read_existing_discover(s3_bucket_sot: str, table_name: str, year: str) -> pd.DataFrame:
     """
-    Lê (id, overview, overview_detected_language) da partição year do discover já gravada
+    Lê (id, overview, overview_detected_language_pt) da partição year do discover já gravada
     na SOT, usada como cache do idioma detectado em _read_discover — evita redetectar,
     com uma chamada ao LLM por linha, overviews que não mudaram desde a última execução.
 
@@ -283,7 +283,7 @@ def read_existing_discover(s3_bucket_sot: str, table_name: str, year: str) -> pd
         return wr.s3.read_parquet(
             path=s3_path,
             dataset=True,
-            columns=["id", "overview", "overview_detected_language"],
+            columns=["id", "overview", "overview_detected_language_pt"],
             partition_filter=lambda x: x["year"] == year,
         )
     # Partição/colunas podem não existir ainda, degrada graciosamente.
@@ -312,7 +312,7 @@ def _read_discover(
     previous_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Lê a pasta inteira do discover (array JSON puro por arquivo), adiciona year, remove
-    duplicatas por id, e adiciona overview_detected_language/overview_translated_pt_br
+    duplicatas por id, e adiciona overview_detected_language_pt/overview_translated_pt
     (diagnóstico, ver docstring de read_from_sor).
 
     previous_df (ver read_existing_discover) fornece o idioma já detectado de overviews
@@ -321,12 +321,12 @@ def _read_discover(
     df["year"] = year
     df = df.drop_duplicates(subset=["id"])
     if "overview" in df.columns:
-        df = reuse_detected_language(df, previous_df, "overview", "overview_detected_language")
+        df = reuse_detected_language(df, previous_df, "overview", "overview_detected_language_pt")
         df = add_detected_language_column(
-            df, "overview", "overview_detected_language", detect_fn,
+            df, "overview", "overview_detected_language_pt", detect_fn,
             only_missing=True, max_workers=DETECT_MAX_WORKERS_DEFAULT,
         )
-        df["overview_translated_pt_br"] = df["overview_detected_language"] == "pt"
+        df["overview_translated_pt"] = df["overview_detected_language_pt"] == "pt"
     return df
 
 
@@ -386,11 +386,11 @@ def read_from_sor(
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
 
     discover: lê pasta inteira com wr.s3.read_json, adiciona coluna year, remove
-        duplicatas por id, e adiciona overview_detected_language e
-        overview_translated_pt_br (diagnóstico — o overview já vem em pt-BR nativo
+        duplicatas por id, e adiciona overview_detected_language_pt e
+        overview_translated_pt (diagnóstico — o overview já vem em pt-BR nativo
         do TMDB via lambda_api, sem etapa de tradução; as colunas só sinalizam se
-        o TMDB de fato devolveu o texto em português; overview_detected_language é
-        usada como gate em glue_agg, overview_translated_pt_br é só um booleano
+        o TMDB de fato devolveu o texto em português; overview_detected_language_pt é
+        usada como gate em glue_agg, overview_translated_pt é só um booleano
         derivado dela, sem chamada de tradução).
     watch_providers_ref: lê arquivo único, deriva canonical_name.
     genre: lê arquivo único diretamente.
@@ -413,7 +413,7 @@ def read_from_sor(
         table_name:    Nome da tabela (configuration/discover) no Glue Catalog; ver
                        s3_bucket_sot.
         detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
-                       name_detected_language_pt (configuration) e overview_detected_language
+                       name_detected_language_pt (configuration) e overview_detected_language_pt
                        (discover). Por padrão usa detect_language_llm.
 
     Returns:
@@ -457,7 +457,7 @@ def write_parquet_to_sot(
     """
     Grava um DataFrame como Parquet no SOT e atualiza o Glue Catalog via AWS Wrangler.
 
-    Adiciona a coluna processing_datetime (última coluna, ver add_processing_datetime)
+    Adiciona a coluna processed_date (última coluna, ver add_processed_date)
     no próprio DataFrame antes de gravar. Carimbar aqui é seguro porque, nas tabelas que
     passam por esta função, a partição/tabela é sempre reconstruída por completo.
 
@@ -469,7 +469,7 @@ def write_parquet_to_sot(
         partition_cols: Lista de colunas de partição (ex: ["year"]) ou None
         mode:           "overwrite_partitions" ou "overwrite"
     """
-    add_processing_datetime(df)
+    add_processed_date(df)
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(
         f"Escrevendo {len(df)} registros em {s3_path} | particao={partition_cols} | mode={mode}"

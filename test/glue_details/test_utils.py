@@ -1407,7 +1407,7 @@ class TestCollectAndWriteDetails:
             assert "keywords_detected_language_en" in df_written.columns
             assert "keywords_detected_language_pt" in df_written.columns
             assert "keywords_translation_attempts" in df_written.columns
-            assert "overview_translated_pt_br" not in df_written.columns
+            assert "overview_translated_pt" not in df_written.columns
             assert "tagline_translated_pt_br" not in df_written.columns
             assert "keywords_translated_pt_br" not in df_written.columns
             assert df_written["collection_name_pt"].iloc[0] == "Os Vingadores"
@@ -1469,7 +1469,7 @@ class TestCollectAndWriteDetails:
             assert "keywords_detected_language_en" in df_written.columns
             assert "keywords_detected_language_pt" in df_written.columns
             assert "keywords_translation_attempts" in df_written.columns
-            assert "overview_translated_pt_br" not in df_written.columns
+            assert "overview_translated_pt" not in df_written.columns
             assert "tagline_translated_pt_br" not in df_written.columns
             assert "keywords_translated_pt_br" not in df_written.columns
             assert df_written["recommended_ids"].iloc[0] == "903"
@@ -2867,9 +2867,9 @@ class TestRepairWatchProvidersDuplicates:
 
     def test_nao_reescreve_quando_sem_duplicatas(self):
         parquet_df = pd.DataFrame([
-            {"id": 1, "provider_type": "flatrate", "provider_id": 8,  "provider_name": "Netflix", "year": "2025", "updated_date": "2025-06-01"},
-            {"id": 1, "provider_type": "flatrate", "provider_id": 9,  "provider_name": "Amazon",  "year": "2025", "updated_date": "2025-06-01"},
-            {"id": 2, "provider_type": "flatrate", "provider_id": 8,  "provider_name": "Netflix", "year": "2025", "updated_date": "2025-06-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 8,  "provider_name": "Netflix", "year": "2025", "processed_date": "2025-06-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 9,  "provider_name": "Amazon",  "year": "2025", "processed_date": "2025-06-01"},
+            {"id": 2, "provider_type": "flatrate", "provider_id": 8,  "provider_name": "Netflix", "year": "2025", "processed_date": "2025-06-01"},
         ])
         mock_write = self._run_repair(parquet_df=parquet_df)
         mock_write.assert_not_called()
@@ -2883,22 +2883,22 @@ class TestRepairWatchProvidersDuplicates:
 
     def test_reescreve_quando_ha_duplicatas_pela_chave_composta(self):
         parquet_df = pd.DataFrame([
-            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "updated_date": "2025-06-01"},
-            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "updated_date": "2025-06-02"},
-            {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Amazon",  "year": "2025", "updated_date": "2025-06-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "processed_date": "2025-06-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "processed_date": "2025-06-02"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Amazon",  "year": "2025", "processed_date": "2025-06-01"},
         ])
         mock_write = self._run_repair(parquet_df=parquet_df)
         mock_write.assert_called_once()
         df_written = mock_write.call_args.kwargs["df"]
         assert len(df_written) == 2
         netflix_row = df_written[(df_written["id"] == 1) & (df_written["provider_id"] == 8)].iloc[0]
-        assert netflix_row["updated_date"] == "2025-06-02"
+        assert netflix_row["processed_date"] == "2025-06-02"
 
     def test_dedup_usa_provider_id_nao_provider_name(self):
         """Mesmo provider_id com nomes diferentes (rebranding) e tratado como duplicata."""
         parquet_df = pd.DataFrame([
-            {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Amazon Prime Video", "year": "2025", "updated_date": "2025-01-01"},
-            {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Prime Video",        "year": "2025", "updated_date": "2025-06-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Amazon Prime Video", "year": "2025", "processed_date": "2025-01-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 9, "provider_name": "Prime Video",        "year": "2025", "processed_date": "2025-06-01"},
         ])
         mock_write = self._run_repair(parquet_df=parquet_df)
         mock_write.assert_called_once()
@@ -2908,8 +2908,8 @@ class TestRepairWatchProvidersDuplicates:
 
     def test_usa_overwrite_partitions(self):
         parquet_df = pd.DataFrame([
-            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "updated_date": "2025-06-01"},
-            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "updated_date": "2025-06-02"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "processed_date": "2025-06-01"},
+            {"id": 1, "provider_type": "flatrate", "provider_id": 8, "provider_name": "Netflix", "year": "2025", "processed_date": "2025-06-02"},
         ])
         mock_write = self._run_repair(parquet_df=parquet_df)
         assert mock_write.call_args.kwargs["mode"] == "overwrite_partitions"

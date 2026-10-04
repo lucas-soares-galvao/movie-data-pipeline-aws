@@ -29,8 +29,8 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - traducao              — adiciona overview_pt nos details (sem API TMDB); com o input
 #                             reset_attempts ligado, repara antes os *_pt gravados com texto
 #                             de erro legado (ver scripts/backfill_traducao.py)
-#   - rename_colunas        — migra dt_processamento/dt_atualizacao para
-#                             processed_date/updated_date nos parquets já gravados
+#   - rename_colunas        — renomeia updated_date→processed_date (watch_providers) e
+#                             as colunas de idioma do discover (sufixo _pt) nos parquets já gravados
 #                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
 #   - changes               — dispara sob demanda o mesmo modo changes que o cron semanal de
 #                             domingo já aciona automaticamente (janela fixa de 7 dias, sem

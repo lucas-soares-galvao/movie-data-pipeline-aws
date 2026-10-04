@@ -277,7 +277,7 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
       {
         # Cache lido de volta da própria SOT antes de reprocessar (app/glue_etl/src/utils.py):
         # read_existing_configuration (name_pt/idiomas detectados de configuration) e
-        # read_existing_discover (overview_detected_language da partição do ano do discover),
+        # read_existing_discover (overview_detected_language_pt da partição do ano do discover),
         # ambos via wr.s3.read_parquet — falha de leitura é capturada e degrada para
         # "sem cache" (retraduz/redetecta tudo), então a ausência desta permissão não derruba o
         # job, só joga fora o reaproveitamento sem avisar. Só leitura e só nas tabelas lidas.
