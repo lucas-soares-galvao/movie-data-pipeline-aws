@@ -530,6 +530,12 @@ estágio encadeado).
 
 ## Casos de teste — `test_backfill_shared.py`
 
+### `TestSetupLogging`
+
+| Teste | O que verifica |
+|---|---|
+| `test_mascara_segredos_nos_handlers_do_logger_raiz` | `setup_logging()` devolve o logger raiz e envolve o formatter dos handlers em `RedactingFormatter`: um log com `api_key=<chave>` sai como `api_key=***` (a saída dos scripts vai ao log público do Actions e ao step summary) |
+
 ### Checkpoint (`load_checkpoint`/`save_checkpoint`/`clear_checkpoint`)
 
 | Teste | O que verifica |

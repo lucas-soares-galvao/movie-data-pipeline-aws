@@ -75,7 +75,19 @@ _EXPIRED_TOKEN_CODES = frozenset({"ExpiredTokenException", "ExpiredToken"})
 
 
 def setup_logging() -> logging.Logger:
-    """Retorna o logger configurado no nível de módulo (ver topo do arquivo)."""
+    """Retorna o logger configurado no nível de módulo (ver topo do arquivo), com segredos
+    (api_key do TMDB dentro da URL de uma exceção do requests, etc.) mascarados em tudo o que é
+    logado — o log do Actions de um repositório público é público, e a saída dos scripts também
+    alimenta o step summary.
+
+    Import local de shared_utils.secret_redaction (não no topo do módulo): mesmo racional de
+    resolve_pending_units_by_year — backfill_data_quality.py/backfill_rename_colunas.py não colocam
+    app/shared_src em sys.path, então uma dependência no topo quebraria o `import backfill_shared`.
+    """
+    sys.path.insert(0, str(_REPO_ROOT / "app" / "shared_src"))
+    from shared_utils.secret_redaction import install_log_redaction
+
+    install_log_redaction()
     return logging.getLogger()
 
 

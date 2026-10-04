@@ -12,6 +12,7 @@ import boto3
 from botocore.config import Config as BotoConfig
 from requests.exceptions import HTTPError
 from shared_utils.api_client import get_api_secret
+from shared_utils.secret_redaction import install_log_redaction
 from shared_utils.triggers import trigger_glue_job
 from src.utils import (
     collect_changes_data,
@@ -24,6 +25,9 @@ from src.utils import (
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+# O runtime do Lambda já instala o handler do root logger: envolve o formatter dele para que a
+# api_key do TMDB (dentro da URL de uma exceção do requests) nunca chegue ao CloudWatch.
+install_log_redaction()
 
 # Timeout explícito nos clientes boto3 criados dentro do handler (S3, SSM): uma
 # chamada à AWS sem timeout pode pendurar a execução da Lambda até o limite da

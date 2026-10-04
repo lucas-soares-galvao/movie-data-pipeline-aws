@@ -9,9 +9,10 @@ Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shar
 ```
 test/shared_src/
 ├── __init__.py
-├── conftest.py             # sys.path + stub do módulo awsglue
+├── conftest.py             # sys.path + stub do módulo awsglue + isolamento dos segredos registrados (fixture autouse)
 ├── requirements_tests.txt  # Dependências de teste (inclui litellm)
 ├── test_api_client.py      # Testes de api_get e get_api_secret
+├── test_secret_redaction.py # Testes do mascaramento de segredos em logs e exceções (api_key do TMDB etc.)
 ├── test_s3_helpers.py      # Testes de expected_bucket_owner_kwargs (ExpectedBucketOwner)
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
@@ -26,7 +27,7 @@ test/shared_src/
 
 ## Fixtures (`conftest.py`)
 
-`conftest.py` não expõe fixtures pytest — executa duas ações de setup no import:
+`conftest.py` executa duas ações de setup no import e expõe uma fixture `autouse` (`_isola_segredos_registrados`, que limpa os segredos registrados em `shared_utils.secret_redaction` antes e depois de cada teste — são estado global do processo, e sem isso o valor registrado por um teste mascararia texto de outro):
 
 | Ação | Descrição |
 |---|---|
@@ -51,6 +52,27 @@ test/shared_src/
 | Teste | O que verifica |
 |---|---|
 | `test_retorna_chave_do_secrets_manager` | `boto3.client("secretsmanager", config=...)` chamado (com `config` de timeout explícito), `get_secret_value` chamado com o `SecretId` correto, e a chave certa extraída do JSON do segredo. Mocka `boto3.client` (objeto global) e não `shared_utils.api_client.boto3` — o `conftest.py` de `test/` apaga `shared_utils.*` de `sys.modules` ao coletar suites de `_SUITE_TO_APP`, então o patch por string poderia resolver o módulo reimportado enquanto a função executada é a referência do módulo antigo, deixando o `boto3` real vazar e tentar credenciais AWS de verdade |
+
+### `TestApiGetNaoVazaChaveDeApi`
+
+Usa `requests.Response` reais (a mensagem do `raise_for_status()` embute a URL com a `api_key`, como no TMDB) e uma chave obviamente falsa.
+
+| Teste | O que verifica |
+|---|---|
+| `test_http_nao_transiente_levanta_sem_a_chave` | 404 levanta `HTTPError` com `api_key=***` e sem a chave, na mensagem **e** no traceback |
+| `test_http_transiente_com_tentativas_esgotadas_levanta_sem_a_chave` | 500 em todas as tentativas (5) levanta sem a chave |
+| `test_connection_error_esgotado_loga_e_levanta_sem_a_chave` | `ConnectionError` esgotado: a exceção, o traceback e o `caplog` (inclui o `logger.exception`) não têm a chave |
+| `test_registra_o_valor_para_mascaramento_nos_logs` (em `TestGetApiSecret`) | `get_api_secret` chama `register_secret` com o valor lido |
+
+## Casos de teste — `test_secret_redaction.py`
+
+| Classe | O que verifica |
+|---|---|
+| `TestRedact` | Mascara `api_key=` na URL de uma exceção real do `requests`, variações do nome (`API_KEY`, `apikey`, `api-key`, `access_token`), parada em aspas/parênteses, `Bearer`, `sk-or-…`, `AKIA`/`ASIA`; texto sem segredo fica inalterado |
+| `TestRegisterSecret` | Mascara o valor registrado em qualquer posição e a versão URL-encoded; ignora valor curto e não-string (`None`, `int`, `bytes`, vazio); o valor mais longo é mascarado antes do prefixo dele |
+| `TestScrubException` | Devolve a mesma exceção sem a chave na mensagem; o traceback não tem a chave nem com exceção encadeada (`from inner`); não mexe em argumentos que não são texto |
+| `TestRedactingFormatter` | Mascara mensagem e traceback de `logger.exception` preservando o formato interno; sem formatter interno usa o padrão |
+| `TestInstallLogRedaction` | Envolve o formatter do handler preservando o formato, protege handler sem formatter, é idempotente, e sem argumento protege os handlers do logger raiz |
 
 ## Casos de teste — `test_s3_helpers.py`
 
@@ -98,6 +120,7 @@ no import) porque, nos jobs Glue, ela só é publicada em `os.environ` dentro de
 | `test_retorna_logger` | Retorna uma instância de `logging.Logger` |
 | `test_configura_nivel_info` | Nível do logger raiz é configurado como `INFO` |
 | `test_handler_escreve_em_stdout` | Existe um handler cujo stream é `sys.stdout` |
+| `test_mascara_segredos_no_que_e_logado` | Um log com `api_key=<chave>` (como a mensagem de um `HTTPError` do `requests`) sai como `api_key=***` — a chave nunca chega ao CloudWatch |
 
 ## Casos de teste — `test_gmail_helpers.py`
 
@@ -143,6 +166,8 @@ via LLM (`traducao_llm.py`/`idioma_llm.py`).
 | `test_campo_obrigatorio_ausente_no_secret_levanta_key_error` | `required=True` (default) com o campo ausente no secret levanta `KeyError` |
 | `test_nenhuma_fonte_configurada_devolve_none` | Sem `FILMBOT_SECRET_ARN` nem a env var, devolve `None` |
 | `test_regiao_customizada_repassada_ao_client` | `region` é repassado ao `boto3.client` |
+| `test_registra_a_chave_do_secrets_manager_para_mascaramento` / `test_registra_a_chave_vinda_do_ambiente_para_mascaramento` | O valor lido (do secret ou da variável de ambiente) é registrado em `register_secret`, para ser mascarado nos logs |
+| `test_campo_opcional_ausente_devolve_none_sem_quebrar_o_registro` | Campo opcional ausente devolve `None` e o registro (que ignora não-string) não quebra |
 
 ## Casos de teste — `test_llm_metrics.py`
 
