@@ -379,9 +379,10 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 
 ## Casos de teste — `test_backfill_rename_colunas.py`
 
-Migra `dt_processamento`/`dt_atualizacao` (nomes legados em português) para
-`processed_date`/`updated_date` nos parquets de details/watch_providers já
-gravados no S3, sem chamar a API do TMDB — ver docstring de
+Renomeia colunas nos parquets já gravados no S3 — watch_providers
+(`updated_date` → `processed_date`) e discover (`overview_detected_language` →
+`overview_detected_language_pt`, `overview_translated_pt_br` →
+`overview_translated_pt`), várias colunas por partição numa única regravação, sem chamar a API do TMDB — ver docstring de
 `scripts/backfill_rename_colunas.py` para o motivo de o pipeline normal
 (`backfill_enriquecimento.py`) não bastar sozinho para migrar 100% do
 histórico (IDs que saíram do discover atual nunca mais entram no delta
@@ -405,7 +406,7 @@ reprocessado).
 | Teste | O que verifica |
 |---|---|
 | `test_chama_rename_para_cada_tabela_e_ano` | Total de chamadas = anos × 4 tabelas (details movie/tv, watch_providers movie/tv) |
-| `test_percorre_as_quatro_tabelas_com_as_colunas_corretas_dentro_de_cada_ano` | Cada tabela é chamada com o par (coluna antiga, coluna nova) correto — `dt_processamento`/`processed_date` para details, `dt_atualizacao`/`updated_date` para watch_providers |
+| `test_percorre_as_quatro_tabelas_com_as_colunas_corretas_dentro_de_cada_ano` | Cada tabela é chamada com o mapa `renames` correto — as duas colunas de idioma para discover, `updated_date` → `processed_date` para watch_providers |
 | `test_usa_ano_atual_como_default_de_end_year` | `BACKFILL_END_YEAR` ausente usa o ano atual |
 | `test_loga_total_de_particoes_regravadas` | O log final soma quantas partições foram efetivamente regravadas (`_rename_partition_column` retorna `True`), não o total de partições verificadas |
 

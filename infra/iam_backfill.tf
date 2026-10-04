@@ -161,9 +161,9 @@ resource "aws_iam_role_policy" "backfill_secrets" {
 # POLICY 4 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
 # backfill_referencias.py/backfill_changes.py), tabelas discover/details
 # movie/tv no bucket SOT (backfill_traducao.py e backfill_discover.py, via
-# awswrangler), tabelas details/watch_providers movie/tv no bucket SOT
-# (backfill_rename_colunas.py, via awswrangler — details já coberto pela
-# mesma resource de backfill_traducao.py acima), JSON bruto no bucket SOR e
+# awswrangler), tabelas discover/watch_providers movie/tv no bucket SOT
+# (backfill_rename_colunas.py, via awswrangler — discover já coberto pela
+# mesma resource de backfill_discover.py acima), JSON bruto no bucket SOR e
 # as 6 tabelas de referência no bucket SOT (backfill_referencias.py — ver
 # comentários nos statements abaixo), e JSON bruto de discover no bucket SOR
 # (backfill_discover.py — ver comentários nos statements abaixo). Também

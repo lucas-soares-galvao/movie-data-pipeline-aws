@@ -39,7 +39,8 @@ app/shared_src/
 |---|---|
 | `get_resolved_option(args)` | Wrapper de `getResolvedOptions` — converte lista de nomes em dicionário nome→valor |
 | `configure_glue_logging()` | Configura logging padrão para jobs Glue (stdout, INFO, formato com timestamp), instala a máscara de segredos nos handlers (`install_log_redaction`) e retorna o logger raiz |
-| `add_processing_datetime(df)` | Adiciona ao próprio DataFrame (sem copiar) a coluna `processing_datetime`: um único timestamp por chamada, em hora local de `America/Sao_Paulo` e sem fuso (mesmo padrão de `datetime_process` em `glue_data_quality`), resolvido por pytz — sem depender de tzdata do sistema. A coluna fica por último, porque o `ParquetHiveSerDe` resolve colunas por posição e a ordem precisa bater com `infra/glue_catalog.tf`. Usada por `write_parquet_to_sot` (`glue_etl`) e `write_parquet_to_spec` (`glue_agg`) |
+| `current_processed_date()` | Data de hoje (`datetime.date`) em `America/Sao_Paulo`, resolvida por pytz (dependência do pandas), sem depender de tzdata do sistema. Fonte única do fuso de `processed_date` em todas as tabelas; usada por `add_processed_date` e por `glue_details` (carimbo por registro em details e watch_providers) |
+| `add_processed_date(df)` | Adiciona ao próprio DataFrame (sem copiar) a coluna `processed_date` (tipo `date`, YYYY-MM-DD, valor único por chamada). Só para onde a partição/tabela é reconstruída por completo: `write_parquet_to_sot` (`glue_etl`) e `write_parquet_to_spec` (`glue_agg`). A coluna fica por último, porque o `ParquetHiveSerDe` resolve colunas por posição e a ordem precisa bater com `infra/glue_catalog.tf` |
 
 ### `shared_utils/secret_redaction.py`
 
@@ -129,7 +130,8 @@ Orquestração de tradução — elegibilidade, cache e paralelismo (o serviço 
 | `scripts/backfill_traducao.py` | `translate_text_llm`, `detect_language_llm`, `resolve_pt_translation` |
 | `glue_agg` | `get_resolved_option`, `trigger_glue_job` |
 | `glue_agg/main` | `configure_glue_logging` |
-| `glue_agg/src/utils`, `glue_etl/src/utils` | `add_processing_datetime` |
+| `glue_agg/src/utils`, `glue_etl/src/utils` | `add_processed_date` |
+| `glue_details/src/utils` | `current_processed_date` |
 | `glue_etl/main` | `configure_glue_logging` |
 | `glue_data_quality/main` | `configure_glue_logging` |
 | `glue_details/main` | `configure_glue_logging` |

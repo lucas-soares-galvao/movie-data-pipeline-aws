@@ -90,6 +90,7 @@ sys.modules.setdefault(
         coalesce=None,
         col=MagicMock(),              # col("coluna") é chamada diretamente no código
         from_utc_timestamp=None,
+        to_date=None,
         lit=None,
         current_timestamp=None,
         when=MagicMock(),             # when(condição).when(...) encadeia chamadas

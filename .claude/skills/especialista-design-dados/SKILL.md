@@ -142,13 +142,14 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 
-- **Coluna de processamento por tabela** — `processing_datetime` (`timestamp`, hora de `America/Sao_Paulo`, sempre a
-  **última** coluna) é adicionada por `shared_utils.glue_helpers.add_processing_datetime` dentro de
-  `write_parquet_to_sot` (`glue_etl`) e `write_parquet_to_spec` (`glue_agg`) — só onde a partição/tabela é reconstruída
-  por completo. details/watch_providers (read-merge-write) mantêm `processed_date`/`updated_date`, carimbados na criação
-  do registro, e a DQ mantém `datetime_process`. Sem backfill: partições antigas ficam `NULL`; por isso não há
-  `IsComplete` em DQDL para essa coluna. Queries com `SELECT *` + `UNION` entre tabelas SOT (ex.:
-  `providers_ref_union`) devem listar colunas explícitas, senão timestamps distintos quebram a deduplicação.
+- **Coluna de processamento por tabela** — todas as tabelas usam `processed_date` (`date`, calculada em
+  `America/Sao_Paulo` por `shared_utils.glue_helpers.current_processed_date`). Em glue_etl/glue_agg é adicionada por
+  `add_processed_date` dentro de `write_parquet_to_sot`/`write_parquet_to_spec` (sempre a **última** coluna) — só onde a
+  partição/tabela é reconstruída por completo. details/watch_providers (read-merge-write) carimbam `processed_date`
+  **por registro**, na criação, para preservar a recência usada no dedup do AGG e nos `repair_*`; carimbar na escrita
+  ali sobrescreveria a data dos registros antigos. Nas 9 tabelas SOT, partições antigas ficam `NULL` (sem backfill);
+  por isso não há `IsComplete` em DQDL para essa coluna. Queries com `SELECT *` + `UNION` entre tabelas SOT (ex.:
+  `providers_ref_union`) devem listar colunas explícitas, senão datas distintas quebram a deduplicação.
 
 - **Schema evolution não tem mecanismo genérico em `app/`** — o único caso real (rename
   `dt_processamento`/`dt_atualizacao` → `processed_date`/`updated_date`) foi resolvido inteiramente em

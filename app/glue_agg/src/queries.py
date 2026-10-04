@@ -25,7 +25,7 @@ movies_ranked AS (
         title,
         original_title,
         overview,
-        overview_detected_language,
+        overview_detected_language_pt,
         release_date                 AS air_date,
         original_language,
         CAST(adult AS BOOLEAN)       AS adult,
@@ -57,7 +57,7 @@ tv_shows_ranked AS (
         name                   AS title,
         original_name          AS original_title,
         overview,
-        overview_detected_language,
+        overview_detected_language_pt,
         first_air_date         AS air_date,
         original_language,
         CAST(NULL AS BOOLEAN)  AS adult,
@@ -248,8 +248,8 @@ details AS (
 
 -- Referência unificada de provedores (union de movie + tv), desduplicada por provider_id,
 -- com canonical_name normalizado e prioridade de exibição no BR.
--- Colunas explícitas (sem processing_datetime): movie e tv são gravadas em execuções
--- diferentes, e timestamps distintos impediriam o UNION de deduplicar linhas iguais.
+-- Colunas explícitas (sem processed_date): movie e tv são gravadas em execuções
+-- diferentes, e datas distintas impediriam o UNION de deduplicar linhas iguais.
 providers_ref_union AS (
     SELECT provider_id, provider_name, display_priority_br, canonical_name, logo_path
     FROM {db_movie}.{tb_watch_providers_ref_movie}
@@ -562,14 +562,14 @@ spec_raw AS (
         -- original_title como fallback para o caso raro de title estar vazio.
         COALESCE(NULLIF(TRIM(u.title), ''), u.original_title)                                             AS title,
         u.original_title,
-        -- overview_detected_language (glue_etl) confirma se o overview em pt-BR do discover
+        -- overview_detected_language_pt (glue_etl) confirma se o overview em pt-BR do discover
         -- é genuinamente português antes de confiar nele — o TMDB às vezes devolve o
         -- overview em outro idioma silenciosamente mesmo com language=pt-BR pedido.
         -- Só quando confirmado "pt" o overview do discover é usado; caso contrário
         -- (idioma diferente ou detecção nula), cai para overview_pt/overview_en do
         -- glue_details (mesma cadeia de fallback de sempre).
         COALESCE(
-            CASE WHEN u.overview_detected_language = 'pt' THEN NULLIF(TRIM(u.overview), '') END,
+            CASE WHEN u.overview_detected_language_pt = 'pt' THEN NULLIF(TRIM(u.overview), '') END,
             d.overview_pt,
             d.overview_en
         )                                                                           AS overview,

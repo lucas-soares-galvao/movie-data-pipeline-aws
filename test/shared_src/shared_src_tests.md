@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging`/`add_processing_datetime` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `load_llm_api_key` (`llm_client.py`), `translate_text_llm` (`traducao_llm.py`), `translate_in_parallel`/`resolve_pt_translation`/`reuse_existing_translation` (`traducao.py`, a fachada que orquestra elegibilidade/cache/paralelismo em torno do serviço de tradução), `detect_language_llm` (`idioma_llm.py`) e `add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `litellm.completion`, `getResolvedOptions`) são substituídas por **mocks** — nenhum teste chama a rede de verdade (bloqueado por `test/conftest.py`).
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging`/`current_processed_date`/`add_processed_date` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `load_llm_api_key` (`llm_client.py`), `translate_text_llm` (`traducao_llm.py`), `translate_in_parallel`/`resolve_pt_translation`/`reuse_existing_translation` (`traducao.py`, a fachada que orquestra elegibilidade/cache/paralelismo em torno do serviço de tradução), `detect_language_llm` (`idioma_llm.py`) e `add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `litellm.completion`, `getResolvedOptions`) são substituídas por **mocks** — nenhum teste chama a rede de verdade (bloqueado por `test/conftest.py`).
 
 ## Estrutura
 
@@ -14,7 +14,7 @@ test/shared_src/
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_secret_redaction.py # Testes do mascaramento de segredos em logs e exceções (api_key do TMDB etc.)
 ├── test_s3_helpers.py      # Testes de expected_bucket_owner_kwargs (ExpectedBucketOwner)
-├── test_glue_helpers.py    # Testes de get_resolved_option, configure_glue_logging e add_processing_datetime
+├── test_glue_helpers.py    # Testes de get_resolved_option, configure_glue_logging, current_processed_date e add_processed_date
 ├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
 ├── test_llm_client.py      # Testes de load_llm_api_key (chave do LLM via Secrets Manager/ambiente)
 ├── test_llm_metrics.py     # Testes do acumulador de uso do LLM (chamadas, falhas por causa, modelo, tokens, custo) e do balanço
@@ -122,15 +122,22 @@ no import) porque, nos jobs Glue, ela só é publicada em `os.environ` dentro de
 | `test_handler_escreve_em_stdout` | Existe um handler cujo stream é `sys.stdout` |
 | `test_mascara_segredos_no_que_e_logado` | Um log com `api_key=<chave>` (como a mensagem de um `HTTPError` do `requests`) sai como `api_key=***` — a chave nunca chega ao CloudWatch |
 
-### `TestAddProcessingDatetime`
+### `TestCurrentProcessedDate`
 
 | Teste | O que verifica |
 |---|---|
-| `test_adiciona_coluna_como_ultima` | `processing_datetime` é a última coluna do DataFrame |
+| `test_retorna_objeto_date_sem_hora` | Retorna `datetime.date` (não `datetime`/`Timestamp`) |
+| `test_usa_data_local_de_sao_paulo_e_nao_utc` | `pd.Timestamp.now` chamado com `tz="America/Sao_Paulo"`; 02:30 UTC de 05/10 vira 04/10 |
+
+### `TestAddProcessedDate`
+
+| Teste | O que verifica |
+|---|---|
+| `test_adiciona_coluna_como_ultima` | `processed_date` é a última coluna do DataFrame |
 | `test_muta_o_proprio_dataframe` | Retorna o mesmo objeto recebido (sem cópia) |
-| `test_valor_unico_timestamp_sem_fuso` | dtype datetime64, sem tz, um único valor para todas as linhas |
-| `test_usa_hora_local_de_sao_paulo` | `pd.Timestamp.now` chamado com `tz="America/Sao_Paulo"` e o fuso é descartado mantendo a hora local |
-| `test_sobrescreve_coluna_existente` | Coluna já existente é sobrescrita com o timestamp atual |
+| `test_valor_unico_do_tipo_date` | Todas as linhas recebem um único valor do tipo `date` |
+| `test_usa_current_processed_date` | O valor vem de `current_processed_date` |
+| `test_sobrescreve_coluna_existente` | Coluna já existente é sobrescrita com a data atual |
 
 ## Casos de teste — `test_gmail_helpers.py`
 

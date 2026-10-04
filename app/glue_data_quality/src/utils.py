@@ -13,7 +13,14 @@ from awsglue.dynamicframe import DynamicFrame
 from awsglue.utils import GlueArgumentError, getResolvedOptions
 from awsgluedq.transforms import EvaluateDataQuality
 from pyspark.sql import DataFrame as SparkDataFrame
-from pyspark.sql.functions import col, current_timestamp, from_utc_timestamp, lit, when
+from pyspark.sql.functions import (
+    col,
+    current_timestamp,
+    from_utc_timestamp,
+    lit,
+    to_date,
+    when,
+)
 from pyspark.sql.types import StringType
 from src.rulesets_dq import rulesets_dq
 
@@ -204,7 +211,9 @@ def _rename_and_classify_columns(
         .when(col("rule").startswith("RowCount"), "Integridade"),
     )
     df = df.withColumn("year", lit(year).cast(StringType()))
-    df = df.withColumn("datetime_process", from_utc_timestamp(current_timestamp(), "America/Sao_Paulo"))
+    # processed_date: data (YYYY-MM-DD) em America/Sao_Paulo, mesmo nome/tipo/fuso das demais
+    # tabelas (ver shared_utils.glue_helpers.current_processed_date).
+    df = df.withColumn("processed_date", to_date(from_utc_timestamp(current_timestamp(), "America/Sao_Paulo")))
     df = df.withColumn("source_database", lit(database))
     df = df.withColumn("source_table", lit(table_name))
     return df
@@ -222,7 +231,7 @@ def evaluate_data_quality(
     Avalia as regras DQDL contra o DynamicFrame e retorna DataFrame com resultados.
 
     Colunas do resultado: rule, outcome, failure_reason, evaluated_metrics,
-    category, year, datetime_process, source_database, source_table.
+    category, year, processed_date, source_database, source_table.
 
     Args:
         glue_context:  Contexto do Glue.
@@ -324,8 +333,8 @@ def notify_failed_outcomes(
         logger.info(f"Todas as regras passaram para '{table_name}'.")
         return
 
-    first_row = df.select("datetime_process", "source_database").first()
-    datetime_process = first_row["datetime_process"]
+    first_row = df.select("processed_date", "source_database").first()
+    processed_date = first_row["processed_date"]
     source_database = first_row["source_database"]
 
     rows = failed_df.select("rule", "failure_reason", "category").collect()
@@ -335,7 +344,7 @@ def notify_failed_outcomes(
         f"Ambiente: {environment}",
         f"Banco: {source_database}",
         f"Tabela: {table_name}",
-        f"Data/Hora: {datetime_process.strftime('%d/%m/%Y %H:%M:%S')}",
+        f"Data: {processed_date.strftime('%d/%m/%Y')}",
     ]
     if year is not None:
         lines.append(f"Partição: year={year}")

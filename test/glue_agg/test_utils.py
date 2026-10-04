@@ -34,7 +34,7 @@ class TestRunAthenaQuery:
             assert kwargs["s3_output"] == "s3://my-temp/tmdb/athena/glue_agg/"
             assert kwargs["ctas_approach"] is True
 
-    def test_providers_ref_union_usa_colunas_explicitas_sem_processing_datetime(self):
+    def test_providers_ref_union_usa_colunas_explicitas_sem_processed_date(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
             run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
@@ -42,7 +42,7 @@ class TestRunAthenaQuery:
 
         union_block = sql.split("providers_ref_union AS (")[1].split("providers_ref_ranked AS (")[0]
         assert "SELECT *" not in union_block
-        assert "processing_datetime" not in union_block
+        assert "processed_date" not in union_block
         assert "provider_id, provider_name, display_priority_br, canonical_name, logo_path" in union_block
 
     def test_query_contains_details_movie_join(self):
@@ -183,14 +183,14 @@ class TestRunAthenaQuery:
 
     def test_query_usa_case_overview_idioma_detectado(self):
         """overview só usa o valor do discover (u.overview) quando confirmado pt-BR
-        via overview_detected_language (glue_etl) — caso contrário cai para
+        via overview_detected_language_pt (glue_etl) — caso contrário cai para
         overview_pt/overview_en do glue_details (mesma cadeia de fallback de sempre)."""
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
             run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
-        assert "CASE WHEN u.overview_detected_language = 'pt' THEN NULLIF(TRIM(u.overview), '') END" in sql
+        assert "CASE WHEN u.overview_detected_language_pt = 'pt' THEN NULLIF(TRIM(u.overview), '') END" in sql
         assert "d.overview_pt" in sql
         assert "d.overview_en" in sql
 
@@ -255,22 +255,22 @@ class TestWriteParquetToSpec:
             assert kwargs["database"] == "db_spec"
             assert kwargs["table"] == "tb_unified"
 
-    def test_adiciona_processing_datetime_como_ultima_coluna(self):
+    def test_adiciona_processed_date_como_ultima_coluna(self):
         df = pd.DataFrame({"col": [1, 2]})
         with patch("awswrangler.s3.to_parquet") as mock_write:
             write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
             _, kwargs = mock_write.call_args
             written = kwargs["df"]
-            assert list(written.columns) == ["col", "processing_datetime"]
-            assert written["processing_datetime"].notna().all()
+            assert list(written.columns) == ["col", "processed_date"]
+            assert written["processed_date"].notna().all()
 
-    def test_dataframe_vazio_nao_recebe_processing_datetime(self):
+    def test_dataframe_vazio_nao_recebe_processed_date(self):
         df = pd.DataFrame()
         with patch("awswrangler.s3.to_parquet"):
             write_parquet_to_spec(df, s3_bucket_spec="my-spec", s3_prefix_spec="my-prefix", table_name="tb_unified", database="db_spec")
 
-        assert "processing_datetime" not in df.columns
+        assert "processed_date" not in df.columns
 
     def test_levanta_runtime_error_quando_nenhum_arquivo_escrito(self):
         df = pd.DataFrame({"col": [1]})

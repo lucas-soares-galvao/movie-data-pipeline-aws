@@ -57,7 +57,7 @@ test/glue_agg/
 | `test_query_usa_lang_name_pt_com_fallback` | SQL usa `COALESCE(lang.name_pt, lang.english_name, lang.name)` para `language_name`, priorizando tradução pt-BR |
 | `test_query_usa_ctry_name_pt` | SQL usa `ctry.name_pt` em vez de `ctry.native_name` para `origin_country_name` |
 | `test_query_usa_coalesce_tagline_pt` | SQL contém `COALESCE(d.tagline_pt, d.tagline)` para priorizar tagline traduzida |
-| `test_query_usa_case_overview_idioma_detectado` | SQL contém `CASE WHEN u.overview_detected_language = 'pt' THEN NULLIF(TRIM(u.overview), '') END` — `overview` do discover só é usado quando confirmado pt-BR (via `overview_detected_language`, gravado pelo Glue ETL); `d.overview_pt`/`d.overview_en` continuam como fallback na mesma `COALESCE` |
+| `test_query_usa_case_overview_idioma_detectado` | SQL contém `CASE WHEN u.overview_detected_language_pt = 'pt' THEN NULLIF(TRIM(u.overview), '') END` — `overview` do discover só é usado quando confirmado pt-BR (via `overview_detected_language_pt`, gravado pelo Glue ETL); `d.overview_pt`/`d.overview_en` continuam como fallback na mesma `COALESCE` |
 | `test_query_usa_coalesce_production_countries_pt` | SQL contém `COALESCE(pcr.production_countries_pt, d.production_countries)` para priorizar países traduzidos via lookup ISO na `tb_configuration_countries` |
 | `test_query_usa_coalesce_spoken_languages_pt` | SQL contém `COALESCE(slr.spoken_languages_pt, d.spoken_languages)` para priorizar idiomas traduzidos via lookup ISO na `tb_configuration_languages` |
 | `test_query_possui_cte_spoken_languages_resolved` | SQL contém CTE `spoken_languages_resolved` com `spoken_languages_iso` para lookup de idiomas em pt-BR |
@@ -70,8 +70,8 @@ test/glue_agg/
 | `test_usa_partition_cols_e_mode_corretos` | `partition_cols=["media_type", "year"]`, `mode="overwrite"` e `dataset=True` |
 | `test_dataframe_vazio_nao_escreve` | `to_parquet` não é chamado quando o DataFrame está vazio |
 | `test_registra_tabela_no_catalog` | `to_parquet` recebe `database` e `table` corretos para registrar no Glue Catalog |
-| `test_adiciona_processing_datetime_como_ultima_coluna` | O DataFrame enviado a `to_parquet` ganha `processing_datetime` como última coluna, sem nulos |
-| `test_dataframe_vazio_nao_recebe_processing_datetime` | DataFrame vazio não é alterado (escrita ignorada) |
+| `test_adiciona_processed_date_como_ultima_coluna` | O DataFrame enviado a `to_parquet` ganha `processed_date` como última coluna, sem nulos |
+| `test_dataframe_vazio_nao_recebe_processed_date` | DataFrame vazio não é alterado (escrita ignorada) |
 | `test_levanta_runtime_error_quando_nenhum_arquivo_escrito` | Levanta `RuntimeError("Escrita falhou")` quando `to_parquet` retorna `{"paths": []}` (nenhum arquivo gravado) |
 
 ### `TestGetParametersGlue`
