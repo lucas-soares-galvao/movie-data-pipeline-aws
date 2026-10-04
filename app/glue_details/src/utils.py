@@ -21,7 +21,7 @@ from shared_utils.api_client import api_get as tmdb_get
 
 # re-exportados para que main.py os importe diretamente de src.utils.
 from shared_utils.api_client import get_api_secret  # noqa: F401
-from shared_utils.glue_helpers import get_resolved_option
+from shared_utils.glue_helpers import current_processed_date, get_resolved_option
 from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.llm_metrics import llm_usage_scope, log_llm_usage
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
@@ -565,7 +565,7 @@ def _common_fields(detail: dict, content_type: str) -> dict:
         "alternative_titles":       _extract_alternative_titles(detail.get("alternative_titles", {}), content_type),
         "overview_pt_tmdb":         pt_br_translation["overview_pt_tmdb"],
         "tagline_pt_tmdb":          pt_br_translation["tagline_pt_tmdb"],
-        "processed_date":           datetime.now(tz=timezone.utc).date(),
+        "processed_date":           current_processed_date(),
     }
 
 
@@ -1204,7 +1204,7 @@ def repair_watch_providers_duplicates(
 
     Duplicatas são definidas pela chave (id, provider_type, provider_id) — provider_id
     é o identificador canônico estável do TMDB e não muda com rebranding de provedores.
-    Mantém o registro com updated_date mais recente.
+    Mantém o registro com processed_date mais recente.
     Deve ser chamado no final do ciclo (year == end_year) para cada media_type.
 
     Args:
@@ -1216,7 +1216,7 @@ def repair_watch_providers_duplicates(
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_watch_providers}/"
     _repair_partition_duplicates(
         s3_path, database, table_watch_providers, year,
-        "updated_date", ["id", "provider_type", "provider_id"],
+        "processed_date", ["id", "provider_type", "provider_id"],
     )
 
 
@@ -1252,7 +1252,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: str | None) -> lis
         year:    Ano de partição.
 
     Returns:
-        Lista de registros com: id, provider_type, provider_id, provider_name, updated_date, year.
+        Lista de registros com: id, provider_type, provider_id, provider_name, processed_date, year.
     """
     records = []
     for provider_type in ("flatrate", "rent", "buy"):
@@ -1265,7 +1265,7 @@ def _parse_watch_providers(br_data: dict, item_id: int, year: str | None) -> lis
                 "provider_type":  provider_type,
                 "provider_id":    p.get("provider_id"),
                 "provider_name":  name,
-                "updated_date":   datetime.now(tz=timezone.utc).date(),
+                "processed_date": current_processed_date(),
                 "year":           year,
             })
     return records

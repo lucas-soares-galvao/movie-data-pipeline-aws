@@ -1,11 +1,13 @@
 import logging
 import sys
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from shared_utils.glue_helpers import (
-    add_processing_datetime,
+    add_processed_date,
     configure_glue_logging,
+    current_processed_date,
     get_resolved_option,
 )
 
@@ -67,35 +69,45 @@ class TestConfigureGlueLogging:
         assert "api_key=***&language=pt-BR" in saida
 
 
-class TestAddProcessingDatetime:
+class TestCurrentProcessedDate:
+    def test_retorna_objeto_date_sem_hora(self):
+        valor = current_processed_date()
+        assert type(valor) is date
+
+    def test_usa_data_local_de_sao_paulo_e_nao_utc(self):
+        # 02:30 UTC de 05/10 ainda é 23:30 de 04/10 em São Paulo (UTC-3).
+        fixed = pd.Timestamp("2026-10-05 02:30:00", tz="UTC").tz_convert("America/Sao_Paulo")
+        with patch("shared_utils.glue_helpers.pd.Timestamp.now", return_value=fixed) as mock_now:
+            valor = current_processed_date()
+        mock_now.assert_called_once_with(tz="America/Sao_Paulo")
+        assert valor == date(2026, 10, 4)
+
+
+class TestAddProcessedDate:
     def test_adiciona_coluna_como_ultima(self):
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
-        result = add_processing_datetime(df)
-        assert list(result.columns) == ["id", "name", "processing_datetime"]
+        result = add_processed_date(df)
+        assert list(result.columns) == ["id", "name", "processed_date"]
 
     def test_muta_o_proprio_dataframe(self):
         df = pd.DataFrame({"id": [1]})
-        result = add_processing_datetime(df)
+        result = add_processed_date(df)
         assert result is df
-        assert "processing_datetime" in df.columns
+        assert "processed_date" in df.columns
 
-    def test_valor_unico_timestamp_sem_fuso(self):
+    def test_valor_unico_do_tipo_date(self):
         df = pd.DataFrame({"id": [1, 2, 3]})
-        add_processing_datetime(df)
-        col = df["processing_datetime"]
-        assert pd.api.types.is_datetime64_dtype(col)
-        assert col.dt.tz is None
-        assert col.nunique() == 1
+        add_processed_date(df)
+        assert all(type(v) is date for v in df["processed_date"])
+        assert df["processed_date"].nunique() == 1
 
-    def test_usa_hora_local_de_sao_paulo(self):
-        fixed = pd.Timestamp("2026-10-04 15:30:00", tz="America/Sao_Paulo")
+    def test_usa_current_processed_date(self):
         df = pd.DataFrame({"id": [1]})
-        with patch("shared_utils.glue_helpers.pd.Timestamp.now", return_value=fixed) as mock_now:
-            add_processing_datetime(df)
-        mock_now.assert_called_once_with(tz="America/Sao_Paulo")
-        assert df["processing_datetime"].iloc[0] == pd.Timestamp("2026-10-04 15:30:00")
+        with patch("shared_utils.glue_helpers.current_processed_date", return_value=date(2026, 10, 4)):
+            add_processed_date(df)
+        assert df["processed_date"].iloc[0] == date(2026, 10, 4)
 
     def test_sobrescreve_coluna_existente(self):
-        df = pd.DataFrame({"processing_datetime": [pd.Timestamp("2000-01-01")], "id": [1]})
-        add_processing_datetime(df)
-        assert df["processing_datetime"].iloc[0] > pd.Timestamp("2020-01-01")
+        df = pd.DataFrame({"processed_date": [date(2000, 1, 1)], "id": [1]})
+        add_processed_date(df)
+        assert df["processed_date"].iloc[0] > date(2020, 1, 1)

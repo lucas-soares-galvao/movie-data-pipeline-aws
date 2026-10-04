@@ -75,12 +75,12 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
-      name = "overview_detected_language"
+      name = "overview_detected_language_pt"
       type = "string"
     }
 
     columns {
-      name = "overview_translated_pt_br"
+      name = "overview_translated_pt"
       type = "boolean"
     }
 
@@ -129,8 +129,8 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
       type = "int"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 
@@ -198,11 +198,11 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "overview_detected_language"
+      name = "overview_detected_language_pt"
       type = "string"
     }
     columns {
-      name = "overview_translated_pt_br"
+      name = "overview_translated_pt"
       type = "boolean"
     }
     columns {
@@ -222,8 +222,8 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
       type = "int"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 
@@ -269,8 +269,8 @@ resource "aws_glue_catalog_table" "tb_now_playing_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -309,8 +309,8 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -344,8 +344,8 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -403,8 +403,8 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       type = "int"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -458,8 +458,8 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
       type = "int"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -1004,7 +1004,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "updated_date"
+      name = "processed_date"
       type = "date"
     }
   }
@@ -1052,7 +1052,7 @@ resource "aws_glue_catalog_table" "tb_watch_providers_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "updated_date"
+      name = "processed_date"
       type = "date"
     }
   }
@@ -1108,8 +1108,8 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
       type = "string"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -1155,8 +1155,8 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
       type = "string"
     }
     columns {
-      name = "processing_datetime"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
   }
 }
@@ -1212,8 +1212,8 @@ resource "aws_glue_catalog_table" "tb_data_quality_tmdb" {
     }
 
     columns {
-      name = "datetime_process"
-      type = "timestamp"
+      name = "processed_date"
+      type = "date"
     }
 
     columns {

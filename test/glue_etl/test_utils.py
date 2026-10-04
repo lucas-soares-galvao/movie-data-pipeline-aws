@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -71,7 +72,7 @@ class TestReadFromSorDiscover:
             )
 
     def test_overview_idioma_detectado_calculado_a_partir_do_overview(self):
-        """overview_detected_language é só diagnóstico (não há tradução no discover —
+        """overview_detected_language_pt é só diagnóstico (não há tradução no discover —
         o overview já vem pt-BR nativo do TMDB via lambda_api, ver read_from_sor)."""
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
         detect_fn = MagicMock(return_value="pt")
@@ -79,32 +80,32 @@ class TestReadFromSorDiscover:
             result = read_from_sor(
                 "my-sor", "movie", "discover", year="2023", detect_fn=lambda t: detect_fn(t)
             )
-        assert result["overview_detected_language"].iloc[0] == "pt"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
         detect_fn.assert_called_once_with("Sinopse")
 
     def test_overview_traduzido_pt_br_derivado_do_idioma_detectado(self):
-        """overview_translated_pt_br é um booleano puramente derivado de
-        overview_detected_language — não há tradução nem chamada de API extra
+        """overview_translated_pt é um booleano puramente derivado de
+        overview_detected_language_pt — não há tradução nem chamada de API extra
         no discover (ver read_from_sor)."""
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
         with patch("awswrangler.s3.read_json", return_value=df_mock):
             result = read_from_sor("my-sor", "movie", "discover", year="2023", detect_fn=lambda t: "pt")
-        assert bool(result["overview_translated_pt_br"].iloc[0]) is True
+        assert bool(result["overview_translated_pt"].iloc[0]) is True
 
     def test_overview_traduzido_pt_br_false_quando_idioma_nao_e_pt(self):
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A", "overview": "Sinopse"}])
         with patch("awswrangler.s3.read_json", return_value=df_mock):
             result = read_from_sor("my-sor", "movie", "discover", year="2023", detect_fn=lambda t: "en")
-        assert bool(result["overview_translated_pt_br"].iloc[0]) is False
+        assert bool(result["overview_translated_pt"].iloc[0]) is False
 
     def test_sem_overview_nao_cria_coluna_de_idioma(self):
         """Guard de schema: se a coluna overview não existir (fixture mínima/legado),
-        overview_detected_language e overview_translated_pt_br não são criadas."""
+        overview_detected_language_pt e overview_translated_pt não são criadas."""
         df_mock = pd.DataFrame([{"id": 1, "title": "Film A"}])
         with patch("awswrangler.s3.read_json", return_value=df_mock):
             result = read_from_sor("my-sor", "movie", "discover", year="2023")
-        assert "overview_detected_language" not in result.columns
-        assert "overview_translated_pt_br" not in result.columns
+        assert "overview_detected_language_pt" not in result.columns
+        assert "overview_translated_pt" not in result.columns
 
 
 class TestReadFromSorDiscoverCacheDeIdioma:
@@ -120,7 +121,7 @@ class TestReadFromSorDiscoverCacheDeIdioma:
         anterior = pd.DataFrame({
             "id": [1, 2],
             "overview": ["Sinopse igual", "Sinopse antiga"],
-            "overview_detected_language": ["pt", "pt"],
+            "overview_detected_language_pt": ["pt", "pt"],
         })
         detect_fn = MagicMock(return_value="en")
         with (
@@ -132,9 +133,9 @@ class TestReadFromSorDiscoverCacheDeIdioma:
                 s3_bucket_sot="my-sot", table_name="tb_discover_movie",
                 detect_fn=lambda t: detect_fn(t),
             )
-        assert result["overview_detected_language"].tolist() == ["pt", "en", "en"]
+        assert result["overview_detected_language_pt"].tolist() == ["pt", "en", "en"]
         assert sorted(c.args[0] for c in detect_fn.call_args_list) == ["Sinopse inédita", "Sinopse nova"]
-        assert result["overview_translated_pt_br"].tolist() == [True, False, False]
+        assert result["overview_translated_pt"].tolist() == [True, False, False]
 
     def test_sem_bucket_sot_ou_tabela_nao_le_cache_e_detecta_tudo(self):
         df_mock = pd.DataFrame([{"id": 1, "overview": "Sinopse"}])
@@ -159,19 +160,19 @@ class TestReadFromSorDiscoverCacheDeIdioma:
                 s3_bucket_sot="my-sot", table_name="tb_discover_movie",
                 detect_fn=lambda t: detect_fn(t),
             )
-        assert result["overview_detected_language"].tolist() == ["pt"]
+        assert result["overview_detected_language_pt"].tolist() == ["pt"]
         detect_fn.assert_called_once_with("Sinopse")
 
 
 class TestReadExistingDiscover:
     def test_le_so_as_colunas_do_cache_filtrando_a_particao_do_ano(self):
-        df_mock = pd.DataFrame({"id": [1], "overview": ["Sinopse"], "overview_detected_language": ["pt"]})
+        df_mock = pd.DataFrame({"id": [1], "overview": ["Sinopse"], "overview_detected_language_pt": ["pt"]})
         with patch("src.utils.wr.s3.read_parquet", return_value=df_mock) as mock_read:
             result = read_existing_discover("my-sot", "tb_discover_movie", "2023")
         kwargs = mock_read.call_args.kwargs
         assert kwargs["path"] == "s3://my-sot/tmdb/tb_discover_movie/"
         assert kwargs["dataset"] is True
-        assert kwargs["columns"] == ["id", "overview", "overview_detected_language"]
+        assert kwargs["columns"] == ["id", "overview", "overview_detected_language_pt"]
         assert kwargs["partition_filter"]({"year": "2023"}) is True
         assert kwargs["partition_filter"]({"year": "2022"}) is False
         assert result.equals(df_mock)
@@ -725,7 +726,7 @@ class TestWriteParquetToSot:
             _, kwargs = mock_write.call_args
             assert kwargs["path"] == "s3://bucket-sot/tmdb/tb_custom/"
 
-    def test_adiciona_processing_datetime_como_ultima_coluna(self):
+    def test_adiciona_processed_date_como_ultima_coluna(self):
         df = pd.DataFrame([{"id": 28, "name": "Ação"}])
         with patch("awswrangler.s3.to_parquet") as mock_write:
             write_parquet_to_sot(
@@ -737,9 +738,9 @@ class TestWriteParquetToSot:
             )
             _, kwargs = mock_write.call_args
             written = kwargs["df"]
-            assert list(written.columns) == ["id", "name", "processing_datetime"]
-            assert pd.api.types.is_datetime64_any_dtype(written["processing_datetime"])
-            assert written["processing_datetime"].notna().all()
+            assert list(written.columns) == ["id", "name", "processed_date"]
+            assert type(written["processed_date"].iloc[0]) is date
+            assert written["processed_date"].notna().all()
 
 
 # ---------------------------------------------------------------------------

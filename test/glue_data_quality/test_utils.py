@@ -250,6 +250,7 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit") as mock_lit,
             patch("src.utils.current_timestamp") as mock_ts,
             patch("src.utils.from_utc_timestamp") as mock_utc,
+            patch("src.utils.to_date") as mock_to_date,
             patch("src.utils.when") as mock_when,
             patch("src.utils.StringType") as mock_type,
         ):
@@ -268,6 +269,7 @@ class TestEvaluateDataQuality:
             "mock_lit": mock_lit,
             "mock_ts": mock_ts,
             "mock_utc": mock_utc,
+            "mock_to_date": mock_to_date,
             "mock_when": mock_when,
             "mock_type": mock_type,
             "dq_result_mock": dq_result_mock,
@@ -337,12 +339,13 @@ class TestEvaluateDataQuality:
         mocks = self._run(year=None)
         mocks["mock_lit"].assert_any_call(None)
 
-    def test_adds_datetime_process_column(self):
-        """Coluna datetime_process deve ser adicionada com horário de São Paulo."""
+    def test_adiciona_coluna_processed_date_como_data_de_sao_paulo(self):
+        """Coluna processed_date deve ser a data (to_date) do timestamp de São Paulo."""
         mocks = self._run()
         mocks["df_mock"].withColumn.assert_any_call(
-            "datetime_process", mocks["mock_utc"].return_value
+            "processed_date", mocks["mock_to_date"].return_value
         )
+        mocks["mock_to_date"].assert_called_once_with(mocks["mock_utc"].return_value)
         mocks["mock_utc"].assert_called_once_with(
             mocks["mock_ts"].return_value, "America/Sao_Paulo"
         )
@@ -389,6 +392,7 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.to_date"),
             patch("src.utils.when"),
             patch("src.utils.StringType"),
         ):
@@ -429,6 +433,7 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.to_date"),
             patch("src.utils.when"),
             patch("src.utils.StringType"),
         ):
@@ -464,6 +469,7 @@ class TestEvaluateDataQuality:
             patch("src.utils.lit"),
             patch("src.utils.current_timestamp"),
             patch("src.utils.from_utc_timestamp"),
+            patch("src.utils.to_date"),
             patch("src.utils.when"),
             patch("src.utils.StringType"),
         ):
@@ -592,7 +598,7 @@ class TestNotifyFailedOutcomes:
 
     def _make_df(self, failed_rows: list):
         """Cria um Spark DataFrame mock com a lista de linhas em failed_rows."""
-        from datetime import datetime
+        from datetime import date
 
         df = MagicMock()
         failed_df = MagicMock()
@@ -601,7 +607,7 @@ class TestNotifyFailedOutcomes:
 
         first_row = MagicMock()
         first_row.__getitem__ = lambda self, key: {
-            "datetime_process": datetime(2026, 6, 9, 21, 30, 45),  # noqa: DTZ001 — mock de coluna naive (horário local SP)
+            "processed_date": date(2026, 6, 9),
             "source_database": "movies_db",
         }[key]
         df.select.return_value.first.return_value = first_row
@@ -631,6 +637,16 @@ class TestNotifyFailedOutcomes:
             notify_failed_outcomes(df, "tb_tmdb_discover_movie_dev", self._SNS_ARN, "dev")
             call_kwargs = mock_boto3.client.return_value.publish.call_args[1]
             assert "DEV" in call_kwargs["Subject"]
+
+    def test_mensagem_contem_data_de_processamento_sem_hora(self):
+        """O corpo do e-mail mostra processed_date como dd/mm/aaaa, sem hora."""
+        row = self._make_row("RowCount > 0", "Row count is 0")
+        df, _ = self._make_df([row])
+        with patch("src.utils.boto3") as mock_boto3:
+            notify_failed_outcomes(df, "tb_tmdb_genre_movie_dev", self._SNS_ARN, "dev")
+            message = mock_boto3.client.return_value.publish.call_args[1]["Message"]
+            assert "Data: 09/06/2026" in message
+            assert "Data/Hora" not in message
 
     def test_message_contains_table_name(self):
         """O corpo do e-mail deve indicar qual tabela teve métricas com falha."""
