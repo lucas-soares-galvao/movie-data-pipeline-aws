@@ -288,6 +288,7 @@ Testa as funções individuais:
 | `test_prioriza_tmdb_pt_br` | Usa `overview_pt_tmdb` quando presente, sem chamar o LLM |
 | `test_fallback_para_llm` | Traduz via LLM quando não há `overview_pt_tmdb` |
 | `test_traduz_mesmo_com_idioma_original_pt` | Chama `translate_text` mesmo quando `original_language == "pt"` — não é critério de elegibilidade (idioma detectado do texto é forçado para `"en"` via `detect_fn`, sem chamada real ao LLM) |
+| `test_reaproveita_traducao_e_idiomas_do_cache_sem_chamar_llm` | Cache (`previous_df`) com `overview_en` idêntico traz `overview_pt`, `overview_detected_language_en` e `overview_detected_language_pt` — nenhum é recalculado: `detect_fn` e o tradutor não são chamados |
 | `test_loga_resumo_de_sucesso` | Loga `"1 registros traduzidos com sucesso (overview_pt)."` em INFO |
 | `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | `translate_text` devolve o original em caso de falha; log reporta `"0 registros traduzidos com sucesso"` |
 | `test_retenta_quando_overview_pt_tmdb_igual_a_overview_en` | Caso de borda: `overview_pt_tmdb` idêntico a `overview_en` é reenviado ao LLM (mesma regra de retry do backfill) |

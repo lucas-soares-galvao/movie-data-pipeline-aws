@@ -12,6 +12,7 @@ from src.utils import (
     derive_canonical_name,
     get_parameters_glue,
     read_existing_configuration,
+    read_existing_discover,
     read_from_sor,
     write_parquet_to_sot,
 )
@@ -104,6 +105,81 @@ class TestReadFromSorDiscover:
             result = read_from_sor("my-sor", "movie", "discover", year="2023")
         assert "overview_detected_language" not in result.columns
         assert "overview_translated_pt_br" not in result.columns
+
+
+class TestReadFromSorDiscoverCacheDeIdioma:
+    """O idioma detectado de overviews inalterados é reaproveitado da partição do ano já
+    gravada na SOT; só o restante vai ao LLM."""
+
+    def test_reaproveita_idioma_de_overview_inalterado_e_detecta_so_o_restante(self):
+        df_mock = pd.DataFrame([
+            {"id": 1, "overview": "Sinopse igual"},
+            {"id": 2, "overview": "Sinopse nova"},
+            {"id": 3, "overview": "Sinopse inédita"},
+        ])
+        anterior = pd.DataFrame({
+            "id": [1, 2],
+            "overview": ["Sinopse igual", "Sinopse antiga"],
+            "overview_detected_language": ["pt", "pt"],
+        })
+        detect_fn = MagicMock(return_value="en")
+        with (
+            patch("awswrangler.s3.read_json", return_value=df_mock),
+            patch("src.utils.wr.s3.read_parquet", return_value=anterior),
+        ):
+            result = read_from_sor(
+                "my-sor", "movie", "discover", year="2023",
+                s3_bucket_sot="my-sot", table_name="tb_discover_movie",
+                detect_fn=lambda t: detect_fn(t),
+            )
+        assert result["overview_detected_language"].tolist() == ["pt", "en", "en"]
+        assert sorted(c.args[0] for c in detect_fn.call_args_list) == ["Sinopse inédita", "Sinopse nova"]
+        assert result["overview_translated_pt_br"].tolist() == [True, False, False]
+
+    def test_sem_bucket_sot_ou_tabela_nao_le_cache_e_detecta_tudo(self):
+        df_mock = pd.DataFrame([{"id": 1, "overview": "Sinopse"}])
+        detect_fn = MagicMock(return_value="pt")
+        with (
+            patch("awswrangler.s3.read_json", return_value=df_mock),
+            patch("src.utils.wr.s3.read_parquet") as mock_parquet,
+        ):
+            read_from_sor("my-sor", "movie", "discover", year="2023", detect_fn=lambda t: detect_fn(t))
+        mock_parquet.assert_not_called()
+        detect_fn.assert_called_once_with("Sinopse")
+
+    def test_particao_inexistente_degrada_para_deteccao_completa(self):
+        df_mock = pd.DataFrame([{"id": 1, "overview": "Sinopse"}])
+        detect_fn = MagicMock(return_value="pt")
+        with (
+            patch("awswrangler.s3.read_json", return_value=df_mock),
+            patch("src.utils.wr.s3.read_parquet", side_effect=Exception("partição não encontrada")),
+        ):
+            result = read_from_sor(
+                "my-sor", "movie", "discover", year="2023",
+                s3_bucket_sot="my-sot", table_name="tb_discover_movie",
+                detect_fn=lambda t: detect_fn(t),
+            )
+        assert result["overview_detected_language"].tolist() == ["pt"]
+        detect_fn.assert_called_once_with("Sinopse")
+
+
+class TestReadExistingDiscover:
+    def test_le_so_as_colunas_do_cache_filtrando_a_particao_do_ano(self):
+        df_mock = pd.DataFrame({"id": [1], "overview": ["Sinopse"], "overview_detected_language": ["pt"]})
+        with patch("src.utils.wr.s3.read_parquet", return_value=df_mock) as mock_read:
+            result = read_existing_discover("my-sot", "tb_discover_movie", "2023")
+        kwargs = mock_read.call_args.kwargs
+        assert kwargs["path"] == "s3://my-sot/tmdb/tb_discover_movie/"
+        assert kwargs["dataset"] is True
+        assert kwargs["columns"] == ["id", "overview", "overview_detected_language"]
+        assert kwargs["partition_filter"]({"year": "2023"}) is True
+        assert kwargs["partition_filter"]({"year": "2022"}) is False
+        assert result.equals(df_mock)
+
+    def test_retorna_vazio_quando_particao_ou_colunas_nao_existem(self):
+        with patch("src.utils.wr.s3.read_parquet", side_effect=Exception("partição não encontrada")):
+            result = read_existing_discover("my-sot", "tb_discover_movie", "2023")
+        assert result.empty
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +432,23 @@ class TestAddNamePtCountries:
         with patch("src.utils.translate_text_llm") as mock_traduzir:
             result = _add_name_pt_countries(df, previous_df=previous_df, detect_fn=detect_fn)
         assert result["name_pt"].iloc[0] == "Brasil"
+        mock_traduzir.assert_not_called()
+
+    def test_reaproveita_idiomas_detectados_do_cache_sem_chamar_llm(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        previous_df = pd.DataFrame({
+            "iso_3166_1": ["BR"],
+            "english_name": ["Brazil"],
+            "name_pt": ["Brasil"],
+            "name_detected_language_en": ["en"],
+            "name_detected_language_pt": ["pt"],
+        })
+        detect_fn = MagicMock()
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = _add_name_pt_countries(df, previous_df=previous_df, detect_fn=detect_fn)
+        assert result["name_detected_language_en"].iloc[0] == "en"
+        assert result["name_detected_language_pt"].iloc[0] == "pt"
+        detect_fn.assert_not_called()
         mock_traduzir.assert_not_called()
 
     def test_nao_reaproveita_cache_quando_fonte_mudou(self):

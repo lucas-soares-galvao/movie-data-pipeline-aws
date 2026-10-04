@@ -1,8 +1,13 @@
+import logging
+import threading
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from shared_utils.traducao import (
+    detect_in_parallel,
+    format_elapsed,
     resolve_pt_translation,
+    reuse_detected_language,
     reuse_existing_translation,
     translate_in_parallel,
 )
@@ -26,6 +31,149 @@ class TestTranslateInParallel:
             mock_executor.map.return_value = iter(["ok"])
             translate_in_parallel(["Hello"], MagicMock(), max_workers=3)
         mock_executor_cls.assert_called_once_with(max_workers=3)
+
+
+class TestTranslateInParallelProgresso:
+    def test_loga_progresso_a_cada_10_porcento_em_lote_grande(self, caplog):
+        valores = [str(i) for i in range(20)]
+        with caplog.at_level(logging.INFO):
+            resultado = translate_in_parallel(valores, lambda t: t, max_workers=1, progress_label="Tradução 'x'")
+        assert resultado == valores
+        progresso = [r.message for r in caplog.records if r.message.startswith("Tradução 'x': ")]
+        assert len(progresso) == 10
+        assert "2/20 (10%)" in progresso[0]
+        assert "20/20 (100%)" in progresso[-1]
+
+    def test_nao_loga_progresso_em_lote_pequeno(self, caplog):
+        valores = [str(i) for i in range(19)]
+        with caplog.at_level(logging.INFO):
+            translate_in_parallel(valores, lambda t: t, max_workers=1, progress_label="Tradução 'x'")
+        assert not [r for r in caplog.records if r.message.startswith("Tradução 'x': ")]
+
+    def test_sem_label_nao_loga_progresso(self, caplog):
+        valores = [str(i) for i in range(20)]
+        with caplog.at_level(logging.INFO):
+            translate_in_parallel(valores, lambda t: t, max_workers=1)
+        assert not [r for r in caplog.records if "/20" in r.message]
+
+
+class TestFormatElapsed:
+    def test_segundos(self):
+        assert format_elapsed(0) == "0s"
+        assert format_elapsed(45) == "45s"
+        assert format_elapsed(59.9) == "59s"
+
+    def test_minutos_e_segundos(self):
+        assert format_elapsed(192) == "3m12s"
+
+    def test_horas_minutos_e_segundos(self):
+        assert format_elapsed(3910) == "1h05m10s"
+
+
+class TestDetectInParallel:
+    def test_detecta_cada_texto_e_preserva_a_ordem(self):
+        resultado = detect_in_parallel(["Hello", "Olá", "Hola"], lambda t: t[:2].lower())
+        assert resultado == ["he", "ol", "ho"]
+
+    def test_lista_vazia_nao_chama_detect_fn(self):
+        detect_fn = MagicMock()
+        assert detect_in_parallel([], detect_fn, label="Detecção x") == []
+        detect_fn.assert_not_called()
+
+    def test_roda_em_paralelo(self):
+        """Com 2 workers, as 2 chamadas esperam uma à outra na barreira; se rodassem em série
+        a primeira nunca sairia dela (BrokenBarrierError por timeout)."""
+        barreira = threading.Barrier(2, timeout=5)
+
+        def detect_fn(texto):
+            barreira.wait()
+            return "en"
+
+        assert detect_in_parallel(["a", "b"], detect_fn, max_workers=2) == ["en", "en"]
+
+    def test_loga_resumo_com_detectados_e_falhas(self, caplog):
+        """Texto vazio devolve None sem chamada de rede e não conta como falha."""
+        respostas = {"Hello": "en", "": None, "Falha": None}
+        with caplog.at_level(logging.INFO):
+            detect_in_parallel(["Hello", "", "Falha"], respostas.get, label="Detecção x")
+        resumo = [r.message for r in caplog.records if r.message.startswith("Detecção x: ")]
+        assert len(resumo) == 1
+        assert "1 detectado(s), 1 falha(s) em 3 texto(s)" in resumo[0]
+
+    def test_sem_label_nao_loga_resumo(self, caplog):
+        with caplog.at_level(logging.INFO):
+            detect_in_parallel(["Hello"], lambda t: "en")
+        assert "detectado(s)" not in caplog.text
+
+
+class TestReuseDetectedLanguage:
+    def test_reaproveita_quando_texto_identico(self):
+        df = pd.DataFrame({"id": [1], "overview": ["Sinopse"]})
+        anterior = pd.DataFrame({"id": [1], "overview": ["Sinopse"], "idioma": ["pt"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].tolist() == ["pt"]
+
+    def test_nao_reaproveita_quando_texto_mudou(self):
+        df = pd.DataFrame({"id": [1], "overview": ["Sinopse nova"]})
+        anterior = pd.DataFrame({"id": [1], "overview": ["Sinopse antiga"], "idioma": ["pt"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].isna().all()
+
+    def test_nao_reaproveita_idioma_antigo_nulo_ou_vazio(self):
+        """Detecção que falhou (None) não é congelada: continua pendente para ser tentada de novo."""
+        df = pd.DataFrame({"id": [1, 2], "overview": ["A", "B"]})
+        anterior = pd.DataFrame({"id": [1, 2], "overview": ["A", "B"], "idioma": [None, ""]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].isna().all()
+
+    def test_nao_reaproveita_texto_vazio(self):
+        df = pd.DataFrame({"id": [1], "overview": [""]})
+        anterior = pd.DataFrame({"id": [1], "overview": [""], "idioma": ["pt"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].isna().all()
+
+    def test_nao_sobrescreve_idioma_ja_preenchido(self):
+        df = pd.DataFrame({"id": [1], "overview": ["Sinopse"], "idioma": ["en"]})
+        anterior = pd.DataFrame({"id": [1], "overview": ["Sinopse"], "idioma": ["pt"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].tolist() == ["en"]
+
+    def test_id_novo_sem_historico_fica_pendente(self):
+        df = pd.DataFrame({"id": [1, 2], "overview": ["A", "B"]})
+        anterior = pd.DataFrame({"id": [1], "overview": ["A"], "idioma": ["pt"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].iloc[0] == "pt"
+        assert pd.isna(result["idioma"].iloc[1])
+
+    def test_df_anterior_none_ou_vazio_nao_quebra_nem_cria_coluna(self):
+        df = pd.DataFrame({"id": [1], "overview": ["A"]})
+        assert "idioma" not in reuse_detected_language(df, None, "overview", "idioma").columns
+        assert "idioma" not in reuse_detected_language(df, pd.DataFrame(), "overview", "idioma").columns
+
+    def test_ignora_schema_antigo_sem_coluna_de_idioma(self):
+        df = pd.DataFrame({"id": [1], "overview": ["A"]})
+        anterior = pd.DataFrame({"id": [1], "overview": ["A"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert "idioma" not in result.columns
+
+    def test_ids_duplicados_no_df_anterior_usa_ultimo(self):
+        df = pd.DataFrame({"id": [1], "overview": ["A"]})
+        anterior = pd.DataFrame({"id": [1, 1], "overview": ["A", "A"], "idioma": ["en", "pt"]})
+        result = reuse_detected_language(df, anterior, "overview", "idioma")
+        assert result["idioma"].tolist() == ["pt"]
+
+    def test_coluna_chave_customizada(self):
+        df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
+        anterior = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"], "idioma": ["en"]})
+        result = reuse_detected_language(df, anterior, "english_name", "idioma", key_column="iso_639_1")
+        assert result["idioma"].tolist() == ["en"]
+
+    def test_loga_quantidade_reaproveitada(self, caplog):
+        df = pd.DataFrame({"id": [1, 2], "overview": ["A", "B"]})
+        anterior = pd.DataFrame({"id": [1, 2], "overview": ["A", "B"], "idioma": ["pt", "en"]})
+        with caplog.at_level(logging.INFO):
+            reuse_detected_language(df, anterior, "overview", "idioma")
+        assert "Reaproveitando idioma detectado de 2 registro(s)" in caplog.text
 
 
 class TestReuseExistingTranslation:
@@ -96,6 +244,54 @@ class TestReuseExistingTranslation:
             df, df_anterior, "english_name", "name_pt", key_column="iso_3166_1"
         )
         assert pd.isna(result["name_pt"].iloc[0])
+
+
+class TestReuseExistingTranslationIdiomas:
+    def _previous(self):
+        return pd.DataFrame({
+            "id": [1],
+            "overview_en": ["Synopsis"],
+            "overview_pt": ["Sinopse"],
+            "idioma_en": ["en"],
+            "idioma_pt": ["pt"],
+        })
+
+    def test_reaproveita_idiomas_junto_com_a_traducao(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Synopsis"], "overview_pt": [None]})
+        result = reuse_existing_translation(
+            df, self._previous(), "overview_en", "overview_pt",
+            detected_language_en_column="idioma_en", detected_language_pt_column="idioma_pt",
+        )
+        assert result["overview_pt"].tolist() == ["Sinopse"]
+        assert result["idioma_en"].tolist() == ["en"]
+        assert result["idioma_pt"].tolist() == ["pt"]
+
+    def test_idioma_pt_nao_reaproveitado_quando_o_destino_atual_difere_do_antigo(self):
+        """Ex.: tradução nativa do TMDB (já atribuída pelo chamador) diferente da traduzida antes —
+        o idioma antigo descreve outro texto, então a coluna fica pendente para ser detectada."""
+        df = pd.DataFrame({"id": [1], "overview_en": ["Synopsis"], "overview_pt": ["Resumo nativo"]})
+        result = reuse_existing_translation(
+            df, self._previous(), "overview_en", "overview_pt",
+            detected_language_en_column="idioma_en", detected_language_pt_column="idioma_pt",
+        )
+        assert result["overview_pt"].tolist() == ["Resumo nativo"]
+        assert result["idioma_en"].tolist() == ["en"]
+        assert result["idioma_pt"].isna().all()
+
+    def test_idioma_en_nao_reaproveitado_quando_fonte_mudou(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["New synopsis"], "overview_pt": [None]})
+        result = reuse_existing_translation(
+            df, self._previous(), "overview_en", "overview_pt",
+            detected_language_en_column="idioma_en", detected_language_pt_column="idioma_pt",
+        )
+        assert result["idioma_en"].isna().all()
+        assert result["idioma_pt"].isna().all()
+
+    def test_sem_colunas_de_idioma_informadas_nao_cria_colunas_de_idioma(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Synopsis"], "overview_pt": [None]})
+        result = reuse_existing_translation(df, self._previous(), "overview_en", "overview_pt")
+        assert "idioma_en" not in result.columns
+        assert "idioma_pt" not in result.columns
 
 
 class TestResolvePtTranslation:
@@ -322,6 +518,17 @@ class TestResolvePtTranslation:
         )
 
         assert df["overview_needs_translation"].tolist() == [False]
+
+    def test_detecta_idioma_em_paralelo_com_max_workers_informado(self):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        with patch("shared_utils.traducao.detect_in_parallel") as mock_detectar:
+            mock_detectar.side_effect = lambda textos, *a, **kw: ["en"] * len(textos)
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "en", lambda t: "Olá", max_workers=3,
+            )
+        assert mock_detectar.call_count == 3  # fonte, destino inicial e redetecção do traduzido
+        assert all(c.kwargs["max_workers"] == 3 for c in mock_detectar.call_args_list)
 
     def test_loga_resumo_agregado_de_falhas_de_traducao(self, caplog):
         """Falhas de tradução não devem ser logadas uma a uma (isso fica em DEBUG

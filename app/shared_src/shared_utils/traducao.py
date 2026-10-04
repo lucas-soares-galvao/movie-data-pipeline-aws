@@ -4,18 +4,27 @@ paralelismo (serviço de tradução via LLM, ver traducao_llm.py)."""
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from typing import TypeVar
 
 import pandas as pd
 
 __all__ = [
     "translate_in_parallel",
+    "detect_in_parallel",
+    "DETECT_MAX_WORKERS_DEFAULT",
+    "format_elapsed",
     "reuse_existing_translation",
+    "reuse_detected_language",
     "resolve_pt_translation",
 ]
 
 logger = logging.getLogger()
+
+_T = TypeVar("_T")
 
 # Teto de tentativas de tradução por linha antes de desistir dela (ver
 # resolve_pt_translation). Sem esse teto, conteúdo genuinamente não traduzível (nomes
@@ -24,27 +33,122 @@ logger = logging.getLogger()
 # para sempre.
 _MAX_TRANSLATION_ATTEMPTS_DEFAULT = 3
 
+# Threads da detecção de idioma. Cada chamada é curta (max_tokens=10, ver idioma_llm.py)
+# e o modelo pago do OpenRouter não tem teto de requisições da plataforma; 10 é o mesmo
+# valor já usado na tradução de glue_details (_TRANSLATE_MAX_WORKERS_LLM).
+DETECT_MAX_WORKERS_DEFAULT = 10
+
+# Progresso intermediário só vale a pena em lotes grandes — em um lote de poucas linhas
+# o resumo final já diz tudo, e um log de progresso por coluna só polui.
+_PROGRESS_MIN_TOTAL = 20
+_PROGRESS_STEP_PCT = 10
+
+
+def format_elapsed(seconds: float) -> str:
+    """Formata uma duração em segundos como "45s" ou "3m12s" (ou "1h05m10s")."""
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
+def _with_progress(fn: Callable[[str], _T], total: int, label: str) -> Callable[[str], _T]:
+    """Envolve fn para logar o progresso (a cada _PROGRESS_STEP_PCT %) conforme as
+    chamadas terminam — o log some em ordem de conclusão, não de submissão."""
+    lock = threading.Lock()
+    state = {"done": 0, "next_pct": _PROGRESS_STEP_PCT}
+    started = time.monotonic()
+
+    def wrapped(value: str) -> _T:
+        result = fn(value)
+        with lock:
+            state["done"] += 1
+            pct = state["done"] * 100 // total
+            if pct >= state["next_pct"]:
+                state["next_pct"] = (pct // _PROGRESS_STEP_PCT + 1) * _PROGRESS_STEP_PCT
+                logger.info(
+                    f"{label}: {state['done']}/{total} ({pct}%) — "
+                    f"{format_elapsed(time.monotonic() - started)}"
+                )
+        return result
+
+    return wrapped
+
 
 def translate_in_parallel(
-    values: list[str], translate_fn: Callable[[str], str], max_workers: int = 5
-) -> list[str]:
+    values: list[str],
+    translate_fn: Callable[[str], _T],
+    max_workers: int = 5,
+    progress_label: str | None = None,
+) -> list[_T]:
     """
     Aplica translate_fn a cada item de values em paralelo via ThreadPoolExecutor.
 
     Recebe a função de tradução como parâmetro (em vez de chamar translate_text_llm
     diretamente) para que os chamadores continuem passando sua própria referência
-    local de translate_text_llm — a mesma que seus testes fazem mock.
+    local de translate_text_llm — a mesma que seus testes fazem mock. Também serve
+    para qualquer outra função de texto -> valor (ex.: detect_language_llm, ver
+    detect_in_parallel).
 
     Args:
-        values:       Textos a traduzir, na ordem em que devem ser retornados.
-        translate_fn: Função chamada para cada item (ex.: translate_text_llm).
-        max_workers:  Número de threads concorrentes.
+        values:         Textos a processar, na ordem em que devem ser retornados.
+        translate_fn:   Função chamada para cada item (ex.: translate_text_llm).
+        max_workers:    Número de threads concorrentes.
+        progress_label: Se informado e values tiver pelo menos _PROGRESS_MIN_TOTAL
+                        itens, loga o progresso a cada 10% com esse rótulo.
 
     Returns:
-        Lista de textos traduzidos, na mesma ordem de values.
+        Lista de resultados, na mesma ordem de values.
     """
+    run_fn = translate_fn
+    if progress_label and len(values) >= _PROGRESS_MIN_TOTAL:
+        run_fn = _with_progress(translate_fn, len(values), progress_label)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        return list(executor.map(translate_fn, values))
+        return list(executor.map(run_fn, values))
+
+
+def detect_in_parallel(
+    texts: list[str],
+    detect_fn: Callable[[str], str | None],
+    max_workers: int = DETECT_MAX_WORKERS_DEFAULT,
+    label: str | None = None,
+) -> list[str | None]:
+    """
+    Aplica detect_fn a cada texto em paralelo (ver translate_in_parallel) e, se label
+    for informado, loga o progresso e um resumo final (detectados / falhas).
+
+    Falha = texto não vazio cujo detect_fn devolveu None (chamada ao LLM falhou ou
+    resposta fora do padrão ISO 639-1, ver detect_language_llm). Texto vazio devolve
+    None sem chamada de rede e não conta como falha. O resumo existe porque cada falha
+    individual só vira um WARNING solto — com milhares de linhas, sem ele não dá para
+    saber se o LLM está degradado.
+
+    Args:
+        texts:       Textos a ter o idioma detectado, na ordem a retornar.
+        detect_fn:   Função (texto) -> código ISO 639-1 (ou None).
+        max_workers: Número de threads concorrentes.
+        label:       Rótulo usado nos logs (ex.: "Detecção de idioma 'overview'").
+                     Sem ele, nada é logado.
+
+    Returns:
+        Lista de códigos de idioma (ou None), na mesma ordem de texts.
+    """
+    if not texts:
+        return []
+    started = time.monotonic()
+    results = translate_in_parallel(texts, detect_fn, max_workers=max_workers, progress_label=label)
+    if label:
+        detected = sum(1 for result in results if result is not None)
+        failures = sum(1 for text, result in zip(texts, results) if result is None and text.strip())
+        logger.info(
+            f"{label}: {detected} detectado(s), {failures} falha(s) em {len(texts)} texto(s) "
+            f"({format_elapsed(time.monotonic() - started)})."
+        )
+    return results
 
 
 def _detect_missing(
@@ -52,6 +156,7 @@ def _detect_missing(
     text_column: str,
     language_column: str,
     detect_fn: Callable[[str], str | None],
+    max_workers: int = DETECT_MAX_WORKERS_DEFAULT,
 ) -> pd.DataFrame:
     """Detecta o idioma de text_column em language_column, só para linhas onde
     language_column ainda está vazia/nula — evita redetectar o que já foi calculado
@@ -59,13 +164,16 @@ def _detect_missing(
 
     Equivalente a shared_utils.idioma.add_detected_language_column(only_missing=True),
     duplicado aqui (em vez de importado) para não criar import circular: idioma.py
-    importa deste módulo (ver histórico de make_capped_fallback, hoje removido).
+    importa deste módulo (detect_in_parallel).
     """
     if language_column not in df.columns:
         df[language_column] = None
     pending = df[language_column].isna() | (df[language_column] == "")
     if pending.any():
-        df.loc[pending, language_column] = df.loc[pending, text_column].fillna("").apply(detect_fn)
+        texts = df.loc[pending, text_column].fillna("").tolist()
+        df.loc[pending, language_column] = detect_in_parallel(
+            texts, detect_fn, max_workers=max_workers, label=f"Detecção de idioma '{text_column}'",
+        )
     return df
 
 
@@ -135,8 +243,8 @@ def resolve_pt_translation(
     if translation_attempts_column not in df.columns:
         df[translation_attempts_column] = 0
 
-    df = _detect_missing(df, source_column, detected_language_en_column, detect_fn)
-    df = _detect_missing(df, target_column, detected_language_pt_column, detect_fn)
+    df = _detect_missing(df, source_column, detected_language_en_column, detect_fn, max_workers)
+    df = _detect_missing(df, target_column, detected_language_pt_column, detect_fn, max_workers)
 
     target_empty = df[target_column].isna() | (df[target_column] == "")
     direct_copy_mask = target_empty & (df[detected_language_en_column] == "pt")
@@ -158,7 +266,9 @@ def resolve_pt_translation(
         return df, 0
 
     values = df.loc[eligible_mask, source_column].fillna("").tolist()
-    translated = translate_in_parallel(values, translate_fn, max_workers=max_workers)
+    translated = translate_in_parallel(
+        values, translate_fn, max_workers=max_workers, progress_label=f"Tradução '{target_column}'",
+    )
     df.loc[eligible_mask, target_column] = translated
     df.loc[eligible_mask, translation_attempts_column] = df.loc[eligible_mask, translation_attempts_column] + 1
 
@@ -169,8 +279,11 @@ def resolve_pt_translation(
         f"{failure_count} falha(s) de tradução / {len(values)} elegível(is)."
     )
 
-    df.loc[eligible_mask, detected_language_pt_column] = (
-        df.loc[eligible_mask, target_column].fillna("").apply(detect_fn)
+    df.loc[eligible_mask, detected_language_pt_column] = detect_in_parallel(
+        df.loc[eligible_mask, target_column].fillna("").tolist(),
+        detect_fn,
+        max_workers=max_workers,
+        label=f"Redetecção de idioma '{target_column}'",
     )
 
     if needs_translation_column:
@@ -179,12 +292,72 @@ def resolve_pt_translation(
     return df, success_count
 
 
+def reuse_detected_language(
+    df: pd.DataFrame,
+    previous_df: pd.DataFrame | None,
+    text_column: str,
+    language_column: str,
+    key_column: str = "id",
+) -> pd.DataFrame:
+    """
+    Preenche language_column com o idioma já detectado em previous_df quando
+    text_column não mudou entre o registro antigo e o novo, para a mesma key_column —
+    evita redetectar (uma chamada ao LLM por linha) texto idêntico ao da última execução.
+
+    Só reaproveita valor não nulo/vazio: uma detecção que falhou (None) na execução
+    anterior não é "congelada", fica pendente e é tentada de novo por
+    _detect_missing/add_detected_language_column(only_missing=True). Texto alterado
+    também força nova detecção, e valores já preenchidos em df nunca são sobrescritos.
+
+    Args:
+        df:              DataFrame novo (run atual), com key_column e text_column.
+        previous_df:     Registros já persistidos, ou None/vazio se não há histórico.
+        text_column:     Coluna de texto cujo idioma foi detectado (ex.: "overview").
+        language_column: Coluna com o idioma detectado de text_column; criada como
+                         nula em df se ausente.
+        key_column:      Coluna usada para casar registros antigos e novos.
+
+    Returns:
+        df com language_column atualizada (também modificado in-place).
+    """
+    if previous_df is None or previous_df.empty:
+        return df
+    if not {key_column, text_column, language_column}.issubset(previous_df.columns):
+        # Schema antigo (partição/tabela gravada antes da coluna existir) — nada a reaproveitar.
+        return df
+
+    cache = (
+        previous_df[[key_column, text_column, language_column]]
+        .drop_duplicates(subset=key_column, keep="last")
+        .set_index(key_column)
+    )
+    old_text = df[key_column].map(cache[text_column])
+    old_language = df[key_column].map(cache[language_column])
+
+    if language_column not in df.columns:
+        df[language_column] = None
+    language_empty = df[language_column].isna() | (df[language_column] == "")
+    text_valid = df[text_column].notna() & (df[text_column] != "")
+    old_language_valid = old_language.notna() & (old_language != "")
+
+    can_reuse = language_empty & text_valid & old_language_valid & (old_text == df[text_column])
+    if can_reuse.any():
+        df.loc[can_reuse, language_column] = old_language[can_reuse]
+        logger.info(
+            f"Reaproveitando idioma detectado de {can_reuse.sum()} registro(s) "
+            f"para '{language_column}' (texto '{text_column}' inalterado)."
+        )
+    return df
+
+
 def reuse_existing_translation(
     df: pd.DataFrame,
     previous_df: pd.DataFrame | None,
     source_column: str,
     target_column: str,
     key_column: str = "id",
+    detected_language_en_column: str | None = None,
+    detected_language_pt_column: str | None = None,
 ) -> pd.DataFrame:
     """
     Preenche target_column com a tradução já existente (previous_df) quando
@@ -212,10 +385,33 @@ def reuse_existing_translation(
         target_column: Nome da coluna de tradução a (pré-)preencher.
         key_column:    Coluna usada para casar registros antigos e novos
                        (default "id").
+        detected_language_en_column: Se informado, também reaproveita o idioma já
+                       detectado de source_column (ver reuse_detected_language) —
+                       poupa a redetecção, que custa uma chamada ao LLM por linha.
+        detected_language_pt_column: Idem para o idioma detectado de target_column,
+                       reaproveitado quando o texto traduzido é idêntico ao antigo
+                       (inclui a tradução recém-reaproveitada acima).
 
     Returns:
-        df com target_column atualizada (também modificado in-place).
+        df com target_column (e as colunas de idioma, se informadas) atualizada
+        (também modificado in-place).
     """
+    df = _reuse_translation_text(df, previous_df, source_column, target_column, key_column)
+    if detected_language_en_column:
+        df = reuse_detected_language(df, previous_df, source_column, detected_language_en_column, key_column)
+    if detected_language_pt_column:
+        df = reuse_detected_language(df, previous_df, target_column, detected_language_pt_column, key_column)
+    return df
+
+
+def _reuse_translation_text(
+    df: pd.DataFrame,
+    previous_df: pd.DataFrame | None,
+    source_column: str,
+    target_column: str,
+    key_column: str,
+) -> pd.DataFrame:
+    """Parte de reuse_existing_translation que reaproveita só o texto traduzido."""
     if previous_df is None or previous_df.empty:
         return df
     required_columns = {key_column, source_column, target_column}

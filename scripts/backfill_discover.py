@@ -67,6 +67,11 @@ Notificação:
     backfill_shared.notify_backfill_success. Suprimida junto com trigger_agg=False (chamado
     por backfill_historico.py), que notifica uma única vez ao final dos dois estágios.
 
+Logs de andamento:
+    Cada unidade loga as 3 etapas (`[<tipo> <ano>] Etapa 1/3` coleta TMDB, `2/3` transformação
+    SOR→SOT com a detecção de idioma do overview via LLM — em paralelo, com progresso a cada 10% e
+    reaproveitando o idioma já gravado na SOT —, `3/3` gravação no SOT) e o tempo total ao concluir.
+
 Erros:
     Uma falha numa unidade (coleta ou escrita) é logada e a unidade entra na lista de falhas —
     o backfill segue para a próxima unidade em vez de abortar (mesmo padrão soft-fail-continue de
@@ -108,6 +113,7 @@ from app.glue_etl.src.utils import (  # noqa: E402
 )
 from app.lambda_api.src.utils import collect_discover_data  # noqa: E402
 from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
+from shared_utils.traducao import format_elapsed  # noqa: E402
 
 import backfill_shared as shared
 
@@ -133,7 +139,9 @@ def _process_discover_unit(
         ClientError de token expirado, para acionar a retomada automática via exit code 75
         (run_with_retry_exit).
     """
+    started = time.monotonic()
     try:
+        logger.info("[%s %d] Etapa 1/3: coletando discover na API do TMDB (SOR)...", media_type, year)
         collect_discover_data(
             api_key=api_key,
             s3_client=s3_client,
@@ -142,9 +150,16 @@ def _process_discover_unit(
             folder=f"tmdb/discover/{media_type}",
             year=year,
         )
-        df = read_from_sor(
-            s3_bucket_sor, media_type, "discover", str(year), detect_fn=detect_fn,
+        logger.info(
+            "[%s %d] Etapa 2/3: transformação SOR→SOT (detecção de idioma do overview via LLM, "
+            "reaproveitando o já detectado)... coleta levou %s.",
+            media_type, year, format_elapsed(time.monotonic() - started),
         )
+        df = read_from_sor(
+            s3_bucket_sor, media_type, "discover", str(year),
+            s3_bucket_sot=s3_bucket_sot, table_name=table_discover, detect_fn=detect_fn,
+        )
+        logger.info("[%s %d] Etapa 3/3: gravando %d registros no SOT...", media_type, year, len(df))
         write_parquet_to_sot(
             df=df,
             s3_bucket_sot=s3_bucket_sot,
@@ -173,7 +188,10 @@ def _process_discover_unit(
             media_type, year,
         )
         return str(exc)
-    logger.info("Discover concluído com sucesso para %s year=%d.", media_type, year)
+    logger.info(
+        "Discover concluído com sucesso para %s year=%d em %s.",
+        media_type, year, format_elapsed(time.monotonic() - started),
+    )
     return None
 
 

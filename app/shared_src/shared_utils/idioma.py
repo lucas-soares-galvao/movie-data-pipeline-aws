@@ -8,6 +8,7 @@ from collections.abc import Callable
 import pandas as pd
 
 from shared_utils.idioma_llm import detect_language_llm
+from shared_utils.traducao import DETECT_MAX_WORKERS_DEFAULT, detect_in_parallel
 
 __all__ = [
     "detect_language_llm",
@@ -21,16 +22,17 @@ def add_detected_language_column(
     target_column: str,
     detect_fn: Callable[[str], str | None] | None = None,
     only_missing: bool = False,
+    max_workers: int = DETECT_MAX_WORKERS_DEFAULT,
 ) -> pd.DataFrame:
     """
     Adiciona target_column ao DataFrame com o idioma detectado de source_column.
 
     Aplica detect_fn (default: detect_language_llm) a cada valor de source_column,
     tratando nulo/NaN como string vazia (mesmo tratamento já usado em
-    resolve_pt_translation). Sem ThreadPoolExecutor: toda chamada é uma requisição de
-    rede ao LLM; o paralelismo real desse caminho é delegado ao chamador (ex.:
-    resolve_pt_translation/translate_in_parallel), não a esta função, usada hoje só
-    para colunas de baixo volume (overview do discover, name_pt da configuration).
+    resolve_pt_translation). Toda chamada é uma requisição de rede ao LLM (~1s), então
+    roda em paralelo via detect_in_parallel (ThreadPoolExecutor) e loga o progresso e um
+    resumo de falhas — em série, uma coluna de milhares de linhas levava dezenas de
+    minutos (ex.: overview do discover de um ano inteiro).
 
     detect_fn é recebido como parâmetro (em vez de resolvido aqui dentro) pelo mesmo
     motivo de resolve_pt_translation: os chamadores continuam passando sua própria
@@ -45,6 +47,7 @@ def add_detected_language_column(
         only_missing:  Quando True, só detecta para linhas onde target_column ainda
                        está vazia/nula, preservando valores já calculados em execuções
                        anteriores (evita recomputar à toa).
+        max_workers:   Número de threads concorrentes na detecção.
 
     Returns:
         df com target_column adicionada (também modificado in-place).
@@ -59,5 +62,8 @@ def add_detected_language_column(
 
     if pending_mask.any():
         fn = detect_fn or detect_language_llm
-        df.loc[pending_mask, target_column] = df.loc[pending_mask, source_column].fillna("").apply(fn)
+        texts = df.loc[pending_mask, source_column].fillna("").tolist()
+        df.loc[pending_mask, target_column] = detect_in_parallel(
+            texts, fn, max_workers=max_workers, label=f"Detecção de idioma '{source_column}'",
+        )
     return df

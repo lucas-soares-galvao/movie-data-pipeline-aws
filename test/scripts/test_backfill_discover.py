@@ -189,6 +189,26 @@ class TestPipelineDiscover:
         for c in mock_read.call_args_list:
             assert c.args[2] == "discover"
 
+    def test_read_from_sor_recebe_sot_e_tabela_para_reaproveitar_idioma_detectado(self, monkeypatch):
+        _, mock_read, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        movie_call, tv_call = mock_read.call_args_list
+        assert movie_call.kwargs["s3_bucket_sot"] == "bucket-sot-test"
+        assert movie_call.kwargs["table_name"] == "tb_discover_movie"
+        assert tv_call.kwargs["table_name"] == "tb_discover_tv"
+
+    def test_loga_as_tres_etapas_da_unidade_e_o_tempo_total(self, monkeypatch, caplog):
+        with caplog.at_level("INFO"):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mensagens = [r.message for r in caplog.records]
+        for esperado in (
+            "[movie 2020] Etapa 1/3",
+            "[movie 2020] Etapa 2/3",
+            "[movie 2020] Etapa 3/3",
+            "[tv 2020] Etapa 3/3",
+        ):
+            assert any(m.startswith(esperado) for m in mensagens), esperado
+        assert any(m.startswith("Discover concluído com sucesso para movie year=2020 em ") for m in mensagens)
+
     def test_write_parquet_particiona_por_ano_com_overwrite_partitions(self, monkeypatch):
         _, _, mock_write, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         for c in mock_write.call_args_list:
