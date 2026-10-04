@@ -128,9 +128,11 @@ def detect_in_parallel(
 
     Falha = texto não vazio cujo detect_fn devolveu None (chamada ao LLM falhou ou
     resposta fora do padrão ISO 639-1, ver detect_language_llm). Texto vazio devolve
-    None sem chamada de rede e não conta como falha. O resumo existe porque cada falha
-    individual só vira um WARNING solto — com milhares de linhas, sem ele não dá para
-    saber se o LLM está degradado.
+    None sem chamada de rede e não conta como falha — o resumo os mostra à parte
+    ("K vazio(s)"), senão "N detectado(s) em T texto(s)" parece perda quando boa parte de T
+    nunca foi enviada ao LLM. O resumo existe porque cada falha individual só vira um
+    WARNING solto — com milhares de linhas, sem ele não dá para saber se o LLM está
+    degradado.
 
     Args:
         texts:       Textos a ter o idioma detectado, na ordem a retornar.
@@ -149,8 +151,10 @@ def detect_in_parallel(
     if label:
         detected = sum(1 for result in results if result is not None)
         failures = sum(1 for text, result in zip(texts, results) if result is None and text.strip())
+        empty = sum(1 for text in texts if not text.strip())
+        empty_part = f", {empty} vazio(s)" if empty else ""
         logger.info(
-            f"{label}: {detected} detectado(s), {failures} falha(s) em {len(texts)} texto(s) "
+            f"{label}: {detected} detectado(s), {failures} falha(s){empty_part} em {len(texts)} texto(s) "
             f"({format_elapsed(time.monotonic() - started)})."
         )
     return results
@@ -182,8 +186,33 @@ def _detect_missing(
     return df
 
 
+def _pending_mask(
+    df: pd.DataFrame,
+    source_column: str,
+    target_column: str,
+    detected_language_pt_column: str,
+) -> pd.Series:
+    """Linhas "pendentes" (*_needs_translation): fonte preenchida, idioma do destino diferente de
+    "pt" (inclui detecção indisponível) E texto do destino não alterado em relação à fonte.
+
+    "Alterado" = destino preenchido e diferente da fonte, sem diferença de maiúsculas/minúsculas
+    nem de espaços nas pontas (assim "sexy" -> "Sexy" continua não alterado). Se o texto mudou,
+    alguém (o TMDB ou o LLM) o traduziu: a dúvida do detector de idioma — que erra em textos
+    curtos, como listas de keywords ("drama turco" detectado como "tr") — não deve reabrir a
+    pendência. Destino vazio ou igual à fonte continuam pendentes. Só afeta o sinal/log: quais
+    linhas vão ao tradutor (elegibilidade) continua sendo decidido pelo idioma detectado.
+    """
+    has_source = df[source_column].notna() & (df[source_column] != "")
+    has_target = df[target_column].notna() & (df[target_column] != "")
+    source_text = df[source_column].fillna("").astype(str).str.strip().str.casefold()
+    target_text = df[target_column].fillna("").astype(str).str.strip().str.casefold()
+    text_changed = has_target & (target_text != source_text)
+    return has_source & (df[detected_language_pt_column] != "pt") & ~text_changed
+
+
 def _log_balance(
     df: pd.DataFrame,
+    source_column: str,
     target_column: str,
     detected_language_pt_column: str,
     has_source: pd.Series,
@@ -195,11 +224,12 @@ def _log_balance(
     sample_id_column: str | None,
 ) -> None:
     """Loga a linha de balanço de target_column (estado final desta chamada) e a soma no total
-    da execução. "Pendente" é a mesma definição de *_needs_translation: fonte preenchida e idioma
-    do destino diferente de "pt" (inclui detecção indisponível), sem o teto de tentativas."""
+    da execução. "Pendente" é a mesma definição de *_needs_translation (ver _pending_mask), sem o
+    teto de tentativas."""
     source = int(has_source.sum())
     already_pt = int((has_source & (df[detected_language_pt_column] == "pt")).sum())
-    pending_mask = (has_source & (df[detected_language_pt_column] != "pt")).fillna(False).astype(bool)
+    pending_mask = _pending_mask(df, source_column, target_column, detected_language_pt_column)
+    pending_mask = pending_mask.fillna(False).astype(bool)
     pending = int(pending_mask.sum())
     record_balance(
         target_column, fonte=source, ja_pt=already_pt, traduzidas=tried, ok=ok, iguais=same,
@@ -249,10 +279,12 @@ def resolve_pt_translation(
     translation_attempts_column para as linhas elegíveis desta execução; (7) redetecta
     detected_language_pt_column só nas linhas recém-traduzidas (a detecção do passo 2,
     nelas, ficou obsoleta); (8) se needs_translation_column for informado, grava nela
-    fonte preenchida E detected_language_pt_column != "pt" — ao contrário da
-    elegibilidade do passo 4, propositalmente SEM o teto de tentativas: reflete se o
-    dado, como está agora, ainda não está em português, mesmo que o pipeline já tenha
-    desistido de retentar essa linha.
+    fonte preenchida E detected_language_pt_column != "pt" E texto do destino não alterado
+    em relação à fonte (ver _pending_mask) — ao contrário da elegibilidade do passo 4,
+    propositalmente SEM o teto de tentativas: reflete se o dado, como está agora, ainda não
+    está em português, mesmo que o pipeline já tenha desistido de retentar essa linha. O
+    critério "texto não alterado" existe porque o detector de idioma erra em textos curtos
+    (listas de keywords): uma tradução correta detectada como "en"/"es" não é pendência.
 
     "Idioma do destino disponível": se target_column tem texto mas a detecção do passo 2
     falhou (detected_language_pt_column nulo — erro/timeout/resposta inválida do LLM), o
@@ -281,9 +313,10 @@ def resolve_pt_translation(
         max_workers:       Threads concorrentes usadas na tradução.
         max_attempts:      Teto de tentativas antes de desistir de uma linha.
         needs_translation_column: Se informado, nome da coluna booleana a gravar com
-                           "fonte preenchida E detected_language_pt_column != 'pt'"
-                           (estado atual do dado, sem considerar o teto de tentativas;
-                           fica True enquanto a detecção do destino estiver pendente).
+                           "fonte preenchida E detected_language_pt_column != 'pt' E texto
+                           do destino não alterado em relação à fonte" (estado atual do
+                           dado, sem considerar o teto de tentativas; fica True enquanto o
+                           destino for igual à fonte/vazio e a detecção não confirmar "pt").
                            Se None (default), nenhuma coluna é criada — usado pelos
                            chamadores que não precisam desse sinal (ex.: tabela
                            configuration).
@@ -327,9 +360,11 @@ def resolve_pt_translation(
     )
     if not eligible_mask.any():
         if needs_translation_column:
-            df[needs_translation_column] = has_source & (df[detected_language_pt_column] != "pt")
+            df[needs_translation_column] = _pending_mask(
+                df, source_column, target_column, detected_language_pt_column,
+            )
         _log_balance(
-            df, target_column, detected_language_pt_column, has_source,
+            df, source_column, target_column, detected_language_pt_column, has_source,
             tried=0, ok=0, same=0, kept=skipped_unknown, sample_id_column=sample_id_column,
         )
         return df, 0
@@ -356,10 +391,12 @@ def resolve_pt_translation(
     )
 
     if needs_translation_column:
-        df[needs_translation_column] = has_source & (df[detected_language_pt_column] != "pt")
+        df[needs_translation_column] = _pending_mask(
+            df, source_column, target_column, detected_language_pt_column,
+        )
 
     _log_balance(
-        df, target_column, detected_language_pt_column, has_source,
+        df, source_column, target_column, detected_language_pt_column, has_source,
         tried=len(values), ok=success_count, same=failure_count, kept=skipped_unknown,
         sample_id_column=sample_id_column,
     )
