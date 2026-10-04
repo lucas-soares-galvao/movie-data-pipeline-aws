@@ -619,10 +619,12 @@ resource "aws_iam_policy" "cicd_observability" {
         # falha com AccessDenied em budgets:ViewBudget. Remover este statement e o
         # BudgetsTags abaixo num commit seguinte, depois que o apply destruir o budget.
         # AWS Budgets não suporta restrição por ARN nas actions de gerenciamento.
+        # O DeleteBudget do provider também chama budgets:ModifyBudget.
         Sid    = "BudgetsCleanup"
         Effect = "Allow"
         Action = [
           "budgets:ViewBudget",
+          "budgets:ModifyBudget",
           "budgets:DescribeBudgets",
           "budgets:DeleteBudget",
           "budgets:DescribeNotificationsForBudget",
