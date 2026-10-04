@@ -42,7 +42,7 @@ Ao mexer nos arquivos abaixo, não reverta essas escolhas "para simplificar" sem
 - **S3 Intelligent-Tiering**: não recomendar trocar o lifecycle manual atual por Intelligent-Tiering. O padrão de acesso deste pipeline é previsível (batch ETL + leituras do FilmBot), então a taxa de monitoramento por objeto do Intelligent-Tiering tende a não se pagar aqui. Só reconsiderar se o padrão de acesso deixar de ser previsível.
 - **Lambda `memory_size` fixo**: antes de ajustar, validar com métricas reais (`Max Memory Used` no CloudWatch) em vez de aumentar/reduzir especulativamente.
 - **Savings Plans / Reserved Instances**: não se aplicam a este stack (serverless on-demand + Lightsail de bundle fixo já mínimo). Não sugerir como otimização — a alavanca real aqui já foi tomada (eliminar ociosidade, dimensionar mínimo).
-- **AWS Budgets cobre só o Translate por ora**: `aws_budgets_budget.translate_monthly_cost` é o único budget do projeto — não existe Cost Anomaly Detection nem um budget geral por ambiente. Só expandir se pedido explicitamente; o padrão (`cost_filter` por `Service`) já está estabelecido em `infra/budgets.tf` caso outro serviço precise da mesma trava no futuro.
+- **Sem AWS Budgets nem Cost Anomaly Detection hoje**: o budget do Translate (`aws_budgets_budget.translate_monthly_cost`) foi removido quando a tradução migrou para LLM, e não existe um budget geral por ambiente. Só adicionar se pedido explicitamente.
 
 ## Regras ao avaliar custo em mudanças novas
 
