@@ -38,6 +38,16 @@ class TestMain:
                 "arn:aws:secretsmanager:sa-east-1:123456789:secret:tmdb", "tmdb_api_key"
             )
 
+    def test_loga_o_total_de_uso_do_llm_ao_final(self, caplog):
+        with (
+            patch.object(m, "get_parameters_glue", return_value=_BASE),
+            patch.object(m, "get_api_secret", return_value="key-123"),
+            patch.object(m, "run_details_and_watch_providers_for_year"),
+            caplog.at_level("INFO"),
+        ):
+            m.main()
+        assert "LLM [Glue Details — total]: nenhuma chamada ao LLM" in caplog.text
+
     def test_delegates_to_run_details_and_watch_providers_for_year_for_movie(self):
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),

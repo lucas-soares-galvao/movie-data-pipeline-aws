@@ -93,6 +93,7 @@ proj-eng-dados-filmes-aws/
 │           ├── glue_helpers.py        # Utilitários compartilhados de jobs Glue (getResolvedOptions, logging)
 │           ├── traducao.py            # Tradução inglês → português via LLM (OpenRouter, ver traducao_llm.py)
 │           ├── llm_client.py          # Carregamento compartilhado da chave de API do LLM (OpenRouter)
+│           ├── llm_metrics.py         # Uso do LLM (chamadas, falhas por causa, modelo, tokens, custo) e balanço de tradução nos logs
 │           └── triggers.py            # Disparo genérico de Glue jobs
 ├── infra/
 │   ├── envs/
@@ -144,6 +145,7 @@ proj-eng-dados-filmes-aws/
 └── test/
     ├── conftest.py                 # Fixtures globais + bloqueio de rede (nenhum teste chama serviço real)
     ├── test_bloqueio_de_rede.py    # Garante que o bloqueio de rede do conftest raiz funciona
+    ├── test_requirements_tenacity.py  # Todo requirements.txt com litellm também declara tenacity (sem ele os retries do litellm não rodam)
     ├── lambda_api/
     │   ├── __init__.py
     │   ├── conftest.py
@@ -445,9 +447,9 @@ app/<modulo>/
 | Módulo | Deps principais |
 |--------|----------------|
 | `lambda_api` | `boto3`, `requests` |
-| `glue_etl` | `awswrangler`, `boto3`, `pandas`, `awsglue` (Glue runtime) |
+| `glue_etl` | `awswrangler`, `boto3`, `pandas`, `litellm`, `tenacity`, `awsglue` (Glue runtime) |
 | `glue_data_quality` | `awswrangler`, `awsgluedq`, `pyspark`, `awsglue` (Glue runtime) |
-| `glue_details` | `awswrangler`, `boto3`, `pandas`, `requests`, `awsglue` (Glue runtime) |
+| `glue_details` | `awswrangler`, `boto3`, `pandas`, `requests`, `litellm`, `tenacity`, `awsglue` (Glue runtime) |
 | `glue_agg` | `awswrangler`, `boto3`, `pandas`, `awsglue` (Glue runtime) |
 | `lightsail_ia` | `streamlit`, `litellm`, `boto3`, `python-dotenv` |
 | `shared_src` | `boto3`, `requests`, `litellm` |

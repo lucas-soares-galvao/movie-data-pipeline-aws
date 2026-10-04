@@ -214,6 +214,7 @@ def _add_translation(
         detect_fn=detect_fn,
         translate_fn=fn,
         max_workers=_TRANSLATE_MAX_WORKERS_LLM,
+        sample_id_column=key_column,
     )
     return df
 

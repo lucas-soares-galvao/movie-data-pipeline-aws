@@ -4,6 +4,7 @@ Roda fora da Lambda porque o volume de chamadas excede o timeout de 15 min da La
 """
 
 from shared_utils.glue_helpers import configure_glue_logging
+from shared_utils.llm_metrics import log_llm_usage_summary
 from src.utils import (
     fetch_ids_from_changes_file,
     get_api_secret,
@@ -16,6 +17,7 @@ from src.utils import (
 logger = configure_glue_logging()
 
 
+@log_llm_usage_summary("Glue Details")
 def main() -> None:
     """Coleta detalhes da API TMDB para um media_type/ano (ou uma lista de IDs
     mudados via Changes API, no modo changes) e grava no SOT."""

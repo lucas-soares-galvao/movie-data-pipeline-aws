@@ -12,6 +12,8 @@ from typing import TypeVar
 
 import pandas as pd
 
+from shared_utils.llm_metrics import record_balance
+
 __all__ = [
     "translate_in_parallel",
     "detect_in_parallel",
@@ -42,6 +44,9 @@ DETECT_MAX_WORKERS_DEFAULT = 10
 # o resumo final já diz tudo, e um log de progresso por coluna só polui.
 _PROGRESS_MIN_TOTAL = 20
 _PROGRESS_STEP_PCT = 10
+
+# Quantos ids de exemplo das linhas ainda pendentes entram na linha de balanço.
+_BALANCE_SAMPLE_IDS = 3
 
 
 def format_elapsed(seconds: float) -> str:
@@ -177,6 +182,40 @@ def _detect_missing(
     return df
 
 
+def _log_balance(
+    df: pd.DataFrame,
+    target_column: str,
+    detected_language_pt_column: str,
+    has_source: pd.Series,
+    *,
+    tried: int,
+    ok: int,
+    same: int,
+    kept: int,
+    sample_id_column: str | None,
+) -> None:
+    """Loga a linha de balanço de target_column (estado final desta chamada) e a soma no total
+    da execução. "Pendente" é a mesma definição de *_needs_translation: fonte preenchida e idioma
+    do destino diferente de "pt" (inclui detecção indisponível), sem o teto de tentativas."""
+    source = int(has_source.sum())
+    already_pt = int((has_source & (df[detected_language_pt_column] == "pt")).sum())
+    pending_mask = (has_source & (df[detected_language_pt_column] != "pt")).fillna(False).astype(bool)
+    pending = int(pending_mask.sum())
+    record_balance(
+        target_column, fonte=source, ja_pt=already_pt, traduzidas=tried, ok=ok, iguais=same,
+        mantidas=kept, pendentes=pending,
+    )
+    message = (
+        f"Balanço '{target_column}': {source} com fonte | {already_pt} já em pt | "
+        f"{tried} traduzida(s) ({ok} ok, {same} igual(is) à fonte) | "
+        f"{kept} mantida(s) por detecção indisponível | {pending} pendente(s)"
+    )
+    if pending and sample_id_column and sample_id_column in df.columns:
+        sample = df.loc[pending_mask, sample_id_column].head(_BALANCE_SAMPLE_IDS).tolist()
+        message += f" (ex.: {sample_id_column} {', '.join(str(value) for value in sample)})"
+    logger.info(message)
+
+
 def resolve_pt_translation(
     df: pd.DataFrame,
     source_column: str,
@@ -189,6 +228,7 @@ def resolve_pt_translation(
     max_workers: int = 5,
     max_attempts: int = _MAX_TRANSLATION_ATTEMPTS_DEFAULT,
     needs_translation_column: str | None = None,
+    sample_id_column: str | None = None,
 ) -> tuple[pd.DataFrame, int]:
     """
     Sincroniza target_column (já inicializada pelo chamador — nativo do TMDB, cache
@@ -204,7 +244,8 @@ def resolve_pt_translation(
     target_column ainda vazia → copia sem chamar tradutor e marca
     detected_language_pt_column="pt" direto; (4) elegível para o tradutor = fonte
     preenchida E detected_language_pt_column != "pt" E translation_attempts_column <
-    max_attempts; (5) traduz as linhas elegíveis; (6) incrementa
+    max_attempts E idioma do destino disponível (ver abaixo); (5) traduz as linhas
+    elegíveis; (6) incrementa
     translation_attempts_column para as linhas elegíveis desta execução; (7) redetecta
     detected_language_pt_column só nas linhas recém-traduzidas (a detecção do passo 2,
     nelas, ficou obsoleta); (8) se needs_translation_column for informado, grava nela
@@ -212,6 +253,15 @@ def resolve_pt_translation(
     elegibilidade do passo 4, propositalmente SEM o teto de tentativas: reflete se o
     dado, como está agora, ainda não está em português, mesmo que o pipeline já tenha
     desistido de retentar essa linha.
+
+    "Idioma do destino disponível": se target_column tem texto mas a detecção do passo 2
+    falhou (detected_language_pt_column nulo — erro/timeout/resposta inválida do LLM), o
+    idioma real do destino é desconhecido, não "diferente de pt". Traduzir nesse caso
+    sobrescreveria um texto que pode já estar correto (inclusive a tradução nativa do
+    TMDB) e, se o tradutor também falhar, o trocaria pela fonte em inglês. Essas linhas
+    ficam como estão, sem gastar tentativa; a detecção é refeita na próxima execução
+    (valor nulo nunca é reaproveitado, ver reuse_detected_language). Destino vazio não
+    entra nessa regra: o idioma nulo ali é esperado, e a linha continua elegível.
 
     translation_attempts_column existe porque conteúdo genuinamente não traduzível
     (nomes próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
@@ -232,13 +282,19 @@ def resolve_pt_translation(
         max_attempts:      Teto de tentativas antes de desistir de uma linha.
         needs_translation_column: Se informado, nome da coluna booleana a gravar com
                            "fonte preenchida E detected_language_pt_column != 'pt'"
-                           (estado atual do dado, sem considerar o teto de tentativas).
+                           (estado atual do dado, sem considerar o teto de tentativas;
+                           fica True enquanto a detecção do destino estiver pendente).
                            Se None (default), nenhuma coluna é criada — usado pelos
                            chamadores que não precisam desse sinal (ex.: tabela
                            configuration).
+        sample_id_column:  Se informado (e presente em df), até 3 valores dessa coluna das
+                           linhas ainda pendentes entram como exemplo na linha de balanço
+                           (ex.: "id"). Ignorado se a coluna não existir.
 
     Returns:
-        Tupla (df, quantidade traduzida com sucesso nesta chamada).
+        Tupla (df, quantidade traduzida com sucesso nesta chamada). Ao final loga uma linha de
+        balanço da coluna (com fonte / já em pt / traduzidas / mantidas / pendentes) e soma as
+        mesmas contagens em shared_utils.llm_metrics para o total da execução.
     """
     if translation_attempts_column not in df.columns:
         df[translation_attempts_column] = 0
@@ -252,10 +308,19 @@ def resolve_pt_translation(
     df.loc[direct_copy_mask, detected_language_pt_column] = "pt"
 
     has_source = df[source_column].notna() & (df[source_column] != "")
+    has_target = df[target_column].notna() & (df[target_column] != "")
     already_pt = df[detected_language_pt_column] == "pt"
     attempts_exhausted = df[translation_attempts_column] >= max_attempts
-    eligible_mask = has_source & ~already_pt & ~attempts_exhausted
+    detection_unknown = has_target & df[detected_language_pt_column].isna()
+    eligible_mask = has_source & ~already_pt & ~attempts_exhausted & ~detection_unknown
 
+    skipped_unknown = int((has_source & ~already_pt & ~attempts_exhausted & detection_unknown).sum())
+    if skipped_unknown:
+        logger.info(
+            f"{skipped_unknown} registro(s) de '{target_column}' mantidos como estão: a detecção do "
+            "idioma do texto atual falhou, então não dá para saber se ele já está em português "
+            "(a detecção é refeita na próxima execução)."
+        )
     logger.info(
         f"Traduzindo até {eligible_mask.sum()} registros para '{target_column}' "
         f"({max_workers} workers)..."
@@ -263,6 +328,10 @@ def resolve_pt_translation(
     if not eligible_mask.any():
         if needs_translation_column:
             df[needs_translation_column] = has_source & (df[detected_language_pt_column] != "pt")
+        _log_balance(
+            df, target_column, detected_language_pt_column, has_source,
+            tried=0, ok=0, same=0, kept=skipped_unknown, sample_id_column=sample_id_column,
+        )
         return df, 0
 
     values = df.loc[eligible_mask, source_column].fillna("").tolist()
@@ -289,6 +358,11 @@ def resolve_pt_translation(
     if needs_translation_column:
         df[needs_translation_column] = has_source & (df[detected_language_pt_column] != "pt")
 
+    _log_balance(
+        df, target_column, detected_language_pt_column, has_source,
+        tried=len(values), ok=success_count, same=failure_count, kept=skipped_unknown,
+        sample_id_column=sample_id_column,
+    )
     return df, success_count
 
 
@@ -435,8 +509,11 @@ def _reuse_translation_text(
     can_reuse = new_target_empty & old_target_valid & source_unchanged
     if can_reuse.any():
         df.loc[can_reuse, target_column] = old_target[can_reuse]
+        reused = int(can_reuse.sum())
+        record_balance(target_column, reaproveitadas=reused)
         logger.info(
-            f"Reaproveitando tradução existente de {can_reuse.sum()} registro(s) "
-            f"para '{target_column}' (fonte '{source_column}' inalterada)."
+            f"Reaproveitando tradução existente de {reused} de {len(df)} registro(s) "
+            f"({round(100 * reused / len(df))}%) para '{target_column}' "
+            f"(fonte '{source_column}' inalterada)."
         )
     return df

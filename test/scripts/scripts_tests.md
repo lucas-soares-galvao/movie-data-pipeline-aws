@@ -61,6 +61,7 @@ processo, sem invocar Lambda nem acionar o job Glue ETL — os testes mockam ess
 | `test_collect_discover_data_recebe_folder_e_bucket_corretos` | `bucket`/`folder`/`year` batem com `S3_BUCKET_SOR`/`tmdb/discover/{media_type}` |
 | `test_read_from_sor_recebe_table_type_discover` | Terceiro argumento posicional de `read_from_sor` é `"discover"` |
 | `test_read_from_sor_recebe_sot_e_tabela_para_reaproveitar_idioma_detectado` | `s3_bucket_sot` e `table_name` (`tb_discover_movie`/`tb_discover_tv`) são repassados a `read_from_sor`, para o cache de idioma detectado do overview (`read_existing_discover`) |
+| `test_loga_uso_do_llm_da_etapa_2_e_o_total_do_backfill` | Cada unidade loga `LLM [<tipo> <ano> 2/3]` e o backfill loga `LLM [Backfill discover — total]` (aqui `nenhuma chamada ao LLM`, pois `read_from_sor` é mockado) |
 | `test_loga_as_tres_etapas_da_unidade_e_o_tempo_total` | Cada unidade loga `[<tipo> <ano>] Etapa 1/3` (coleta TMDB), `2/3` (transformação SOR→SOT com detecção de idioma) e `3/3` (gravação SOT), e `Discover concluído com sucesso para <tipo> year=<ano> em <tempo>` — para dar para acompanhar a etapa em que o backfill está |
 | `test_write_parquet_particiona_por_ano_com_overwrite_partitions` | `partition_cols=["year"]`, `mode="overwrite_partitions"` — mesma config de `app/glue_etl/main.py:_TABLE_CONFIG["discover"]` |
 | `test_write_parquet_usa_tabela_e_database_do_media_type` | `table_name`/`database` batem com `TABLE_DISCOVER_MOVIE`/`GLUE_DATABASE_MOVIE` (e o par tv) |
