@@ -24,7 +24,11 @@ from shared_utils.api_client import get_api_secret  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option
 from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
-from shared_utils.traducao import resolve_pt_translation, reuse_existing_translation
+from shared_utils.traducao import (
+    format_elapsed,
+    resolve_pt_translation,
+    reuse_existing_translation,
+)
 from shared_utils.traducao_llm import translate_text_llm
 from shared_utils.triggers import trigger_glue_job
 
@@ -756,7 +760,11 @@ def _add_translations_pt(
     df = _force_reuse_when_unflagged(
         df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
     )
-    df = reuse_existing_translation(df, previous_df, "overview_en", "overview_pt")
+    df = reuse_existing_translation(
+        df, previous_df, "overview_en", "overview_pt",
+        detected_language_en_column="overview_detected_language_en",
+        detected_language_pt_column="overview_detected_language_pt",
+    )
 
     df, _ = resolve_pt_translation(
         df,
@@ -801,7 +809,11 @@ def _add_translations_keywords_pt(
     df = _force_reuse_when_unflagged(
         df, previous_df, changed_fields_by_id, "keywords", "keywords_pt", "keywords_translation_attempts",
     )
-    df = reuse_existing_translation(df, previous_df, "keywords", "keywords_pt")
+    df = reuse_existing_translation(
+        df, previous_df, "keywords", "keywords_pt",
+        detected_language_en_column="keywords_detected_language_en",
+        detected_language_pt_column="keywords_detected_language_pt",
+    )
 
     df, _ = resolve_pt_translation(
         df,
@@ -844,7 +856,11 @@ def _add_translations_tagline_pt(
     df = _force_reuse_when_unflagged(
         df, previous_df, changed_fields_by_id, "tagline", "tagline_pt", "tagline_translation_attempts",
     )
-    df = reuse_existing_translation(df, previous_df, "tagline", "tagline_pt")
+    df = reuse_existing_translation(
+        df, previous_df, "tagline", "tagline_pt",
+        detected_language_en_column="tagline_detected_language_en",
+        detected_language_pt_column="tagline_detected_language_pt",
+    )
 
     df, _ = resolve_pt_translation(
         df,
@@ -898,6 +914,7 @@ def collect_and_write_details(
         outra fonte). IDs que falharam na API ou ficaram sem year não aparecem aqui,
         mesmo que já existissem previamente na tabela.
     """
+    started = time.monotonic()
     records = []
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
 
@@ -910,7 +927,10 @@ def collect_and_write_details(
         except requests.RequestException as exc:
             logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
 
-    logger.info(f"Buscando detalhes de {len(ids)} IDs ({content_type}) com {_TMDB_MAX_WORKERS} workers...")
+    logger.info(
+        f"[Detalhes {content_type} 1/4] Buscando detalhes de {len(ids)} IDs na API do TMDB "
+        f"com {_TMDB_MAX_WORKERS} workers..."
+    )
     _run_parallel(fetch_and_parse, ids)
 
     if not records:
@@ -934,6 +954,10 @@ def collect_and_write_details(
 
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
 
+    logger.info(
+        f"[Detalhes {content_type} 2/4] Lendo registros existentes (cache de tradução e de idioma) "
+        f"— {len(df)} registro(s) coletado(s) em {format_elapsed(time.monotonic() - started)}."
+    )
     # Leitura antecipada dos registros existentes (uma única vez por partição year),
     # produzindo duas visões a partir do mesmo df_read:
     # - df_existing_delta: ids que SERÃO sobrescritos neste run -> cache de tradução
@@ -961,6 +985,10 @@ def collect_and_write_details(
         except Exception as exc:  # noqa: BLE001
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
+    logger.info(
+        f"[Detalhes {content_type} 3/4] Traduzindo overview, keywords e tagline para português "
+        "(reaproveitando tradução e idioma já detectados quando o texto não mudou)..."
+    )
     df = _add_translations_pt(
         df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
         changed_fields_by_id=changed_fields_by_id,
@@ -990,8 +1018,9 @@ def collect_and_write_details(
     # Grava de volta — overwrite_partitions substitui apenas as partições afetadas,
     # preservando o histórico de anos anteriores intacto.
     logger.info(
-        f"Gravando {len(df)} registros de detalhes em {s3_path} | "
-        f"particao=[year] | mode=overwrite_partitions"
+        f"[Detalhes {content_type} 4/4] Gravando {len(df)} registros de detalhes em {s3_path} | "
+        f"particao=[year] | mode=overwrite_partitions | total até aqui: "
+        f"{format_elapsed(time.monotonic() - started)}"
     )
     wr.s3.to_parquet(
         df=df,

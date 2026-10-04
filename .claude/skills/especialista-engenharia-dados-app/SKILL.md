@@ -81,7 +81,7 @@ Usado por todas as Lambdas e jobs Glue; empacotado como wheel (Glue) ou copiado 
 |---|---|---|
 | `api_client.py` | `api_get`, `get_api_secret`, `_calculate_wait` | Cliente HTTP genérico com retry/backoff exponencial e leitura de secret no Secrets Manager |
 | `glue_helpers.py` | `get_resolved_option`, `configure_glue_logging` | Wrapper de `getResolvedOptions` com tratamento de args opcionais (`SystemExit`) |
-| `traducao.py` / `traducao_llm.py` | `resolve_pt_translation`, `translate_in_parallel`, `reuse_existing_translation`, `translate_text_llm` | Tradução EN→PT via LLM (OpenRouter, `litellm`, com fallback nativo de modelo embutido na chamada), paralelismo e cache/reuso |
+| `traducao.py` / `traducao_llm.py` | `resolve_pt_translation`, `translate_in_parallel`, `detect_in_parallel`, `reuse_existing_translation`, `reuse_detected_language`, `translate_text_llm` | Tradução EN→PT via LLM (OpenRouter, `litellm`, com fallback nativo de modelo embutido na chamada), paralelismo (tradução **e** detecção de idioma — uma chamada de LLM por linha em série custa dezenas de minutos em lote grande) e cache/reuso de tradução e de idioma detectado |
 | `idioma.py` / `idioma_llm.py` | `add_detected_language_column`, `detect_language_llm` | Detecção de idioma via LLM (OpenRouter) |
 | `triggers.py` | `trigger_glue_job` | Disparo genérico de outro job Glue ao final de uma execução |
 

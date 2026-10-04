@@ -16,8 +16,8 @@ test/shared_src/
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
 ├── test_llm_client.py      # Testes de load_llm_api_key (chave do LLM via Secrets Manager/ambiente)
-├── test_traducao_llm.py    # Testes de translate_text_llm (LLM via OpenRouter)
-├── test_traducao.py        # Testes de translate_in_parallel, resolve_pt_translation e reuse_existing_translation
+├── test_traducao_llm.py    # Testes de translate_text_llm (LLM via OpenRouter), do logging do LiteLLM e do lock da chave de API
+├── test_traducao.py        # Testes de translate_in_parallel, detect_in_parallel, format_elapsed, resolve_pt_translation, reuse_existing_translation e reuse_detected_language
 ├── test_idioma_llm.py      # Testes de detect_language_llm (LLM via OpenRouter)
 ├── test_idioma.py          # Testes de add_detected_language_column
 └── test_triggers.py        # Testes de trigger_glue_job
@@ -163,6 +163,18 @@ exceção — devolve o texto original em caso de erro.
 | `test_repassa_fallback_de_modelo_no_extra_body` | `extra_body.models=["deepseek/deepseek-v4.1-flash"]` (default) e `extra_body.reasoning={"enabled": False}` |
 | `test_mensagem_do_usuario_e_o_proprio_texto` | A última mensagem é `{"role": "user", "content": text}`, a primeira é `system` |
 
+### `TestLoggingDoLiteLLM`
+
+| Teste | O que verifica |
+|---|---|
+| `test_logger_do_litellm_so_emite_warning_ou_acima` | O logger `LiteLLM` fica em `WARNING` e `litellm.suppress_debug_info` é `True` — o LiteLLM emitia 2 linhas INFO por chamada e afogava o log de lotes grandes; falhas reais (WARNING/ERROR) continuam aparecendo |
+
+### `TestGetLlmApiKey`
+
+| Teste | O que verifica |
+|---|---|
+| `test_le_o_secret_uma_unica_vez_sob_concorrencia` | 8 threads chamando `_get_llm_api_key` ao mesmo tempo com o cache vazio leem o secret (`load_llm_api_key`, mockado com um `sleep`) **uma única vez** — o `threading.Lock` evita uma leitura do Secrets Manager por thread, já que tradução e detecção rodam em `ThreadPoolExecutor` |
+
 ## Casos de teste — `test_idioma_llm.py`
 
 ### `TestDetectLanguageLlm`
@@ -190,6 +202,55 @@ texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem
 | `test_traduz_cada_valor_e_preserva_a_ordem` | Aplica `translate_fn` a cada valor via `ThreadPoolExecutor`, preservando a ordem de entrada |
 | `test_lista_vazia_nao_chama_traduzir_fn` | Lista vazia retorna `[]` sem chamar `translate_fn` |
 | `test_usa_max_workers_informado` | `max_workers` é repassado ao `ThreadPoolExecutor`, não hardcoded |
+
+### `TestTranslateInParallelProgresso`
+
+| Teste | O que verifica |
+|---|---|
+| `test_loga_progresso_a_cada_10_porcento_em_lote_grande` | Com `progress_label` e 20 itens (`max_workers=1`, ordem determinística), loga 10 linhas de progresso (`2/20 (10%)` … `20/20 (100%)`) |
+| `test_nao_loga_progresso_em_lote_pequeno` | Lote abaixo de 20 itens não loga progresso intermediário |
+| `test_sem_label_nao_loga_progresso` | Sem `progress_label`, nada é logado |
+
+### `TestFormatElapsed`
+
+| Teste | O que verifica |
+|---|---|
+| `test_segundos` / `test_minutos_e_segundos` / `test_horas_minutos_e_segundos` | `0s`, `45s`, `59s` (trunca); `3m12s`; `1h05m10s` |
+
+### `TestDetectInParallel`
+
+| Teste | O que verifica |
+|---|---|
+| `test_detecta_cada_texto_e_preserva_a_ordem` | Resultado na mesma ordem dos textos |
+| `test_lista_vazia_nao_chama_detect_fn` | Lista vazia devolve `[]` sem chamar `detect_fn` nem logar |
+| `test_roda_em_paralelo` | 2 workers esperam um ao outro numa `threading.Barrier` (timeout 5 s) — se rodasse em série, a primeira chamada nunca sairia dela |
+| `test_loga_resumo_com_detectados_e_falhas` | Resumo `1 detectado(s), 1 falha(s) em 3 texto(s)`; texto vazio devolve `None` sem chamada de rede e não conta como falha |
+| `test_sem_label_nao_loga_resumo` | Sem `label`, nenhum resumo |
+
+### `TestReuseDetectedLanguage`
+
+| Teste | O que verifica |
+|---|---|
+| `test_reaproveita_quando_texto_identico` | Idioma antigo copiado quando o texto não mudou para o mesmo `id` |
+| `test_nao_reaproveita_quando_texto_mudou` | Texto alterado força nova detecção |
+| `test_nao_reaproveita_idioma_antigo_nulo_ou_vazio` | Detecção que falhou (`None`/`""`) não é congelada — continua pendente |
+| `test_nao_reaproveita_texto_vazio` | Texto atual vazio não herda idioma |
+| `test_nao_sobrescreve_idioma_ja_preenchido` | Valor já preenchido em `df` é preservado |
+| `test_id_novo_sem_historico_fica_pendente` | `id` ausente de `previous_df` fica sem idioma |
+| `test_df_anterior_none_ou_vazio_nao_quebra_nem_cria_coluna` | `previous_df` `None`/vazio devolve `df` sem criar a coluna |
+| `test_ignora_schema_antigo_sem_coluna_de_idioma` | `previous_df` sem a coluna de idioma não afeta nada |
+| `test_ids_duplicados_no_df_anterior_usa_ultimo` | Duplicatas de `id` em `previous_df` → vale a última |
+| `test_coluna_chave_customizada` | Funciona com `key_column="iso_639_1"` (caso da `configuration`) |
+| `test_loga_quantidade_reaproveitada` | Loga `Reaproveitando idioma detectado de N registro(s)` |
+
+### `TestReuseExistingTranslationIdiomas`
+
+| Teste | O que verifica |
+|---|---|
+| `test_reaproveita_idiomas_junto_com_a_traducao` | Com `detected_language_en_column`/`detected_language_pt_column`, reaproveita tradução e os dois idiomas |
+| `test_idioma_pt_nao_reaproveitado_quando_o_destino_atual_difere_do_antigo` | Tradução nativa do TMDB diferente da traduzida antes → o idioma antigo descreve outro texto, `idioma_pt` fica pendente; `idioma_en` (fonte igual) é reaproveitado |
+| `test_idioma_en_nao_reaproveitado_quando_fonte_mudou` | Fonte alterada → nenhum dos dois idiomas é reaproveitado |
+| `test_sem_colunas_de_idioma_informadas_nao_cria_colunas_de_idioma` | Sem os parâmetros novos, o comportamento anterior é preservado (nenhuma coluna de idioma criada) |
 
 ### `TestResolvePtTranslation`
 
@@ -221,6 +282,7 @@ um manter sua própria cópia da orquestração.
 | `test_cria_coluna_tentativas_como_zero_quando_ausente` | Cria a coluna de tentativas como `0` quando ainda não existe no DataFrame |
 | `test_only_missing_nao_recalcula_idioma_en_ja_preenchido` | Não redetecta o idioma da fonte quando a coluna já está preenchida (evita recomputar à toa em reruns) |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
+| `test_detecta_idioma_em_paralelo_com_max_workers_informado` | As 3 detecções (fonte, destino inicial e redetecção do recém-traduzido) passam por `detect_in_parallel` com o mesmo `max_workers` da tradução |
 | `test_precisa_traducao_column_none_nao_cria_coluna` | Parâmetro `needs_translation_column` omitido (`None`, default) não cria coluna nova no DataFrame |
 | `test_precisa_traducao_true_quando_resultado_ainda_nao_e_pt` | Fonte preenchida e idioma do resultado ainda diferente de `"pt"` após a tentativa de tradução → `True` |
 | `test_precisa_traducao_false_quando_resultado_ja_e_pt` | Fonte já detectada como `"pt"` (cópia direta) → `False` |
@@ -263,8 +325,11 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_only_missing_false_recalcula_todas_as_linhas` | `only_missing=False` (default) recalcula todas as linhas, mesmo já preenchidas — comportamento idêntico ao anterior |
 | `test_only_missing_true_preserva_linhas_ja_preenchidas` | `only_missing=True` só detecta onde a coluna de destino ainda está vazia/nula |
 | `test_only_missing_true_cria_coluna_ausente_e_detecta_tudo` | `only_missing=True` com a coluna de destino ainda ausente detecta todas as linhas normalmente |
+| `test_roda_em_paralelo` | 2 workers esperam um ao outro numa `threading.Barrier` — se a detecção rodasse em série, travaria até o timeout |
+| `test_repassa_max_workers_e_label_ao_detect_in_parallel` | `max_workers` informado e o rótulo `Detecção de idioma '<coluna>'` chegam a `detect_in_parallel` |
+| `test_loga_resumo_de_detectados_e_falhas` | Loga o resumo `1 detectado(s), 1 falha(s) em 2 texto(s)` |
 
-**Nota sobre mock de `detect_fn`/`translate_fn` passados a `.apply()`:** `pandas.Series.apply`
+**Nota histórica sobre mock de `detect_fn`/`translate_fn` passados a `.apply()` (não se aplica mais à detecção):** desde que `add_detected_language_column`/`_detect_missing` passaram a usar `detect_in_parallel` (`ThreadPoolExecutor.map`), um `Mock` como `detect_fn` funciona normalmente; o `new=<função simples>` em `test_default_detect_fn_usado_quando_nao_informado` ficou como estava, sem prejuízo. A restrição abaixo vale para qualquer código que ainda use `Series.apply`: `pandas.Series.apply`
 trata um `unittest.mock.Mock`/`MagicMock` como *list-like* (por configurar `__iter__` por
 padrão) e tenta uma agregação em vez de chamar a função por elemento — gera
 `ValueError: No objects to concatenate`. Qualquer teste que mocke uma função destinada a

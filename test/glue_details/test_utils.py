@@ -456,6 +456,28 @@ class TestAddTranslationsOverviewPt:
             result = u._add_translations_pt(df, detect_fn=lambda t: "en")
         assert result["overview_pt"].iloc[0] == "[PT] Já em português"
 
+    def test_reaproveita_traducao_e_idiomas_do_cache_sem_chamar_llm(self):
+        df = pd.DataFrame({
+            "id": [1],
+            "overview_en": ["A great movie"],
+            "overview_pt_tmdb": [None],
+        })
+        previous_df = pd.DataFrame({
+            "id": [1],
+            "overview_en": ["A great movie"],
+            "overview_pt": ["Um grande filme"],
+            "overview_detected_language_en": ["en"],
+            "overview_detected_language_pt": ["pt"],
+        })
+        detect_fn = MagicMock()
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = u._add_translations_pt(df, previous_df=previous_df, detect_fn=detect_fn)
+        assert result["overview_pt"].iloc[0] == "Um grande filme"
+        assert result["overview_detected_language_en"].iloc[0] == "en"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
+        detect_fn.assert_not_called()
+        mock_traduzir.assert_not_called()
+
     def test_loga_resumo_de_sucesso(self, caplog):
         df = pd.DataFrame({
             "overview_en": ["A great movie"],

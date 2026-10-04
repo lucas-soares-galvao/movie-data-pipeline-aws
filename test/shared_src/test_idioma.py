@@ -1,3 +1,5 @@
+import logging
+import threading
 from unittest.mock import patch
 
 import pandas as pd
@@ -66,3 +68,29 @@ class TestAddDetectedLanguageColumn:
         df = pd.DataFrame({"texto": ["Hello"]})
         result = add_detected_language_column(df, "texto", "detected_language", lambda t: "en", only_missing=True)
         assert result["detected_language"].tolist() == ["en"]
+
+    def test_roda_em_paralelo(self):
+        """Com 2 workers, as 2 chamadas esperam uma à outra na barreira; se rodassem em série
+        a primeira nunca sairia dela (BrokenBarrierError por timeout)."""
+        barreira = threading.Barrier(2, timeout=5)
+
+        def detect_fn(texto):
+            barreira.wait()
+            return "en"
+
+        df = pd.DataFrame({"texto": ["Hello", "World"]})
+        result = add_detected_language_column(df, "texto", "detected_language", detect_fn, max_workers=2)
+        assert result["detected_language"].tolist() == ["en", "en"]
+
+    def test_repassa_max_workers_e_label_ao_detect_in_parallel(self):
+        df = pd.DataFrame({"texto": ["Hello"]})
+        with patch("shared_utils.idioma.detect_in_parallel", return_value=["en"]) as mock_detectar:
+            add_detected_language_column(df, "texto", "detected_language", lambda t: "en", max_workers=3)
+        assert mock_detectar.call_args.kwargs["max_workers"] == 3
+        assert mock_detectar.call_args.kwargs["label"] == "Detecção de idioma 'texto'"
+
+    def test_loga_resumo_de_detectados_e_falhas(self, caplog):
+        df = pd.DataFrame({"texto": ["Hello", "Falha"]})
+        with caplog.at_level(logging.INFO):
+            add_detected_language_column(df, "texto", "detected_language", {"Hello": "en"}.get)
+        assert "1 detectado(s), 1 falha(s) em 2 texto(s)" in caplog.text
