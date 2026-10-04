@@ -160,6 +160,14 @@ ver seção "Notificação de sucesso" abaixo. Ausente, o script só loga um
 
 Cada script possui variáveis adicionais documentadas em sua docstring.
 
+## Logs de andamento e de uso do LLM
+
+O log ao vivo do GitHub Actions não é acessível durante o run (só depois que o job termina), então os scripts imprimem marcadores que permitem entender o que aconteceu sem abrir as tabelas:
+
+- **Etapas por unidade:** `[<tipo> <ano>] Etapa 1/3 … 2/3 … 3/3` em `backfill_discover.py` e `[Detalhes <tipo> 1/4 … 4/4]` no enriquecimento, com o tempo acumulado; detecção/tradução em lote logam progresso a cada 10%.
+- **Uso do LLM:** `LLM [<rótulo>]: N chamada(s) (tradução x, detecção y) | modelos: … | tokens a in / b out | US$ …` por unidade (etapa de detecção do discover e etapa 3/4 do enriquecimento) e `LLM [<script> — total]` ao fim de cada script (inclusive quando sai por exit 75). Havendo falhas, uma linha WARNING com a contagem por causa e um exemplo (ex.: `ImportError 31 (ex.: 'texto': tenacity import failed …)`); `sem mudança N` indica que o LLM devolveu o próprio texto (palavra sem tradução), não erro. Custo e modelo vêm da resposta do OpenRouter (`usage.cost`, `model`); se vierem vazios aparece "custo indisponível"/"modelo indisponível".
+- **Balanço:** `Balanço '<coluna>': N com fonte | N já em pt | N traduzida(s) (ok/igual) | N mantida(s) por detecção indisponível | N pendente(s) (ex.: id …)` por campo e `Balanço total [<script>]` ao fim, com o % reaproveitado do cache. Pendente = fonte preenchida e idioma do destino ≠ `pt` (mesma definição de `*_needs_translation`).
+
 ## Retomada automática (token expirado)
 
 Os 5 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou

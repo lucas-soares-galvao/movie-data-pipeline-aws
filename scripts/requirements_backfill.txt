@@ -4,3 +4,4 @@ pandas
 requests
 litellm==1.96.2
 tzdata
+tenacity

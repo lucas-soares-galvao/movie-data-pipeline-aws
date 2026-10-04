@@ -121,6 +121,7 @@ from app.lambda_api.src.utils import (  # noqa: E402
     collect_watch_providers_ref,
 )
 from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
+from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 from shared_utils.traducao_llm import translate_text_llm  # noqa: E402
 
 logger = shared.setup_logging()
@@ -242,6 +243,7 @@ def _process_content_type(
         on_unit_done(f"{media_type}:watch_providers_ref")
 
 
+@log_llm_usage_summary("Backfill referências")
 def main() -> None:
     region = shared.require_env("AWS_REGION")
 

@@ -43,6 +43,8 @@ Para `configuration` de Movie (idiomas): mesma abordagem — traduz `english_nam
 
 **Cache de idioma (discover):** `read_from_sor` com `table_type="discover"` lê da SOT, via `read_existing_discover`, só as colunas `id`/`overview`/`overview_detected_language` da partição `year` já gravada e copia o idioma detectado dos overviews inalterados (`reuse_detected_language`); só o restante é detectado via LLM, em paralelo (`add_detected_language_column`, `max_workers=10`). A partição continua sendo regravada por completo (`overwrite_partitions`) — o cache só poupa chamadas ao LLM, não muda o resultado. Sem esse cache e em série, a detecção do overview de um ano de filmes (~1000 overviews preenchidos de ~2000 filmes) levava ~19 min por unidade no backfill histórico. **Permissão:** a role do job precisa de `s3:GetObject` nas tabelas lidas (Sid `ReadSotCache` em `glue_etl_sor_sot`, `infra/iam_policies.tf`); sem ela a leitura falha com `AccessDenied`, é capturada por `read_existing_*` e o job degrada para "sem cache" (detecta/traduz tudo) sem avisar.
 
+**Logs de LLM:** `main()` loga ao fim `LLM [Glue ETL — total]` (chamadas por operação e modelo, tokens, custo, `sem mudança`) e, havendo falhas, uma linha WARNING por causa com exemplo (`shared_utils.llm_metrics`), mais o `Balanço '<coluna>'` das traduções de `configuration` (com a chave `iso_*` como id de exemplo das pendentes).
+
 **Fluxo para `now_playing`:**
 Igual ao fluxo estático (sem partição, sem acionar Details). Diferencial: `read_from_sor` lê todos os arquivos da pasta `tmdb/now_playing/movie/` de uma vez e deduplica por `id` antes de gravar.
 
@@ -93,5 +95,5 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 - **pandas** — manipulação de DataFrames
 - **boto3** — acionamento de outros jobs Glue e leitura do secret unificado (Secrets Manager)
 - **shared_utils** — logging, resolução de argumentos do Glue e tradução compartilhados entre módulos do pipeline
-- **litellm** — tradução e detecção de idioma via LLM (OpenRouter), para `overview_detected_language` (discover) e `name_pt`/`name_detected_language_en`/`name_detected_language_pt` (configuration)
+- **litellm** — tradução e detecção de idioma via LLM (OpenRouter), para `overview_detected_language` (discover) e `name_pt`/`name_detected_language_en`/`name_detected_language_pt` (configuration); o `tenacity` também fica em `requirements.txt` porque o `litellm` só o importa ao retentar (`num_retries`) e não o declara — sem ele, todo erro transitório (429/timeout) vira falha na hora
 - **Glue runtime** — execução do job no ambiente AWS Glue

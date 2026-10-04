@@ -3,6 +3,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+from shared_utils import llm_metrics
 from shared_utils.traducao import (
     detect_in_parallel,
     format_elapsed,
@@ -287,6 +288,13 @@ class TestReuseExistingTranslationIdiomas:
         assert result["idioma_en"].isna().all()
         assert result["idioma_pt"].isna().all()
 
+    def test_loga_percentual_reaproveitado_e_soma_no_balanco(self, caplog):
+        df = pd.DataFrame({"id": [1, 2], "overview_en": ["Synopsis", "Outra"], "overview_pt": [None, None]})
+        with llm_metrics.llm_usage_scope() as usage, caplog.at_level(logging.INFO):
+            reuse_existing_translation(df, self._previous(), "overview_en", "overview_pt")
+        assert "Reaproveitando tradução existente de 1 de 2 registro(s) (50%) para 'overview_pt'" in caplog.text
+        assert usage.balance["overview_pt"] == {"reaproveitadas": 1}
+
     def test_sem_colunas_de_idioma_informadas_nao_cria_colunas_de_idioma(self):
         df = pd.DataFrame({"id": [1], "overview_en": ["Synopsis"], "overview_pt": [None]})
         result = reuse_existing_translation(df, self._previous(), "overview_en", "overview_pt")
@@ -529,6 +537,148 @@ class TestResolvePtTranslation:
             )
         assert mock_detectar.call_count == 3  # fonte, destino inicial e redetecção do traduzido
         assert all(c.kwargs["max_workers"] == 3 for c in mock_detectar.call_args_list)
+
+    def test_destino_preenchido_com_deteccao_indisponivel_nao_e_sobrescrito(self, caplog):
+        """Detecção que falhou (None) não é "não é pt": traduzir sobrescreveria um texto que pode já
+        estar correto (ex.: tradução nativa do TMDB) e, se o tradutor falhar, o trocaria pela fonte."""
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Olá nativo"]})
+        traduzir_fn = MagicMock(side_effect=lambda t: "TRADUZIDO")
+
+        with caplog.at_level(logging.INFO):
+            df, sucesso = resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "en" if t == "Hello" else None, traduzir_fn,
+                needs_translation_column="overview_precisa",
+            )
+
+        traduzir_fn.assert_not_called()
+        assert sucesso == 0
+        assert df["overview_pt"].tolist() == ["Olá nativo"]
+        assert df["overview_tentativas"].tolist() == [0]
+        assert df["overview_precisa"].tolist() == [True]
+        assert "1 registro(s) de 'overview_pt' mantidos como estão" in caplog.text
+
+    def test_destino_vazio_com_deteccao_nula_continua_elegivel(self):
+        """Destino vazio sempre tem idioma nulo (texto vazio não é detectado) — isso não pode
+        impedir a tradução."""
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "en" if t == "Hello" else None, lambda t: "Olá",
+        )
+        assert sucesso == 1
+        assert df["overview_pt"].tolist() == ["Olá"]
+        assert df["overview_tentativas"].tolist() == [1]
+
+    def test_destino_com_idioma_diferente_de_pt_detectado_continua_elegivel(self):
+        """Sem regressão: idioma detectado e diferente de "pt" (ex.: o TMDB devolveu o texto em
+        inglês no lugar do pt-BR) continua indo ao tradutor."""
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Hello"]})
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: "pt" if t == "Olá" else "en", lambda t: "Olá",
+        )
+        assert sucesso == 1
+        assert df["overview_pt"].tolist() == ["Olá"]
+        assert df["overview_idioma_pt"].tolist() == ["pt"]
+
+    def test_so_as_linhas_com_deteccao_indisponivel_sao_poupadas(self):
+        df = pd.DataFrame({
+            "overview_en": ["One", "Two"],
+            "overview_pt": ["Um nativo", "Two"],
+        })
+        detectar = {"One": "en", "Two": "en", "Um nativo": None, "Dois": "pt"}
+        traduzir_fn = MagicMock(side_effect=lambda t: "Dois")
+
+        df, sucesso = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detectar.get, traduzir_fn,
+        )
+
+        traduzir_fn.assert_called_once_with("Two")
+        assert sucesso == 1
+        assert df["overview_pt"].tolist() == ["Um nativo", "Dois"]
+        assert df["overview_tentativas"].tolist() == [0, 1]
+
+    def test_deteccao_refeita_na_proxima_execucao_resolve_a_pendencia(self):
+        """A pendência se corrige sozinha: o valor nulo nunca é reaproveitado, então a próxima
+        execução redetecta e, se o destino já é "pt", não há tradução nenhuma."""
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": ["Olá nativo"]})
+        args = ("overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt", "overview_tentativas")
+        resolve_pt_translation(
+            df, *args, lambda t: "en" if t == "Hello" else None, MagicMock(),
+            needs_translation_column="overview_precisa",
+        )
+        assert df["overview_precisa"].tolist() == [True]
+
+        traduzir_fn = MagicMock()
+        df, sucesso = resolve_pt_translation(
+            df, *args, lambda t: "pt" if t == "Olá nativo" else "en", traduzir_fn,
+            needs_translation_column="overview_precisa",
+        )
+
+        traduzir_fn.assert_not_called()
+        assert sucesso == 0
+        assert df["overview_idioma_pt"].tolist() == ["pt"]
+        assert df["overview_precisa"].tolist() == [False]
+
+    def test_loga_balanco_com_contagens_e_ids_de_exemplo_das_pendentes(self, caplog):
+        df = pd.DataFrame({
+            "id": [10, 20, 30, 40],
+            "overview_en": ["One", "Two", "Three", "Four"],
+            "overview_pt": [None, None, None, None],
+        })
+        traduzir = {"One": "Um", "Two": "Two", "Three": "Três", "Four": "Four"}
+        detectar = {"One": "en", "Two": "en", "Three": "en", "Four": "en", "Um": "pt", "Três": "pt"}
+
+        with llm_metrics.llm_usage_scope() as usage, caplog.at_level(logging.INFO):
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", detectar.get, traduzir.get, sample_id_column="id",
+            )
+
+        balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'"))
+        assert balanco == (
+            "Balanço 'overview_pt': 4 com fonte | 2 já em pt | 4 traduzida(s) (2 ok, 2 igual(is) à fonte) | "
+            "0 mantida(s) por detecção indisponível | 2 pendente(s) (ex.: id 20, 40)"
+        )
+        assert usage.balance["overview_pt"] == {
+            "fonte": 4, "ja_pt": 2, "traduzidas": 4, "ok": 2, "iguais": 2, "mantidas": 0, "pendentes": 2,
+        }
+
+    def test_balanco_sem_elegiveis_conta_as_mantidas_por_deteccao_indisponivel(self, caplog):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Hello"], "overview_pt": ["Olá nativo"]})
+        with caplog.at_level(logging.INFO):
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "en" if t == "Hello" else None, MagicMock(),
+                sample_id_column="id",
+            )
+        balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'"))
+        assert "0 traduzida(s) (0 ok, 0 igual(is) à fonte)" in balanco
+        assert "1 mantida(s) por detecção indisponível | 1 pendente(s) (ex.: id 1)" in balanco
+
+    def test_balanco_ignora_sample_id_column_ausente_no_dataframe(self, caplog):
+        df = pd.DataFrame({"overview_en": ["Hello"], "overview_pt": [None]})
+        with caplog.at_level(logging.INFO):
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "en", lambda t: t, sample_id_column="id",
+            )
+        balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'"))
+        assert "1 pendente(s)" in balanco
+        assert "ex.:" not in balanco
+
+    def test_balanco_sem_pendentes_nao_mostra_exemplos(self, caplog):
+        df = pd.DataFrame({"id": [1], "overview_en": ["Hello"], "overview_pt": ["Olá"]})
+        with caplog.at_level(logging.INFO):
+            resolve_pt_translation(
+                df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+                "overview_tentativas", lambda t: "pt" if t == "Olá" else "en", MagicMock(), sample_id_column="id",
+            )
+        balanco = next(r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'"))
+        assert "0 pendente(s)" in balanco
+        assert "ex.:" not in balanco
 
     def test_loga_resumo_agregado_de_falhas_de_traducao(self, caplog):
         """Falhas de tradução não devem ser logadas uma a uma (isso fica em DEBUG

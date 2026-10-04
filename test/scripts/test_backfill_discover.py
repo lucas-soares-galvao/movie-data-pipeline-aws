@@ -209,6 +209,14 @@ class TestPipelineDiscover:
             assert any(m.startswith(esperado) for m in mensagens), esperado
         assert any(m.startswith("Discover concluído com sucesso para movie year=2020 em ") for m in mensagens)
 
+    def test_loga_uso_do_llm_da_etapa_2_e_o_total_do_backfill(self, monkeypatch, caplog):
+        with caplog.at_level("INFO"):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        mensagens = [r.message for r in caplog.records]
+        assert any(m.startswith("LLM [movie 2020 2/3]: nenhuma chamada ao LLM") for m in mensagens)
+        assert any(m.startswith("LLM [tv 2020 2/3]: nenhuma chamada ao LLM") for m in mensagens)
+        assert any(m.startswith("LLM [Backfill discover — total]: nenhuma chamada ao LLM") for m in mensagens)
+
     def test_write_parquet_particiona_por_ano_com_overwrite_partitions(self, monkeypatch):
         _, _, mock_write, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         for c in mock_write.call_args_list:
