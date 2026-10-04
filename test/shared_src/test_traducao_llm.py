@@ -1,5 +1,10 @@
+import logging
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
+import litellm
+from shared_utils import traducao_llm
 from shared_utils.traducao_llm import translate_text_llm
 
 
@@ -73,3 +78,38 @@ class TestTranslateTextLlm:
         messages = mock_completion.call_args.kwargs["messages"]
         assert messages[-1] == {"role": "user", "content": "Hello"}
         assert messages[0]["role"] == "system"
+
+
+class TestLoggingDoLiteLLM:
+    def test_logger_do_litellm_so_emite_warning_ou_acima(self):
+        """O LiteLLM loga 2 linhas INFO por chamada; milhares de chamadas afogavam o log do
+        backfill. WARNING/ERROR (falhas reais) continuam passando."""
+        assert logging.getLogger("LiteLLM").level == logging.WARNING
+        assert litellm.suppress_debug_info is True
+
+
+class TestGetLlmApiKey:
+    def test_le_o_secret_uma_unica_vez_sob_concorrencia(self, monkeypatch):
+        """A tradução/detecção roda em ThreadPoolExecutor: sem o lock, várias threads vendo o
+        cache vazio ao mesmo tempo leriam o Secrets Manager uma vez cada."""
+        monkeypatch.setattr(traducao_llm, "_llm_api_key_cache", [])
+        chamadas = []
+
+        def carregar_lenta(*args, **kwargs):
+            chamadas.append(1)
+            time.sleep(0.05)
+            return "chave"
+
+        monkeypatch.setattr(traducao_llm, "load_llm_api_key", carregar_lenta)
+        resultados = []
+        threads = [
+            threading.Thread(target=lambda: resultados.append(traducao_llm._get_llm_api_key()))
+            for _ in range(8)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(chamadas) == 1
+        assert resultados == ["chave"] * 8

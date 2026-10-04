@@ -5,12 +5,19 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 
 import litellm
 
 from shared_utils.llm_client import load_llm_api_key
 
 logger = logging.getLogger()
+
+# O LiteLLM loga 2 linhas INFO por chamada (uma no próprio logger, outra duplicada no
+# logger raiz): num lote de ~1000 detecções de idioma isso afogava o log do backfill e
+# escondia as linhas do pipeline. WARNING/ERROR (falhas reais) continuam aparecendo.
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+litellm.suppress_debug_info = True
 
 # Modelo primário via OpenRouter, mesmo mecanismo de litellm já usado no agente de
 # recomendação (app/lightsail_ia/src/agent.py) — reaproveita o par já validado em
@@ -43,6 +50,9 @@ _LLM_MAX_TOKENS = 800
 # Lista de 0 ou 1 elemento faz o papel de "ainda não carregado" vs. "carregado como
 # None" (None é um valor válido — chave ausente em dev local sem secret configurado).
 _llm_api_key_cache: list[str | None] = []
+# Tradução e detecção de idioma rodam em ThreadPoolExecutor: sem o lock, várias threads
+# vendo o cache vazio ao mesmo tempo leriam o secret (Secrets Manager) uma vez cada.
+_llm_api_key_lock = threading.Lock()
 
 
 def _get_llm_api_key() -> str | None:
@@ -53,9 +63,10 @@ def _get_llm_api_key() -> str | None:
     (capturada em translate_text_llm/detect_language_llm) e devolve o "sem
     tradução"/None de sempre, sem exceção não tratada subindo.
     """
-    if not _llm_api_key_cache:
-        _llm_api_key_cache.append(load_llm_api_key("llm_api_key", "LLM_API_KEY", required=False))
-    return _llm_api_key_cache[0]
+    with _llm_api_key_lock:
+        if not _llm_api_key_cache:
+            _llm_api_key_cache.append(load_llm_api_key("llm_api_key", "LLM_API_KEY", required=False))
+        return _llm_api_key_cache[0]
 
 _SYSTEM_PROMPT = (
     "Você é um tradutor profissional de inglês para português do Brasil, especializado "

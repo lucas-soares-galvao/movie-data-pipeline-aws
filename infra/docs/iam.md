@@ -5,7 +5,7 @@
 | Role | Usada por | Permissões principais |
 |---|---|---|
 | `tmdb-lambda-api-{env}` | Lambda API | S3 (SOR, AUX, TEMP restrito a `tmdb/changes/*`), Glue (StartJobRun + GetJobRun — ETL, AGG e Details), Secrets Manager, SSM Parameter Store (GetParameter/PutParameter restrito ao ponteiro do rotation refresh — `infra/ssm.tf`) |
-| `tmdb-glue-etl-{env}` | Glue ETL | S3 (SOR, SOT, AUX), Glue Catalog, StartJobRun (DQ, Details), Secrets Manager (`llm_api_key` do secret unificado, para tradução de `name_pt` de países/idiomas via LLM/OpenRouter — ver `glue_etl_secrets`) |
+| `tmdb-glue-etl-{env}` | Glue ETL | S3 (SOR, SOT — incluindo `s3:GetObject` somente-leitura nas tabelas discover/configuration, Sid `ReadSotCache`, para o cache de tradução/idioma lido de volta da própria SOT —, AUX), Glue Catalog, StartJobRun (DQ, Details), Secrets Manager (`llm_api_key` do secret unificado, para tradução de `name_pt` de países/idiomas via LLM/OpenRouter — ver `glue_etl_secrets`) |
 | `tmdb-glue-data-quality-{env}` | Glue Data Quality | S3 (SOT, SPEC, DQ), Glue Catalog, SNS (tópicos DQ direto), CloudWatch |
 | `tmdb-glue-agg-{env}` | Glue AGG | S3 (SOT, SPEC, TEMP), Glue Catalog, Athena, StartJobRun (DQ) |
 | `tmdb-glue-details-{env}` | Glue Details | S3 (SOT, TEMP restrito a `tmdb/athena/glue_details/*` e `tmdb/changes/*` — modo changes), Glue Catalog, Athena, Secrets Manager, StartJobRun (AGG, DQ) |

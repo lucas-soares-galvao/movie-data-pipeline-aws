@@ -98,7 +98,13 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   `detect_language_llm` (`shared_utils.traducao_llm`/`idioma_llm`, OpenRouter via `litellm`) direto — não existe
   mais guard de custo por intervalo de anos (`apply_translate_cost_guard`, removido): não havia mais a distinção
   "provider pago vs. grátis" que o guard existia para proteger. O controle de gasto do LLM é feito direto no
-  painel do OpenRouter.
+  painel do OpenRouter. A detecção de idioma roda **em paralelo** (`detect_in_parallel`, 10 threads) e reaproveita o
+  idioma já detectado de textos inalterados (`reuse_detected_language`; no discover, lido da partição do ano na SOT
+  por `read_existing_discover`) — em série, o overview de um ano de filmes (~1000 chamadas de ~1s) levava ~19 min
+  por unidade e o `discover` do `historico` ficava horas sem uma única linha de log do pipeline (o LiteLLM, que
+  agora fica em WARNING, afogava o log com 2 linhas INFO por chamada). Cada unidade do `backfill_discover.py` loga
+  `Etapa 1/3`/`2/3`/`3/3` e o tempo total, e a detecção/tradução loga progresso a cada 10% — é assim que se
+  acompanha em que etapa o backfill está, já que o log ao vivo do Actions não é acessível.
 - `backfill_traducao.py` também serve de **reparo em massa** de tradução poluída por texto de erro legado (`Error <status> (<motivo>)!!<n>`, gravado como `*_pt` por versões anteriores ao LLM): com `BACKFILL_RESET_ATTEMPTS=true` (input booleano `reset_attempts` no `backfill.yml`; `_reset_polluted_translations`) descarta esses `*_pt` e zera `*_detected_language_pt`/`*_translation_attempts` da linha, que volta a ser elegível mesmo tendo esgotado o teto; o Glue AGG final regrava a SPEC. Sem a flag o teto de tentativas é respeitado. Rodar uma vez por ambiente (dev primeiro), com o checkpoint limpo; depois que o Athena confirmar 0 linhas poluídas, o modo pode ser removido. Não há script novo para isso.
 - **3 padrões de tratamento de erro coexistem deliberadamente**, cada um adequado ao tipo de chamada AWS por trás:
   1. **Abortar no primeiro erro** (`backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_referencias.py`):

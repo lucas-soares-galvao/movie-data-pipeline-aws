@@ -275,6 +275,23 @@ resource "aws_iam_role_policy" "glue_etl_sor_sot" {
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sor}/*"]
       },
       {
+        # Cache lido de volta da própria SOT antes de reprocessar (app/glue_etl/src/utils.py):
+        # read_existing_configuration (name_pt/idiomas detectados de configuration) e
+        # read_existing_discover (overview_detected_language da partição do ano do discover),
+        # ambos via wr.s3.read_parquet — falha de leitura é capturada e degrada para
+        # "sem cache" (retraduz/redetecta tudo), então a ausência desta permissão não derruba o
+        # job, só joga fora o reaproveitamento sem avisar. Só leitura e só nas tabelas lidas.
+        Sid    = "ReadSotCache"
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_discover_movie}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_discover_tv}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_configuration_languages}/*",
+          "arn:aws:s3:::${local.envs.s3_bucket_sot}/${local.tmdb_prefix}/${local.envs.glue_catalog_tb_configuration_countries}/*",
+        ]
+      },
+      {
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:DeleteObject"]
         Resource = ["arn:aws:s3:::${local.envs.s3_bucket_sot}/*"]
