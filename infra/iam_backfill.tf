@@ -311,11 +311,15 @@ resource "aws_iam_role_policy" "backfill_s3" {
         # read_from_sor (app/glue_etl/src/utils.py, wr.s3.read_json) para a transformação
         # equivalente ao Glue ETL. Mesmo par escrever-e-reler de ReadWriteReferenceRawDataInSor
         # acima, para discover em vez de genre/configuration/watch_providers_ref.
+        # DeleteObject: backfill_discover.py apaga as páginas antigas do ano
+        # (_clear_discover_sor_year) antes de coletar de novo, para o reprocessamento
+        # refletir só a coleta atual — collect_discover_data só sobrescreve páginas pelo nome.
         Sid    = "ReadWriteDiscoverRawDataInSor"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
+          "s3:DeleteObject",
         ]
         Resource = [
           "${aws_s3_bucket.sor_bucket.arn}/tmdb/discover/movie/*",

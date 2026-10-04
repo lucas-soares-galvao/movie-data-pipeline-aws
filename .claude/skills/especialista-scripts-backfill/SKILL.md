@@ -57,6 +57,18 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   falhas (e por isso já limpou o próprio checkpoint) quando o estágio seguinte é interrompido por token expirado.
   Um script que encadeia outros scripts existentes deve seguir esse padrão — checkpoint próprio com unidade =
   "nome do que está sendo encadeado" — em vez de reimplementar a lógica interna de cada um.
+- **Backfill de `discover`/`enriquecimento` (e portanto o `historico`) é reprocessamento total, não incremental**: sem
+  isso, o merge do enriquecimento (`collect_and_write_details`/`collect_and_write_watch_providers`, read-merge-write com
+  `overwrite_partitions`) preserva sem atualizar os IDs da partição que já saíram do discover do ano (o discover devolve
+  no máx. 100 páginas ≈ 2000 títulos/ano/tipo), e `collect_discover_data` só sobrescreve páginas do SOR pelo nome, sem
+  apagar as que sobraram de uma coleta anterior — que `read_from_sor` relê, pois lê a pasta inteira.
+  `backfill_discover.py` apaga `tmdb/discover/<tipo>/ano=<ano>/` no SOR antes de coletar (`_clear_discover_sor_year`,
+  exige `s3:DeleteObject` em `iam_backfill.tf`) e `backfill_enriquecimento.py` passa `refresh_existing_ids=True` a
+  `run_details_and_watch_providers_for_year`, que re-busca discover ∪ IDs já existentes em details
+  (`fetch_existing_ids_from_sot`). O caminho automático (`app/glue_details/main.py`) não passa a flag (default `False`).
+  Limites conhecidos: página do discover que falha na coleta só gera `WARNING` (com o SOR limpo, a partição sai
+  incompleta sem erro); e ID que passa a dar 404 no TMDB mantém o registro antigo, pois o merge só substitui o que a
+  API devolveu.
 - **`save_checkpoint` é chamado a cada unidade concluída dentro do loop** (ex.
   `scripts/backfill_discover.py:203`, `scripts/backfill_data_quality.py:136`), nunca uma vez só no fim — grava no
   S3 uma vez por unidade (custo desprezível, poucas dezenas de `PutObject` por backfill) para que uma interrupção a

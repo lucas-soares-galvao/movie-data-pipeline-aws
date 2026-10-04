@@ -11,8 +11,10 @@ backfill — o Glue Data Quality continua sendo acionado, mas uma única vez ao 
 backfill (não mais 2x por unidade), ver "Data Quality" abaixo.
 
 run_details_and_watch_providers_for_year busca/atualiza sempre todos os IDs do discover (sem
-delta), então todos os IDs serão re-buscados com os novos campos do append_to_response (credits,
-keywords, release_dates, videos, external_ids).
+delta) e, com refresh_existing_ids=True (usado aqui), também os IDs já existentes na partição de
+details que não estão mais no discover do ano — reprocessamento total: nenhum registro da
+partição fica com dados defasados. Todos os IDs serão re-buscados com os novos campos do
+append_to_response (credits, keywords, release_dates, videos, external_ids).
 
 Pré-requisitos:
   1. Terraform apply já executado com os novos schemas no Glue Catalog e com as permissões
@@ -148,6 +150,7 @@ def _process_enriquecimento_unit(
             table_watch_providers=table_watch_providers,
             dq_job_name=dq_job_name,
             trigger_dq=False,
+            refresh_existing_ids=True,
         )
     except ClientError as exc:
         if shared.is_expired_token_error(exc):

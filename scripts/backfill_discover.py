@@ -74,6 +74,14 @@ Logs de andamento:
     A etapa 2/3 fecha com `LLM [<tipo> <ano> 2/3]` (chamadas, modelos, tokens, custo e falhas por causa,
     ver shared_utils.llm_metrics) e main() loga o total do backfill (`LLM [Backfill discover — total]`).
 
+Reprocessamento total (SOR):
+    Antes de coletar cada unidade, apaga as páginas antigas de tmdb/discover/<tipo>/ano=<ano>/ no
+    SOR (_clear_discover_sor_year) — collect_discover_data só sobrescreve páginas pelo nome, e
+    read_from_sor lê a pasta inteira, então páginas sobrando de uma coleta anterior (mais longa)
+    voltariam para a partição do SOT. Falha depois da limpeza não corrompe o SOT (a escrita só
+    ocorre após read_from_sor) e a unidade não entra no checkpoint — a retomada refaz a coleta.
+    Exige s3:DeleteObject no prefixo discover do SOR (infra/iam_backfill.tf).
+
 Erros:
     Uma falha numa unidade (coleta ou escrita) é logada e a unidade entra na lista de falhas —
     o backfill segue para a próxima unidade em vez de abortar (mesmo padrão soft-fail-continue de
@@ -116,11 +124,43 @@ from app.glue_etl.src.utils import (  # noqa: E402
 from app.lambda_api.src.utils import collect_discover_data  # noqa: E402
 from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
 from shared_utils.llm_metrics import llm_usage_scope, log_llm_usage, log_llm_usage_summary  # noqa: E402
+from shared_utils.s3_helpers import expected_bucket_owner_kwargs  # noqa: E402
 from shared_utils.traducao import format_elapsed  # noqa: E402
 
 import backfill_shared as shared
 
 logger = shared.setup_logging()
+
+# Limite de chaves por chamada do S3 DeleteObjects.
+_DELETE_BATCH_SIZE = 1000
+
+
+def _clear_discover_sor_year(s3_client: Any, bucket: str, media_type: str, year: int) -> int:
+    """Apaga as páginas do discover do ano no SOR antes de coletar de novo.
+
+    collect_discover_data grava uma página por objeto (pagina_NNN.json) e só sobrescreve pelo
+    nome; páginas sobrando de uma coleta anterior (mais longa) continuariam na pasta, e
+    read_from_sor lê a pasta inteira — o discover do SOT ficaria com linhas que o TMDB não
+    devolve mais. Limpar antes garante que o reprocessamento reflita só a coleta atual.
+
+    Returns:
+        Quantidade de objetos apagados.
+    """
+    prefix = f"tmdb/discover/{media_type}/ano={year}/"
+    owner = expected_bucket_owner_kwargs()
+    paginator = s3_client.get_paginator("list_objects_v2")
+    keys = [
+        {"Key": obj["Key"]}
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix, **owner)
+        for obj in page.get("Contents", [])
+    ]
+    for start in range(0, len(keys), _DELETE_BATCH_SIZE):
+        s3_client.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": keys[start:start + _DELETE_BATCH_SIZE], "Quiet": True},
+            **owner,
+        )
+    return len(keys)
 
 
 def _process_discover_unit(
@@ -144,6 +184,11 @@ def _process_discover_unit(
     """
     started = time.monotonic()
     try:
+        removed = _clear_discover_sor_year(s3_client, s3_bucket_sor, media_type, year)
+        logger.info(
+            "[%s %d] SOR limpo antes da coleta: %d página(s) antiga(s) removida(s).",
+            media_type, year, removed,
+        )
         logger.info("[%s %d] Etapa 1/3: coletando discover na API do TMDB (SOR)...", media_type, year)
         collect_discover_data(
             api_key=api_key,

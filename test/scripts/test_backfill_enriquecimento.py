@@ -120,6 +120,12 @@ class TestLoopPrincipal:
         for c in mock_run.call_args_list:
             assert c.kwargs["trigger_dq"] is False
 
+    def test_passa_refresh_existing_ids_true_para_reprocessar_tambem_os_ids_fora_do_discover(self, monkeypatch):
+        mock_run, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert mock_run.call_count == 2
+        for c in mock_run.call_args_list:
+            assert c.kwargs["refresh_existing_ids"] is True
+
     def test_falha_em_uma_unidade_nao_interrompe_o_backfill(self, monkeypatch):
         """Mesmo padrão soft-fail-continue de backfill_discover.py/backfill_changes.py: uma
         exceção aqui só é logada, não aborta o loop."""
