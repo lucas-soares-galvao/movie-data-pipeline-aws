@@ -1341,45 +1341,21 @@ class TestTranscribePreference:
 
 
 class TestLoadApiKeys:
-    """Chaves lidas do Secrets Manager (produção) ou do ambiente (desenvolvimento)."""
+    """_load_llm_api_key/_load_transcription_api_key delegam para
+    shared_utils.llm_client.load_llm_api_key (ver test/shared_src/test_llm_client.py
+    para a lógica real de leitura do Secrets Manager/ambiente) — aqui só confirma que
+    a delegação passa os argumentos certos."""
 
-    _ARN = "arn:aws:secretsmanager:sa-east-1:123456789012:secret:filmbot"
-
-    def _mock_secret(self, mock_boto3, secret: dict) -> MagicMock:
-        client = MagicMock()
-        client.get_secret_value.return_value = {"SecretString": json.dumps(secret)}
-        mock_boto3.client.return_value = client
-        return client
-
-    def test_llm_key_vem_do_secrets_manager_quando_arn_configurado(self, monkeypatch):
-        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
-        with patch("src.agent.boto3") as mock_boto3:
-            client = self._mock_secret(mock_boto3, {"llm_api_key": "chave-llm"})
+    def test_llm_key_delega_com_campo_obrigatorio(self, monkeypatch):
+        monkeypatch.setenv("AWS_REGION", "sa-east-1")
+        with patch("src.agent.load_llm_api_key", return_value="chave-llm") as mock_load:
             assert agent._load_llm_api_key() == "chave-llm"
+        mock_load.assert_called_once_with("llm_api_key", "LLM_API_KEY", region="sa-east-1")
 
-        client.get_secret_value.assert_called_once_with(SecretId=self._ARN)
-
-    def test_llm_key_vem_do_ambiente_sem_arn(self, monkeypatch):
-        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
-        monkeypatch.setenv("LLM_API_KEY", "chave-env")
-        with patch("src.agent.boto3") as mock_boto3:
-            assert agent._load_llm_api_key() == "chave-env"
-
-        mock_boto3.client.assert_not_called()
-
-    def test_transcription_key_vem_do_secrets_manager_quando_arn_configurado(self, monkeypatch):
-        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
-        with patch("src.agent.boto3") as mock_boto3:
-            self._mock_secret(mock_boto3, {"llm_api_key": "x", "transcription_api_key": "chave-stt"})
+    def test_transcription_key_delega_com_campo_opcional(self, monkeypatch):
+        monkeypatch.setenv("AWS_REGION", "sa-east-1")
+        with patch("src.agent.load_llm_api_key", return_value="chave-stt") as mock_load:
             assert agent._load_transcription_api_key() == "chave-stt"
-
-    def test_transcription_key_ausente_no_secret_retorna_none_sem_derrubar_o_app(self, monkeypatch):
-        monkeypatch.setenv("FILMBOT_SECRET_ARN", self._ARN)
-        with patch("src.agent.boto3") as mock_boto3:
-            self._mock_secret(mock_boto3, {"llm_api_key": "x"})
-            assert agent._load_transcription_api_key() is None
-
-    def test_transcription_key_vem_do_ambiente_sem_arn(self, monkeypatch):
-        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
-        monkeypatch.setenv("TRANSCRIPTION_API_KEY", "stt-env")
-        assert agent._load_transcription_api_key() == "stt-env"
+        mock_load.assert_called_once_with(
+            "transcription_api_key", "TRANSCRIPTION_API_KEY", region="sa-east-1", required=False
+        )

@@ -176,17 +176,6 @@ class TestLoopPrincipal:
         for c in mock_process.call_args_list:
             assert c.kwargs["api_key"] == "tmdb-key"
 
-    def test_translate_provider_default_google(self, monkeypatch):
-        _, _, mock_process, *_ = _run_main(monkeypatch)
-        for c in mock_process.call_args_list:
-            assert c.kwargs["translate_provider"] == "google"
-
-    def test_translate_provider_repassado_quando_informado(self, monkeypatch):
-        _, _, mock_process, *_ = _run_main(monkeypatch, {"TRANSLATE_PROVIDER": "aws"})
-        for c in mock_process.call_args_list:
-            assert c.kwargs["translate_provider"] == "aws"
-
-
 class TestDataQualityFinal:
     def test_dispara_dq_uma_vez_por_tabela_cobrindo_todos_os_anos_afetados(self, monkeypatch):
         _, _, _, mock_trigger, _, _ = _run_main(

@@ -624,50 +624,7 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 }
 
 # =============================================================================
-# POLICY 6 — AWS Translate. Usado quando TRANSLATE_PROVIDER=aws é escolhido em
-# qualquer backfill manual (backfill_traducao.py, backfill_discover.py,
-# backfill_referencias.py, backfill_enriquecimento.py, backfill_changes.py) — default é "google"
-# (grátis); "aws" existe para testar um período menor sob demanda. Mesmo com
-# default "google", o AWS Translate também é acionado como fallback automático
-# quando o Google falha ou devolve o texto sem alteração (resolve_translate_fn
-# em shared_utils.traducao). Mantido o Sid histórico "TranslateFallback" para
-# não gerar diff de Terraform sem necessidade. translate:TranslateText não tem
-# restrição por recurso na AWS (Resource = "*"). comprehend:DetectDominantLanguage
-# é obrigatório porque translate_text_aws sempre chama TranslateText com
-# SourceLanguageCode="auto", que aciona o Comprehend internamente para detectar
-# o idioma de origem; também não suporta restrição por recurso.
-# =============================================================================
-resource "aws_iam_role_policy" "backfill_translate" {
-  name = "${local.tmdb_prefix}-backfill-translate-${var.env}"
-  role = aws_iam_role.backfill.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "TranslateFallback"
-        Effect   = "Allow"
-        Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
-        Resource = "*"
-      },
-      {
-        # Consulta o CharacterCount do AWS Translate no CloudWatch pra saber quanto
-        # do teto MENSAL do fallback (var.aws_translate_monthly_max_chars) já foi
-        # consumido antes de traduzir via AWS nesta partição — ver
-        # shared_utils.traducao.get_translate_chars_used_this_month, chamada por
-        # resolve_translate_fn sempre que TRANSLATE_PROVIDER="google" (default de
-        # backfill_traducao.py). Nenhuma das duas actions suporta restrição por recurso.
-        Sid      = "TranslateBudget"
-        Effect   = "Allow"
-        Action   = ["cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics"]
-        Resource = "*"
-      },
-    ]
-  })
-}
-
-# =============================================================================
-# POLICY 7 — SNS (todos os 8 scripts, via scripts/backfill_shared.py:
+# POLICY 6 — SNS (todos os 8 scripts, via scripts/backfill_shared.py:
 # notify_backfill_success, chamada uma única vez ao final de cada script, só no
 # caminho de sucesso total). Publicação direta por código (boto3), sem
 # EventBridge no meio — mesmo racional de glue_dq_sns_publish

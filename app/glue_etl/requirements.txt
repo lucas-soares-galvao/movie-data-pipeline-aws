@@ -1,5 +1,6 @@
 # Raciocinio: fixa dependencias de runtime do Glue ETL para execucao previsivel no job.
+# litellm==1.96.2 travado pelo mesmo motivo de app/lightsail_ia/requirements.txt:
+# 1.97.0 quebra litellm.completion() (ver BerriAI/litellm#36384).
 
 awswrangler
-deep-translator
-langdetect
+litellm==1.96.2

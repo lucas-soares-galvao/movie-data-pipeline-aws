@@ -1,61 +1,7 @@
+from unittest.mock import patch
+
 import pandas as pd
-import pytest
-from shared_utils.idioma import add_detected_language_column, resolve_detect_language_fn
-
-
-class TestResolveDetectLanguageFn:
-    def test_usa_local_quando_local_detecta(self):
-        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: "en")
-        assert fn("qualquer texto") == "pt"
-
-    def test_cai_para_aws_quando_local_devolve_none(self):
-        fn = resolve_detect_language_fn(lambda t: None, lambda t: "en")
-        assert fn("qualquer texto") == "en"
-
-    def test_aws_nao_e_chamado_quando_local_detecta(self):
-        calls = []
-        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: calls.append(t) or "en")
-        fn("texto")
-        assert calls == []
-
-    def test_orcamento_esgotado_devolve_none_sem_chamar_aws(self):
-        calls = []
-        fn = resolve_detect_language_fn(
-            lambda t: None, lambda t: calls.append(t) or "en", aws_fallback_max_chars=3
-        )
-        result = fn("texto mais longo que o orcamento")
-        assert result is None
-        assert calls == []
-
-    def test_orcamento_suficiente_permite_fallback_aws(self):
-        fn = resolve_detect_language_fn(lambda t: None, lambda t: "en", aws_fallback_max_chars=100)
-        assert fn("curto") == "en"
-
-    def test_provider_google_default_mantem_comportamento_anterior(self):
-        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: "en")
-        assert fn("qualquer texto") == "pt"
-
-    def test_provider_aws_usa_comprehend_como_primario(self):
-        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: "en", provider="aws")
-        assert fn("qualquer texto") == "en"
-
-    def test_provider_aws_cai_para_local_quando_aws_devolve_none(self):
-        fn = resolve_detect_language_fn(lambda t: "pt", lambda t: None, provider="aws")
-        assert fn("qualquer texto") == "pt"
-
-    def test_provider_aws_nao_capa_fallback_local(self):
-        """provider="aws": langdetect é o fallback (local/grátis) — sem limite de caracteres."""
-        calls = []
-        fn = resolve_detect_language_fn(
-            lambda t: calls.append(t) or "pt", lambda t: None,
-            aws_fallback_max_chars=1, provider="aws",
-        )
-        assert fn("texto bem mais longo que o orcamento minusculo") == "pt"
-        assert calls
-
-    def test_provider_invalido_levanta_value_error(self):
-        with pytest.raises(ValueError, match="provider de detecção inválido"):
-            resolve_detect_language_fn(provider="deepl")
+from shared_utils.idioma import add_detected_language_column
 
 
 class TestAddDetectedLanguageColumn:
@@ -80,9 +26,21 @@ class TestAddDetectedLanguageColumn:
         assert recebido["valor"] == ""
 
     def test_default_detect_fn_usado_quando_nao_informado(self):
-        df = pd.DataFrame({"texto": ["This is a clearly written English sentence with enough words."]})
-        result = add_detected_language_column(df, "texto", "detected_language")
+        # new=<função simples> (não MagicMock): pandas.Series.apply trata um Mock como
+        # list-like (__iter__ configurado por padrão em MagicMock) e tenta agregar em
+        # vez de chamar por elemento — new= troca o atributo pelo objeto exato, sem
+        # wrapper de Mock.
+        df = pd.DataFrame({"texto": ["Hello"]})
+        calls = []
+
+        def fake_detect(t):
+            calls.append(t)
+            return "en"
+
+        with patch("shared_utils.idioma.detect_language_llm", new=fake_detect):
+            result = add_detected_language_column(df, "texto", "detected_language")
         assert result["detected_language"].tolist() == ["en"]
+        assert calls == ["Hello"]
 
     def test_modifica_df_in_place_e_retorna_mesma_referencia(self):
         df = pd.DataFrame({"texto": ["Hello"]})

@@ -4,21 +4,21 @@ colunas de diagnóstico *_detected_language_en/*_detected_language_pt/
 *_translation_attempts/*_needs_translation) aos detalhes históricos.
 
 Lê tb_details_movie_tmdb e tb_details_tv_tmdb ano a ano e traduz para
-português, via Google Translate ou AWS Translate (TRANSLATE_PROVIDER — ver
-abaixo), os campos ainda pendentes (espelhando o que o Glue Details faz para
-dados novos). As três colunas usam a mesma regra de elegibilidade, resolvida
-por shared_utils.traducao.resolve_pt_translation: o campo de origem
-preenchido e o idioma detectado do RESULTADO (*_detected_language_pt, e não
-da fonte) ainda diferente de "pt" — original_language não entra no critério
-(é o idioma de produção original do título, não o idioma do texto retornado
-pela API; não garante que overview_en/tagline/keywords já estejam em
-português — ver shared_utils/traducao.py):
+português, via LLM (OpenRouter — ver shared_utils.traducao_llm), os campos
+ainda pendentes (espelhando o que o Glue Details faz para dados novos). As
+três colunas usam a mesma regra de elegibilidade, resolvida por
+shared_utils.traducao.resolve_pt_translation: o campo de origem preenchido e
+o idioma detectado do RESULTADO (*_detected_language_pt, e não da fonte)
+ainda diferente de "pt" — original_language não entra no critério (é o
+idioma de produção original do título, não o idioma do texto retornado pela
+API; não garante que overview_en/tagline/keywords já estejam em português —
+ver shared_utils/traducao.py):
   - overview_pt:  overview_en preenchido, overview_detected_language_pt != "pt"
   - tagline_pt:   tagline preenchida, tagline_detected_language_pt != "pt"
   - keywords_pt:  keywords preenchidas, keywords_detected_language_pt != "pt"
 Quando o idioma detectado da fonte (*_detected_language_en) já é "pt", o
 texto é copiado diretamente para a coluna _pt sem chamar tradução — evita
-reenviar ao Google/AWS um texto que já está em português. Basear a
+reenviar ao LLM um texto que já está em português. Basear a
 elegibilidade no idioma detectado do RESULTADO (em vez de comparar string com
 a fonte, como antes) evita tanto retraduzir o que já está correto quanto
 deixar uma mistradução silenciosa (resultado diferente da fonte, mas em
@@ -57,29 +57,16 @@ Variáveis de ambiente obrigatórias:
 Variáveis opcionais:
     BACKFILL_START_YEAR   (padrão: 2000)
     BACKFILL_END_YEAR     (padrão: ano atual)
-    BACKFILL_WAIT_SECONDS (padrão: 30 — pausa entre partições para não saturar Google Translate;
-                            só aplicada quando a partição efetivamente traduziu algo — partições
-                            vazias ou já 100% traduzidas seguem direto para a próxima, sem espera)
-    TRANSLATE_PROVIDER    (padrão: "google" — grátis, mas instável sob alto volume;
-                            "aws" usa AWS Translate, API oficial paga por caractere,
-                            útil para testar um período menor via BACKFILL_START_YEAR/
-                            BACKFILL_END_YEAR. Se o intervalo pedido cobrir mais de 1
-                            ano, "aws" é rebaixado automaticamente para "google" —
-                            proteção de custo, ver backfill_shared.apply_translate_cost_guard.
-                            Em qualquer um dos dois casos, o serviço não escolhido é
-                            usado como fallback automático, capado por caracteres
-                            quando é o AWS — ver shared_utils.traducao.resolve_translate_fn.
-                            A mesma escolha também determina o detector de idioma
-                            primário: "google" usa langdetect primeiro com Comprehend
-                            como fallback capado; "aws" usa Comprehend primeiro (sem
-                            cap) com langdetect como fallback — ver
-                            shared_utils.idioma.resolve_detect_language_fn)
-    AWS_FALLBACK_MONTHLY_MAX_CHARS (padrão: 2_000_000 == free tier mensal do AWS
-                            Translate) — teto MENSAL (não por execução/partição) de
-                            caracteres pro fallback ao AWS Translate quando
-                            TRANSLATE_PROVIDER="google"; consultado ao vivo via
-                            CloudWatch a cada partição — ver
-                            shared_utils.traducao.get_translate_chars_used_this_month.
+    BACKFILL_WAIT_SECONDS (padrão: 30 — pausa entre partições para não disparar rajadas
+                            de chamada ao LLM; só aplicada quando a partição efetivamente
+                            traduziu algo — partições vazias ou já 100% traduzidas seguem
+                            direto para a próxima, sem espera)
+    FILMBOT_SECRET_ARN    (ARN do secret unificado, usado por
+                            shared_utils.llm_client.load_llm_api_key para ler o campo
+                            llm_api_key — chave do LLM via OpenRouter. Sem ela (nem
+                            LLM_API_KEY definida), cada tradução/detecção falha
+                            individualmente e devolve o texto original/None, sem
+                            derrubar o script)
 
 Glue AGG:
     Ao final, antes de limpar o checkpoint, roda o Glue AGG (query Athena de unificação +
@@ -115,17 +102,9 @@ import pandas as pd
 from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
-from shared_utils.idioma import (  # noqa: E402
-    detect_language_aws,
-    detect_language_langdetect,
-    resolve_detect_language_fn,
-)
-from shared_utils.traducao import (  # noqa: E402
-    resolve_pt_translation,
-    resolve_translate_fn,
-    translate_text,
-    translate_text_aws,  # noqa: F401 — reexportado para os testes verificarem identidade
-)
+from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
+from shared_utils.traducao import resolve_pt_translation
+from shared_utils.traducao_llm import translate_text_llm
 
 import backfill_shared as shared
 
@@ -145,10 +124,10 @@ def _add_translations_pt(
     shared_utils/traducao.py para a regra de elegibilidade e o teto de
     tentativas."""
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
-    # patch("backfill_traducao.translate_text", ...) nos testes continue funcionando
-    # quando o chamador não passa um translate_fn explícito.
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    # patch("backfill_traducao.translate_text_llm", ...) nos testes continue
+    # funcionando quando o chamador não passa um translate_fn explícito.
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
 
@@ -174,8 +153,8 @@ def _add_translations_tagline_pt(
     """Adiciona tagline_detected_language_en, tagline_detected_language_pt,
     tagline_pt, tagline_translation_attempts e tagline_needs_translation aos
     registros com tagline preenchida (espelha glue_details)."""
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
     if "tagline" not in df.columns:
         return df, 0
     if "tagline_pt" not in df.columns:
@@ -203,8 +182,8 @@ def _add_translations_keywords_pt(
     """Adiciona keywords_detected_language_en, keywords_detected_language_pt,
     keywords_pt, keywords_translation_attempts e keywords_needs_translation aos
     registros com keywords preenchidas."""
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
     if "keywords" not in df.columns:
         return df, 0
     if "keywords_pt" not in df.columns:
@@ -240,8 +219,8 @@ def _backfill_year(
     Returns:
         Tupla (escreveu, quantidade traduzida com sucesso).
     """
-    translate_fn = translate_fn or translate_text
-    detect_fn = detect_fn or resolve_detect_language_fn()
+    translate_fn = translate_fn or translate_text_llm
+    detect_fn = detect_fn or detect_language_llm
     s3_details_path = f"s3://{s3_bucket_sot}/tmdb/{table_details}/year={year}/"
 
     try:
@@ -300,24 +279,13 @@ def main() -> None:
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 30))
-    translate_provider = shared.apply_translate_cost_guard(
-        os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
-    )
-    aws_fallback_monthly_max_chars = int(os.environ.get("AWS_FALLBACK_MONTHLY_MAX_CHARS", 2_000_000))
-    # Valida translate_provider cedo (fail-fast) antes de qualquer I/O — resolve_translate_fn
-    # é recriado por partição dentro do loop abaixo, mas um provider inválido deve
-    # interromper o backfill antes de tocar o S3.
-    resolve_translate_fn(
-        translate_provider, translate_text, translate_text_aws,
-        aws_fallback_max_chars=aws_fallback_monthly_max_chars,
-    )
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
     logger.info(
         "Backfill de tradução: %d até %d | %d partições (movie + tv) | pausa=%ds entre partições "
-        "| serviço de tradução=%s",
-        start_year, end_year, total, wait_seconds, translate_provider,
+        "| serviço de tradução=LLM (OpenRouter)",
+        start_year, end_year, total, wait_seconds,
     )
     s3_client = boto3.client("s3", region_name=region)
 
@@ -334,30 +302,11 @@ def main() -> None:
     total_translated = 0
     for i, (content_type, year, database, table_details) in enumerate(pending, start=1):
         logger.info("[%d/%d] %s | year=%d", i, len(pending), content_type, year)
-        # translate_fn/detect_fn recriados a cada partição — não pra isolar orçamentos
-        # (o fallback ao AWS Translate agora é um teto MENSAL, consultado ao vivo via
-        # CloudWatch a cada chamada, então todas as partições deste run — e de outras
-        # execuções no mesmo mês — naturalmente compartilham o mesmo teto real; ver
-        # shared_utils.traducao.get_translate_chars_used_this_month), mas porque o
-        # detector de idioma (resolve_detect_language_fn) ainda usa um cap por chamada
-        # independente para o fallback do Comprehend. Nota: o CloudWatch tem alguns
-        # minutos de atraso de propagação — traduções desta própria partição podem não
-        # aparecer ainda na consulta da partição seguinte, então o teto mensal não é
-        # instantaneamente preciso dentro de um mesmo run, só ao longo do mês.
-        translate_fn = resolve_translate_fn(
-            translate_provider, translate_text, translate_text_aws,
-            aws_fallback_max_chars=aws_fallback_monthly_max_chars,
-        )
-        detect_fn = resolve_detect_language_fn(
-            detect_language_langdetect, detect_language_aws, provider=translate_provider,
-        )
         _, translated_count = _backfill_year(
             database=database,
             table_details=table_details,
             year=str(year),
             s3_bucket_sot=s3_bucket_sot,
-            translate_fn=translate_fn,
-            detect_fn=detect_fn,
         )
         total_translated += translated_count
         completed.add(f"{content_type}:{year}")

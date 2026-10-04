@@ -1,258 +1,48 @@
-"""traducao.py — Orquestração de tradução para português: elegibilidade, cache,
-paralelismo e escolha do serviço (Google Translate ou AWS Translate)."""
+"""traducao.py — Orquestração de tradução para português: elegibilidade, cache e
+paralelismo (serviço de tradução via LLM, ver traducao_llm.py)."""
 
 from __future__ import annotations
 
 import logging
-import sys
-import threading
+import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
-from typing import TypeVar
 
-import boto3
 import pandas as pd
 
-from shared_utils.traducao_aws import translate_text_aws
-from shared_utils.traducao_google import is_google_error_page, translate_text
-
 __all__ = [
-    "translate_text",
-    "translate_text_aws",
-    "get_translate_chars_used_this_month",
-    "resolve_translate_fn",
     "translate_in_parallel",
     "reuse_existing_translation",
     "resolve_pt_translation",
-    "make_capped_fallback",
 ]
 
-T = TypeVar("T")
-
 logger = logging.getLogger()
-
-# Orçamento MENSAL de caracteres para o fallback ao AWS Translate (pago por caractere)
-# quando ele não é o serviço escolhido — ver resolve_translate_fn e
-# get_translate_chars_used_this_month. Medido em caracteres (não em número de chamadas)
-# porque é isso que a AWS cobra: uma sinopse longa pesa muito mais que uma keyword curta.
-# 2_000_000 == o free tier mensal do AWS Translate (primeiros 12 meses da conta) — acima
-# disso o excedente passa a ser cobrado a US$15/milhão de caracteres.
-#
-# Era um teto POR EXECUÇÃO (6_000) até esta constante ser revista: o Glue Details roda
-# ~11x/mês (EventBridge — semanal + mensal, ver infra/eventbridge.tf), e 6_000/execução
-# provou ser pequeno demais pra resgatar o que o Google falha (ver
-# get_translate_chars_used_this_month) — o orçamento estourava antes de cobrir o volume
-# real de falhas. Agora resolve_translate_fn consulta o consumo real do mês (via
-# CloudWatch) a cada chamada e usa o que sobrar do teto mensal, em vez de resetar um teto
-# fixo a cada execução.
-_AWS_FALLBACK_MAX_CHARS_DEFAULT = 2_000_000
 
 # Teto de tentativas de tradução por linha antes de desistir dela (ver
 # resolve_pt_translation). Sem esse teto, conteúdo genuinamente não traduzível (nomes
 # próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
-# detected_language_pt_column == "pt" e seria reenviado ao Google/AWS a cada execução,
+# detected_language_pt_column == "pt" e seria reenviado ao LLM a cada execução,
 # para sempre.
 _MAX_TRANSLATION_ATTEMPTS_DEFAULT = 3
 
+# Página de erro do Google Translate, histórica: gravada como "tradução" por versões
+# anteriores do código (quando o serviço de tradução ainda era Google Translate, ver
+# traducao_google.py — removido), que não validavam o conteúdo antes de persistir.
+# Mantida aqui só para higienizar dado LEGADO já gravado no SOT (ver Passo 0 de
+# resolve_pt_translation) — não tem relação com o LLM, que não produz esse tipo de
+# resposta. Ancorada no início e no formato "Error <status> (<motivo>)!!<n>" para não
+# casar com uma tradução legítima que apenas mencione "Error".
+_GOOGLE_ERROR_PAGE_PATTERN = re.compile(r"^Error \d{3} \([^)]*\)!!\d")
 
-def make_capped_fallback(
-    fallback_fn: Callable[[str], T], max_chars: int, on_over_budget: Callable[[str], T]
-) -> Callable[[str], T]:
+
+def _is_google_error_page(text: object) -> bool:
+    """True se `text` é a página de erro histórica do Google Translate, e não uma
+    tradução — usado só para higienizar dado legado (ver _GOOGLE_ERROR_PAGE_PATTERN).
+
+    Aceita qualquer tipo (o valor vem de colunas de DataFrame, onde pode ser None/NaN);
+    só uma string que começa com o padrão de erro conta.
     """
-    Envolve fallback_fn com um orçamento de caracteres thread-safe: enquanto restar
-    orçamento, cada chamada consome len(text) caracteres e delega a fallback_fn; textos
-    que excederiam o restante são pulados (devolve on_over_budget(text), sem chamar
-    fallback_fn) e não consomem o que sobrou — um texto menor que chegue depois ainda
-    pode caber.
-
-    Compartilhada entre resolve_translate_fn (fallback de tradução via AWS Translate,
-    pago por caractere) e shared_utils.idioma.resolve_detect_language_fn (fallback de
-    detecção de idioma via AWS Comprehend, também pago por caractere) — mesmo mecanismo
-    de orçamento, resultados diferentes por chamador: tradução devolve o próprio texto
-    quando o orçamento acaba (on_over_budget=lambda text: text), detecção devolve None
-    (on_over_budget=lambda text: None).
-
-    Thread-safe via threading.Lock + contador mutável de 1 elemento (lista), já que a
-    função composta roda dentro de ThreadPoolExecutor (translate_in_parallel/
-    resolve_pt_translation, até 5 workers nos chamadores atuais — glue_details e
-    backfill_traducao.py).
-
-    Args:
-        fallback_fn:     Função chamada enquanto houver orçamento restante.
-        max_chars:       Orçamento total de caracteres para esta instância.
-        on_over_budget:  Função chamada com o texto original quando o orçamento já
-                         se esgotou, no lugar de fallback_fn.
-
-    Returns:
-        Função (texto) -> resultado que aplica fallback_fn ou on_over_budget conforme
-        o orçamento restante.
-    """
-    remaining = [max_chars]
-    lock = threading.Lock()
-
-    def _capped(text: str) -> T:
-        length = len(text)
-        with lock:
-            if length > remaining[0]:
-                return on_over_budget(text)
-            remaining[0] -= length
-        return fallback_fn(text)
-
-    return _capped
-
-
-def get_translate_chars_used_this_month(
-    cloudwatch_client: object = None, region: str = "us-east-1",
-) -> int:
-    """
-    Soma o `CharacterCount` que o próprio AWS Translate publica no CloudWatch (namespace
-    `AWS/Translate`) desde o dia 1 do mês corrente (UTC) até agora — a mesma métrica que a
-    AWS usa pra faturar, consultada ao vivo em vez de mantida num contador próprio.
-
-    Um contador próprio precisaria persistir entre execuções (o Glue Details roda como
-    processo novo a cada disparo, sem estado em memória compartilhado). O bucket TEMP, onde
-    hoje vive o checkpoint de backfill (`scripts.backfill_shared`), não serviria: seu
-    lifecycle apaga tudo em 1 dia, sem filtro de prefixo (`infra/s3.tf`,
-    `delete-after-1-day`) — um contador mensal não sobreviveria até o fim do mês.
-    Consultar o CloudWatch evita esse problema (nenhum estado novo pra persistir) e nunca
-    diverge do consumo real faturado (diferente de um contador próprio, que dessincroniza
-    se uma execução falhar depois de traduzir mas antes de salvar).
-
-    `CharacterCount` é publicado com as dimensões `LanguagePair` (par de idiomas, um por
-    idioma de origem detectado automaticamente — sempre "<origem>-pt" neste projeto) e
-    `Operation` — não existe uma dimensão "todos os pares", então é preciso enumerar os
-    pares publicados (`list_metrics`) e somar `Sum` de cada um.
-
-    Se a consulta ao CloudWatch falhar (permissão ausente, erro transitório): loga e
-    devolve `sys.maxsize`, fazendo `resolve_translate_fn` tratar o orçamento como
-    esgotado — mais seguro financeiramente do que assumir consumo zero e arriscar gastar
-    sem visibilidade de quanto já foi usado no mês.
-
-    Args:
-        cloudwatch_client: Cliente boto3 do CloudWatch já pronto (criado sob demanda, com
-                           `region`, se None) — recebido como parâmetro pra os testes
-                           poderem mockar, mesmo racional de `translate_google`/
-                           `translate_aws` em `resolve_translate_fn`.
-        region:            Região do CloudWatch a consultar. AWS Translate não está
-                           disponível em sa-east-1 (região principal do pipeline — ver
-                           `traducao_aws.translate_text_aws`), então a métrica só existe
-                           em us-east-1.
-
-    Returns:
-        Caracteres traduzidos via AWS Translate (`TranslateText`) desde o início do mês
-        corrente, ou `sys.maxsize` se a consulta ao CloudWatch falhar.
-    """
-    client = cloudwatch_client or boto3.client("cloudwatch", region_name=region)
-    now = datetime.now(timezone.utc)
-    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    try:
-        pairs: set[str] = set()
-        paginator = client.get_paginator("list_metrics")
-        for page in paginator.paginate(Namespace="AWS/Translate", MetricName="CharacterCount"):
-            for metric in page["Metrics"]:
-                dims = {d["Name"]: d["Value"] for d in metric["Dimensions"]}
-                if "LanguagePair" in dims:
-                    pairs.add(dims["LanguagePair"])
-
-        total = 0
-        for pair in pairs:
-            response = client.get_metric_statistics(
-                Namespace="AWS/Translate",
-                MetricName="CharacterCount",
-                Dimensions=[
-                    {"Name": "LanguagePair", "Value": pair},
-                    {"Name": "Operation", "Value": "TranslateText"},
-                ],
-                StartTime=start_of_month,
-                EndTime=now,
-                Period=2_592_000,  # 30 dias — o mês corrente cabe num único datapoint
-                Statistics=["Sum"],
-            )
-            total += sum(datapoint["Sum"] for datapoint in response["Datapoints"])
-        return int(total)
-    # Consulta de observabilidade, não pode derrubar o job de tradução.
-    except Exception:
-        logger.exception(
-            "Falha ao consultar CharacterCount do AWS Translate no CloudWatch — "
-            "assumindo orçamento mensal esgotado (mais seguro que assumir consumo zero)."
-        )
-        return sys.maxsize
-
-
-def resolve_translate_fn(
-    provider: str,
-    translate_google: Callable[[str], str] = translate_text,
-    translate_aws: Callable[[str], str] = translate_text_aws,
-    aws_fallback_max_chars: int = _AWS_FALLBACK_MAX_CHARS_DEFAULT,
-    get_chars_used_this_month: Callable[[], int] = get_translate_chars_used_this_month,
-) -> Callable[[str], str]:
-    """
-    Resolve o provedor de tradução (`"google"` ou `"aws"`) para uma função composta
-    primário+fallback: o provider escolhido é tentado primeiro; se falhar (resultado
-    igual ao texto original, texto não-vazio — mesmo sinal de falha usado em
-    resolve_pt_translation), o outro serviço é tentado automaticamente antes de
-    desistir.
-
-    `provider="google"` → primário=Google (grátis), fallback=AWS Translate — pago por
-    caractere, por isso limitado ao que sobrar do orçamento MENSAL de
-    aws_fallback_max_chars (rede de segurança de custo; ver make_capped_fallback e
-    get_translate_chars_used_this_month). O orçamento é consultado ao vivo a cada chamada
-    — não é mais um teto fixo resetado por execução — então chamadas concorrentes/
-    sucessivas dentro do mesmo mês naturalmente compartilham o teto real já consumido.
-    `provider="aws"` → primário=AWS Translate, fallback=Google (grátis) — sem limite,
-    já que quem escolheu "aws" explicitamente já aceitou o custo do primário.
-
-    `translate_google`/`translate_aws` são recebidos como parâmetro (em vez de resolvidos
-    aqui dentro) pelo mesmo motivo de `translate_in_parallel`: os chamadores passam suas
-    próprias referências locais de `translate_text`/`translate_text_aws` — as mesmas que
-    seus testes fazem mock (ex.: `patch("src.utils.translate_text", ...)`). Resolver via
-    referência direta ao módulo quebraria esse patch.
-
-    Args:
-        provider:                  `"google"` (deep_translator, grátis) ou `"aws"` (AWS
-                                   Translate, pago por caractere).
-        translate_google:          Função de tradução via Google.
-        translate_aws:             Função de tradução via AWS.
-        aws_fallback_max_chars:    Orçamento MENSAL de caracteres para o fallback ao AWS
-                                   Translate, aplicado somente quando `provider="google"`
-                                   (AWS é o fallback). Ignorado quando `provider="aws"`
-                                   (AWS já é o primário escolhido explicitamente).
-        get_chars_used_this_month: Função sem argumentos que devolve quantos caracteres já
-                                   foram consumidos no mês corrente — recebida como
-                                   parâmetro pelo mesmo motivo de translate_google/
-                                   translate_aws (testes mockam sem tocar o CloudWatch de
-                                   verdade).
-
-    Returns:
-        Função (texto) -> texto traduzido que tenta o primário e cai para o fallback
-        automaticamente em caso de falha.
-
-    Raises:
-        ValueError: se `provider` não for `"google"` nem `"aws"`.
-    """
-    try:
-        primary, fallback = {
-            "google": (translate_google, translate_aws),
-            "aws": (translate_aws, translate_google),
-        }[provider]
-    except KeyError:
-        raise ValueError(
-            f"TRANSLATE_PROVIDER inválido: {provider!r} (esperado 'google' ou 'aws')"
-        ) from None
-
-    if provider == "google":
-        remaining_budget = max(0, aws_fallback_max_chars - get_chars_used_this_month())
-        fallback = make_capped_fallback(fallback, remaining_budget, on_over_budget=lambda text: text)
-
-    def _translate_with_fallback(text: str) -> str:
-        result = primary(text)
-        if not text or result != text:
-            return result
-        return fallback(text)
-
-    return _translate_with_fallback
+    return isinstance(text, str) and _GOOGLE_ERROR_PAGE_PATTERN.match(text) is not None
 
 
 def translate_in_parallel(
@@ -261,13 +51,13 @@ def translate_in_parallel(
     """
     Aplica translate_fn a cada item de values em paralelo via ThreadPoolExecutor.
 
-    Recebe a função de tradução como parâmetro (em vez de chamar translate_text
+    Recebe a função de tradução como parâmetro (em vez de chamar translate_text_llm
     diretamente) para que os chamadores continuem passando sua própria referência
-    local de translate_text — a mesma que seus testes fazem mock.
+    local de translate_text_llm — a mesma que seus testes fazem mock.
 
     Args:
         values:       Textos a traduzir, na ordem em que devem ser retornados.
-        translate_fn: Função chamada para cada item (ex.: translate_text).
+        translate_fn: Função chamada para cada item (ex.: translate_text_llm).
         max_workers:  Número de threads concorrentes.
 
     Returns:
@@ -284,12 +74,12 @@ def _detect_missing(
     detect_fn: Callable[[str], str | None],
 ) -> pd.DataFrame:
     """Detecta o idioma de text_column em language_column, só para linhas onde
-    language_column ainda está vazia/nula — evita redetectar (e reenviar caracteres ao
-    fallback pago do AWS Comprehend) o que já foi calculado numa execução anterior.
+    language_column ainda está vazia/nula — evita redetectar o que já foi calculado
+    numa execução anterior.
 
     Equivalente a shared_utils.idioma.add_detected_language_column(only_missing=True),
-    duplicado aqui (em vez de importado) para não criar import circular: idioma.py já
-    importa make_capped_fallback deste módulo.
+    duplicado aqui (em vez de importado) para não criar import circular: idioma.py
+    importa deste módulo (ver histórico de make_capped_fallback, hoje removido).
     """
     if language_column not in df.columns:
         df[language_column] = None
@@ -319,9 +109,9 @@ def resolve_pt_translation(
     respectivamente — em vez da antiga heurística de string-diff, que não
     distinguia "não precisava traduzir" de "tradução falhou silenciosamente".
 
-    Passo 0 (auto-reparo): descarta de target_column o que for a página de erro do Google
-    (ver is_google_error_page) — gravada como "tradução" por versões anteriores de
-    translate_text, que não validavam o conteúdo — e zera detected_language_pt_column e
+    Passo 0 (auto-reparo): descarta de target_column o que for a página de erro
+    histórica do Google Translate (ver _is_google_error_page) — dado legado gravado
+    antes da migração para tradução via LLM — e zera detected_language_pt_column e
     translation_attempts_column dessas linhas. Sem zerar o contador, uma linha que já
     tivesse esgotado o teto de tentativas ficaria com o texto de erro para sempre;
     zerando, ela volta a ser elegível em qualquer job que chame esta função (inclusive
@@ -345,7 +135,8 @@ def resolve_pt_translation(
 
     translation_attempts_column existe porque conteúdo genuinamente não traduzível
     (nomes próprios, termos curtos que o tradutor devolve sem alterar) nunca teria
-    detected_language_pt_column == "pt" e seria retentado para sempre sem um teto.
+    detected_language_pt_column == "pt" e seria retentado para sempre sem um teto —
+    relevante também para o LLM, que não é determinístico (ver traducao_llm.py).
 
     Args:
         df:                Dataframe a atualizar (modificado in-place).
@@ -372,7 +163,7 @@ def resolve_pt_translation(
     if translation_attempts_column not in df.columns:
         df[translation_attempts_column] = 0
 
-    polluted = df[target_column].apply(is_google_error_page).astype(bool)
+    polluted = df[target_column].apply(_is_google_error_page).astype(bool)
     if polluted.any():
         df.loc[polluted, target_column] = None
         df.loc[polluted, detected_language_pt_column] = None
@@ -444,9 +235,9 @@ def reuse_existing_translation(
     resolve_pt_translation; esta função só fornece o valor de cache para essa
     checagem localizar. Se o valor reaproveitado for igual à fonte (falha de
     tradução de um run anterior), o chamador vai marcá-lo como pendente e
-    retentar sozinho. Se o valor reaproveitado for a página de erro do Google (gravada
-    por versões antigas de translate_text), esta função ainda o reaproveita — quem o
-    descarta é resolve_pt_translation (passo 0), para a checagem morar num só lugar.
+    retentar sozinho. Se o valor reaproveitado for a página de erro histórica do
+    Google (dado legado), esta função ainda o reaproveita — quem o descarta é
+    resolve_pt_translation (passo 0), para a checagem morar num só lugar.
 
     Compartilhada entre glue_details (key_column="id", default) e glue_etl
     (key_column="iso_3166_1"/"iso_639_1" para a tabela configuration).

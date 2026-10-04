@@ -46,13 +46,6 @@ Variáveis opcionais:
                            consecutivas de requisições ao TMDB; o rate limit em si já é tratado
                            por chamada individual, com retry/backoff, em
                            shared_utils.api_client.api_get)
-    TRANSLATE_PROVIDER    (padrão: "google" — grátis; volume alto por re-enriquecer o histórico
-                           inteiro. "aws" usa AWS Translate, útil para testar um período menor
-                           via BACKFILL_START_YEAR/BACKFILL_END_YEAR — se o intervalo cobrir
-                           mais de 1 ano, é rebaixado automaticamente para "google" (proteção
-                           de custo, ver backfill_shared.apply_translate_cost_guard). O serviço
-                           não escolhido é usado como fallback automático, capado por
-                           caracteres quando é o AWS — ver shared_utils.traducao.resolve_translate_fn)
 
 Data Quality:
     Diferente do caminho automático (Glue Details dispara o Data Quality 2x por unidade), este
@@ -131,7 +124,6 @@ def _process_enriquecimento_unit(
     table_details: str,
     table_watch_providers: str,
     dq_job_name: str,
-    translate_provider: str,
 ) -> str | None:
     """Processa uma unidade (media_type, year): detalhes + watch providers.
 
@@ -154,7 +146,6 @@ def _process_enriquecimento_unit(
             table_details=table_details,
             table_watch_providers=table_watch_providers,
             dq_job_name=dq_job_name,
-            translate_provider=translate_provider,
             trigger_dq=False,
         )
     except ClientError as exc:
@@ -258,9 +249,6 @@ def main(trigger_agg: bool = True) -> bool:
 
     start_year, end_year = shared.read_year_range()
     wait_seconds  = int(os.environ.get("WAIT_SECONDS", 15))
-    translate_provider = shared.apply_translate_cost_guard(
-        os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
-    )
 
     s3_client = boto3.client("s3", region_name=region)
 
@@ -286,7 +274,7 @@ def main(trigger_agg: bool = True) -> bool:
 
         error = _process_enriquecimento_unit(
             media_type, year, end_year, database, api_key, s3_bucket_sot, s3_bucket_temp,
-            table_discover, table_details, table_watch_providers, dq_job_name, translate_provider,
+            table_discover, table_details, table_watch_providers, dq_job_name,
         )
         if error is None:
             completed.add(f"{media_type}:{year}")

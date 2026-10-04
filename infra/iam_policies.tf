@@ -327,46 +327,21 @@ resource "aws_iam_role_policy" "glue_etl_catalog" {
   })
 }
 
-# Tradução via AWS Translate — tradutor do caminho automático via EventBridge.
-# TRANSLATE_PROVIDER default é "google" quando o job não recebe esse argumento
-# (ver app/glue_etl/src/utils.py), mas o AWS Translate também é acionado como
-# fallback automático sempre que o Google falha ou devolve o texto sem
-# alteração (resolve_translate_fn em shared_utils.traducao). translate_text_aws
-# sempre chama TranslateText com SourceLanguageCode="auto", que aciona o
-# Comprehend internamente para detectar o idioma de origem — por isso
-# comprehend:DetectDominantLanguage também é necessário. Nenhuma das duas
-# actions suporta restrição por recurso na AWS (Resource = "*").
-resource "aws_iam_role_policy" "glue_etl_translate" {
-  name = "${local.tmdb_prefix}-glue-etl-translate-${var.env}"
+# Lê o secret unificado (var.filmbot_secret_arn) para o campo llm_api_key — usado por
+# shared_utils.llm_client.load_llm_api_key (traducao_llm.py/idioma_llm.py) na tradução
+# de name_pt da tabela "configuration" via LLM. Clone da policy equivalente de
+# glue_details (glue_details_secrets) — este job não chama a API do TMDB, então não
+# tinha nenhuma policy de Secrets Manager antes desta mudança.
+resource "aws_iam_role_policy" "glue_etl_secrets" {
+  name = "${local.tmdb_prefix}-glue-etl-secrets-${var.env}"
   role = aws_iam_role.glue_etl_role.name
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
-      Resource = "*"
-    }]
-  })
-}
-
-# Consulta o CharacterCount do AWS Translate no CloudWatch para calcular quanto do teto
-# MENSAL do fallback (default do módulo, 2_000_000 caracteres — este job não expõe
-# AWS_FALLBACK_MONTHLY_MAX_CHARS como argumento próprio) já foi consumido antes de
-# decidir se ainda pode traduzir via AWS neste run — ver
-# shared_utils.traducao.get_translate_chars_used_this_month. Nenhuma das duas actions
-# suporta restrição por recurso na AWS (Resource = "*"), mesmo padrão já aceito acima
-# para translate:TranslateText/comprehend:DetectDominantLanguage.
-resource "aws_iam_role_policy" "glue_etl_translate_budget" {
-  name = "${local.tmdb_prefix}-glue-etl-translate-budget-${var.env}"
-  role = aws_iam_role.glue_etl_role.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics"]
-      Resource = "*"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = var.filmbot_secret_arn
     }]
   })
 }
@@ -1071,50 +1046,6 @@ resource "aws_iam_role_policy" "glue_details_secrets" {
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
       Resource = var.filmbot_secret_arn
-    }]
-  })
-}
-
-# Tradução via AWS Translate — tradutor do caminho automático via EventBridge.
-# TRANSLATE_PROVIDER default é "google" quando o job não recebe esse argumento
-# (ver app/glue_details/src/utils.py), mas o AWS Translate também é acionado
-# como fallback automático sempre que o Google falha ou devolve o texto sem
-# alteração (resolve_translate_fn em shared_utils.traducao). translate_text_aws
-# sempre chama TranslateText com SourceLanguageCode="auto", que aciona o
-# Comprehend internamente para detectar o idioma de origem — por isso
-# comprehend:DetectDominantLanguage também é necessário. Nenhuma das duas
-# actions suporta restrição por recurso na AWS (Resource = "*").
-resource "aws_iam_role_policy" "glue_details_translate" {
-  name = "${local.tmdb_prefix}-glue-details-translate-${var.env}"
-  role = aws_iam_role.glue_details_role.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
-      Resource = "*"
-    }]
-  })
-}
-
-# Consulta o CharacterCount do AWS Translate no CloudWatch para calcular quanto do teto
-# MENSAL do fallback (var.aws_translate_monthly_max_chars) já foi consumido antes de
-# decidir se ainda pode traduzir via AWS neste run — ver
-# shared_utils.traducao.get_translate_chars_used_this_month. Nenhuma das duas actions
-# suporta restrição por recurso na AWS (Resource = "*"), confirmado no IAM Service
-# Authorization Reference — mesmo padrão já aceito acima para translate:TranslateText/
-# comprehend:DetectDominantLanguage.
-resource "aws_iam_role_policy" "glue_details_translate_budget" {
-  name = "${local.tmdb_prefix}-glue-details-translate-budget-${var.env}"
-  role = aws_iam_role.glue_details_role.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics"]
-      Resource = "*"
     }]
   })
 }

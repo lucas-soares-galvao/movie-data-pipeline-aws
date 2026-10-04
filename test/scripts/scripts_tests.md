@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_historico.py`) + o módulo compartilhado `backfill_shared.py`, acionados pelo workflow `6. Backfill` (`.github/workflows/backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `GoogleTranslator`, AWS Translate, `langdetect`, AWS Comprehend) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS, ao Google Translate, ao AWS Translate ou aos detectores de idioma.
+Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_historico.py`) + o módulo compartilhado `backfill_shared.py`, acionados pelo workflow `6. Backfill` (`.github/workflows/backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `litellm.completion`) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS nem ao LLM (OpenRouter).
 
 O foco principal é o **contrato dos argumentos** enviados a cada serviço (Glue) ou às funções internas replicadas no processo (coleta TMDB, transformação equivalente ao Glue ETL/Details), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado. Ainda assim, a cobertura deles **entra no gate de 100%**: o CI roda `pytest --cov=app --cov=scripts` (ver "Cobertura" abaixo).
 
@@ -18,7 +18,7 @@ Um quarto bug real motivou a cobertura dos dois códigos de erro: `backfill_shar
 test/scripts/
 ├── __init__.py
 ├── conftest.py                        # scripts/ já está no pythonpath (pytest.ini); sem fixtures adicionais
-├── requirements_tests.txt             # boto3, awswrangler, pandas, deep_translator
+├── requirements_tests.txt             # boto3, awswrangler, pandas, litellm
 ├── test_backfill_discover.py
 ├── test_backfill_referencias.py
 ├── test_backfill_enriquecimento.py
@@ -62,19 +62,6 @@ processo, sem invocar Lambda nem acionar o job Glue ETL — os testes mockam ess
 | `test_read_from_sor_recebe_table_type_discover` | Terceiro argumento posicional de `read_from_sor` é `"discover"` |
 | `test_write_parquet_particiona_por_ano_com_overwrite_partitions` | `partition_cols=["year"]`, `mode="overwrite_partitions"` — mesma config de `app/glue_etl/main.py:_TABLE_CONFIG["discover"]` |
 | `test_write_parquet_usa_tabela_e_database_do_media_type` | `table_name`/`database` batem com `TABLE_DISCOVER_MOVIE`/`GLUE_DATABASE_MOVIE` (e o par tv) |
-
-### `TestTranslateProviderGuard`
-
-`TRANSLATE_PROVIDER` aqui não traduz nada — só escolhe o serviço primário do detector de idioma
-do overview via `resolve_detect_language_fn` (mockado nestes testes), com a mesma proteção de
-custo por intervalo de anos de `backfill_enriquecimento.py`/`backfill_traducao.py` (ver
-`backfill_shared.apply_translate_cost_guard`).
-
-| Teste | O que verifica |
-|---|---|
-| `test_translate_provider_default_google_propagado` | `resolve_detect_language_fn` recebe `provider="google"` por padrão |
-| `test_translate_provider_aws_propagado_para_intervalo_de_1_ano` | `TRANSLATE_PROVIDER=aws` com `start_year == end_year` chega como `"aws"` |
-| `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com `end_year > start_year` é rebaixado para `"google"` |
 
 ### `TestErros`
 
@@ -172,7 +159,6 @@ Checkpoint por unidade `"{media_type}:{table_type}"` (6 unidades), motivado por 
 |---|---|
 | `test_expired_token_no_start_job_run_loga_e_repropaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Regressão: `_start_glue_job` também loga/repropaga erro de token expirado (faltava, era o ponto que derrubou produção) |
 | `test_outro_client_error_no_start_job_run_repropaga_sem_log_de_credenciais` | Outro `ClientError` não gera o log específico de credenciais |
-| `test_translate_provider_default_google` / `test_translate_provider_aws_explicito` | `--TRANSLATE_PROVIDER` incluído em `Arguments` — default `"google"` (volume alto do re-enriquecimento histórico), sobrescrevível para `"aws"` |
 
 ### `TestWaitForJob`
 
@@ -192,8 +178,6 @@ Checkpoint por unidade `"{media_type}:{table_type}"` (6 unidades), motivado por 
 | `test_nao_pausa_apos_ultimo_run` | Sem `time.sleep` após o último run |
 | `test_loga_resumo_das_falhas_ao_final` | Ao final, loga um resumo único com todas as unidades (`media_type`/`year`/`state`) que falharam |
 | `test_nao_loga_resumo_quando_tudo_sucede` | Nenhum log de resumo de falhas quando todos os runs sucedem |
-| `test_translate_provider_default_google_propagado_ao_glue` / `test_translate_provider_aws_propagado_ao_glue` | `TRANSLATE_PROVIDER` do ambiente chega em `--TRANSLATE_PROVIDER` de cada `start_job_run` (intervalo de 1 ano) |
-| `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo maior que 1 ano é rebaixado para `"google"` antes de chegar ao Glue (`backfill_shared.apply_translate_cost_guard`) |
 
 ### `TestErros`
 
@@ -263,21 +247,20 @@ chama o Glue AGG (não escreve dado novo, só valida).
 
 ## Casos de teste — `test_backfill_traducao.py`
 
-Retry/backoff da tradução em si (`translate_text`, 5 tentativas com backoff) é coberto em `test/shared_src/test_traducao_google.py` — o script apenas importa e usa a função do módulo compartilhado, sem lógica própria de retry. O mesmo vale para a escolha de serviço via `TRANSLATE_PROVIDER` (`resolve_translate_fn`, default `"google"`, testado em `test/shared_src/test_traducao.py`) — `_add_translations_*` e `_backfill_year` só recebem e repassam o `translate_fn` já resolvido por `main()`.
+Retry/backoff da tradução em si via LLM é coberto em `test/shared_src/test_traducao_llm.py` — o script apenas importa e usa `translate_text_llm`/`detect_language_llm` do módulo compartilhado, sem lógica própria de retry. `_add_translations_*` e `_backfill_year` recebem `translate_fn`/`detect_fn` opcionais (default `translate_text_llm`/`detect_language_llm`), só para permitir mock nos testes.
 
-Detecção de idioma (`langdetect` com fallback AWS Comprehend — ver
-`shared_utils.idioma`) é aplicada, via `shared_utils.traducao.resolve_pt_translation`,
-antes de qualquer tradução nas três colunas: grava `<campo>_detected_language_en` a
-partir da fonte e `<campo>_detected_language_pt` a partir do resultado final em
-`<campo>_pt`. Quando a fonte já é detectada como `"pt"`, copia direto para
-`<campo>_pt` sem chamar `translate_text`. A elegibilidade para tradução usa o idioma
-detectado do **resultado** (não uma comparação de string com a fonte): fonte
-preenchida, `<campo>_detected_language_pt != "pt"` e `<campo>_translation_attempts`
-abaixo do teto (protege contra retry infinito de conteúdo genuinamente não
-traduzível). A maioria dos testes abaixo fixa `detect_fn` explicitamente (às vezes
-como um mapa de texto→idioma) para isolar do comportamento real do `langdetect`
-(textos curtos como "Falhou" ou "Ja traduzido antes" podem ser detectados de forma
-pouco confiável).
+Detecção de idioma (via LLM — ver `shared_utils.idioma_llm`) é aplicada, via
+`shared_utils.traducao.resolve_pt_translation`, antes de qualquer tradução nas três
+colunas: grava `<campo>_detected_language_en` a partir da fonte e
+`<campo>_detected_language_pt` a partir do resultado final em `<campo>_pt`. Quando a
+fonte já é detectada como `"pt"`, copia direto para `<campo>_pt` sem chamar
+`translate_text_llm`. A elegibilidade para tradução usa o idioma detectado do
+**resultado** (não uma comparação de string com a fonte): fonte preenchida,
+`<campo>_detected_language_pt != "pt"` e `<campo>_translation_attempts` abaixo do teto
+(protege contra retry infinito de conteúdo genuinamente não traduzível). A maioria dos
+testes abaixo fixa `detect_fn` explicitamente (às vezes como um mapa de texto→idioma)
+para isolar do default real `detect_language_llm`, que chamaria a rede (bloqueada em
+teste).
 
 ### `TestAdicionarTraducoesPt`
 
@@ -287,15 +270,15 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 
 | Teste | O que verifica |
 |---|---|
-| `test_todos_overview_en_vazios_nao_chama_traducao` | `_add_translations_pt` não chama `translate_text` quando `overview_en` está vazio/nulo em todos os registros; `overview_detected_language_pt` fica nulo |
+| `test_todos_overview_en_vazios_nao_chama_traducao` | `_add_translations_pt` não chama `translate_text_llm` quando `overview_en` está vazio/nulo em todos os registros; `overview_detected_language_pt` fica nulo |
 | `test_traduz_independente_do_idioma_original` | Traduz todo registro com `overview_en` preenchido, inclusive `original_language == "pt"` |
-| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | Contagem de sucesso ignora registros em que `translate_text` devolveu o texto original (fallback de falha); `overview_detected_language_pt` reflete `"pt"`/diferente por registro |
+| `test_nao_conta_como_sucesso_quando_traducao_falha_e_mantem_original` | Contagem de sucesso ignora registros em que `translate_text_llm` devolveu o texto original (fallback de falha); `overview_detected_language_pt` reflete `"pt"`/diferente por registro |
 | `test_pula_registros_ja_traduzidos_com_sucesso` | Registro com `overview_pt` já preenchido e cujo idioma detectado já é `"pt"` não é retraduzido; valor existente é preservado |
 | `test_retenta_registro_cujo_overview_pt_ficou_igual_ao_original` | `overview_pt == overview_en` (fallback de falha de um run anterior, idioma detectado não é `"pt"`) é tratado como pendente e re-tentado |
 | `test_ignora_registros_com_overview_en_vazio` | Registros com `overview_en` vazio/`None` não entram na contagem de elegíveis |
-| `test_todos_ja_traduzidos_nao_chama_traducao` | Quando todos os registros já têm `overview_pt` cujo idioma detectado é `"pt"`, `translate_text` não é chamado |
+| `test_todos_ja_traduzidos_nao_chama_traducao` | Quando todos os registros já têm `overview_pt` cujo idioma detectado é `"pt"`, `translate_text_llm` não é chamado |
 | `test_idioma_detectado_en_calculado_a_partir_da_fonte` | `overview_detected_language_en` chama `detect_fn` com `overview_en` |
-| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `overview_pt`, sem chamar `translate_text`; `overview_detected_language_pt` fica `"pt"` |
+| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `overview_pt`, sem chamar `translate_text_llm`; `overview_detected_language_pt` fica `"pt"` |
 | `test_overview_precisa_traducao_true_quando_traducao_falha` | `overview_needs_translation` é `True` quando a tradução falha (resultado igual ao original) |
 | `test_overview_precisa_traducao_false_quando_ja_em_portugues` | `overview_needs_translation` é `False` quando a fonte já é detectada como `"pt"` (cópia direta) |
 
@@ -308,7 +291,7 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_pula_registros_ja_traduzidos` | `tagline_pt` já preenchido e cujo idioma detectado já é `"pt"` não é retraduzido |
 | `test_retenta_registro_cujo_tagline_pt_ficou_igual_ao_original` | `tagline_pt == tagline` (fallback de falha anterior, idioma detectado não é `"pt"`) é tratado como pendente |
 | `test_guard_de_schema_legado_nao_cria_colunas_novas` | Partição sem a coluna `tagline` (schema antigo) não ganha `tagline_detected_language_en`/`_pt`/`tagline_translation_attempts`/`tagline_needs_translation` — mesmo guard já existente (`return df, 0` antecipado) |
-| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `tagline_pt`, sem chamar `translate_text` |
+| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `tagline_pt`, sem chamar `translate_text_llm` |
 | `test_tagline_precisa_traducao_true_quando_traducao_falha` | `tagline_needs_translation` é `True` quando a tradução falha |
 | `test_tagline_precisa_traducao_false_quando_ja_em_portugues` | `tagline_needs_translation` é `False` quando a fonte já é detectada como `"pt"` (cópia direta) |
 
@@ -320,7 +303,7 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_traduz_independente_do_idioma_original` | Traduz todo registro com `keywords` preenchida, inclusive `original_language == "pt"` — TMDB não localiza keywords por idioma |
 | `test_pula_registros_ja_traduzidos` | `keywords_pt` já preenchido e cujo idioma detectado já é `"pt"` não é retraduzido |
 | `test_guard_de_schema_legado_nao_cria_colunas_novas` | Partição sem a coluna `keywords` não ganha `keywords_detected_language_en`/`_pt`/`keywords_translation_attempts`/`keywords_needs_translation` |
-| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `keywords_pt`, sem chamar `translate_text` |
+| `test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao` | Fonte detectada como `"pt"` é copiada direto para `keywords_pt`, sem chamar `translate_text_llm` |
 | `test_keywords_precisa_traducao_true_quando_traducao_falha` | `keywords_needs_translation` é `True` quando a tradução falha |
 | `test_keywords_precisa_traducao_false_quando_ja_em_portugues` | `keywords_needs_translation` é `False` quando a fonte já é detectada como `"pt"` (cópia direta) |
 
@@ -342,12 +325,6 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | `test_nao_pausa_quando_particao_nao_traduziu_nada` | `translated_count == 0` (partição vazia/já 100% traduzida, sem chamada de API) não paga a pausa de `BACKFILL_WAIT_SECONDS` — evita desperdiçar tempo num backfill de anos antigos ou de range grande |
 | `test_pausa_apenas_apos_particoes_que_traduziram_algo` | Mistura de partições com e sem tradução: pausa só depois das que traduziram algo, nunca depois da última |
 | `test_loga_total_de_traduzidos_com_sucesso_acumulado` | O log final soma os traduzidos com sucesso de cada partição (`_backfill_year` retorna `(escreveu, traduzidos)`), não a quantidade de partições |
-| `test_translate_provider_default_google` | `translate_fn` repassado a `_backfill_year` usa Google como primário (default) |
-| `test_translate_provider_aws_explicito_janela_de_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo de 1 ano: `translate_fn` usa AWS como primário |
-| `test_translate_provider_aws_rebaixado_para_google_em_intervalo_maior_que_1_ano` | `TRANSLATE_PROVIDER=aws` com intervalo maior que 1 ano: rebaixado para Google como primário (`backfill_shared.apply_translate_cost_guard`) |
-| `test_translate_fn_recriada_por_particao_consulta_orcamento_mensal` | `translate_fn` é recriado a cada partição (ano+tipo) — não pra isolar orçamentos (o fallback ao AWS Translate hoje é um teto MENSAL, consultado ao vivo via CloudWatch a cada chamada de `resolve_translate_fn`), mas porque o detector de idioma ainda usa um cap por chamada independente; com CloudWatch mockado ("nada consumido no mês"), as duas partições enxergam o mesmo teto configurado disponível |
-| `test_aws_fallback_monthly_max_chars_configuravel_via_env` | `AWS_FALLBACK_MONTHLY_MAX_CHARS` (padrão 2_000_000) some com o consumo do mês (CloudWatch, mockado) pra definir o restante disponível ao fallback nesta partição |
-| `test_translate_provider_invalido_levanta_erro` | `TRANSLATE_PROVIDER` fora de `"google"`/`"aws"` propaga o `ValueError` de `resolve_translate_fn` |
 
 ### `TestErros`
 
@@ -439,7 +416,6 @@ Dispara sob demanda o mesmo modo `only_changes_tables` que o cron semanal de dom
 | `test_payload_nao_contem_chaves_de_tabela` | Payload não inclui nenhuma chave `table_*` — o branch `only_changes_tables` de `main.py` sai antes de lê-las |
 | `test_payload_nao_contem_datas` | Regressão: o payload nunca inclui `changes_start_date`/`changes_end_date` — este script não escolhe janela |
 | `test_database_correto_por_content_type` | `database` do payload usa `GLUE_DATABASE_MOVIE`/`GLUE_DATABASE_TV` conforme o tipo |
-| `test_translate_provider_default_google` / `test_translate_provider_repassado_quando_informado` | `translate_provider` no payload |
 
 ### `TestInvocacoes`
 
@@ -583,12 +559,11 @@ função faz em runtime) porque `test/scripts/` não passa pelo mecanismo de ali
 | `test_client_error_token_expirado_propaga` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) | Token expirado propaga (recuperável via exit 75) |
 | `test_excecao_generica_e_logada_e_nao_propaga` | Qualquer outra exceção (ex.: `RuntimeError` de `write_parquet_to_spec`) também é capturada e logada, sem propagar |
 
-### Helpers comuns (`require_env`, `apply_translate_cost_guard`, `read_year_range`, `run_with_retry_exit`, `log_resume_progress`)
+### Helpers comuns (`require_env`, `read_year_range`, `run_with_retry_exit`, `log_resume_progress`)
 
 | Teste | O que verifica |
 |---|---|
 | `TestRequireEnv` | Retorna o valor quando a env var existe; lança `EnvironmentError` quando ausente ou vazia |
-| `TestApplyTranslateCostGuard` | Mantém `"aws"` para intervalo de 1 ano; rebaixa para `"google"` quando o intervalo cobre mais de 1 ano; não mexe quando já é `"google"`; loga aviso quando rebaixa |
 | `TestReadYearRange` | Usa `2000`/ano atual como default; lê `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`; aceita nomes de env var customizados |
 | `TestRunWithRetryExit` | Sucesso não sai do processo; token expirado sai com `SystemExit(75)`; outro `ClientError` repropaga |
 | `TestLogResumeProgress` | Loga a mensagem de progresso quando há unidades já concluídas; não loga nada quando não há progresso salvo |

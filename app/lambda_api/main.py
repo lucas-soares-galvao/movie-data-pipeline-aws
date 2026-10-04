@@ -60,7 +60,6 @@ def _handle_changes_mode(event: dict[str, Any], content_type: str) -> dict[str, 
         MEDIA_TYPE=content_type,
         DATABASE=event["database"],
         CHANGES_S3_PATH=f"s3://{S3_BUCKET_TEMP}/{s3_key}",
-        TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
     )
     logger.info(f"Coleta de changes de '{content_type}' finalizada com sucesso!")
     return {
@@ -93,7 +92,6 @@ def _handle_rotation_refresh_mode(event: dict[str, Any], content_type: str) -> d
         DATABASE=event["database"],
         YEAR=next_year,
         END_YEAR=next_year,
-        TRANSLATE_PROVIDER=event.get("translate_provider", "google"),
     )
     ssm.put_parameter(Name=param_name, Value=str(next_year), Overwrite=True)
     logger.info(f"Rotation refresh de '{content_type}' finalizado com sucesso! Ano processado: {next_year}")
@@ -179,18 +177,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if event.get("only_rotation_refresh", False):
         return _handle_rotation_refresh_mode(event, content_type)
 
-    # "google" é o default do caminho automático via EventBridge: o payload configurado em
-    # eventbridge.tf nunca define translate_provider, então cai aqui — é grátis, e o AWS
-    # Translate continua disponível como fallback automático (capado por caracteres) via
-    # shared_utils.traducao.resolve_translate_fn. Backfills manuais podem sobrescrever
-    # para "aws" para testar tradução real da AWS num período curto.
-    translate_provider = event.get("translate_provider", "google")
-
     glue_base_args = {
         "MEDIA_TYPE": content_type,
         "DATABASE": event["database"],
         "DATABASE_UNIFIED": event["database_unified"],
-        "TRANSLATE_PROVIDER": translate_provider,
     }
 
     table_genre, table_configuration, table_discover, table_watch_providers_ref, table_now_playing = (

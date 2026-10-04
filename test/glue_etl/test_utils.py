@@ -4,8 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from src.utils import (
-    _TRANSLATE_MAX_WORKERS_AWS,
-    _TRANSLATE_MAX_WORKERS_GOOGLE,
+    _TRANSLATE_MAX_WORKERS_LLM,
     _add_name_pt_countries,
     _add_name_pt_languages,
     _read_genre_or_configuration,
@@ -271,22 +270,22 @@ class TestReadFromSorConfiguration:
         ])
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
         ):
             result = read_from_sor("my-sor", "tv", "configuration")
             assert "name_pt" in result.columns
             assert result["name_pt"].iloc[0] == "[PT] Brazil"
             assert result["name_pt"].iloc[1] == "[PT] United States"
 
-    def test_translate_provider_chega_ate_resolve_pt_translation(self):
+    def test_max_workers_chega_ate_resolve_pt_translation(self):
         s3_mock = _make_s3_mock([{"iso_3166_1": "BR", "english_name": "Brazil"}])
         df_passthrough = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
         with (
             patch("boto3.client", return_value=s3_mock),
             patch("src.utils.resolve_pt_translation", return_value=(df_passthrough, 0)) as mock_resolve,
         ):
-            read_from_sor("my-sor", "tv", "configuration", translate_provider="aws")
-        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_AWS
+            read_from_sor("my-sor", "tv", "configuration")
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_LLM
 
     def test_reaproveita_name_pt_quando_english_name_nao_mudou(self):
         """Cache de tradução: english_name idêntico ao já gravado na SOT não é retraduzido."""
@@ -296,14 +295,14 @@ class TestReadFromSorConfiguration:
         existing_df = pd.DataFrame([
             {"iso_3166_1": "BR", "english_name": "Brazil", "name_pt": "Brasil (cache)"},
         ])
-        # langdetect real é pouco confiável para textos curtos (ver conversa sobre
-        # a instabilidade do langdetect em textos curtos) — mocka a detecção para
-        # exercitar a lógica de cache isoladamente dessa limitação.
+        # Sem detect_fn mockado, o default real (detect_language_llm) chamaria a rede,
+        # bloqueada em teste (ver test/conftest.py) — mocka a detecção para exercitar
+        # a lógica de cache isoladamente dessa dependência.
         def detect_fn(t):
             return "pt" if t == "Brasil (cache)" else "en"
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.translate_text") as mock_traduzir,
+            patch("src.utils.translate_text_llm") as mock_traduzir,
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
         ):
             result = read_from_sor(
@@ -322,7 +321,7 @@ class TestReadFromSorConfiguration:
         ])
         with (
             patch("boto3.client", return_value=s3_mock),
-            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
             patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
         ):
             result = read_from_sor(
@@ -334,7 +333,7 @@ class TestReadFromSorConfiguration:
 class TestAddNamePtCountries:
     def test_traduz_english_name(self):
         df = pd.DataFrame({"english_name": ["Japan", "France"], "native_name": ["日本", "France"]})
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df)
         assert result["name_pt"].iloc[0] == "[PT] Japan"
         assert result["name_pt"].iloc[1] == "[PT] France"
@@ -352,22 +351,24 @@ class TestAddNamePtCountries:
     def test_reaproveita_cache_quando_fonte_identica(self):
         df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
         previous_df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": ["Brasil"]})
-        with patch("src.utils.translate_text") as mock_traduzir:
-            result = _add_name_pt_countries(df, previous_df=previous_df)
+        def detect_fn(t):
+            return "pt" if t == "Brasil" else "en"
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = _add_name_pt_countries(df, previous_df=previous_df, detect_fn=detect_fn)
         assert result["name_pt"].iloc[0] == "Brasil"
         mock_traduzir.assert_not_called()
 
     def test_nao_reaproveita_cache_quando_fonte_mudou(self):
         df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
         previous_df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Nome antigo"], "name_pt": ["Brasil"]})
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "[PT] Brazil"
 
     def test_idioma_detectado_en_calculado_a_partir_de_english_name(self):
         df = pd.DataFrame({"english_name": ["Japan"]})
         detect_fn = MagicMock(side_effect=lambda t: "en" if t == "Japan" else "pt")
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df, detect_fn=lambda t: detect_fn(t))
         assert result["name_detected_language_en"].iloc[0] == "en"
         detect_fn.assert_any_call("Japan")
@@ -376,7 +377,7 @@ class TestAddNamePtCountries:
         df = pd.DataFrame({"english_name": ["Japan"]})
         def detect_fn(t):
             return "pt" if t.startswith("[PT]") else "en"
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_countries(df, detect_fn=detect_fn)
         assert result["name_detected_language_pt"].iloc[0] == "pt"
 
@@ -391,34 +392,29 @@ class TestAddNamePtCountries:
         evita o mesmo tipo de desperdício de retradução infinita do glue_details."""
         df = pd.DataFrame({"english_name": ["Nome já em português"]})
         translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
-        with patch("src.utils.translate_text", translate_fn):
+        with patch("src.utils.translate_text_llm", translate_fn):
             result = _add_name_pt_countries(df, detect_fn=lambda t: "pt")
         assert result["name_pt"].iloc[0] == "Nome já em português"
         assert result["name_detected_language_pt"].iloc[0] == "pt"
         translate_fn.assert_not_called()
 
 
-class TestAddNamePtCountriesMaxWorkersPorProvider:
-    """translate_provider determina o teto de workers repassado a resolve_pt_translation —
-    conservador (Google, endpoint não-oficial) por padrão, maior quando AWS Translate."""
+class TestAddNamePtUsaMaxWorkersLlm:
+    """_add_name_pt_countries/_add_name_pt_languages sempre repassam o mesmo teto de
+    workers (_TRANSLATE_MAX_WORKERS_LLM) a resolve_pt_translation — não há mais
+    distinção por provider."""
 
-    def test_usa_teto_conservador_do_google_quando_provider_nao_informado(self):
+    def test_add_name_pt_countries_usa_teto_llm(self):
         df = pd.DataFrame({"english_name": ["Japan"]})
         with patch("src.utils.resolve_pt_translation", return_value=(df, 0)) as mock_resolve:
             _add_name_pt_countries(df)
-        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_GOOGLE
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_LLM
 
-    def test_usa_teto_maior_quando_provider_e_aws(self):
-        df = pd.DataFrame({"english_name": ["Japan"]})
-        with patch("src.utils.resolve_pt_translation", return_value=(df, 0)) as mock_resolve:
-            _add_name_pt_countries(df, translate_provider="aws")
-        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_AWS
-
-    def test_add_name_pt_languages_tambem_repassa_translate_provider(self):
+    def test_add_name_pt_languages_usa_teto_llm(self):
         df = pd.DataFrame({"english_name": ["English"]})
         with patch("src.utils.resolve_pt_translation", return_value=(df, 0)) as mock_resolve:
-            _add_name_pt_languages(df, translate_provider="aws")
-        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_AWS
+            _add_name_pt_languages(df)
+        assert mock_resolve.call_args.kwargs["max_workers"] == _TRANSLATE_MAX_WORKERS_LLM
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +425,7 @@ class TestAddNamePtCountriesMaxWorkersPorProvider:
 class TestAddNamePtLanguages:
     def test_traduz_english_name(self):
         df = pd.DataFrame({"english_name": ["English", "French"], "name": ["English", "Français"]})
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_languages(df)
         assert result["name_pt"].iloc[0] == "[PT] English"
         assert result["name_pt"].iloc[1] == "[PT] French"
@@ -447,12 +443,12 @@ class TestAddNamePtLanguages:
     def test_reaproveita_cache_quando_fonte_identica(self):
         df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
         previous_df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"], "name_pt": ["Inglês"]})
-        # langdetect real é pouco confiável para textos curtos (ver conversa sobre
-        # a instabilidade do langdetect em textos curtos) — mocka a detecção para
-        # exercitar a lógica de cache isoladamente dessa limitação.
+        # Sem detect_fn mockado, o default real (detect_language_llm) chamaria a rede,
+        # bloqueada em teste (ver test/conftest.py) — mocka a detecção para exercitar
+        # a lógica de cache isoladamente dessa dependência.
         def detect_fn(t):
             return "pt" if t == "Inglês" else "en"
-        with patch("src.utils.translate_text") as mock_traduzir:
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
             result = _add_name_pt_languages(df, previous_df=previous_df, detect_fn=detect_fn)
         assert result["name_pt"].iloc[0] == "Inglês"
         mock_traduzir.assert_not_called()
@@ -460,14 +456,14 @@ class TestAddNamePtLanguages:
     def test_nao_reaproveita_cache_quando_fonte_mudou(self):
         df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
         previous_df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["Nome antigo"], "name_pt": ["Inglês"]})
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_languages(df, previous_df=previous_df)
         assert result["name_pt"].iloc[0] == "[PT] English"
 
     def test_idioma_detectado_en_calculado_a_partir_de_english_name(self):
         df = pd.DataFrame({"english_name": ["English"]})
         detect_fn = MagicMock(side_effect=lambda t: "en" if t == "English" else "pt")
-        with patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = _add_name_pt_languages(df, detect_fn=lambda t: detect_fn(t))
         assert result["name_detected_language_en"].iloc[0] == "en"
         detect_fn.assert_any_call("English")
@@ -475,7 +471,7 @@ class TestAddNamePtLanguages:
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
         df = pd.DataFrame({"english_name": ["Nome já em português"]})
         translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
-        with patch("src.utils.translate_text", translate_fn):
+        with patch("src.utils.translate_text_llm", translate_fn):
             result = _add_name_pt_languages(df, detect_fn=lambda t: "pt")
         assert result["name_pt"].iloc[0] == "Nome já em português"
         assert result["name_detected_language_pt"].iloc[0] == "pt"
@@ -509,7 +505,7 @@ class TestReadFromSorConfigurationLanguages:
         s3_mock = _make_s3_mock(payload)
         with (
             patch("src.utils.boto3.client", return_value=s3_mock),
-            patch("src.utils.translate_text", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
         ):
             df = read_from_sor("my-sor", "movie", "configuration")
         assert "name_pt" in df.columns
@@ -520,7 +516,7 @@ class TestReadFromSorConfigurationLanguages:
         payload = [{"iso_639_1": "en", "english_name": "English", "name": "English"}]
         with (
             patch("src.utils.boto3.client", return_value=_make_s3_mock(payload)),
-            patch("src.utils.translate_text") as mock_translate,
+            patch("src.utils.translate_text_llm") as mock_translate,
         ):
             df = _read_genre_or_configuration(
                 "my-sor", "tmdb/configuration/languages/idiomas.json", "person", "configuration",
@@ -714,24 +710,25 @@ class TestGetParametersGlue:
             "GLUE_AGG_JOB_NAME": "agg-job",
             "GLUE_DETAILS_JOB_NAME": "det-job",
             "AWS_ACCOUNT_ID": "123456789012",
+            "FILMBOT_SECRET_ARN": "arn:aws:secretsmanager:sa-east-1:123456789012:secret:filmbot",
         }
 
     def test_returns_required_args(self):
-        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1)]):
             result = get_parameters_glue()
         assert result["S3_BUCKET_SOR"] == "sor"
         assert result["TABLE_TYPE"] == "discover"
 
     def test_includes_year_when_provided(self):
         year_args = {"YEAR": "2024", "END_YEAR": "2025"}
-        with patch("src.utils.get_resolved_option", side_effect=[self._required(), year_args, SystemExit(1)]):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), year_args]):
             result = get_parameters_glue()
         assert result["YEAR"] == "2024"
         assert result["END_YEAR"] == "2025"
 
     def test_omits_year_when_not_provided(self):
         def _side_effect(args):
-            if "YEAR" in args or "TRANSLATE_PROVIDER" in args:
+            if "YEAR" in args:
                 raise SystemExit(1)
             return self._required()
 
@@ -739,23 +736,19 @@ class TestGetParametersGlue:
             result = get_parameters_glue()
         assert "YEAR" not in result
 
-    def test_defaults_translate_provider_to_google_when_not_provided(self):
-        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
-            result = get_parameters_glue()
-        assert result["TRANSLATE_PROVIDER"] == "google"
-
-    def test_includes_translate_provider_when_provided(self):
-        with patch(
-            "src.utils.get_resolved_option",
-            side_effect=[self._required(), SystemExit(1), {"TRANSLATE_PROVIDER": "google"}],
-        ):
-            result = get_parameters_glue()
-        assert result["TRANSLATE_PROVIDER"] == "google"
-
     def test_publica_aws_account_id_em_os_environ(self, monkeypatch):
         """O argumento do Glue (via getResolvedOptions) precisa virar variável de
         ambiente para que shared_utils.s3_helpers o leia (ExpectedBucketOwner)."""
         monkeypatch.delenv("AWS_ACCOUNT_ID", raising=False)
-        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1), SystemExit(1)]):
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1)]):
             get_parameters_glue()
         assert os.environ["AWS_ACCOUNT_ID"] == "123456789012"
+
+    def test_publica_filmbot_secret_arn_em_os_environ(self, monkeypatch):
+        """Mesmo racional de AWS_ACCOUNT_ID: shared_utils.llm_client.load_llm_api_key
+        (traducao_llm.py/idioma_llm.py) lê FILMBOT_SECRET_ARN do ambiente, não do
+        argumento do Glue direto."""
+        monkeypatch.delenv("FILMBOT_SECRET_ARN", raising=False)
+        with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1)]):
+            get_parameters_glue()
+        assert os.environ["FILMBOT_SECRET_ARN"] == self._required()["FILMBOT_SECRET_ARN"]

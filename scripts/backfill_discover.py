@@ -41,12 +41,6 @@ Variáveis opcionais:
                             consecutivas de requisições ao TMDB; o rate limit em si já é tratado
                             por chamada individual, com retry/backoff, em
                             shared_utils.api_client.api_get)
-    TRANSLATE_PROVIDER     (padrão: "google" — discover não traduz nenhum campo; usado só para
-                            escolher o serviço primário de detecção de idioma do overview
-                            [overview_detected_language], via resolve_detect_language_fn. Se o
-                            intervalo de anos cobrir mais de 1 ano, "aws" é rebaixado
-                            automaticamente para "google" — ver
-                            backfill_shared.apply_translate_cost_guard)
 
 Data Quality:
     Diferente do caminho automático (Glue ETL dispara o Data Quality logo após escrever cada
@@ -108,14 +102,12 @@ sys.path.insert(0, str(_REPO_ROOT))
 # sys.path/sys.modules (ver test/conftest.py). Importar com o caminho completo evita colidir com
 # esse mecanismo — mesmo racional de backfill_enriquecimento.py/backfill_referencias.py.
 from app.glue_etl.src.utils import (  # noqa: E402
-    detect_language_aws,
-    detect_language_langdetect,
     read_from_sor,
-    resolve_detect_language_fn,
     trigger_glue_job,
     write_parquet_to_sot,
 )
 from app.lambda_api.src.utils import collect_discover_data  # noqa: E402
+from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
 
 import backfill_shared as shared
 
@@ -256,12 +248,7 @@ def main(trigger_agg: bool = True) -> bool:
 
     start_year, end_year = shared.read_year_range()
     wait_seconds = int(os.environ.get("WAIT_SECONDS", 15))
-    translate_provider = shared.apply_translate_cost_guard(
-        os.environ.get("TRANSLATE_PROVIDER", "google"), start_year, end_year,
-    )
-    detect_fn = resolve_detect_language_fn(
-        detect_language_langdetect, detect_language_aws, provider=translate_provider,
-    )
+    detect_fn = detect_language_llm
 
     s3_client = boto3.client("s3", region_name=region)
 

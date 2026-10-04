@@ -64,13 +64,11 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     # Account ID da própria conta, usado como ExpectedBucketOwner nas chamadas boto3
     # ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
     "--AWS_ACCOUNT_ID" = tostring(data.aws_caller_identity.current.account_id)
-    # Serviço primário de tradução/detecção de idioma (tabela de referência
-    # "configuration" — nomes de países/idiomas) — "aws" por padrão (var.translate_provider).
-    # main.py repassa este mesmo valor ao acionar glue_details (trigger_glue_job(...,
-    # TRANSLATE_PROVIDER=translate_provider)), então é esta variável — não a de
-    # glue_details.tf — que decide o provider do caminho normal de discover; a de
-    # glue_details.tf só vale para o modo changes, disparado direto pela lambda_api.
-    "--TRANSLATE_PROVIDER" = var.translate_provider
+    # Secret unificado (tmdb_api_key, llm_api_key, filmbot_password) — usado aqui só
+    # pelo campo llm_api_key, para a tradução de name_pt da tabela "configuration" via
+    # LLM (ver shared_utils.traducao_llm/idioma_llm). Este job não chama a API do TMDB
+    # (diferente de glue_details), por isso não tinha nenhum argumento de secret antes.
+    "--FILMBOT_SECRET_ARN" = var.filmbot_secret_arn
   }
 
   tags = local.component_tags.glue_etl
@@ -86,7 +84,7 @@ resource "aws_glue_job" "etl_job_pythonshell" {
     aws_iam_role_policy.glue_etl_logs,
     aws_iam_role_policy.glue_etl_sor_sot,
     aws_iam_role_policy.glue_etl_catalog,
-    aws_iam_role_policy.glue_etl_translate,
+    aws_iam_role_policy.glue_etl_secrets,
     aws_glue_job.data_quality_job,
     aws_glue_job.agg_job_pythonshell,
     aws_glue_job.details_job_pythonshell,

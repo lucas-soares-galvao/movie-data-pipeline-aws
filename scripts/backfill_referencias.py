@@ -36,13 +36,6 @@ Variáveis de ambiente obrigatórias:
     S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
                                      (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
-Variáveis opcionais:
-    TRANSLATE_PROVIDER (padrão: "google" — usado só por "configuration", que traduz
-                        english_name para name_pt; resolvido uma vez por content_type, mesmo
-                        padrão de backfill_enriquecimento.py/backfill_changes.py, para que a
-                        primeira content_type processada não esgote sozinha o orçamento de
-                        fallback ao AWS Translate)
-
 Data Quality:
     Diferente do caminho automático (Glue ETL dispara o Data Quality logo após escrever cada
     tabela), este script segue o mesmo padrão: dispara o Glue Data Quality uma vez por tabela
@@ -97,7 +90,6 @@ Retomada automática:
     se o AGG propagasse token expirado depois da limpeza, a retomada reprocessaria tudo).
 """
 
-import os
 import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -119,13 +111,7 @@ import backfill_shared as shared  # noqa: E402
 from shared_utils.api_client import get_api_secret  # noqa: E402
 
 from app.glue_etl.src.utils import (  # noqa: E402
-    detect_language_aws,
-    detect_language_langdetect,
     read_from_sor,
-    resolve_detect_language_fn,
-    resolve_translate_fn,
-    translate_text,
-    translate_text_aws,
     trigger_glue_job,
     write_parquet_to_sot,
 )
@@ -134,6 +120,8 @@ from app.lambda_api.src.utils import (  # noqa: E402
     collect_genre_data,
     collect_watch_providers_ref,
 )
+from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
+from shared_utils.traducao_llm import translate_text_llm  # noqa: E402
 
 logger = shared.setup_logging()
 
@@ -188,7 +176,6 @@ def _process_content_type(
     s3_bucket_sor: str,
     s3_bucket_sot: str,
     dq_job_name: str,
-    translate_provider: str,
     completed: set[str],
     on_unit_done: Callable[[str], None],
 ) -> None:
@@ -213,13 +200,8 @@ def _process_content_type(
         on_unit_done(f"{media_type}:genre")
 
     if f"{media_type}:configuration" not in completed:
-        # Resolvidos uma vez por content_type (não uma vez só para o script inteiro), mesmo
-        # padrão de backfill_enriquecimento.py/backfill_changes.py — evita que a primeira
-        # content_type esgote sozinha o orçamento de fallback ao AWS Translate.
-        translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
-        detect_fn = resolve_detect_language_fn(
-            detect_language_langdetect, detect_language_aws, provider=translate_provider,
-        )
+        translate_fn = translate_text_llm
+        detect_fn = detect_language_llm
 
         logger.info("Coletando configurações do TMDB para '%s'...", media_type)
         collect_configuration_data(api_key, s3_client, s3_bucket_sor, media_type)
@@ -279,8 +261,6 @@ def main() -> None:
     secret_arn  = shared.require_env("TMDB_SECRET_ARN")
     dq_job_name = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
 
-    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
-
     s3_client = boto3.client("s3", region_name=region)
 
     table_group = "referencias"
@@ -321,7 +301,6 @@ def main() -> None:
             s3_bucket_sor=s3_bucket_sor,
             s3_bucket_sot=s3_bucket_sot,
             dq_job_name=dq_job_name,
-            translate_provider=translate_provider,
             completed=completed,
             on_unit_done=mark_unit_done,
         )

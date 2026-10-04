@@ -1,4 +1,4 @@
 # Raciocinio: fixa dependencias necessarias para rodar testes do Glue ETL.
 
 awswrangler
-langdetect
+litellm==1.96.2
