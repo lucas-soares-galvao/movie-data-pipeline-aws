@@ -725,6 +725,22 @@ class TestWriteParquetToSot:
             _, kwargs = mock_write.call_args
             assert kwargs["path"] == "s3://bucket-sot/tmdb/tb_custom/"
 
+    def test_adiciona_processing_datetime_como_ultima_coluna(self):
+        df = pd.DataFrame([{"id": 28, "name": "Ação"}])
+        with patch("awswrangler.s3.to_parquet") as mock_write:
+            write_parquet_to_sot(
+                df=df,
+                s3_bucket_sot="my-sot",
+                table_name="tb_tmdb_genre_movie_dev",
+                database="db_tmdb_movie_dev",
+                mode="overwrite",
+            )
+            _, kwargs = mock_write.call_args
+            written = kwargs["df"]
+            assert list(written.columns) == ["id", "name", "processing_datetime"]
+            assert pd.api.types.is_datetime64_any_dtype(written["processing_datetime"])
+            assert written["processing_datetime"].notna().all()
+
 
 # ---------------------------------------------------------------------------
 # derive_canonical_name

@@ -7,7 +7,7 @@ from typing import Any
 
 import awswrangler as wr
 import pandas as pd
-from shared_utils.glue_helpers import get_resolved_option
+from shared_utils.glue_helpers import add_processing_datetime, get_resolved_option
 from shared_utils.triggers import trigger_glue_job  # noqa: F401
 from src.queries import _DISCOVER_UNIFIED_QUERY
 
@@ -124,6 +124,9 @@ def write_parquet_to_spec(
     Como a tabela unificada é sempre escrita por completo (todos os anos/media_types),
     overwrite e overwrite_partitions produzem o mesmo resultado final.
 
+    Adiciona a coluna processing_datetime (última coluna, ver add_processing_datetime)
+    no próprio DataFrame antes de gravar; o schema da tabela é inferido pelo awswrangler.
+
     Args:
         df:             DataFrame a ser gravado.
         s3_bucket_spec: Nome do bucket SPEC de destino.
@@ -138,6 +141,7 @@ def write_parquet_to_spec(
         )
         return
 
+    add_processing_datetime(df)
     s3_path = f"s3://{s3_bucket_spec}/{s3_prefix_spec}/{table_name}/"
     logger.info(
         f"Escrevendo {len(df)} registros em {s3_path} | "

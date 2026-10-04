@@ -128,6 +128,10 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
       name = "vote_count"
       type = "int"
     }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
+    }
   }
 
   partition_keys {
@@ -217,6 +221,10 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
       name = "vote_count"
       type = "int"
     }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
+    }
   }
 
   partition_keys {
@@ -260,6 +268,10 @@ resource "aws_glue_catalog_table" "tb_now_playing_movie_tmdb" {
       name = "theater_end_date"
       type = "string"
     }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
+    }
   }
 }
 
@@ -296,6 +308,10 @@ resource "aws_glue_catalog_table" "tb_genre_movie_tmdb" {
       name = "name"
       type = "string"
     }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
+    }
   }
 }
 
@@ -326,6 +342,10 @@ resource "aws_glue_catalog_table" "tb_genre_tv_tmdb" {
     columns {
       name = "name"
       type = "string"
+    }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
     }
   }
 }
@@ -382,6 +402,10 @@ resource "aws_glue_catalog_table" "tb_configuration_languages_tmdb" {
       name = "name_translation_attempts"
       type = "int"
     }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
+    }
   }
 }
 
@@ -432,6 +456,10 @@ resource "aws_glue_catalog_table" "tb_configuration_countries_tmdb" {
     columns {
       name = "name_translation_attempts"
       type = "int"
+    }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
     }
   }
 }
@@ -1079,6 +1107,10 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_movie_tmdb" {
       name = "logo_path"
       type = "string"
     }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
+    }
   }
 }
 
@@ -1121,6 +1153,10 @@ resource "aws_glue_catalog_table" "tb_watch_providers_ref_tv_tmdb" {
     columns {
       name = "logo_path"
       type = "string"
+    }
+    columns {
+      name = "processing_datetime"
+      type = "timestamp"
     }
   }
 }
