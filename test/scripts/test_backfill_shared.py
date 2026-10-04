@@ -70,6 +70,28 @@ def _get_object_response(data: dict) -> dict:
     return {"Body": body}
 
 
+class TestSetupLogging:
+    def test_mascara_segredos_nos_handlers_do_logger_raiz(self):
+        """A saída dos scripts vai ao log do Actions (público, num repositório público) e ao step
+        summary: a api_key do TMDB, embutida na URL de uma exceção do requests, nunca pode aparecer."""
+        import io
+
+        from shared_utils.secret_redaction import RedactingFormatter
+
+        root = logging.getLogger()
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        root.addHandler(handler)
+        try:
+            assert bs.setup_logging() is root
+            assert isinstance(handler.formatter, RedactingFormatter)
+            root.warning("404 for url: https://api.themoviedb.org/3/x?api_key=0123456789abcdef0123456789abcdef")
+        finally:
+            root.removeHandler(handler)
+        assert "0123456789abcdef0123456789abcdef" not in stream.getvalue()
+        assert "api_key=***" in stream.getvalue()
+
+
 class TestLoadCheckpoint:
     def test_sem_checkpoint_retorna_vazio(self):
         client = MagicMock()

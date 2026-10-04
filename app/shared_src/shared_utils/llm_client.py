@@ -9,6 +9,8 @@ import os
 
 import boto3
 
+from shared_utils.secret_redaction import register_secret
+
 __all__ = ["load_llm_api_key"]
 
 
@@ -50,5 +52,9 @@ def load_llm_api_key(
         client = boto3.client("secretsmanager", region_name=region)
         response = client.get_secret_value(SecretId=secret_arn)
         secret = json.loads(response["SecretString"])
-        return secret[secret_field] if required else secret.get(secret_field)
-    return os.getenv(env_var)
+        value = secret[secret_field] if required else secret.get(secret_field)
+    else:
+        value = os.getenv(env_var)
+    # Mascara o valor onde quer que apareça em logs/exceções (ver shared_utils.secret_redaction).
+    register_secret(value)
+    return value

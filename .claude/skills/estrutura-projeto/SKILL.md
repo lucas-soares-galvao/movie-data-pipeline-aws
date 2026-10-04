@@ -93,6 +93,7 @@ proj-eng-dados-filmes-aws/
 │           ├── glue_helpers.py        # Utilitários compartilhados de jobs Glue (getResolvedOptions, logging)
 │           ├── traducao.py            # Tradução inglês → português via LLM (OpenRouter, ver traducao_llm.py)
 │           ├── llm_client.py          # Carregamento compartilhado da chave de API do LLM (OpenRouter)
+│           ├── secret_redaction.py    # Mascaramento de segredos (api_key do TMDB etc.) em logs e exceções
 │           ├── llm_metrics.py         # Uso do LLM (chamadas, falhas por causa, modelo, tokens, custo) e balanço de tradução nos logs
 │           └── triggers.py            # Disparo genérico de Glue jobs
 ├── infra/
@@ -145,6 +146,7 @@ proj-eng-dados-filmes-aws/
 └── test/
     ├── conftest.py                 # Fixtures globais + bloqueio de rede (nenhum teste chama serviço real)
     ├── test_bloqueio_de_rede.py    # Garante que o bloqueio de rede do conftest raiz funciona
+    ├── test_workflow_mask_secrets.py  # backfill.yml mascara (::add-mask::) os valores do secret antes do step do backfill
     ├── test_requirements_tenacity.py  # Todo requirements.txt com litellm também declara tenacity (sem ele os retries do litellm não rodam)
     ├── lambda_api/
     │   ├── __init__.py
