@@ -35,14 +35,14 @@ Ao mexer nos arquivos abaixo, não reverta essas escolhas "para simplificar" sem
 - **EventBridge** (`eventbridge.tf`, via `local.eventbridge_schedule_state`): regras `DISABLED` em dev, `ENABLED` só em prod — evita cobrança de invocação de Lambda/Glue e consumo da quota da API TMDB num ambiente que não precisa rodar automaticamente.
 - **Secrets Manager**: um único secret compartilhado (`filmbot_secret_arn`, com `tmdb_api_key`+`llm_api_key`+`filmbot_password`) em vez de 3 secrets separados — Secrets Manager cobra por secret/mês, não por chave dentro do secret.
 - **Tags** (`locals.tf`): `local.default_resource_tags.FinOps` (de `var.finops_tag_value`) vai no `default_tags` do provider e é herdada por todo recurso automaticamente — é o pré-requisito para qualquer análise de custo por projeto no Cost Explorer/CUR. Recurso novo nunca deve ser criado com um provider/tags customizados que fujam desse default.
+- **Tradução/detecção de idioma via LLM** (`shared_utils.traducao_llm`/`idioma_llm`, OpenRouter via `litellm`): o controle de gasto é feito direto no painel do OpenRouter (limite de gasto configurável lá), fora da AWS, sem equivalente via Cost Explorer/CloudWatch e sem budget na AWS. Modelos `qwen/qwen3.8-flash` (primário) e `deepseek/deepseek-v4.1-flash` (fallback), de baixo custo por token no volume deste projeto.
 
 ## Lacunas e oportunidades — avaliar custo x benefício antes de agir
 
-- **Sem AWS Budgets / Cost Anomaly Detection no Terraform**: não existe `aws_budgets_budget` nem anomaly monitor na infra. O projeto já tem o padrão de tópicos SNS + e-mail por evento (`sns_topics.tf`) — um budget por ambiente notificando no mesmo padrão seria a adição de menor esforço/maior valor. Só implementar se pedido explicitamente; não é urgente para o volume atual.
 - **S3 Intelligent-Tiering**: não recomendar trocar o lifecycle manual atual por Intelligent-Tiering. O padrão de acesso deste pipeline é previsível (batch ETL + leituras do FilmBot), então a taxa de monitoramento por objeto do Intelligent-Tiering tende a não se pagar aqui. Só reconsiderar se o padrão de acesso deixar de ser previsível.
 - **Lambda `memory_size` fixo**: antes de ajustar, validar com métricas reais (`Max Memory Used` no CloudWatch) em vez de aumentar/reduzir especulativamente.
 - **Savings Plans / Reserved Instances**: não se aplicam a este stack (serverless on-demand + Lightsail de bundle fixo já mínimo). Não sugerir como otimização — a alavanca real aqui já foi tomada (eliminar ociosidade, dimensionar mínimo).
-- **AWS Translate como fallback** (`translate:TranslateText`, `Resource="*"` em `glue_details_role`/`glue_etl_role`/role de backfill): cobrado por caractere e usado só como fallback do Google Translate (caminho primário, sem custo direto do projeto). Não é uma alavanca a otimizar — é um lembrete de que o caminho padrão já é o mais barato; não inverter a ordem fallback/primário "para simplificar".
+- **AWS Budgets cobre só o Translate por ora**: `aws_budgets_budget.translate_monthly_cost` é o único budget do projeto — não existe Cost Anomaly Detection nem um budget geral por ambiente. Só expandir se pedido explicitamente; o padrão (`cost_filter` por `Service`) já está estabelecido em `infra/budgets.tf` caso outro serviço precise da mesma trava no futuro.
 
 ## Regras ao avaliar custo em mudanças novas
 

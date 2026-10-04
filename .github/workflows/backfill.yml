@@ -26,7 +26,9 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #                             scripts/backfill_enriquecimento.py), disparando o Glue Data Quality
 #                             uma única vez ao final, cobrindo todo o range de anos processado
 #   - data_quality          — re-executa DQ via Glue
-#   - traducao              — adiciona overview_pt nos details (sem API TMDB)
+#   - traducao              — adiciona overview_pt nos details (sem API TMDB); com o input
+#                             reset_attempts ligado, repara antes os *_pt gravados com texto
+#                             de erro legado (ver scripts/backfill_traducao.py)
 #   - rename_colunas        — migra dt_processamento/dt_atualizacao para
 #                             processed_date/updated_date nos parquets já gravados
 #                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
@@ -43,11 +45,6 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #                             redigitar um estágio já concluído numa retomada; herda os 2
 #                             disparos de Glue Data Quality dos dois scripts (não dispara um
 #                             terceiro consolidado)
-#
-# translate_provider escolhe o serviço de tradução usado por qualquer um dos grupos
-# acima que traduz (discover, referencias, detalhes_e_providers, traducao, changes) —
-# "google" (grátis) é o default de todo backfill manual; "aws" (AWS Translate, pago
-# por caractere) é útil para testar um período menor via start_year/end_year.
 #
 # Ao final de qualquer execução bem-sucedida (exit 0), o workflow escreve no step
 # summary um resumo real do que o script de backfill fez (não só "sucesso" pelo exit
@@ -93,14 +90,11 @@ on:
         required: false
         default: ""
         type: string
-      translate_provider:
-        description: "Serviço de tradução (google = grátis, aws = pago por caractere — útil para testar um período menor)"
+      reset_attempts:
+        description: "Só para traducao: descarta *_pt com texto de erro legado e zera as tentativas dessas linhas para retraduzir via LLM (reparo pontual; limpar o checkpoint antes)"
         required: false
-        default: "google"
-        type: choice
-        options:
-          - google
-          - aws
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -165,7 +159,6 @@ jobs:
         env:
           AWS_REGION: sa-east-1
           TABLE_GROUP: ${{ inputs.table_group }}
-          TRANSLATE_PROVIDER: ${{ inputs.translate_provider }}
 
           # Role para renovar a credencial via OIDC se ExpiredTokenException ocorrer no meio do backfill
           ROLE_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_PROD || secrets.AWS_ASSUME_ROLE_ARN_BACKFILL_DEV }}
@@ -199,6 +192,11 @@ jobs:
           # backfill_referencias.py (via get_api_secret), que precisam da chave para chamar a API
           # do TMDB fora do runtime do Glue/Lambda.
           TMDB_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
+          # Mesmo secret unificado acima, lido por shared_utils.llm_client.load_llm_api_key
+          # (campo llm_api_key) para a tradução via LLM/OpenRouter em backfill_traducao.py,
+          # backfill_discover.py, backfill_enriquecimento.py, backfill_referencias.py e
+          # backfill_changes.py (ver shared_utils.traducao_llm/idioma_llm).
+          FILMBOT_SECRET_ARN: ${{ steps.env.outputs.name == 'prod' && secrets.AWS_FILMBOT_SECRET_ARN_PROD || secrets.AWS_FILMBOT_SECRET_ARN_DEV }}
 
           # Databases
           GLUE_DATABASE_MOVIE: db_${{ steps.project.outputs.project_prefix }}_movie_${{ steps.env.outputs.name }}
@@ -229,6 +227,8 @@ jobs:
           TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_movie_${{ steps.env.outputs.name }}
           TABLE_WATCH_PROVIDERS_REF_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_tv_${{ steps.env.outputs.name }}
           BACKFILL_START_YEAR: ${{ inputs.start_year }}
+          # Lida só por backfill_traducao.py (os demais scripts ignoram); "true"/"false"
+          BACKFILL_RESET_ATTEMPTS: ${{ inputs.reset_attempts }}
         run: |
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"

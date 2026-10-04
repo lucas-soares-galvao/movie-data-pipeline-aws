@@ -266,8 +266,7 @@ retomada automática) e no racional de design dos 6 scripts + `backfill_shared.p
 - Ao criar um script de backfill novo.
 - Ao alterar checkpoint/retry.
 - Ao decidir se um script deve abortar no primeiro erro ou continuar (fire-and-forget vs. soft-fail).
-- Ao revisar o guard de custo do `TRANSLATE_PROVIDER`, ou entender o contrato entre um script e
-  `.github/workflows/backfill.yml`.
+- Ao entender o contrato entre um script e `.github/workflows/backfill.yml`.
 
 ---
 

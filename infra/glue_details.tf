@@ -36,12 +36,6 @@ resource "aws_glue_job" "details_job_pythonshell" {
     # Account ID da própria conta, usado como ExpectedBucketOwner nas chamadas boto3
     # ao S3 (ver shared_utils.s3_helpers) — protege contra bucket squatting.
     "--AWS_ACCOUNT_ID" = tostring(data.aws_caller_identity.current.account_id)
-    # Teto MENSAL (não por execução) de caracteres pro fallback ao AWS Translate quando
-    # TRANSLATE_PROVIDER="google" (padrão do caminho automático) — ver
-    # shared_utils.traducao.resolve_translate_fn/get_translate_chars_used_this_month.
-    # Exposto como variável (em vez de hardcoded no código) pra poder ser ajustado sem
-    # alterar app/, só terraform apply.
-    "--AWS_FALLBACK_MONTHLY_MAX_CHARS" = tostring(var.aws_translate_monthly_max_chars)
   }
 
   tags = local.component_tags.glue_details
@@ -57,7 +51,6 @@ resource "aws_glue_job" "details_job_pythonshell" {
     aws_iam_role_policy.glue_details_catalog,
     aws_iam_role_policy.glue_details_athena,
     aws_iam_role_policy.glue_details_secrets,
-    aws_iam_role_policy.glue_details_translate,
     aws_iam_role_policy.glue_details_start_dq,
     aws_cloudwatch_log_group.glue_details_error,
     aws_cloudwatch_log_group.glue_details_output,

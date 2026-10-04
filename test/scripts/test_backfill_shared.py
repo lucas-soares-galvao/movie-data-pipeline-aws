@@ -251,23 +251,6 @@ class TestExpectedBucketOwnerKwargs:
         assert bs._expected_bucket_owner_kwargs() == {}
 
 
-class TestApplyTranslateCostGuard:
-    def test_mantem_aws_para_intervalo_de_1_ano(self):
-        assert bs.apply_translate_cost_guard("aws", 2020, 2020) == "aws"
-
-    def test_rebaixa_aws_para_google_em_intervalo_maior_que_1_ano(self):
-        assert bs.apply_translate_cost_guard("aws", 2020, 2021) == "google"
-
-    def test_nao_mexe_quando_ja_e_google(self):
-        assert bs.apply_translate_cost_guard("google", 2000, 2025) == "google"
-
-    def test_loga_aviso_quando_rebaixa(self, caplog):
-        with caplog.at_level("WARNING", logger="backfill_shared"):
-            bs.apply_translate_cost_guard("aws", 2020, 2025)
-
-        assert any("rebaixando" in r.message for r in caplog.records)
-
-
 class TestReadYearRange:
     def test_usa_defaults_quando_env_ausente(self, monkeypatch):
         monkeypatch.delenv("BACKFILL_START_YEAR", raising=False)

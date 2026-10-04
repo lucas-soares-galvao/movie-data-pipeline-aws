@@ -19,9 +19,12 @@ QUANDO ADICIONAR UM NOVO MÓDULO:
   importar o utils.py de outro job.
 """
 
+import os
 import socket
 import sys
 from pathlib import Path
+
+import pytest
 
 _TEST_ROOT = Path(__file__).parent
 
@@ -259,3 +262,18 @@ def pytest_runtest_setup(item):
             suite_main = getattr(test_module, "main", None)
             if suite_main is not None and sys.modules.get("main") is not suite_main:
                 sys.modules["main"] = suite_main
+
+
+# get_parameters_glue() (glue_etl/glue_details) grava AWS_ACCOUNT_ID/FILMBOT_SECRET_ARN
+# direto em os.environ (não via monkeypatch) — o mesmo truque que permite
+# shared_utils.s3_helpers/llm_client lerem a variável como se fosse o ambiente real do
+# job Glue. Sem este autouse, um teste que chame get_parameters_glue() sem mockar essa
+# publicação deixa a variável "de verdade" no processo do pytest para o resto da sessão
+# — um valor fake de FILMBOT_SECRET_ARN vazando, por exemplo, faz
+# shared_utils.llm_client.load_llm_api_key (chamado por testes completamente não
+# relacionados em test/shared_src) tentar um boto3.client("secretsmanager") real.
+@pytest.fixture(autouse=True)
+def _limpa_env_vars_publicadas_por_producao():
+    yield
+    os.environ.pop("AWS_ACCOUNT_ID", None)
+    os.environ.pop("FILMBOT_SECRET_ARN", None)

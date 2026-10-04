@@ -50,8 +50,6 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_glue_acionado_para_genre_e_configuration_sem_year` | Glue de genre/configuration não recebe argumento `year` |
 | `test_glue_no_loop_recebe_year_e_table_type_corretos` | Glue de discover recebe `year` e `table_type="discover"` para cada ano |
 | `test_glue_discover_recebe_end_year` | Todas as chamadas de discover repassam `end_year` |
-| `test_translate_provider_default_aws_quando_ausente_do_evento` | Sem `translate_provider` no evento (payload real do EventBridge), todas as chamadas ao Glue recebem `TRANSLATE_PROVIDER="aws"` |
-| `test_translate_provider_repassado_quando_informado_no_evento` | `translate_provider` no evento (backfills manuais) é repassado como `TRANSLATE_PROVIDER` a todas as chamadas ao Glue |
 
 ### `TestOnlyDiscover` — flag `only_weekly_tables=True`
 
@@ -111,8 +109,6 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_aciona_glue_details_uma_unica_vez` | `trigger_glue_job` é chamado exatamente uma vez |
 | `test_glue_details_recebe_changes_s3_path` | O job acionado é `GLUE_DETAILS_JOB_NAME`, com `CHANGES_S3_PATH`, `MEDIA_TYPE` e `DATABASE` corretos |
 | `test_glue_details_nao_recebe_year_nem_end_year` | A chamada ao Glue Details não inclui `YEAR`/`END_YEAR` |
-| `test_translate_provider_default_google` | Sem `translate_provider` no evento, `TRANSLATE_PROVIDER="google"` |
-| `test_translate_provider_repassado_quando_informado` | `translate_provider` do evento é repassado ao Glue Details |
 
 ### `TestOnlyRotationRefresh` — flag `only_rotation_refresh=True`
 
@@ -124,7 +120,6 @@ Mocks disponíveis no retorno: `mock_trigger`, `mock_discover`, `mock_genre`, `m
 | `test_reinicia_em_2000_ao_ultrapassar_o_limite` | Quando `last_year + 1 > current_year - 3`, a chamada usa `YEAR=2000` (reinicia o ciclo) |
 | `test_limite_recalculado_a_partir_do_ano_atual` | O mesmo `last_year` que reiniciaria o ciclo num `current_year` não reinicia no ano seguinte — o limite (`current_year - 3`) é recalculado a cada execução, nunca hardcoded |
 | `test_le_e_grava_parametro_ssm_por_content_type` | `get_parameter`/`put_parameter` usam o nome `/tmdb-pipeline/rotation-year-pointer-{content_type}` correto |
-| `test_translate_provider_default_google` | Sem `translate_provider` no evento, `TRANSLATE_PROVIDER="google"` |
 
 ### `TestCollectReferenceTables` — falha isolada em `watch_providers_ref`
 

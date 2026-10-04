@@ -6,15 +6,11 @@ um único ano; os demais tipos usam overwrite simples.
 """
 
 from shared_utils.glue_helpers import configure_glue_logging
+from shared_utils.idioma_llm import detect_language_llm
+from shared_utils.traducao_llm import translate_text_llm
 from src.utils import (
-    detect_language_aws,
-    detect_language_langdetect,
     get_parameters_glue,
     read_from_sor,
-    resolve_detect_language_fn,
-    resolve_translate_fn,
-    translate_text,
-    translate_text_aws,
     trigger_glue_job,
     write_parquet_to_sot,
 )
@@ -52,7 +48,6 @@ def main() -> None:
     details_job_name = args["GLUE_DETAILS_JOB_NAME"]
     year             = args.get("YEAR")
     end_year         = args.get("END_YEAR")
-    translate_provider = args.get("TRANSLATE_PROVIDER", "google")
 
     partition_cols = _TABLE_CONFIG[table_type]["partition_cols"]
     mode = _TABLE_CONFIG[table_type]["mode"]
@@ -61,13 +56,9 @@ def main() -> None:
         f"Processando table_type={table_type} | media_type={media_type} | year={year}"
     )
 
-    translate_fn = resolve_translate_fn(translate_provider, translate_text, translate_text_aws)
-    detect_fn = resolve_detect_language_fn(
-        detect_language_langdetect, detect_language_aws, provider=translate_provider,
-    )
     df = read_from_sor(
-        s3_bucket_sor, media_type, table_type, year, translate_fn,
-        s3_bucket_sot=s3_bucket_sot, table_name=table_name, detect_fn=detect_fn,
+        s3_bucket_sor, media_type, table_type, year, translate_text_llm,
+        s3_bucket_sot=s3_bucket_sot, table_name=table_name, detect_fn=detect_language_llm,
     )
 
     write_parquet_to_sot(
@@ -88,7 +79,6 @@ def main() -> None:
             YEAR=year,
             END_YEAR=end_year,
             DATABASE=database,
-            TRANSLATE_PROVIDER=translate_provider,
         )
 
     logger.info("Job Glue ETL finalizado com sucesso!")

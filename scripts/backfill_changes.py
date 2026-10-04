@@ -33,9 +33,6 @@ Variáveis de ambiente obrigatórias:
     S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
                                     (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
-Variáveis opcionais:
-    TRANSLATE_PROVIDER (padrão: "google")
-
 Data Quality:
     Igual ao padrão de backfill_enriquecimento.py: não dispara por ano — process_changed_ids já
     agrupa todos os anos afetados por content_type num único YEAR separado por vírgula (mesmo
@@ -163,8 +160,6 @@ def main() -> None:
     secret_arn     = shared.require_env("TMDB_SECRET_ARN")
     dq_job_name    = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
 
-    translate_provider = os.environ.get("TRANSLATE_PROVIDER", "google")
-
     s3_client = boto3.client("s3", region_name=region)
 
     table_group = "changes"
@@ -213,7 +208,6 @@ def main() -> None:
                 end_date=changes_data.get("end_date"),
                 s3_bucket_sot=s3_bucket_sot,
                 s3_bucket_temp=s3_bucket_temp,
-                translate_provider=translate_provider,
             )
         except ClientError as exc:
             if shared.is_expired_token_error(exc):

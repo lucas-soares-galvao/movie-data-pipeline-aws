@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `translate_text` (`traducao_google.py`), `translate_text_aws` (`traducao_aws.py`), `resolve_translate_fn`/`translate_in_parallel`/`resolve_pt_translation`/`make_capped_fallback` (`traducao.py`, a fachada que reexporta as duas funções de serviço), `detect_language_langdetect` (`idioma_langdetect.py`), `detect_language_aws` (`idioma_aws.py`) e `resolve_detect_language_fn`/`add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `GoogleTranslator`, `getResolvedOptions`, `langdetect`) são substituídas por **mocks** (exceto em testes-smoke pontuais de detecção real de idioma), mantendo os testes rápidos, gratuitos e isolados.
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `load_llm_api_key` (`llm_client.py`), `translate_text_llm` (`traducao_llm.py`), `translate_in_parallel`/`resolve_pt_translation`/`reuse_existing_translation` (`traducao.py`, a fachada que orquestra elegibilidade/cache/paralelismo em torno do serviço de tradução), `detect_language_llm` (`idioma_llm.py`) e `add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `litellm.completion`, `getResolvedOptions`) são substituídas por **mocks** — nenhum teste chama a rede de verdade (bloqueado por `test/conftest.py`).
 
 ## Estrutura
 
@@ -10,17 +10,16 @@ Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shar
 test/shared_src/
 ├── __init__.py
 ├── conftest.py             # sys.path + stub do módulo awsglue
-├── requirements_tests.txt  # Dependências de teste (inclui langdetect)
+├── requirements_tests.txt  # Dependências de teste (inclui litellm)
 ├── test_api_client.py      # Testes de api_get e get_api_secret
 ├── test_s3_helpers.py      # Testes de expected_bucket_owner_kwargs (ExpectedBucketOwner)
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
-├── test_traducao_google.py # Testes de translate_text e is_google_error_page (Google Translate)
-├── test_traducao_aws.py    # Testes de translate_text_aws (AWS Translate)
-├── test_traducao.py        # Testes de resolve_translate_fn, translate_in_parallel, resolve_pt_translation e reuse_existing_translation
-├── test_idioma_langdetect.py # Testes de detect_language_langdetect (langdetect, local)
-├── test_idioma_aws.py      # Testes de detect_language_aws (AWS Comprehend)
-├── test_idioma.py          # Testes de resolve_detect_language_fn e add_detected_language_column
+├── test_llm_client.py      # Testes de load_llm_api_key (chave do LLM via Secrets Manager/ambiente)
+├── test_traducao_llm.py    # Testes de translate_text_llm (LLM via OpenRouter)
+├── test_traducao.py        # Testes de translate_in_parallel, resolve_pt_translation e reuse_existing_translation
+├── test_idioma_llm.py      # Testes de detect_language_llm (LLM via OpenRouter)
+├── test_idioma.py          # Testes de add_detected_language_column
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -124,113 +123,65 @@ e `test/lightsail_ia/test_infrastructure.py`; aqui cobre só as duas funções e
 | `test_retorna_false_sem_chamar_smtp_quando_nenhuma_credencial_esta_configurada` | Sem credenciais, retorna `False` sem sequer chamar `SMTP_SSL` |
 | `test_loga_erro_sem_propagar_quando_smtp_falha` | Falha de conexão SMTP é logada e retorna `False`, nunca propaga |
 
-## Casos de teste — `test_traducao_google.py`
+## Casos de teste — `test_llm_client.py`
 
-### `TestIsGoogleErrorPage`
+### `TestLoadLlmApiKey`
 
-Detecta a página de erro do Google (`Error <status> (<motivo>)!!<n>`) que versões antigas de
-`translate_text` gravavam como se fosse a tradução (ver `GOOGLE_ERROR_PAGE`, texto real observado no dev).
-
-| Teste | O que verifica |
-|---|---|
-| `test_casa_o_texto_de_erro_real_observado` | O texto real encontrado nas tabelas do dev (`Error 500 (Server Error)!!1500.That’s an error...`) é reconhecido |
-| `test_casa_outro_status_http` | O padrão vale para outro status (`Error 404 (Not Found)!!1...`) |
-| `test_nao_casa_traducao_normal_nem_prefixo_incompleto` | Parametrizado: tradução normal, `""`, `"Error"`, `"Error 500"` e `"Erro 500 (Server Error)!!1"` (pt) não casam |
-| `test_nao_casa_quando_erro_aparece_so_no_meio_do_texto` | Regex ancorada no início: "Error 500..." no meio do texto não casa |
-| `test_nao_string_devolve_false` | Parametrizado: `None`, NaN, `int` e `list` devolvem `False` (valor vem de coluna de DataFrame) |
-
-### `TestTranslateTextPaginaDeErro`
+`load_llm_api_key(secret_field, env_var, region="sa-east-1", required=True)` busca uma
+chave de API de LLM do secret unificado (`FILMBOT_SECRET_ARN`) ou de uma variável de
+ambiente — compartilhada entre o agente de recomendação (`lightsail_ia`) e a tradução
+via LLM (`traducao_llm.py`/`idioma_llm.py`).
 
 | Teste | O que verifica |
 |---|---|
-| `test_trata_pagina_de_erro_como_falha_e_tenta_de_novo` | Página de erro seguida de tradução válida: 2 chamadas, `time.sleep(2)` entre elas, retorna a tradução |
-| `test_devolve_original_apos_esgotar_tentativas_com_pagina_de_erro` | Página de erro em todas as tentativas usa o orçamento completo (5, como uma exceção — não desiste cedo como no caso de resultado idêntico) e devolve o original |
-| `test_loga_warning_quando_esgota_tentativas_com_pagina_de_erro` | Ao esgotar, loga `WARNING` com "página de erro", o trecho do texto de erro e o `context` — único sinal visível de bloqueio real do Google |
-| `test_nao_loga_warning_quando_a_falha_e_so_excecao` | Falha só por exceção continua sem `WARNING` (segue em `DEBUG`) |
-| `test_nao_rejeita_quando_o_proprio_texto_de_entrada_e_pagina_de_erro` | Se a própria entrada é a página de erro, o resultado do tradutor é aceito (1 chamada) — evita gastar as 5 tentativas em vão |
-| `test_pagina_de_erro_nao_conta_como_resultado_identico` | A página de erro não entra no contador `_MAX_ATTEMPTS_NO_ERROR`; só os 2 resultados idênticos seguintes fecham o limite (3 chamadas) |
+| `test_campo_obrigatorio_vem_do_secrets_manager_quando_arn_configurado` | Com `FILMBOT_SECRET_ARN` definida, busca o campo no secret via `boto3.client("secretsmanager", region_name=...)` |
+| `test_campo_obrigatorio_vem_do_ambiente_sem_arn` | Sem `FILMBOT_SECRET_ARN`, usa a env var informada, sem chamar `boto3.client` |
+| `test_campo_opcional_presente_no_secret` | `required=False` com o campo presente no secret devolve o valor |
+| `test_campo_opcional_ausente_no_secret_retorna_none_sem_derrubar_o_chamador` | `required=False` com o campo ausente no secret devolve `None` (`.get()`, não indexação direta) |
+| `test_campo_opcional_vem_do_ambiente_sem_arn` | `required=False` sem `FILMBOT_SECRET_ARN` usa a env var |
+| `test_campo_obrigatorio_ausente_no_secret_levanta_key_error` | `required=True` (default) com o campo ausente no secret levanta `KeyError` |
+| `test_nenhuma_fonte_configurada_devolve_none` | Sem `FILMBOT_SECRET_ARN` nem a env var, devolve `None` |
+| `test_regiao_customizada_repassada_ao_client` | `region` é repassado ao `boto3.client` |
 
-### `TestTranslateText`
+## Casos de teste — `test_traducao_llm.py`
 
-`translate_text` sempre usa `GoogleTranslator(source="auto", target="pt")` — detecção
-automática do idioma de origem — com até `_MAX_ATTEMPTS = 5` tentativas e backoff
-(`time.sleep(attempt * 2)`), mas desiste mais cedo (`_MAX_ATTEMPTS_NO_ERROR = 2`)
-quando o resultado vem idêntico ao original sem lançar exceção (indício de que não há
-o que traduzir, e não de falha transitória).
+### `TestTranslateTextLlm`
 
-| Teste | O que verifica |
-|---|---|
-| `test_retorna_string_vazia_para_entrada_vazia` | Texto `""` retorna `""` sem chamar o tradutor |
-| `test_retorna_string_vazia_para_none` | Texto `None` retorna `""` sem chamar o tradutor |
-| `test_traduz_texto_com_sucesso` | Tradução bem-sucedida retorna o texto traduzido e chama `translate` com o texto original |
-| `test_retorna_original_apos_esgotar_tentativas` | Exceção em todas as `_MAX_ATTEMPTS` (5) tentativas faz a função retornar o texto original |
-| `test_tenta_novamente_apos_excecao_e_depois_sucede` | Uma exceção seguida de sucesso: 2 chamadas ao tradutor, `time.sleep(2)` entre elas, retorna o texto traduzido |
-| `test_tenta_novamente_quando_resultado_identico_ao_original` | Sem exceção, mas resultado igual ao original conta como tentativa falha e tenta de novo |
-| `test_desiste_cedo_quando_sempre_identico_sem_excecao` | Resultado sempre idêntico ao original, sem exceção: desiste em `_MAX_ATTEMPTS_NO_ERROR` (2) tentativas, não nas 5 completas |
-| `test_log_debug_quando_desiste_cedo_por_resultado_identico` | Esse desfecho (comum para nomes próprios/termos emprestados) loga em `DEBUG`, não `INFO` — não deve poluir o log padrão do workflow |
-| `test_contador_de_resultado_identico_nao_precisa_ser_consecutivo` | O contador de tentativas "sem erro e resultado idêntico" soma o total mesmo com uma exceção intercalada, não exige consecutividade |
-| `test_log_warning_em_caso_de_excecao` | Mensagem `"Falha ao traduzir"` aparece no log de warning quando a tradução falha |
-| `test_contexto_aparece_no_log` | O parâmetro `context` aparece na mensagem de log de warning |
-| `test_cria_translator_com_idiomas_corretos` | `GoogleTranslator` é instanciado com `source="auto", target="pt"` (detecção automática do idioma de origem) |
-
-## Casos de teste — `test_traducao_aws.py`
-
-### `TestTranslateTextAws`
-
-Testa `translate_text_aws` via `boto3.client("translate")` mockado.
+`translate_text_llm(text)` traduz via LLM (OpenRouter, `litellm.completion`), com
+fallback nativo de modelo (`extra_body.models`) se o primário falhar. Nunca lança
+exceção — devolve o texto original em caso de erro.
 
 | Teste | O que verifica |
 |---|---|
-| `test_traduz_com_sucesso` | Chama `translate_text(Text=..., SourceLanguageCode="auto", TargetLanguageCode="pt")` e retorna `TranslatedText` |
-| `test_retorna_original_em_caso_de_excecao` | Exceção (ex.: `boto3.client` falhando) retorna o texto original, sem propagar |
-| `test_retorna_original_quando_resposta_vazia` | `TranslatedText` vazio retorna o texto original |
-| `test_usa_region_default_us_east_1` | Sem `region` informado, usa `us-east-1` (default do parâmetro) — AWS Translate não está disponível em `sa-east-1`, região principal do pipeline |
+| `test_texto_vazio_nao_chama_api` / `test_none_nao_chama_api` | Texto vazio/`None` devolve `""` sem chamar `litellm.completion` |
+| `test_traduz_com_sucesso` | Resposta mockada com o texto traduzido é devolvida |
+| `test_excecao_na_chamada_devolve_original` | Exceção na chamada (rede, timeout, 401/402/429) devolve o texto original |
+| `test_content_vazio_devolve_original` / `test_content_none_devolve_original` / `test_content_so_espacos_devolve_original` | Resposta vazia/`None`/só espaços devolve o texto original |
+| `test_resultado_igual_ao_original_e_devolvido_mesmo_assim` | Nome próprio/termo sem tradução — o LLM pode ecoar o original de propósito; quem decide o que fazer com isso é `resolve_pt_translation`, não esta função |
+| `test_remove_aspas_ao_redor_do_resultado` / `test_remove_cerca_de_markdown_ao_redor_do_resultado` | Limpeza defensiva de aspas/cercas de markdown que o modelo eventualmente envolva ao redor do resultado |
+| `test_passa_modelo_e_chave_configurados` | Chama com `model="openrouter/qwen/qwen3.8-flash"` (default) e `temperature=0` |
+| `test_repassa_fallback_de_modelo_no_extra_body` | `extra_body.models=["deepseek/deepseek-v4.1-flash"]` (default) e `extra_body.reasoning={"enabled": False}` |
+| `test_mensagem_do_usuario_e_o_proprio_texto` | A última mensagem é `{"role": "user", "content": text}`, a primeira é `system` |
+
+## Casos de teste — `test_idioma_llm.py`
+
+### `TestDetectLanguageLlm`
+
+`detect_language_llm(text)` detecta o idioma (ISO 639-1) via LLM (OpenRouter),
+reaproveitando modelo/chave/fallback de `traducao_llm.py`. Nunca lança exceção —
+texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem `None`.
+
+| Teste | O que verifica |
+|---|---|
+| `test_texto_vazio_devolve_none_sem_chamar_api` / `test_texto_so_espacos_devolve_none_sem_chamar_api` | Texto vazio/só espaços devolve `None` sem chamar `litellm.completion` |
+| `test_detecta_com_sucesso` | Resposta mockada com o código devolve esse código |
+| `test_normaliza_maiusculas` / `test_remove_espacos_ao_redor_do_codigo` | `"EN"`/`" pt "` são normalizados para `"en"`/`"pt"` |
+| `test_excecao_na_chamada_devolve_none` / `test_content_none_devolve_none` | Falha na chamada ou resposta vazia devolve `None` |
+| `test_codigo_fora_do_padrao_iso_639_1_devolve_none` / `test_codigo_com_numero_devolve_none` | Resposta fora do formato esperado (frase, código com número) devolve `None` — nunca propaga um valor inválido para `detected_language_*_column` |
+| `test_loga_warning_para_codigo_fora_do_padrao` | Loga `WARNING` com o conteúdo recebido quando a resposta não bate o padrão |
+| `test_passa_modelo_e_chave_configurados` / `test_repassa_fallback_de_modelo_no_extra_body` | Mesmo modelo/fallback de `translate_text_llm` |
 
 ## Casos de teste — `test_traducao.py`
-
-### `TestResolveTranslateFn`
-
-Resolve `"google"`/`"aws"` para uma função **composta primário+fallback** — o provider
-escolhido (default `"google"` em todo o pipeline, `glue_details`/`glue_etl` via
-EventBridge e os backfills manuais) é tentado primeiro; se falhar (resultado igual ao
-texto original), o outro serviço é tentado automaticamente. Quando AWS Translate é o
-fallback (`provider="google"`), as chamadas são limitadas pelo que sobrar do orçamento
-**mensal** `aws_fallback_max_chars` (default 2.000.000, consultado ao vivo via
-`get_chars_used_this_month` — não mais um teto fixo resetado por execução); quando é o
-primário (`provider="aws"`), o fallback para Google não tem limite (grátis).
-`translate_google`/`translate_aws`/`get_chars_used_this_month` são parâmetros opcionais
-(default `translate_text`/`translate_text_aws`/`get_translate_chars_used_this_month`)
-para que um chamador que faça patch da própria referência local (ex.:
-`patch("src.utils.translate_text", ...)`) continue funcionando.
-
-| Teste | O que verifica |
-|---|---|
-| `test_resolve_google_usa_google_como_primario` | `provider="google"` chama primeiro `translate_google` |
-| `test_resolve_aws_usa_aws_como_primario` | `provider="aws"` chama primeiro `translate_aws` |
-| `test_provider_invalido_levanta_value_error` | Qualquer valor fora de `"google"`/`"aws"` levanta `ValueError` |
-| `test_usa_referencias_locais_informadas_pelo_chamador` | Passando `translate_google`/`translate_aws` explícitos, são exatamente essas referências (não as do módulo) que são chamadas |
-| `test_fallback_disparado_quando_primario_falha` | Primário devolve o próprio texto (sinal de falha) — o fallback é chamado e seu resultado é devolvido |
-| `test_fallback_nao_disparado_quando_primario_funciona` | Primário traduz com sucesso — fallback nunca é chamado |
-| `test_texto_vazio_nao_dispara_fallback` | Texto vazio nunca aciona o fallback |
-| `test_cap_por_caracteres_bloqueia_excedente` | `provider="google"`, `get_chars_used_this_month` mockado para 0: o orçamento mensal é consumido por chamada; texto que excederia o restante é pulado (devolve original) sem chamar o fallback |
-| `test_orcamento_restante_desconta_consumo_ja_feito_no_mes` | O restante realmente aplicado é `aws_fallback_max_chars - get_chars_used_this_month()`, não o teto cheio |
-| `test_orcamento_ja_esgotado_no_mes_nao_chama_fallback` | Consumo do mês (mockado) maior que o teto: restante é `0` (nunca negativo), fallback nem é chamado |
-| `test_cap_nao_se_aplica_quando_aws_e_primario` | `provider="aws"`: o fallback (Google) é chamado sem limite, mesmo com `aws_fallback_max_chars` pequeno (e sem nunca chamar `get_chars_used_this_month`, já que o bloco que a invoca só roda quando `provider="google"`) |
-| `test_cap_thread_safe_sob_concorrencia` | Disparado via `ThreadPoolExecutor`, o total de caracteres passados ao fallback nunca ultrapassa o orçamento (valida o lock) |
-
-### `TestGetTranslateCharsUsedThisMonth`
-
-Soma o `CharacterCount` (CloudWatch, namespace `AWS/Translate`) de todos os pares de
-idioma publicados, desde o início do mês corrente — a mesma métrica que a AWS usa para
-faturar, consultada ao vivo em vez de um contador próprio persistido (ver docstring da
-função e o racional de não usar S3 — lifecycle de 1 dia do bucket TEMP).
-
-| Teste | O que verifica |
-|---|---|
-| `test_soma_caracteres_de_todos_os_pares_de_idioma` | Soma `Sum` de `get_metric_statistics` de cada `LanguagePair` publicado (`list_metrics`) |
-| `test_sem_metricas_publicadas_retorna_zero` | Nenhum par publicado ainda no mês retorna `0` |
-| `test_falha_no_cloudwatch_assume_orcamento_esgotado` | Exceção na consulta ao CloudWatch retorna `sys.maxsize` (orçamento esgotado) — não `0` (consumo zero seria mais arriscado financeiramente) |
-| `test_cria_client_proprio_quando_nao_informado` | Sem `cloudwatch_client` explícito, cria um `boto3.client("cloudwatch", region_name="us-east-1")` — mesma região de `translate_text_aws` |
 
 ### `TestTranslateInParallel`
 
@@ -266,7 +217,7 @@ um manter sua própria cópia da orquestração.
 | `test_redetecta_idioma_pt_so_nas_linhas_recem_traduzidas` | A detecção do idioma do destino feita antes da tradução (sobre o valor antigo/vazio) é substituída só nas linhas efetivamente traduzidas nesta execução |
 | `test_incrementa_tentativas_para_linhas_elegiveis` | O contador de tentativas sobe 1 a cada execução para linhas elegíveis, mesmo quando a tradução falha |
 | `test_copia_direta_nao_incrementa_tentativas` | A cópia direta (fonte já `"pt"`) não conta como tentativa |
-| `test_esgota_tentativas_e_para_de_reenviar_ao_tradutor` | Ao atingir `max_attempts`, a linha deixa de ser elegível mesmo com idioma do destino diferente de `"pt"` — protege contra retry infinito de conteúdo genuinamente não traduzível |
+| `test_esgota_tentativas_e_para_de_reenviar_ao_tradutor` | Ao atingir `max_attempts`, a linha deixa de ser elegível mesmo com idioma do destino diferente de `"pt"` — protege contra retry infinito de conteúdo genuinamente não traduzível (relevante também porque o LLM não é determinístico) |
 | `test_cria_coluna_tentativas_como_zero_quando_ausente` | Cria a coluna de tentativas como `0` quando ainda não existe no DataFrame |
 | `test_only_missing_nao_recalcula_idioma_en_ja_preenchido` | Não redetecta o idioma da fonte quando a coluna já está preenchida (evita recomputar à toa em reruns) |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
@@ -275,11 +226,7 @@ um manter sua própria cópia da orquestração.
 | `test_precisa_traducao_false_quando_resultado_ja_e_pt` | Fonte já detectada como `"pt"` (cópia direta) → `False` |
 | `test_precisa_traducao_false_quando_fonte_vazia` | Fonte vazia/nula → `False` (nada a traduzir) |
 | `test_precisa_traducao_continua_true_mesmo_com_tentativas_esgotadas` | Diferente da elegibilidade, continua `True` mesmo após `translation_attempts_column` atingir `max_attempts` — reflete o estado atual do dado, não se o pipeline ainda vai retentar |
-| `test_descarta_pagina_de_erro_do_google_e_retraduz` | Passo 0: destino com a página de erro do Google é limpo, tem idioma detectado zerado e é retraduzido (contador zerado e incrementado pela nova tentativa) |
-| `test_pagina_de_erro_com_tentativas_esgotadas_volta_a_ser_elegivel` | O ponto do auto-reparo: mesmo com `translation_attempts >= max_attempts`, a linha com página de erro volta a ser elegível (contador zerado) |
-| `test_pagina_de_erro_que_falha_de_novo_fica_vazia_e_nao_com_o_texto_de_erro` | Se a retradução também falhar (tradutor devolve o original), o destino fica com o original e nunca volta com a página de erro |
-| `test_nao_toca_em_destinos_que_nao_sao_pagina_de_erro` | Só a linha poluída é retraduzida; a tradução válida e o contador da outra linha ficam intactos |
-| `test_loga_quantidade_de_paginas_de_erro_descartadas` / `test_sem_pagina_de_erro_nao_loga_descarte` | Log INFO com a quantidade descartada; nenhum log quando não há página de erro |
+| `test_loga_resumo_agregado_de_falhas_de_traducao` | Resumo agregado ("N falha(s) / M elegível(is)") em INFO, não uma linha por registro |
 
 ### `TestReuseExistingTranslation`
 
@@ -302,64 +249,8 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_ids_duplicados_no_df_anterior_usa_ultimo` | Com chaves duplicadas em `previous_df`, usa o último valor |
 | `test_coluna_chave_customizada` | Funciona com `key_column="iso_3166_1"` (caso de uso do `glue_etl`) |
 | `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `previous_df` não reaproveita |
-| `test_reuse_existing_translation_ainda_reaproveita_pagina_de_erro_do_cache` | Contrato documentado: o cache não filtra a página de erro — quem a descarta é o passo 0 de `resolve_pt_translation` |
-
-## Casos de teste — `test_idioma_langdetect.py`
-
-### `TestDetectLanguageLangdetect`
-
-`detect_language_langdetect` detecta o idioma (ISO 639-1) via `langdetect`, com
-`DetectorFactory.seed = 0` fixado no import do módulo (sem isso, a amostragem
-probabilística de n-gramas do `langdetect` pode devolver idiomas diferentes entre
-execuções para o mesmo texto).
-
-| Teste | O que verifica |
-|---|---|
-| `test_detecta_ingles` / `test_detecta_portugues` | Detecção correta para texto inequívoco (smoke test com `langdetect` real, sem mock) |
-| `test_resultado_estavel_entre_chamadas_repetidas` | Regressão do seed fixo: o mesmo texto devolve sempre o mesmo idioma em chamadas repetidas |
-| `test_texto_vazio_devolve_none_sem_chamar_detect` | Texto vazio devolve `None` sem invocar `detect` |
-| `test_texto_so_espaco_devolve_none` | Texto só com espaços devolve `None` |
-| `test_lang_detect_exception_capturada` | `LangDetectException` (comum em texto sem sinal linguístico, ex.: números) capturada, devolve `None` |
-| `test_excecao_generica_capturada` | Qualquer outra exceção capturada, devolve `None` sem propagar |
-
-## Casos de teste — `test_idioma_aws.py`
-
-### `TestDetectLanguageAws`
-
-`detect_language_aws` chama `boto3.client("comprehend").detect_dominant_language`,
-devolvendo o `LanguageCode` de maior `Score`. Mesmo padrão defensivo de
-`translate_text_aws` — nunca lança exceção.
-
-| Teste | O que verifica |
-|---|---|
-| `test_detecta_com_sucesso_idioma_de_maior_score` | Entre múltiplos idiomas na resposta, devolve o de maior `Score` |
-| `test_usa_region_default_us_east_1` | Sem `region` informado, usa `us-east-1` — Comprehend não está em `sa-east-1` |
-| `test_lista_de_idiomas_vazia_devolve_none` | Resposta sem `Languages` devolve `None` |
-| `test_excecao_capturada_devolve_none` | Exceção (ex.: `boto3.client` falhando) devolve `None`, sem propagar |
-| `test_texto_vazio_devolve_none_sem_chamar_boto3` / `test_texto_so_espaco_devolve_none` | Texto vazio/só espaço devolve `None` sem sequer chamar `boto3.client` |
 
 ## Casos de teste — `test_idioma.py`
-
-### `TestResolveDetectLanguageFn`
-
-Com `provider="google"` (default), compõe detecção local (`langdetect`) primeiro;
-se devolver `None`, cai para AWS Comprehend, capado por `aws_fallback_max_chars`
-caracteres via `make_capped_fallback` (mesmo mecanismo de orçamento do fallback de
-tradução). Com `provider="aws"`, a ordem se inverte: Comprehend primeiro (sem cap),
-`langdetect` como fallback — espelhando `TestResolveTranslateFn` em `test_traducao.py`.
-
-| Teste | O que verifica |
-|---|---|
-| `test_usa_local_quando_local_detecta` | Detecção local com sucesso não aciona o AWS |
-| `test_cai_para_aws_quando_local_devolve_none` | Local devolve `None` → cai para AWS |
-| `test_aws_nao_e_chamado_quando_local_detecta` | Confirma que a função AWS nunca é invocada quando o local já resolve |
-| `test_orcamento_esgotado_devolve_none_sem_chamar_aws` | Orçamento de caracteres esgotado devolve `None` sem chamar o AWS |
-| `test_orcamento_suficiente_permite_fallback_aws` | Orçamento suficiente permite o fallback normalmente |
-| `test_provider_google_default_mantem_comportamento_anterior` | `provider="google"` (default) reproduz o comportamento anterior a este parâmetro |
-| `test_provider_aws_usa_comprehend_como_primario` | `provider="aws"` inverte a ordem: Comprehend é tentado primeiro |
-| `test_provider_aws_cai_para_local_quando_aws_devolve_none` | `provider="aws"`: Comprehend devolve `None` → cai para `langdetect` |
-| `test_provider_aws_nao_capa_fallback_local` | `provider="aws"`: o fallback (`langdetect`, local/grátis) não é afetado por `aws_fallback_max_chars` |
-| `test_provider_invalido_levanta_value_error` | `provider` fora de `"google"`/`"aws"` levanta `ValueError` |
 
 ### `TestAddDetectedLanguageColumn`
 
@@ -367,11 +258,19 @@ tradução). Com `provider="aws"`, a ordem se inverte: Comprehend primeiro (sem 
 |---|---|
 | `test_aplica_detect_fn_a_cada_linha` | Aplica `detect_fn` a cada valor da coluna fonte, gravando na coluna de destino |
 | `test_nan_tratado_como_string_vazia` | `NaN`/`None` na coluna fonte é tratado como string vazia antes de chamar `detect_fn` |
-| `test_default_detect_fn_usado_quando_nao_informado` | Sem `detect_fn` explícito, usa `resolve_detect_language_fn()` (langdetect real) |
+| `test_default_detect_fn_usado_quando_nao_informado` | Sem `detect_fn` explícito, usa `detect_language_llm` (mockado via `new=` — ver nota abaixo) |
 | `test_modifica_df_in_place_e_retorna_mesma_referencia` | Modifica o DataFrame in-place e retorna a mesma referência |
 | `test_only_missing_false_recalcula_todas_as_linhas` | `only_missing=False` (default) recalcula todas as linhas, mesmo já preenchidas — comportamento idêntico ao anterior |
 | `test_only_missing_true_preserva_linhas_ja_preenchidas` | `only_missing=True` só detecta onde a coluna de destino ainda está vazia/nula |
 | `test_only_missing_true_cria_coluna_ausente_e_detecta_tudo` | `only_missing=True` com a coluna de destino ainda ausente detecta todas as linhas normalmente |
+
+**Nota sobre mock de `detect_fn`/`translate_fn` passados a `.apply()`:** `pandas.Series.apply`
+trata um `unittest.mock.Mock`/`MagicMock` como *list-like* (por configurar `__iter__` por
+padrão) e tenta uma agregação em vez de chamar a função por elemento — gera
+`ValueError: No objects to concatenate`. Qualquer teste que mocke uma função destinada a
+`.apply()` (detecção, nunca tradução — que usa `ThreadPoolExecutor.map`, imune a esse
+problema) precisa usar `patch(..., new=<função simples>)`, nunca `side_effect=`/
+`return_value=` (que deixam o objeto como `Mock`).
 
 ## Como executar
 

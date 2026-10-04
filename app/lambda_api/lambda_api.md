@@ -20,7 +20,7 @@ Isola a camada de ingestão (HTTP → S3) da camada de transformação (S3 → P
    - **`only_changes_tables=True`** (execução semanal de changes, ver "Modo changes" abaixo): sai antes de qualquer coleta de referência/discover.
    - **`only_rotation_refresh=True`** (execução semanal de rotation refresh, ver "Modo rotation refresh" abaixo): sai antes de qualquer coleta de referência/discover.
    - Sem flags: coleta tudo.
-4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL. Todo acionamento do Glue ETL repassa `TRANSLATE_PROVIDER` (lido de `event.get("translate_provider", "google")`) — `"google"` é o default deste caminho automático via EventBridge, já que o payload configurado em `eventbridge.tf` nunca define esse campo; é grátis, com AWS Translate disponível como fallback automático (capado por caracteres) caso o Google falhe. Backfills manuais podem sobrescrever para `"aws"` para testar tradução real da AWS num período curto.
+4. Para dados de referência (gêneros, idiomas/países, plataformas): faz uma chamada à API e salva um único arquivo JSON no S3 SOR, depois aciona o Glue ETL — que traduz `name_pt` da tabela `configuration` via LLM (ver `shared_utils.traducao_llm`), sem nenhum argumento de provider a repassar aqui.
 
    **Backfill manual**: `scripts/backfill_referencias.py` roda a mesma coleta (genre/configuration/watch_providers_ref) sob demanda, mas **sem invocar esta Lambda nem o Glue ETL**: chama `collect_genre_data()`/`collect_configuration_data()`/`collect_watch_providers_ref()` e a transformação equivalente ao Glue ETL (`read_from_sor()`/`write_parquet_to_sot()`, de `app/glue_etl/src/utils.py`) diretamente no processo do backfill — o mesmo padrão de reuso fora do runtime de nuvem já usado por `scripts/backfill_enriquecimento.py` (Glue Details) e `scripts/backfill_changes.py` (Lambda + Glue Details). Ver `scripts/scripts.md`.
 5. Para dados de discover: itera por cada ano no intervalo `[start_year, loop_end_year]` (`start_year` padrão = ano atual; `end_year` padrão = ano atual, se não fornecidos no evento; `loop_end_year` padrão = `end_year`, mas pode ser passado separadamente no evento para desacoplar o limite real do loop do `end_year` usado como marcador de "último ano do ciclo" repassado ao Glue), faz requisições paginadas à API (até `MAX_PAGES = 100` páginas por ano — TMDB permite até 500, mas o limite evita estourar o timeout da Lambda), salva um arquivo JSON por página no S3 SOR (`pagina_001.json`, `pagina_002.json`, ...) e aciona o Glue ETL para aquele ano.
@@ -65,7 +65,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 
 | | Descrição |
 |---|---|
-| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `only_future_year_tables`, `only_changes_tables`, `only_rotation_refresh`, `translate_provider`) |
+| **Entrada** | Evento JSON do EventBridge com `type`, nomes de tabelas e flags opcionais (`only_weekly_tables`, `only_annual_tables`, `only_monthly_tables`, `only_future_year_tables`, `only_changes_tables`, `only_rotation_refresh`) |
 | **Leitura** | API TMDB (HTTP), Secrets Manager (chave de API), SSM Parameter Store (ponteiro do modo rotation refresh) |
 | **Escrita** | S3 SOR — `tmdb/discover/{movie\|tv}/year={ano}/`, `tmdb/{genre\|configuration\|watch_providers_ref}/{movie\|tv}/` e `tmdb/now_playing/movie/pagina_NNN.json`; S3 TEMP — `tmdb/changes/{movie\|tv}/{data}.json` (modo changes); SSM Parameter Store — `/tmdb-pipeline/rotation-year-pointer-{movie\|tv}` (modo rotation refresh) |
 | **Aciona** | Glue ETL para cada tabela coletada (genre, configuration, watch_providers_ref, discover por ano, now_playing para filmes); Glue Details diretamente nos modos changes e rotation refresh |
@@ -88,7 +88,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 |---|---|---|
 | `get_api_secret(secret_arn, key_name)` | `shared_utils.api_client` | Busca um segredo no Secrets Manager |
 | `api_get(url, params, max_retries)` | `shared_utils.api_client` | GET com retry/backoff para lidar com rate limits de APIs |
-| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona um job Glue, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, `--TRANSLATE_PROVIDER`, etc.); usado para o Glue ETL (fluxo normal) e o Glue Details (modos changes/rotation refresh) |
+| `trigger_glue_job(job_name, **kwargs)` | `shared_utils.triggers` | Aciona um job Glue, repassando `**kwargs` como argumentos (`--TABLE_TYPE`, `--TABLE_NAME`, `--YEAR`, `--END_YEAR`, etc.); usado para o Glue ETL (fluxo normal) e o Glue Details (modos changes/rotation refresh) |
 
 ## Tecnologias
 

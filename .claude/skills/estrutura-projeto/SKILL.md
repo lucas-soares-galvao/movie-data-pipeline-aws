@@ -91,7 +91,8 @@ proj-eng-dados-filmes-aws/
 │           ├── __init__.py
 │           ├── api_client.py          # API client genérico com retry/backoff e Secrets Manager
 │           ├── glue_helpers.py        # Utilitários compartilhados de jobs Glue (getResolvedOptions, logging)
-│           ├── traducao.py            # Tradução inglês → português via Google Translate
+│           ├── traducao.py            # Tradução inglês → português via LLM (OpenRouter, ver traducao_llm.py)
+│           ├── llm_client.py          # Carregamento compartilhado da chave de API do LLM (OpenRouter)
 │           └── triggers.py            # Disparo genérico de Glue jobs
 ├── infra/
 │   ├── envs/
@@ -343,7 +344,7 @@ Job `deploy-app` encadeia `deploy_lightsail.yml` (via `uses:`) só quando a aç�
 
 **Trigger:** `workflow_dispatch` apenas (independente do `_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
-**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `translate_provider` (google | aws)
+**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `reset_attempts` (boolean, default `false`; só vale para `traducao` — exporta `BACKFILL_RESET_ATTEMPTS`)
 
 **Mapeamento `table_group` → script:** `discover` → `backfill_discover.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — migra `dt_processamento`/`dt_atualizacao` para os nomes atuais), `changes` → `backfill_changes.py` (dispara sob demanda o mesmo modo `only_changes_tables` do cron semanal), `historico` → `backfill_historico.py` (encadeia `backfill_discover.py` e `backfill_enriquecimento.py` no mesmo processo, nessa ordem, sem introduzir variável de ambiente nova)
 
@@ -449,7 +450,7 @@ app/<modulo>/
 | `glue_details` | `awswrangler`, `boto3`, `pandas`, `requests`, `awsglue` (Glue runtime) |
 | `glue_agg` | `awswrangler`, `boto3`, `pandas`, `awsglue` (Glue runtime) |
 | `lightsail_ia` | `streamlit`, `litellm`, `boto3`, `python-dotenv` |
-| `shared_src` | `boto3`, `requests`, `deep-translator` |
+| `shared_src` | `boto3`, `requests`, `litellm` |
 
 ---
 
