@@ -110,6 +110,7 @@ from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app" / "shared_src"))
 from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
+from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 from shared_utils.traducao import resolve_pt_translation
 from shared_utils.traducao_llm import translate_text_llm
 
@@ -189,6 +190,7 @@ def _add_translations_pt(
         translate_fn=translate_fn,
         max_workers=_TRANSLATE_MAX_WORKERS,
         needs_translation_column="overview_needs_translation",
+        sample_id_column="id",
     )
 
 
@@ -218,6 +220,7 @@ def _add_translations_tagline_pt(
         translate_fn=translate_fn,
         max_workers=_TRANSLATE_MAX_WORKERS,
         needs_translation_column="tagline_needs_translation",
+        sample_id_column="id",
     )
 
 
@@ -247,6 +250,7 @@ def _add_translations_keywords_pt(
         translate_fn=translate_fn,
         max_workers=_TRANSLATE_MAX_WORKERS,
         needs_translation_column="keywords_needs_translation",
+        sample_id_column="id",
     )
 
 
@@ -320,6 +324,7 @@ def _backfill_year(
     return True, translated_count
 
 
+@log_llm_usage_summary("Backfill tradução")
 def main() -> None:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region

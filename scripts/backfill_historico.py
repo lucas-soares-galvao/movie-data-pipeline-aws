@@ -75,6 +75,7 @@ import os
 
 import backfill_discover
 import backfill_enriquecimento
+from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 import backfill_shared as shared
 import boto3
 
@@ -83,6 +84,7 @@ logger = shared.setup_logging()
 _TABLE_GROUP_HISTORICO = "historico"
 
 
+@log_llm_usage_summary("Backfill histórico")
 def main() -> None:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region

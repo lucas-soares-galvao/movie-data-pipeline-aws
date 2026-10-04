@@ -10,6 +10,7 @@ import threading
 import litellm
 
 from shared_utils.llm_client import load_llm_api_key
+from shared_utils.llm_metrics import EMPTY, NO_CHANGE, OK, record_call, record_failure
 
 logger = logging.getLogger()
 
@@ -95,7 +96,8 @@ def translate_text_llm(text: str) -> str:
     (extra_body.models) se o primário falhar.
 
     Nunca lança exceção — devolve o texto original em caso de erro, para não
-    interromper o job.
+    interromper o job. Cada chamada (sucesso, vazia, sem mudança ou exceção) é registrada em
+    shared_utils.llm_metrics para o resumo de uso/falhas/custo dos logs.
 
     Não há aqui uma forma de detectar "orçamento esgotado" distinta de uma falha de
     chamada comum — esgotamento de crédito no OpenRouter aparece como uma exceção HTTP
@@ -129,9 +131,13 @@ def translate_text_llm(text: str) -> str:
         content = response.choices[0].message.content
         if not content or not content.strip():
             logger.debug(f"LLM devolveu tradução vazia para '{text[:80]}'. Mantendo original.")
+            record_call("tradução", response, text, EMPTY)
             return text
-        return _clean_result(content)
+        result = _clean_result(content)
+        record_call("tradução", response, text, NO_CHANGE if result == text else OK)
+        return result
     # Chamada de API externa, não pode derrubar o job.
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"Falha ao traduzir via LLM '{text[:80]}': {exc}")
+        record_failure("tradução", exc, text)
         return text

@@ -98,6 +98,7 @@ from app.glue_details.src.utils import (  # noqa: E402
 )
 from app.lambda_api.src.utils import collect_changes_data  # noqa: E402
 
+from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 import backfill_shared as shared  # noqa: E402
 
 logger = shared.setup_logging()
@@ -141,6 +142,7 @@ def _dispatch_pending_dq(dq_pendente: list[tuple[str, str, list[str]]], dq_job_n
         trigger_glue_job(dq_job_name, TABLE_NAME=table_name, DATABASE=database, YEAR=years_arg)
 
 
+@log_llm_usage_summary("Backfill changes")
 def main() -> None:
     region = shared.require_env("AWS_REGION")
     os.environ["AWS_DEFAULT_REGION"] = region

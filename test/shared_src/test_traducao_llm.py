@@ -1,10 +1,11 @@
 import logging
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import litellm
-from shared_utils import traducao_llm
+from shared_utils import llm_metrics, traducao_llm
 from shared_utils.traducao_llm import translate_text_llm
 
 
@@ -113,3 +114,48 @@ class TestGetLlmApiKey:
 
         assert len(chamadas) == 1
         assert resultados == ["chave"] * 8
+
+
+def _resposta_com_uso(content, model="qwen/qwen3.8-flash"):
+    return SimpleNamespace(
+        model=model,
+        usage=SimpleNamespace(prompt_tokens=12, completion_tokens=3, cost=0.0004),
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+    )
+
+
+class TestRegistroDeMetricasNaTraducao:
+    """Cada chamada de translate_text_llm é registrada em llm_metrics, sem mudar o retorno."""
+
+    def test_sucesso_registra_ok_com_modelo_tokens_e_custo(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.traducao_llm.litellm.completion", return_value=_resposta_com_uso("Olá")):
+                assert translate_text_llm("Hello") == "Olá"
+        assert usage.outcomes == {llm_metrics.OK: 1}
+        assert usage.calls_by_operation == {"tradução": 1}
+        assert usage.models == {"qwen/qwen3.8-flash": 1}
+        assert (usage.prompt_tokens, usage.completion_tokens) == (12, 3)
+        assert usage.cost == 0.0004
+
+    def test_resultado_igual_ao_original_registra_sem_mudanca(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.traducao_llm.litellm.completion", return_value=_resposta_com_uso("softcore")):
+                assert translate_text_llm("softcore") == "softcore"
+        assert usage.outcomes == {llm_metrics.NO_CHANGE: 1}
+        assert usage.failures == {}
+
+    def test_resposta_vazia_registra_falha_vazia(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.traducao_llm.litellm.completion", return_value=_resposta_com_uso("  ")):
+                assert translate_text_llm("Hello") == "Hello"
+        assert usage.failures == {llm_metrics.EMPTY: 1}
+
+    def test_excecao_registra_a_causa_pelo_nome_da_classe(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch(
+                "shared_utils.traducao_llm.litellm.completion",
+                side_effect=ImportError("tenacity import failed"),
+            ):
+                assert translate_text_llm("Hello") == "Hello"
+        assert usage.failures == {"ImportError": 1}
+        assert "tenacity import failed" in usage.samples["ImportError"][0]

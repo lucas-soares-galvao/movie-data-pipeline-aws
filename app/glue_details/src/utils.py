@@ -23,6 +23,7 @@ from shared_utils.api_client import api_get as tmdb_get
 from shared_utils.api_client import get_api_secret  # noqa: F401
 from shared_utils.glue_helpers import get_resolved_option
 from shared_utils.idioma_llm import detect_language_llm
+from shared_utils.llm_metrics import llm_usage_scope, log_llm_usage
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 from shared_utils.traducao import (
     format_elapsed,
@@ -777,6 +778,7 @@ def _add_translations_pt(
         translate_fn=translate_fn,
         max_workers=max_workers,
         needs_translation_column="overview_needs_translation",
+        sample_id_column="id",
     )
     return df
 
@@ -826,6 +828,7 @@ def _add_translations_keywords_pt(
         translate_fn=translate_fn,
         max_workers=max_workers,
         needs_translation_column="keywords_needs_translation",
+        sample_id_column="id",
     )
     return df
 
@@ -873,6 +876,7 @@ def _add_translations_tagline_pt(
         translate_fn=translate_fn,
         max_workers=max_workers,
         needs_translation_column="tagline_needs_translation",
+        sample_id_column="id",
     )
     return df
 
@@ -989,18 +993,20 @@ def collect_and_write_details(
         f"[Detalhes {content_type} 3/4] Traduzindo overview, keywords e tagline para português "
         "(reaproveitando tradução e idioma já detectados quando o texto não mudou)..."
     )
-    df = _add_translations_pt(
-        df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
-        changed_fields_by_id=changed_fields_by_id,
-    )
-    df = _add_translations_keywords_pt(
-        df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
-        changed_fields_by_id=changed_fields_by_id,
-    )
-    df = _add_translations_tagline_pt(
-        df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
-        changed_fields_by_id=changed_fields_by_id,
-    )
+    with llm_usage_scope() as llm_usage:
+        df = _add_translations_pt(
+            df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
+            changed_fields_by_id=changed_fields_by_id,
+        )
+        df = _add_translations_keywords_pt(
+            df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
+            changed_fields_by_id=changed_fields_by_id,
+        )
+        df = _add_translations_tagline_pt(
+            df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
+            changed_fields_by_id=changed_fields_by_id,
+        )
+    log_llm_usage(f"Detalhes {content_type} 3/4", llm_usage)
     if content_type == "movie":
         df = _add_collection_name_pt(df, api_key)
     # Campos intermediários: usados apenas para priorizar a tradução nativa do TMDB; não vão para o SOT

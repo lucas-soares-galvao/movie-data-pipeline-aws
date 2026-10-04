@@ -7,6 +7,7 @@ um único ano; os demais tipos usam overwrite simples.
 
 from shared_utils.glue_helpers import configure_glue_logging
 from shared_utils.idioma_llm import detect_language_llm
+from shared_utils.llm_metrics import log_llm_usage_summary
 from shared_utils.traducao_llm import translate_text_llm
 from src.utils import (
     get_parameters_glue,
@@ -30,6 +31,7 @@ _TABLE_CONFIG = {
 }
 
 
+@log_llm_usage_summary("Glue ETL")
 def main() -> None:
     """
     Função principal do job Glue ETL.

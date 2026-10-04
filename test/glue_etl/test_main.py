@@ -45,6 +45,18 @@ class TestRunDiscover:
             assert mock_read.call_args.args[:4] == ("my-sor", "movie", "discover", "2023")
             assert callable(mock_read.call_args.args[4])
 
+    def test_loga_o_total_de_uso_do_llm_ao_final(self, caplog):
+        df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
+        with (
+            patch.object(m, "get_parameters_glue", return_value=self._args()),
+            patch.object(m, "read_from_sor", return_value=df_mock),
+            patch.object(m, "write_parquet_to_sot"),
+            patch.object(m, "trigger_glue_job"),
+            caplog.at_level("INFO"),
+        ):
+            m.main()
+        assert "LLM [Glue ETL — total]: nenhuma chamada ao LLM" in caplog.text
+
     def test_writes_to_discover_table_with_year_partition(self):
         df_mock = pd.DataFrame([{"id": 1, "year": "2023"}])
         with (

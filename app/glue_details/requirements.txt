@@ -5,3 +5,6 @@
 awswrangler
 requests
 litellm==1.96.2
+# tenacity: o litellm so o importa quando precisa retentar (num_retries) e nao o declara como
+# dependencia — sem ele, todo erro transitorio (429/timeout) vira falha na hora, sem os retries.
+tenacity

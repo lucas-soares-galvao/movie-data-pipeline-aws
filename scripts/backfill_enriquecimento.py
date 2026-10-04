@@ -107,6 +107,7 @@ from app.glue_details.src.utils import (  # noqa: E402
     trigger_glue_job,
 )
 
+from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 import backfill_shared as shared
 
 logger = shared.setup_logging()
@@ -226,6 +227,7 @@ def _finalize_enriquecimento_success(
     shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
 
+@log_llm_usage_summary("Backfill enriquecimento")
 def main(trigger_agg: bool = True) -> bool:
     """Ponto de entrada do backfill de enriquecimento (ver docstring do módulo)."""
     region = shared.require_env("AWS_REGION")

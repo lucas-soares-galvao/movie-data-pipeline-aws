@@ -1,5 +1,7 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from shared_utils import llm_metrics
 from shared_utils.idioma_llm import detect_language_llm
 
 
@@ -69,3 +71,42 @@ class TestDetectLanguageLlm:
             detect_language_llm("Hello")
         extra_body = mock_completion.call_args.kwargs["extra_body"]
         assert extra_body["models"] == ["deepseek/deepseek-v4.1-flash"]
+
+
+def _resposta_com_uso(content, model="qwen/qwen3.8-flash"):
+    return SimpleNamespace(
+        model=model,
+        usage=SimpleNamespace(prompt_tokens=12, completion_tokens=3, cost=0.0004),
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+    )
+
+
+class TestRegistroDeMetricasNaDeteccao:
+    """Cada chamada de detect_language_llm é registrada em llm_metrics, sem mudar o retorno."""
+
+    def test_sucesso_registra_ok_com_modelo_tokens_e_custo(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.idioma_llm.litellm.completion", return_value=_resposta_com_uso("pt")):
+                assert detect_language_llm("Olá") == "pt"
+        assert usage.outcomes == {llm_metrics.OK: 1}
+        assert usage.calls_by_operation == {"detecção": 1}
+        assert usage.models == {"qwen/qwen3.8-flash": 1}
+        assert usage.cost == 0.0004
+
+    def test_resposta_vazia_registra_falha_vazia(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.idioma_llm.litellm.completion", return_value=_resposta_com_uso("")):
+                assert detect_language_llm("Olá") is None
+        assert usage.failures == {llm_metrics.EMPTY: 1}
+
+    def test_codigo_fora_do_padrao_registra_falha_invalida(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.idioma_llm.litellm.completion", return_value=_resposta_com_uso("português")):
+                assert detect_language_llm("Olá") is None
+        assert usage.failures == {llm_metrics.INVALID: 1}
+
+    def test_excecao_registra_a_causa_pelo_nome_da_classe(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.idioma_llm.litellm.completion", side_effect=TimeoutError("lento")):
+                assert detect_language_llm("Olá") is None
+        assert usage.failures == {"TimeoutError": 1}

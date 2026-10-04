@@ -36,6 +36,7 @@ Usa a constante `_BASE` (dict com args comuns: buckets, nomes de jobs, databases
 | `test_tv_media_type_forwarded_to_read_from_sor` | Para `MEDIA_TYPE="tv"`, lê e escreve com os argumentos corretos de tv |
 | `test_write_is_called_exactly_once` | `write_parquet_to_sot` é chamado exatamente uma vez por execução |
 | `test_triggers_data_quality_with_year` | DQ é acionado com `year` correto para tabelas discover |
+| `test_loga_o_total_de_uso_do_llm_ao_final` | `main()` loga `LLM [Glue ETL — total]` (decorador `@log_llm_usage_summary`) |
 
 ### `TestRunGenre` — `TABLE_TYPE="genre"`
 

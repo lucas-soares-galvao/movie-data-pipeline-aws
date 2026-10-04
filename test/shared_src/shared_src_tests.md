@@ -16,6 +16,7 @@ test/shared_src/
 ├── test_glue_helpers.py    # Testes de get_resolved_option e configure_glue_logging
 ├── test_gmail_helpers.py   # Testes de load_gmail_credentials e send_gmail_email
 ├── test_llm_client.py      # Testes de load_llm_api_key (chave do LLM via Secrets Manager/ambiente)
+├── test_llm_metrics.py     # Testes do acumulador de uso do LLM (chamadas, falhas por causa, modelo, tokens, custo) e do balanço
 ├── test_traducao_llm.py    # Testes de translate_text_llm (LLM via OpenRouter), do logging do LiteLLM e do lock da chave de API
 ├── test_traducao.py        # Testes de translate_in_parallel, detect_in_parallel, format_elapsed, resolve_pt_translation, reuse_existing_translation e reuse_detected_language
 ├── test_idioma_llm.py      # Testes de detect_language_llm (LLM via OpenRouter)
@@ -143,6 +144,17 @@ via LLM (`traducao_llm.py`/`idioma_llm.py`).
 | `test_nenhuma_fonte_configurada_devolve_none` | Sem `FILMBOT_SECRET_ARN` nem a env var, devolve `None` |
 | `test_regiao_customizada_repassada_ao_client` | `region` é repassado ao `boto3.client` |
 
+## Casos de teste — `test_llm_metrics.py`
+
+| Classe | O que verifica |
+|---|---|
+| `TestRecordCall` | Sem escopo aberto nada acontece nem lança; acumula chamadas/tokens/custo/modelo e separa por operação; custo ausente conta "chamada sem custo" e cai para `_hidden_params.response_cost`; resposta sem `usage`/`model`, com tipos inválidos (`bool`, `str`) ou que lança ao ser lida **não** derruba a chamada ao LLM; `NO_CHANGE` não é falha; `EMPTY`/`INVALID` são falhas com exemplo |
+| `TestRecordFailure` | A causa é o nome da classe da exceção e o exemplo traz a mensagem (ex.: `tenacity import failed`); no máximo 3 exemplos por causa; texto (80) e mensagem (100) truncados |
+| `TestEscopos` | Escopos aninhados acumulam nos dois; o escopo é fechado mesmo com exceção; 20 threads × 50 chamadas somam exatamente 1000 (lock) |
+| `TestLogLlmUsage` | Sem chamadas → "nenhuma chamada ao LLM"; linha INFO com chamadas por operação, modelos, tokens (`2.001 in / 235 out`) e custo (`US$ 0,0030`); "custo indisponível" e custo parcial (`+N chamada(s) sem custo`); `sem mudança` não gera WARNING; falhas geram uma linha WARNING com causa e exemplo (e a INFO continua) |
+| `TestBalanco` | `record_balance` soma por coluna; o total mostra as contagens e o % reaproveitado (só quando há fonte e reaproveitamento); sem balanço não loga |
+| `TestDecoradorLogLlmUsageSummary` | O decorador loga total e balanço ao fim, preserva retorno/argumentos/nome, e loga também quando a execução sai por exceção (`SystemExit(75)`) |
+
 ## Casos de teste — `test_traducao_llm.py`
 
 ### `TestTranslateTextLlm`
@@ -175,6 +187,15 @@ exceção — devolve o texto original em caso de erro.
 |---|---|
 | `test_le_o_secret_uma_unica_vez_sob_concorrencia` | 8 threads chamando `_get_llm_api_key` ao mesmo tempo com o cache vazio leem o secret (`load_llm_api_key`, mockado com um `sleep`) **uma única vez** — o `threading.Lock` evita uma leitura do Secrets Manager por thread, já que tradução e detecção rodam em `ThreadPoolExecutor` |
 
+### `TestRegistroDeMetricasNaTraducao`
+
+| Teste | O que verifica |
+|---|---|
+| `test_sucesso_registra_ok_com_modelo_tokens_e_custo` | Chamada bem-sucedida registra `ok`, modelo, tokens (12 in / 3 out) e custo lidos da resposta |
+| `test_resultado_igual_ao_original_registra_sem_mudanca` | Resultado idêntico ao texto vira `sem_mudanca` (informativo, não é falha) |
+| `test_resposta_vazia_registra_falha_vazia` | Resposta só com espaços registra falha `vazia` |
+| `test_excecao_registra_a_causa_pelo_nome_da_classe` | Exceção (ex.: `ImportError` do `tenacity`) registra a causa pelo nome da classe com a mensagem no exemplo; o retorno continua sendo o texto original |
+
 ## Casos de teste — `test_idioma_llm.py`
 
 ### `TestDetectLanguageLlm`
@@ -192,6 +213,15 @@ texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem
 | `test_codigo_fora_do_padrao_iso_639_1_devolve_none` / `test_codigo_com_numero_devolve_none` | Resposta fora do formato esperado (frase, código com número) devolve `None` — nunca propaga um valor inválido para `detected_language_*_column` |
 | `test_loga_warning_para_codigo_fora_do_padrao` | Loga `WARNING` com o conteúdo recebido quando a resposta não bate o padrão |
 | `test_passa_modelo_e_chave_configurados` / `test_repassa_fallback_de_modelo_no_extra_body` | Mesmo modelo/fallback de `translate_text_llm` |
+
+### `TestRegistroDeMetricasNaDeteccao`
+
+| Teste | O que verifica |
+|---|---|
+| `test_sucesso_registra_ok_com_modelo_tokens_e_custo` | Detecção bem-sucedida registra `ok`, operação `detecção`, modelo e custo |
+| `test_resposta_vazia_registra_falha_vazia` | Resposta vazia registra falha `vazia` (retorno `None`) |
+| `test_codigo_fora_do_padrao_registra_falha_invalida` | Código que não é ISO 639-1 registra falha `fora_do_padrao` |
+| `test_excecao_registra_a_causa_pelo_nome_da_classe` | Exceção (ex.: `TimeoutError`) registra a causa pelo nome da classe |
 
 ## Casos de teste — `test_traducao.py`
 
@@ -250,6 +280,7 @@ texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem
 | `test_reaproveita_idiomas_junto_com_a_traducao` | Com `detected_language_en_column`/`detected_language_pt_column`, reaproveita tradução e os dois idiomas |
 | `test_idioma_pt_nao_reaproveitado_quando_o_destino_atual_difere_do_antigo` | Tradução nativa do TMDB diferente da traduzida antes → o idioma antigo descreve outro texto, `idioma_pt` fica pendente; `idioma_en` (fonte igual) é reaproveitado |
 | `test_idioma_en_nao_reaproveitado_quando_fonte_mudou` | Fonte alterada → nenhum dos dois idiomas é reaproveitado |
+| `test_loga_percentual_reaproveitado_e_soma_no_balanco` | Loga `Reaproveitando tradução existente de 1 de 2 registro(s) (50%)` e soma `reaproveitadas` no balanço de `llm_metrics` |
 | `test_sem_colunas_de_idioma_informadas_nao_cria_colunas_de_idioma` | Sem os parâmetros novos, o comportamento anterior é preservado (nenhuma coluna de idioma criada) |
 
 ### `TestResolvePtTranslation`
@@ -283,6 +314,15 @@ um manter sua própria cópia da orquestração.
 | `test_only_missing_nao_recalcula_idioma_en_ja_preenchido` | Não redetecta o idioma da fonte quando a coluna já está preenchida (evita recomputar à toa em reruns) |
 | `test_usa_max_workers_informado` | `max_workers` é repassado a `translate_in_parallel`, não hardcoded |
 | `test_detecta_idioma_em_paralelo_com_max_workers_informado` | As 3 detecções (fonte, destino inicial e redetecção do recém-traduzido) passam por `detect_in_parallel` com o mesmo `max_workers` da tradução |
+| `test_destino_preenchido_com_deteccao_indisponivel_nao_e_sobrescrito` | Destino com texto (ex.: tradução nativa) e detecção do idioma dele nula **não** vai ao tradutor: texto intacto, tentativas em 0, `needs_translation=True` e log `N registro(s) de '<coluna>' mantidos como estão` |
+| `test_destino_vazio_com_deteccao_nula_continua_elegivel` | Destino vazio tem idioma nulo por definição (texto vazio não é detectado) — continua sendo traduzido |
+| `test_destino_com_idioma_diferente_de_pt_detectado_continua_elegivel` | Sem regressão: idioma detectado e diferente de `"pt"` (o TMDB devolveu inglês no lugar do pt-BR) continua indo ao tradutor |
+| `test_so_as_linhas_com_deteccao_indisponivel_sao_poupadas` | Num mesmo DataFrame, só a linha com detecção nula é poupada; a outra é traduzida normalmente |
+| `test_loga_balanco_com_contagens_e_ids_de_exemplo_das_pendentes` | A linha `Balanço '<coluna>'` traz as contagens exatas (com fonte, já em pt, traduzidas ok/igual, mantidas, pendentes) e até 3 ids de exemplo das pendentes (`sample_id_column`); as mesmas contagens são somadas em `llm_metrics` |
+| `test_balanco_sem_elegiveis_conta_as_mantidas_por_deteccao_indisponivel` | O balanço também é logado quando ninguém foi ao tradutor, contando as linhas mantidas por detecção indisponível |
+| `test_balanco_ignora_sample_id_column_ausente_no_dataframe` | `sample_id_column` inexistente no `df` não quebra nem mostra `ex.:` |
+| `test_balanco_sem_pendentes_nao_mostra_exemplos` | Sem pendentes não há exemplos de ids |
+| `test_deteccao_refeita_na_proxima_execucao_resolve_a_pendencia` | Duas execuções seguidas: na 1ª a detecção falha (`needs_translation=True`); na 2ª é refeita, o destino é `"pt"` e nada é traduzido (`needs_translation=False`) |
 | `test_precisa_traducao_column_none_nao_cria_coluna` | Parâmetro `needs_translation_column` omitido (`None`, default) não cria coluna nova no DataFrame |
 | `test_precisa_traducao_true_quando_resultado_ainda_nao_e_pt` | Fonte preenchida e idioma do resultado ainda diferente de `"pt"` após a tentativa de tradução → `True` |
 | `test_precisa_traducao_false_quando_resultado_ja_e_pt` | Fonte já detectada como `"pt"` (cópia direta) → `False` |

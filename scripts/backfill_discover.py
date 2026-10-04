@@ -71,6 +71,8 @@ Logs de andamento:
     Cada unidade loga as 3 etapas (`[<tipo> <ano>] Etapa 1/3` coleta TMDB, `2/3` transformação
     SOR→SOT com a detecção de idioma do overview via LLM — em paralelo, com progresso a cada 10% e
     reaproveitando o idioma já gravado na SOT —, `3/3` gravação no SOT) e o tempo total ao concluir.
+    A etapa 2/3 fecha com `LLM [<tipo> <ano> 2/3]` (chamadas, modelos, tokens, custo e falhas por causa,
+    ver shared_utils.llm_metrics) e main() loga o total do backfill (`LLM [Backfill discover — total]`).
 
 Erros:
     Uma falha numa unidade (coleta ou escrita) é logada e a unidade entra na lista de falhas —
@@ -113,6 +115,7 @@ from app.glue_etl.src.utils import (  # noqa: E402
 )
 from app.lambda_api.src.utils import collect_discover_data  # noqa: E402
 from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
+from shared_utils.llm_metrics import llm_usage_scope, log_llm_usage, log_llm_usage_summary  # noqa: E402
 from shared_utils.traducao import format_elapsed  # noqa: E402
 
 import backfill_shared as shared
@@ -155,10 +158,12 @@ def _process_discover_unit(
             "reaproveitando o já detectado)... coleta levou %s.",
             media_type, year, format_elapsed(time.monotonic() - started),
         )
-        df = read_from_sor(
-            s3_bucket_sor, media_type, "discover", str(year),
-            s3_bucket_sot=s3_bucket_sot, table_name=table_discover, detect_fn=detect_fn,
-        )
+        with llm_usage_scope() as llm_usage:
+            df = read_from_sor(
+                s3_bucket_sor, media_type, "discover", str(year),
+                s3_bucket_sot=s3_bucket_sot, table_name=table_discover, detect_fn=detect_fn,
+            )
+        log_llm_usage(f"{media_type} {year} 2/3", llm_usage)
         logger.info("[%s %d] Etapa 3/3: gravando %d registros no SOT...", media_type, year, len(df))
         write_parquet_to_sot(
             df=df,
@@ -246,6 +251,7 @@ def _finalize_discover_success(
     shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
 
+@log_llm_usage_summary("Backfill discover")
 def main(trigger_agg: bool = True) -> bool:
     """Ponto de entrada do backfill de discover (ver docstring do módulo)."""
     region = shared.require_env("AWS_REGION")

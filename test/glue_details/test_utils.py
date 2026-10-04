@@ -1277,6 +1277,25 @@ class TestCollectAndWriteDetails:
             assert df["overview_pt"].iloc[0] == "Sinopse em português do TMDB"
             assert df["tagline_pt"].iloc[0] == "Slogan em português do TMDB"
 
+    def test_loga_uso_do_llm_e_balanco_da_etapa_de_traducao(self, caplog):
+        """A etapa 3/4 loga o uso do LLM do escopo (aqui sem chamadas reais, tudo mockado) e uma
+        linha de balanço por campo traduzido, com ids de exemplo das pendentes."""
+        response = self._mock_tv_response(10)
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=response),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t),
+            patch("src.utils.detect_language_llm", new=lambda t: "en"),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet"),
+            caplog.at_level("INFO"),
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_det", "db")
+
+        assert "LLM [Detalhes tv 3/4]: nenhuma chamada ao LLM" in caplog.text
+        balanco = [r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'")]
+        assert balanco and "(ex.: id 10)" in balanco[0]
+
     def test_tv_fallback_llm_sem_tmdb_pt_br(self):
         """Quando o TMDB não tem tradução pt-BR, usa o LLM como fallback."""
         response = self._mock_tv_response(10)
