@@ -72,6 +72,7 @@ O Glue AGG **não** é mais acionado por este job — roda em agendamento própr
 |---|---|
 | `get_parameters_glue()` | Lê e valida os argumentos de execução do job; publica `AWS_ACCOUNT_ID` e `FILMBOT_SECRET_ARN` (= `TMDB_SECRET_ARN`) em `os.environ` |
 | `fetch_ids_from_sot(...)` | Consulta Athena para listar todos os IDs únicos do discover |
+| `fetch_existing_ids_from_sot(s3_bucket_sot, table_name, year)` | Lê os IDs já gravados na partição `year` da tabela de details (vazia se a partição não existir). Usada só com `refresh_existing_ids=True` (`scripts/backfill_enriquecimento.py`, reprocessamento total) para re-buscar também os IDs que saíram do discover do ano — o merge de `collect_and_write_*` os preservaria sem atualizar |
 | `fetch_tmdb_details(api_key, content_type, item_id)` | Chama `/movie/{id}` ou `/tv/{id}` na API do TMDB e retorna o JSON bruto |
 | `fetch_tmdb_watch_providers(api_key, content_type, item_id)` | Chama `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` e retorna a seção `BR` do payload |
 | `_parse_watch_providers(br_data, item_id, year)` | Converte a seção `BR` de watch providers em registros (um por provedor/tipo `flatrate`/`rent`/`buy`) |

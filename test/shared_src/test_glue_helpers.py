@@ -2,7 +2,12 @@ import logging
 import sys
 from unittest.mock import MagicMock, patch
 
-from shared_utils.glue_helpers import configure_glue_logging, get_resolved_option
+import pandas as pd
+from shared_utils.glue_helpers import (
+    add_processing_datetime,
+    configure_glue_logging,
+    get_resolved_option,
+)
 
 
 class TestGetResolvedOption:
@@ -60,3 +65,37 @@ class TestConfigureGlueLogging:
         saida = capsys.readouterr().out
         assert "0123456789abcdef0123456789abcdef" not in saida
         assert "api_key=***&language=pt-BR" in saida
+
+
+class TestAddProcessingDatetime:
+    def test_adiciona_coluna_como_ultima(self):
+        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
+        result = add_processing_datetime(df)
+        assert list(result.columns) == ["id", "name", "processing_datetime"]
+
+    def test_muta_o_proprio_dataframe(self):
+        df = pd.DataFrame({"id": [1]})
+        result = add_processing_datetime(df)
+        assert result is df
+        assert "processing_datetime" in df.columns
+
+    def test_valor_unico_timestamp_sem_fuso(self):
+        df = pd.DataFrame({"id": [1, 2, 3]})
+        add_processing_datetime(df)
+        col = df["processing_datetime"]
+        assert pd.api.types.is_datetime64_dtype(col)
+        assert col.dt.tz is None
+        assert col.nunique() == 1
+
+    def test_usa_hora_local_de_sao_paulo(self):
+        fixed = pd.Timestamp("2026-10-04 15:30:00", tz="America/Sao_Paulo")
+        df = pd.DataFrame({"id": [1]})
+        with patch("shared_utils.glue_helpers.pd.Timestamp.now", return_value=fixed) as mock_now:
+            add_processing_datetime(df)
+        mock_now.assert_called_once_with(tz="America/Sao_Paulo")
+        assert df["processing_datetime"].iloc[0] == pd.Timestamp("2026-10-04 15:30:00")
+
+    def test_sobrescreve_coluna_existente(self):
+        df = pd.DataFrame({"processing_datetime": [pd.Timestamp("2000-01-01")], "id": [1]})
+        add_processing_datetime(df)
+        assert df["processing_datetime"].iloc[0] > pd.Timestamp("2020-01-01")

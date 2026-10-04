@@ -142,6 +142,14 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
 
 ## Lacunas encontradas — avaliar risco x esforço antes de agir
 
+- **Coluna de processamento por tabela** — `processing_datetime` (`timestamp`, hora de `America/Sao_Paulo`, sempre a
+  **última** coluna) é adicionada por `shared_utils.glue_helpers.add_processing_datetime` dentro de
+  `write_parquet_to_sot` (`glue_etl`) e `write_parquet_to_spec` (`glue_agg`) — só onde a partição/tabela é reconstruída
+  por completo. details/watch_providers (read-merge-write) mantêm `processed_date`/`updated_date`, carimbados na criação
+  do registro, e a DQ mantém `datetime_process`. Sem backfill: partições antigas ficam `NULL`; por isso não há
+  `IsComplete` em DQDL para essa coluna. Queries com `SELECT *` + `UNION` entre tabelas SOT (ex.:
+  `providers_ref_union`) devem listar colunas explícitas, senão timestamps distintos quebram a deduplicação.
+
 - **Schema evolution não tem mecanismo genérico em `app/`** — o único caso real (rename
   `dt_processamento`/`dt_atualizacao` → `processed_date`/`updated_date`) foi resolvido inteiramente em
   `scripts/backfill_rename_colunas.py`, um runbook manual fora de `app/`: lê o schema físico real da partição,

@@ -49,6 +49,8 @@
 
 > `tb_tmdb_discover_unified_{env}` (tabela SPEC) não é declarada via Terraform — é registrada dinamicamente pelo job Glue AGG em runtime.
 
+> **Coluna de processamento:** toda tabela carrega o momento do processamento. As 9 tabelas SOT escritas pelo Glue ETL (discover, now_playing, genre, configuration e watch_providers_ref, em movie e tv) e a SPEC `discover_unified` têm `processing_datetime` (`timestamp`, hora de `America/Sao_Paulo`, **última** coluna — o `ParquetHiveSerDe` resolve por posição). As demais mantêm a coluna própria: `processed_date` (`details`), `updated_date` (`watch_providers`) e `datetime_process` (`data_quality`). Partições antigas não reprocessadas ficam com `NULL` em `processing_datetime` (sem backfill).
+
 > A tabela `now_playing` não possui partição de ano — é um snapshot completo sobrescrito semanalmente (`mode=overwrite`), diferente das tabelas `discover` que são particionadas por ano. Inclui os campos `theater_start_date` e `theater_end_date` com a janela de exibição reportada pela API do TMDB.
 
 ## Servidor — Lightsail (`lightsail_ia.tf`)

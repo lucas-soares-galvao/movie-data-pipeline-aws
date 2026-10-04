@@ -38,6 +38,13 @@ são lidas pelos dois estágios também, mas este script as lê de novo para o d
 TABLE_GROUP não deve ser definida por quem chama este script: cada estágio define o próprio valor
 ("discover", depois "detalhes_e_providers") em os.environ antes de chamar o main() correspondente.
 
+Reprocessamento total:
+    O histórico não é incremental: "discover" apaga as páginas antigas do ano no SOR antes de
+    coletar (ver backfill_discover._clear_discover_sor_year) e "enriquecimento" re-busca, além dos
+    IDs do discover, os IDs já existentes na partição de details que saíram do discover do ano
+    (refresh_existing_ids=True, ver backfill_enriquecimento.py). Assim nenhuma linha da partição
+    fica com dado defasado de uma execução anterior.
+
 Data Quality:
     Não dispara Glue Data Quality diretamente — herda os disparos que backfill_discover.py (2
     tabelas: discover_movie, discover_tv) e backfill_enriquecimento.py (4 tabelas: details_movie,
