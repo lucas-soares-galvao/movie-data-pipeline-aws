@@ -70,6 +70,8 @@ test/glue_agg/
 | `test_usa_partition_cols_e_mode_corretos` | `partition_cols=["media_type", "year"]`, `mode="overwrite"` e `dataset=True` |
 | `test_dataframe_vazio_nao_escreve` | `to_parquet` não é chamado quando o DataFrame está vazio |
 | `test_registra_tabela_no_catalog` | `to_parquet` recebe `database` e `table` corretos para registrar no Glue Catalog |
+| `test_adiciona_processing_datetime_como_ultima_coluna` | O DataFrame enviado a `to_parquet` ganha `processing_datetime` como última coluna, sem nulos |
+| `test_dataframe_vazio_nao_recebe_processing_datetime` | DataFrame vazio não é alterado (escrita ignorada) |
 | `test_levanta_runtime_error_quando_nenhum_arquivo_escrito` | Levanta `RuntimeError("Escrita falhou")` quando `to_parquet` retorna `{"paths": []}` (nenhum arquivo gravado) |
 
 ### `TestGetParametersGlue`

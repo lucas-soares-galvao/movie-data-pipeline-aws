@@ -11,7 +11,7 @@ from typing import Any
 import awswrangler as wr
 import boto3
 import pandas as pd
-from shared_utils.glue_helpers import get_resolved_option
+from shared_utils.glue_helpers import add_processing_datetime, get_resolved_option
 from shared_utils.idioma import add_detected_language_column
 from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
@@ -457,6 +457,10 @@ def write_parquet_to_sot(
     """
     Grava um DataFrame como Parquet no SOT e atualiza o Glue Catalog via AWS Wrangler.
 
+    Adiciona a coluna processing_datetime (última coluna, ver add_processing_datetime)
+    no próprio DataFrame antes de gravar. Carimbar aqui é seguro porque, nas tabelas que
+    passam por esta função, a partição/tabela é sempre reconstruída por completo.
+
     Args:
         df:             DataFrame com os dados transformados
         s3_bucket_sot:  Nome do bucket SOT de destino
@@ -465,6 +469,7 @@ def write_parquet_to_sot(
         partition_cols: Lista de colunas de partição (ex: ["year"]) ou None
         mode:           "overwrite_partitions" ou "overwrite"
     """
+    add_processing_datetime(df)
     s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
     logger.info(
         f"Escrevendo {len(df)} registros em {s3_path} | particao={partition_cols} | mode={mode}"

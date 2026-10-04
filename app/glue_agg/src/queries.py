@@ -248,10 +248,14 @@ details AS (
 
 -- Referência unificada de provedores (union de movie + tv), desduplicada por provider_id,
 -- com canonical_name normalizado e prioridade de exibição no BR.
+-- Colunas explícitas (sem processing_datetime): movie e tv são gravadas em execuções
+-- diferentes, e timestamps distintos impediriam o UNION de deduplicar linhas iguais.
 providers_ref_union AS (
-    SELECT * FROM {db_movie}.{tb_watch_providers_ref_movie}
+    SELECT provider_id, provider_name, display_priority_br, canonical_name, logo_path
+    FROM {db_movie}.{tb_watch_providers_ref_movie}
     UNION
-    SELECT * FROM {db_tv}.{tb_watch_providers_ref_tv}
+    SELECT provider_id, provider_name, display_priority_br, canonical_name, logo_path
+    FROM {db_tv}.{tb_watch_providers_ref_tv}
 ),
 
 providers_ref_ranked AS (

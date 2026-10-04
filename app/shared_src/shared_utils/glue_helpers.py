@@ -6,9 +6,14 @@ import logging
 import sys
 from typing import Any
 
+import pandas as pd
+
 from shared_utils.secret_redaction import install_log_redaction
 
 logger = logging.getLogger()
+
+PROCESSING_DATETIME_COLUMN = "processing_datetime"
+PROCESSING_TIMEZONE = "America/Sao_Paulo"
 
 
 def get_resolved_option(args: list) -> dict[str, Any]:
@@ -48,3 +53,25 @@ def configure_glue_logging() -> logging.Logger:
     # CloudWatch em texto claro — ver shared_utils.secret_redaction.
     install_log_redaction()
     return logging.getLogger()
+
+
+def add_processing_datetime(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona ao DataFrame a coluna processing_datetime (timestamp de processamento).
+
+    O valor é único para todas as linhas e fica em hora local de America/Sao_Paulo, sem
+    informação de fuso — mesmo padrão de datetime_process em glue_data_quality. O fuso é
+    resolvido por pytz (dependência do pandas), sem depender de tzdata do sistema.
+
+    A coluna é atribuída no próprio DataFrame (sem copiar) e fica por último: o
+    ParquetHiveSerDe resolve colunas por posição, então a ordem precisa bater com a do
+    Glue Catalog (infra/glue_catalog.tf). Se a coluna já existir, é sobrescrita no lugar.
+
+    Args:
+        df: DataFrame que será gravado.
+
+    Returns:
+        O mesmo DataFrame recebido, com processing_datetime preenchida.
+    """
+    df[PROCESSING_DATETIME_COLUMN] = pd.Timestamp.now(tz=PROCESSING_TIMEZONE).tz_localize(None)
+    return df
