@@ -862,3 +862,82 @@ class TestGetParametersGlue:
         with patch("src.utils.get_resolved_option", side_effect=[self._required(), SystemExit(1)]):
             get_parameters_glue()
         assert os.environ["FILMBOT_SECRET_ARN"] == self._required()["FILMBOT_SECRET_ARN"]
+
+
+class TestForceRetranslateConfiguration:
+    """force_retranslate=True ("Retraduzir tudo") em configuration: ignora o cache de name_pt,
+    mantém o idioma detectado da fonte e restaura a tradução antiga se o LLM falhar."""
+
+    @staticmethod
+    def _previous():
+        return pd.DataFrame({
+            "iso_3166_1": ["BR"],
+            "english_name": ["Brazil"],
+            "name_pt": ["Brasil antigo"],
+            "name_detected_language_en": ["en"],
+            "name_detected_language_pt": ["pt"],
+        })
+
+    @staticmethod
+    def _detect(texto):
+        return "pt" if texto == "Brasil antigo" or texto.startswith("[PT]") else "en"
+
+    def test_paises_ignoram_cache_e_retraduzem(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        traduzir = MagicMock(side_effect=lambda t: f"[PT] {t}")
+        result = _add_name_pt_countries(df, traduzir, self._previous(), self._detect, force_retranslate=True)
+        assert result["name_pt"].iloc[0] == "[PT] Brazil"
+        traduzir.assert_called_once_with("Brazil")
+
+    def test_sem_force_continua_reaproveitando_o_cache(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        traduzir = MagicMock()
+        result = _add_name_pt_countries(df, traduzir, self._previous(), self._detect)
+        assert result["name_pt"].iloc[0] == "Brasil antigo"
+        traduzir.assert_not_called()
+
+    def test_idiomas_ignoram_cache_e_retraduzem(self):
+        previous = pd.DataFrame({
+            "iso_639_1": ["en"], "english_name": ["English"], "name_pt": ["Inglês antigo"],
+            "name_detected_language_en": ["en"], "name_detected_language_pt": ["pt"],
+        })
+        df = pd.DataFrame({"iso_639_1": ["en"], "english_name": ["English"]})
+        result = _add_name_pt_languages(
+            df, lambda t: f"[PT] {t}", previous,
+            lambda t: "pt" if t in {"Inglês antigo"} or t.startswith("[PT]") else "en",
+            force_retranslate=True,
+        )
+        assert result["name_pt"].iloc[0] == "[PT] English"
+
+    def test_restaura_traducao_antiga_quando_llm_falha(self):
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        result = _add_name_pt_countries(df, lambda t: t, self._previous(), self._detect, force_retranslate=True)
+        assert result["name_pt"].iloc[0] == "Brasil antigo"
+        assert result["name_detected_language_pt"].iloc[0] == "pt"
+
+    def test_reaproveita_so_o_idioma_detectado_da_fonte(self):
+        chamadas: list[str] = []
+
+        def detectar(texto):
+            chamadas.append(texto)
+            return self._detect(texto)
+
+        df = pd.DataFrame({"iso_3166_1": ["BR"], "english_name": ["Brazil"]})
+        _add_name_pt_countries(df, lambda t: f"[PT] {t}", self._previous(), detectar, force_retranslate=True)
+        assert "Brazil" not in chamadas
+        assert "[PT] Brazil" in chamadas
+
+    def test_read_from_sor_propaga_force_retranslate_para_configuration(self):
+        s3_mock = _make_s3_mock([{"iso_3166_1": "BR", "english_name": "Brazil"}])
+        with (
+            patch("boto3.client", return_value=s3_mock),
+            patch("src.utils.read_existing_configuration", return_value=self._previous()),
+        ):
+            result = read_from_sor(
+                "my-sor", "tv", "configuration",
+                translate_fn=lambda t: f"[PT] {t}",
+                s3_bucket_sot="my-sot", table_name="tb_config", detect_fn=self._detect,
+                force_retranslate=True,
+            )
+        assert result["name_pt"].iloc[0] == "[PT] Brazil"
+

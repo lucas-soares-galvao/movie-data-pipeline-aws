@@ -48,6 +48,14 @@ Variáveis opcionais:
                            consecutivas de requisições ao TMDB; o rate limit em si já é tratado
                            por chamada individual, com retry/backoff, em
                            shared_utils.api_client.api_get)
+    BACKFILL_RETRANSLATE  (padrão: desligado; "true" ativa a opção "Retraduzir tudo": ignora o
+                           cache de tradução e retraduz por LLM tudo o que não veio nativo pt-BR
+                           do TMDB — overview_pt, tagline_pt e keywords_pt —, mantendo a
+                           tradução antiga se o LLM falhar. Registros que não forem rebuscados
+                           (falha de API, sem year) mantêm a tradução anterior. Limpar o
+                           checkpoint antes, senão as unidades já concluídas são puladas.
+                           Herdada por backfill_historico.py, que chama este main() no mesmo
+                           processo)
 
 Data Quality:
     Diferente do caminho automático (Glue Details dispara o Data Quality 2x por unidade), este
@@ -127,8 +135,12 @@ def _process_enriquecimento_unit(
     table_details: str,
     table_watch_providers: str,
     dq_job_name: str,
+    force_retranslate: bool = False,
 ) -> str | None:
     """Processa uma unidade (media_type, year): detalhes + watch providers.
+
+    force_retranslate=True repassa a opção "Retraduzir tudo" a
+    run_details_and_watch_providers_for_year (ver BACKFILL_RETRANSLATE no módulo).
 
     Returns:
         None em sucesso; a mensagem de erro (str) em falha não-retryable — o chamador
@@ -151,6 +163,7 @@ def _process_enriquecimento_unit(
             dq_job_name=dq_job_name,
             trigger_dq=False,
             refresh_existing_ids=True,
+            force_retranslate=force_retranslate,
         )
     except ClientError as exc:
         if shared.is_expired_token_error(exc):
@@ -254,6 +267,12 @@ def main(trigger_agg: bool = True) -> bool:
 
     start_year, end_year = shared.read_year_range()
     wait_seconds  = int(os.environ.get("WAIT_SECONDS", 15))
+    force_retranslate = os.environ.get("BACKFILL_RETRANSLATE", "").lower() == "true"
+    if force_retranslate:
+        logger.info(
+            "Retradução forçada ligada (BACKFILL_RETRANSLATE=true): o cache de tradução será "
+            "ignorado e o que não é nativo pt-BR do TMDB será retraduzido por LLM."
+        )
 
     s3_client = boto3.client("s3", region_name=region)
 
@@ -280,6 +299,7 @@ def main(trigger_agg: bool = True) -> bool:
         error = _process_enriquecimento_unit(
             media_type, year, end_year, database, api_key, s3_bucket_sot, s3_bucket_temp,
             table_discover, table_details, table_watch_providers, dq_job_name,
+            force_retranslate,
         )
         if error is None:
             completed.add(f"{media_type}:{year}")

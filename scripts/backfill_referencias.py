@@ -36,6 +36,13 @@ Variáveis de ambiente obrigatórias:
     S3_BUCKET_SPEC, S3_PREFIX_SPEC, DB_UNIFIED, TABLE_DISCOVER_UNIFIED, ENVIRONMENT
                                      (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
+Variáveis opcionais:
+    BACKFILL_RETRANSLATE   (padrão: desligado; "true" ativa a opção "Retraduzir tudo" em
+                            configuration: ignora o cache de name_pt e retraduz por LLM todos os
+                            nomes de países/idiomas, mantendo a tradução antiga se o LLM falhar.
+                            Genre e watch_providers_ref não traduzem e não são afetadas. Limpar o
+                            checkpoint antes, senão configuration já concluída no dia é pulada)
+
 Data Quality:
     Diferente do caminho automático (Glue ETL dispara o Data Quality logo após escrever cada
     tabela), este script segue o mesmo padrão: dispara o Glue Data Quality uma vez por tabela
@@ -90,6 +97,7 @@ Retomada automática:
     se o AGG propagasse token expirado depois da limpeza, a retomada reprocessaria tudo).
 """
 
+import os
 import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -138,6 +146,7 @@ def _write_table(
     dq_job_name: str,
     translate_fn: Callable[[str], str] | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    force_retranslate: bool = False,
 ) -> None:
     """Lê table_type do SOR, grava Parquet no SOT e dispara o Glue Data Quality.
 
@@ -153,6 +162,7 @@ def _write_table(
         s3_bucket_sot=s3_bucket_sot,
         table_name=table_name,
         detect_fn=detect_fn,
+        force_retranslate=force_retranslate,
     )
     write_parquet_to_sot(
         df=df,
@@ -179,8 +189,11 @@ def _process_content_type(
     dq_job_name: str,
     completed: set[str],
     on_unit_done: Callable[[str], None],
+    force_retranslate: bool = False,
 ) -> None:
     """Processa as 3 unidades (genre, configuration, watch_providers_ref) de um content_type.
+
+    force_retranslate (opção "Retraduzir tudo") só afeta configuration, a única que traduz.
 
     `completed` traz os unit_ids "{media_type}:{table_type}" já concluídos segundo o checkpoint
     (não são refeitos); `on_unit_done` é chamado com o unit_id logo após cada unidade escrita com
@@ -216,6 +229,7 @@ def _process_content_type(
             dq_job_name=dq_job_name,
             translate_fn=translate_fn,
             detect_fn=detect_fn,
+            force_retranslate=force_retranslate,
         )
         on_unit_done(f"{media_type}:configuration")
 
@@ -263,6 +277,13 @@ def main() -> None:
     secret_arn  = shared.require_env("TMDB_SECRET_ARN")
     dq_job_name = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
 
+    force_retranslate = os.environ.get("BACKFILL_RETRANSLATE", "").lower() == "true"
+    if force_retranslate:
+        logger.info(
+            "Retradução forçada ligada (BACKFILL_RETRANSLATE=true): o cache de name_pt será "
+            "ignorado e países/idiomas serão retraduzidos por LLM."
+        )
+
     s3_client = boto3.client("s3", region_name=region)
 
     table_group = "referencias"
@@ -305,6 +326,7 @@ def main() -> None:
             dq_job_name=dq_job_name,
             completed=completed,
             on_unit_done=mark_unit_done,
+            force_retranslate=force_retranslate,
         )
 
     logger.info("Referências atualizadas.")

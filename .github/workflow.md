@@ -225,6 +225,7 @@ Workflow independente do `_pipeline.yml`, disparado apenas manualmente (`workflo
 | `table_group` | sim | — | Grupo de tabelas a atualizar (choice) |
 | `start_year` | sim | `2000` | Ano inicial (ignorado para `referencias`) |
 | `end_year` | não | vazio (= ano atual) | Ano final (ignorado para `referencias`) |
+| `retraduzir_tudo` | não | `false` | "Retraduzir tudo": ignora a tradução já gravada e retraduz via LLM o que não é pt-BR nativo do TMDB (details e `name_pt` de configuration), mantendo a antiga se o LLM falhar. Só vale para `historico`, `detalhes_e_providers` e `referencias` (um passo de validação rejeita os demais); limpar o checkpoint antes. Exporta `BACKFILL_RETRANSLATE` |
 
 **Grupos de tabelas (`table_group`) e script executado:**
 

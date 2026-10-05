@@ -22,6 +22,7 @@ __all__ = [
     "reuse_existing_translation",
     "reuse_detected_language",
     "resolve_pt_translation",
+    "restore_failed_translations",
 ]
 
 logger = logging.getLogger()
@@ -401,6 +402,82 @@ def resolve_pt_translation(
         sample_id_column=sample_id_column,
     )
     return df, success_count
+
+
+def restore_failed_translations(
+    df: pd.DataFrame,
+    previous_df: pd.DataFrame | None,
+    source_column: str,
+    target_column: str,
+    detected_language_pt_column: str,
+    needs_translation_column: str | None = None,
+    key_column: str = "id",
+) -> pd.DataFrame:
+    """
+    Devolve a tradução antiga às linhas em que a retradução forçada falhou.
+
+    Na retradução forçada o cache é ignorado (ver reuse_existing_translation), então uma falha
+    do LLM — translate_text_llm devolve o texto original em erro — trocaria uma tradução boa
+    pelo texto em inglês. Esta função roda depois de resolve_pt_translation e restaura, para a
+    mesma key_column, o valor antigo de target_column e de detected_language_pt_column quando:
+      - o texto novo é igual à fonte (sem diferença de maiúsculas/minúsculas nem de espaços nas
+        pontas, mesmo critério de _pending_mask) — sinal de que a tradução falhou; e
+      - previous_df tem um texto antigo preenchido, diferente da fonte e com idioma detectado
+        "pt" — sinal de que era uma tradução válida. É essa exigência que impede restaurar lixo:
+        um texto de erro legado (ex.: "Error 404 (Not Found)!!1") é detectado como outro idioma.
+
+    Tradução que legitimamente fica igual à fonte (nomes próprios) não é restaurada: o texto
+    antigo dela também é igual à fonte. Com needs_translation_column, o sinal das linhas
+    restauradas é recalculado (_pending_mask) — o idioma restaurado é "pt", então deixam de ser
+    pendência. O contador de tentativas não é alterado.
+
+    Args:
+        df:              DataFrame já processado por resolve_pt_translation (modificado in-place).
+        previous_df:     Registros persistidos antes da retradução, ou None/vazio se não há
+                         histórico.
+        source_column:   Coluna de texto original (ex.: "overview_en").
+        target_column:   Coluna de tradução (ex.: "overview_pt").
+        detected_language_pt_column: Coluna com o idioma detectado de target_column.
+        needs_translation_column: Se informado e presente em df, é recalculada nas linhas
+                         restauradas.
+        key_column:      Coluna usada para casar registros antigos e novos.
+
+    Returns:
+        df com as linhas falhas restauradas (também modificado in-place).
+    """
+    if previous_df is None or previous_df.empty:
+        return df
+    if not {key_column, target_column, detected_language_pt_column}.issubset(previous_df.columns):
+        # Schema antigo (partição/tabela gravada antes da coluna existir) — nada a restaurar.
+        return df
+
+    cache = (
+        previous_df[[key_column, target_column, detected_language_pt_column]]
+        .drop_duplicates(subset=key_column, keep="last")
+        .set_index(key_column)
+    )
+    old_target = df[key_column].map(cache[target_column])
+    old_language = df[key_column].map(cache[detected_language_pt_column])
+
+    has_source = df[source_column].notna() & (df[source_column] != "")
+    source_text = df[source_column].fillna("").astype(str).str.strip().str.casefold()
+    target_text = df[target_column].fillna("").astype(str).str.strip().str.casefold()
+    old_text = old_target.fillna("").astype(str).str.strip().str.casefold()
+
+    failed = has_source & (target_text == source_text)
+    old_valid = old_target.notna() & (old_target != "") & (old_text != source_text) & (old_language == "pt")
+    restore = failed & old_valid
+    if restore.any():
+        df.loc[restore, target_column] = old_target[restore]
+        df.loc[restore, detected_language_pt_column] = "pt"
+        if needs_translation_column and needs_translation_column in df.columns:
+            pending = _pending_mask(df, source_column, target_column, detected_language_pt_column)
+            df.loc[restore, needs_translation_column] = pending[restore]
+        logger.info(
+            f"Retradução de '{target_column}' falhou em {int(restore.sum())} registro(s): "
+            "tradução anterior restaurada."
+        )
+    return df
 
 
 def reuse_detected_language(
