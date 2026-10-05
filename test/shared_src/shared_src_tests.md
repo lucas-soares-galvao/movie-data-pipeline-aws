@@ -400,6 +400,21 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_coluna_chave_customizada` | Funciona com `key_column="iso_3166_1"` (caso de uso do `glue_etl`) |
 | `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `previous_df` não reaproveita |
 
+### `TestRestoreFailedTranslations`
+
+| Teste | O que verifica |
+|---|---|
+| `test_restaura_traducao_antiga_valida_quando_texto_novo_igual_a_fonte` | Texto novo igual à fonte (falha do LLM) volta ao texto antigo e ao idioma `pt` antigo |
+| `test_compara_fonte_ignorando_maiusculas_e_espacos` | A igualdade com a fonte ignora maiúsculas/minúsculas e espaços nas pontas (mesmo critério de `_pending_mask`) |
+| `test_nao_toca_linha_traduzida_com_sucesso` | Linha cujo texto novo difere da fonte não é alterada |
+| `test_nao_restaura_quando_texto_antigo_tambem_igual_a_fonte` | Nome próprio que fica igual à fonte não tem tradução boa a restaurar |
+| `test_nao_restaura_texto_de_erro_legado_com_idioma_diferente_de_pt` | Texto antigo com idioma detectado diferente de `pt` (ex.: texto de erro legado) não é restaurado |
+| `test_nao_restaura_quando_idioma_antigo_desconhecido` | Idioma antigo nulo não conta como tradução válida |
+| `test_id_ausente_no_historico_nao_restaura` | Id sem registro anterior não é restaurado |
+| `test_recalcula_needs_translation_nas_linhas_restauradas` / `test_sem_needs_translation_column_nao_cria_a_coluna` | `*_needs_translation` é recalculado só nas linhas restauradas e só quando a coluna existe |
+| `test_sem_previous_df_devolve_o_df_inalterado` / `test_previous_df_com_schema_antigo_devolve_o_df_inalterado` | Sem histórico (ou sem as colunas) nada é alterado |
+| `test_chave_customizada` | `key_column` customizada (ex.: `iso_3166_1`, usada por configuration) |
+
 ## Casos de teste — `test_idioma.py`
 
 ### `TestAddDetectedLanguageColumn`

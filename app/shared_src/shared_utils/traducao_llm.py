@@ -72,9 +72,11 @@ def _get_llm_api_key() -> str | None:
 _SYSTEM_PROMPT = (
     "Você é um tradutor profissional de inglês para português do Brasil, especializado "
     "em sinopses e metadados de filmes e séries. Traduza o texto do usuário para "
-    "português do Brasil. Preserve nomes próprios, títulos de obras, nomes de pessoas "
-    "e termos técnicos sem tradução direta. Devolva APENAS o texto traduzido, sem "
-    "aspas, sem comentários, sem explicações, sem markdown."
+    "português do Brasil. Traduza de forma fiel e literal, preservando o sentido, o tom "
+    "e a estrutura do original: não resuma, não omita, não acrescente informação e não "
+    "reescreva o texto com estilo próprio. Preserve nomes próprios, títulos de obras, "
+    "nomes de pessoas e termos técnicos sem tradução direta. Devolva APENAS o texto "
+    "traduzido, sem aspas, sem comentários, sem explicações, sem markdown."
 )
 
 # Remove aspas/cercas de markdown que o modelo eventualmente envolva ao redor do

@@ -63,12 +63,6 @@ Variáveis opcionais:
                             de chamada ao LLM; só aplicada quando a partição efetivamente
                             traduziu algo — partições vazias ou já 100% traduzidas seguem
                             direto para a próxima, sem espera)
-    BACKFILL_RESET_ATTEMPTS (padrão: desligado; "true" ativa o reparo pontual de dado legado:
-                            descarta os *_pt gravados com um texto de erro legado no lugar da
-                            tradução e zera *_detected_language_pt/*_translation_attempts
-                            dessas linhas, que então são retraduzidas via LLM mesmo que já
-                            tivessem esgotado o teto de tentativas. Limpar o checkpoint antes,
-                            senão as partições já concluídas são puladas)
     FILMBOT_SECRET_ARN    (ARN do secret unificado, usado por
                             shared_utils.llm_client.load_llm_api_key para ler o campo
                             llm_api_key — chave do LLM via OpenRouter. Sem ela (nem
@@ -98,7 +92,6 @@ Retomada automática:
 """
 
 import os
-import re
 import sys
 import time
 from pathlib import Path
@@ -121,46 +114,6 @@ import backfill_shared as shared
 logger = shared.setup_logging()
 
 _TRANSLATE_MAX_WORKERS = 5
-
-# Texto de erro legado, gravado como "tradução" por versões anteriores do código (antes
-# da migração para LLM), que não validavam o conteúdo antes de persistir. Ancorado no
-# início e no formato "Error <status> (<motivo>)!!<n>" para não casar com uma tradução
-# legítima que apenas mencione "Error".
-_LEGACY_ERROR_PAGE_PATTERN = re.compile(r"^Error \d{3} \([^)]*\)!!\d")
-
-# (coluna traduzida, idioma detectado do resultado, contador de tentativas) de cada campo
-_TRANSLATION_COLUMNS = [
-    ("overview_pt", "overview_detected_language_pt", "overview_translation_attempts"),
-    ("tagline_pt", "tagline_detected_language_pt", "tagline_translation_attempts"),
-    ("keywords_pt", "keywords_detected_language_pt", "keywords_translation_attempts"),
-]
-
-
-def _reset_polluted_translations(df: pd.DataFrame) -> int:
-    """
-    Descarta dos campos *_pt o que for o texto de erro legado (ver
-    _LEGACY_ERROR_PAGE_PATTERN) e zera o idioma detectado e o contador de tentativas dessas linhas, para que
-    resolve_pt_translation as retraduza via LLM mesmo que já tivessem esgotado o teto de
-    tentativas (sem zerar o contador, a linha ficaria com o texto de erro para sempre).
-
-    Ativada só por BACKFILL_RESET_ATTEMPTS=true (reparo pontual de dado legado).
-
-    Returns:
-        Quantidade de valores *_pt descartados (soma dos três campos).
-    """
-    reset_count = 0
-    for target_column, language_column, attempts_column in _TRANSLATION_COLUMNS:
-        if target_column not in df.columns:
-            continue
-        polluted = df[target_column].apply(
-            lambda value: isinstance(value, str) and _LEGACY_ERROR_PAGE_PATTERN.match(value) is not None
-        ).astype(bool)
-        if polluted.any():
-            df.loc[polluted, target_column] = None
-            df.loc[polluted, language_column] = None
-            df.loc[polluted, attempts_column] = 0
-            reset_count += int(polluted.sum())
-    return reset_count
 
 
 def _add_translations_pt(
@@ -263,16 +216,11 @@ def _backfill_year(
     s3_bucket_sot: str,
     translate_fn: Optional[Callable[[str], str]] = None,
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
-    reset_polluted: bool = False,
 ) -> tuple[bool, int]:
     """
     Lê uma partição de year em tb_details_* diretamente do S3, adiciona
     traduções PT e reescreve. Usa S3 em vez de Athena/CTAS para evitar
     permissões athena:GetWorkGroup e glue:DeleteTable.
-
-    Com reset_polluted=True, antes de traduzir descarta os *_pt que sejam o texto de
-    erro legado e zera o contador de tentativas dessas linhas (ver
-    _reset_polluted_translations).
 
     Returns:
         Tupla (escreveu, quantidade traduzida com sucesso).
@@ -297,10 +245,6 @@ def _backfill_year(
         return False, 0
 
     logger.info("  %d registros lidos.", len(df))
-
-    if reset_polluted:
-        reset_count = _reset_polluted_translations(df)
-        logger.info("  %d valor(es) *_pt com texto de erro legado descartado(s).", reset_count)
 
     df, success_overview = _add_translations_pt(df, translate_fn, detect_fn)
     df, success_tagline = _add_translations_tagline_pt(df, translate_fn, detect_fn)
@@ -342,7 +286,6 @@ def main() -> None:
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
     wait_seconds = int(os.environ.get("BACKFILL_WAIT_SECONDS", 30))
-    reset_polluted = os.environ.get("BACKFILL_RESET_ATTEMPTS", "").lower() == "true"
 
     years = list(range(start_year, end_year + 1))
     total = len(years) * 2
@@ -371,7 +314,6 @@ def main() -> None:
             table_details=table_details,
             year=str(year),
             s3_bucket_sot=s3_bucket_sot,
-            reset_polluted=reset_polluted,
         )
         total_translated += translated_count
         completed.add(f"{content_type}:{year}")

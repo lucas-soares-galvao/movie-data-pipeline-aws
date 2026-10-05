@@ -38,6 +38,12 @@ são lidas pelos dois estágios também, mas este script as lê de novo para o d
 TABLE_GROUP não deve ser definida por quem chama este script: cada estágio define o próprio valor
 ("discover", depois "detalhes_e_providers") em os.environ antes de chamar o main() correspondente.
 
+Retradução forçada ("Retraduzir tudo"):
+    Com BACKFILL_RETRANSLATE=true no ambiente (input retraduzir_tudo do workflow), o estágio
+    "enriquecimento" ignora o cache de tradução e retraduz por LLM o que não é nativo pt-BR do TMDB
+    (ver backfill_enriquecimento.py). Nenhuma mudança aqui: backfill_enriquecimento.main() roda no
+    mesmo processo e herda os.environ. Limpar o checkpoint (inclusive o interno do estágio) antes.
+
 Reprocessamento total:
     O histórico não é incremental: "discover" apaga as páginas antigas do ano no SOR antes de
     coletar (ver backfill_discover._clear_discover_sor_year) e "enriquecimento" re-busca, além dos

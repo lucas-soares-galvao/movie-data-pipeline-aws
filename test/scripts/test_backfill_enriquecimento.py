@@ -126,6 +126,25 @@ class TestLoopPrincipal:
         for c in mock_run.call_args_list:
             assert c.kwargs["refresh_existing_ids"] is True
 
+    @pytest.mark.parametrize("valor, esperado", [(None, False), ("true", True), ("TRUE", True), ("false", False)])
+    def test_force_retranslate_vem_de_backfill_retranslate(self, monkeypatch, valor, esperado):
+        overrides = {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}
+        if valor is None:
+            monkeypatch.delenv("BACKFILL_RETRANSLATE", raising=False)
+        else:
+            overrides["BACKFILL_RETRANSLATE"] = valor
+        mock_run, *_ = _run_main(monkeypatch, overrides)
+        assert mock_run.call_count == 2
+        assert all(c.kwargs["force_retranslate"] is esperado for c in mock_run.call_args_list)
+
+    def test_loga_quando_a_retraducao_forcada_esta_ligada(self, monkeypatch, caplog):
+        with caplog.at_level("INFO"):
+            _run_main(
+                monkeypatch,
+                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "BACKFILL_RETRANSLATE": "true"},
+            )
+        assert any("Retradução forçada ligada" in r.message for r in caplog.records)
+
     def test_falha_em_uma_unidade_nao_interrompe_o_backfill(self, monkeypatch):
         """Mesmo padrão soft-fail-continue de backfill_discover.py/backfill_changes.py: uma
         exceção aqui só é logada, não aborta o loop."""
