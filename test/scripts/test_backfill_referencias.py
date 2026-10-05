@@ -189,6 +189,30 @@ class TestEscritaNoSot:
         assert ("tv", "watch_providers_ref") in chamadas
 
 
+class TestRetraducaoForcada:
+    @pytest.mark.parametrize("valor, esperado", [(None, False), ("true", True), ("TRUE", True), ("false", False)])
+    def test_force_retranslate_vem_de_backfill_retranslate_e_so_vale_para_configuration(
+        self, monkeypatch, valor, esperado,
+    ):
+        overrides = {}
+        if valor is None:
+            monkeypatch.delenv("BACKFILL_RETRANSLATE", raising=False)
+        else:
+            overrides["BACKFILL_RETRANSLATE"] = valor
+        mocks = _run_main(monkeypatch, overrides)
+        por_tabela = {(c.args[1], c.args[2]): c.kwargs["force_retranslate"] for c in mocks["read"].call_args_list}
+        assert por_tabela[("movie", "configuration")] is esperado
+        assert por_tabela[("tv", "configuration")] is esperado
+        for tabela in ("genre", "watch_providers_ref"):
+            assert por_tabela[("movie", tabela)] is False
+            assert por_tabela[("tv", tabela)] is False
+
+    def test_loga_quando_a_retraducao_forcada_esta_ligada(self, monkeypatch, caplog):
+        with caplog.at_level("INFO"):
+            _run_main(monkeypatch, {"BACKFILL_RETRANSLATE": "true"})
+        assert any("Retradução forçada ligada" in r.message for r in caplog.records)
+
+
 class TestDataQuality:
     def test_dispara_dq_uma_vez_por_tabela_gravada(self, monkeypatch):
         mocks = _run_main(monkeypatch)

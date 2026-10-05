@@ -28,6 +28,8 @@ from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 from shared_utils.traducao import (
     format_elapsed,
     resolve_pt_translation,
+    restore_failed_translations,
+    reuse_detected_language,
     reuse_existing_translation,
 )
 from shared_utils.traducao_llm import translate_text_llm
@@ -761,6 +763,47 @@ def _force_reuse_when_unflagged(
     return df
 
 
+def _seed_pt_from_cache(
+    df: pd.DataFrame,
+    previous_df: pd.DataFrame | None,
+    changed_fields_by_id: dict[int, dict[str, bool]] | None,
+    force_retranslate: bool,
+    *,
+    field_key: str,
+    source_column: str,
+    target_column: str,
+    translation_attempts_column: str,
+    detected_language_en_column: str,
+    detected_language_pt_column: str,
+) -> pd.DataFrame:
+    """
+    Pré-preenche target_column (e as colunas de idioma) a partir do cache de previous_df,
+    antes de resolve_pt_translation assumir o resto do fluxo. Compartilhada por overview,
+    keywords e tagline.
+
+    Fluxo normal: reaproveitamento forçado pelo sinal do /changes (ver
+    _force_reuse_when_unflagged) e depois cache por comparação de string (ver
+    reuse_existing_translation).
+
+    force_retranslate=True (backfill "Retraduzir tudo"): NÃO reaproveita o texto traduzido
+    nem o sinal do /changes — tudo o que não veio nativo do TMDB (já em target_column, atribuído
+    pelo chamador) volta a ser traduzido pelo LLM. Só reaproveita o que continua válido: o
+    idioma detectado da FONTE (texto em inglês inalterado) e o idioma do alvo quando o texto
+    nativo é idêntico ao antigo — poupa as redetecções, que custam uma chamada ao LLM por linha.
+    """
+    if force_retranslate:
+        df = reuse_detected_language(df, previous_df, source_column, detected_language_en_column)
+        return reuse_detected_language(df, previous_df, target_column, detected_language_pt_column)
+    df = _force_reuse_when_unflagged(
+        df, previous_df, changed_fields_by_id, field_key, target_column, translation_attempts_column,
+    )
+    return reuse_existing_translation(
+        df, previous_df, source_column, target_column,
+        detected_language_en_column=detected_language_en_column,
+        detected_language_pt_column=detected_language_pt_column,
+    )
+
+
 def _add_translations_pt(
     df: pd.DataFrame,
     translate_fn: Callable[[str], str] | None = None,
@@ -768,6 +811,7 @@ def _add_translations_pt(
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
     max_workers: int = _TRANSLATE_MAX_WORKERS_LLM,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
@@ -783,6 +827,10 @@ def _add_translations_pt(
     cópia direta quando a fonte já é pt, tradução via LLM, teto de tentativas
     e a coluna overview_needs_translation — ver docstring de resolve_pt_translation em
     shared_utils.traducao).
+
+    Com force_retranslate=True (backfill "Retraduzir tudo"), ignora o cache de tradução e o
+    sinal do /changes e traduz de novo tudo o que não é nativo do TMDB, restaurando a tradução
+    antiga se o LLM falhar (ver _seed_pt_from_cache e restore_failed_translations).
     """
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("src.utils.translate_text_llm", ...) nos testes continue funcionando quando
@@ -791,11 +839,12 @@ def _add_translations_pt(
     detect_fn = detect_fn or detect_language_llm
 
     df["overview_pt"] = df["overview_pt_tmdb"]
-    df = _force_reuse_when_unflagged(
-        df, previous_df, changed_fields_by_id, "overview", "overview_pt", "overview_translation_attempts",
-    )
-    df = reuse_existing_translation(
-        df, previous_df, "overview_en", "overview_pt",
+    df = _seed_pt_from_cache(
+        df, previous_df, changed_fields_by_id, force_retranslate,
+        field_key="overview",
+        source_column="overview_en",
+        target_column="overview_pt",
+        translation_attempts_column="overview_translation_attempts",
         detected_language_en_column="overview_detected_language_en",
         detected_language_pt_column="overview_detected_language_pt",
     )
@@ -813,6 +862,13 @@ def _add_translations_pt(
         needs_translation_column="overview_needs_translation",
         sample_id_column="id",
     )
+    if force_retranslate:
+        # Falha do LLM devolve o texto em inglês: restaura a tradução antiga válida em vez de
+        # trocá-la por ele (ver restore_failed_translations).
+        df = restore_failed_translations(
+            df, previous_df, "overview_en", "overview_pt", "overview_detected_language_pt",
+            needs_translation_column="overview_needs_translation",
+        )
     return df
 
 
@@ -823,6 +879,7 @@ def _add_translations_keywords_pt(
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
     max_workers: int = _TRANSLATE_MAX_WORKERS_LLM,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas keywords_detected_language_en, keywords_detected_language_pt,
@@ -836,16 +893,21 @@ def _add_translations_keywords_pt(
     conteúdo, que a comparação de string de reuse_existing_translation trataria como
     "mudou". Fora isso, o valor inicial vem só do cache (reuse_existing_translation)
     antes de resolve_pt_translation assumir o resto do fluxo.
+
+    Com force_retranslate=True (backfill "Retraduzir tudo"), ignora o cache de tradução e o
+    sinal do /changes e traduz de novo tudo o que não é nativo do TMDB, restaurando a tradução
+    antiga se o LLM falhar (ver _seed_pt_from_cache e restore_failed_translations).
     """
     translate_fn = translate_fn or translate_text_llm
     detect_fn = detect_fn or detect_language_llm
 
     df["keywords_pt"] = None
-    df = _force_reuse_when_unflagged(
-        df, previous_df, changed_fields_by_id, "keywords", "keywords_pt", "keywords_translation_attempts",
-    )
-    df = reuse_existing_translation(
-        df, previous_df, "keywords", "keywords_pt",
+    df = _seed_pt_from_cache(
+        df, previous_df, changed_fields_by_id, force_retranslate,
+        field_key="keywords",
+        source_column="keywords",
+        target_column="keywords_pt",
+        translation_attempts_column="keywords_translation_attempts",
         detected_language_en_column="keywords_detected_language_en",
         detected_language_pt_column="keywords_detected_language_pt",
     )
@@ -863,6 +925,13 @@ def _add_translations_keywords_pt(
         needs_translation_column="keywords_needs_translation",
         sample_id_column="id",
     )
+    if force_retranslate:
+        # Falha do LLM devolve o texto em inglês: restaura a tradução antiga válida em vez de
+        # trocá-la por ele (ver restore_failed_translations).
+        df = restore_failed_translations(
+            df, previous_df, "keywords", "keywords_pt", "keywords_detected_language_pt",
+            needs_translation_column="keywords_needs_translation",
+        )
     return df
 
 
@@ -873,6 +942,7 @@ def _add_translations_tagline_pt(
     detect_fn: Callable[[str], str | None] | None = None,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
     max_workers: int = _TRANSLATE_MAX_WORKERS_LLM,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """
     Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
@@ -884,16 +954,21 @@ def _add_translations_tagline_pt(
     não mudou (ver _force_reuse_when_unflagged); e por fim reaproveita a tradução já
     existente no S3 (ver _add_translations_pt sobre a mesma ordem para overview) antes
     de resolve_pt_translation assumir o resto do fluxo.
+
+    Com force_retranslate=True (backfill "Retraduzir tudo"), ignora o cache de tradução e o
+    sinal do /changes e traduz de novo tudo o que não é nativo do TMDB, restaurando a tradução
+    antiga se o LLM falhar (ver _seed_pt_from_cache e restore_failed_translations).
     """
     translate_fn = translate_fn or translate_text_llm
     detect_fn = detect_fn or detect_language_llm
 
     df["tagline_pt"] = df["tagline_pt_tmdb"]
-    df = _force_reuse_when_unflagged(
-        df, previous_df, changed_fields_by_id, "tagline", "tagline_pt", "tagline_translation_attempts",
-    )
-    df = reuse_existing_translation(
-        df, previous_df, "tagline", "tagline_pt",
+    df = _seed_pt_from_cache(
+        df, previous_df, changed_fields_by_id, force_retranslate,
+        field_key="tagline",
+        source_column="tagline",
+        target_column="tagline_pt",
+        translation_attempts_column="tagline_translation_attempts",
         detected_language_en_column="tagline_detected_language_en",
         detected_language_pt_column="tagline_detected_language_pt",
     )
@@ -911,6 +986,13 @@ def _add_translations_tagline_pt(
         needs_translation_column="tagline_needs_translation",
         sample_id_column="id",
     )
+    if force_retranslate:
+        # Falha do LLM devolve o texto em inglês: restaura a tradução antiga válida em vez de
+        # trocá-la por ele (ver restore_failed_translations).
+        df = restore_failed_translations(
+            df, previous_df, "tagline", "tagline_pt", "tagline_detected_language_pt",
+            needs_translation_column="tagline_needs_translation",
+        )
     return df
 
 
@@ -922,6 +1004,7 @@ def collect_and_write_details(
     table_name: str,
     database: str,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
+    force_retranslate: bool = False,
 ) -> dict[int, str]:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
@@ -944,6 +1027,11 @@ def collect_and_write_details(
                              de um campo quando a TMDB confirma que ele não mudou na
                              janela. None (default) preserva o comportamento do fluxo
                              normal por ano, que nunca tem esse sinal disponível.
+        force_retranslate:  Só nos backfills (opção "Retraduzir tudo"): ignora o cache de
+                             tradução e retraduz por LLM tudo o que não veio nativo pt-BR do
+                             TMDB, mantendo a tradução antiga se o LLM falhar. Registros
+                             preservados no merge (fora do delta) não são retraduzidos.
+                             False (default) preserva o comportamento atual.
 
     Returns:
         Dicionário {id: year} dos IDs efetivamente buscados e gravados nesta execução
@@ -1022,22 +1110,34 @@ def collect_and_write_details(
         except Exception as exc:  # noqa: BLE001
             logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
 
-    logger.info(
-        f"[Detalhes {content_type} 3/4] Traduzindo overview, keywords e tagline para português "
-        "(reaproveitando tradução e idioma já detectados quando o texto não mudou)..."
-    )
+    if force_retranslate:
+        logger.info(
+            f"[Detalhes {content_type} 3/4] Retradução forçada: {len(df)} registro(s) terão overview, "
+            "keywords e tagline (exceto o que veio nativo pt-BR do TMDB) enviados ao LLM, ignorando "
+            "a tradução salva."
+        )
+        if not df_existing_keep.empty:
+            logger.warning(
+                f"{len(df_existing_keep)} registro(s) existentes não foram rebuscados nesta execução "
+                "e mantêm a tradução anterior (falha de API, sem 'year' ou fora do conjunto de IDs)."
+            )
+    else:
+        logger.info(
+            f"[Detalhes {content_type} 3/4] Traduzindo overview, keywords e tagline para português "
+            "(reaproveitando tradução e idioma já detectados quando o texto não mudou)..."
+        )
     with llm_usage_scope() as llm_usage:
         df = _add_translations_pt(
             df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
-            changed_fields_by_id=changed_fields_by_id,
+            changed_fields_by_id=changed_fields_by_id, force_retranslate=force_retranslate,
         )
         df = _add_translations_keywords_pt(
             df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
-            changed_fields_by_id=changed_fields_by_id,
+            changed_fields_by_id=changed_fields_by_id, force_retranslate=force_retranslate,
         )
         df = _add_translations_tagline_pt(
             df, translate_text_llm, previous_df=df_existing_delta, detect_fn=detect_language_llm,
-            changed_fields_by_id=changed_fields_by_id,
+            changed_fields_by_id=changed_fields_by_id, force_retranslate=force_retranslate,
         )
     log_llm_usage(f"Detalhes {content_type} 3/4", llm_usage)
     if content_type == "movie":
@@ -1369,6 +1469,7 @@ def run_details_and_watch_providers_for_year(
     dq_job_name: str,
     trigger_dq: bool = True,
     refresh_existing_ids: bool = False,
+    force_retranslate: bool = False,
 ) -> None:
     """
     Roda o ciclo completo de enriquecimento (details + watch providers) para um media_type/year:
@@ -1400,6 +1501,11 @@ def run_details_and_watch_providers_for_year(
                                  existentes na partição de details que não estão mais no discover
                                  do ano — o merge de collect_and_write_* os preservaria sem
                                  atualizar. Default False mantém o comportamento do job Glue.
+        force_retranslate:      Se True (opção "Retraduzir tudo", usada só por
+                                 scripts/backfill_enriquecimento.py), ignora o cache de tradução e
+                                 retraduz por LLM o que não é nativo pt-BR do TMDB (ver
+                                 collect_and_write_details). Default False mantém o comportamento
+                                 do job Glue.
     """
     all_ids = fetch_ids_from_sot(
         database=database,
@@ -1423,6 +1529,7 @@ def run_details_and_watch_providers_for_year(
             s3_bucket_sot=s3_bucket_sot,
             table_name=table_details,
             database=database,
+            force_retranslate=force_retranslate,
         )
 
     logger.info(

@@ -8,6 +8,7 @@ from shared_utils.traducao import (
     detect_in_parallel,
     format_elapsed,
     resolve_pt_translation,
+    restore_failed_translations,
     reuse_detected_language,
     reuse_existing_translation,
     translate_in_parallel,
@@ -773,3 +774,104 @@ class TestResolvePtTranslation:
         assert sucesso == 0
         traduzir_fn.assert_not_called()
         assert df["overview_needs_translation"].tolist() == [True]
+
+
+class TestRestoreFailedTranslations:
+    """Retradução forçada: devolve a tradução antiga quando o LLM falhou (texto novo == fonte)."""
+
+    def _previous(self, **overrides):
+        base = {
+            "id": [1],
+            "overview_pt": ["Tradução antiga"],
+            "overview_detected_language_pt": ["pt"],
+        }
+        base.update(overrides)
+        return pd.DataFrame(base)
+
+    def _novo(self, **overrides):
+        base = {
+            "id": [1],
+            "overview_en": ["A great movie"],
+            "overview_pt": ["A great movie"],  # falha do LLM: devolveu a fonte
+            "overview_detected_language_pt": ["en"],
+            "overview_needs_translation": [True],
+        }
+        base.update(overrides)
+        return pd.DataFrame(base)
+
+    def _restaurar(self, df, previous_df, **kwargs):
+        return restore_failed_translations(
+            df, previous_df, "overview_en", "overview_pt", "overview_detected_language_pt", **kwargs,
+        )
+
+    def test_restaura_traducao_antiga_valida_quando_texto_novo_igual_a_fonte(self):
+        df = self._restaurar(self._novo(), self._previous())
+        assert df["overview_pt"].iloc[0] == "Tradução antiga"
+        assert df["overview_detected_language_pt"].iloc[0] == "pt"
+
+    def test_compara_fonte_ignorando_maiusculas_e_espacos(self):
+        df = self._novo(overview_pt=["  A GREAT movie "])
+        df = self._restaurar(df, self._previous())
+        assert df["overview_pt"].iloc[0] == "Tradução antiga"
+
+    def test_nao_toca_linha_traduzida_com_sucesso(self):
+        df = self._novo(overview_pt=["Um grande filme"], overview_detected_language_pt=["pt"])
+        df = self._restaurar(df, self._previous())
+        assert df["overview_pt"].iloc[0] == "Um grande filme"
+
+    def test_nao_restaura_quando_texto_antigo_tambem_igual_a_fonte(self):
+        """Nome próprio que legitimamente fica igual à fonte: não há tradução boa a restaurar."""
+        previous = self._previous(overview_pt=["A great movie"])
+        df = self._restaurar(self._novo(), previous)
+        assert df["overview_pt"].iloc[0] == "A great movie"
+        assert df["overview_detected_language_pt"].iloc[0] == "en"
+
+    def test_nao_restaura_texto_de_erro_legado_com_idioma_diferente_de_pt(self):
+        previous = self._previous(
+            overview_pt=["Error 500 (Server Error)!!1500.That’s an error."],
+            overview_detected_language_pt=["en"],
+        )
+        df = self._restaurar(self._novo(), previous)
+        assert df["overview_pt"].iloc[0] == "A great movie"
+
+    def test_nao_restaura_quando_idioma_antigo_desconhecido(self):
+        previous = self._previous(overview_detected_language_pt=[None])
+        df = self._restaurar(self._novo(), previous)
+        assert df["overview_pt"].iloc[0] == "A great movie"
+
+    def test_id_ausente_no_historico_nao_restaura(self):
+        previous = self._previous(id=[99])
+        df = self._restaurar(self._novo(), previous)
+        assert df["overview_pt"].iloc[0] == "A great movie"
+
+    def test_recalcula_needs_translation_nas_linhas_restauradas(self):
+        df = self._restaurar(self._novo(), self._previous(), needs_translation_column="overview_needs_translation")
+        assert bool(df["overview_needs_translation"].iloc[0]) is False
+
+    def test_sem_needs_translation_column_nao_cria_a_coluna(self):
+        df = self._novo().drop(columns=["overview_needs_translation"])
+        df = self._restaurar(df, self._previous(), needs_translation_column="overview_needs_translation")
+        assert "overview_needs_translation" not in df.columns
+
+    def test_sem_previous_df_devolve_o_df_inalterado(self):
+        assert self._restaurar(self._novo(), None)["overview_pt"].iloc[0] == "A great movie"
+        assert self._restaurar(self._novo(), pd.DataFrame())["overview_pt"].iloc[0] == "A great movie"
+
+    def test_previous_df_com_schema_antigo_devolve_o_df_inalterado(self):
+        previous = pd.DataFrame({"id": [1], "overview_pt": ["Tradução antiga"]})  # sem idioma pt
+        df = self._restaurar(self._novo(), previous)
+        assert df["overview_pt"].iloc[0] == "A great movie"
+
+    def test_chave_customizada(self):
+        previous = pd.DataFrame({
+            "iso_3166_1": ["BR"], "name_pt": ["Brasil"], "name_detected_language_pt": ["pt"],
+        })
+        df = pd.DataFrame({
+            "iso_3166_1": ["BR"], "english_name": ["Brazil"], "name_pt": ["Brazil"],
+            "name_detected_language_pt": ["en"],
+        })
+        df = restore_failed_translations(
+            df, previous, "english_name", "name_pt", "name_detected_language_pt", key_column="iso_3166_1",
+        )
+        assert df["name_pt"].iloc[0] == "Brasil"
+

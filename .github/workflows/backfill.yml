@@ -26,9 +26,8 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #                             scripts/backfill_enriquecimento.py), disparando o Glue Data Quality
 #                             uma única vez ao final, cobrindo todo o range de anos processado
 #   - data_quality          — re-executa DQ via Glue
-#   - traducao              — adiciona overview_pt nos details (sem API TMDB); com o input
-#                             reset_attempts ligado, repara antes os *_pt gravados com texto
-#                             de erro legado (ver scripts/backfill_traducao.py)
+#   - traducao              — adiciona overview_pt nos details (sem API TMDB); só traduz o
+#                             que está pendente (ver scripts/backfill_traducao.py)
 #   - rename_colunas        — renomeia updated_date→processed_date (watch_providers) e
 #                             as colunas de idioma do discover (sufixo _pt) nos parquets já gravados
 #                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
@@ -90,8 +89,8 @@ on:
         required: false
         default: ""
         type: string
-      reset_attempts:
-        description: "Só para traducao: descarta *_pt com texto de erro legado e zera as tentativas dessas linhas para retraduzir via LLM (reparo pontual; limpar o checkpoint antes)"
+      retraduzir_tudo:
+        description: "Retraduzir tudo: ignora a tradução já gravada e retraduz via LLM tudo o que não é pt-BR nativo do TMDB (overview/tagline/keywords em details; name_pt em configuration), mantendo a tradução antiga se o LLM falhar. Só vale para historico, detalhes_e_providers e referencias; limpar o checkpoint antes"
         required: false
         default: false
         type: boolean
@@ -121,6 +120,21 @@ jobs:
             exit 1
           fi
           echo "🌎 Ambiente resolvido a partir do branch '${{ github.ref_name }}'"
+
+      - name: Validate "Retraduzir tudo" option
+        if: ${{ inputs.retraduzir_tudo }}
+        run: |
+          case "${{ inputs.table_group }}" in
+            historico|detalhes_e_providers|referencias) ;;
+            traducao)
+              echo "❌ 'Retraduzir tudo' não vale para 'traducao': esse grupo lê o parquet já gravado e não distingue a tradução nativa pt-BR do TMDB da gerada por LLM — retraduzir sobrescreveria os nativos. Use 'detalhes_e_providers' ou 'historico', que rebuscam do TMDB."
+              exit 1
+              ;;
+            *)
+              echo "❌ 'Retraduzir tudo' só vale para historico, detalhes_e_providers e referencias (table_group='${{ inputs.table_group }}')."
+              exit 1
+              ;;
+          esac
 
       - name: Read project configuration
         id: project
@@ -248,8 +262,9 @@ jobs:
           TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_movie_${{ steps.env.outputs.name }}
           TABLE_WATCH_PROVIDERS_REF_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_tv_${{ steps.env.outputs.name }}
           BACKFILL_START_YEAR: ${{ inputs.start_year }}
-          # Lida só por backfill_traducao.py (os demais scripts ignoram); "true"/"false"
-          BACKFILL_RESET_ATTEMPTS: ${{ inputs.reset_attempts }}
+          # Lida só por backfill_enriquecimento.py (também via historico) e
+          # backfill_referencias.py (os demais scripts ignoram); "true"/"false"
+          BACKFILL_RETRANSLATE: ${{ inputs.retraduzir_tudo }}
         run: |
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"

@@ -18,6 +18,7 @@ from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 from shared_utils.traducao import (
     DETECT_MAX_WORKERS_DEFAULT,
     resolve_pt_translation,
+    restore_failed_translations,
     reuse_detected_language,
     reuse_existing_translation,
 )
@@ -159,6 +160,7 @@ def _add_translation(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """
     Traduz a coluna english_name de inglês para português e grava como name_pt,
@@ -173,6 +175,11 @@ def _add_translation(
     responsabilidade de resolve_pt_translation — ver sua docstring em
     shared_utils.traducao.
 
+    Com force_retranslate=True (backfill "Retraduzir tudo"), NÃO reaproveita o texto de name_pt
+    do cache: todos os nomes voltam a ser traduzidos pelo LLM. Só o idioma detectado da fonte
+    (english_name inalterado) continua sendo reaproveitado, e uma falha do LLM restaura a
+    tradução antiga em vez de trocá-la pelo texto em inglês (ver restore_failed_translations).
+
     Args:
         df:           DataFrame com coluna english_name.
         key_column:   Coluna usada para casar registros antigos e novos no cache
@@ -183,6 +190,7 @@ def _add_translation(
                       usada como cache de tradução, ou None se não há histórico.
         detect_fn:    Função de detecção de idioma (texto) -> idioma detectado (ou
                       None). Por padrão usa detect_language_llm.
+        force_retranslate: Ignora o cache de tradução (ver acima). Default False.
 
     Returns:
         DataFrame com as colunas name_detected_language_en, name_detected_language_pt,
@@ -198,11 +206,16 @@ def _add_translation(
     detect_fn = detect_fn or detect_language_llm
 
     df["name_pt"] = None
-    df = reuse_existing_translation(
-        df, previous_df, "english_name", "name_pt", key_column=key_column,
-        detected_language_en_column="name_detected_language_en",
-        detected_language_pt_column="name_detected_language_pt",
-    )
+    if force_retranslate:
+        df = reuse_detected_language(
+            df, previous_df, "english_name", "name_detected_language_en", key_column=key_column,
+        )
+    else:
+        df = reuse_existing_translation(
+            df, previous_df, "english_name", "name_pt", key_column=key_column,
+            detected_language_en_column="name_detected_language_en",
+            detected_language_pt_column="name_detected_language_pt",
+        )
 
     df, _ = resolve_pt_translation(
         df,
@@ -216,6 +229,11 @@ def _add_translation(
         max_workers=_TRANSLATE_MAX_WORKERS_LLM,
         sample_id_column=key_column,
     )
+    if force_retranslate:
+        df = restore_failed_translations(
+            df, previous_df, "english_name", "name_pt", "name_detected_language_pt",
+            key_column=key_column,
+        )
     return df
 
 
@@ -224,9 +242,10 @@ def _add_name_pt_countries(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """Traduz english_name dos países para português e grava como name_pt."""
-    return _add_translation(df, "iso_3166_1", translate_fn, previous_df, detect_fn)
+    return _add_translation(df, "iso_3166_1", translate_fn, previous_df, detect_fn, force_retranslate)
 
 
 def _add_name_pt_languages(
@@ -234,9 +253,10 @@ def _add_name_pt_languages(
     translate_fn: Callable[[str], str] | None = None,
     previous_df: pd.DataFrame | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """Traduz english_name dos idiomas para português e grava como name_pt."""
-    return _add_translation(df, "iso_639_1", translate_fn, previous_df, detect_fn)
+    return _add_translation(df, "iso_639_1", translate_fn, previous_df, detect_fn, force_retranslate)
 
 
 def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataFrame:
@@ -352,11 +372,13 @@ def _read_genre_or_configuration(
     s3_bucket_sot: str | None,
     table_name: str | None,
     detect_fn: Callable[[str], str | None] | None,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """Lê o arquivo único de genre/configuration. Em configuration, adiciona name_pt
     (países para tv, idiomas para movie) via _add_name_pt_countries/_add_name_pt_languages,
     com cache de tradução opcional (read_existing_configuration) quando s3_bucket_sot e
-    table_name são informados."""
+    table_name são informados. force_retranslate ignora o cache do texto traduzido (o cache
+    ainda é lido: serve ao idioma da fonte e à restauração em caso de falha do LLM)."""
     df = pd.DataFrame(_read_json_from_s3(s3_bucket_sor, s3_key))
     if table_type != "configuration":
         return df
@@ -366,9 +388,9 @@ def _read_genre_or_configuration(
         previous_df = read_existing_configuration(s3_bucket_sot, table_name)
 
     if media_type == "tv":
-        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn)
+        return _add_name_pt_countries(df, translate_fn, previous_df, detect_fn, force_retranslate)
     if media_type == "movie":
-        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn)
+        return _add_name_pt_languages(df, translate_fn, previous_df, detect_fn, force_retranslate)
     return df
 
 
@@ -381,6 +403,7 @@ def read_from_sor(
     s3_bucket_sot: str | None = None,
     table_name: str | None = None,
     detect_fn: Callable[[str], str | None] | None = None,
+    force_retranslate: bool = False,
 ) -> pd.DataFrame:
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
@@ -415,6 +438,9 @@ def read_from_sor(
         detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
                        name_detected_language_pt (configuration) e overview_detected_language_pt
                        (discover). Por padrão usa detect_language_llm.
+        force_retranslate: Só para table_type="configuration" (backfill "Retraduzir tudo"):
+                       ignora o cache do name_pt e retraduz tudo por LLM, restaurando a
+                       tradução antiga se o LLM falhar. Default False (Glue ETL de produção).
 
     Returns:
         DataFrame com os dados lidos e prontos para gravação no SOT
@@ -440,6 +466,7 @@ def read_from_sor(
     elif table_type in ("genre", "configuration"):
         df = _read_genre_or_configuration(
             s3_bucket_sor, s3_key, media_type, table_type, translate_fn, s3_bucket_sot, table_name, detect_fn,
+            force_retranslate,
         )
 
     logger.info(f"Lidos {len(df)} registros.")

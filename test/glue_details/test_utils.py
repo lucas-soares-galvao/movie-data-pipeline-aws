@@ -3,6 +3,7 @@ import sys
 from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
+import pytest
 import src.utils as u
 
 # ---------------------------------------------------------------------------
@@ -1672,6 +1673,94 @@ class TestCollectAndWriteDetails:
             assert df_written["keywords_pt"].iloc[0] == "Keywords traduzidas antes"
             mock_traduzir.assert_not_called()
 
+    def test_force_retranslate_retraduz_mesmo_com_fonte_inalterada(self):
+        """force_retranslate=True ignora o cache: com a fonte idêntica ao registro existente,
+        overview_pt e tagline_pt voltam a ser traduzidos pelo LLM."""
+        existing_df = pd.DataFrame([{
+            "id": 10, "year": "2022",
+            "overview_en": "Sinopse A", "overview_pt": "Traduzido antes",
+            "overview_detected_language_en": "en", "overview_detected_language_pt": "pt",
+            "tagline": "Tagline serie", "tagline_pt": "Tagline traduzida antes",
+            "tagline_detected_language_en": "en", "tagline_detected_language_pt": "pt",
+            "processed_date": "2024-01-01",
+        }])
+
+        def detectar(texto):
+            return "pt" if texto.startswith("[PT]") or texto in {"Traduzido antes", "Tagline traduzida antes"} else "en"
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}") as mock_traduzir,
+            patch("src.utils.detect_language_llm", new=detectar),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details(
+                "key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db", force_retranslate=True,
+            )
+            df_written = mock_write.call_args.kwargs["df"]
+
+        assert df_written["overview_pt"].iloc[0] == "[PT] Sinopse A"
+        assert df_written["tagline_pt"].iloc[0] == "[PT] Tagline serie"
+        assert mock_traduzir.call_count >= 2
+
+    def test_force_retranslate_restaura_traducao_antiga_quando_llm_falha(self):
+        existing_df = pd.DataFrame([{
+            "id": 10, "year": "2022",
+            "overview_en": "Sinopse A", "overview_pt": "Traduzido antes",
+            "overview_detected_language_en": "en", "overview_detected_language_pt": "pt",
+            "processed_date": "2024-01-01",
+        }])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t),  # LLM falhou
+            patch("src.utils.detect_language_llm", new=lambda t: "pt" if t == "Traduzido antes" else "en"),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            u.collect_and_write_details(
+                "key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db", force_retranslate=True,
+            )
+            df_written = mock_write.call_args.kwargs["df"]
+
+        assert df_written["overview_pt"].iloc[0] == "Traduzido antes"
+
+    def test_force_retranslate_avisa_dos_registros_preservados_que_nao_foram_rebuscados(self, caplog):
+        existing_df = pd.DataFrame([
+            {"id": 10, "year": "2022", "overview_en": "Sinopse A", "overview_pt": "Traduzido antes"},
+            {"id": 11, "year": "2022", "overview_en": "Outra", "overview_pt": "Outra traduzida"},
+        ])
+
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.detect_language_llm", new=lambda t: "pt" if t.startswith("[PT]") else "en"),
+            patch("src.utils.wr.s3.read_parquet", return_value=existing_df),
+            patch("src.utils.wr.s3.to_parquet"),
+            caplog.at_level("INFO"),
+        ):
+            u.collect_and_write_details(
+                "key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db", force_retranslate=True,
+            )
+
+        mensagens = [r.message for r in caplog.records]
+        assert any("Retradução forçada" in m for m in mensagens)
+        assert any("1 registro(s) existentes não foram rebuscados" in m for m in mensagens)
+
+    def test_sem_force_retranslate_nao_loga_retraducao_forcada(self, caplog):
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.detect_language_llm", new=lambda t: "pt" if t.startswith("[PT]") else "en"),
+            patch("src.utils.wr.s3.read_parquet", side_effect=Exception("sem partição")),
+            patch("src.utils.wr.s3.to_parquet"),
+            caplog.at_level("INFO"),
+        ):
+            u.collect_and_write_details("key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db")
+
+        assert not any("Retradução forçada" in r.message for r in caplog.records)
+
     def test_retraduz_apenas_campo_cuja_fonte_mudou(self):
         """Só overview_en mudou: overview_pt é retraduzido, tagline_pt/keywords_pt reaproveitam o cache."""
         existing_df = pd.DataFrame([{
@@ -2012,6 +2101,27 @@ class TestRunDetailsAndWatchProvidersForYear:
             assert call_kw.kwargs["content_type"] == "movie"
             assert set(call_kw.kwargs["ids"]) == set(self._IDS)
             assert call_kw.kwargs["table_name"] == "tb_tmdb_details_movie_dev"
+
+    @pytest.mark.parametrize("valor", [True, False])
+    def test_repassa_force_retranslate_para_collect_details(self, valor):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs(force_retranslate=valor))
+        assert mock_collect.call_args.kwargs["force_retranslate"] is valor
+
+    def test_force_retranslate_e_false_por_padrao(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            u.run_details_and_watch_providers_for_year(**self._kwargs())
+        assert mock_collect.call_args.kwargs["force_retranslate"] is False
 
     def test_nao_busca_ids_existentes_por_padrao(self):
         with (
@@ -2914,3 +3024,119 @@ class TestRepairWatchProvidersDuplicates:
         mock_write = self._run_repair(parquet_df=parquet_df)
         assert mock_write.call_args.kwargs["mode"] == "overwrite_partitions"
         assert mock_write.call_args.kwargs["partition_cols"] == ["year"]
+
+
+_FORCE_CASOS = [
+    # (função, prefixo, coluna fonte, colunas extras do df novo)
+    ("_add_translations_pt", "overview", "overview_en", {"overview_pt_tmdb": [None]}),
+    ("_add_translations_keywords_pt", "keywords", "keywords", {}),
+    ("_add_translations_tagline_pt", "tagline", "tagline", {"tagline_pt_tmdb": [None]}),
+]
+
+
+class TestAddTranslationsForceRetranslate:
+    """force_retranslate=True ("Retraduzir tudo"): ignora o cache do texto traduzido e o sinal do
+    /changes, mantém o nativo pt-BR do TMDB e restaura a tradução antiga se o LLM falhar."""
+
+    @staticmethod
+    def _df(source_col, extras):
+        return pd.DataFrame({"id": [1], source_col: ["English text"], **extras})
+
+    @staticmethod
+    def _previous(prefix, source_col):
+        return pd.DataFrame({
+            "id": [1],
+            source_col: ["English text"],
+            f"{prefix}_pt": ["Tradução antiga"],
+            f"{prefix}_detected_language_en": ["en"],
+            f"{prefix}_detected_language_pt": ["pt"],
+        })
+
+    @staticmethod
+    def _detect(texto):
+        return "pt" if texto in {"Tradução antiga", "Nativo pt-BR"} or texto.startswith("[PT]") else "en"
+
+    @pytest.mark.parametrize("funcao, prefixo, source_col, extras", _FORCE_CASOS)
+    def test_ignora_cache_e_retraduz_mesmo_com_fonte_inalterada(self, funcao, prefixo, source_col, extras):
+        func = getattr(u, funcao)
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}") as mock_traduzir:
+            result = func(
+                self._df(source_col, extras), previous_df=self._previous(prefixo, source_col),
+                detect_fn=self._detect, force_retranslate=True,
+            )
+        assert result[f"{prefixo}_pt"].iloc[0] == "[PT] English text"
+        mock_traduzir.assert_called_once()
+
+    @pytest.mark.parametrize("funcao, prefixo, source_col, extras", _FORCE_CASOS)
+    def test_sem_force_continua_reaproveitando_o_cache(self, funcao, prefixo, source_col, extras):
+        func = getattr(u, funcao)
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = func(
+                self._df(source_col, extras), previous_df=self._previous(prefixo, source_col),
+                detect_fn=self._detect,
+            )
+        assert result[f"{prefixo}_pt"].iloc[0] == "Tradução antiga"
+        mock_traduzir.assert_not_called()
+
+    @pytest.mark.parametrize("funcao, prefixo, source_col, extras", _FORCE_CASOS)
+    def test_restaura_traducao_antiga_quando_llm_falha(self, funcao, prefixo, source_col, extras):
+        func = getattr(u, funcao)
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t):  # devolve a fonte
+            result = func(
+                self._df(source_col, extras), previous_df=self._previous(prefixo, source_col),
+                detect_fn=self._detect, force_retranslate=True,
+            )
+        assert result[f"{prefixo}_pt"].iloc[0] == "Tradução antiga"
+        assert result[f"{prefixo}_detected_language_pt"].iloc[0] == "pt"
+        assert bool(result[f"{prefixo}_needs_translation"].iloc[0]) is False
+
+    @pytest.mark.parametrize("funcao, prefixo, source_col, extras", _FORCE_CASOS)
+    def test_nao_restaura_texto_de_erro_legado(self, funcao, prefixo, source_col, extras):
+        previous = self._previous(prefixo, source_col)
+        previous[f"{prefixo}_pt"] = ["Error 500 (Server Error)!!1500.That’s an error."]
+        previous[f"{prefixo}_detected_language_pt"] = ["en"]
+        func = getattr(u, funcao)
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t):
+            result = func(
+                self._df(source_col, extras), previous_df=previous,
+                detect_fn=self._detect, force_retranslate=True,
+            )
+        assert result[f"{prefixo}_pt"].iloc[0] == "English text"
+
+    def test_mantem_traducao_nativa_pt_br_do_tmdb_sem_chamar_llm(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["English text"], "overview_pt_tmdb": ["Nativo pt-BR"]})
+        previous = self._previous("overview", "overview_en")
+        previous["overview_pt"] = ["Nativo pt-BR"]
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = u._add_translations_pt(df, previous_df=previous, detect_fn=self._detect, force_retranslate=True)
+        assert result["overview_pt"].iloc[0] == "Nativo pt-BR"
+        mock_traduzir.assert_not_called()
+
+    def test_reaproveita_so_o_idioma_detectado_da_fonte(self):
+        chamadas: list[str] = []
+
+        def detectar(texto):
+            chamadas.append(texto)
+            return self._detect(texto)
+
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
+            u._add_translations_pt(
+                self._df("overview_en", {"overview_pt_tmdb": [None]}),
+                previous_df=self._previous("overview", "overview_en"),
+                detect_fn=detectar, force_retranslate=True,
+            )
+        assert "English text" not in chamadas  # idioma da fonte veio do cache
+        assert "[PT] English text" in chamadas  # idioma do resultado novo é redetectado
+
+    def test_ignora_o_sinal_do_changes_que_diria_para_reaproveitar(self):
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}") as mock_traduzir:
+            result = u._add_translations_pt(
+                self._df("overview_en", {"overview_pt_tmdb": [None]}),
+                previous_df=self._previous("overview", "overview_en"),
+                detect_fn=self._detect,
+                changed_fields_by_id={1: {"overview": False}},
+                force_retranslate=True,
+            )
+        assert result["overview_pt"].iloc[0] == "[PT] English text"
+        mock_traduzir.assert_called_once()
+
