@@ -422,6 +422,41 @@ class TestForceReuseWhenUnflagged:
         )
         assert pd.isna(resultado_none["overview_pt"].iloc[0])
 
+    @staticmethod
+    def _forcar_com_idioma(idioma_antigo, com_coluna=True):
+        df = pd.DataFrame({"id": [1], "overview_pt": [None]})
+        previous = {"id": [1], "overview_pt": ["Sinopse antiga"]}
+        if com_coluna:
+            previous["overview_detected_language_pt"] = [idioma_antigo]
+        return u._force_reuse_when_unflagged(
+            df, pd.DataFrame(previous), {1: {"overview": False}},
+            "overview", "overview_pt", "overview_translation_attempts",
+            detected_language_pt_column="overview_detected_language_pt",
+        )
+
+    def test_forca_quando_traducao_salva_tem_idioma_pt(self):
+        resultado = self._forcar_com_idioma("pt")
+        assert resultado["overview_pt"].iloc[0] == "Sinopse antiga"
+        assert resultado["overview_translation_attempts"].iloc[0] == u._TRANSLATION_MAX_ATTEMPTS
+
+    def test_nao_forca_traducao_que_falhou_com_idioma_en(self):
+        """Texto em inglês gravado no lugar da tradução (falha do LLM) não é reaproveitado à força:
+        a linha segue o fluxo normal, com tentativas em 0, e é retraduzida."""
+        resultado = self._forcar_com_idioma("en")
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+        assert resultado["overview_translation_attempts"].iloc[0] == 0
+
+    def test_nao_forca_quando_idioma_salvo_e_nulo(self):
+        resultado = self._forcar_com_idioma(None)
+        assert pd.isna(resultado["overview_pt"].iloc[0])
+        assert resultado["overview_translation_attempts"].iloc[0] == 0
+
+    def test_mantem_comportamento_antigo_quando_previous_df_nao_tem_a_coluna_de_idioma(self):
+        """Schema antigo, sem a coluna de idioma: não há como validar a tradução salva."""
+        resultado = self._forcar_com_idioma(None, com_coluna=False)
+        assert resultado["overview_pt"].iloc[0] == "Sinopse antiga"
+        assert resultado["overview_translation_attempts"].iloc[0] == u._TRANSLATION_MAX_ATTEMPTS
+
 
 class TestAddTranslationsOverviewPt:
     def test_prioriza_tmdb_pt_br(self):
@@ -628,6 +663,38 @@ class TestAddTranslationsOverviewPt:
             )
         assert result["overview_pt"].iloc[0] == "[PT] Texto novo"
         translate_fn.assert_called_once()
+
+    def test_modo_changes_retraduz_traducao_antiga_que_falhou(self):
+        """Ciclo de nova tentativa: o /changes diz que overview não mudou, mas a tradução salva é o
+        próprio texto em inglês (falha anterior, idioma "en"). Ela não é travada: é retraduzida."""
+        df = pd.DataFrame({"id": [1], "overview_en": ["A great movie"], "overview_pt_tmdb": [None]})
+        previous_df = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt": ["A great movie"],
+            "overview_detected_language_en": ["en"], "overview_detected_language_pt": ["en"],
+        })
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text_llm", translate_fn):
+            result = u._add_translations_pt(
+                df, detect_fn=lambda t: "pt" if t.startswith("[PT]") else "en", previous_df=previous_df,
+                changed_fields_by_id={1: {"overview": False, "tagline": False, "keywords": False}},
+            )
+        assert result["overview_pt"].iloc[0] == "[PT] A great movie"
+        translate_fn.assert_called_once()
+
+    def test_modo_changes_continua_reaproveitando_traducao_valida_com_idioma_pt(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["A great movie"], "overview_pt_tmdb": [None]})
+        previous_df = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt": ["Sinopse já traduzida"],
+            "overview_detected_language_en": ["en"], "overview_detected_language_pt": ["pt"],
+        })
+        translate_fn = MagicMock(side_effect=lambda t, **kw: f"[PT] {t}")
+        with patch("src.utils.translate_text_llm", translate_fn):
+            result = u._add_translations_pt(
+                df, detect_fn=lambda t: "en", previous_df=previous_df,
+                changed_fields_by_id={1: {"overview": False, "tagline": False, "keywords": False}},
+            )
+        assert result["overview_pt"].iloc[0] == "Sinopse já traduzida"
+        translate_fn.assert_not_called()
 
 
 class TestAddTranslationsKeywordsPt:
