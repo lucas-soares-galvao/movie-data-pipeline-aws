@@ -691,6 +691,7 @@ def _force_reuse_when_unflagged(
     field_key: str,
     target_column: str,
     translation_attempts_column: str,
+    detected_language_pt_column: str | None = None,
 ) -> pd.DataFrame:
     """
     Força o reaproveitamento da tradução salva para um campo (overview/tagline/
@@ -705,6 +706,15 @@ def _force_reuse_when_unflagged(
     sempre o fluxo normal por ano, que nunca passa esse parâmetro) ou sem tradução
     salva, não faz nada — reuse_existing_translation/resolve_pt_translation decidem
     como antes desta mudança.
+
+    "Tradução salva válida" = texto não vazio E, quando detected_language_pt_column é
+    informada e existe em previous_df, idioma detectado do resultado igual a "pt". Sem essa
+    exigência, uma tradução que falhou (texto em inglês gravado no lugar da tradução, idioma
+    "en" ou nulo) seria reaproveitada à força e marcada como esgotada, ficando travada
+    enquanto o TMDB não sinalizar mudança. Não sendo forçada, a linha segue o fluxo normal
+    (attempts em 0) e é retraduzida se o idioma não for "pt" — a falha vira um ciclo de nova
+    tentativa na próxima passada, sem precisar da opção "Retraduzir tudo". Sem o parâmetro (ou
+    com previous_df de schema antigo, sem a coluna), mantém o comportamento anterior.
 
     Roda ANTES de reuse_existing_translation, para que a prioridade final seja:
     tradução nativa do TMDB (já atribuída pelo chamador) > reaproveitamento forçado
@@ -722,6 +732,9 @@ def _force_reuse_when_unflagged(
         translation_attempts_column: Contador de tentativas — marcado como esgotado
                                nas linhas forçadas, para excluí-las da elegibilidade
                                de resolve_pt_translation.
+        detected_language_pt_column: Coluna com o idioma detectado do resultado
+                               (ex.: "overview_detected_language_pt"); quando informada,
+                               só tradução salva com idioma "pt" é reaproveitada à força.
 
     Returns:
         df com target_column/translation_attempts_column atualizadas nas linhas
@@ -750,7 +763,15 @@ def _force_reuse_when_unflagged(
     is_unflagged = df["id"].isin(unflagged_ids)
     old_target = df["id"].map(cache)
     target_still_empty = df[target_column].isna() | (df[target_column] == "")
-    can_force = is_unflagged & old_target.notna() & (old_target != "") & target_still_empty
+    old_target_valid = old_target.notna() & (old_target != "")
+    if detected_language_pt_column and detected_language_pt_column in previous_df.columns:
+        language_cache = (
+            previous_df[["id", detected_language_pt_column]]
+            .drop_duplicates(subset="id", keep="last")
+            .set_index("id")[detected_language_pt_column]
+        )
+        old_target_valid = old_target_valid & (df["id"].map(language_cache) == "pt")
+    can_force = is_unflagged & old_target_valid & target_still_empty
 
     if can_force.any():
         df.loc[can_force, target_column] = old_target[can_force]
@@ -796,6 +817,7 @@ def _seed_pt_from_cache(
         return reuse_detected_language(df, previous_df, target_column, detected_language_pt_column)
     df = _force_reuse_when_unflagged(
         df, previous_df, changed_fields_by_id, field_key, target_column, translation_attempts_column,
+        detected_language_pt_column=detected_language_pt_column,
     )
     return reuse_existing_translation(
         df, previous_df, source_column, target_column,
