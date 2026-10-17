@@ -175,7 +175,7 @@ def _add_translation(
     responsabilidade de resolve_pt_translation — ver sua docstring em
     shared_utils.traducao.
 
-    Com force_retranslate=True (backfill "Retraduzir tudo"), NÃO reaproveita o texto de name_pt
+    Com force_retranslate=True (backfill "Reprocessar tudo"), NÃO reaproveita o texto de name_pt
     do cache: todos os nomes voltam a ser traduzidos pelo LLM. Só o idioma detectado da fonte
     (english_name inalterado) continua sendo reaproveitado, e uma falha do LLM restaura a
     tradução antiga em vez de trocá-la pelo texto em inglês (ver restore_failed_translations).
@@ -438,7 +438,7 @@ def read_from_sor(
         detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
                        name_detected_language_pt (configuration) e overview_detected_language_pt
                        (discover). Por padrão usa detect_language_llm.
-        force_retranslate: Só para table_type="configuration" (backfill "Retraduzir tudo"):
+        force_retranslate: Só para table_type="configuration" (backfill "Reprocessar tudo"):
                        ignora o cache do name_pt e retraduz tudo por LLM, restaurando a
                        tradução antiga se o LLM falhar. Default False (Glue ETL de produção).
 

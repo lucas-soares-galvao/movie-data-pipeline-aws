@@ -174,6 +174,8 @@ Testa individualmente as funções de `src/utils.py`: coleta da API TMDB e salva
 | `test_tv_coleta_paises` | Usa `/configuration/countries` e salva em `tmdb/configuration/countries/paises.json` |
 
 ### `TestCollectDiscoverData`
+| `test_devolve_zero_paginas_com_falha_quando_a_coleta_e_completa` | Retorno `0` numa coleta sem falhas |
+| `test_devolve_a_quantidade_de_paginas_que_falharam` | Retorno = nº de páginas puladas por `HTTPError` (2 falhas → `2`) — base da checagem de discover completo do backfill |
 
 | Teste | O que verifica |
 |---|---|

@@ -206,11 +206,13 @@ def collect_now_playing_data(api_key: str, s3_client: S3Client, bucket: str) -> 
 
 def collect_discover_data(
     api_key: str, s3_client: S3Client, bucket: str, content_type: str, folder: str, year: int
-) -> None:
+) -> int:
     """
     Coleta todas as páginas do discover para um ano, salvando um JSON por página no S3.
 
-    Para até MAX_PAGES (100) ou total_pages, o que for menor.
+    Para até MAX_PAGES (100) ou total_pages, o que for menor. Uma página que falha com HTTPError
+    é pulada (a coleta segue) e contada no retorno; só levanta RuntimeError se nenhuma página foi
+    salva.
 
     Args:
         api_key:       Chave de API TMDB
@@ -219,6 +221,11 @@ def collect_discover_data(
         content_type:  "movie" ou "tv"
         folder:        Pasta base no S3 (ex: "tmdb/discover/movie")
         year:          Ano de lançamento/estreia para filtrar
+
+    Returns:
+        Quantidade de páginas que falharam (0 = coleta completa). Quem precisa de um discover
+        íntegro (scripts/backfill_discover.py, base da poda de órfãos do "Reprocessar tudo")
+        deve tratar > 0 como coleta incompleta; a Lambda ignora o retorno e mantém só o aviso.
     """
     logger.info(f"Coletando {folder} do ano {year}...")
 
@@ -255,6 +262,8 @@ def collect_discover_data(
             f"Nenhuma página coletada para {folder}/ano={year}. "
             f"Todas as {failed_pages} tentativas falharam."
         )
+
+    return failed_pages
 
 
 # ── Modo changes (TMDB Changes API) ──────────────────────────────────────────

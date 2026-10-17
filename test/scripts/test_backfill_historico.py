@@ -11,7 +11,7 @@ encadeado).
 
 import json
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import backfill_historico as bh
 import pytest
@@ -20,6 +20,13 @@ from botocore.exceptions import ClientError
 ENV_BASE = {
     "AWS_REGION": "sa-east-1",
     "S3_BUCKET_TEMP": "bucket-temp-test",
+    "S3_BUCKET_SOT": "bucket-sot-test",
+    "TABLE_DISCOVER_MOVIE": "tb_discover_movie",
+    "TABLE_DISCOVER_TV": "tb_discover_tv",
+    "TABLE_DETAILS_MOVIE": "tb_details_movie",
+    "TABLE_DETAILS_TV": "tb_details_tv",
+    "TABLE_WATCH_PROVIDERS_MOVIE": "tb_wp_movie",
+    "TABLE_WATCH_PROVIDERS_TV": "tb_wp_tv",
     "BACKFILL_START_YEAR": "2020",
     "BACKFILL_END_YEAR": "2021",
     "GLUE_DATABASE_MOVIE": "db_movie",
@@ -47,12 +54,13 @@ def _s3_client_sem_checkpoint() -> MagicMock:
     return client
 
 
-def _s3_client_com_checkpoint(stages: list[str]) -> MagicMock:
+def _s3_client_com_checkpoint(stages: list[str], mode: str | None = None) -> MagicMock:
     client = MagicMock()
+    payload = {"start_year": 2020, "end_year": 2021, "completed": stages}
+    if mode:
+        payload["mode"] = mode
     client.get_object.return_value = {
-        "Body": MagicMock(read=MagicMock(return_value=json.dumps(
-            {"start_year": 2020, "end_year": 2021, "completed": stages}
-        ).encode()))
+        "Body": MagicMock(read=MagicMock(return_value=json.dumps(payload).encode()))
     }
     return client
 
@@ -64,26 +72,43 @@ def _run_main(
     enriquecimento_result: bool = True,
     discover_side_effect=None,
     mock_s3: MagicMock | None = None,
+    discover_ids=None,
+    prune_side_effect=None,
+    capture: dict | None = None,
 ):
     """Roda bh.main() com backfill_discover.main/backfill_enriquecimento.main mockados.
 
     discover_side_effect (se definido) tem prioridade sobre discover_result — usado para simular
     uma exceção (ex.: token expirado) em vez de um retorno bool.
+
+    discover_ids é o conjunto devolvido por fetch_all_discover_ids (padrão {1, 2}); prune_side_effect
+    (se definido) é o side_effect de prune_table_to_ids. capture (se passado) recebe as chaves
+    "fetch" e "prune" (mocks) e "ordem" (lista com a ordem real dos estágios) — parâmetro à parte
+    para não mudar a tupla de retorno consumida por *_ nos testes existentes.
     """
+    monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
 
     table_groups_no_momento_da_chamada: list[str | None] = []
 
+    ordem: list[str] = []
+
     def _discover_main(trigger_agg: bool = True):
+        ordem.append("discover")
         table_groups_no_momento_da_chamada.append(os.environ.get("TABLE_GROUP"))
         if discover_side_effect is not None:
             raise discover_side_effect
         return discover_result
 
     def _enriquecimento_main(trigger_agg: bool = True):
+        ordem.append("enriquecimento")
         table_groups_no_momento_da_chamada.append(os.environ.get("TABLE_GROUP"))
         return enriquecimento_result
+
+    def _prune(*args, **kwargs):
+        ordem.append("poda")
+        return 3
 
     with (
         patch("backfill_historico.boto3") as mock_boto3,
@@ -91,11 +116,21 @@ def _run_main(
         patch("backfill_historico.backfill_enriquecimento") as mock_enriquecimento,
         patch("backfill_historico.shared.trigger_agg_locally") as mock_agg,
         patch("backfill_historico.shared.notify_backfill_success") as mock_notify,
+        patch(
+            "backfill_historico.fetch_all_discover_ids",
+            return_value={1, 2} if discover_ids is None else discover_ids,
+        ) as mock_fetch,
+        patch("backfill_historico.prune_table_to_ids") as mock_prune,
     ):
         mock_boto3.client.return_value = mock_s3
         mock_discover.main.side_effect = _discover_main
         mock_enriquecimento.main.side_effect = _enriquecimento_main
-        bh.main()
+        mock_prune.side_effect = prune_side_effect or _prune
+        try:
+            bh.main()
+        finally:
+            if capture is not None:
+                capture.update(fetch=mock_fetch, prune=mock_prune, ordem=ordem)
     return mock_discover, mock_enriquecimento, mock_s3, table_groups_no_momento_da_chamada, mock_agg, mock_notify
 
 
@@ -146,6 +181,116 @@ class TestSucessoCompleto:
             _run_main(monkeypatch)
         resumo = [r.message for r in caplog.records if "Backfill histórico concluído" in r.message]
         assert len(resumo) == 1
+
+
+class TestPodaDeOrfaos:
+    """Estágio "poda" do "Reprocessar tudo": só com a flag, entre discover e enriquecimento."""
+
+    _FLAG = {"BACKFILL_REPROCESS_ALL": "true"}
+
+    def test_sem_a_flag_nao_poda(self, monkeypatch):
+        capturado: dict = {}
+        _run_main(monkeypatch, capture=capturado)
+
+        capturado["fetch"].assert_not_called()
+        capturado["prune"].assert_not_called()
+        assert capturado["ordem"] == ["discover", "enriquecimento"]
+
+    def test_com_a_flag_poda_entre_discover_e_enriquecimento(self, monkeypatch):
+        capturado: dict = {}
+        _run_main(monkeypatch, self._FLAG, capture=capturado)
+
+        assert capturado["ordem"] == ["discover", "poda", "poda", "poda", "poda", "enriquecimento"]
+
+    def test_poda_as_quatro_tabelas_contra_o_discover_de_todos_os_anos_do_range(self, monkeypatch):
+        capturado: dict = {}
+        _run_main(monkeypatch, self._FLAG, discover_ids={7, 8}, capture=capturado)
+
+        assert capturado["fetch"].call_args_list == [
+            call("db_movie", "tb_discover_movie", "bucket-temp-test"),
+            call("db_tv", "tb_discover_tv", "bucket-temp-test"),
+        ]
+        anos = {"2020", "2021"}
+        assert capturado["prune"].call_args_list == [
+            call("bucket-sot-test", "tb_details_movie", "db_movie", {7, 8}, anos),
+            call("bucket-sot-test", "tb_wp_movie", "db_movie", {7, 8}, anos),
+            call("bucket-sot-test", "tb_details_tv", "db_tv", {7, 8}, anos),
+            call("bucket-sot-test", "tb_wp_tv", "db_tv", {7, 8}, anos),
+        ]
+
+    def test_registra_o_estagio_poda_no_checkpoint(self, monkeypatch):
+        mock_s3 = _s3_client_sem_checkpoint()
+        _run_main(monkeypatch, self._FLAG, mock_s3=mock_s3)
+
+        saves = [json.loads(c.kwargs["Body"]) for c in mock_s3.put_object.call_args_list]
+        assert [sorted(x["completed"]) for x in saves] == [
+            ["discover"], ["discover", "poda"], ["discover", "enriquecimento", "poda"],
+        ]
+        assert all(x["mode"] == "reprocess_all" for x in saves)
+
+    def test_pula_a_poda_quando_o_checkpoint_do_mesmo_modo_ja_a_tem(self, monkeypatch):
+        mock_s3 = _s3_client_com_checkpoint(["discover", "poda"], mode="reprocess_all")
+        capturado: dict = {}
+        mock_discover, mock_enriquecimento, *_ = _run_main(
+            monkeypatch, self._FLAG, mock_s3=mock_s3, capture=capturado,
+        )
+
+        mock_discover.main.assert_not_called()
+        capturado["prune"].assert_not_called()
+        mock_enriquecimento.main.assert_called_once()
+
+    def test_checkpoint_de_run_normal_e_ignorado_e_a_poda_roda(self, monkeypatch):
+        mock_s3 = _s3_client_com_checkpoint(["discover", "enriquecimento"])
+        capturado: dict = {}
+        mock_discover, *_ = _run_main(monkeypatch, self._FLAG, mock_s3=mock_s3, capture=capturado)
+
+        mock_discover.main.assert_called_once()
+        assert capturado["prune"].call_count == 4
+
+    def test_nao_poda_quando_o_discover_falhou(self, monkeypatch):
+        capturado: dict = {}
+        _run_main(monkeypatch, self._FLAG, discover_result=False, capture=capturado)
+
+        capturado["fetch"].assert_not_called()
+        capturado["prune"].assert_not_called()
+
+    def test_discover_vazio_aborta_sem_podar_nem_enriquecer(self, monkeypatch, caplog):
+        capturado: dict = {}
+        mock_s3 = _s3_client_sem_checkpoint()
+        with caplog.at_level("ERROR", logger="backfill_historico"):
+            _, mock_enriquecimento, *_ = _run_main(
+                monkeypatch, self._FLAG, discover_ids=set(), mock_s3=mock_s3, capture=capturado,
+            )
+
+        capturado["prune"].assert_not_called()
+        mock_enriquecimento.main.assert_not_called()
+        assert any("não tem nenhum id" in r.message for r in caplog.records)
+        assert any("não concluído" in r.message for r in caplog.records)
+        # só o estágio discover foi salvo; a poda não entrou no checkpoint
+        assert json.loads(mock_s3.put_object.call_args.kwargs["Body"])["completed"] == ["discover"]
+        mock_s3.delete_object.assert_not_called()
+
+    def test_erro_na_poda_interrompe_o_historico(self, monkeypatch):
+        *resto, mock_agg, mock_notify = _run_main(
+            monkeypatch, self._FLAG, prune_side_effect=RuntimeError("boom"),
+        )
+        mock_enriquecimento = resto[1]
+
+        mock_enriquecimento.main.assert_not_called()
+        mock_agg.assert_not_called()
+        mock_notify.assert_not_called()
+
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_token_expirado_na_poda_propaga_para_o_exit_75(self, monkeypatch, codigo):
+        exc = ClientError({"Error": {"Code": codigo, "Message": "expired"}}, "GetObject")
+        with pytest.raises(ClientError):
+            _run_main(monkeypatch, self._FLAG, prune_side_effect=exc)
+
+    def test_outro_client_error_na_poda_interrompe_sem_propagar(self, monkeypatch):
+        exc = ClientError({"Error": {"Code": "AccessDenied", "Message": "x"}}, "GetObject")
+        _, mock_enriquecimento, *_ = _run_main(monkeypatch, self._FLAG, prune_side_effect=exc)
+
+        mock_enriquecimento.main.assert_not_called()
 
 
 class TestCheckpointDeEstagio:

@@ -1928,6 +1928,269 @@ class TestCollectAndWriteDetails:
 # ---------------------------------------------------------------------------
 
 
+def _http_error(status_code: int | None):
+    """HTTPError como o api_get levanta: com response.status_code (ou sem response)."""
+    import requests as req_lib
+
+    response = MagicMock(status_code=status_code) if status_code is not None else None
+    return req_lib.HTTPError(f"HTTP {status_code}", response=response)
+
+
+class TestRemoveNotFoundIds:
+    def _run(self, not_found_ids, total_ids, tables=("tb_details", "tb_wp")):
+        with patch("src.utils._remove_ids_from_table") as mock_remove:
+            u._remove_not_found_ids(not_found_ids, total_ids, "movie", "sot", tuple(tables), "db")
+        return mock_remove
+
+    def test_sem_ids_404_nao_remove_nada_nem_loga(self, caplog):
+        with caplog.at_level("INFO"):
+            mock_remove = self._run(set(), 100)
+
+        mock_remove.assert_not_called()
+        assert not [r for r in caplog.records if "não existem mais no TMDB" in r.message]
+
+    def test_remove_os_ids_de_cada_tabela(self):
+        mock_remove = self._run({1, 2}, 100)
+
+        assert mock_remove.call_args_list == [
+            call("sot", "tb_details", "db", {1, 2}),
+            call("sot", "tb_wp", "db", {1, 2}),
+        ]
+
+    def test_poucos_404_logam_info(self, caplog):
+        with caplog.at_level("INFO"):
+            self._run({1}, 100)
+
+        registro = next(r for r in caplog.records if "não existem mais no TMDB" in r.message)
+        assert registro.levelname == "INFO"
+        assert "1/100" in registro.message
+
+    def test_404_acima_da_proporcao_de_alerta_remove_tudo_e_loga_warning(self, caplog):
+        """Muitos 404 = tabela defasada em relação à API: remove igual, só destaca no log."""
+        ids = set(range(30))
+        with caplog.at_level("INFO"):
+            mock_remove = self._run(ids, 100)
+
+        registro = next(r for r in caplog.records if "não existem mais no TMDB" in r.message)
+        assert registro.levelname == "WARNING"
+        assert "30/100" in registro.message
+        assert mock_remove.call_count == 2
+        assert mock_remove.call_args_list[0] == call("sot", "tb_details", "db", ids)
+
+
+class TestPruneTableToIds:
+    def _df_ids(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            "id": [1, 2, 3, 4, 5],
+            "year": ["2020", "2020", "2021", "2021", "1990"],
+        })
+
+    def test_recusa_podar_contra_conjunto_vazio(self):
+        with (
+            patch("src.utils.wr.s3.read_parquet") as mock_read,
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            pytest.raises(ValueError, match="keep_ids vazio"),
+        ):
+            u.prune_table_to_ids("sot", "tb_details", "db", set(), {"2020"})
+
+        mock_read.assert_not_called()
+        mock_write.assert_not_called()
+
+    def test_remove_so_orfaos_dos_anos_do_range_e_devolve_o_total(self):
+        df_2020 = pd.DataFrame({"id": [1, 2], "year": ["2020", "2020"]})
+        with (
+            patch("src.utils.wr.s3.read_parquet", side_effect=[self._df_ids(), df_2020]) as mock_read,
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            patch("src.utils.wr.s3.delete_objects") as mock_delete,
+        ):
+            # keep={1,3,4}: órfãos 2 (2020), 5 (1990, fora do range) → só o 2 é removido
+            removidos = u.prune_table_to_ids("sot", "tb_details", "db", {1, 3, 4}, {"2020", "2021"})
+
+        assert removidos == 1
+        assert mock_read.call_count == 2          # tabela inteira + só a partição 2020
+        assert mock_write.call_args.kwargs["df"]["id"].tolist() == [1]
+        mock_delete.assert_not_called()
+
+    def test_nao_toca_particoes_fora_do_range(self):
+        with (
+            patch("src.utils.wr.s3.read_parquet", return_value=self._df_ids()) as mock_read,
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+        ):
+            removidos = u.prune_table_to_ids("sot", "tb_details", "db", {99}, {"2030"})
+
+        assert removidos == 0
+        assert mock_read.call_count == 1
+        mock_write.assert_not_called()
+
+    def test_particao_que_fica_vazia_apaga_so_os_objetos(self):
+        df_2021 = pd.DataFrame({"id": [3, 4], "year": ["2021", "2021"]})
+        with (
+            patch("src.utils.wr.s3.read_parquet", side_effect=[self._df_ids(), df_2021]),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            patch("src.utils.wr.s3.delete_objects") as mock_delete,
+        ):
+            removidos = u.prune_table_to_ids("sot", "tb_details", "db", {1, 2}, {"2021"})
+
+        assert removidos == 2
+        mock_write.assert_not_called()
+        mock_delete.assert_called_once_with("s3://sot/tmdb/tb_details/year=2021/")
+
+    def test_tabela_inexistente_devolve_zero(self):
+        with patch("src.utils.wr.s3.read_parquet", side_effect=Exception("sem tabela")):
+            assert u.prune_table_to_ids("sot", "tb_details", "db", {1}, {"2020"}) == 0
+
+
+class TestFetchAllDiscoverIds:
+    def test_consulta_o_discover_sem_filtro_de_ano_e_devolve_conjunto_de_ints(self):
+        df = pd.DataFrame({"id": [10, 11, 12]})
+        with patch("src.utils.wr.athena.read_sql_query", return_value=df) as mock_query:
+            ids = u.fetch_all_discover_ids("db", "tb_discover_movie", "bucket-temp")
+
+        assert ids == {10, 11, 12}
+        kwargs = mock_query.call_args.kwargs
+        assert kwargs["sql"] == "SELECT DISTINCT id FROM db.tb_discover_movie"
+        assert kwargs["database"] == "db"
+        assert kwargs["s3_output"] == "s3://bucket-temp/tmdb/athena/glue_details/"
+        assert "year" not in kwargs["sql"]
+
+
+class TestRemoveIdsFromTable:
+    def _ids_year_df(self) -> pd.DataFrame:
+        return pd.DataFrame({"id": [1, 2, 3], "year": ["2023", "2023", "2022"]})
+
+    def test_sem_dados_existentes_nao_grava_nada(self):
+        with (
+            patch("src.utils.wr.s3.read_parquet", side_effect=Exception("sem tabela")),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            patch("src.utils.wr.s3.delete_objects") as mock_delete,
+        ):
+            u._remove_ids_from_table("sot", "tb_details", "db", {1})
+
+        mock_write.assert_not_called()
+        mock_delete.assert_not_called()
+
+    def test_devolve_o_total_de_linhas_removidas(self):
+        df_2023 = pd.DataFrame({"id": [1, 2], "year": ["2023", "2023"]})
+        with (
+            patch("src.utils.wr.s3.read_parquet", side_effect=[self._ids_year_df(), df_2023]),
+            patch("src.utils.wr.s3.to_parquet"),
+        ):
+            assert u._remove_ids_from_table("sot", "tb_details", "db", {1}) == 1
+
+    def test_ids_ausentes_da_tabela_nao_regravam_particao(self):
+        with (
+            patch("src.utils.wr.s3.read_parquet", return_value=self._ids_year_df()),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            patch("src.utils.wr.s3.delete_objects") as mock_delete,
+        ):
+            u._remove_ids_from_table("sot", "tb_details", "db", {999})
+
+        mock_write.assert_not_called()
+        mock_delete.assert_not_called()
+
+    def test_regrava_so_a_particao_afetada_sem_os_ids(self):
+        df_2023 = pd.DataFrame({"id": [1, 2], "year": ["2023", "2023"], "title": ["A", "B"]})
+        with (
+            patch("src.utils.wr.s3.read_parquet", side_effect=[self._ids_year_df(), df_2023]) as mock_read,
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            patch("src.utils.wr.s3.delete_objects") as mock_delete,
+        ):
+            u._remove_ids_from_table("sot", "tb_details", "db", {1})
+
+        # 1 leitura de id/year da tabela inteira + 1 da partição 2023 (a 2022 não é tocada)
+        assert mock_read.call_count == 2
+        mock_write.assert_called_once()
+        kwargs = mock_write.call_args.kwargs
+        assert kwargs["df"]["id"].tolist() == [2]
+        assert kwargs["mode"] == "overwrite_partitions"
+        assert kwargs["partition_cols"] == ["year"]
+        assert kwargs["table"] == "tb_details"
+        mock_delete.assert_not_called()
+
+    def test_particao_que_fica_vazia_apaga_apenas_os_objetos_do_s3(self):
+        df_2022 = pd.DataFrame({"id": [3], "year": ["2022"]})
+        with (
+            patch("src.utils.wr.s3.read_parquet", side_effect=[self._ids_year_df(), df_2022]),
+            patch("src.utils.wr.s3.to_parquet") as mock_write,
+            patch("src.utils.wr.s3.delete_objects") as mock_delete,
+        ):
+            u._remove_ids_from_table("sot", "tb_details", "db", {3})
+
+        mock_write.assert_not_called()
+        mock_delete.assert_called_once_with("s3://sot/tmdb/tb_details/year=2022/")
+
+
+class TestCollectAndWriteDetailsNaoEncontrados:
+    """HTTP 404 (título removido do TMDB) remove o registro; outras falhas o preservam."""
+
+    def _ok_response(self) -> dict:
+        return {"id": 2, "runtime": 90, "release_date": "2023-01-01"}
+
+    def _run(self, side_effect, ids, also_remove=("tb_wp",)):
+        with (
+            patch("src.utils.fetch_tmdb_details", side_effect=side_effect),
+            patch("src.utils._fetch_collections_pt_br", return_value={}),
+            patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
+            patch("src.utils.wr.s3.to_parquet"),
+            patch("src.utils._remove_ids_from_table") as mock_remove,
+        ):
+            resultado = u.collect_and_write_details(
+                "key", ids, "movie", "sot", "tb_details", "db", also_remove_from_tables=also_remove,
+            )
+        return resultado, mock_remove
+
+    def test_404_remove_o_id_da_tabela_de_detalhes_e_das_tabelas_extras(self):
+        def side_effect(_key, _type, item_id):
+            if item_id == 1:
+                raise _http_error(404)
+            return self._ok_response()
+
+        resultado, mock_remove = self._run(side_effect, [1, 2])
+
+        assert resultado == {2: "2023"}
+        assert mock_remove.call_args_list == [
+            call("sot", "tb_details", "db", {1}),
+            call("sot", "tb_wp", "db", {1}),
+        ]
+
+    def test_404_remove_mesmo_quando_nenhum_id_gerou_registro(self):
+        """Sem registros novos há retorno antecipado, mas a remoção já tem que ter ocorrido."""
+        resultado, mock_remove = self._run(_http_error(404), [1], also_remove=())
+
+        assert resultado == {}
+        mock_remove.assert_called_once_with("sot", "tb_details", "db", {1})
+
+    @pytest.mark.parametrize("status_code", [401, 429, 500, 503, None])
+    def test_outros_erros_http_preservam_o_registro(self, status_code):
+        """429/5xx esgotados, 401 e HTTPError sem response não provam que o título sumiu."""
+        resultado, mock_remove = self._run(_http_error(status_code), [1])
+
+        assert resultado == {}
+        mock_remove.assert_not_called()
+
+    def test_erro_de_rede_preserva_o_registro(self):
+        import requests as req_lib
+
+        _, mock_remove = self._run(req_lib.ConnectionError("sem rede"), [1])
+
+        mock_remove.assert_not_called()
+
+    def test_404_em_massa_remove_todos_sem_limite_de_quantidade(self):
+        """30 de 100 IDs com 404 (tabela defasada em relação à API): todos são removidos."""
+        def side_effect(_key, _type, item_id):
+            if item_id < 30:
+                raise _http_error(404)
+            return {"id": item_id, "runtime": 90, "release_date": "2023-01-01"}
+
+        resultado, mock_remove = self._run(side_effect, list(range(100)))
+
+        assert mock_remove.call_args_list == [
+            call("sot", "tb_details", "db", set(range(30))),
+            call("sot", "tb_wp", "db", set(range(30))),
+        ]
+        assert set(resultado) == set(range(30, 100))
+
+
 class TestFetchTmdbWatchProviders:
     def _make_response(self, br_data: dict) -> MagicMock:
         mock_resp = MagicMock()
@@ -2168,6 +2431,17 @@ class TestRunDetailsAndWatchProvidersForYear:
             assert call_kw.kwargs["content_type"] == "movie"
             assert set(call_kw.kwargs["ids"]) == set(self._IDS)
             assert call_kw.kwargs["table_name"] == "tb_tmdb_details_movie_dev"
+
+    def test_remove_ids_404_tambem_da_tabela_de_watch_providers(self):
+        with (
+            patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
+            patch("src.utils.collect_and_write_details") as mock_collect,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.trigger_glue_job"),
+        ):
+            kwargs = self._kwargs()
+            u.run_details_and_watch_providers_for_year(**kwargs)
+        assert mock_collect.call_args.kwargs["also_remove_from_tables"] == (kwargs["table_watch_providers"],)
 
     @pytest.mark.parametrize("valor", [True, False])
     def test_repassa_force_retranslate_para_collect_details(self, valor):
@@ -2738,6 +3012,21 @@ class TestProcessChangedIds:
         assert sorted(ids_passados) == [1, 2]
         assert "year" not in mock_details.call_args.kwargs
 
+    def test_remove_ids_404_tambem_da_tabela_de_watch_providers(self):
+        """No modo changes o watch providers só é atualizado para os ids com year; um id que
+        respondeu 404 em details precisa sair da tabela de watch providers pelo mesmo caminho."""
+        kwargs = self._kwargs()
+        with (
+            patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2]),
+            patch("src.utils.collect_and_write_details", return_value={1: "2020", 2: "2021"}) as mock_details,
+            patch("src.utils.collect_and_write_watch_providers"),
+            patch("src.utils.repair_details_duplicates"),
+            patch("src.utils.repair_watch_providers_duplicates"),
+        ):
+            u.process_changed_ids(**kwargs)
+
+        assert mock_details.call_args.kwargs["also_remove_from_tables"] == (kwargs["table_watch_providers"],)
+
     def test_agrupa_watch_providers_por_year(self):
         with (
             patch("src.utils.resolve_matched_ids_for_changed_ids", return_value=[1, 2, 3]),
@@ -3102,7 +3391,7 @@ _FORCE_CASOS = [
 
 
 class TestAddTranslationsForceRetranslate:
-    """force_retranslate=True ("Retraduzir tudo"): ignora o cache do texto traduzido e o sinal do
+    """force_retranslate=True ("Reprocessar tudo"): ignora o cache do texto traduzido e o sinal do
     /changes, mantém o nativo pt-BR do TMDB e restaura a tradução antiga se o LLM falhar."""
 
     @staticmethod

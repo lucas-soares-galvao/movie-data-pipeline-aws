@@ -38,11 +38,23 @@ são lidas pelos dois estágios também, mas este script as lê de novo para o d
 TABLE_GROUP não deve ser definida por quem chama este script: cada estágio define o próprio valor
 ("discover", depois "detalhes_e_providers") em os.environ antes de chamar o main() correspondente.
 
-Retradução forçada ("Retraduzir tudo"):
-    Com BACKFILL_RETRANSLATE=true no ambiente (input retraduzir_tudo do workflow), o estágio
+Retradução forçada ("Reprocessar tudo"):
+    Com BACKFILL_REPROCESS_ALL=true no ambiente (input reprocessar_tudo do workflow), o estágio
     "enriquecimento" ignora o cache de tradução e retraduz por LLM o que não é nativo pt-BR do TMDB
     (ver backfill_enriquecimento.py). Nenhuma mudança aqui: backfill_enriquecimento.main() roda no
-    mesmo processo e herda os.environ. Limpar o checkpoint (inclusive o interno do estágio) antes.
+    mesmo processo e herda os.environ. Os checkpoints (o de estágio daqui e os de cada estágio) são
+    gravados com o modo "reprocess_all" e checkpoints de um run normal são ignorados (ver
+    backfill_shared._checkpoint_mode), então não é preciso limpá-los antes.
+
+Poda de órfãos ("Reprocessar tudo"):
+    Com BACKFILL_REPROCESS_ALL=true, um estágio "poda" roda entre discover e enriquecimento: remove
+    de details e watch providers (movie e tv) os ids que não estão no discover de NENHUM ano,
+    apenas nas partições year do range (ver glue_details.src.utils.prune_table_to_ids). Só aqui o
+    discover é recoletado (SOR limpo) e verificado sem páginas perdidas na mesma execução, o que o
+    torna base confiável; por isso detalhes_e_providers sozinho não poda. Discover vazio ou erro
+    na poda interrompem o histórico antes do enriquecimento, sem apagar nada. Podar antes do
+    enriquecimento evita rebuscar e retraduzir órfãos. Estágio registrado no checkpoint do
+    histórico (idempotente).
 
 Reprocessamento total:
     O histórico não é incremental: "discover" apaga as páginas antigas do ano no SOR antes de
@@ -88,13 +100,64 @@ import os
 
 import backfill_discover
 import backfill_enriquecimento
+from app.glue_details.src.utils import fetch_all_discover_ids, prune_table_to_ids  # noqa: E402
 from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 import backfill_shared as shared
 import boto3
+from botocore.exceptions import ClientError
 
 logger = shared.setup_logging()
 
 _TABLE_GROUP_HISTORICO = "historico"
+_STAGE_PODA = "poda"
+
+
+def _prune_orphans(years: list[int]) -> bool:
+    """Estágio "poda" do "Reprocessar tudo": remove de details e watch providers os ids que não
+    estão no discover de nenhum ano, nas partições do range (ver prune_table_to_ids).
+
+    Roda logo depois do estágio discover (que acabou de recoletar o discover com SOR limpo e sem
+    páginas perdidas) e antes do enriquecimento, para este não rebuscar nem retraduzir órfãos.
+
+    Args:
+        years: Anos do range do backfill — só essas partições year são podadas.
+
+    Returns:
+        True se podou as 4 tabelas; False se abortou (discover vazio ou erro) — nesse caso nada
+        mais é feito e o histórico para antes do enriquecimento. Token expirado propaga (exit 75).
+    """
+    s3_bucket_sot = shared.require_env("S3_BUCKET_SOT")
+    s3_bucket_temp = shared.require_env("S3_BUCKET_TEMP")
+    year_set = {str(year) for year in years}
+
+    for media_type, database in (
+        ("movie", shared.require_env("GLUE_DATABASE_MOVIE")),
+        ("tv", shared.require_env("GLUE_DATABASE_TV")),
+    ):
+        suffix = media_type.upper()
+        try:
+            keep_ids = fetch_all_discover_ids(
+                database, shared.require_env(f"TABLE_DISCOVER_{suffix}"), s3_bucket_temp,
+            )
+            if not keep_ids:
+                logger.error(
+                    "Poda de órfãos (%s): o discover não tem nenhum id — abortando sem apagar nada.",
+                    media_type,
+                )
+                return False
+            for table_env in (f"TABLE_DETAILS_{suffix}", f"TABLE_WATCH_PROVIDERS_{suffix}"):
+                table = shared.require_env(table_env)
+                removed = prune_table_to_ids(s3_bucket_sot, table, database, keep_ids, year_set)
+                logger.info(
+                    "Poda de órfãos (%s): %d linha(s) removida(s) de '%s' (anos %d-%d).",
+                    media_type, removed, table, min(years), max(years),
+                )
+        except Exception as exc:  # falha na poda para o histórico; token expirado segue retomável
+            if isinstance(exc, ClientError) and shared.is_expired_token_error(exc):
+                raise
+            logger.exception("Poda de órfãos (%s) falhou.", media_type)
+            return False
+    return True
 
 
 @log_llm_usage_summary("Backfill histórico")
@@ -127,6 +190,16 @@ def main() -> None:
         )
     else:
         logger.info("Estágio 'discover' já concluído no checkpoint — pulando para 'enriquecimento'.")
+
+    if shared.reprocess_all_enabled() and _STAGE_PODA not in completed_stages:
+        logger.info("=== Estágio intermediário do backfill histórico: poda de órfãos ===")
+        if not _prune_orphans(list(range(start_year, end_year + 1))):
+            logger.error("Estágio 'poda' não concluído — backfill histórico interrompido.")
+            return
+        completed_stages.add(_STAGE_PODA)
+        shared.save_checkpoint(
+            s3_client, s3_bucket_temp, _TABLE_GROUP_HISTORICO, start_year, end_year, completed_stages,
+        )
 
     if "enriquecimento" not in completed_stages:
         logger.info("=== Estágio 2/2 do backfill histórico: enriquecimento ===")

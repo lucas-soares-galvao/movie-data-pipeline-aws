@@ -11,7 +11,7 @@ wrapper de retry e mensagem de progresso do checkpoint.
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import backfill_shared as bs
@@ -187,6 +187,149 @@ class TestSaveCheckpoint:
                 bs.save_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025, set())
 
         assert any("Credenciais AWS expiraram" in r.message for r in caplog.records)
+
+
+class TestReprocessAllEnabled:
+    @pytest.mark.parametrize("valor, esperado", [(None, False), ("", False), ("false", False), ("true", True), ("TRUE", True)])
+    def test_le_backfill_reprocess_all(self, monkeypatch, valor, esperado):
+        if valor is None:
+            monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        else:
+            monkeypatch.setenv("BACKFILL_REPROCESS_ALL", valor)
+
+        assert bs.reprocess_all_enabled() is esperado
+
+
+class TestModoDoCheckpoint:
+    """Um checkpoint só é reaproveitado por um run do mesmo modo (normal x Reprocessar tudo):
+    senão o "Reprocessar tudo" herdaria unidades de um run normal anterior e as pularia."""
+
+    def test_run_normal_nao_grava_a_chave_mode(self, monkeypatch):
+        monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        client = MagicMock()
+
+        bs.save_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025, {"movie:2000"})
+
+        assert "mode" not in json.loads(client.put_object.call_args.kwargs["Body"])
+
+    def test_reprocessar_tudo_grava_mode_reprocess_all(self, monkeypatch):
+        monkeypatch.setenv("BACKFILL_REPROCESS_ALL", "true")
+        client = MagicMock()
+
+        bs.save_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025, {"movie:2000"})
+
+        assert json.loads(client.put_object.call_args.kwargs["Body"])["mode"] == "reprocess_all"
+
+    def test_reprocessar_tudo_ignora_checkpoint_de_run_normal(self, monkeypatch, caplog):
+        monkeypatch.setenv("BACKFILL_REPROCESS_ALL", "true")
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": ["movie:2000"]}
+        )
+
+        with caplog.at_level("WARNING", logger="backfill_shared"):
+            completed = bs.load_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025)
+
+        assert completed == set()
+        assert any("modo 'normal'" in r.message and "'reprocess_all'" in r.message for r in caplog.records)
+
+    def test_reprocessar_tudo_retoma_checkpoint_do_mesmo_modo(self, monkeypatch):
+        """Retry por token expirado e novo disparo após timeout continuam retomando."""
+        monkeypatch.setenv("BACKFILL_REPROCESS_ALL", "true")
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": ["movie:2000"], "mode": "reprocess_all"}
+        )
+
+        completed = bs.load_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025)
+
+        assert completed == {"movie:2000"}
+
+    def test_run_normal_ignora_checkpoint_de_reprocessar_tudo(self, monkeypatch):
+        monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": ["movie:2000"], "mode": "reprocess_all"}
+        )
+
+        assert bs.load_checkpoint(client, "bucket", "detalhes_e_providers", 2000, 2025) == set()
+
+
+class TestReportStaleProcessedDate:
+    _RUN_START = date(2026, 10, 17)
+
+    def _df(self, rows: list[tuple[int, date]]):
+        import pandas as pd
+
+        return pd.DataFrame({"id": [r[0] for r in rows], "processed_date": [r[1] for r in rows]})
+
+    def _run(self, read_side_effect, tables=("tb_movie",), years=(2020,)):
+        with patch("awswrangler.s3.read_parquet", side_effect=read_side_effect) as mock_read:
+            total = bs.report_stale_processed_date(
+                tables=list(tables), s3_bucket_sot="sot", years=list(years), run_start_date=self._RUN_START,
+            )
+        return total, mock_read
+
+    def test_todos_rebuscados_nao_loga_erro(self, caplog):
+        df = self._df([(1, date(2026, 10, 17)), (2, date(2026, 10, 18))])
+
+        with caplog.at_level("INFO", logger="backfill_shared"):
+            total, _ = self._run([df])
+
+        assert total == 0
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+        assert any("foram reprocessados" in r.message for r in caplog.records)
+
+    def test_registro_com_data_anterior_e_listado_como_erro(self, caplog):
+        df = self._df([(1, date(2026, 10, 17)), (2, date(2026, 10, 10)), (3, date(2025, 1, 1))])
+
+        with caplog.at_level("ERROR", logger="backfill_shared"):
+            total, _ = self._run([df])
+
+        assert total == 2
+        detalhe = next(r.message for r in caplog.records if "NÃO foram rebuscados" in r.message)
+        assert "'tb_movie' year=2020" in detalhe
+        assert "2, 3" in detalhe
+        assert any("2 registro(s) no total" in r.message for r in caplog.records)
+
+    def test_limita_os_ids_de_exemplo(self, caplog):
+        df = self._df([(i, date(2020, 1, 1)) for i in range(20)])
+
+        with caplog.at_level("ERROR", logger="backfill_shared"):
+            self._run([df])
+
+        detalhe = next(r.message for r in caplog.records if "NÃO foram rebuscados" in r.message)
+        assert detalhe.endswith("0, 1, 2, 3, 4")
+
+    def test_soma_tabelas_e_anos_e_filtra_a_particao_certa(self):
+        dfs = [self._df([(1, date(2020, 1, 1))]), self._df([]), self._df([(2, date(2020, 1, 1))]), self._df([])]
+
+        total, mock_read = self._run(dfs, tables=("tb_movie", "tb_tv"), years=(2020, 2021))
+
+        assert total == 2
+        assert mock_read.call_count == 4
+        assert mock_read.call_args_list[0].kwargs["path"] == "s3://sot/tmdb/tb_movie/"
+        assert mock_read.call_args_list[0].kwargs["columns"] == ["id", "processed_date"]
+        particao = mock_read.call_args_list[0].kwargs["partition_filter"]
+        assert particao({"year": "2020"}) is True
+        assert particao({"year": "2021"}) is False
+
+    def test_particao_inexistente_e_ignorada(self):
+        total, _ = self._run([Exception("sem partição")])
+
+        assert total == 0
+
+    @pytest.mark.parametrize("codigo", ["ExpiredTokenException", "ExpiredToken"])
+    def test_token_expirado_propaga(self, codigo):
+        erro = _client_error(codigo)
+
+        with pytest.raises(ClientError):
+            self._run([erro])
+
+    def test_outro_client_error_e_tratado_como_particao_inexistente(self):
+        total, _ = self._run([_client_error("AccessDenied")])
+
+        assert total == 0
 
 
 class TestIsExpiredTokenError:

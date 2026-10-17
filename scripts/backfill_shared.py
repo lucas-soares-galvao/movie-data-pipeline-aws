@@ -31,7 +31,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -72,6 +72,9 @@ RETRYABLE_EXIT_CODE = 75
 # mesma causa — credencial AWS expirada no meio de um backfill longo — e
 # devem ser tratados como retomáveis.
 _EXPIRED_TOKEN_CODES = frozenset({"ExpiredTokenException", "ExpiredToken"})
+
+# Valor da chave "mode" do checkpoint num "Reprocessar tudo" (ver _checkpoint_mode).
+_REPROCESS_ALL_MODE = "reprocess_all"
 
 
 def setup_logging() -> logging.Logger:
@@ -165,6 +168,26 @@ def _checkpoint_key(table_group: str) -> str:
     return f"tmdb/backfill_checkpoints/{table_group}.json"
 
 
+def reprocess_all_enabled() -> bool:
+    """Indica se o run é um "Reprocessar tudo" (input `reprocessar_tudo` do workflow).
+
+    O workflow exporta o input como BACKFILL_REPROCESS_ALL ("true"/"false"). Lida em um lugar só
+    para os scripts e o checkpoint concordarem sobre o modo do run.
+    """
+    return os.environ.get("BACKFILL_REPROCESS_ALL", "").lower() == "true"
+
+
+def _checkpoint_mode() -> str | None:
+    """Modo gravado no checkpoint: "reprocess_all" num "Reprocessar tudo", None no run normal.
+
+    Um checkpoint só é reaproveitado por um run do MESMO modo (ver load_checkpoint): sem isso, um
+    "Reprocessar tudo" herdaria as unidades que um run normal anterior já concluíra e as pularia
+    — terminando "com sucesso" sem reprocessar nada. Dentro do mesmo modo a retomada continua
+    valendo (retry por token expirado e novo disparo após timeout de 6h).
+    """
+    return _REPROCESS_ALL_MODE if reprocess_all_enabled() else None
+
+
 def is_expired_token_error(exc: ClientError) -> bool:
     """Indica se um `ClientError` representa uma credencial AWS expirada.
 
@@ -246,6 +269,14 @@ def load_checkpoint(
         )
         return set()
 
+    if data.get("mode") != _checkpoint_mode():
+        logger.warning(
+            "Checkpoint '%s' foi gravado por um run em modo '%s' e este run é '%s'. Ignorando e "
+            "recomeçando do zero (o checkpoint antigo é sobrescrito na próxima unidade concluída).",
+            key, data.get("mode") or "normal", _checkpoint_mode() or "normal",
+        )
+        return set()
+
     completed = set(data.get("completed", []))
     logger.info("Checkpoint '%s' encontrado: %d unidade(s) já concluída(s).", key, len(completed))
     return completed
@@ -256,12 +287,16 @@ def save_checkpoint(
 ) -> None:
     """Sobrescreve o checkpoint em S3 com o conjunto atualizado de unidades concluídas."""
     key = _checkpoint_key(table_group)
-    body = json.dumps({
+    payload: dict[str, Any] = {
         "start_year": start_year,
         "end_year": end_year,
         "completed": sorted(completed),
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).encode()
+    }
+    mode = _checkpoint_mode()
+    if mode:
+        payload["mode"] = mode
+    body = json.dumps(payload).encode()
     try:
         s3_client.put_object(Bucket=bucket, Key=key, Body=body, **_expected_bucket_owner_kwargs())
     except ClientError as exc:
@@ -345,6 +380,99 @@ def resolve_pending_units_by_year(
     log_resume_progress(logger, "unidades já concluídas", len(unidades), len(pendentes))
 
     return years, api_key, completed, pendentes
+
+
+def _read_processed_dates(s3_bucket_sot: str, table: str, year: int) -> Any | None:
+    """Lê id e processed_date de uma partição year; None se ela não existir.
+
+    Import local de awswrangler pelo mesmo motivo de report_stale_processed_date. Token expirado
+    propaga (retomável); qualquer outra falha de leitura é tratada como partição inexistente.
+    """
+    import awswrangler as wr
+
+    try:
+        return wr.s3.read_parquet(
+            path=f"s3://{s3_bucket_sot}/tmdb/{table}/",
+            dataset=True,
+            columns=["id", "processed_date"],
+            partition_filter=lambda x: x["year"] == str(year),
+        )
+    # Partição pode não existir (ano sem dados), degrada graciosamente.
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, ClientError) and is_expired_token_error(exc):
+            log_expired_token(exc, f"verificação de '{table}' year={year}")
+            raise
+        logger.info("Sem dados para verificar em '%s' year=%d: %s", table, year, exc)
+        return None
+
+
+def report_stale_processed_date(
+    *,
+    tables: list[str],
+    s3_bucket_sot: str,
+    years: list[int],
+    run_start_date: date,
+    sample_size: int = 5,
+) -> int:
+    """Lista, por tabela e ano, os registros que o "Reprocessar tudo" não rebuscou.
+
+    Um registro rebuscado do TMDB é regravado com processed_date = hoje (ver
+    app/glue_details/src/utils.py:_common_fields); quem ficou com processed_date anterior ao início
+    do run foi preservado do run anterior — falha de API após os retries (429/5xx/timeout) ou
+    registro sem year (títulos que o TMDB diz não existir mais, HTTP 404, são removidos, não
+    preservados). Sem esta verificação, o run termina "com sucesso" mesmo com esses registros
+    defasados, porque a unidade entra no checkpoint de qualquer forma.
+
+    Cada tabela/ano com pendência é logada como ERROR (o workflow transforma linhas ERROR em aviso
+    no step summary). Nunca levanta exceção, exceto ClientError de token expirado (retomável, ver
+    run_with_retry_exit). Um run que atravessa a meia-noite (horário de São Paulo) pode listar
+    registros do dia anterior como não rebuscados: falso positivo, nunca falso negativo.
+
+    Import local de awswrangler/pandas (não no topo do módulo): backfill_data_quality.py e
+    backfill_rename_colunas.py importam backfill_shared sem instalar essas dependências.
+
+    Args:
+        tables:         Tabelas de details do SOT (movie e tv) a verificar.
+        s3_bucket_sot:  Bucket SOT onde os parquets estão gravados.
+        years:          Anos (partições year) a verificar.
+        run_start_date: Data (horário de SP) em que o run começou; processed_date menor que ela
+                         indica registro não rebuscado.
+        sample_size:    Quantos ids de exemplo logar por tabela/ano.
+
+    Returns:
+        Total de registros não rebuscados em todas as tabelas e anos verificados.
+    """
+    import pandas as pd
+
+    total_stale = 0
+    for table in tables:
+        for year in years:
+            df = _read_processed_dates(s3_bucket_sot, table, year)
+            if df is None:
+                continue
+            stale = df[pd.to_datetime(df["processed_date"]).dt.date < run_start_date]
+            if stale.empty:
+                continue
+            total_stale += len(stale)
+            logger.error(
+                "Reprocessar tudo: %d registro(s) de '%s' year=%d NÃO foram rebuscados do TMDB "
+                "(processed_date anterior a %s) e mantêm o dado do run anterior. Exemplos de id: %s",
+                len(stale), table, year, run_start_date.isoformat(),
+                ", ".join(str(i) for i in stale["id"].head(sample_size)),
+            )
+
+    if total_stale:
+        logger.error(
+            "Reprocessar tudo: %d registro(s) no total ficaram sem reprocessar. Para tentar de novo "
+            "só o que falhou, dispare o workflow de novo com o mesmo range e 'Reprocessar tudo' "
+            "ligado após limpar o checkpoint, ou investigue os ids acima.", total_stale,
+        )
+    else:
+        logger.info(
+            "Reprocessar tudo: todos os registros de details dos anos verificados foram "
+            "reprocessados nesta execução."
+        )
+    return total_stale
 
 
 def trigger_agg_locally(

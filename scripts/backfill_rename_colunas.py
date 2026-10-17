@@ -11,7 +11,8 @@ acompanhar o rename aplicado no Glue Catalog pelo Terraform (infra/glue_catalog.
 Não chama a API do TMDB — apenas reescreve o Parquet já existente. Motivo: depois
 que o Terraform aplica o rename no Glue Catalog, o pipeline normal só repopula a
 coluna nova para IDs que ainda são reprocessados (watch_providers acumula histórico
-desde 2000 e o discover só reconstrói o ano corrente). As demais partições ficariam com
+desde 2000 — só o "Reprocessar tudo" poda órfãos — e o discover só reconstrói o ano
+corrente). As demais partições ficariam com
 a coluna nova permanentemente nula — e, no discover, overview_detected_language_pt nulo
 faz o gate do AGG (= 'pt') descartar o overview e esvazia o cache de idioma do glue_etl
 (o LLM redetectaria tudo). Este script cobre 100% dos casos, lendo o schema físico real

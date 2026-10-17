@@ -11,6 +11,7 @@ Quality ao final cobrindo todo o range de anos.
 """
 
 import json
+from datetime import date
 from unittest.mock import MagicMock, call, patch
 
 import backfill_enriquecimento as be
@@ -63,6 +64,7 @@ def _run_main(
     trigger_agg: bool = True,
     call_order: list | None = None,
     notify_capture: list | None = None,
+    report_capture: list | None = None,
 ):
     """Roda be.main() com run_details_and_watch_providers_for_year/trigger_glue_job mockados.
 
@@ -77,6 +79,9 @@ def _run_main(
 
     notify_capture (se passado) recebe o mock de shared.notify_backfill_success — mesmo padrão
     de resultado/call_order, para não mudar a tupla de mocks já retornada por esta função.
+
+    report_capture (se passado) recebe o mock de shared.report_stale_processed_date — mesmo padrão.
+    A data de início do run é fixada em 2026-10-17 (current_processed_date mockada).
     """
     _set_env(monkeypatch, overrides)
     mock_s3 = mock_s3 if mock_s3 is not None else _s3_client_sem_checkpoint()
@@ -91,6 +96,8 @@ def _run_main(
         patch("backfill_enriquecimento.trigger_glue_job") as mock_trigger,
         patch("backfill_enriquecimento.shared.trigger_agg_locally") as mock_agg,
         patch("backfill_enriquecimento.shared.notify_backfill_success") as mock_notify,
+        patch("backfill_enriquecimento.shared.report_stale_processed_date") as mock_report,
+        patch("backfill_enriquecimento.current_processed_date", return_value=date(2026, 10, 17)),
     ):
         mock_boto3.client.return_value = mock_s3
         if unit_side_effect is not None:
@@ -102,6 +109,8 @@ def _run_main(
             resultado.append(sucesso)
         if notify_capture is not None:
             notify_capture.append(mock_notify)
+        if report_capture is not None:
+            report_capture.append(mock_report)
     return mock_run, mock_sleep, mock_s3, mock_secret, mock_trigger, mock_agg
 
 
@@ -127,23 +136,59 @@ class TestLoopPrincipal:
             assert c.kwargs["refresh_existing_ids"] is True
 
     @pytest.mark.parametrize("valor, esperado", [(None, False), ("true", True), ("TRUE", True), ("false", False)])
-    def test_force_retranslate_vem_de_backfill_retranslate(self, monkeypatch, valor, esperado):
+    def test_force_retranslate_vem_de_backfill_reprocess_all(self, monkeypatch, valor, esperado):
         overrides = {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}
         if valor is None:
-            monkeypatch.delenv("BACKFILL_RETRANSLATE", raising=False)
+            monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
         else:
-            overrides["BACKFILL_RETRANSLATE"] = valor
+            overrides["BACKFILL_REPROCESS_ALL"] = valor
         mock_run, *_ = _run_main(monkeypatch, overrides)
         assert mock_run.call_count == 2
         assert all(c.kwargs["force_retranslate"] is esperado for c in mock_run.call_args_list)
 
-    def test_loga_quando_a_retraducao_forcada_esta_ligada(self, monkeypatch, caplog):
+    def test_loga_quando_o_reprocessar_tudo_esta_ligado(self, monkeypatch, caplog):
         with caplog.at_level("INFO"):
             _run_main(
                 monkeypatch,
-                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "BACKFILL_RETRANSLATE": "true"},
+                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "BACKFILL_REPROCESS_ALL": "true"},
             )
-        assert any("Retradução forçada ligada" in r.message for r in caplog.records)
+        assert any("Reprocessar tudo ligado" in r.message for r in caplog.records)
+
+    def test_reprocessar_tudo_verifica_registros_nao_rebuscados_no_fim(self, monkeypatch):
+        """Verificação por processed_date sobre as duas tabelas de details e todos os anos do
+        range, contra a data de início do run."""
+        capturado: list = []
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021", "BACKFILL_REPROCESS_ALL": "true"},
+            report_capture=capturado,
+        )
+        capturado[0].assert_called_once_with(
+            tables=["tb_details_movie", "tb_details_tv"],
+            s3_bucket_sot="bucket-sot-test",
+            years=[2020, 2021],
+            run_start_date=date(2026, 10, 17),
+        )
+
+    def test_run_normal_nao_verifica_registros_nao_rebuscados(self, monkeypatch):
+        capturado: list = []
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "BACKFILL_REPROCESS_ALL": "false"},
+            report_capture=capturado,
+        )
+        capturado[0].assert_not_called()
+
+    def test_reprocessar_tudo_nao_verifica_quando_ha_unidade_com_falha(self, monkeypatch):
+        """Unidade que falhou segue pendente: verificar geraria ruído, o run precisa ser repetido."""
+        capturado: list = []
+        _run_main(
+            monkeypatch,
+            {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "BACKFILL_REPROCESS_ALL": "true"},
+            unit_side_effect=[Exception("boom"), None],
+            report_capture=capturado,
+        )
+        capturado[0].assert_not_called()
 
     def test_falha_em_uma_unidade_nao_interrompe_o_backfill(self, monkeypatch):
         """Mesmo padrão soft-fail-continue de backfill_discover.py/backfill_changes.py: uma

@@ -107,6 +107,7 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
   `GROUP BY id`) e loga em `discover_years_ambiguos_{data}.json` para investigação futura, mas nunca usa esse year
   para decidir partição — regra "year sempre de release_date/first_air_date, nunca de outra fonte" (linha acima)
   também vale para o modo changes.
+- **Órfãos em details/watch providers** (ids que não estão mais no discover — o discover de um ano é só o top 2000 por popularidade): o merge existe para não perder registros com `overwrite_partitions`, e por isso eles acumulam; a SPEC os ignora (parte do discover, `LEFT JOIN` por `id`). Só o backfill "Reprocessar tudo" via `historico` os poda (`prune_table_to_ids`), por **id ausente de qualquer ano do discover** nas partições do range — nunca por "mesmo `year`", pelo mesmo motivo de divergência de `year` acima.
 - **O piso de `year >= 2000` (rotation refresh/backfill, `app/lambda_api/main.py:80`) só existe do lado
   do `discover`** — controla o que é *buscado* via `/discover`, não o que aparece em
   `details`/`watch_providers`. Um `year < 2000` nessas duas últimas tabelas não é dado corrompido: é o
