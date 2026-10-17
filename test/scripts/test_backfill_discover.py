@@ -95,6 +95,7 @@ def _run_main(
         patch("backfill_discover.shared.notify_backfill_success") as mock_notify,
     ):
         mock_boto3.client.return_value = mock_s3
+        mock_collect.return_value = 0  # nenhuma página com falha (coleta completa)
         if unit_side_effect is not None:
             mock_collect.side_effect = unit_side_effect
         if call_order is not None:
@@ -124,6 +125,29 @@ class TestLoopPrincipal:
             unit_side_effect=[Exception("boom"), None, None, None],
         )
         assert mock_collect.call_count == 4
+
+    def test_coleta_incompleta_falha_a_unidade_sem_gravar_no_sot_nem_checkpoint(self, monkeypatch, caplog):
+        """Página perdida no discover: a unidade não grava o SOT (a partição anterior fica intacta)
+        nem entra no checkpoint — o discover é a base da poda de órfãos do "Reprocessar tudo"."""
+        mock_s3 = _s3_client_sem_checkpoint()
+        resultado: list = []
+        with caplog.at_level("ERROR"):
+            mock_collect, mock_read, mock_write, *_ = _run_main(
+                monkeypatch,
+                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"},
+                unit_side_effect=[3, 0],
+                mock_s3=mock_s3,
+                resultado=resultado,
+            )
+
+        assert resultado == [False]
+        assert mock_collect.call_count == 2
+        assert mock_read.call_count == 1   # só a unidade de coleta completa foi transformada
+        assert mock_write.call_count == 1
+        assert any("3 página(s) do discover falharam" in r.message for r in caplog.records)
+        saves = [json.loads(c.kwargs["Body"])["completed"] for c in mock_s3.put_object.call_args_list]
+        assert saves == [["tv:2020"]]
+        mock_s3.delete_object.assert_not_called()
 
     def test_read_e_write_pulados_quando_a_coleta_falha(self, monkeypatch):
         mock_collect, mock_read, mock_write, *_ = _run_main(

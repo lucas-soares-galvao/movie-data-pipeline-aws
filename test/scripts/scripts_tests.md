@@ -49,6 +49,7 @@ processo, sem invocar Lambda nem acionar o job Glue ETL — os testes mockam ess
 | `test_intercala_movie_e_tv_por_ano` | Ordem de tipos alterna `["movie", "tv", "movie", "tv", ...]` dentro de cada ano |
 | `test_falha_em_uma_unidade_nao_interrompe_o_backfill` | Soft-fail-continue: uma exceção numa unidade é logada mas não aborta o loop |
 | `test_read_e_write_pulados_quando_a_coleta_falha` | `read_from_sor`/`write_parquet_to_sot` não são chamados para a unidade cuja coleta falhou (mesmo bloco `try`) |
+| `test_coleta_incompleta_falha_a_unidade_sem_gravar_no_sot_nem_checkpoint` | `collect_discover_data` devolvendo páginas com falha (`> 0`): a unidade vira falha (`main()` retorna `False`), não grava no SOT, não entra no checkpoint e loga o ERROR; a unidade seguinte (coleta completa) segue normal |
 | `test_nao_pausa_apos_ultima_unidade` | `time.sleep` não é chamado após a última unidade, mas é chamado no disparo final de DQ (uma vez por tabela) |
 | `test_loga_resumo_das_falhas_ao_final` / `test_nao_loga_resumo_quando_tudo_sucede` | Resumo de falhas só aparece no log quando alguma unidade falhou |
 | `test_busca_api_key_uma_unica_vez_fora_do_loop` | `get_api_secret` chamado uma única vez, antes do loop |
@@ -146,8 +147,8 @@ Os testes usam o context manager `_patched_main`, que mocka também `load/save/c
 
 | Teste | O que verifica |
 |---|---|
-| `test_force_retranslate_vem_de_backfill_retranslate_e_so_vale_para_configuration` (parametrizado: ausente/`true`/`TRUE`/`false`) | `read_from_sor` recebe `force_retranslate=True` só nas tabelas `configuration` (movie e tv) quando `BACKFILL_RETRANSLATE` é `true`; `genre` e `watch_providers_ref` recebem sempre `False` |
-| `test_loga_quando_a_retraducao_forcada_esta_ligada` | Com a opção ligada, `main()` loga `Retradução forçada ligada` |
+| `test_force_retranslate_vem_de_backfill_reprocess_all_e_so_vale_para_configuration` (parametrizado: ausente/`true`/`TRUE`/`false`) | `read_from_sor` recebe `force_retranslate=True` só nas tabelas `configuration` (movie e tv) quando `BACKFILL_REPROCESS_ALL` é `true`; `genre` e `watch_providers_ref` recebem sempre `False` |
+| `test_loga_quando_o_reprocessar_tudo_esta_ligado` | Com a opção ligada, `main()` loga `Reprocessar tudo ligado` |
 
 ### `TestCheckpoint`
 
@@ -195,8 +196,11 @@ Checkpoint por unidade `"{media_type}:{table_type}"` (6 unidades), motivado por 
 
 | Teste | O que verifica |
 |---|---|
-| `test_force_retranslate_vem_de_backfill_retranslate` (parametrizado: ausente/`true`/`TRUE`/`false`) | `main()` passa `force_retranslate=True` a `run_details_and_watch_providers_for_year` só quando `BACKFILL_RETRANSLATE` é `true` (sem diferenciar maiúsculas) |
-| `test_loga_quando_a_retraducao_forcada_esta_ligada` | Com a opção ligada, `main()` loga `Retradução forçada ligada` |
+| `test_force_retranslate_vem_de_backfill_reprocess_all` (parametrizado: ausente/`true`/`TRUE`/`false`) | `main()` passa `force_retranslate=True` a `run_details_and_watch_providers_for_year` só quando `BACKFILL_REPROCESS_ALL` é `true` (sem diferenciar maiúsculas) |
+| `test_loga_quando_o_reprocessar_tudo_esta_ligado` | Com a opção ligada, `main()` loga `Reprocessar tudo ligado` |
+| `test_reprocessar_tudo_verifica_registros_nao_rebuscados_no_fim` | Com a opção ligada e sem unidades com falha, `main()` chama `shared.report_stale_processed_date` uma vez, com as tabelas de details (movie e tv), o bucket SOT, todos os anos do range e a data de início do run |
+| `test_run_normal_nao_verifica_registros_nao_rebuscados` | Sem a opção, a verificação não roda |
+| `test_reprocessar_tudo_nao_verifica_quando_ha_unidade_com_falha` | Com unidade pendente por falha, a verificação não roda (geraria ruído; o run precisa ser repetido) |
 | `test_total_de_runs_e_anos_vezes_dois_tipos` | Total de runs = anos × 2 |
 | `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_discover.py` |
 | `test_passa_refresh_existing_ids_true_para_reprocessar_tambem_os_ids_fora_do_discover` | `run_details_and_watch_providers_for_year` é chamado com `refresh_existing_ids=True` em todas as unidades (reprocessamento total) |
@@ -514,6 +518,24 @@ do estágio, não `tipo:ano`).
 | `test_salva_os_dois_estagios_e_limpa_checkpoint_ao_final` | 2 `put_object` (um por estágio) seguidos de `delete_object` |
 | `test_loga_conclusao_quando_tudo_sucede` | Log final "sem pendências" aparece quando os dois estágios sucedem |
 
+### `TestPodaDeOrfaos`
+
+Estágio `poda` do "Reprocessar tudo" (`BACKFILL_REPROCESS_ALL=true`), entre `discover` e `enriquecimento`. `fetch_all_discover_ids` e `prune_table_to_ids` são mockados.
+
+| Teste | O que verifica |
+|---|---|
+| `test_sem_a_flag_nao_poda` | Sem a flag, nenhuma busca/poda e a ordem é `discover → enriquecimento` |
+| `test_com_a_flag_poda_entre_discover_e_enriquecimento` | Ordem `discover`, 4 podas, `enriquecimento` |
+| `test_poda_as_quatro_tabelas_contra_o_discover_de_todos_os_anos_do_range` | Uma busca de ids por `media_type`; `prune_table_to_ids` chamado para details e watch providers de movie e tv com os ids do discover e os anos do range (`{"2020","2021"}`) |
+| `test_registra_o_estagio_poda_no_checkpoint` | O checkpoint de estágio passa por `[discover]`, `[discover, poda]`, `[discover, enriquecimento, poda]`, todos com `mode=reprocess_all` |
+| `test_pula_a_poda_quando_o_checkpoint_do_mesmo_modo_ja_a_tem` | Retomada: estágios já concluídos (mesmo modo) são pulados, inclusive a poda |
+| `test_checkpoint_de_run_normal_e_ignorado_e_a_poda_roda` | Checkpoint sem `mode` é ignorado: discover e poda rodam |
+| `test_nao_poda_quando_o_discover_falhou` | Discover com pendência: nada é podado |
+| `test_discover_vazio_aborta_sem_podar_nem_enriquecer` | Conjunto de ids vazio: loga ERROR, não poda, não enriquece, a poda não entra no checkpoint |
+| `test_erro_na_poda_interrompe_o_historico` | Exceção na poda: enriquecimento, AGG e notificação não rodam |
+| `test_token_expirado_na_poda_propaga_para_o_exit_75` (parametrizado) | `ExpiredTokenException`/`ExpiredToken` propagam (retomável) |
+| `test_outro_client_error_na_poda_interrompe_sem_propagar` | Outro `ClientError` interrompe o histórico sem propagar |
+
 ### `TestCheckpointDeEstagio`
 
 | Teste | O que verifica |
@@ -561,6 +583,9 @@ estágio encadeado).
 | `test_grava_json_esperado` | `save_checkpoint` grava `start_year`, `end_year`, `completed` (ordenado) e `updated_at` |
 | `test_chama_delete_object_com_a_chave_correta` | `clear_checkpoint` remove exatamente `tmdb/backfill_checkpoints/{table_group}.json` |
 | `test_envia_expected_bucket_owner_quando_conta_definida` (load/save/clear) | Com `AWS_ACCOUNT_ID` definida, `get_object`/`put_object`/`delete_object` recebem `ExpectedBucketOwner` (anti bucket squatting, ver `_expected_bucket_owner_kwargs`) |
+| `TestReprocessAllEnabled.test_le_backfill_reprocess_all` (parametrizado) | `reprocess_all_enabled` lê `BACKFILL_REPROCESS_ALL` sem diferenciar maiúsculas; ausente/vazio/`false` → `False` |
+| `TestModoDoCheckpoint` | Modo do checkpoint: run normal não grava `mode`; "Reprocessar tudo" grava `mode=reprocess_all`; "Reprocessar tudo" ignora (com aviso) checkpoint de run normal; retoma checkpoint do mesmo modo; run normal ignora checkpoint de "Reprocessar tudo" |
+| `TestReportStaleProcessedDate` | `report_stale_processed_date`: todos rebuscados → sem ERROR; `processed_date` anterior ao início do run → ERROR por tabela/ano com ids de exemplo e total; limita os ids de exemplo; soma tabelas × anos e filtra a partição `year` certa (`columns=[id, processed_date]`); partição inexistente ou `ClientError` que não é token expirado é ignorada; token expirado propaga |
 | `test_codigos_de_token_expirado_retornam_true` / `test_outros_codigos_retornam_false` (parametrizados) | `is_expired_token_error` reconhece `ExpiredTokenException` (STS) e `ExpiredToken` (S3); rejeita outros códigos |
 | `test_expired_token_retorna_codigo_retomavel` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para token expirado |
 

@@ -37,11 +37,12 @@ Variáveis de ambiente obrigatórias:
                                      (usadas pela chamada local ao Glue AGG, ver "Glue AGG" abaixo)
 
 Variáveis opcionais:
-    BACKFILL_RETRANSLATE   (padrão: desligado; "true" ativa a opção "Retraduzir tudo" em
+    BACKFILL_REPROCESS_ALL   (padrão: desligado; "true" ativa a opção "Reprocessar tudo" em
                             configuration: ignora o cache de name_pt e retraduz por LLM todos os
                             nomes de países/idiomas, mantendo a tradução antiga se o LLM falhar.
-                            Genre e watch_providers_ref não traduzem e não são afetadas. Limpar o
-                            checkpoint antes, senão configuration já concluída no dia é pulada)
+                            Genre e watch_providers_ref não traduzem e não são afetadas. O
+                            checkpoint de um run normal do dia é ignorado (ver backfill_shared.
+                            _checkpoint_mode), então configuration não é pulada)
 
 Data Quality:
     Diferente do caminho automático (Glue ETL dispara o Data Quality logo após escrever cada
@@ -193,7 +194,7 @@ def _process_content_type(
 ) -> None:
     """Processa as 3 unidades (genre, configuration, watch_providers_ref) de um content_type.
 
-    force_retranslate (opção "Retraduzir tudo") só afeta configuration, a única que traduz.
+    force_retranslate (opção "Reprocessar tudo") só afeta configuration, a única que traduz.
 
     `completed` traz os unit_ids "{media_type}:{table_type}" já concluídos segundo o checkpoint
     (não são refeitos); `on_unit_done` é chamado com o unit_id logo após cada unidade escrita com
@@ -277,10 +278,10 @@ def main() -> None:
     secret_arn  = shared.require_env("TMDB_SECRET_ARN")
     dq_job_name = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
 
-    force_retranslate = os.environ.get("BACKFILL_RETRANSLATE", "").lower() == "true"
+    force_retranslate = shared.reprocess_all_enabled()
     if force_retranslate:
         logger.info(
-            "Retradução forçada ligada (BACKFILL_RETRANSLATE=true): o cache de name_pt será "
+            "Reprocessar tudo ligado (BACKFILL_REPROCESS_ALL=true): o cache de name_pt será "
             "ignorado e países/idiomas serão retraduzidos por LLM."
         )
 
