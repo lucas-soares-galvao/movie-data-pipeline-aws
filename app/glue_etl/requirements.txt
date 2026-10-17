@@ -9,3 +9,8 @@ litellm==1.83.0
 # tenacity: o litellm so o importa quando precisa retentar (num_retries) e nao o declara como
 # dependencia — sem ele, todo erro transitorio (429/timeout) vira falha na hora, sem os retries.
 tenacity
+# tiktoken==0.11.0: o litellm pede só tiktoken>=0.7.0, então o pip pegava a última (0.14.0), que
+# para cp39 só publica wheel manylinux_2_28. O pip do Glue (glibc antigo) só aceita manylinux2014,
+# cai no sdist e falha com "can't find Rust compiler" (log real do job em dev, 2026-10-17).
+# 0.11.0 é a última versão com wheel cp39 manylinux2014.
+tiktoken==0.11.0
