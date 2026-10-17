@@ -12,6 +12,7 @@ Quality ao final cobrindo todo o range de anos.
 
 import json
 from datetime import date
+from itertools import chain, repeat
 from unittest.mock import MagicMock, call, patch
 
 import backfill_enriquecimento as be
@@ -189,6 +190,34 @@ class TestLoopPrincipal:
             report_capture=capturado,
         )
         capturado[0].assert_not_called()
+
+    def test_guarda_de_sessao_recebe_a_maior_duracao_de_unidade_ja_concluida(self, monkeypatch):
+        """Antes de cada unidade, a guarda é consultada com a maior duração vista até ali (0 na
+        primeira, sem estimativa)."""
+        relogio = chain([0.0, 100.0, 100.0, 300.0], repeat(300.0))
+        with (
+            patch("backfill_enriquecimento.shared.exit_if_session_budget_low") as mock_guarda,
+            patch("backfill_enriquecimento.time.monotonic", side_effect=relogio),
+        ):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert mock_guarda.call_args_list == [call(0.0), call(100.0)]
+
+    def test_sai_com_codigo_75_sem_iniciar_a_unidade_quando_a_sessao_nao_comporta(self, monkeypatch):
+        """Só a unidade já concluída entra no checkpoint; a seguinte não chega a rodar."""
+        mock_s3 = _s3_client_sem_checkpoint()
+        with (
+            patch(
+                "backfill_enriquecimento.shared.exit_if_session_budget_low",
+                side_effect=[None, SystemExit(75)],
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            _run_main(
+                monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"}, mock_s3=mock_s3,
+            )
+        assert exc_info.value.code == 75
+        checkpoints = [c.kwargs["Key"] for c in mock_s3.put_object.call_args_list]
+        assert len(checkpoints) == 1
 
     def test_falha_em_uma_unidade_nao_interrompe_o_backfill(self, monkeypatch):
         """Mesmo padrão soft-fail-continue de backfill_discover.py/backfill_changes.py: uma

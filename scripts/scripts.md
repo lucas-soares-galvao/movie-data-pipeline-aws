@@ -210,6 +210,15 @@ até 6 tentativas (alinhado ao timeout de 360min do job / ~1h por sessão AWS).
 Como o script relê o checkpoint no início, ele pula direto
 para as unidades ainda pendentes em vez de recomeçar do `BACKFILL_START_YEAR`.
 
+**Guarda de sessão (`backfill_shared.session_budget_low`/`exit_if_session_budget_low`).** Uma unidade só entra no
+checkpoint depois de gravar; se o token expira no meio de uma unidade longa (enriquecimento ≈ 15 min), tudo —
+inclusive o gasto com o LLM — é refeito. Por isso `backfill_enriquecimento.py` e `backfill_traducao.py` consultam a
+guarda ANTES de cada unidade: se o tempo restante da sessão (`BACKFILL_SESSION_SECONDS`, 3600 no workflow, menos 5 min
+de folga) for menor que a maior unidade já concluída no processo, saem com 75 para renovar a credencial antes. A
+primeira unidade de cada processo sempre roda (sem estimativa; garante progresso a cada tentativa) e, sem a variável
+(execução local), a guarda fica desligada. O `ERROR` "Credenciais AWS expiraram" que o script loga ao perder a
+credencial não conta como "Falhas parciais" no step summary quando o job termina com exit 0 (o retry o recuperou).
+
 `backfill_changes.py` e `backfill_referencias.py` também saem com exit code
 75 em caso de token expirado (fazem chamadas reais de S3/Secrets Manager/TMDB
 API — e Athena, no caso de `backfill_changes.py` — no processo, não mais uma

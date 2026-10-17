@@ -460,6 +460,56 @@ class TestRunWithRetryExit:
             bs.run_with_retry_exit(main_fn)
 
 
+class TestSessionBudgetLow:
+    """Guarda que evita iniciar uma unidade longa quando a sessão AWS de 1h está perto do fim."""
+
+    @staticmethod
+    def _sessao_com(monkeypatch, decorrido: float, duracao: str | None = "3600") -> None:
+        """Simula `decorrido` segundos desde o início do processo e a duração da sessão."""
+        import time
+
+        monkeypatch.setattr(bs, "_PROCESS_START", time.monotonic() - decorrido)
+        if duracao is None:
+            monkeypatch.delenv(bs.SESSION_SECONDS_ENV, raising=False)
+        else:
+            monkeypatch.setenv(bs.SESSION_SECONDS_ENV, duracao)
+
+    def test_desligada_sem_a_variavel_de_sessao(self, monkeypatch):
+        """Execução local não tem workflow para renovar a credencial: nunca deve sair com 75."""
+        self._sessao_com(monkeypatch, decorrido=99999, duracao=None)
+        assert bs.session_budget_low(1000) is False
+
+    def test_sem_estimativa_a_primeira_unidade_sempre_roda(self, monkeypatch):
+        """Garante progresso: toda tentativa conclui ao menos uma unidade."""
+        self._sessao_com(monkeypatch, decorrido=99999)
+        assert bs.session_budget_low(0) is False
+
+    def test_sessao_com_folga_suficiente_nao_sinaliza(self, monkeypatch):
+        self._sessao_com(monkeypatch, decorrido=1000)  # restam ~2300s após a folga
+        assert bs.session_budget_low(1000) is False
+
+    def test_tempo_restante_menor_que_a_maior_unidade_sinaliza(self, monkeypatch):
+        """Caso do run 39042448970: 3ª unidade (~1000s) iniciada com ~17min de sessão."""
+        self._sessao_com(monkeypatch, decorrido=2600)  # restam ~700s após a folga
+        assert bs.session_budget_low(1000) is True
+
+    def test_folga_de_seguranca_entra_na_conta(self, monkeypatch):
+        """Restam 3600-3000=600s: sobraria para uma unidade de 500s, mas não com a folga de 300s."""
+        self._sessao_com(monkeypatch, decorrido=3000)
+        assert bs.session_budget_low(500) is True
+
+    def test_exit_if_session_budget_low_sai_com_codigo_75_e_loga(self, monkeypatch, caplog):
+        self._sessao_com(monkeypatch, decorrido=2600)
+        with caplog.at_level(logging.WARNING), pytest.raises(SystemExit) as exc_info:
+            bs.exit_if_session_budget_low(1000)
+        assert exc_info.value.code == bs.RETRYABLE_EXIT_CODE
+        assert any("Sessão AWS sem tempo" in r.message for r in caplog.records)
+
+    def test_exit_if_session_budget_low_nao_sai_quando_ha_tempo(self, monkeypatch):
+        self._sessao_com(monkeypatch, decorrido=10)
+        bs.exit_if_session_budget_low(1000)  # não levanta SystemExit
+
+
 class TestResolvePendingUnitsByYear:
     """resolve_pending_units_by_year importa get_api_secret de shared_utils.api_client
     dentro da própria função (import local, mesmo racional de trigger_agg_locally) — por
