@@ -48,3 +48,18 @@ class TestTenacityComLitellm:
             f"{requirements.relative_to(_REPO_ROOT)} instala o litellm mas não o tenacity: "
             "sem ele os retries (num_retries) do litellm nunca acontecem."
         )
+
+
+class TestTiktokenFixadoNosJobsGlue:
+    """O litellm pede só `tiktoken>=0.7.0`; sem pin o pip do Glue (Python shell 3.9, glibc antigo)
+    pega a última versão, que só tem wheel manylinux_2_28 para cp39, cai no sdist e falha com
+    "can't find Rust compiler" — "Some pip modules could not be installed"."""
+
+    @pytest.mark.parametrize("job", ["glue_etl", "glue_details"])
+    def test_job_glue_python_shell_fixa_tiktoken(self, job):
+        linhas = (_REPO_ROOT / "app" / job / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        sem_comentario = [linha.split("#", 1)[0].strip() for linha in linhas]
+        assert any(linha.startswith("tiktoken==") for linha in sem_comentario), (
+            f"app/{job}/requirements.txt não fixa o tiktoken (==): o pip do Glue pegaria uma versão "
+            "sem wheel manylinux2014 para Python 3.9 e a instalação falharia."
+        )

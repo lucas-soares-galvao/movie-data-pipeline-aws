@@ -200,6 +200,8 @@ Checkpoint por unidade `"{media_type}:{table_type}"` (6 unidades), motivado por 
 | `test_loga_quando_o_reprocessar_tudo_esta_ligado` | Com a opção ligada, `main()` loga `Reprocessar tudo ligado` |
 | `test_reprocessar_tudo_verifica_registros_nao_rebuscados_no_fim` | Com a opção ligada e sem unidades com falha, `main()` chama `shared.report_stale_processed_date` uma vez, com as tabelas de details (movie e tv), o bucket SOT, todos os anos do range e a data de início do run |
 | `test_run_normal_nao_verifica_registros_nao_rebuscados` | Sem a opção, a verificação não roda |
+| `test_guarda_de_sessao_recebe_a_maior_duracao_de_unidade_ja_concluida` | Antes de cada unidade, `shared.exit_if_session_budget_low` é chamada com a maior duração já medida (0 na primeira, sem estimativa) |
+| `test_sai_com_codigo_75_sem_iniciar_a_unidade_quando_a_sessao_nao_comporta` | Guarda sinalizando: `SystemExit(75)` antes da unidade seguinte; só a unidade já concluída entra no checkpoint |
 | `test_reprocessar_tudo_nao_verifica_quando_ha_unidade_com_falha` | Com unidade pendente por falha, a verificação não roda (geraria ruído; o run precisa ser repetido) |
 | `test_total_de_runs_e_anos_vezes_dois_tipos` | Total de runs = anos × 2 |
 | `test_intercala_movie_e_tv_por_ano` | Ordem alterna `movie`/`tv` dentro de cada ano (`movie:2020, tv:2020, movie:2021, tv:2021...`), igual a `backfill_discover.py` |
@@ -352,6 +354,8 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | Teste | O que verifica |
 |---|---|
 | `test_backfill_year_chamado_para_cada_ano_e_tipo` / `test_alterna_movie_e_tv_por_ano` / `test_nao_pausa_apos_ultima_chamada` | Orquestração de `main()` (via mock de `_backfill_year`) |
+| `test_sai_com_codigo_75_sem_iniciar_a_particao_quando_a_sessao_nao_comporta` | Guarda de sessão sinalizando: `SystemExit(75)` antes da partição seguinte |
+| `test_guarda_recebe_a_duracao_da_particao_ja_concluida` | A guarda é chamada antes de cada partição com a maior duração já medida (0 na primeira) |
 | `test_nao_pausa_quando_particao_nao_traduziu_nada` | `translated_count == 0` (partição vazia/já 100% traduzida, sem chamada de API) não paga a pausa de `BACKFILL_WAIT_SECONDS` — evita desperdiçar tempo num backfill de anos antigos ou de range grande |
 | `test_pausa_apenas_apos_particoes_que_traduziram_algo` | Mistura de partições com e sem tradução: pausa só depois das que traduziram algo, nunca depois da última |
 | `test_loga_total_de_traduzidos_com_sucesso_acumulado` | O log final soma os traduzidos com sucesso de cada partição (`_backfill_year` retorna `(escreveu, traduzidos)`), não a quantidade de partições |
@@ -624,6 +628,7 @@ função faz em runtime) porque `test/scripts/` não passa pelo mecanismo de ali
 | `TestRequireEnv` | Retorna o valor quando a env var existe; lança `EnvironmentError` quando ausente ou vazia |
 | `TestReadYearRange` | Usa `2000`/ano atual como default; lê `BACKFILL_START_YEAR`/`BACKFILL_END_YEAR`; aceita nomes de env var customizados |
 | `TestRunWithRetryExit` | Sucesso não sai do processo; token expirado sai com `SystemExit(75)`; outro `ClientError` repropaga |
+| `TestSessionBudgetLow` | Guarda de sessão AWS: desligada sem `BACKFILL_SESSION_SECONDS`; sem estimativa (primeira unidade) nunca sinaliza; sinaliza quando o tempo restante (já descontada a folga de 5 min) é menor que a maior unidade; `exit_if_session_budget_low` sai com `SystemExit(75)` e loga, ou não faz nada quando há tempo |
 | `TestLogResumeProgress` | Loga a mensagem de progresso quando há unidades já concluídas; não loga nada quando não há progresso salvo |
 
 ## Como executar

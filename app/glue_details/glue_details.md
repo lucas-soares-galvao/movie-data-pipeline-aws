@@ -153,6 +153,6 @@ Importadas do pacote `shared_utils`, reutilizadas por múltiplos componentes do 
 ## Tecnologias
 
 - **requests** + **ThreadPoolExecutor** — chamadas paralelas à API com controle de concorrência
-- **litellm** (OpenRouter) — tradução e detecção de idioma via LLM para sinopses, keywords e taglines quando a tradução pt-BR não existe no TMDB; chave lida do secret unificado (`FILMBOT_SECRET_ARN`/`llm_api_key`), sem custo de API key própria do job; o `tenacity` também fica em `requirements.txt` porque o `litellm` só o importa ao retentar (`num_retries`) e não o declara — sem ele, todo erro transitório (429/timeout) vira falha na hora
+- **litellm** (OpenRouter) — tradução e detecção de idioma via LLM para sinopses, keywords e taglines quando a tradução pt-BR não existe no TMDB; chave lida do secret unificado (`FILMBOT_SECRET_ARN`/`llm_api_key`), sem custo de API key própria do job; o `tenacity` também fica em `requirements.txt` porque o `litellm` só o importa ao retentar (`num_retries`) e não o declara — sem ele, todo erro transitório (429/timeout) vira falha na hora; o `tiktoken` fica fixado em `0.11.0` porque o `litellm` pede só `>=0.7.0` e o pip do Glue (Python shell 3.9, glibc antigo, só wheels `manylinux2014`) pegaria a última versão, sem wheel compatível, e tentaria compilar em Rust — "Some pip modules could not be installed"
 - **awswrangler** — consultas Athena e escrita Parquet
 - **boto3** — Secrets Manager e acionamento de jobs Glue

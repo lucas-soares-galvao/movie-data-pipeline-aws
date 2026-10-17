@@ -267,6 +267,11 @@ jobs:
           # historico), backfill_referencias.py e pelo checkpoint compartilhado (modo do run).
           # Os demais scripts a ignoram.
           BACKFILL_REPROCESS_ALL: ${{ inputs.reprocessar_tudo }}
+          # Duração da sessão AWS (mesmo valor de --duration-seconds em renovar_credenciais e do
+          # default de 1h da action de credenciais). Liga a guarda de backfill_shared.
+          # session_budget_low: antes de cada unidade longa, se não sobra tempo de sessão, o script
+          # sai com 75 para renovar a credencial em vez de perder a unidade no meio.
+          BACKFILL_SESSION_SECONDS: "3600"
         run: |
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"
@@ -374,7 +379,10 @@ jobs:
 
           # sed: último recurso — o step summary de um repositório público também é público, e
           # estas linhas vêm de exceções do requests, que embutem a URL com a api_key.
-          erros=$(grep " ERROR " "$LOG_FILE" | sed -E 's/(api_key=)[^& ]+/\1***/g' || true)
+          # grep -v: o ERROR "Credenciais AWS expiraram" (backfill_shared.log_expired_token e
+          # equivalentes) já foi tratado pelo loop de retomada acima — com exit 0 o backfill
+          # concluiu depois de renovar a credencial, então não é falha parcial.
+          erros=$(grep " ERROR " "$LOG_FILE" | grep -v "Credenciais AWS expiraram" | sed -E 's/(api_key=)[^& ]+/\1***/g' || true)
           if [ -n "$erros" ]; then
             echo "::warning::Backfill terminou com exit 0, mas há linha(s) de ERROR no log — revisar antes de considerar 100% completo."
             {

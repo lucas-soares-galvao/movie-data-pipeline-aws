@@ -73,6 +73,13 @@ RETRYABLE_EXIT_CODE = 75
 # devem ser tratados como retomáveis.
 _EXPIRED_TOKEN_CODES = frozenset({"ExpiredTokenException", "ExpiredToken"})
 
+# Duração (s) da sessão AWS do workflow, exportada por backfill.yml; liga a guarda
+# `session_budget_low`. Folga cobre o tempo entre a criação da sessão (step de credenciais,
+# antes do pip install) e o início do processo, além de gravações finais mais lentas que o normal.
+SESSION_SECONDS_ENV = "BACKFILL_SESSION_SECONDS"
+_SESSION_SAFETY_MARGIN_SECONDS = 300
+_PROCESS_START = time.monotonic()
+
 # Valor da chave "mode" do checkpoint num "Reprocessar tudo" (ver _checkpoint_mode).
 _REPROCESS_ALL_MODE = "reprocess_all"
 
@@ -147,6 +154,46 @@ def run_with_retry_exit(main_fn: Callable[[], object]) -> None:
         if codigo is not None:
             sys.exit(codigo)
         raise
+
+
+def session_budget_low(longest_unit_seconds: float) -> bool:
+    """Indica se a sessão AWS atual não comporta mais uma unidade tão longa quanto a maior já feita.
+
+    A credencial do workflow dura 1h (ver renovar_credenciais em backfill.yml) e só é renovada
+    quando o script sai com 75. Uma unidade (ex.: enriquecimento de um ano, ~15 min) só entra no
+    checkpoint depois de gravar: se o token expira no meio dela, todo o trabalho — inclusive o
+    gasto com o LLM — é refeito na tentativa seguinte. Checar ANTES de iniciar a unidade evita
+    isso, ao custo de renovar a sessão um pouco antes.
+
+    Desligada quando BACKFILL_SESSION_SECONDS não está definida (execução local, sem workflow
+    para renovar a credencial e retomar). O relógio é o do processo (`_PROCESS_START`): cada
+    tentativa do workflow é um processo novo, logo começa junto com a sessão renovada.
+
+    Args:
+        longest_unit_seconds: duração da maior unidade já concluída neste processo; 0 se
+            nenhuma — sem estimativa não há o que comparar, então a primeira unidade de cada
+            processo sempre roda (garante progresso a cada tentativa).
+
+    Returns:
+        `True` se o tempo restante da sessão (menos a folga) for menor que a estimativa.
+    """
+    session_seconds = os.environ.get(SESSION_SECONDS_ENV)
+    if not session_seconds or longest_unit_seconds <= 0:
+        return False
+    remaining = int(session_seconds) - (time.monotonic() - _PROCESS_START) - _SESSION_SAFETY_MARGIN_SECONDS
+    return remaining < longest_unit_seconds
+
+
+def exit_if_session_budget_low(longest_unit_seconds: float) -> None:
+    """Sai com `RETRYABLE_EXIT_CODE` (75) se a sessão AWS não comporta outra unidade (ver
+    `session_budget_low`), para o workflow renovar a credencial e retomar do checkpoint."""
+    if session_budget_low(longest_unit_seconds):
+        logger.warning(
+            "Sessão AWS sem tempo para outra unidade (a maior levou %.0fs): saindo para renovar "
+            "a credencial e retomar do checkpoint.",
+            longest_unit_seconds,
+        )
+        sys.exit(RETRYABLE_EXIT_CODE)
 
 
 def log_resume_progress(log: logging.Logger, unidade_label: str, total: int, pendentes: int) -> None:
