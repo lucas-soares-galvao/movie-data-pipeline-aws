@@ -307,14 +307,20 @@ def main() -> None:
     shared.log_resume_progress(logger, "partições já concluídas", len(units), len(pending))
 
     total_translated = 0
+    longest_unit_seconds = 0.0
     for i, (content_type, year, database, table_details) in enumerate(pending, start=1):
+        # Antes de iniciar a unidade (ver shared.session_budget_low): evita perder a tradução
+        # de uma partição inteira se o token expirar antes de ela entrar no checkpoint.
+        shared.exit_if_session_budget_low(longest_unit_seconds)
         logger.info("[%d/%d] %s | year=%d", i, len(pending), content_type, year)
+        unit_started = time.monotonic()
         _, translated_count = _backfill_year(
             database=database,
             table_details=table_details,
             year=str(year),
             s3_bucket_sot=s3_bucket_sot,
         )
+        longest_unit_seconds = max(longest_unit_seconds, time.monotonic() - unit_started)
         total_translated += translated_count
         completed.add(f"{content_type}:{year}")
         shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year, completed)

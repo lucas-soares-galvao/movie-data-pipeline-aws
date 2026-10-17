@@ -9,7 +9,8 @@ Retry/backoff da tradução em si é coberto em test/shared_src/test_traducao.py
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from itertools import chain, repeat
+from unittest.mock import MagicMock, call, patch
 
 import backfill_traducao as bt
 import pandas as pd
@@ -507,6 +508,25 @@ class TestMain:
             bt.main()
 
         assert mock_sleep.call_count == 2  # após movie:2020 e após movie:2021 — não após tv:2020 nem após a última
+
+    def test_sai_com_codigo_75_sem_iniciar_a_particao_quando_a_sessao_nao_comporta(self, monkeypatch):
+        """A guarda é consultada antes de cada partição; ao sinalizar, a seguinte não roda."""
+        with (
+            patch("backfill_traducao.shared.exit_if_session_budget_low", side_effect=[None, SystemExit(75)]) as mock_guarda,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert exc_info.value.code == 75
+        assert mock_guarda.call_args_list[0].args == (0.0,)
+
+    def test_guarda_recebe_a_duracao_da_particao_ja_concluida(self, monkeypatch):
+        relogio = chain([0.0, 50.0, 50.0, 70.0], repeat(70.0))
+        with (
+            patch("backfill_traducao.shared.exit_if_session_budget_low") as mock_guarda,
+            patch("backfill_traducao.time.monotonic", side_effect=relogio),
+        ):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert mock_guarda.call_args_list == [call(0.0), call(50.0)]
 
     def test_loga_total_de_traduzidos_com_sucesso_acumulado(self, monkeypatch, caplog):
         """O total no log final soma os traduzidos com sucesso de cada partição, não a quantidade de partições."""

@@ -312,18 +312,24 @@ def main(trigger_agg: bool = True) -> bool:
     )
 
     failures: list[tuple[str, int, str]] = []
+    longest_unit_seconds = 0.0
     for i, (media_type, year, database) in enumerate(pendentes, start=1):
+        # Antes de iniciar a unidade: se o token expirar no meio dela, ela só entraria no
+        # checkpoint depois de gravar e seria refeita inteira (ver shared.session_budget_low).
+        shared.exit_if_session_budget_low(longest_unit_seconds)
         logger.info("[%d/%d] Enriquecendo | %s | year=%d", i, len(pendentes), media_type, year)
 
         table_discover        = table_discover_movie        if media_type == "movie" else table_discover_tv
         table_details         = table_details_movie         if media_type == "movie" else table_details_tv
         table_watch_providers = table_watch_providers_movie if media_type == "movie" else table_watch_providers_tv
 
+        unit_started = time.monotonic()
         error = _process_enriquecimento_unit(
             media_type, year, end_year, database, api_key, s3_bucket_sot, s3_bucket_temp,
             table_discover, table_details, table_watch_providers, dq_job_name,
             force_retranslate,
         )
+        longest_unit_seconds = max(longest_unit_seconds, time.monotonic() - unit_started)
         if error is None:
             completed.add(f"{media_type}:{year}")
             shared.save_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year, completed)
