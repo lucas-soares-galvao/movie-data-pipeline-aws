@@ -1,9 +1,11 @@
 # Raciocinio: fixa dependencias de runtime do Glue ETL para execucao previsivel no job.
-# litellm==1.96.2 travado pelo mesmo motivo de app/lightsail_ia/requirements.txt:
-# 1.97.0 quebra litellm.completion() (ver BerriAI/litellm#36384).
+# litellm==1.83.0: o job é Python shell 3.9 (a AWS não oferece Python shell 3.10+) e o litellm
+# 1.96.2 usado no Lightsail/scripts exige Python >=3.10 — o pip falha com "Some pip modules could
+# not be installed". 1.83.0 é a última versão cujas dependências ainda resolvem em 3.9 (a partir
+# da 1.83.1 o tiktoken não tem wheel para 3.9). Só usa litellm.completion(), estável nessa versão.
 
 awswrangler
-litellm==1.96.2
+litellm==1.83.0
 # tenacity: o litellm so o importa quando precisa retentar (num_retries) e nao o declara como
 # dependencia — sem ele, todo erro transitorio (429/timeout) vira falha na hora, sem os retries.
 tenacity
