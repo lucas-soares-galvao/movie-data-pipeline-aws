@@ -147,7 +147,7 @@ proj-eng-dados-filmes-aws/
     ├── conftest.py                 # Fixtures globais + bloqueio de rede (nenhum teste chama serviço real)
     ├── test_bloqueio_de_rede.py    # Garante que o bloqueio de rede do conftest raiz funciona
     ├── test_workflow_mask_secrets.py  # backfill.yml mascara (::add-mask::) os valores do secret antes do step do backfill
-    ├── test_requirements_tenacity.py  # Todo requirements.txt com litellm também declara tenacity (sem ele os retries do litellm não rodam)
+    ├── test_requirements_tenacity.py  # Todo requirements.txt com litellm também declara tenacity (sem ele os retries do litellm não rodam); Glue Python shell fixa tiktoken (sem pin o pip cai no sdist e falha por falta de Rust)
     ├── lambda_api/
     │   ├── __init__.py
     │   ├── conftest.py
