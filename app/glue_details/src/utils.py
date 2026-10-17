@@ -212,6 +212,11 @@ _TMDB_MAX_WORKERS = 20      # ~20 req/s concorrentes — bem abaixo do rate limi
 # app/glue_details/glue_details.md).
 _TRANSLATE_MAX_WORKERS_LLM = 10
 
+# Proporção de IDs com HTTP 404 (sobre os IDs buscados) acima da qual a remoção é logada como
+# WARNING em vez de INFO, para destacar uma remoção atípica. Não bloqueia nada: um título removido
+# do TMDB é raro num ano em dia, mas numa tabela defasada (backfill) muitos 404 são o esperado.
+_NOT_FOUND_WARN_RATIO = 0.05
+
 # Concorrência dedicada à consulta /movie|tv/{id}/changes (modo changes) — chamada leve
 # (resposta pequena, sem append_to_response), diferente de _TMDB_MAX_WORKERS (usado por
 # fetch_tmdb_details, 9 sub-recursos por chamada). As duas etapas rodam em sequência,
@@ -713,7 +718,7 @@ def _force_reuse_when_unflagged(
     "en" ou nulo) seria reaproveitada à força e marcada como esgotada, ficando travada
     enquanto o TMDB não sinalizar mudança. Não sendo forçada, a linha segue o fluxo normal
     (attempts em 0) e é retraduzida se o idioma não for "pt" — a falha vira um ciclo de nova
-    tentativa na próxima passada, sem precisar da opção "Retraduzir tudo". Sem o parâmetro (ou
+    tentativa na próxima passada, sem precisar da opção "Reprocessar tudo". Sem o parâmetro (ou
     com previous_df de schema antigo, sem a coluna), mantém o comportamento anterior.
 
     Roda ANTES de reuse_existing_translation, para que a prioridade final seja:
@@ -806,7 +811,7 @@ def _seed_pt_from_cache(
     _force_reuse_when_unflagged) e depois cache por comparação de string (ver
     reuse_existing_translation).
 
-    force_retranslate=True (backfill "Retraduzir tudo"): NÃO reaproveita o texto traduzido
+    force_retranslate=True (backfill "Reprocessar tudo"): NÃO reaproveita o texto traduzido
     nem o sinal do /changes — tudo o que não veio nativo do TMDB (já em target_column, atribuído
     pelo chamador) volta a ser traduzido pelo LLM. Só reaproveita o que continua válido: o
     idioma detectado da FONTE (texto em inglês inalterado) e o idioma do alvo quando o texto
@@ -850,7 +855,7 @@ def _add_translations_pt(
     e a coluna overview_needs_translation — ver docstring de resolve_pt_translation em
     shared_utils.traducao).
 
-    Com force_retranslate=True (backfill "Retraduzir tudo"), ignora o cache de tradução e o
+    Com force_retranslate=True (backfill "Reprocessar tudo"), ignora o cache de tradução e o
     sinal do /changes e traduz de novo tudo o que não é nativo do TMDB, restaurando a tradução
     antiga se o LLM falhar (ver _seed_pt_from_cache e restore_failed_translations).
     """
@@ -916,7 +921,7 @@ def _add_translations_keywords_pt(
     "mudou". Fora isso, o valor inicial vem só do cache (reuse_existing_translation)
     antes de resolve_pt_translation assumir o resto do fluxo.
 
-    Com force_retranslate=True (backfill "Retraduzir tudo"), ignora o cache de tradução e o
+    Com force_retranslate=True (backfill "Reprocessar tudo"), ignora o cache de tradução e o
     sinal do /changes e traduz de novo tudo o que não é nativo do TMDB, restaurando a tradução
     antiga se o LLM falhar (ver _seed_pt_from_cache e restore_failed_translations).
     """
@@ -977,7 +982,7 @@ def _add_translations_tagline_pt(
     existente no S3 (ver _add_translations_pt sobre a mesma ordem para overview) antes
     de resolve_pt_translation assumir o resto do fluxo.
 
-    Com force_retranslate=True (backfill "Retraduzir tudo"), ignora o cache de tradução e o
+    Com force_retranslate=True (backfill "Reprocessar tudo"), ignora o cache de tradução e o
     sinal do /changes e traduz de novo tudo o que não é nativo do TMDB, restaurando a tradução
     antiga se o LLM falhar (ver _seed_pt_from_cache e restore_failed_translations).
     """
@@ -1018,6 +1023,187 @@ def _add_translations_tagline_pt(
     return df
 
 
+def _read_year_partition(s3_path: str, year: str) -> pd.DataFrame:
+    """Lê a partição year de uma tabela do SOT (year é parâmetro, não variável de laço: o filtro
+    é avaliado dentro da própria leitura, mas assim a closure fica estável)."""
+    return wr.s3.read_parquet(path=s3_path, dataset=True, partition_filter=lambda x: x["year"] == year)
+
+
+def _is_http_404(exc: requests.RequestException) -> bool:
+    """True se a exceção é um HTTPError cuja resposta foi 404 (título removido do TMDB).
+
+    404 é permanente (api_get não faz retry). Os demais erros — 401, 429/5xx esgotados, timeout,
+    conexão, HTTPError sem response — não provam que o título deixou de existir.
+    """
+    return isinstance(exc, requests.HTTPError) and getattr(exc.response, "status_code", None) == 404
+
+
+def _remove_not_found_ids(
+    not_found_ids: set[int],
+    total_ids: int,
+    content_type: str,
+    s3_bucket_sot: str,
+    tables: tuple[str, ...],
+    database: str,
+) -> None:
+    """Remove dos `tables` os IDs que o TMDB respondeu com 404, para as tabelas acompanharem a API.
+
+    Loga quantos IDs foram removidos e a proporção sobre os IDs buscados (WARNING acima de
+    _NOT_FOUND_WARN_RATIO). No-op sem IDs 404.
+    """
+    if not not_found_ids:
+        return
+
+    ratio = len(not_found_ids) / total_ids
+    logger.log(
+        logging.WARNING if ratio > _NOT_FOUND_WARN_RATIO else logging.INFO,
+        f"Detalhes {content_type}: removendo {len(not_found_ids)}/{total_ids} ID(s) ({ratio:.1%}) "
+        "que não existem mais no TMDB (404).",
+    )
+    for table in tables:
+        _remove_ids_from_table(s3_bucket_sot, table, database, not_found_ids)
+
+
+def _drop_rows_from_table(
+    s3_bucket_sot: str,
+    table_name: str,
+    database: str,
+    should_drop: Callable[[pd.Series], pd.Series],
+    motivo: str,
+    years: set[str] | None = None,
+) -> int:
+    """
+    Remove de uma tabela do SOT as linhas cujo id satisfaz should_drop, em qualquer partição year.
+
+    Localiza as partições afetadas lendo só as colunas id e year da tabela inteira (barato: duas
+    colunas). Regrava cada partição afetada sem essas linhas (overwrite_partitions). Se a
+    partição ficar vazia, apaga apenas os objetos dela no S3 — a partição vazia no Glue Catalog
+    é inofensiva (Athena devolve 0 linhas) e evita exigir glue:BatchDeletePartition da role do job.
+
+    Args:
+        s3_bucket_sot: Nome do bucket SOT.
+        table_name:    Nome da tabela no Glue Catalog (pasta tmdb/<table_name>/ no SOT).
+        database:      Nome do banco de dados no Glue Catalog.
+        should_drop:   Recebe a coluna id e devolve a máscara booleana das linhas a remover.
+        motivo:        Texto do log (ex.: "IDs com 404 no TMDB").
+        years:         Se informado, só as partições year desse conjunto são consideradas.
+
+    Returns:
+        Total de linhas removidas (0 se a tabela não existir ou nada casar).
+    """
+    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
+    try:
+        df_ids = wr.s3.read_parquet(path=s3_path, dataset=True, columns=["id", "year"])
+    # Tabela/partições podem não existir ainda, degrada graciosamente.
+    except Exception as exc:  # noqa: BLE001
+        logger.info(f"Sem dados existentes em '{table_name}' para remover ({motivo}): {exc}")
+        return 0
+
+    candidate_years = df_ids.loc[should_drop(df_ids["id"]), "year"].astype(str)
+    if years is not None:
+        candidate_years = candidate_years[candidate_years.isin(years)]
+
+    total_removed = 0
+    for year in sorted(candidate_years.unique()):
+        df_year = _read_year_partition(s3_path, year)
+        df_keep = df_year[~should_drop(df_year["id"])]
+        removed = len(df_year) - len(df_keep)
+        if df_keep.empty:
+            wr.s3.delete_objects(f"{s3_path}year={year}/")
+        else:
+            wr.s3.to_parquet(
+                df=df_keep,
+                path=s3_path,
+                dataset=True,
+                partition_cols=["year"],
+                mode="overwrite_partitions",
+                database=database,
+                table=table_name,
+            )
+        total_removed += removed
+        logger.info(f"'{table_name}' year={year}: {removed} linha(s) removida(s) ({motivo}).")
+    return total_removed
+
+
+def _remove_ids_from_table(
+    s3_bucket_sot: str,
+    table_name: str,
+    database: str,
+    ids: set[int],
+) -> int:
+    """Remove da tabela do SOT todas as linhas dos IDs informados (404 no TMDB), em qualquer
+    partição year — o 404 não traz o ano do título. Ver _drop_rows_from_table."""
+    return _drop_rows_from_table(
+        s3_bucket_sot, table_name, database, lambda col: col.isin(ids), "IDs com 404 no TMDB",
+    )
+
+
+def prune_table_to_ids(
+    s3_bucket_sot: str,
+    table_name: str,
+    database: str,
+    keep_ids: set[int],
+    years: set[str],
+) -> int:
+    """
+    Poda de órfãos: mantém numa tabela do SOT só as linhas cujo id está em keep_ids, nas
+    partições year informadas. Partições fora de `years` (ex.: year < 2000, anos fora do range do
+    backfill) não são tocadas.
+
+    Usada pelo "Reprocessar tudo" (scripts/backfill_historico.py) com keep_ids = todos os ids do
+    discover, de qualquer ano — nunca só os do mesmo year: o year de details vem da API
+    (release_date) e pode diferir do year do discover para o mesmo título.
+
+    Args:
+        s3_bucket_sot: Nome do bucket SOT.
+        table_name:    Tabela de details ou watch providers (movie ou tv).
+        database:      Nome do banco de dados no Glue Catalog.
+        keep_ids:      IDs a preservar. Não pode ser vazio: um discover vazio é falha, não catálogo.
+        years:         Partições year (str) onde podar.
+
+    Returns:
+        Total de linhas removidas.
+
+    Raises:
+        ValueError: se keep_ids estiver vazio (nunca poda contra conjunto vazio).
+    """
+    if not keep_ids:
+        raise ValueError("keep_ids vazio: recusando podar a tabela contra um conjunto vazio de ids.")
+    return _drop_rows_from_table(
+        s3_bucket_sot, table_name, database, lambda col: ~col.isin(keep_ids),
+        "órfãos fora do discover", years=years,
+    )
+
+
+def fetch_all_discover_ids(database: str, table_discover: str, s3_bucket_temp: str) -> set[int]:
+    """
+    Busca no Athena os IDs distintos do discover de TODOS os anos (sem filtro de year).
+
+    Base da poda de órfãos (prune_table_to_ids): um título pode estar no discover de um year e em
+    details de outro (release_date corrigida pelo TMDB), então a pertença é por id, não por ano.
+
+    Args:
+        database:       Nome do banco de dados no Glue Catalog.
+        table_discover: Nome da tabela de discover (movie ou tv).
+        s3_bucket_temp: Bucket S3 para os resultados temporários do Athena.
+
+    Returns:
+        Conjunto de IDs inteiros.
+    """
+    s3_output = f"s3://{s3_bucket_temp}/tmdb/athena/glue_details/"
+    query = f"SELECT DISTINCT id FROM {database}.{table_discover}"
+    logger.info(f"Buscando IDs de todos os anos em '{table_discover}'...")
+    df = wr.athena.read_sql_query(
+        sql=query,
+        database=database,
+        s3_output=s3_output,
+        ctas_approach=False,
+    )
+    ids = {int(i) for i in df["id"]}
+    logger.info(f"IDs distintos no discover (todos os anos): {len(ids)}.")
+    return ids
+
+
 def collect_and_write_details(
     api_key: str,
     ids: list[int],
@@ -1027,11 +1213,16 @@ def collect_and_write_details(
     database: str,
     changed_fields_by_id: dict[int, dict[str, bool]] | None = None,
     force_retranslate: bool = False,
+    also_remove_from_tables: tuple[str, ...] = (),
 ) -> dict[int, str]:
     """
     Busca detalhes de cada ID em paralelo e grava no SOT como Parquet particionado por year.
 
-    IDs que falharem na API são descartados silenciosamente. Registros sem "year"
+    IDs que falharem na API por motivo transitório (429/5xx/timeout após os retries) não são
+    gravados nesta execução e o registro anterior, se existir, é preservado no merge. IDs que
+    o TMDB responde com HTTP 404 (título removido) são REMOVIDOS da tabela de detalhes (e das
+    tabelas em also_remove_from_tables), para a tabela acompanhar a API, sem limite de
+    quantidade (ver _remove_not_found_ids). Registros sem "year"
     (sem release_date/first_air_date) também são descartados; se isso esvaziar
     o DataFrame por completo, a função não grava nada.
 
@@ -1049,20 +1240,24 @@ def collect_and_write_details(
                              de um campo quando a TMDB confirma que ele não mudou na
                              janela. None (default) preserva o comportamento do fluxo
                              normal por ano, que nunca tem esse sinal disponível.
-        force_retranslate:  Só nos backfills (opção "Retraduzir tudo"): ignora o cache de
+        force_retranslate:  Só nos backfills (opção "Reprocessar tudo"): ignora o cache de
                              tradução e retraduz por LLM tudo o que não veio nativo pt-BR do
                              TMDB, mantendo a tradução antiga se o LLM falhar. Registros
                              preservados no merge (fora do delta) não são retraduzidos.
                              False (default) preserva o comportamento atual.
+        also_remove_from_tables: Tabelas do SOT (ex.: watch providers) de onde os IDs com 404
+                             também são removidos. Vazio (default) remove só da tabela de
+                             detalhes.
 
     Returns:
         Dicionário {id: year} dos IDs efetivamente buscados e gravados nesta execução
         (year derivado do release_date/first_air_date retornado pela API — nunca de
-        outra fonte). IDs que falharam na API ou ficaram sem year não aparecem aqui,
-        mesmo que já existissem previamente na tabela.
+        outra fonte). IDs que falharam na API, responderam 404 ou ficaram sem year não
+        aparecem aqui, mesmo que já existissem previamente na tabela.
     """
     started = time.monotonic()
     records = []
+    not_found_ids: set[int] = set()
     lock = threading.Lock()  # evita race condition ao acumular registros entre threads
 
     def fetch_and_parse(item_id: int) -> None:
@@ -1072,6 +1267,9 @@ def collect_and_write_details(
             with lock:
                 records.append(record)
         except requests.RequestException as exc:
+            if _is_http_404(exc):
+                with lock:
+                    not_found_ids.add(item_id)
             logger.warning(f"Erro ao buscar detalhes do ID {item_id}: {exc}")
 
     logger.info(
@@ -1079,6 +1277,11 @@ def collect_and_write_details(
         f"com {_TMDB_MAX_WORKERS} workers..."
     )
     _run_parallel(fetch_and_parse, ids)
+
+    # Antes dos retornos antecipados abaixo: remover os 404 não depende de haver registros novos.
+    _remove_not_found_ids(
+        not_found_ids, len(ids), content_type, s3_bucket_sot, (table_name, *also_remove_from_tables), database,
+    )
 
     if not records:
         logger.warning(f"Nenhum detalhe coletado para '{content_type}'. Nada gravado.")
@@ -1523,7 +1726,7 @@ def run_details_and_watch_providers_for_year(
                                  existentes na partição de details que não estão mais no discover
                                  do ano — o merge de collect_and_write_* os preservaria sem
                                  atualizar. Default False mantém o comportamento do job Glue.
-        force_retranslate:      Se True (opção "Retraduzir tudo", usada só por
+        force_retranslate:      Se True (opção "Reprocessar tudo", usada só por
                                  scripts/backfill_enriquecimento.py), ignora o cache de tradução e
                                  retraduz por LLM o que não é nativo pt-BR do TMDB (ver
                                  collect_and_write_details). Default False mantém o comportamento
@@ -1552,6 +1755,7 @@ def run_details_and_watch_providers_for_year(
             table_name=table_details,
             database=database,
             force_retranslate=force_retranslate,
+            also_remove_from_tables=(table_watch_providers,),
         )
 
     logger.info(
@@ -1972,6 +2176,7 @@ def process_changed_ids(
         table_name=table_details,
         database=database,
         changed_fields_by_id=changed_fields_by_id,
+        also_remove_from_tables=(table_watch_providers,),
     )
     if not id_to_year:
         logger.warning(

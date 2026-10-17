@@ -241,6 +241,16 @@ class TestCollectDiscoverData:
         assert mock_fetch.call_count == 4
         assert mock_save.call_count == 3
 
+    def test_devolve_zero_paginas_com_falha_quando_a_coleta_e_completa(self):
+        mock_s3 = MagicMock()
+        with (
+            patch("src.utils.fetch_tmdb_data", return_value={"page": 1, "results": [], "total_pages": 2}),
+            patch("src.utils.save_to_s3"),
+        ):
+            falhas = collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+
+        assert falhas == 0
+
     def test_para_quando_so_ha_uma_pagina(self):
         mock_s3 = MagicMock()
         with (
@@ -305,6 +315,24 @@ class TestCollectDiscoverData:
         assert mock_save.call_count == 1
         assert mock_save.call_args[0][3] == "tmdb/discover/movie/ano=2023/pagina_002.json"
         assert "1 página(s) com erro" in caplog.text
+
+    def test_devolve_a_quantidade_de_paginas_que_falharam(self):
+        from requests.exceptions import HTTPError
+
+        mock_s3 = MagicMock()
+        with (
+            patch("src.utils.fetch_tmdb_data") as mock_fetch,
+            patch("src.utils.save_to_s3"),
+        ):
+            mock_fetch.side_effect = [
+                HTTPError("p1"),
+                HTTPError("p2"),
+                {"page": 3, "results": [], "total_pages": 3},
+                {"page": 4, "results": [], "total_pages": 3},
+            ]
+            falhas = collect_discover_data("key", mock_s3, "meu-bucket", "movie", "tmdb/discover/movie", 2023)
+
+        assert falhas == 2
 
     def test_levanta_erro_quando_todas_as_paginas_falham(self):
         import pytest

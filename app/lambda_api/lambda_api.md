@@ -77,7 +77,7 @@ Fluxo: lê o ponteiro "último ano processado" de um parâmetro SSM Parameter St
 | `collect_genre_data(...)` | Coleta mapeamento de IDs → nomes de gêneros |
 | `collect_configuration_data(...)` | Coleta lista de idiomas ou países |
 | `collect_watch_providers_ref(...)` | Coleta lista de plataformas de streaming disponíveis (`provider_id`, `provider_name`, `display_priority_br`, `logo_path` — path relativo da logo na CDN do TMDB, usado por `glue_agg` para montar a URL completa) |
-| `collect_discover_data(...)` | Coleta filmes/séries populares de um ano (paginado) |
+| `collect_discover_data(...)` | Coleta filmes/séries populares de um ano (paginado). Devolve a quantidade de páginas que falharam (0 = coleta completa): a Lambda ignora o retorno e mantém só o aviso, mas `scripts/backfill_discover.py` trata `> 0` como unidade incompleta (não grava o SOT nem entra no checkpoint) |
 | `collect_now_playing_data(...)` | Coleta filmes em cartaz nos cinemas no Brasil (`region=BR`, paginado), extrai datas de janela teatral e salva no S3 SOR |
 | `fetch_changed_ids(...)` | Pagina `/movie/changes` ou `/tv/changes` numa janela de data e retorna IDs únicos que mudaram |
 | `collect_changes_data(...)` | Calcula a janela `[ontem - lookback_days, ontem]`, chama `fetch_changed_ids` e grava a lista de IDs no S3 TEMP |

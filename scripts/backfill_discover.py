@@ -190,7 +190,7 @@ def _process_discover_unit(
             media_type, year, removed,
         )
         logger.info("[%s %d] Etapa 1/3: coletando discover na API do TMDB (SOR)...", media_type, year)
-        collect_discover_data(
+        failed_pages = collect_discover_data(
             api_key=api_key,
             s3_client=s3_client,
             bucket=s3_bucket_sor,
@@ -198,6 +198,16 @@ def _process_discover_unit(
             folder=f"tmdb/discover/{media_type}",
             year=year,
         )
+        if failed_pages:
+            # Discover incompleto não pode ser gravado no SOT nem contado como concluído: ele
+            # é a base da poda de órfãos do "Reprocessar tudo" (ver backfill_historico.py), e
+            # uma página perdida faria a poda apagar details de títulos que o TMDB devolve.
+            # A partição anterior do SOT fica intacta; rodar de novo refaz a unidade.
+            logger.error(
+                "[%s %d] Coleta incompleta: %d página(s) do discover falharam. SOT não atualizado.",
+                media_type, year, failed_pages,
+            )
+            return f"{failed_pages} página(s) do discover falharam"
         logger.info(
             "[%s %d] Etapa 2/3: transformação SOR→SOT (detecção de idioma do overview via LLM, "
             "reaproveitando o já detectado)... coleta levou %s.",

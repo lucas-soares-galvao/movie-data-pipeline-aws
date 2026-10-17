@@ -191,14 +191,14 @@ class TestEscritaNoSot:
 
 class TestRetraducaoForcada:
     @pytest.mark.parametrize("valor, esperado", [(None, False), ("true", True), ("TRUE", True), ("false", False)])
-    def test_force_retranslate_vem_de_backfill_retranslate_e_so_vale_para_configuration(
+    def test_force_retranslate_vem_de_backfill_reprocess_all_e_so_vale_para_configuration(
         self, monkeypatch, valor, esperado,
     ):
         overrides = {}
         if valor is None:
-            monkeypatch.delenv("BACKFILL_RETRANSLATE", raising=False)
+            monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
         else:
-            overrides["BACKFILL_RETRANSLATE"] = valor
+            overrides["BACKFILL_REPROCESS_ALL"] = valor
         mocks = _run_main(monkeypatch, overrides)
         por_tabela = {(c.args[1], c.args[2]): c.kwargs["force_retranslate"] for c in mocks["read"].call_args_list}
         assert por_tabela[("movie", "configuration")] is esperado
@@ -207,10 +207,10 @@ class TestRetraducaoForcada:
             assert por_tabela[("movie", tabela)] is False
             assert por_tabela[("tv", tabela)] is False
 
-    def test_loga_quando_a_retraducao_forcada_esta_ligada(self, monkeypatch, caplog):
+    def test_loga_quando_o_reprocessar_tudo_esta_ligado(self, monkeypatch, caplog):
         with caplog.at_level("INFO"):
-            _run_main(monkeypatch, {"BACKFILL_RETRANSLATE": "true"})
-        assert any("Retradução forçada ligada" in r.message for r in caplog.records)
+            _run_main(monkeypatch, {"BACKFILL_REPROCESS_ALL": "true"})
+        assert any("Reprocessar tudo ligado" in r.message for r in caplog.records)
 
 
 class TestDataQuality:

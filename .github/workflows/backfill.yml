@@ -89,8 +89,8 @@ on:
         required: false
         default: ""
         type: string
-      retraduzir_tudo:
-        description: "Retraduzir tudo: ignora a tradução já gravada e retraduz via LLM tudo o que não é pt-BR nativo do TMDB (overview/tagline/keywords em details; name_pt em configuration), mantendo a tradução antiga se o LLM falhar. Só vale para historico, detalhes_e_providers e referencias; limpar o checkpoint antes"
+      reprocessar_tudo:
+        description: "Reprocessar tudo: com 'historico' recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM tudo o que não é pt-BR nativo (ignora a tradução já gravada; mantém a antiga se o LLM falhar); com 'historico', details/watch providers são podados aos ids presentes no discover (órfãos saem); títulos que o TMDB responde com 404 são removidos; registros não rebuscados são listados ao final. Só vale para historico, detalhes_e_providers e referencias (referencias só retraduz name_pt de configuration). Ignora o checkpoint de um run normal; retoma o de um run 'Reprocessar tudo' anterior com o mesmo range"
         required: false
         default: false
         type: boolean
@@ -121,17 +121,17 @@ jobs:
           fi
           echo "🌎 Ambiente resolvido a partir do branch '${{ github.ref_name }}'"
 
-      - name: Validate "Retraduzir tudo" option
-        if: ${{ inputs.retraduzir_tudo }}
+      - name: Validate "Reprocessar tudo" option
+        if: ${{ inputs.reprocessar_tudo }}
         run: |
           case "${{ inputs.table_group }}" in
             historico|detalhes_e_providers|referencias) ;;
             traducao)
-              echo "❌ 'Retraduzir tudo' não vale para 'traducao': esse grupo lê o parquet já gravado e não distingue a tradução nativa pt-BR do TMDB da gerada por LLM — retraduzir sobrescreveria os nativos. Use 'detalhes_e_providers' ou 'historico', que rebuscam do TMDB."
+              echo "❌ 'Reprocessar tudo' não vale para 'traducao': esse grupo lê o parquet já gravado e não distingue a tradução nativa pt-BR do TMDB da gerada por LLM — retraduzir sobrescreveria os nativos. Use 'detalhes_e_providers' ou 'historico', que rebuscam do TMDB."
               exit 1
               ;;
             *)
-              echo "❌ 'Retraduzir tudo' só vale para historico, detalhes_e_providers e referencias (table_group='${{ inputs.table_group }}')."
+              echo "❌ 'Reprocessar tudo' só vale para historico, detalhes_e_providers e referencias (table_group='${{ inputs.table_group }}')."
               exit 1
               ;;
           esac
@@ -262,9 +262,11 @@ jobs:
           TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_movie_${{ steps.env.outputs.name }}
           TABLE_WATCH_PROVIDERS_REF_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_tv_${{ steps.env.outputs.name }}
           BACKFILL_START_YEAR: ${{ inputs.start_year }}
-          # Lida só por backfill_enriquecimento.py (também via historico) e
-          # backfill_referencias.py (os demais scripts ignoram); "true"/"false"
-          BACKFILL_RETRANSLATE: ${{ inputs.retraduzir_tudo }}
+          # Input "Reprocessar tudo" ("true"/"false"). Lida via
+          # backfill_shared.reprocess_all_enabled por backfill_enriquecimento.py (também via
+          # historico), backfill_referencias.py e pelo checkpoint compartilhado (modo do run).
+          # Os demais scripts a ignoram.
+          BACKFILL_REPROCESS_ALL: ${{ inputs.reprocessar_tudo }}
         run: |
           if [ -n "${{ inputs.end_year }}" ]; then
             export BACKFILL_END_YEAR="${{ inputs.end_year }}"

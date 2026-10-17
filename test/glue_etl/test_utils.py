@@ -865,7 +865,7 @@ class TestGetParametersGlue:
 
 
 class TestForceRetranslateConfiguration:
-    """force_retranslate=True ("Retraduzir tudo") em configuration: ignora o cache de name_pt,
+    """force_retranslate=True ("Reprocessar tudo") em configuration: ignora o cache de name_pt,
     mantém o idioma detectado da fonte e restaura a tradução antiga se o LLM falhar."""
 
     @staticmethod

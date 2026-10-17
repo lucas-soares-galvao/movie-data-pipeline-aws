@@ -48,12 +48,16 @@ Variáveis opcionais:
                            consecutivas de requisições ao TMDB; o rate limit em si já é tratado
                            por chamada individual, com retry/backoff, em
                            shared_utils.api_client.api_get)
-    BACKFILL_RETRANSLATE  (padrão: desligado; "true" ativa a opção "Retraduzir tudo": ignora o
+    BACKFILL_REPROCESS_ALL  (padrão: desligado; "true" ativa a opção "Reprocessar tudo": ignora o
                            cache de tradução e retraduz por LLM tudo o que não veio nativo pt-BR
                            do TMDB — overview_pt, tagline_pt e keywords_pt —, mantendo a
                            tradução antiga se o LLM falhar. Registros que não forem rebuscados
-                           (falha de API, sem year) mantêm a tradução anterior. Limpar o
-                           checkpoint antes, senão as unidades já concluídas são puladas.
+                           (falha transitória de API, sem year) mantêm o dado anterior e são
+                           listados como ERROR ao final (ver backfill_shared.
+                           report_stale_processed_date); títulos que o TMDB responde com 404
+                           são removidos de details/watch_providers. O checkpoint de um run
+                           normal é ignorado (ver backfill_shared._checkpoint_mode); o de um
+                           run "Reprocessar tudo" anterior com o mesmo range é retomado.
                            Herdada por backfill_historico.py, que chama este main() no mesmo
                            processo)
 
@@ -97,6 +101,7 @@ Retomada automática:
 import os
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +122,7 @@ from app.glue_details.src.utils import (  # noqa: E402
     trigger_glue_job,
 )
 
+from shared_utils.glue_helpers import current_processed_date  # noqa: E402
 from shared_utils.llm_metrics import log_llm_usage_summary  # noqa: E402
 import backfill_shared as shared
 
@@ -139,8 +145,8 @@ def _process_enriquecimento_unit(
 ) -> str | None:
     """Processa uma unidade (media_type, year): detalhes + watch providers.
 
-    force_retranslate=True repassa a opção "Retraduzir tudo" a
-    run_details_and_watch_providers_for_year (ver BACKFILL_RETRANSLATE no módulo).
+    force_retranslate=True repassa a opção "Reprocessar tudo" a
+    run_details_and_watch_providers_for_year (ver BACKFILL_REPROCESS_ALL no módulo).
 
     Returns:
         None em sucesso; a mensagem de erro (str) em falha não-retryable — o chamador
@@ -187,6 +193,21 @@ def _process_enriquecimento_unit(
         return str(exc)
     logger.info("Enriquecimento concluído com sucesso para %s year=%d.", media_type, year)
     return None
+
+
+def _report_stale_records_if_reprocessing(
+    force_retranslate: bool,
+    tables: list[str],
+    s3_bucket_sot: str,
+    years: list[int],
+    run_start_date: date,
+) -> None:
+    """No "Reprocessar tudo", lista os registros de details que o run não rebuscou do TMDB
+    (ver shared.report_stale_processed_date). No-op nos runs normais."""
+    if force_retranslate:
+        shared.report_stale_processed_date(
+            tables=tables, s3_bucket_sot=s3_bucket_sot, years=years, run_start_date=run_start_date,
+        )
 
 
 def _finalize_enriquecimento_success(
@@ -267,11 +288,13 @@ def main(trigger_agg: bool = True) -> bool:
 
     start_year, end_year = shared.read_year_range()
     wait_seconds  = int(os.environ.get("WAIT_SECONDS", 15))
-    force_retranslate = os.environ.get("BACKFILL_RETRANSLATE", "").lower() == "true"
+    force_retranslate = shared.reprocess_all_enabled()
+    run_start_date = current_processed_date()
     if force_retranslate:
         logger.info(
-            "Retradução forçada ligada (BACKFILL_RETRANSLATE=true): o cache de tradução será "
-            "ignorado e o que não é nativo pt-BR do TMDB será retraduzido por LLM."
+            "Reprocessar tudo ligado (BACKFILL_REPROCESS_ALL=true): o cache de tradução será "
+            "ignorado e o que não é nativo pt-BR do TMDB será retraduzido por LLM; títulos que o "
+            "TMDB responde com 404 são removidos das tabelas."
         )
 
     s3_client = boto3.client("s3", region_name=region)
@@ -318,6 +341,10 @@ def main(trigger_agg: bool = True) -> bool:
             ", ".join(f"{media_type}/{year} ({erro})" for media_type, year, erro in failures),
         )
     else:
+        _report_stale_records_if_reprocessing(
+            force_retranslate, [table_details_movie, table_details_tv], s3_bucket_sot, years,
+            run_start_date,
+        )
         dq_tables = [
             (table_details_movie, db_movie),
             (table_details_tv, db_tv),
