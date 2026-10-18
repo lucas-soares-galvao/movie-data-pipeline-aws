@@ -190,7 +190,8 @@ via LLM (`traducao_llm.py`/`idioma_llm.py`).
 
 | Classe | O que verifica |
 |---|---|
-| `TestRecordCall` | Sem escopo aberto nada acontece nem lança; acumula chamadas/tokens/custo/modelo e separa por operação; custo ausente conta "chamada sem custo" e cai para `_hidden_params.response_cost`; resposta sem `usage`/`model`, com tipos inválidos (`bool`, `str`) ou que lança ao ser lida **não** derruba a chamada ao LLM; `NO_CHANGE` não é falha; `EMPTY`/`INVALID` são falhas com exemplo |
+| `TestInterruptionReason` | `length` e `error` indicam resposta cortada/interrompida; `stop` não; `error` mapeado para `stop` pelo litellm é recuperado de `provider_specific_fields["native_finish_reason"]` (`end_turn` e afins não contam); comparação ignora maiúsculas; campos ausentes, valores que não são texto e respostas malformadas (`choices` vazio, `None`) devolvem `None` sem lançar; um `Choices` real do litellm com `finish_reason="error"` é detectado (trava o contrato com o litellm: se uma versão futura parar de preservar o valor original, o teste quebra em vez de a checagem virar no-op) |
+| `TestRecordCall` | `TRUNCATED` é falha com exemplo; sem escopo aberto nada acontece nem lança; acumula chamadas/tokens/custo/modelo e separa por operação; custo ausente conta "chamada sem custo" e cai para `_hidden_params.response_cost`; resposta sem `usage`/`model`, com tipos inválidos (`bool`, `str`) ou que lança ao ser lida **não** derruba a chamada ao LLM; `NO_CHANGE` não é falha; `EMPTY`/`INVALID` são falhas com exemplo |
 | `TestRecordFailure` | A causa é o nome da classe da exceção e o exemplo traz a mensagem (ex.: `tenacity import failed`); no máximo 3 exemplos por causa; texto (80) e mensagem (100) truncados |
 | `TestEscopos` | Escopos aninhados acumulam nos dois; o escopo é fechado mesmo com exceção; 20 threads × 50 chamadas somam exatamente 1000 (lock) |
 | `TestLogLlmUsage` | Sem chamadas → "nenhuma chamada ao LLM"; linha INFO com chamadas por operação, modelos, tokens (`2.001 in / 235 out`) e custo (`US$ 0,0030`); "custo indisponível" e custo parcial (`+N chamada(s) sem custo`); `sem mudança` não gera WARNING; falhas geram uma linha WARNING com causa e exemplo (e a INFO continua) |
@@ -238,6 +239,16 @@ exceção — devolve o texto original em caso de erro.
 | `test_resposta_vazia_registra_falha_vazia` | Resposta só com espaços registra falha `vazia` |
 | `test_excecao_registra_a_causa_pelo_nome_da_classe` | Exceção (ex.: `ImportError` do `tenacity`) registra a causa pelo nome da classe com a mensagem no exemplo; o retorno continua sendo o texto original |
 
+### `TestTraducaoInterrompida`
+
+Resposta cortada (`length`) ou interrompida pelo provedor (`error`) tem `content` parcial e não vazio: não pode entrar como tradução completa.
+
+| Teste | O que verifica |
+|---|---|
+| `test_finish_reason_length_devolve_original_e_registra_interrompida` | `finish_reason="length"` devolve o texto original e registra falha `interrompida` |
+| `test_error_mapeado_para_stop_pelo_litellm_devolve_original` | Caso real do run 39064820900: `finish_reason="stop"` + `native_finish_reason="error"` com texto parcial devolve o original, registra `interrompida` e **não** registra `ok` |
+| `test_finish_reason_stop_continua_sendo_traducao_valida` | `finish_reason="stop"` sem sinal de interrupção segue como tradução válida (`ok`) |
+
 ## Casos de teste — `test_idioma_llm.py`
 
 ### `TestDetectLanguageLlm`
@@ -264,6 +275,7 @@ texto vazio, falha na chamada, ou resposta fora do padrão `^[a-z]{2}$` devolvem
 | `test_resposta_vazia_registra_falha_vazia` | Resposta vazia registra falha `vazia` (retorno `None`) |
 | `test_codigo_fora_do_padrao_registra_falha_invalida` | Código que não é ISO 639-1 registra falha `fora_do_padrao` |
 | `test_excecao_registra_a_causa_pelo_nome_da_classe` | Exceção (ex.: `TimeoutError`) registra a causa pelo nome da classe |
+| `test_resposta_interrompida_devolve_none_e_registra_interrompida` | Mesmo com código ISO aparentemente válido (`"pt"`), resposta com `native_finish_reason="error"` devolve `None` e registra falha `interrompida` |
 
 ## Casos de teste — `test_traducao.py`
 

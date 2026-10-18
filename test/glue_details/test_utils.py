@@ -1815,6 +1815,49 @@ class TestCollectAndWriteDetails:
         assert any("Retradução forçada" in m for m in mensagens)
         assert any("1 registro(s) existentes não foram rebuscados" in m for m in mensagens)
 
+    def test_force_retranslate_loga_quantidade_de_traducoes_nativas_preservadas(self, caplog):
+        """Um título com overview e tagline pt-BR nativos e outro sem: o log conta 1 e 1."""
+        native = self._mock_tv_response(10)
+        native["translations"] = {"translations": [{
+            "iso_639_1": "pt", "iso_3166_1": "BR",
+            "data": {"overview": "Sinopse nativa", "tagline": "Tagline nativa"},
+        }]}
+        responses = {10: native, 11: self._mock_tv_response(11)}
+
+        with (
+            patch("src.utils.fetch_tmdb_details", side_effect=lambda key, ctype, item_id: responses[item_id]),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.detect_language_llm", new=lambda t: "pt" if t.startswith(("[PT]", "Sinopse nativa", "Tagline nativa")) else "en"),
+            patch("src.utils.wr.s3.read_parquet", side_effect=Exception("sem partição")),
+            patch("src.utils.wr.s3.to_parquet"),
+            caplog.at_level("INFO"),
+        ):
+            u.collect_and_write_details(
+                "key", [10, 11], "tv", "sot", "tb_tmdb_details_tv_dev", "db", force_retranslate=True,
+            )
+
+        mensagens = [r.message for r in caplog.records if "Retradução forçada" in r.message]
+        assert len(mensagens) == 1
+        assert "Preservados do TMDB (nativo pt-BR): 1 overview, 1 tagline" in mensagens[0]
+
+    def test_force_retranslate_loga_zero_nativos_quando_tmdb_nao_tem_pt_br(self, caplog):
+        with (
+            patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),
+            patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"),
+            patch("src.utils.detect_language_llm", new=lambda t: "pt" if t.startswith("[PT]") else "en"),
+            patch("src.utils.wr.s3.read_parquet", side_effect=Exception("sem partição")),
+            patch("src.utils.wr.s3.to_parquet"),
+            caplog.at_level("INFO"),
+        ):
+            u.collect_and_write_details(
+                "key", [10], "tv", "sot", "tb_tmdb_details_tv_dev", "db", force_retranslate=True,
+            )
+
+        assert any(
+            "Preservados do TMDB (nativo pt-BR): 0 overview, 0 tagline" in r.message
+            for r in caplog.records
+        )
+
     def test_sem_force_retranslate_nao_loga_retraducao_forcada(self, caplog):
         with (
             patch("src.utils.fetch_tmdb_details", return_value=self._mock_tv_response(10)),

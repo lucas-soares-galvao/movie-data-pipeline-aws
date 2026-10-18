@@ -10,9 +10,20 @@ import threading
 import litellm
 
 from shared_utils.llm_client import load_llm_api_key
-from shared_utils.llm_metrics import EMPTY, NO_CHANGE, OK, record_call, record_failure
+from shared_utils.llm_metrics import (
+    EMPTY,
+    NO_CHANGE,
+    OK,
+    TRUNCATED,
+    interruption_reason,
+    record_call,
+    record_failure,
+)
 
 logger = logging.getLogger()
+
+# Nome da operação nas métricas de llm_metrics.
+_OPERATION = "tradução"
 
 # O LiteLLM loga 2 linhas INFO por chamada (uma no próprio logger, outra duplicada no
 # logger raiz): num lote de ~1000 detecções de idioma isso afogava o log do backfill e
@@ -112,7 +123,7 @@ def translate_text_llm(text: str) -> str:
 
     Returns:
         Texto traduzido para português, ou o texto original se a tradução falhar ou a
-        resposta vier vazia/malformada.
+        resposta vier vazia/malformada/interrompida (finish_reason "length" ou "error").
     """
     if not text:
         return ""
@@ -130,16 +141,24 @@ def translate_text_llm(text: str) -> str:
             max_tokens=_LLM_MAX_TOKENS,
             extra_body=_LLM_EXTRA_BODY,
         )
+        # Tradução cortada (max_tokens) ou interrompida pelo provedor tem content parcial e não
+        # vazio: sem esta checagem entraria no SOT como tradução completa. Devolver o original
+        # a faz seguir o fluxo de falha (restore_failed_translations restaura a anterior).
+        interrupted = interruption_reason(response)
+        if interrupted:
+            logger.debug(f"LLM interrompeu a tradução ({interrupted}) de '{text[:80]}'. Mantendo original.")
+            record_call(_OPERATION, response, text, TRUNCATED)
+            return text
         content = response.choices[0].message.content
         if not content or not content.strip():
             logger.debug(f"LLM devolveu tradução vazia para '{text[:80]}'. Mantendo original.")
-            record_call("tradução", response, text, EMPTY)
+            record_call(_OPERATION, response, text, EMPTY)
             return text
         result = _clean_result(content)
-        record_call("tradução", response, text, NO_CHANGE if result == text else OK)
+        record_call(_OPERATION, response, text, NO_CHANGE if result == text else OK)
         return result
     # Chamada de API externa, não pode derrubar o job.
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"Falha ao traduzir via LLM '{text[:80]}': {exc}")
-        record_failure("tradução", exc, text)
+        record_failure(_OPERATION, exc, text)
         return text

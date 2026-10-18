@@ -110,3 +110,22 @@ class TestRegistroDeMetricasNaDeteccao:
             with patch("shared_utils.idioma_llm.litellm.completion", side_effect=TimeoutError("lento")):
                 assert detect_language_llm("Olá") is None
         assert usage.failures == {"TimeoutError": 1}
+
+    def test_resposta_interrompida_devolve_none_e_registra_interrompida(self):
+        """Mesmo com um código ISO aparentemente válido, uma resposta cortada/interrompida pelo
+        provedor (finish_reason length/error) não é confiável — vira None, não um idioma."""
+        resposta = SimpleNamespace(
+            model="qwen/qwen3.8-flash",
+            usage=SimpleNamespace(prompt_tokens=12, completion_tokens=3, cost=0.0004),
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    provider_specific_fields={"native_finish_reason": "error"},
+                    message=SimpleNamespace(content="pt"),
+                )
+            ],
+        )
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.idioma_llm.litellm.completion", return_value=resposta):
+                assert detect_language_llm("Olá") is None
+        assert usage.failures == {llm_metrics.TRUNCATED: 1}

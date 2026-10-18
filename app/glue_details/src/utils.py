@@ -495,6 +495,11 @@ def _extract_pt_br_translation(translations: dict) -> dict[str, str | None]:
     return result
 
 
+def _count_native_pt(df: pd.DataFrame, native_column: str) -> int:
+    """Quantidade de linhas com tradução pt-BR nativa do TMDB (coluna *_pt_tmdb preenchida)."""
+    return int((df[native_column].notna() & (df[native_column] != "")).sum())
+
+
 def _extract_alternative_titles(alternative_titles: dict, content_type: str) -> str | None:
     """Títulos alternativos/regionais, separados por vírgula."""
     list_field = "titles" if content_type == "movie" else "results"
@@ -1339,7 +1344,9 @@ def collect_and_write_details(
         logger.info(
             f"[Detalhes {content_type} 3/4] Retradução forçada: {len(df)} registro(s) terão overview, "
             "keywords e tagline (exceto o que veio nativo pt-BR do TMDB) enviados ao LLM, ignorando "
-            "a tradução salva."
+            "a tradução salva. Preservados do TMDB (nativo pt-BR): "
+            f"{_count_native_pt(df, 'overview_pt_tmdb')} overview, "
+            f"{_count_native_pt(df, 'tagline_pt_tmdb')} tagline (keywords não têm tradução nativa)."
         )
         if not df_existing_keep.empty:
             logger.warning(
