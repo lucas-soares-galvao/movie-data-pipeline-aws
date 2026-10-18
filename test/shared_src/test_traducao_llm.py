@@ -159,3 +159,50 @@ class TestRegistroDeMetricasNaTraducao:
                 assert translate_text_llm("Hello") == "Hello"
         assert usage.failures == {"ImportError": 1}
         assert "tenacity import failed" in usage.samples["ImportError"][0]
+
+
+def _resposta_interrompida(content, finish_reason="stop", provider_specific_fields=None):
+    return SimpleNamespace(
+        model="qwen/qwen3.8-flash",
+        usage=SimpleNamespace(prompt_tokens=12, completion_tokens=3, cost=0.0004),
+        choices=[
+            SimpleNamespace(
+                finish_reason=finish_reason,
+                provider_specific_fields=provider_specific_fields,
+                message=SimpleNamespace(content=content),
+            )
+        ],
+    )
+
+
+class TestTraducaoInterrompida:
+    """Resposta cortada (length) ou interrompida pelo provedor (error) tem content parcial e não
+    vazio: não pode entrar como tradução completa — devolve o original e conta como falha."""
+
+    def test_finish_reason_length_devolve_original_e_registra_interrompida(self):
+        resposta = _resposta_interrompida("Era uma vez um herói que", finish_reason="length")
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.traducao_llm.litellm.completion", return_value=resposta):
+                assert translate_text_llm("Once upon a time a hero who lived") == "Once upon a time a hero who lived"
+        assert usage.failures == {llm_metrics.TRUNCATED: 1}
+
+    def test_error_mapeado_para_stop_pelo_litellm_devolve_original(self):
+        """Caso real do run 39064820900: o litellm avisou "Unmapped finish_reason 'error'" e
+        entregou finish_reason="stop" com o texto parcial."""
+        resposta = _resposta_interrompida(
+            "Era uma vez um herói que", provider_specific_fields={"native_finish_reason": "error"}
+        )
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch("shared_utils.traducao_llm.litellm.completion", return_value=resposta):
+                assert translate_text_llm("Once upon a time a hero who lived") == "Once upon a time a hero who lived"
+        assert usage.failures == {llm_metrics.TRUNCATED: 1}
+        assert usage.outcomes.get(llm_metrics.OK) is None
+
+    def test_finish_reason_stop_continua_sendo_traducao_valida(self):
+        with llm_metrics.llm_usage_scope() as usage:
+            with patch(
+                "shared_utils.traducao_llm.litellm.completion",
+                return_value=_resposta_interrompida("Olá", finish_reason="stop"),
+            ):
+                assert translate_text_llm("Hello") == "Olá"
+        assert usage.outcomes == {llm_metrics.OK: 1}

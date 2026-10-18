@@ -10,7 +10,64 @@ def _resposta(model="qwen/qwen3.8-flash", prompt=10, completion=5, cost=0.001):
     return SimpleNamespace(model=model, usage=SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion, cost=cost))
 
 
+def _com_finish_reason(finish_reason=None, provider_specific_fields=None):
+    choice = SimpleNamespace(finish_reason=finish_reason, provider_specific_fields=provider_specific_fields)
+    return SimpleNamespace(choices=[choice])
+
+
+class TestInterruptionReason:
+    """Detecta resposta cortada/interrompida, que o litellm faz parecer completa (error -> stop)."""
+
+    def test_finish_reason_length_indica_corte_por_max_tokens(self):
+        assert m.interruption_reason(_com_finish_reason("length")) == "length"
+
+    def test_finish_reason_error_indica_interrupcao_do_provedor(self):
+        assert m.interruption_reason(_com_finish_reason("error")) == "error"
+
+    def test_finish_reason_stop_indica_resposta_completa(self):
+        assert m.interruption_reason(_com_finish_reason("stop")) is None
+
+    def test_error_mapeado_para_stop_e_recuperado_do_native_finish_reason(self):
+        """O litellm devolve finish_reason="stop" e guarda o valor original do OpenRouter em
+        provider_specific_fields["native_finish_reason"] — é o único sinal da interrupção."""
+        resposta = _com_finish_reason("stop", {"native_finish_reason": "error"})
+        assert m.interruption_reason(resposta) == "error"
+
+    def test_native_finish_reason_inofensivo_nao_indica_interrupcao(self):
+        resposta = _com_finish_reason("stop", {"native_finish_reason": "end_turn"})
+        assert m.interruption_reason(resposta) is None
+
+    def test_comparacao_ignora_maiusculas(self):
+        assert m.interruption_reason(_com_finish_reason("ERROR")) == "error"
+
+    def test_resposta_sem_campos_de_finish_reason_nao_indica_interrupcao(self):
+        resposta = SimpleNamespace(choices=[SimpleNamespace()])
+        assert m.interruption_reason(resposta) is None
+
+    def test_valor_que_nao_e_texto_e_ignorado(self):
+        """Mocks/respostas atípicas (objeto no lugar da string) nunca contam como interrupção."""
+        assert m.interruption_reason(_com_finish_reason(object(), {"native_finish_reason": 3})) is None
+
+    def test_resposta_malformada_nao_lanca(self):
+        assert m.interruption_reason(SimpleNamespace(choices=[])) is None
+        assert m.interruption_reason(None) is None
+
+    def test_choice_real_do_litellm_com_error_e_detectado(self):
+        """Trava o contrato com o litellm: se uma versão futura parar de preservar o valor
+        original em provider_specific_fields, este teste quebra em vez de a checagem virar no-op."""
+        from litellm.types.utils import Choices, Message
+
+        choice = Choices(finish_reason="error", index=0, message=Message(content="Texto parcial"))
+        assert m.interruption_reason(SimpleNamespace(choices=[choice])) == "error"
+
+
 class TestRecordCall:
+    def test_interrompida_conta_como_falha(self):
+        with m.llm_usage_scope() as usage:
+            m.record_call("tradução", _resposta(), "texto cortado", m.TRUNCATED)
+        assert usage.failures == {m.TRUNCATED: 1}
+        assert usage.samples[m.TRUNCATED] == ["'texto cortado'"]
+
     def test_sem_escopo_aberto_nao_faz_nada_nem_lanca(self):
         m.record_call("detecção", _resposta(), "texto", m.OK)
         m.record_failure("detecção", RuntimeError("x"), "texto")

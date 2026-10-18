@@ -15,7 +15,9 @@ __all__ = [
     "NO_CHANGE",
     "EMPTY",
     "INVALID",
+    "TRUNCATED",
     "LlmUsage",
+    "interruption_reason",
     "llm_usage_scope",
     "log_llm_usage",
     "log_balance_totals",
@@ -32,8 +34,13 @@ OK = "ok"
 NO_CHANGE = "sem_mudanca"  # tradução igual ao original — informativo, não é falha da chamada
 EMPTY = "vazia"
 INVALID = "fora_do_padrao"  # detecção devolveu algo que não é um código ISO 639-1
+TRUNCATED = "interrompida"  # resposta cortada (max_tokens) ou interrompida por erro do provedor
 
 _NON_FAILURES = frozenset({OK, NO_CHANGE})
+
+# finish_reason que indicam texto possivelmente parcial: "length" (estourou max_tokens) e "error"
+# (o provedor falhou no meio da geração).
+_INTERRUPTED_FINISH_REASONS = frozenset({"length", "error"})
 
 # Exemplos de falha por causa e corte de cada exemplo — mesmo corte de 80 caracteres já usado
 # nos logs de tradução/detecção, para não despejar texto de filme inteiro no log.
@@ -136,6 +143,29 @@ def _extract(response: Any) -> tuple[str | None, int, int, float | None]:
     return (model if isinstance(model, str) and model else None), int(prompt), int(completion), cost
 
 
+def interruption_reason(response: Any) -> str | None:
+    """Devolve "length" ou "error" se a resposta foi cortada/interrompida, senão None; nunca lança.
+
+    O litellm mapeia o finish_reason "error" do OpenRouter para "stop" (avisando "Unmapped
+    finish_reason 'error'"), então uma geração interrompida pelo provedor parece uma resposta
+    completa em choices[0].finish_reason. O valor original é preservado em
+    choices[0].provider_specific_fields["native_finish_reason"] sempre que difere do mapeado
+    (litellm/types/utils.py, Choices.__init__) — por isso os dois campos são consultados.
+    """
+    try:
+        choice = response.choices[0]
+        reasons = [getattr(choice, "finish_reason", None)]
+        fields = getattr(choice, "provider_specific_fields", None)
+        if isinstance(fields, dict):
+            reasons.append(fields.get("native_finish_reason"))
+    except Exception:  # noqa: BLE001 — inspecionar a resposta nunca pode derrubar uma chamada ao LLM
+        return None
+    for reason in reasons:
+        if isinstance(reason, str) and reason.lower() in _INTERRUPTED_FINISH_REASONS:
+            return reason.lower()
+    return None
+
+
 def _add_sample(usage: LlmUsage, cause: str, sample: str) -> None:
     samples = usage.samples.setdefault(cause, [])
     if len(samples) < _MAX_SAMPLES:
@@ -149,7 +179,7 @@ def record_call(operation: str, response: Any, text: str, outcome: str) -> None:
         operation: "tradução" ou "detecção".
         response:  Resposta do litellm (modelo, tokens e custo são lidos dela, se existirem).
         text:      Texto enviado — só os primeiros caracteres entram nos exemplos de falha.
-        outcome:   OK, NO_CHANGE, EMPTY ou INVALID.
+        outcome:   OK, NO_CHANGE, EMPTY, INVALID ou TRUNCATED.
     """
     model, prompt, completion, cost = _extract(response)
     with _lock:
