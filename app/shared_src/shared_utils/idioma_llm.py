@@ -7,7 +7,15 @@ import re
 
 import litellm
 
-from shared_utils.llm_metrics import EMPTY, INVALID, OK, record_call, record_failure
+from shared_utils.llm_metrics import (
+    EMPTY,
+    INVALID,
+    OK,
+    TRUNCATED,
+    interruption_reason,
+    record_call,
+    record_failure,
+)
 from shared_utils.traducao_llm import (
     _LLM_EXTRA_BODY,
     _LLM_FALLBACK_MODELS,  # noqa: F401 — reexportado só para os testes inspecionarem
@@ -17,6 +25,9 @@ from shared_utils.traducao_llm import (
 )
 
 logger = logging.getLogger()
+
+# Nome da operação nas métricas de llm_metrics.
+_OPERATION = "detecção"
 
 # Textos muito menores que tradução (só o código ISO 639-1 como saída).
 _LLM_TIMEOUT_SECONDS = 10
@@ -41,8 +52,8 @@ def detect_language_llm(text: str) -> str | None:
     duplicar a leitura do secret e a lista de fallback de modelo).
 
     Nunca lança exceção — devolve None em qualquer erro ou resposta fora do padrão
-    ISO 639-1, para não interromper o job nem poluir detected_language_*_column com
-    um valor inválido. Cada chamada (sucesso, vazia, inválida ou exceção) é registrada em
+    ISO 639-1 ou interrompida (finish_reason "length"/"error"), para não interromper o
+    job nem poluir detected_language_*_column com um valor inválido. Cada chamada (sucesso, vazia, inválida ou exceção) é registrada em
     shared_utils.llm_metrics para o resumo de uso/falhas/custo dos logs.
 
     Args:
@@ -68,19 +79,22 @@ def detect_language_llm(text: str) -> str | None:
             max_tokens=_LLM_MAX_TOKENS,
             extra_body=_LLM_EXTRA_BODY,
         )
+        if interruption_reason(response):
+            record_call(_OPERATION, response, text, TRUNCATED)
+            return None
         content = response.choices[0].message.content
         if not content:
-            record_call("detecção", response, text, EMPTY)
+            record_call(_OPERATION, response, text, EMPTY)
             return None
         code = content.strip().lower()
         if not _ISO_639_1_PATTERN.match(code):
             logger.warning(f"LLM devolveu código de idioma fora do padrão ISO 639-1 para '{text[:80]}': {content!r}")
-            record_call("detecção", response, text, INVALID)
+            record_call(_OPERATION, response, text, INVALID)
             return None
-        record_call("detecção", response, text, OK)
+        record_call(_OPERATION, response, text, OK)
         return code
     # Chamada de API externa, não pode derrubar o job.
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Falha ao detectar idioma via LLM de '{text[:80]}': {exc}")
-        record_failure("detecção", exc, text)
+        record_failure(_OPERATION, exc, text)
         return None
