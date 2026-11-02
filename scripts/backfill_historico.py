@@ -39,7 +39,7 @@ TABLE_GROUP não deve ser definida por quem chama este script: cada estágio def
 ("discover", depois "detalhes_e_providers") em os.environ antes de chamar o main() correspondente.
 
 Retradução forçada ("Reprocessar tudo"):
-    Com BACKFILL_REPROCESS_ALL=true no ambiente (input reprocessar_tudo do workflow), o estágio
+    Com BACKFILL_REPROCESS_ALL=true no ambiente (modo reprocessar_tudo do input modo do workflow), o estágio
     "enriquecimento" ignora o cache de tradução e retraduz por LLM o que não é nativo pt-BR do TMDB
     (ver backfill_enriquecimento.py). Nenhuma mudança aqui: backfill_enriquecimento.main() roda no
     mesmo processo e herda os.environ. Os checkpoints (o de estágio daqui e os de cada estágio) são

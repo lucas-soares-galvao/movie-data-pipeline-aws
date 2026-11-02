@@ -71,7 +71,7 @@ resource "aws_iam_role" "backfill" {
 # =============================================================================
 # POLICY 1 — Glue Job Data Quality (disparo fire-and-forget ao final de
 # backfill_discover.py/backfill_referencias.py/backfill_enriquecimento.py/
-# backfill_changes.py/backfill_traducao.py/backfill_rename_colunas.py/
+# backfill_changes.py/backfill_traducao.py/
 # backfill_historico.py — via scripts/backfill_shared.py:trigger_agg_locally —
 # e do próprio backfill_data_quality.py, via _trigger_dq_job). Sem GetJobRun:
 # nenhum caminho de backfill espera o job terminar (fire-and-forget em todos,
@@ -161,9 +161,9 @@ resource "aws_iam_role_policy" "backfill_secrets" {
 # POLICY 4 — S3: checkpoints no bucket TEMP (todos os scripts, exceto
 # backfill_referencias.py/backfill_changes.py), tabelas discover/details
 # movie/tv no bucket SOT (backfill_traducao.py e backfill_discover.py, via
-# awswrangler), tabelas discover/watch_providers movie/tv no bucket SOT
-# (backfill_rename_colunas.py, via awswrangler — discover já coberto pela
-# mesma resource de backfill_discover.py acima), JSON bruto no bucket SOR e
+# awswrangler), tabelas watch_providers movie/tv no bucket SOT
+# (backfill_enriquecimento.py, chamado pelo backfill_historico.py, via
+# awswrangler), JSON bruto no bucket SOR e
 # as 6 tabelas de referência no bucket SOT (backfill_referencias.py — ver
 # comentários nos statements abaixo), e JSON bruto de discover no bucket SOR
 # (backfill_discover.py — ver comentários nos statements abaixo). Também
@@ -458,7 +458,7 @@ resource "aws_iam_role_policy" "backfill_s3" {
         ]
       },
       {
-        Sid    = "ReadWriteWatchProvidersForRenameColunas"
+        Sid    = "ReadWriteWatchProvidersForEnriquecimento"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
@@ -475,7 +475,7 @@ resource "aws_iam_role_policy" "backfill_s3" {
 }
 
 # =============================================================================
-# POLICY 5 — Glue Data Catalog (backfill_traducao.py e backfill_rename_colunas.py,
+# POLICY 5 — Glue Data Catalog (backfill_traducao.py,
 # via chamadas implícitas do awswrangler: GetTable/GetPartition(s) ao ler,
 # BatchCreatePartition/BatchDeletePartition/UpdateTable ao escrever com
 # mode="overwrite_partitions"; backfill_enriquecimento.py, cujo Athena precisa
@@ -628,7 +628,7 @@ resource "aws_iam_role_policy" "backfill_glue_catalog" {
 }
 
 # =============================================================================
-# POLICY 6 — SNS (todos os 8 scripts, via scripts/backfill_shared.py:
+# POLICY 6 — SNS (todos os 7 scripts, via scripts/backfill_shared.py:
 # notify_backfill_success, chamada uma única vez ao final de cada script, só no
 # caminho de sucesso total). Publicação direta por código (boto3), sem
 # EventBridge no meio — mesmo racional de glue_dq_sns_publish
