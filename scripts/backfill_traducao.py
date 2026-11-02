@@ -148,22 +148,28 @@ def _mark_source(
     pt_source_column: str,
     detected_language_pt_column: str,
 ) -> pd.DataFrame:
-    """Grava a origem em pt_source_column nas linhas cujo target_column foi preenchido nesta execução.
+    """Grava a origem em pt_source_column.
 
-    "llm" = texto novo, diferente do que havia antes (previous_target) e da fonte. "tmdb" = cópia
-    direta de uma fonte que o TMDB já entregou em português: texto novo igual à fonte e idioma do
-    destino "pt" (a falha do tradutor também devolve a fonte, mas com o idioma não-pt, e fica sem
-    origem). O script lê só o S3 e não sabe se um texto veio do slot pt-BR do TMDB; as linhas que ele
-    traduz são as pendentes, ou seja, nunca as nativas já rotuladas "pt" pelo glue_details. Linhas que
-    ele não preenche mantêm a origem que já tinham."""
+    "llm" = texto preenchido nesta execução, diferente do que havia antes (previous_target) e da
+    fonte. "tmdb" = cópia direta de uma fonte que o TMDB já entregou em português: texto igual à
+    fonte e idioma do destino "pt" (a falha do tradutor também devolve a fonte, mas com o idioma
+    não-pt, e fica sem origem). Essa regra vale também para linhas antigas sem origem, mesmo que
+    não tenham sido preenchidas agora: é o que corrige, sem chamar o LLM, as cópias diretas gravadas
+    antes de a coluna existir. Origem já gravada nunca é sobrescrita pela cópia direta. O script lê
+    só o S3 e não sabe se um texto veio do slot pt-BR do TMDB; as linhas que ele traduz são as
+    pendentes, ou seja, nunca as nativas já rotuladas "pt" pelo glue_details. Linhas antigas com
+    texto diferente da fonte e sem origem continuam nulas (nativo e LLM não se distinguem nelas)."""
     if pt_source_column not in df.columns:
         df[pt_source_column] = None
     before = previous_target.fillna("")
     after = df[target_column].fillna("")
     source = df[source_column].fillna("")
-    filled = (after != "") & (after != before)
-    df.loc[filled & (after != source), pt_source_column] = "llm"
-    df.loc[filled & (after == source) & (df[detected_language_pt_column] == "pt"), pt_source_column] = "tmdb"
+    df.loc[(after != "") & (after != before) & (after != source), pt_source_column] = "llm"
+    copied = (
+        (after != "") & (after == source) & df[pt_source_column].isna()
+        & (df[detected_language_pt_column] == "pt")
+    )
+    df.loc[copied, pt_source_column] = "tmdb"
     return df
 
 
