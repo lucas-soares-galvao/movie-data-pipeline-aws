@@ -260,6 +260,7 @@ def resolve_pt_translation(
     max_attempts: int = _MAX_TRANSLATION_ATTEMPTS_DEFAULT,
     needs_translation_column: str | None = None,
     sample_id_column: str | None = None,
+    redetect_translated: bool = True,
 ) -> tuple[pd.DataFrame, int]:
     """
     Sincroniza target_column (já inicializada pelo chamador — nativo do TMDB, cache
@@ -279,7 +280,11 @@ def resolve_pt_translation(
     elegíveis; (6) incrementa
     translation_attempts_column para as linhas elegíveis desta execução; (7) redetecta
     detected_language_pt_column só nas linhas recém-traduzidas (a detecção do passo 2,
-    nelas, ficou obsoleta); (8) se needs_translation_column for informado, grava nela
+    nelas, ficou obsoleta) — com redetect_translated=False não há chamada ao LLM: a linha
+    traduzida com sucesso (texto diferente da fonte) recebe "pt" e a que o tradutor devolveu
+    sem alterar recebe o idioma da fonte (detected_language_en_column), nunca nulo — nulo faria
+    a linha ser tratada como "idioma do destino indisponível" (ver abaixo) e nunca mais
+    retentada; (8) se needs_translation_column for informado, grava nela
     fonte preenchida E detected_language_pt_column != "pt" E texto do destino não alterado
     em relação à fonte (ver _pending_mask) — ao contrário da elegibilidade do passo 4,
     propositalmente SEM o teto de tentativas: reflete se o dado, como está agora, ainda não
@@ -324,6 +329,11 @@ def resolve_pt_translation(
         sample_id_column:  Se informado (e presente em df), até 3 valores dessa coluna das
                            linhas ainda pendentes entram como exemplo na linha de balanço
                            (ex.: "id"). Ignorado se a coluna não existir.
+        redetect_translated: Se True (default), redetecta via detect_fn o idioma das linhas
+                           recém-traduzidas (uma chamada ao LLM por linha). Se False, deduz
+                           o idioma do próprio resultado da tradução (ver passo 7) — usado
+                           por overview/tagline, cujo idioma de origem já vem rotulado pela
+                           API do TMDB.
 
     Returns:
         Tupla (df, quantidade traduzida com sucesso nesta chamada). Ao final loga uma linha de
@@ -384,12 +394,21 @@ def resolve_pt_translation(
         f"{failure_count} falha(s) de tradução / {len(values)} elegível(is)."
     )
 
-    df.loc[eligible_mask, detected_language_pt_column] = detect_in_parallel(
-        df.loc[eligible_mask, target_column].fillna("").tolist(),
-        detect_fn,
-        max_workers=max_workers,
-        label=f"Redetecção de idioma '{target_column}'",
-    )
+    if redetect_translated:
+        df.loc[eligible_mask, detected_language_pt_column] = detect_in_parallel(
+            df.loc[eligible_mask, target_column].fillna("").tolist(),
+            detect_fn,
+            max_workers=max_workers,
+            label=f"Redetecção de idioma '{target_column}'",
+        )
+    else:
+        success_mask = pd.Series(False, index=df.index)
+        success_mask.loc[eligible_mask] = [
+            bool(original) and result != original for original, result in zip(values, translated)
+        ]
+        failed_mask = eligible_mask & ~success_mask
+        df.loc[success_mask, detected_language_pt_column] = "pt"
+        df.loc[failed_mask, detected_language_pt_column] = df.loc[failed_mask, detected_language_en_column]
 
     if needs_translation_column:
         df[needs_translation_column] = _pending_mask(

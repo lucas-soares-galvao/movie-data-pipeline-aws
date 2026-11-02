@@ -57,7 +57,7 @@ test/glue_agg/
 | `test_query_usa_lang_name_pt_com_fallback` | SQL usa `COALESCE(lang.name_pt, lang.english_name, lang.name)` para `language_name`, priorizando tradução pt-BR |
 | `test_query_usa_ctry_name_pt` | SQL usa `ctry.name_pt` em vez de `ctry.native_name` para `origin_country_name` |
 | `test_query_usa_coalesce_tagline_pt` | SQL contém `COALESCE(d.tagline_pt, d.tagline)` para priorizar tagline traduzida |
-| `test_query_usa_case_overview_idioma_detectado` | SQL contém `CASE WHEN u.overview_detected_language_pt = 'pt' THEN NULLIF(TRIM(u.overview), '') END` — `overview` do discover só é usado quando confirmado pt-BR (via `overview_detected_language_pt`, gravado pelo Glue ETL); `d.overview_pt`/`d.overview_en` continuam como fallback na mesma `COALESCE` |
+| `test_query_overview_prioriza_details_e_usa_discover_so_como_ultimo_recurso` | SQL usa `COALESCE(NULLIF(TRIM(d.overview_pt), ''), NULLIF(TRIM(d.overview_en), ''), NULLIF(TRIM(u.overview), ''))` — o `overview` do discover é só o último recurso (sem confirmação de idioma, para títulos sem linha em details) e `overview_detected_language_pt` não aparece mais na query |
 | `test_query_usa_coalesce_production_countries_pt` | SQL contém `COALESCE(pcr.production_countries_pt, d.production_countries)` para priorizar países traduzidos via lookup ISO na `tb_configuration_countries` |
 | `test_query_usa_coalesce_spoken_languages_pt` | SQL contém `COALESCE(slr.spoken_languages_pt, d.spoken_languages)` para priorizar idiomas traduzidos via lookup ISO na `tb_configuration_languages` |
 | `test_query_possui_cte_spoken_languages_resolved` | SQL contém CTE `spoken_languages_resolved` com `spoken_languages_iso` para lookup de idiomas em pt-BR |

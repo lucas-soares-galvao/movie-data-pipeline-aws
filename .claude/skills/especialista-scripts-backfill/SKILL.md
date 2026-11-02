@@ -107,17 +107,17 @@ de `backfill_shared.py` para não reintroduzir um bug já corrigido.
   `ExpiredToken` (S3 — `ListObjectsV2`/`get_object`/`put_object`/`delete_object`) — correção de um bug real de
   produção (bug #4 em `test/scripts/scripts_tests.md`) em que só o primeiro código era reconhecido e um backfill de
   tradução caiu sem acionar o retry automático.
-- Tradução/detecção de idioma nos 5 scripts que precisam (`backfill_discover.py`, `backfill_enriquecimento.py`,
-  `backfill_referencias.py`, `backfill_traducao.py`, `backfill_changes.py`) usa `translate_text_llm`/
+- Tradução/detecção de idioma nos 4 scripts que precisam (`backfill_enriquecimento.py`, `backfill_referencias.py`,
+  `backfill_traducao.py`, `backfill_changes.py`; o `backfill_discover.py` não chama mais LLM) usa `translate_text_llm`/
   `detect_language_llm` (`shared_utils.traducao_llm`/`idioma_llm`, OpenRouter via `litellm`) direto — não existe
   mais guard de custo por intervalo de anos (`apply_translate_cost_guard`, removido): não havia mais a distinção
   "provider pago vs. grátis" que o guard existia para proteger. O controle de gasto do LLM é feito direto no
   painel do OpenRouter. A detecção de idioma roda **em paralelo** (`detect_in_parallel`, 10 threads) e reaproveita o
-  idioma já detectado de textos inalterados (`reuse_detected_language`; no discover, lido da partição do ano na SOT
-  por `read_existing_discover`) — em série, o overview de um ano de filmes (~1000 chamadas de ~1s) levava ~19 min
-  por unidade e o `discover` do `historico` ficava horas sem uma única linha de log do pipeline (o LiteLLM, que
+  idioma já detectado de textos inalterados (`reuse_detected_language`) — em série, a detecção de uma coluna com
+  ~1000 textos (~1 s cada, como o overview do discover, que já foi detectado assim) levava ~19 min por unidade e o
+  backfill ficava horas sem uma única linha de log do pipeline (o LiteLLM, que
   agora fica em WARNING, afogava o log com 2 linhas INFO por chamada). Cada unidade do `backfill_discover.py` loga
-  `Etapa 1/3`/`2/3`/`3/3` e o tempo total, e a detecção/tradução loga progresso a cada 10% — é assim que se
+  `Etapa 1/3`/`2/3`/`3/3` e o tempo total, e a detecção/tradução dos demais scripts loga progresso a cada 10% — é assim que se
   acompanha em que etapa o backfill está, já que o log ao vivo do Actions não é acessível. Cada unidade também
   fecha com `LLM [...]` (chamadas, modelos, tokens, custo e falhas por causa com exemplo) e `Balanço '<coluna>'`
   (com ids de exemplo das pendentes), e cada script termina com `LLM [<script> — total]` mesmo ao sair por exit 75

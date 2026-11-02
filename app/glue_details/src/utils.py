@@ -469,29 +469,64 @@ def _extract_similar_ids(similar: dict, limit: int = 10) -> str | None:
     return ", ".join(ids) if ids else None
 
 
-def _extract_pt_br_translation(translations: dict) -> dict[str, str | None]:
+def _clean_text(value: str | None) -> str | None:
+    """Texto sem espaços nas pontas, ou None se vazio/ausente."""
+    return value.strip() if value and value.strip() else None
+
+
+def _same_text(first: str | None, second: str | None) -> bool:
+    """Compara dois textos sem diferença de maiúsculas/minúsculas nem de espaços nas pontas."""
+    if not first or not second:
+        return False
+    return first.strip().casefold() == second.strip().casefold()
+
+
+def _find_translation_data(translations: dict, language: str, country: str | None = None) -> dict:
     """
-    Extrai overview e tagline em pt-BR do array de translations da API do TMDB.
+    Dados (overview/tagline) do primeiro slot de translations com o idioma pedido.
+
+    Com country, só casa o par idioma/país (ex.: pt/BR). Sem country, aceita qualquer país do
+    idioma e prefere US quando houver mais de um (ex.: en/US antes de en/GB).
+    """
+    candidates = [
+        t for t in translations.get("translations", [])
+        if t.get("iso_639_1") == language and (country is None or t.get("iso_3166_1") == country)
+    ]
+    candidates.sort(key=lambda t: t.get("iso_3166_1") != "US")
+    return candidates[0].get("data", {}) if candidates else {}
+
+
+def _extract_translation_slots(
+    translations: dict,
+    fallback_overview: str | None = None,
+    fallback_tagline: str | None = None,
+) -> dict[str, str | None]:
+    """
+    Extrai overview e tagline dos slots pt-BR e en do array de translations da API do TMDB.
+
+    O idioma de cada texto é o rótulo do próprio slot (iso_639_1/iso_3166_1) — dispensa detectá-lo
+    por LLM. O slot pt-BR só vale quando difere do inglês: o TMDB às vezes cadastra no slot pt-BR
+    o texto em inglês. O inglês de referência é o slot en e, na falta dele, fallback_overview/
+    fallback_tagline (texto en-US do detalhe).
 
     Args:
         translations: Dicionário com chave "translations" contendo a lista de traduções.
+        fallback_overview: Overview en-US do detalhe, usado como referência se não há slot en.
+        fallback_tagline: Tagline en-US do detalhe, usada como referência se não há slot en.
 
     Returns:
-        Dicionário com chaves "overview_pt_tmdb" e "tagline_pt_tmdb" (None se pt-BR ausente).
+        Dicionário com as chaves "overview_pt_tmdb", "tagline_pt_tmdb", "overview_en_tmdb" e
+        "tagline_en_tmdb" (None onde o slot está ausente, vazio ou, no pt-BR, igual ao inglês).
     """
-    result: dict[str, str | None] = {"overview_pt_tmdb": None, "tagline_pt_tmdb": None}
-
-    for t in translations.get("translations", []):
-        if t.get("iso_639_1") == "pt" and t.get("iso_3166_1") == "BR":
-            data = t.get("data", {})
-            overview = data.get("overview")
-            tagline = data.get("tagline")
-            if overview and overview.strip():
-                result["overview_pt_tmdb"] = overview.strip()
-            if tagline and tagline.strip():
-                result["tagline_pt_tmdb"] = tagline.strip()
-            break
-
+    pt_data = _find_translation_data(translations, "pt", "BR")
+    en_data = _find_translation_data(translations, "en")
+    result: dict[str, str | None] = {}
+    for field, fallback in (("overview", fallback_overview), ("tagline", fallback_tagline)):
+        english = _clean_text(en_data.get(field))
+        portuguese = _clean_text(pt_data.get(field))
+        result[f"{field}_en_tmdb"] = english
+        same_as_english = _same_text(portuguese, english or fallback)
+        result[f"{field}_pt_tmdb"] = None if same_as_english else portuguese
     return result
 
 
@@ -547,13 +582,13 @@ def _extract_seasons(detail: dict) -> dict:
 def _common_fields(detail: dict, content_type: str) -> dict:
     """Campos compartilhados entre filmes e séries na resposta da API TMDB."""
     credits_data = detail.get("credits", {})
-    pt_br_translation = _extract_pt_br_translation(detail.get("translations", {}))
+    slots = _extract_translation_slots(detail.get("translations", {}), detail.get("overview"), detail.get("tagline"))
     return {
         "id":                       detail.get("id"),
-        "overview_en":              detail.get("overview"),
+        "overview_en":              slots["overview_en_tmdb"] or detail.get("overview"),
         "poster_path_en":           detail.get("poster_path"),
         "backdrop_path_en":         detail.get("backdrop_path"),
-        "tagline":                  detail.get("tagline") or None,
+        "tagline":                  slots["tagline_en_tmdb"] or detail.get("tagline") or None,
         "status":                   detail.get("status"),
         "production_companies":     _extract_production_companies(detail.get("production_companies")),
         "production_countries":     _extract_production_countries(detail.get("production_countries")),
@@ -575,8 +610,10 @@ def _common_fields(detail: dict, content_type: str) -> dict:
         "similar_titles":           _extract_similar_titles(detail.get("similar", {}), content_type),
         "similar_ids":              _extract_similar_ids(detail.get("similar", {})),
         "alternative_titles":       _extract_alternative_titles(detail.get("alternative_titles", {}), content_type),
-        "overview_pt_tmdb":         pt_br_translation["overview_pt_tmdb"],
-        "tagline_pt_tmdb":          pt_br_translation["tagline_pt_tmdb"],
+        "overview_pt_tmdb":         slots["overview_pt_tmdb"],
+        "tagline_pt_tmdb":          slots["tagline_pt_tmdb"],
+        "overview_en_tmdb":         slots["overview_en_tmdb"],
+        "tagline_en_tmdb":          slots["tagline_en_tmdb"],
         "processed_date":           current_processed_date(),
     }
 
@@ -836,6 +873,76 @@ def _seed_pt_from_cache(
     )
 
 
+def _label_languages_from_tmdb(
+    df: pd.DataFrame,
+    pt_tmdb_column: str,
+    en_tmdb_column: str,
+    detected_language_en_column: str,
+    detected_language_pt_column: str,
+) -> pd.DataFrame:
+    """
+    Rotula o idioma a partir dos slots do translations do TMDB, sem chamar o LLM.
+
+    Onde pt_tmdb_column tem texto, o destino é "pt" (slot pt-BR); onde en_tmdb_column tem texto, a
+    fonte é "en" (slot en). Só preenche as colunas de idioma: resolve_pt_translation e
+    reuse_detected_language nunca sobrescrevem valor preenchido, então os rótulos da API valem
+    sobre o cache e dispensam a detecção dessas linhas. en_tmdb_column é opcional em df.
+    """
+    for tmdb_column, language, language_column in (
+        (pt_tmdb_column, "pt", detected_language_pt_column),
+        (en_tmdb_column, "en", detected_language_en_column),
+    ):
+        if tmdb_column not in df.columns:
+            continue
+        if language_column not in df.columns:
+            df[language_column] = None
+        has_text = df[tmdb_column].notna() & (df[tmdb_column] != "")
+        df.loc[has_text, language_column] = language
+    return df
+
+
+def _assign_pt_source(
+    df: pd.DataFrame,
+    previous_df: pd.DataFrame | None,
+    *,
+    source_column: str,
+    target_column: str,
+    native_column: str,
+    pt_source_column: str,
+) -> pd.DataFrame:
+    """
+    Grava em pt_source_column a origem do texto de target_column: "tmdb" (slot pt-BR do translations),
+    "llm" (traduzido) ou nulo (vazio ou igual à fonte, ex.: cópia direta de fonte já em português).
+
+    Linhas sem slot pt-BR neste run herdam a origem de previous_df quando o texto traduzido não mudou
+    (mantém a procedência do cache); as demais com texto diferente da fonte vêm do LLM.
+    """
+    df[pt_source_column] = None
+    has_target = df[target_column].notna() & (df[target_column] != "")
+    native = has_target & df[native_column].notna() & (df[native_column] != "")
+    df.loc[native, pt_source_column] = "tmdb"
+    remaining = has_target & ~native
+
+    cache_columns = {"id", target_column, pt_source_column}
+    if previous_df is not None and not previous_df.empty and cache_columns.issubset(previous_df.columns):
+        cache = (
+            previous_df[["id", target_column, pt_source_column]]
+            .drop_duplicates(subset="id", keep="last")
+            .set_index("id")
+        )
+        old_target = df["id"].map(cache[target_column])
+        old_source = df["id"].map(cache[pt_source_column])
+        inherited = remaining & old_source.notna() & (old_target == df[target_column])
+        df.loc[inherited, pt_source_column] = old_source[inherited]
+
+    has_source = df[source_column].notna() & (df[source_column] != "")
+    source_text = df[source_column].fillna("").astype(str).str.strip().str.casefold()
+    target_text = df[target_column].fillna("").astype(str).str.strip().str.casefold()
+    translated = remaining & has_source & df[pt_source_column].isna() & (target_text != source_text)
+    df.loc[translated, pt_source_column] = "llm"
+    return df
+
+
 def _add_translations_pt(
     df: pd.DataFrame,
     translate_fn: Callable[[str], str] | None = None,
@@ -847,8 +954,14 @@ def _add_translations_pt(
 ) -> pd.DataFrame:
     """
     Adiciona as colunas overview_detected_language_en, overview_detected_language_pt,
-    overview_pt, overview_translation_attempts e overview_needs_translation ao
-    DataFrame de detalhes.
+    overview_pt, overview_pt_source, overview_translation_attempts e overview_needs_translation
+    ao DataFrame de detalhes.
+
+    O idioma vem do rótulo dos slots do translations do TMDB (ver _label_languages_from_tmdb):
+    overview_pt_tmdb → destino "pt", overview_en_tmdb → fonte "en", sem detecção por LLM. O LLM só
+    detecta o que ficou sem rótulo (fonte sem slot en) e traduz o que não tem slot pt-BR, sem
+    redetectar o resultado (redetect_translated=False). overview_pt_source guarda a origem do texto
+    ("tmdb" ou "llm", ver _assign_pt_source).
 
     Prioriza tradução pt-BR vinda do TMDB (overview_pt_tmdb); em seguida, no modo
     changes, força reaproveitamento quando /movie|tv/{id}/changes confirma que
@@ -871,6 +984,10 @@ def _add_translations_pt(
     detect_fn = detect_fn or detect_language_llm
 
     df["overview_pt"] = df["overview_pt_tmdb"]
+    df = _label_languages_from_tmdb(
+        df, "overview_pt_tmdb", "overview_en_tmdb",
+        "overview_detected_language_en", "overview_detected_language_pt",
+    )
     df = _seed_pt_from_cache(
         df, previous_df, changed_fields_by_id, force_retranslate,
         field_key="overview",
@@ -893,6 +1010,7 @@ def _add_translations_pt(
         max_workers=max_workers,
         needs_translation_column="overview_needs_translation",
         sample_id_column="id",
+        redetect_translated=False,
     )
     if force_retranslate:
         # Falha do LLM devolve o texto em inglês: restaura a tradução antiga válida em vez de
@@ -901,7 +1019,10 @@ def _add_translations_pt(
             df, previous_df, "overview_en", "overview_pt", "overview_detected_language_pt",
             needs_translation_column="overview_needs_translation",
         )
-    return df
+    return _assign_pt_source(
+        df, previous_df, source_column="overview_en", target_column="overview_pt",
+        native_column="overview_pt_tmdb", pt_source_column="overview_pt_source",
+    )
 
 
 def _add_translations_keywords_pt(
@@ -978,8 +1099,9 @@ def _add_translations_tagline_pt(
 ) -> pd.DataFrame:
     """
     Adiciona as colunas tagline_detected_language_en, tagline_detected_language_pt,
-    tagline_pt, tagline_translation_attempts e tagline_needs_translation ao DataFrame
-    de detalhes.
+    tagline_pt, tagline_pt_source, tagline_translation_attempts e tagline_needs_translation ao
+    DataFrame de detalhes. Idioma e origem seguem a mesma regra de overview (ver
+    _add_translations_pt): rótulo dos slots do translations, sem detecção nem redetecção por LLM.
 
     Prioriza tradução pt-BR vinda do TMDB (tagline_pt_tmdb); em seguida, no modo
     changes, força reaproveitamento quando /movie|tv/{id}/changes confirma que tagline
@@ -995,6 +1117,10 @@ def _add_translations_tagline_pt(
     detect_fn = detect_fn or detect_language_llm
 
     df["tagline_pt"] = df["tagline_pt_tmdb"]
+    df = _label_languages_from_tmdb(
+        df, "tagline_pt_tmdb", "tagline_en_tmdb",
+        "tagline_detected_language_en", "tagline_detected_language_pt",
+    )
     df = _seed_pt_from_cache(
         df, previous_df, changed_fields_by_id, force_retranslate,
         field_key="tagline",
@@ -1017,6 +1143,7 @@ def _add_translations_tagline_pt(
         max_workers=max_workers,
         needs_translation_column="tagline_needs_translation",
         sample_id_column="id",
+        redetect_translated=False,
     )
     if force_retranslate:
         # Falha do LLM devolve o texto em inglês: restaura a tradução antiga válida em vez de
@@ -1025,7 +1152,10 @@ def _add_translations_tagline_pt(
             df, previous_df, "tagline", "tagline_pt", "tagline_detected_language_pt",
             needs_translation_column="tagline_needs_translation",
         )
-    return df
+    return _assign_pt_source(
+        df, previous_df, source_column="tagline", target_column="tagline_pt",
+        native_column="tagline_pt_tmdb", pt_source_column="tagline_pt_source",
+    )
 
 
 def _read_year_partition(s3_path: str, year: str) -> pd.DataFrame:
@@ -1374,8 +1504,9 @@ def collect_and_write_details(
     log_llm_usage(f"Detalhes {content_type} 3/4", llm_usage)
     if content_type == "movie":
         df = _add_collection_name_pt(df, api_key)
-    # Campos intermediários: usados apenas para priorizar a tradução nativa do TMDB; não vão para o SOT
-    intermediate_columns = ["overview_pt_tmdb", "tagline_pt_tmdb"]
+    # Campos intermediários: usados apenas para priorizar e rotular o idioma pelos slots do translations
+    # do TMDB (pt-BR e en); não vão para o SOT
+    intermediate_columns = ["overview_pt_tmdb", "tagline_pt_tmdb", "overview_en_tmdb", "tagline_en_tmdb"]
     df = df.drop(columns=[c for c in intermediate_columns if c in df.columns])
 
     # Merge de dados existentes com novos (evita perder registros ao usar overwrite_partitions):

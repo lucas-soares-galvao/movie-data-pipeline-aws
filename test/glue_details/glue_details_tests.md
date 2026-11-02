@@ -86,10 +86,10 @@ Testa as funções individuais:
 - `_extract_alternative_titles` (`TestExtractAlternativeTitles`): formato movie (titles key), formato tv (results key), dict vazio
 - `_extract_next_episode_to_air` (`TestExtractNextEpisodeToAir`): próximo episódio presente, chave ausente, chave `None` (série sem episódio futuro), campos parciais
 - `_extract_seasons` (`TestExtractSeasons`): lista vazia, uma temporada, múltiplas temporadas, temporada futura sem `air_date`/`episode_count` preservando alinhamento posicional entre as 4 colunas paralelas
-- `_extract_pt_br_translation` (`TestExtractPtBrTranslation`): extrai overview/tagline pt-BR do array de translations, retorna None quando sem pt-BR, ignora pt-PT, ignora overview vazio
-- `_add_translations_pt` (`TestAddTranslationsOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, retenta quando `overview_pt_tmdb` fica igual a `overview_en`, grava `overview_detected_language_en` (a partir de `overview_en`) e `overview_detected_language_pt` (a partir do resultado final em `overview_pt` — `"pt"` para nativo TMDB/sucesso do LLM, diferente de `"pt"` para falha/fonte vazia), copia `overview_en` direto para `overview_pt` sem chamar tradução quando o idioma já é detectado como `"pt"` (otimização contra retradução infinita), e grava `overview_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
+- `_extract_translation_slots` (`TestExtractTranslationSlots`), `_label_languages_from_tmdb` (`TestLabelLanguagesFromTmdb`), `_assign_pt_source` (`TestAssignPtSource`) e `_common_fields` com slot en (`TestCommonFieldsSlotEn`): ver as seções abaixo
+- `_add_translations_pt` (`TestAddTranslationsOverviewPt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), loga resumo "N registros traduzidos com sucesso (overview_pt)" em INFO, grava `overview_detected_language_en` (detecção por LLM da fonte sem rótulo do slot en) e `overview_detected_language_pt` (`"pt"` rotulado pelo slot pt-BR, sem `detect_fn`, e deduzido do sucesso do LLM, sem redetecção — diferente de `"pt"` para falha/fonte vazia; o caso pt-BR igual ao inglês agora é tratado na extração, `TestExtractTranslationSlots`), copia `overview_en` direto para `overview_pt` sem chamar tradução quando o idioma já é detectado como `"pt"` (otimização contra retradução infinita), e grava `overview_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
 - `_add_translations_keywords_pt` (`TestAddTranslationsKeywordsPt`): traduz via LLM, traduz mesmo quando `original_language` já é `pt` (TMDB não localiza keywords), não traduz quando `keywords` vazia (`keywords_detected_language_pt` fica nulo), copia direto sem chamar tradução quando idioma já detectado como `"pt"`, e grava `keywords_needs_translation` (`True` quando a tradução falha, `False` quando `keywords` está vazia)
-- `_add_translations_tagline_pt` (`TestAddTranslationsTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, ignora vazia/nula, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), retenta quando `tagline_pt_tmdb` fica igual a `tagline`, copia direto sem chamar tradução quando idioma já detectado como `"pt"`, e grava `tagline_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
+- `_add_translations_tagline_pt` (`TestAddTranslationsTaglinePt`): prioriza tradução pt-BR do TMDB, fallback para LLM quando TMDB não tem, ignora vazia/nula, traduz mesmo quando `original_language` já é `pt` (não é critério de elegibilidade), copia direto sem chamar tradução quando idioma já detectado como `"pt"`, e grava `tagline_needs_translation` (`True` quando a tradução falha, `False` quando o resultado já está em português)
 - `_extract_production_countries_iso` (`TestExtractProductionCountriesIso`): extrai códigos ISO, retorna None para lista vazia e None
 - `_extract_spoken_languages` (`TestExtractSpokenLanguages`): prioriza `name` nativo sobre `english_name`, fallback para `english_name`
 - `_extract_spoken_languages_iso` (`TestExtractSpokenLanguagesIso`): extrai códigos ISO 639-1, ignora entradas sem ISO, retorna None para lista vazia/None
@@ -104,7 +104,7 @@ Testa as funções individuais:
 - `repair_discover_duplicates` (`TestRepairDiscoverDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; partição vazia → não reescreve; com duplicatas → mantém registro de maior `popularity`; usa `overwrite_partitions`
 - `repair_watch_providers_duplicates` (`TestRepairWatchProvidersDuplicates`): sem duplicatas → não reescreve; S3 inacessível → não propaga exceção; com duplicatas → deduplicação pela chave `(id, provider_type, provider_id)`, mantendo `processed_date` mais recente; rebranding de provider (mesmo `provider_id`, nomes distintos) é tratado como duplicata; usa `overwrite_partitions`
 - `_force_reuse_when_unflagged` com `detected_language_pt_column` (`TestForceReuseWhenUnflagged`): força o reaproveitamento só com idioma salvo `pt` (e marca `attempts` esgotado); idioma `en` ou nulo não força (tentativas em 0, a linha segue o fluxo normal); sem a coluna em `previous_df` mantém o comportamento antigo. Em `TestAddTranslationsOverviewPt`, modo changes: tradução salva que falhou (inglês, idioma `en`) é retraduzida mesmo com o `/changes` dizendo que o campo não mudou, e tradução válida (`pt`) continua reaproveitada sem chamar o LLM.
-- `force_retranslate` (`TestAddTranslationsForceRetranslate`, parametrizado para overview/keywords/tagline): ignora o cache e retraduz mesmo com fonte inalterada; sem a flag continua reaproveitando o cache; restaura a tradução antiga (idioma `pt` e `*_needs_translation=False`) quando o LLM devolve a fonte; não restaura texto de erro legado (idioma antigo diferente de `pt`); mantém o nativo pt-BR do TMDB sem chamar o LLM; reaproveita só o idioma detectado da fonte (a redetecção é só do resultado novo); ignora o sinal do `/changes`. Em `TestCollectAndWriteDetails`: retradução forçada com cache cheio, restauração em falha, aviso dos registros preservados que não foram rebuscados, contagem de overview/tagline nativos pt-BR preservados no log (com e sem nativos) e ausência do log sem a flag. Em `TestRunDetailsAndWatchProvidersForYear`: `force_retranslate` é repassado a `collect_and_write_details` (padrão `False`).
+- `force_retranslate` (`TestAddTranslationsForceRetranslate`, parametrizado para overview/keywords/tagline): ignora o cache e retraduz mesmo com fonte inalterada; sem a flag continua reaproveitando o cache; restaura a tradução antiga (idioma `pt` e `*_needs_translation=False`) quando o LLM devolve a fonte; não restaura texto de erro legado (idioma antigo diferente de `pt`); mantém o nativo pt-BR do TMDB sem chamar o LLM; reaproveita só o idioma detectado da fonte (o resultado novo é "pt" por dedução, sem redetecção); ignora o sinal do `/changes`. Em `TestCollectAndWriteDetails`: retradução forçada com cache cheio, restauração em falha, aviso dos registros preservados que não foram rebuscados, contagem de overview/tagline nativos pt-BR preservados no log (com e sem nativos) e ausência do log sem a flag. Em `TestRunDetailsAndWatchProvidersForYear`: `force_retranslate` é repassado a `collect_and_write_details` (padrão `False`).
 - `collect_and_write_watch_providers` (`TestCollectAndWriteWatchProviders`): grava com partição `["year"]`; não escreve quando nenhum provedor é encontrado; IDs que falham na API são pulados sem propagar exceção; valor do ano é preservado no DataFrame gravado; merge com a partição existente (mantém IDs não reprocessados e substitui os reprocessados; partição existente vazia grava só os novos)
 - `_fetch_collections_pt_br` (`TestFetchCollectionsPtBr`): lista vazia não chama a API; nome é devolvido sem espaços extras por ID (com `language=pt-BR`); nome ausente ou em branco é ignorado; falha de um ID é logada e não derruba os demais
 
@@ -266,15 +266,53 @@ Testa as funções individuais:
 | `test_multiplas_temporadas` | Colunas comma-separated alinhadas posicionalmente entre múltiplas temporadas |
 | `test_temporada_futura_sem_data_preserva_alinhamento_posicional` | Temporada com `air_date`/`episode_count` `None` (anunciada, ainda sem data) gera posição vazia na string em vez de ser filtrada, mantendo `season_numbers`/`season_air_dates`/`season_episode_counts`/`season_names` alinhados índice a índice |
 
-### `TestExtractPtBrTranslation`
+### `TestExtractTranslationSlots`
 
 | Teste | O que verifica |
 |---|---|
-| `test_extrai_overview_e_tagline_pt_br` | Extrai overview e tagline da tradução pt-BR no array de translations |
-| `test_retorna_none_quando_sem_pt_br` | Retorna `None` para ambos quando pt-BR não existe |
-| `test_retorna_none_quando_translations_vazio` | Retorna `None` para dict vazio (sem chave `translations`) |
+| `test_extrai_overview_e_tagline_pt_br_e_en` | Extrai overview/tagline dos slots `pt`/`BR` e `en` do array de translations |
+| `test_retorna_none_quando_sem_pt_br` | Retorna `None` para pt-BR quando o slot não existe |
+| `test_retorna_none_quando_translations_vazio` | Dict vazio (sem chave `translations`) devolve as quatro chaves `None` |
 | `test_ignora_pt_de_portugal` | Ignora tradução pt-PT (iso_3166_1='PT'), retorna `None` |
-| `test_ignora_overview_vazio` | Retorna `None` para overview vazio, mas extrai tagline |
+| `test_ignora_overview_vazio_e_mantem_tagline` | `None` para overview vazio, mas extrai a tagline |
+| `test_en_prefere_us_quando_ha_mais_de_um_pais` / `test_en_aceita_outro_pais_quando_nao_ha_us` | Slot `en`: prefere `US`; sem ele aceita outro país do idioma |
+| `test_descarta_pt_br_igual_ao_slot_en` | pt-BR igual ao inglês (sem diferença de caixa/espaços) é descartado: o TMDB às vezes cadastra o inglês no slot pt-BR |
+| `test_descarta_pt_br_igual_ao_texto_en_us_do_detalhe_quando_nao_ha_slot_en` | Sem slot `en`, a referência do inglês é o texto en-US do detalhe |
+
+### `TestLabelLanguagesFromTmdb`
+
+| Teste | O que verifica |
+|---|---|
+| `test_rotula_destino_pt_e_fonte_en_onde_ha_texto_no_slot` | `"pt"` onde há texto do slot pt-BR e `"en"` onde há texto do slot en; vazio/nulo fica sem rótulo |
+| `test_sem_coluna_do_slot_en_so_rotula_o_destino` | Coluna do slot en ausente no DataFrame é tolerada |
+| `test_preserva_idioma_ja_existente_nas_linhas_sem_slot` | Linhas sem slot mantêm o idioma que já tinham |
+
+### `TestAssignPtSource`
+
+| Teste | O que verifica |
+|---|---|
+| `test_tmdb_quando_veio_do_slot_pt_br` / `test_llm_quando_traduzido_sem_slot` | Origem `tmdb` (slot pt-BR) ou `llm` (traduzido) |
+| `test_nulo_quando_destino_vazio_ou_igual_a_fonte` | Sem tradução (vazio, igual à fonte ou cópia direta) a origem fica nula |
+| `test_heranca_da_origem_do_registro_anterior_quando_o_texto_nao_mudou` | Sem slot, herda a origem de `previous_df` se o texto traduzido é o mesmo; texto trocado cai em `llm` |
+| `test_registro_anterior_sem_a_coluna_de_origem_cai_na_regra_do_llm` / `test_registro_anterior_vazio_e_ignorado` | Schema antigo ou histórico vazio não quebram |
+
+### `TestAddTranslationsOrigemEIdioma`
+
+| Teste | O que verifica |
+|---|---|
+| `test_overview_nativo_tem_origem_tmdb_idioma_rotulado_e_nenhuma_chamada_ao_llm` | Overview do slot pt-BR: origem `tmdb`, idiomas `en`/`pt` rotulados, tentativas 0, sem `detect_fn` nem tradutor |
+| `test_overview_traduzido_pelo_llm_tem_origem_llm_sem_redeteccao` | Traduzido por LLM: origem `llm`, idioma `pt` deduzido, nenhum texto detectado por LLM |
+| `test_overview_com_traducao_que_falha_fica_sem_origem_e_retentavel` | Falha mantém a fonte, idioma da fonte (`en`) e `needs_translation=True` |
+| `test_tagline_nativa_tem_origem_tmdb_e_idioma_rotulado` / `test_tagline_traduzida_pelo_llm_tem_origem_llm` | Mesmo comportamento para `tagline_*` |
+| `test_fonte_sem_slot_en_ainda_e_detectada_pelo_llm` | Sem slot en, a fonte (en-US do detalhe) ainda é detectada por LLM |
+| `test_origem_herdada_do_cache_quando_o_texto_traduzido_e_reaproveitado` | Cache reaproveitado leva a origem do registro anterior |
+
+### `TestCommonFieldsSlotEn`
+
+| Teste | O que verifica |
+|---|---|
+| `test_overview_e_tagline_en_vem_do_slot_en_quando_existe` | `overview_en`/`tagline` usam o slot en; colunas intermediárias `*_en_tmdb`/`*_pt_tmdb` preenchidas |
+| `test_sem_slot_en_usa_o_texto_en_us_do_detalhe_sem_rotulo` | Sem slot en, usa o texto en-US e as colunas `*_en_tmdb` ficam `None` |
 
 ### `TestForceReuseWhenUnflagged`
 
