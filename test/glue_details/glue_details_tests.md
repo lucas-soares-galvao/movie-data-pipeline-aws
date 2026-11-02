@@ -292,7 +292,10 @@ Testa as funções individuais:
 | Teste | O que verifica |
 |---|---|
 | `test_tmdb_quando_veio_do_slot_pt_br` / `test_llm_quando_traduzido_sem_slot` | Origem `tmdb` (slot pt-BR) ou `llm` (traduzido) |
-| `test_nulo_quando_destino_vazio_ou_igual_a_fonte` | Sem tradução (vazio, igual à fonte ou cópia direta) a origem fica nula |
+| `test_nulo_quando_destino_vazio_ou_igual_a_fonte` | Sem tradução em português (destino vazio, igual à fonte sem idioma `pt` ou sem fonte) a origem fica nula |
+| `test_tmdb_quando_copia_direta_de_fonte_ja_em_portugues` | Destino igual à fonte com idioma do destino `pt` (cópia direta) recebe `tmdb` |
+| `test_nulo_quando_llm_devolveu_a_fonte_nao_portuguesa` | Destino igual à fonte com idioma `en` (LLM falhou) continua nulo |
+| `test_copia_direta_nao_sobrescreve_origem_herdada_do_cache` | Origem herdada do registro anterior vale mais que a regra da cópia direta |
 | `test_heranca_da_origem_do_registro_anterior_quando_o_texto_nao_mudou` | Sem slot, herda a origem de `previous_df` se o texto traduzido é o mesmo; texto trocado cai em `llm` |
 | `test_registro_anterior_sem_a_coluna_de_origem_cai_na_regra_do_llm` / `test_registro_anterior_vazio_e_ignorado` | Schema antigo ou histórico vazio não quebram |
 
@@ -304,7 +307,9 @@ Testa as funções individuais:
 | `test_overview_traduzido_pelo_llm_tem_origem_llm_sem_redeteccao` | Traduzido por LLM: origem `llm`, idioma `pt` deduzido, nenhum texto detectado por LLM |
 | `test_overview_com_traducao_que_falha_fica_sem_origem_e_retentavel` | Falha mantém a fonte, idioma da fonte (`en`) e `needs_translation=True` |
 | `test_tagline_nativa_tem_origem_tmdb_e_idioma_rotulado` / `test_tagline_traduzida_pelo_llm_tem_origem_llm` | Mesmo comportamento para `tagline_*` |
-| `test_fonte_sem_slot_en_ainda_e_detectada_pelo_llm` | Sem slot en, a fonte (en-US do detalhe) ainda é detectada por LLM |
+| `test_fonte_sem_slot_en_ainda_e_detectada_pelo_llm` | Sem slot en, a fonte (en-US do detalhe) ainda é detectada por LLM; se vier em português é copiada sem tradutor, com origem `tmdb` e `needs_translation=False` |
+| `test_tagline_copiada_de_fonte_em_portugues_tem_origem_tmdb` | Mesma cópia direta para `tagline_pt_source` |
+| `test_pendente_so_quando_ha_fonte_e_nenhuma_origem` | `*_needs_translation` coincide com "fonte preenchida e origem nula" (LLM traduzindo ou falhando) |
 | `test_origem_herdada_do_cache_quando_o_texto_traduzido_e_reaproveitado` | Cache reaproveitado leva a origem do registro anterior |
 
 ### `TestCommonFieldsSlotEn`

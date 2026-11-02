@@ -310,13 +310,15 @@ Modo "Zerar tentativas" (`BACKFILL_RESET_ATTEMPTS`): só as linhas pendentes (`*
 
 ### `TestOrigemDaTraducao`
 
-`overview_pt_source`/`tagline_pt_source` = `"llm"` só nas linhas que o script realmente traduz (`_mark_llm_source`).
+`overview_pt_source`/`tagline_pt_source` = `"llm"` nas linhas que o script traduz e `"tmdb"` nas que ele copia de uma fonte já em português; falha do tradutor fica sem origem (`_mark_source`).
 
 | Teste | O que verifica |
 |---|---|
 | `test_overview_traduzido_recebe_origem_llm_e_cria_a_coluna` | Linha traduzida recebe `"llm"`; a coluna é criada se ainda não existe (schema legado) |
 | `test_overview_nao_traduzido_mantem_a_origem_existente` | Linha já `tmdb` e linha cuja tradução falhou (tradutor devolve a fonte) não mudam de origem |
-| `test_copia_direta_de_fonte_ja_em_portugues_nao_vira_llm` | Fonte já em português copiada sem tradutor fica sem origem |
+| `test_copia_direta_de_fonte_ja_em_portugues_tem_origem_tmdb_e_nao_llm` | Fonte já em português copiada sem tradutor recebe `"tmdb"` |
+| `test_tagline_copiada_de_fonte_ja_em_portugues_tem_origem_tmdb` | Mesma cópia direta para `tagline_pt_source` |
+| `test_falha_do_tradutor_com_destino_em_ingles_fica_sem_origem` | Tradutor devolve a fonte e o idioma do destino é `en`: origem nula e `needs_translation=True` |
 | `test_tagline_traduzida_recebe_origem_llm` | Mesmo comportamento para `tagline_pt_source` |
 ### `TestAdicionarTraducoesPt`
 

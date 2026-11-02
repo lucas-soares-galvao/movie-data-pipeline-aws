@@ -79,7 +79,10 @@ on:
         default: ""
         type: string
       modo:
-        description: "Modo de execução. 'normal': fluxo padrão do grupo. 'reprocessar_tudo' (só historico e referencias): com 'historico' recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM tudo o que não é pt-BR nativo (ignora a tradução já gravada; mantém a antiga se o LLM falhar), poda details/watch providers aos ids presentes no discover (órfãos saem), remove títulos que o TMDB responde com 404 e lista ao final os registros não rebuscados; 'referencias' só retraduz name_pt de configuration; ignora o checkpoint de um run normal e retoma o de um run 'reprocessar_tudo' anterior com o mesmo range. 'zerar_tentativas' (só 'traducao'): zera *_translation_attempts das linhas ainda pendentes (*_needs_translation) de overview, tagline e keywords e as retenta uma vez nesta execução — serve para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais; não retraduz o que já está traduzido; usa um checkpoint próprio: ignora o de um run normal e retoma o de um run 'zerar_tentativas' anterior com o mesmo range"
+        description: |-
+          normal: fluxo padrão do grupo.
+          reprocessar_tudo (só historico e referencias): historico recoleta o discover, rebusca details/watch providers, retraduz via LLM o que não é pt-BR nativo (mantém a antiga se o LLM falhar), poda órfãos e títulos 404 e lista os não rebuscados; referencias retraduz o name_pt de configuration. Checkpoint próprio.
+          zerar_tentativas (só traducao): zera as tentativas das linhas pendentes de overview, tagline e keywords e as retenta uma vez (p.ex. após queda do LLM); não retraduz o já traduzido. Checkpoint próprio.
         required: true
         default: normal
         type: choice
