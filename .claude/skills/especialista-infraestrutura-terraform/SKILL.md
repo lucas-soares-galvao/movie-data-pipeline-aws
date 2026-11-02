@@ -93,7 +93,9 @@ ${var.github_workflow_dispatch_token}`, headers fixos do GitHub via `invocation_
 `aws_cloudwatch_event_api_destination` (endpoint monta a partir de `local.project_config.github_repo`) →
 `aws_cloudwatch_event_target` (dois, um por regra, `role_arn` de `aws_iam_role.lightsail_scheduler_eventbridge`,
 `input` fixo com `{ref: "main", inputs: {action: "start"|"stop"}}`, `dead_letter_config` na mesma DLQ de
-`eventbridge.tf`). `var.github_workflow_dispatch_token` (sensitive, sem default) chega via `-var` tanto em
+`eventbridge.tf`). Agenda (UTC; BRT = UTC−3): `lightsail_scheduler_start` = `cron(0 11 ? * SAT,SUN *)` (08:00 BRT, só sábado e
+domingo — o FilmBot não é usado na semana) e `lightsail_scheduler_stop` = `cron(0 3 * * ? *)` (00:00 BRT, todo dia; de segunda a
+sexta é no-op, mas derruba a instância se um apply completo em `main` a recriou). `var.github_workflow_dispatch_token` (sensitive, sem default) chega via `-var` tanto em
 `terraform.yml` quanto em `lightsail_scheduler.yml` (Terraform exige todas as variáveis sem default mesmo em
 `apply -target`, mesmo quando o `-target` não toca o resource que a usa) — nunca em `terraform.tfvars`.
 

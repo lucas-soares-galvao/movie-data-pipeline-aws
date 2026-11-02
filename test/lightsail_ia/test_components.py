@@ -1624,7 +1624,10 @@ class TestRenderFooter:
         components.render_footer()
         assert 'class="footer-hours"' in captured["content"]
         assert 'class="icon icon-clock"' in captured["content"]
-        assert "Horário de funcionamento do site: 08:00 - 00:00" in captured["content"]
+        assert (
+            "Horário de funcionamento do site: sábados e domingos, 08:00 - 00:00"
+            in captured["content"]
+        )
 
 
 class TestRenderFormFooter:
@@ -1647,4 +1650,7 @@ class TestRenderFormFooter:
         components.render_form_footer()
         assert 'class="footer-hours"' in captured["content"]
         assert 'class="icon icon-clock"' in captured["content"]
-        assert "Horário de funcionamento do site: 08:00 - 00:00" in captured["content"]
+        assert (
+            "Horário de funcionamento do site: sábados e domingos, 08:00 - 00:00"
+            in captured["content"]
+        )

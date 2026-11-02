@@ -126,7 +126,7 @@ Além de digitar, o usuário pode gravar a preferência em áudio pelo widget na
 
 ### Autenticação e administração (`forms.py`, `admin.py`, `infrastructure.py` — Cognito User Pool)
 
-Substituiu a antiga senha única compartilhada. Todo o estado de usuário (identidade, senha, aprovação, grupo admin) mora no Cognito — não existe tabela própria (DynamoDB/RDS) neste app; o Cognito já é o armazenamento persistente e sobrevive ao ciclo de destruição/recriação diária da instância Lightsail (`.github/workflows/lightsail_scheduler.yml`). Recursos provisionados em `infra/lightsail_ia.tf`: `aws_cognito_user_pool.filmbot`, `aws_cognito_user_pool_client.filmbot` (sem client secret — todas as chamadas partem do backend via boto3, nunca do navegador) e `aws_cognito_user_group.admins`.
+Substituiu a antiga senha única compartilhada. Todo o estado de usuário (identidade, senha, aprovação, grupo admin) mora no Cognito — não existe tabela própria (DynamoDB/RDS) neste app; o Cognito já é o armazenamento persistente e sobrevive ao ciclo de destruição/recriação da instância Lightsail (liga só aos fins de semana) (`.github/workflows/lightsail_scheduler.yml`). Recursos provisionados em `infra/lightsail_ia.tf`: `aws_cognito_user_pool.filmbot`, `aws_cognito_user_pool_client.filmbot` (sem client secret — todas as chamadas partem do backend via boto3, nunca do navegador) e `aws_cognito_user_group.admins`.
 
 Cinco telas, alternadas dentro do mesmo `app.py` via `st.session_state["auth_view"]`/`st.session_state["current_view"]` (nunca multipage nativo do Streamlit — evitaria vazar a existência da tela de admin/perfil na sidebar/URL para quem ainda não fez login):
 

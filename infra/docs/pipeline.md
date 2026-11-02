@@ -23,7 +23,7 @@
 
 ## Disparo do Lightsail Scheduler via AWS (`lightsail_scheduler_trigger.tf`)
 
-`lightsail_scheduler.yml` (liga/desliga o FilmBot diariamente) não usa mais o trigger `schedule:` nativo do
+`lightsail_scheduler.yml` (liga o FilmBot só nos fins de semana e desliga todo dia) não usa mais o trigger `schedule:` nativo do
 GitHub Actions — a documentação do GitHub descreve esse trigger como sujeito a atraso em períodos de alta carga
 (especialmente no início de cada hora, exatamente o horário dos crons antigos). Duas `aws_cloudwatch_event_rule`
 (só em prod, `local.lightsail_prod_enabled`) chamam a API REST do GitHub (`workflow_dispatch`) via uma EventBridge
@@ -31,8 +31,13 @@ GitHub Actions — a documentação do GitHub descreve esse trigger como sujeito
 
 | Regra | Horário | Ação |
 |---|---|---|
-| `lightsail_scheduler_stop` | 00:00 BRT (03:00 UTC) | `action=stop` |
-| `lightsail_scheduler_start` | 08:00 BRT (11:00 UTC) | `action=start` |
+| `lightsail_scheduler_stop` | 00:00 BRT (03:00 UTC), todos os dias — `cron(0 3 * * ? *)` | `action=stop` |
+| `lightsail_scheduler_start` | 08:00 BRT (11:00 UTC), só sábado e domingo — `cron(0 11 ? * SAT,SUN *)` | `action=start` |
+
+O FilmBot só é usado nos fins de semana, então a instância existe de sábado 08:00 a segunda 00:00 BRT (liga sáb e dom
+às 08:00, desliga dom e seg à 00:00). O desligar continua **diário** de propósito: de segunda a sexta é no-op
+(`terraform destroy -target` em recurso já destruído passa sem erro), mas derruba a instância na próxima meia-noite se um
+push em `main` na semana a recriou (o `terraform apply` completo recria a instância destruída).
 
 A autenticação na API do GitHub usa um `aws_cloudwatch_event_connection` (`API_KEY`, header `Authorization: Bearer
 <token>`) apontando para um fine-grained PAT do GitHub (permissão "Actions: Read and write", escopado só a este
