@@ -320,6 +320,16 @@
   filter: brightness(1.08);
   transform: scale(1.01);
 }
+/* Quem pede menos movimento no sistema (prefers-reduced-motion) não recebe a transição nem o
+   zoom do hover nos botões (css:S9440); o escurecimento do hover continua, sem animar. */
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="stButton"] > button {
+    transition: none;
+  }
+  [data-testid="stButton"] > button:hover {
+    transform: none;
+  }
+}
 /* Laranja queimado opaco (#b45a33, ~4,7:1 com texto branco) — mesmo motivo de
    .st-key-btn_recomendar (recommendation.css): "apagado" sem depender do fundo da
    página (o translúcido anterior media ~1,9:1 sobre o tema claro). */

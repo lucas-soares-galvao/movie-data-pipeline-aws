@@ -94,13 +94,23 @@ _SYSTEM_PROMPT = (
 # texto traduzido, mesmo com a instrução explícita de não fazer isso — limpeza
 # defensiva, mesmo tipo de tratamento que agent.py já faz para a saída em JSON do
 # Passo 3.
-_WRAPPING_PATTERN = re.compile(r'^["\'`]+|["\'`]+$')
-_CODE_FENCE_PATTERN = re.compile(r"^```[a-zA-Z]*\n?|```$")
+#
+# As aspas saem com str.strip (e não com regex `^["']+|["']+$`): o regex de fim de texto tenta
+# casar em cada aspa do meio e degrada para tempo quadrático em respostas longas cheias de
+# aspas (Sonar S8786); strip tira os mesmos caracteres das duas pontas em tempo linear.
+_WRAPPING_CHARS = "\"'`"
+#
+# A cerca de abertura e a de fechamento são dois padrões, e não uma alternância `^...|...$`:
+# numa alternância as âncoras valem só para um dos lados (Sonar S5850), e agrupar cada lado
+# vira outro aviso (S6395).
+_CODE_FENCE_START_PATTERN = re.compile(r"^```[a-zA-Z]*\n?")
+_CODE_FENCE_END_PATTERN = re.compile(r"```$")
 
 
 def _clean_result(content: str) -> str:
-    cleaned = _CODE_FENCE_PATTERN.sub("", content.strip()).strip()
-    return _WRAPPING_PATTERN.sub("", cleaned).strip()
+    cleaned = _CODE_FENCE_START_PATTERN.sub("", content.strip())
+    cleaned = _CODE_FENCE_END_PATTERN.sub("", cleaned).strip()
+    return cleaned.strip(_WRAPPING_CHARS).strip()
 
 
 def translate_text_llm(text: str) -> str:

@@ -213,6 +213,8 @@ exceção — devolve o texto original em caso de erro.
 | `test_content_vazio_devolve_original` / `test_content_none_devolve_original` / `test_content_so_espacos_devolve_original` | Resposta vazia/`None`/só espaços devolve o texto original |
 | `test_resultado_igual_ao_original_e_devolvido_mesmo_assim` | Nome próprio/termo sem tradução — o LLM pode ecoar o original de propósito; quem decide o que fazer com isso é `resolve_pt_translation`, não esta função |
 | `test_remove_aspas_ao_redor_do_resultado` / `test_remove_cerca_de_markdown_ao_redor_do_resultado` | Limpeza defensiva de aspas/cercas de markdown que o modelo eventualmente envolva ao redor do resultado |
+| `test_preserva_aspas_do_meio_e_remove_so_as_das_pontas` | Só as aspas/crase das pontas saem; as internas (diálogos) ficam |
+| `test_resposta_longa_com_muitas_aspas_no_meio_e_limpa_sem_travar` | 20 mil aspas no meio do texto: entrada que travava o regex antigo (backtracking quadrático, Sonar S8786); a limpeza por `str.strip` é linear |
 | `test_passa_modelo_e_chave_configurados` | Chama com `model="openrouter/qwen/qwen3.8-flash"` (default) e `temperature=0` |
 | `test_repassa_fallback_de_modelo_no_extra_body` | `extra_body.models=["deepseek/deepseek-v4.1-flash"]` (default) e `extra_body.reasoning={"enabled": False}` |
 | `test_mensagem_do_usuario_e_o_proprio_texto` | A última mensagem é `{"role": "user", "content": text}`, a primeira é `system` |

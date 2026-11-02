@@ -6,6 +6,7 @@ Roda fora da Lambda porque o volume de chamadas excede o timeout de 15 min da La
 from shared_utils.glue_helpers import configure_glue_logging
 from shared_utils.llm_metrics import log_llm_usage_summary
 from src.utils import (
+    DetailsTables,
     fetch_ids_from_changes_file,
     get_api_secret,
     get_parameters_glue,
@@ -97,9 +98,11 @@ def main() -> None:
         end_year=end_year,
         s3_bucket_sot=s3_bucket_sot,
         s3_bucket_temp=s3_bucket_temp,
-        table_discover=table_discover,
-        table_details=table_details,
-        table_watch_providers=table_watch_providers,
+        tables=DetailsTables(
+            discover=table_discover,
+            details=table_details,
+            watch_providers=table_watch_providers,
+        ),
         dq_job_name=dq_job_name,
     )
 

@@ -24,7 +24,9 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 auxiliar que o `backfill.yml` chama depois do loop de retry para somar o uso do LLM de todas as
 tentativas. O "LLM [<script> — total]" de cada processo conta só aquele processo — numa retomada
 por exit 75 o contador zera —, então o total impresso por último subestima o gasto do run. O
-laço do workflow grava `Tentativa N/M...` no `$LOG_FILE`; o script pega o último total de cada
+laço do workflow grava `Tentativa N/M...` no `$LOG_FILE`, que chega ao script pela entrada padrão
+(`python scripts/summarize_llm_usage.py < "$LOG_FILE"`) — sem caminho na linha de comando, para o
+script não abrir um arquivo escolhido por quem o chama (Sonar S8707, path traversal); o script pega o último total de cada
 trecho (o do script externo, que já inclui o do estágio interno de `backfill_historico.py`) e
 escreve no step summary a seção "LLM (soma de N tentativas)". Com uma tentativa só não escreve
 nada. Só stdlib, sem chamada à AWS.

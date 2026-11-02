@@ -350,7 +350,9 @@ def notify_failed_outcomes(
         lines.append(f"Partição: year={year}")
     lines.append(f"Regras com falha ({count}):")
     for row in rows:
-        lines.append(f"  • [{row['category']}] {row['rule']} → {row['failure_reason']}")
+        # Acesso por atributo: Row é subclasse de tuple, e row["coluna"] num tipo tuple-like é
+        # lido pelo Sonar (S6663) como índice inteiro; row.coluna devolve o mesmo valor.
+        lines.append(f"  • [{row.category}] {row.rule} → {row.failure_reason}")
 
     message = "\n".join(lines)
 

@@ -1387,7 +1387,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
             patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t),
-            patch("src.utils.detect_language_llm", new=lambda t: "en"),
+            patch("src.utils.detect_language_llm", return_value="en"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet"),
             caplog.at_level("INFO"),
@@ -1396,7 +1396,8 @@ class TestCollectAndWriteDetails:
 
         assert "LLM [Detalhes tv 3/4]: nenhuma chamada ao LLM" in caplog.text
         balanco = [r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'")]
-        assert balanco and "(ex.: id 10)" in balanco[0]
+        assert balanco
+        assert "(ex.: id 10)" in balanco[0]
 
     def test_tv_fallback_llm_sem_tmdb_pt_br(self):
         """Quando o TMDB não tem tradução pt-BR, usa o LLM como fallback."""
@@ -2451,9 +2452,11 @@ class TestRunDetailsAndWatchProvidersForYear:
             end_year="2025",
             s3_bucket_sot="my-sot",
             s3_bucket_temp="my-temp",
-            table_discover="tb_tmdb_discover_movie_dev",
-            table_details="tb_tmdb_details_movie_dev",
-            table_watch_providers="tb_tmdb_watch_providers_movie_dev",
+            tables=u.DetailsTables(
+                discover="tb_tmdb_discover_movie_dev",
+                details="tb_tmdb_details_movie_dev",
+                watch_providers="tb_tmdb_watch_providers_movie_dev",
+            ),
             dq_job_name="dq-job",
         )
         base.update(overrides)
@@ -2497,7 +2500,7 @@ class TestRunDetailsAndWatchProvidersForYear:
         ):
             kwargs = self._kwargs()
             u.run_details_and_watch_providers_for_year(**kwargs)
-        assert mock_collect.call_args.kwargs["also_remove_from_tables"] == (kwargs["table_watch_providers"],)
+        assert mock_collect.call_args.kwargs["also_remove_from_tables"] == (kwargs["tables"].watch_providers,)
 
     @pytest.mark.parametrize("valor", [True, False])
     def test_repassa_force_retranslate_para_collect_details(self, valor):

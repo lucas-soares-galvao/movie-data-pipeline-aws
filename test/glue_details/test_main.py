@@ -1,6 +1,7 @@
 from unittest.mock import call, patch
 
 import main as m
+from src.utils import DetailsTables
 
 _BASE = {
     "S3_BUCKET_SOT": "my-sot",
@@ -63,9 +64,11 @@ class TestMain:
                 end_year="2025",
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
-                table_discover="tb_tmdb_discover_movie_dev",
-                table_details="tb_tmdb_details_movie_dev",
-                table_watch_providers="tb_tmdb_watch_providers_movie_dev",
+                tables=DetailsTables(
+                    discover="tb_tmdb_discover_movie_dev",
+                    details="tb_tmdb_details_movie_dev",
+                    watch_providers="tb_tmdb_watch_providers_movie_dev",
+                ),
                 dq_job_name="dq-job",
             )
 
@@ -85,9 +88,11 @@ class TestMain:
                 end_year="2025",
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
-                table_discover="tb_tmdb_discover_tv_dev",
-                table_details="tb_tmdb_details_tv_dev",
-                table_watch_providers="tb_tmdb_watch_providers_tv_dev",
+                tables=DetailsTables(
+                    discover="tb_tmdb_discover_tv_dev",
+                    details="tb_tmdb_details_tv_dev",
+                    watch_providers="tb_tmdb_watch_providers_tv_dev",
+                ),
                 dq_job_name="dq-job",
             )
 

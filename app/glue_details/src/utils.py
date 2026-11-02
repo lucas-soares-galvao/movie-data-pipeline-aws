@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -1351,6 +1352,44 @@ def fetch_all_discover_ids(database: str, table_discover: str, s3_bucket_temp: s
     return ids
 
 
+def _read_existing_details(
+    df: pd.DataFrame, s3_path: str, table_name: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Lê os registros já gravados nas partições year presentes em df (uma leitura por partição) e
+    os divide em duas visões:
+
+    - df_existing_keep:  ids que NÃO fazem parte do delta (df) -> preservados no merge final
+    - df_existing_delta: ids que SERÃO sobrescritos neste run -> cache de tradução (compara fonte
+      antiga vs. nova antes de chamar as APIs de tradução)
+
+    Partição inexistente (ou falha de leitura) degrada graciosamente: é logada e ignorada, e as
+    duas visões seguem vazias para aquele year.
+    """
+    df_existing_keep = pd.DataFrame()
+    df_existing_delta = pd.DataFrame()
+    for yr in df["year"].dropna().unique().tolist():
+        try:
+            year_str = str(yr)
+            df_read = wr.s3.read_parquet(
+                path=s3_path,
+                dataset=True,
+                partition_filter=lambda x, year_str=year_str: x["year"] == year_str,
+            )
+            if not df_read.empty:
+                mask_delta = df_read["id"].isin(df["id"])
+                df_existing_keep = pd.concat([df_existing_keep, df_read[~mask_delta]], ignore_index=True)
+                df_existing_delta = pd.concat([df_existing_delta, df_read[mask_delta]], ignore_index=True)
+                logger.info(
+                    f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
+                    f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
+                )
+        # Partição pode não existir ainda, degrada graciosamente.
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
+    return df_existing_keep, df_existing_delta
+
+
 def collect_and_write_details(
     api_key: str,
     ids: list[int],
@@ -1455,32 +1494,7 @@ def collect_and_write_details(
         f"[Detalhes {content_type} 2/4] Lendo registros existentes (cache de tradução e de idioma) "
         f"— {len(df)} registro(s) coletado(s) em {format_elapsed(time.monotonic() - started)}."
     )
-    # Leitura antecipada dos registros existentes (uma única vez por partição year),
-    # produzindo duas visões a partir do mesmo df_read:
-    # - df_existing_delta: ids que SERÃO sobrescritos neste run -> cache de tradução
-    #   (compara fonte antiga vs. nova antes de chamar as APIs de tradução)
-    # - df_existing_keep:  ids que NÃO fazem parte do delta -> preservados no merge final
-    df_existing_keep = pd.DataFrame()
-    df_existing_delta = pd.DataFrame()
-    for yr in df["year"].dropna().unique().tolist():
-        try:
-            year_str = str(yr)
-            df_read = wr.s3.read_parquet(
-                path=s3_path,
-                dataset=True,
-                partition_filter=lambda x, year_str=year_str: x["year"] == year_str,
-            )
-            if not df_read.empty:
-                mask_delta = df_read["id"].isin(df["id"])
-                df_existing_keep = pd.concat([df_existing_keep, df_read[~mask_delta]], ignore_index=True)
-                df_existing_delta = pd.concat([df_existing_delta, df_read[mask_delta]], ignore_index=True)
-                logger.info(
-                    f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
-                    f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
-                )
-        # Partição pode não existir ainda, degrada graciosamente.
-        except Exception as exc:  # noqa: BLE001
-            logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
+    df_existing_keep, df_existing_delta = _read_existing_details(df, s3_path, table_name)
 
     if force_retranslate:
         logger.info(
@@ -1834,6 +1848,17 @@ def collect_and_write_watch_providers(
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
 
 
+@dataclass(frozen=True)
+class DetailsTables:
+    """Nomes das três tabelas do Glue Catalog de um media_type (movie ou tv) que o ciclo de
+    enriquecimento lê e grava. Agrupadas em um só parâmetro de run_details_and_watch_providers_for_year
+    para a função não passar do limite de parâmetros do Sonar (S107)."""
+
+    discover: str
+    details: str
+    watch_providers: str
+
+
 def run_details_and_watch_providers_for_year(
     *,
     api_key: str,
@@ -1843,9 +1868,7 @@ def run_details_and_watch_providers_for_year(
     end_year: str,
     s3_bucket_sot: str,
     s3_bucket_temp: str,
-    table_discover: str,
-    table_details: str,
-    table_watch_providers: str,
+    tables: DetailsTables,
     dq_job_name: str,
     trigger_dq: bool = True,
     refresh_existing_ids: bool = False,
@@ -1869,9 +1892,8 @@ def run_details_and_watch_providers_for_year(
         end_year:               Último ano do ciclo — repair de duplicatas roda quando year == end_year.
         s3_bucket_sot:          Bucket SOT de destino.
         s3_bucket_temp:         Bucket TEMP para resultados temporários do Athena.
-        table_discover:         Tabela de discover (movie ou tv).
-        table_details:          Tabela de detalhes (movie ou tv).
-        table_watch_providers:  Tabela de watch providers (movie ou tv).
+        tables:                 Tabelas de discover, details e watch providers do media_type
+                                 (ver DetailsTables).
         dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
         trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
                                  Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
@@ -1887,6 +1909,10 @@ def run_details_and_watch_providers_for_year(
                                  collect_and_write_details). Default False mantém o comportamento
                                  do job Glue.
     """
+    table_discover = tables.discover
+    table_details = tables.details
+    table_watch_providers = tables.watch_providers
+
     all_ids = fetch_ids_from_sot(
         database=database,
         table_discover=table_discover,

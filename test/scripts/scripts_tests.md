@@ -635,10 +635,10 @@ função faz em runtime) porque `test/scripts/` não passa pelo mecanismo de ali
 
 | Teste | O que verifica |
 |---|---|
-| `test_escreve_o_resumo_do_arquivo_de_log` / `test_log_com_uma_tentativa_nao_imprime_nada` | Lê o arquivo e imprime (ou não) o resumo; devolve 0 |
+| `test_escreve_o_resumo_do_log_lido_da_entrada_padrao` / `test_log_com_uma_tentativa_nao_imprime_nada` | Lê o log da entrada padrão (como o `< "$LOG_FILE"` do workflow) e imprime (ou não) o resumo; devolve 0 |
 | `test_tolera_bytes_invalidos_no_log` | Bytes inválidos no log não derrubam o script (`errors="replace"`) |
-| `test_numero_de_argumentos_invalido_devolve_2_com_uso_no_stderr` | Sem argumento ou com mais de um: devolve 2 e escreve o uso no stderr |
-| `test_sem_argv_le_os_argumentos_do_processo` | Sem `argv`, usa `sys.argv[1:]` |
+| `test_argumento_na_linha_de_comando_devolve_2_com_uso_no_stderr` | Qualquer argumento (um caminho ou vários): devolve 2 e escreve o uso no stderr — o script não abre arquivo escolhido pelo chamador (path traversal, Sonar S8707) |
+| `test_sem_argv_le_os_argumentos_do_processo` | Sem `argv`, usa `sys.argv[1:]` (vazio) e lê o log da entrada padrão |
 
 ## Como executar
 

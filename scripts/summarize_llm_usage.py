@@ -8,8 +8,10 @@ cada processo, portanto, mostra só aquela tentativa — num run com retomada, o
 impresso por último subestima o gasto real.
 
 Este script lê o log completo do run (o mesmo `$LOG_FILE` que o workflow usa para montar o
-step summary), pega o total de cada tentativa e escreve um resumo em Markdown com a soma.
-Não faz nenhuma chamada à AWS e não altera o log.
+step summary) pela entrada padrão, pega o total de cada tentativa e escreve um resumo em
+Markdown com a soma. Não faz nenhuma chamada à AWS e não altera o log. O log vem por stdin, e
+não por um caminho na linha de comando, para o script não abrir um arquivo escolhido por quem
+o chama (path traversal, Sonar S8707).
 
 Como achar o total de cada tentativa: o laço do workflow grava no `$LOG_FILE` uma linha
 `Tentativa N/M...` antes de cada execução, que delimita os processos. Dentro de uma tentativa,
@@ -18,7 +20,7 @@ estágio interno e, mais adiante, o do script externo, que já inclui o interno.
 somar só linhas seguidas — no fim de um run bem-sucedido o AGG roda entre um total e outro.
 
 Uso:
-    python scripts/summarize_llm_usage.py <arquivo_de_log>
+    python scripts/summarize_llm_usage.py < <arquivo_de_log>
 
 Sem soma útil (nenhum total no log, ou uma tentativa só, em que o total do próprio log já
 está certo), não escreve nada.
@@ -120,11 +122,13 @@ def render_summary(attempts: list[Attempt]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    if len(args) != 1:
-        print("Uso: python scripts/summarize_llm_usage.py <arquivo_de_log>", file=sys.stderr)
+    if args:
+        print("Uso: python scripts/summarize_llm_usage.py < <arquivo_de_log>", file=sys.stderr)
         return 2
-    with open(args[0], encoding="utf-8", errors="replace") as log_file:
-        summary = render_summary(collect_attempts(log_file.read().splitlines()))
+    # Bytes crus + errors="replace": o log mistura a saída de vários processos e um byte inválido
+    # não pode derrubar a soma (sys.stdin em modo texto lançaria UnicodeDecodeError).
+    log_text = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+    summary = render_summary(collect_attempts(log_text.splitlines()))
     if summary:
         print(summary, end="")
     return 0
