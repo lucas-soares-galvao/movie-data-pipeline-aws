@@ -155,9 +155,9 @@ EventBridge (schedule)
 
 ### Glue Data Quality
 ```
---TABLE_NAME, --DATABASE, --DATABASE_RESULTS, --S3_BUCKET_DATA_QUALITY
+--TABLE_NAME (uma tabela ou lista separada por vírgula — o Details manda details+watch_providers juntos), --DATABASE, --DATABASE_RESULTS, --S3_BUCKET_DATA_QUALITY
 --SNS_TOPIC_ARN_DQ_METRICS, --ENVIRONMENT, --OUTPUT_TABLE
---YEAR (opcional — apenas tabelas com partição por ano)
+--YEAR (opcional — apenas tabelas com partição por ano; pode ser lista separada por vírgula)
 ```
 
 ### Glue Details

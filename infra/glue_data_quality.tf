@@ -55,7 +55,9 @@ resource "aws_glue_job" "data_quality_job" {
   ]
 
   # Pior caso: semanal (13 DQ) ou mensal + anual no dia 1/jan (~14 DQ) + 1 buffer
-  # (o mensal agora roda na 1ª segunda-feira, não mais no dia 1 — não soma com o semanal de sábado)
+  # (o mensal agora roda na 1ª segunda-feira, não mais no dia 1 — não soma com o semanal de sábado;
+  # e o glue_details dispara 1 run de DQ por unidade com details+watch_providers juntos, não 2 —
+  # a estimativa acima é anterior e o valor 15 fica como folga, não foi reduzido)
   execution_property {
     max_concurrent_runs = 15
   }
