@@ -21,8 +21,8 @@ run-name: "Lightsail Scheduler [PROD]: ${{ inputs.action == 'start' && 'Ligar' |
 # Disparo 100% via workflow_dispatch — sem trigger `schedule:` nativo do
 # GitHub Actions, que a própria documentação do GitHub descreve como sujeito
 # a atraso em períodos de alta carga (justamente no início de cada hora,
-# horário usado pelos crons antigos deste workflow). O agendamento diário
-# (desligar 00:00 BRT / ligar 08:00 BRT) é feito por duas EventBridge Rules
+# horário usado pelos crons antigos deste workflow). O agendamento (ligar
+# 08:00 BRT só sábado e domingo / desligar 00:00 BRT todos os dias) é feito por duas EventBridge Rules
 # em infra/lightsail_scheduler_trigger.tf, que chamam a API do GitHub
 # (workflow_dispatch) via API Destination — mesmo motor de cron já usado no
 # resto do projeto (infra/eventbridge.tf), sem o aviso de imprecisão do

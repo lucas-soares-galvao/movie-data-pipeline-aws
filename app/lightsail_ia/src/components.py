@@ -159,7 +159,7 @@ def _render_business_hours_line() -> str:
     página (ver histórico em lightsail_ia.md); movido pro rodapé a pedido do usuário."""
     return (
         f'<div class="footer-hours">{icon("clock", 12)} '
-        f'Horário de funcionamento do site: 08:00 - 00:00</div>'
+        f'Horário de funcionamento do site: sábados e domingos, 08:00 - 00:00</div>'
     )
 
 

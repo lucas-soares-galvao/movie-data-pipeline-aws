@@ -11,7 +11,7 @@ name: "Deploy Lightsail (Reusable)"
 #   2. Aguarda a instância ficar disponível via SSH (até 30 tentativas, 10s cada)
 #   3. Cria .env com credenciais na instância (sem passar por /tmp)
 #   4. Restaura do S3 o certificado TLS do Caddy do ciclo anterior, se existir
-#      (a instância é destruída/recriada diariamente — ver
+#      (a instância é destruída/recriada a cada ciclo de liga/desliga, nos fins de semana — ver
 #      infra/lightsail_scheduler_trigger.tf — e perde o disco a cada ciclo)
 #   5. Clona ou atualiza o repositório (branch "main") e reinicia o serviço
 #      systemd do app
@@ -217,7 +217,7 @@ jobs:
                 "sudo mkdir -p /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }} && sudo tee /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy > /dev/null && sudo chmod 600 /opt/${{ steps.project.outputs.app_name }}/app/${{ steps.project.outputs.app_folder }}/.env.caddy"
           echo "✅ Arquivo .env.caddy criado com sucesso na instância (FILMBOT_DOMAIN=$DOMAIN)"
 
-      # A instância é destruída e recriada diariamente (ver
+      # A instância é destruída e recriada a cada ciclo de liga/desliga (fins de semana, ver
       # infra/lightsail_scheduler_trigger.tf), o que apaga o diretório de
       # certificados do Caddy junto com o disco raiz. Sem restaurar aqui antes
       # do restart, o Caddy pede um certificado novo do Let's Encrypt a cada

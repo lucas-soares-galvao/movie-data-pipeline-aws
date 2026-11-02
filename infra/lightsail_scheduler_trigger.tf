@@ -95,24 +95,32 @@ resource "aws_iam_role_policy" "lightsail_scheduler_invoke_api_destination" {
   })
 }
 
-# Agenda de desligar — 00:00 BRT diário (03:00 UTC)
+# Agenda de desligar — 00:00 BRT todos os dias (03:00 UTC). Na prática só desliga
+# de verdade no fim do sábado e do domingo (a instância só existe nos fins de
+# semana); de segunda a sexta é no-op (`terraform destroy -target` em recurso já
+# destruído passa sem erro). Fica diário de propósito, como rede de segurança:
+# um push em `main` na semana roda o `terraform apply` completo, que recria a
+# instância destruída — o desligar diário a derruba na próxima meia-noite em vez
+# de deixá-la ligada até o fim de semana.
 resource "aws_cloudwatch_event_rule" "lightsail_scheduler_stop" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                = local.envs.lightsail_scheduler_rule_stop_name
-  description         = "Dispara lightsail_scheduler.yml (action=stop) às 00:00 BRT"
+  description         = "Dispara lightsail_scheduler.yml (action=stop) às 00:00 BRT, todos os dias"
   schedule_expression = "cron(0 3 * * ? *)" # 00:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_ia
 }
 
-# Agenda de ligar — 08:00 BRT diário (11:00 UTC)
+# Agenda de ligar — 08:00 BRT só aos sábados e domingos (11:00 UTC). O FilmBot não
+# é usado na semana, então a instância só existe de sáb 08:00 a seg 00:00 BRT
+# (liga sáb e dom 08:00, desliga dom e seg 00:00).
 resource "aws_cloudwatch_event_rule" "lightsail_scheduler_start" {
   count = local.lightsail_prod_enabled ? 1 : 0
 
   name                = local.envs.lightsail_scheduler_rule_start_name
-  description         = "Dispara lightsail_scheduler.yml (action=start) às 08:00 BRT"
-  schedule_expression = "cron(0 11 * * ? *)" # 08:00 BRT
+  description         = "Dispara lightsail_scheduler.yml (action=start) às 08:00 BRT, sábado e domingo"
+  schedule_expression = "cron(0 11 ? * SAT,SUN *)" # 08:00 BRT, sábado e domingo
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.lightsail_ia
 }
