@@ -219,7 +219,7 @@ antigo por execução, via um ponteiro simples em SSM Parameter Store
 movie e tv): lê o último ano processado, avança 1, reinicia em 2000 ao ultrapassar `current_year - 3` (o limite é
 recalculado a cada execução a partir da data corrente, nunca hardcoded). Cobre o intervalo `[2000, current_year - 3]`
 que nenhum outro modo automático re-toca (o ano corrente e o anterior já são refeitos pelo cascade normal
-discover → ETL → Details). Regras EventBridge: `lambda_api_movie_rotation_weekly`/`..._tv_rotation_weekly`, sábados
+discover → ETL → Details). Regras EventBridge: `lambda_api_movie_rotation_weekly`/`..._tv_rotation_weekly`, domingos 10:00/10:05 UTC (1 h depois do changes)
 09:00/09:05 UTC.
 
 ---
