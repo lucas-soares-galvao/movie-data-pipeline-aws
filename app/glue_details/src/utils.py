@@ -909,13 +909,18 @@ def _assign_pt_source(
     target_column: str,
     native_column: str,
     pt_source_column: str,
+    detected_language_pt_column: str,
 ) -> pd.DataFrame:
     """
-    Grava em pt_source_column a origem do texto de target_column: "tmdb" (slot pt-BR do translations),
-    "llm" (traduzido) ou nulo (vazio ou igual à fonte, ex.: cópia direta de fonte já em português).
+    Grava em pt_source_column a origem do texto de target_column: "tmdb" (slot pt-BR do translations
+    ou cópia direta de uma fonte que o TMDB já entregou em português), "llm" (traduzido) ou nulo
+    (sem tradução em português: destino vazio, ou LLM falhou/devolveu a fonte não-pt; nesse caso
+    *_needs_translation fica verdadeiro).
 
     Linhas sem slot pt-BR neste run herdam a origem de previous_df quando o texto traduzido não mudou
-    (mantém a procedência do cache); as demais com texto diferente da fonte vêm do LLM.
+    (mantém a procedência do cache); as demais com texto diferente da fonte vêm do LLM. A cópia direta
+    (destino igual à fonte e idioma do destino "pt") é "tmdb": quando o LLM falha, o idioma do destino
+    recebe o da fonte (não-pt), então só a cópia direta satisfaz essa combinação.
     """
     df[pt_source_column] = None
     has_target = df[target_column].notna() & (df[target_column] != "")
@@ -940,6 +945,11 @@ def _assign_pt_source(
     target_text = df[target_column].fillna("").astype(str).str.strip().str.casefold()
     translated = remaining & has_source & df[pt_source_column].isna() & (target_text != source_text)
     df.loc[translated, pt_source_column] = "llm"
+    copied = (
+        remaining & has_source & df[pt_source_column].isna()
+        & (target_text == source_text) & (df[detected_language_pt_column] == "pt")
+    )
+    df.loc[copied, pt_source_column] = "tmdb"
     return df
 
 
@@ -1022,6 +1032,7 @@ def _add_translations_pt(
     return _assign_pt_source(
         df, previous_df, source_column="overview_en", target_column="overview_pt",
         native_column="overview_pt_tmdb", pt_source_column="overview_pt_source",
+        detected_language_pt_column="overview_detected_language_pt",
     )
 
 
@@ -1155,6 +1166,7 @@ def _add_translations_tagline_pt(
     return _assign_pt_source(
         df, previous_df, source_column="tagline", target_column="tagline_pt",
         native_column="tagline_pt_tmdb", pt_source_column="tagline_pt_source",
+        detected_language_pt_column="tagline_detected_language_pt",
     )
 
 

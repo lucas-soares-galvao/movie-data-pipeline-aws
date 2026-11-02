@@ -3590,9 +3590,12 @@ class TestLabelLanguagesFromTmdb:
 class TestAssignPtSource:
     @staticmethod
     def _atribuir(df, previous_df=None):
+        if "overview_detected_language_pt" not in df.columns:
+            df["overview_detected_language_pt"] = None
         return u._assign_pt_source(
             df, previous_df, source_column="overview_en", target_column="overview_pt",
             native_column="overview_pt_tmdb", pt_source_column="overview_pt_source",
+            detected_language_pt_column="overview_detected_language_pt",
         )
 
     def test_tmdb_quando_veio_do_slot_pt_br(self):
@@ -3610,6 +3613,28 @@ class TestAssignPtSource:
             "overview_pt_tmdb": [None, None, None, None],
         })
         assert self._atribuir(df)["overview_pt_source"].tolist() == [None, None, None, None]
+
+    def test_tmdb_quando_copia_direta_de_fonte_ja_em_portugues(self):
+        df = pd.DataFrame({
+            "overview_en": ["Já em português"], "overview_pt": [" já em português "],
+            "overview_pt_tmdb": [None], "overview_detected_language_pt": ["pt"],
+        })
+        assert self._atribuir(df)["overview_pt_source"].tolist() == ["tmdb"]
+
+    def test_nulo_quando_llm_devolveu_a_fonte_nao_portuguesa(self):
+        df = pd.DataFrame({
+            "overview_en": ["Failed"], "overview_pt": ["Failed"],
+            "overview_pt_tmdb": [None], "overview_detected_language_pt": ["en"],
+        })
+        assert self._atribuir(df)["overview_pt_source"].tolist() == [None]
+
+    def test_copia_direta_nao_sobrescreve_origem_herdada_do_cache(self):
+        df = pd.DataFrame({
+            "id": [1], "overview_en": ["Já em português"], "overview_pt": ["Já em português"],
+            "overview_pt_tmdb": [None], "overview_detected_language_pt": ["pt"],
+        })
+        previous = pd.DataFrame({"id": [1], "overview_pt": ["Já em português"], "overview_pt_source": ["llm"]})
+        assert self._atribuir(df, previous)["overview_pt_source"].tolist() == ["llm"]
 
     def test_heranca_da_origem_do_registro_anterior_quando_o_texto_nao_mudou(self):
         df = pd.DataFrame({
@@ -3665,6 +3690,29 @@ class TestAddTranslationsOrigemEIdioma:
         assert result["overview_detected_language_pt"].iloc[0] == "pt"
         assert result["overview_translation_attempts"].iloc[0] == 1
 
+    def test_tagline_copiada_de_fonte_em_portugues_tem_origem_tmdb(self):
+        df = pd.DataFrame({
+            "id": [1], "tagline": ["Um slogan"], "tagline_pt_tmdb": [None], "tagline_en_tmdb": [None],
+        })
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = u._add_translations_tagline_pt(df, detect_fn=MagicMock(return_value="pt"))
+        mock_traduzir.assert_not_called()
+        assert result["tagline_pt_source"].iloc[0] == "tmdb"
+
+    @pytest.mark.parametrize("llm_traduz", [True, False])
+    def test_pendente_so_quando_ha_fonte_e_nenhuma_origem(self, llm_traduz):
+        """needs_translation e pt_source nulo coincidem: o sinal de pendência é o mesmo que "ninguém produziu pt"."""
+        df = pd.DataFrame({
+            "id": [1, 2], "overview_en": ["Falhou", None], "overview_pt_tmdb": [None, None],
+            "overview_en_tmdb": ["Falhou", None],
+        })
+        traduzir = (lambda t, **kw: f"{t}_PT") if llm_traduz else (lambda t, **kw: t)
+        with patch("src.utils.translate_text_llm", side_effect=traduzir):
+            result = u._add_translations_pt(df, detect_fn=MagicMock(return_value=None))
+        com_fonte = result["overview_en"].notna() & (result["overview_en"] != "")
+        pendente = result["overview_needs_translation"].astype(bool)
+        assert pendente.tolist() == (com_fonte & result["overview_pt_source"].isna()).tolist()
+
     def test_overview_com_traducao_que_falha_fica_sem_origem_e_retentavel(self):
         df = pd.DataFrame({
             "id": [1], "overview_en": ["Falhou"], "overview_pt_tmdb": [None], "overview_en_tmdb": ["Falhou"],
@@ -3701,7 +3749,9 @@ class TestAddTranslationsOrigemEIdioma:
             result = u._add_translations_pt(df, detect_fn=lambda t: "pt" if t else None)
         translate_fn.assert_not_called()
         assert result["overview_pt"].iloc[0] == "Já em português"
-        assert result["overview_pt_source"].isna().all()
+        # Cópia direta de texto que o TMDB já entregou em português: o LLM só detectou o idioma.
+        assert result["overview_pt_source"].iloc[0] == "tmdb"
+        assert bool(result["overview_needs_translation"].iloc[0]) is False
 
     def test_origem_herdada_do_cache_quando_o_texto_traduzido_e_reaproveitado(self):
         df = pd.DataFrame({
