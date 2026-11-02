@@ -2,7 +2,7 @@
 
 ## O que é
 
-Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 8 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details/Glue AGG rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (fire-and-forget, via `shared_utils.triggers.trigger_glue_job`, exclusivo do runtime Spark do Glue — não pode ser internalizado). O Glue AGG (query Athena de unificação + escrita da tabela SPEC) roda em processo, uma única vez, ao final de cada script exceto `backfill_data_quality.py` — ver `backfill_shared.trigger_agg_locally` e a seção "Glue AGG" abaixo. Todos os 8 scripts também notificam por e-mail (SNS) quando terminam com sucesso total — ver `backfill_shared.notify_backfill_success` e a seção "Notificação de sucesso" abaixo.
+Conjunto de scripts Python para operações de backfill sob demanda. Cada script re-processa dados históricos de uma etapa específica do pipeline. Nenhum dos 7 scripts invoca a Lambda API — a coleta TMDB e a transformação equivalente ao Glue ETL/Glue Details/Glue AGG rodam diretamente no processo do script; o único recurso AWS gerenciado ainda acionado como job é o Glue Data Quality (fire-and-forget, via `shared_utils.triggers.trigger_glue_job`, exclusivo do runtime Spark do Glue — não pode ser internalizado). O Glue AGG (query Athena de unificação + escrita da tabela SPEC) roda em processo, uma única vez, ao final de cada script exceto `backfill_data_quality.py` — ver `backfill_shared.trigger_agg_locally` e a seção "Glue AGG" abaixo. Todos os 7 scripts também notificam por e-mail (SNS) quando terminam com sucesso total — ver `backfill_shared.notify_backfill_success` e a seção "Notificação de sucesso" abaixo.
 
 ## Por que existe
 
@@ -16,17 +16,16 @@ O pipeline mensal processa apenas dados novos (delta). Quando é necessário re-
 | `backfill_referencias.py` | Atualiza tabelas de referência (genre, configuration, watch_providers_ref) para movie e tv; roda a coleta TMDB e a transformação equivalente ao Glue ETL diretamente no processo do script (sem acionar Lambda nem o job Glue — ver `app/lambda_api/lambda_api.md`, seção "Backfill manual"); não depende de ano — `configuration` (países/idiomas) traduz via LLM. Dispara o Glue Data Quality uma vez por tabela gravada. Grava checkpoint por tabela (6 unidades `"{media_type}:{table_type}"`) para retomar depois de token expirado sem refazer a tradução já concluída | Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, litellm |
 | `backfill_enriquecimento.py` | Re-busca detalhes com campos enriquecidos (elenco, diretor, keywords; também usado para popular `next_episode_air_date`/`season_air_dates` — campos de próximo episódio/temporada de série — no catálogo já existente, já que são colunas novas ausentes em linha gravada antes da mudança); roda a lógica de enriquecimento do Glue Details diretamente no processo do script (sem acionar o job Glue — ver `run_details_and_watch_providers_for_year` em `app/glue_details/src/utils.py`), traduzindo via LLM. Reprocessamento total: re-busca os IDs do discover **e** os IDs já existentes na partição de details do ano (`refresh_existing_ids=True`), para nenhum registro ficar defasado por já ter saído do discover. Dispara o Glue Data Quality uma única vez ao final de todo o backfill (não por unidade) | Athena, Secrets Manager, TMDB API, S3 (direto) | awswrangler, pandas, requests, litellm Com `BACKFILL_REPROCESS_ALL=true` ("Reprocessar tudo") ignora o cache de tradução e retraduz o que não é nativo pt-BR do TMDB |
 | `backfill_data_quality.py` | Aciona validação de qualidade para todas as tabelas — único `table_group` que **não** roda o Glue AGG ao final (não escreve dado novo, só valida) | Glue Data Quality | — |
-| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via LLM (OpenRouter), gravando `overview_pt_source`/`tagline_pt_source = "llm"` nas linhas que traduz; com a opção "Zerar tentativas" (`BACKFILL_RESET_ATTEMPTS`) zera `*_translation_attempts` das linhas ainda pendentes para retentá-las uma vez; não gera collection_name_pt, que depende da API do TMDB; só traduz o que está pendente — não retraduz o que já tem tradução (para isso, use a opção "Reprocessar tudo" em `historico`/`detalhes_e_providers`/`referencias`), e o Glue AGG final regrava a SPEC | S3 (direto) | awswrangler, pandas, litellm |
-| `backfill_rename_colunas.py` | Renomeia colunas nos parquets já gravados no S3 — hoje só watch_providers (`updated_date` → `processed_date`) — sem chamar a API do TMDB, cobrindo inclusive IDs que já saíram do discover atual. O rename das colunas de idioma do discover (`overview_detected_language`/`overview_translated_pt_br`) saiu do script: essas colunas deixaram de ser gravadas e lidas. Rodar logo após o deploy de um rename de coluna; `data_quality` migra rodando `backfill_data_quality.py` | S3 (direto) | awswrangler, pandas |
+| `backfill_traducao.py` | Traduz overview, tagline e keywords para português via LLM (OpenRouter), gravando `overview_pt_source`/`tagline_pt_source = "llm"` nas linhas que traduz; com o modo `zerar_tentativas` (`BACKFILL_RESET_ATTEMPTS`) zera `*_translation_attempts` das linhas ainda pendentes para retentá-las uma vez; não gera collection_name_pt, que depende da API do TMDB; só traduz o que está pendente — não retraduz o que já tem tradução (para isso, use o modo `reprocessar_tudo` em `historico`/`referencias`), e o Glue AGG final regrava a SPEC | S3 (direto) | awswrangler, pandas, litellm |
 | `backfill_changes.py` | Dispara sob demanda o mesmo modo changes que o cron semanal de domingo já aciona automaticamente — 2 content_types (movie, tv), janela sempre `[domingo passado, sábado de ontem]` (não configurável); roda a coleta de IDs mudados e o enriquecimento diretamente no processo do script (sem acionar Lambda nem o job Glue Details — ver `collect_changes_data`/`process_changed_ids` em `app/glue_details/glue_details.md`, seção "Reuso fora do Glue"), traduzindo via LLM. Dispara o Glue Data Quality uma única vez ao final por tabela (não por ano); útil quando o cron falha ou é pulado | Athena, Secrets Manager, TMDB API, S3 (direto), Glue Data Quality | awswrangler, pandas, requests, litellm |
 | `backfill_historico.py` | Encadeia `backfill_discover.py` e, na sequência, `backfill_enriquecimento.py`, chamando o `main()` de cada um diretamente neste processo (nunca via subprocess) — simula fora do EventBridge o mesmo encadeamento `discover → detalhes/providers` do pipeline automático. Não introduz variável de ambiente nova (união das exigidas pelos dois) nem reimplementa nenhuma lógica de coleta/transformação — só orquestra a ordem. Com `BACKFILL_REPROCESS_ALL=true` insere o estágio `poda` (órfãos de details/watch providers) entre os dois. Mantém um checkpoint próprio (`TABLE_GROUP="historico"` interno, unidades `"discover"`/`"enriquecimento"`) por cima dos dois checkpoints internos, para não redigitar um estágio já concluído numa retomada. Se `discover` terminar com falha soft, `enriquecimento` não roda. É um reprocessamento total: o `discover` limpa o SOR do ano antes de coletar e o `enriquecimento` re-busca também os IDs já existentes fora do discover. Herda os 2 disparos de Glue Data Quality dos dois scripts (não dispara um terceiro consolidado) | Secrets Manager, Athena, TMDB API, S3 (direto), Glue Data Quality | mesmas de `backfill_discover.py` + `backfill_enriquecimento.py` |
 
 `backfill_shared.py` não é executado diretamente — é um módulo compartilhado
-por todos os 8 scripts acima: leitura de variável de ambiente obrigatória,
+por todos os 7 scripts acima: leitura de variável de ambiente obrigatória,
 setup de logging, leitura do range de anos, wrapper de
 retry do exit code 75, notificação por e-mail de sucesso
 (`notify_backfill_success`, ver seção "Notificação de sucesso" abaixo) e,
-para os 5 scripts que iteram por ano diretamente (todos exceto
+para os 4 scripts que iteram por ano diretamente (todos exceto
 `backfill_referencias.py`, `backfill_changes.py` e `backfill_historico.py`),
 o checkpoint de retomada automática (ver seção "Retomada automática"
 abaixo). `backfill_historico.py` não itera por ano diretamente — delega essa
@@ -93,21 +92,23 @@ etapas do zero: recoleta do discover, rebusca de details/watch providers no TMDB
 - **`processed_date`**: tudo o que é rebuscado/regravado (discover, details, watch providers, referências e a
   SPEC unificada) passa a ter a data do run; só os registros não rebuscados mantêm a data antiga.
 
-No workflow `backfill.yml` é o input booleano `reprocessar_tudo`, que só vale para
-`historico`, `detalhes_e_providers` e `referencias` (um passo de validação falha cedo nos demais — em
+No workflow `backfill.yml` é o modo `reprocessar_tudo` do input `modo` (choice `normal | reprocessar_tudo |
+zerar_tentativas`), que só vale para `historico` e `referencias` (o passo `Validate mode` falha cedo nos demais — em
 `traducao` ele poderia sobrescrever traduções nativas: nas linhas anteriores a `*_pt_source` o parquet não distingue as nativas das geradas por LLM).
-Para `traducao` existe, no lugar dele, o input booleano `zerar_tentativas` (env `BACKFILL_RESET_ATTEMPTS`, só vale para `traducao` e é
-exclusivo com `reprocessar_tudo`): zera `*_translation_attempts` das linhas com `*_needs_translation` verdadeiro de overview, tagline e
+O workflow não oferece `discover` nem `detalhes_e_providers` como `table_group`: eles só rodam como estágios do `historico`
+(os scripts seguem existindo e sendo chamados por ele).
+Para `traducao` existe, no lugar dele, o modo `zerar_tentativas` (env `BACKFILL_RESET_ATTEMPTS`, só vale para `traducao`; por ser o mesmo
+input, é exclusivo com `reprocessar_tudo` por construção): zera `*_translation_attempts` das linhas com `*_needs_translation` verdadeiro de overview, tagline e
 keywords e as retenta uma vez — para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o
 backfill normal não retenta mais. Não retraduz o que já está traduzido. Usa checkpoint próprio (`"mode": "reset_attempts"`). Substitui o
 antigo `reset_attempts`, que reparava só o texto de erro legado.
 
-Os 5 scripts que iteram por ano (`backfill_discover.py`, `backfill_enriquecimento.py`,
-`backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`) também exigem:
+Os 4 scripts que iteram por ano (`backfill_discover.py`, `backfill_enriquecimento.py`,
+`backfill_data_quality.py`, `backfill_traducao.py`) também exigem:
 
 | Variável | Descrição |
 |---|---|
-| `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`, `rename_colunas`) |
+| `TABLE_GROUP` | Identifica o backfill para o checkpoint de retomada (`discover`, `detalhes_e_providers`, `data_quality`, `traducao`) |
 | `S3_BUCKET_TEMP` | Bucket onde o checkpoint é armazenado (dados temporários, não os dados reais do pipeline) |
 
 `backfill_discover.py` exige adicionalmente `S3_BUCKET_SOR` (JSON bruto de
@@ -133,10 +134,6 @@ escrever os parquets reais de `tb_discover_movie/tv_tmdb` e
 `tb_details_movie/tv_tmdb` — separado do checkpoint, que fica no bucket TEMP
 como os demais.
 
-`backfill_rename_colunas.py` também exige `S3_BUCKET_SOT` (mesmo motivo) e,
-adicionalmente, `TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV` e
-`TABLE_WATCH_PROVIDERS_MOVIE`/`TABLE_WATCH_PROVIDERS_TV`.
-
 `backfill_historico.py` exige `AWS_REGION` e `S3_BUCKET_TEMP` diretamente (para
 o próprio checkpoint de estágio) e, indiretamente, todas as variáveis de
 `backfill_discover.py` e `backfill_enriquecimento.py` (lidas por cada `main()`
@@ -160,8 +157,8 @@ diretamente (os demais só leem/escrevem parquet no SOT).
 Todo script exceto `backfill_data_quality.py` exige adicionalmente as 5
 variáveis da chamada ao Glue AGG (`S3_BUCKET_SPEC`, `S3_PREFIX_SPEC`,
 `DB_UNIFIED`, `TABLE_DISCOVER_UNIFIED`, `ENVIRONMENT`) — ver seção "Glue AGG"
-abaixo. `backfill_traducao.py` e `backfill_rename_colunas.py` também passam a
-exigir `GLUE_DATA_QUALITY_JOB_NAME` por causa disso (nenhum dos dois disparava
+abaixo. `backfill_traducao.py` também passa a
+exigir `GLUE_DATA_QUALITY_JOB_NAME` por causa disso (ele não disparava
 DQ antes; a chamada ao AGG dispara o DQ sobre a tabela unificada ao final).
 
 Todos os backfills que traduzem ou detectam idioma (`backfill_discover.py`,
@@ -176,7 +173,7 @@ de API é lida do secret unificado via `FILMBOT_SECRET_ARN` (ver
 `TMDB_SECRET_ARN`. Todos rodam suas partições dentro do mesmo processo Python
 — nenhum invoca a Lambda API.
 
-Todos os 8 scripts aceitam opcionalmente `SNS_TOPIC_ARN_BACKFILL_SUCCESS` —
+Todos os 7 scripts aceitam opcionalmente `SNS_TOPIC_ARN_BACKFILL_SUCCESS` —
 ver seção "Notificação de sucesso" abaixo. Ausente, o script só loga um
 `WARNING` e segue normalmente (não é obrigatória).
 
@@ -196,7 +193,7 @@ O log do Actions de um repositório público é público (e o step summary tamb�
 
 ## Retomada automática (token expirado)
 
-Os 5 scripts acima gravam, a cada unidade de trabalho concluída (ano+tipo, ou
+Os 4 scripts que iteram por ano gravam, a cada unidade de trabalho concluída (ano+tipo, ou
 tabela+ano), um checkpoint em
 `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{TABLE_GROUP}.json` (ver
 `scripts/backfill_shared.py`). Se a credencial AWS expirar no meio do
@@ -311,7 +308,7 @@ demais variáveis do workflow.
 
 ## Notificação de sucesso: e-mail via SNS ao final
 
-Todos os 8 scripts publicam no tópico SNS `backfill-success-notifications`
+Todos os 7 scripts publicam no tópico SNS `backfill-success-notifications`
 (`infra/sns_topics.tf`, e-mail configurado por `var.backfill_notification_email`)
 quando terminam com sucesso total — via `backfill_shared.notify_backfill_success`,
 chamada direta de `boto3.client("sns").publish(...)` (sem EventBridge no meio,
@@ -329,7 +326,7 @@ Sempre chamada no MESMO ponto onde cada script já considera o backfill
 antes de uma falha propagar ou de um `return` antecipado (`backfill_discover.py`/
 `backfill_enriquecimento.py`/`backfill_changes.py`/`backfill_historico.py` só
 notificam no ramo sem `failures`; `backfill_referencias.py`/
-`backfill_traducao.py`/`backfill_rename_colunas.py`/`backfill_data_quality.py`
+`backfill_traducao.py`/`backfill_data_quality.py`
 abortam antes desse ponto se algo propagar). `backfill_discover.py` e
 `backfill_enriquecimento.py` também têm a notificação suprimida junto com
 `trigger_agg=False` (chamada de `backfill_historico.py`) — só o `historico`
@@ -349,11 +346,11 @@ completo.
 Depois que o loop de retry termina com sucesso (`exit 0`), o workflow
 (`.github/workflows/backfill.yml`) escreve no step summary do GitHub
 Actions o resumo real do que o script fez, extraído do log via `grep` (todos
-os 8 scripts usam o mesmo formato de log, `backfill_shared.py:58-63`:
+os 7 scripts usam o mesmo formato de log, `backfill_shared.py:58-63`:
 `"%(asctime)s %(levelname)s %(message)s"`, com `%(asctime)s` em horário de
 São Paulo (`DD/MM/YYYY HH:MM:SS`) via `Formatter.converter`/`datefmt`
 customizados em `backfill_shared.py`). Isso importa porque `exit 0` **não**
-garante que toda unidade teve sucesso para 5 dos 8 scripts:
+garante que toda unidade teve sucesso para 5 dos 7 scripts:
 `backfill_discover.py`, `backfill_enriquecimento.py` e `backfill_changes.py`
 são soft-fail-continue (logam `ERROR` por unidade/content_type que falhou,
 mas nunca chamam `sys.exit`), `backfill_data_quality.py` é fire-and-forget

@@ -92,7 +92,7 @@ def setup_logging() -> logging.Logger:
     alimenta o step summary.
 
     Import local de shared_utils.secret_redaction (não no topo do módulo): mesmo racional de
-    resolve_pending_units_by_year — backfill_data_quality.py/backfill_rename_colunas.py não colocam
+    resolve_pending_units_by_year — backfill_data_quality.py não coloca
     app/shared_src em sys.path, então uma dependência no topo quebraria o `import backfill_shared`.
     """
     sys.path.insert(0, str(_REPO_ROOT / "app" / "shared_src"))
@@ -217,7 +217,7 @@ def _checkpoint_key(table_group: str) -> str:
 
 
 def reprocess_all_enabled() -> bool:
-    """Indica se o run é um "Reprocessar tudo" (input `reprocessar_tudo` do workflow).
+    """Indica se o run é um "Reprocessar tudo" (modo `reprocessar_tudo` do input `modo` do workflow).
 
     O workflow exporta o input como BACKFILL_REPROCESS_ALL ("true"/"false"). Lida em um lugar só
     para os scripts e o checkpoint concordarem sobre o modo do run.
@@ -226,7 +226,7 @@ def reprocess_all_enabled() -> bool:
 
 
 def reset_attempts_enabled() -> bool:
-    """Indica se o run é um "Zerar tentativas" (input `zerar_tentativas` do workflow, só `traducao`).
+    """Indica se o run é um "Zerar tentativas" (modo `zerar_tentativas` do input `modo` do workflow, só `traducao`).
 
     O workflow exporta o input como BACKFILL_RESET_ATTEMPTS ("true"/"false"). Lida em um lugar só
     para o script e o checkpoint concordarem sobre o modo do run.
@@ -393,10 +393,10 @@ def resolve_pending_units_by_year(
     entre backfill_discover.py e backfill_enriquecimento.py (python:S1192 do SonarQube).
 
     Import local de shared_utils.api_client (não no topo do módulo): mesmo racional de
-    trigger_agg_locally logo abaixo — backfill_data_quality.py e
-    backfill_rename_colunas.py importam backfill_shared sem nunca ter inserido
-    app/shared_src em sys.path (não chamam esta função), então uma dependência de
-    shared_utils no topo do módulo quebraria o `import backfill_shared` deles.
+    trigger_agg_locally logo abaixo — backfill_data_quality.py
+    importa backfill_shared sem nunca ter inserido
+    app/shared_src em sys.path (não chama esta função), então uma dependência de
+    shared_utils no topo do módulo quebraria o `import backfill_shared` dele.
 
     Args:
         label:          Nome do backfill para a mensagem de log (ex.: "discover",
@@ -489,8 +489,8 @@ def report_stale_processed_date(
     run_with_retry_exit). Um run que atravessa a meia-noite (horário de São Paulo) pode listar
     registros do dia anterior como não rebuscados: falso positivo, nunca falso negativo.
 
-    Import local de awswrangler/pandas (não no topo do módulo): backfill_data_quality.py e
-    backfill_rename_colunas.py importam backfill_shared sem instalar essas dependências.
+    Import local de awswrangler/pandas (não no topo do módulo): backfill_data_quality.py
+    importa backfill_shared sem instalar essas dependências.
 
     Args:
         tables:         Tabelas de details do SOT (movie e tv) a verificar.
@@ -661,7 +661,7 @@ def notify_backfill_success(table_group: str, summary: str) -> None:
     Args:
         table_group: identifica o backfill no corpo/logs (o assunto do email é fixo,
             sem table_group — quem identifica o backfill é o corpo da mensagem, que já
-            nomeia o tipo em todos os 8 scripts, ex.: "Backfill de discover concluído...").
+            nomeia o tipo em todos os 7 scripts, ex.: "Backfill de discover concluído...").
         summary: corpo da mensagem — reaproveita a mesma string já logada como
             "concluído" pelo script chamador.
     """
