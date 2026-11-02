@@ -50,7 +50,8 @@ def _s3_client_sem_checkpoint() -> MagicMock:
 
 
 class TestOrigemDaTraducao:
-    """overview_pt_source/tagline_pt_source = "llm" só nas linhas que o script realmente traduz."""
+    """overview_pt_source/tagline_pt_source = "llm" nas linhas que o script traduz e "tmdb" nas que ele
+    copia de uma fonte já em português; falha do tradutor fica sem origem."""
 
     def test_overview_traduzido_recebe_origem_llm_e_cria_a_coluna(self):
         df = pd.DataFrame({"overview_en": ["Overview"]})
@@ -70,13 +71,27 @@ class TestOrigemDaTraducao:
         assert resultado["overview_pt_source"].iloc[0] == "tmdb"
         assert pd.isna(resultado["overview_pt_source"].iloc[1])
 
-    def test_copia_direta_de_fonte_ja_em_portugues_nao_vira_llm(self):
+    def test_copia_direta_de_fonte_ja_em_portugues_tem_origem_tmdb_e_nao_llm(self):
         df = pd.DataFrame({"overview_en": ["Já em português"]})
         with patch("backfill_traducao.translate_text_llm") as mock_translate:
             resultado, _ = bt._add_translations_pt(df, detect_fn=lambda t: "pt")
         mock_translate.assert_not_called()
         assert resultado["overview_pt"].iloc[0] == "Já em português"
+        assert resultado["overview_pt_source"].tolist() == ["tmdb"]
+
+    def test_tagline_copiada_de_fonte_ja_em_portugues_tem_origem_tmdb(self):
+        df = pd.DataFrame({"tagline": ["Já em português"]})
+        with patch("backfill_traducao.translate_text_llm") as mock_translate:
+            resultado, _ = bt._add_translations_tagline_pt(df, detect_fn=lambda t: "pt")
+        mock_translate.assert_not_called()
+        assert resultado["tagline_pt_source"].tolist() == ["tmdb"]
+
+    def test_falha_do_tradutor_com_destino_em_ingles_fica_sem_origem(self):
+        df = pd.DataFrame({"overview_en": ["Falhou"]})
+        with patch("backfill_traducao.translate_text_llm", side_effect=lambda t: t):  # tradutor falha
+            resultado, _ = bt._add_translations_pt(df, detect_fn=lambda t: "en")
         assert resultado["overview_pt_source"].isna().all()
+        assert bool(resultado["overview_needs_translation"].iloc[0]) is True
 
     def test_tagline_traduzida_recebe_origem_llm(self):
         df = pd.DataFrame({"tagline": ["A tagline"]})

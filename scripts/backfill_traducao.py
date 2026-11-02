@@ -140,26 +140,30 @@ def _reset_attempts_for_pending(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _mark_llm_source(
+def _mark_source(
     df: pd.DataFrame,
     previous_target: pd.Series,
     source_column: str,
     target_column: str,
     pt_source_column: str,
+    detected_language_pt_column: str,
 ) -> pd.DataFrame:
-    """Grava "llm" em pt_source_column nas linhas cujo target_column foi traduzido nesta execução.
+    """Grava a origem em pt_source_column nas linhas cujo target_column foi preenchido nesta execução.
 
-    "Traduzido" = texto novo preenchido, diferente do que havia antes (previous_target) e diferente
-    da fonte — a cópia direta de uma fonte já em português e a falha do tradutor (que devolve a
-    fonte) não contam. O script lê só o S3 e não sabe se um texto veio do slot pt-BR do TMDB; as
-    linhas que ele traduz são as pendentes, ou seja, nunca as nativas já rotuladas "pt" pelo
-    glue_details. Linhas que ele não traduz mantêm a origem que já tinham."""
+    "llm" = texto novo, diferente do que havia antes (previous_target) e da fonte. "tmdb" = cópia
+    direta de uma fonte que o TMDB já entregou em português: texto novo igual à fonte e idioma do
+    destino "pt" (a falha do tradutor também devolve a fonte, mas com o idioma não-pt, e fica sem
+    origem). O script lê só o S3 e não sabe se um texto veio do slot pt-BR do TMDB; as linhas que ele
+    traduz são as pendentes, ou seja, nunca as nativas já rotuladas "pt" pelo glue_details. Linhas que
+    ele não preenche mantêm a origem que já tinham."""
     if pt_source_column not in df.columns:
         df[pt_source_column] = None
     before = previous_target.fillna("")
     after = df[target_column].fillna("")
     source = df[source_column].fillna("")
-    df.loc[(after != "") & (after != before) & (after != source), pt_source_column] = "llm"
+    filled = (after != "") & (after != before)
+    df.loc[filled & (after != source), pt_source_column] = "llm"
+    df.loc[filled & (after == source) & (df[detected_language_pt_column] == "pt"), pt_source_column] = "tmdb"
     return df
 
 
@@ -172,8 +176,8 @@ def _add_translations_pt(
     overview_pt, overview_pt_source, overview_translation_attempts e overview_needs_translation
     aos registros com overview_en preenchido — ver resolve_pt_translation em
     shared_utils/traducao.py para a regra de elegibilidade e o teto de
-    tentativas. overview_pt_source recebe "llm" nas linhas traduzidas aqui
-    (ver _mark_llm_source)."""
+    tentativas. overview_pt_source recebe "llm" nas linhas traduzidas aqui e "tmdb" nas copiadas
+    de uma fonte já em português (ver _mark_source)."""
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("backfill_traducao.translate_text_llm", ...) nos testes continue
     # funcionando quando o chamador não passa um translate_fn explícito.
@@ -196,7 +200,9 @@ def _add_translations_pt(
         needs_translation_column="overview_needs_translation",
         sample_id_column="id",
     )
-    return _mark_llm_source(df, previous_target, "overview_en", "overview_pt", "overview_pt_source"), success
+    return _mark_source(
+        df, previous_target, "overview_en", "overview_pt", "overview_pt_source", "overview_detected_language_pt",
+    ), success
 
 
 def _add_translations_tagline_pt(
@@ -228,7 +234,9 @@ def _add_translations_tagline_pt(
         needs_translation_column="tagline_needs_translation",
         sample_id_column="id",
     )
-    return _mark_llm_source(df, previous_target, "tagline", "tagline_pt", "tagline_pt_source"), success
+    return _mark_source(
+        df, previous_target, "tagline", "tagline_pt", "tagline_pt_source", "tagline_detected_language_pt",
+    ), success
 
 
 def _add_translations_keywords_pt(

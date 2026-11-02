@@ -196,7 +196,9 @@ def _pending_mask(
     nem de espaços nas pontas (assim "sexy" -> "Sexy" continua não alterado). Se o texto mudou,
     alguém (o TMDB ou o LLM) o traduziu: a dúvida do detector de idioma — que erra em textos
     curtos, como listas de keywords ("drama turco" detectado como "tr") — não deve reabrir a
-    pendência. Destino vazio ou igual à fonte continuam pendentes. Só afeta o sinal/log: quais
+    pendência. Destino vazio ou igual à fonte continuam pendentes. Na prática, para overview e
+    tagline, pendente equivale a "fonte preenchida e *_pt_source nulo" (nenhum dos dois, TMDB ou
+    LLM, produziu texto em português). Só afeta o sinal/log: quais
     linhas vão ao tradutor (elegibilidade) continua sendo decidido pelo idioma detectado.
     """
     has_source = df[source_column].notna() & (df[source_column] != "")
