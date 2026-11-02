@@ -1912,9 +1912,14 @@ def run_details_and_watch_providers_for_year(
         )
 
     if trigger_dq:
-        trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=year)
-        time.sleep(5)
-        trigger_glue_job(dq_job_name, TABLE_NAME=table_watch_providers, DATABASE=database, YEAR=year)
+        # Um único disparo com as duas tabelas (mesmo banco, mesmo ano): o DQ paga o overhead
+        # fixo de startup do Spark uma vez só e avalia cada tabela em sequência.
+        trigger_glue_job(
+            dq_job_name,
+            TABLE_NAME=f"{table_details},{table_watch_providers}",
+            DATABASE=database,
+            YEAR=year,
+        )
 
     # Ao final do ciclo de cada media_type, remove duplicatas intra-partição nas três tabelas
     # (movies e tvs reparados separadamente em seus respectivos runs de end_year).

@@ -11,13 +11,10 @@
 # Discover = busca na API TMDB os filmes/séries mais populares.
 # Roda semanalmente (sábados) para capturar novos lançamentos e atualizações de popularidade.
 #
-# Mesmo dia do rotation refresh (sábado), 30 min depois (09:30/09:35 UTC) —
-# mesmo padrão de gap já usado entre semanal e mensal, evita
-# ConcurrentModificationException no Glue Catalog quando dois jobs Details
-# tocam a mesma tabela (partições/anos diferentes: rotation cobre catálogo
-# antigo, discover cobre o ano corrente — nunca colidem). Deixa domingo livre
-# só para o changes, que assim roda isolado, sem nenhum outro job Glue
-# Details no mesmo dia.
+# Sábado roda só o discover (09:30/09:35 UTC): o rotation refresh foi para o domingo,
+# depois do changes, para dividir a carga entre os dois dias — no sábado o Glue
+# Details chegava a 4 runs simultâneos (rotation ×2 + discover ×2), exatamente o
+# max_concurrent_runs, sem nenhuma folga.
 # =============================================================================
 
 # Agenda semanal para discover de FILMES — sábados às 06:30 BRT (09:30 UTC)
@@ -114,13 +111,14 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_weekly" {
 # independente do ano de lançamento. Só refresca títulos já existentes no
 # catálogo (nunca expande via discover) — ver app/glue_details/src/utils.py.
 #
-# Roda no dia seguinte ao discover semanal (sábado → domingo), sozinho — sem
-# nenhum outro job Glue Details no mesmo dia. Um dia inteiro de folga elimina
-# de vez qualquer risco de colisão de partição (changes pode tocar o ano
-# corrente, a mesma partição que o discover escreve), além de garantir que o
-# catálogo já esteja atualizado com os títulos novos da semana antes do
-# changes rodar — um título recém-descoberto que já tenha mudança reportada
-# no mesmo ciclo é coberto.
+# Roda no dia seguinte ao discover semanal (sábado → domingo), às 09:00/09:05 UTC.
+# Um dia inteiro de folga em relação ao discover elimina de vez qualquer risco de
+# colisão de partição (changes pode tocar o ano corrente, a mesma partição que o
+# discover escreve), além de garantir que o catálogo já esteja atualizado com os
+# títulos novos da semana antes do changes rodar — um título recém-descoberto que
+# já tenha mudança reportada no mesmo ciclo é coberto. O rotation refresh roda no
+# mesmo domingo, 1 h depois (10:00/10:05 UTC), nunca ao mesmo tempo: o changes pode
+# tocar qualquer ano, inclusive os do rotation.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_changes_weekly" {
@@ -188,7 +186,7 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_changes_weekly" {
 }
 
 # =============================================================================
-# REGRA SEMANAL — Rotation Refresh (Catálogo Antigo, Sábados)
+# REGRA SEMANAL — Rotation Refresh (Catálogo Antigo, Domingos)
 # =============================================================================
 # Fecha o gap de staleness que o /changes da TMDB não cobre (nem toda mudança
 # real é reportada lá): força o refresh de 1 ano do catálogo antigo
@@ -197,25 +195,27 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_changes_weekly" {
 # app/lambda_api/main.py) — sem checkpoint de loop, sem ajuste manual de ano
 # em ano. Ciclo completo em ~24 semanas.
 #
-# Roda aos sábados (09:00/09:05 UTC), 30 min antes do discover semanal
-# (09:30/09:35, mesmo dia) — só toca anos ≤ current_year - 3, uma faixa que
-# nunca colide com a partição que o discover escreve (ano corrente), mesmo
-# padrão de gap já usado entre semanal e mensal. O changes fica isolado no
-# domingo, sem tocar nenhum job deste dia.
+# Roda aos domingos às 10:00/10:05 UTC (07:00/07:05 BRT), 1 h depois do changes
+# (09:00/09:05 UTC). O changes pode tocar qualquer ano — inclusive o que o
+# rotation está refrescando —, então o gap evita duas escritas simultâneas na
+# mesma tabela/partição (ConcurrentModificationException no Glue Catalog): o
+# Details tem timeout de 30 min, logo o changes termina no máximo ~09:35 UTC.
+# O rotation só toca anos ≤ current_year - 3, faixa que nunca colide com o
+# discover de sábado (ano corrente). Termina antes do Glue AGG (11:00 UTC).
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_rotation_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-rotation-weekly-${var.env}"
-  description         = "Dispara a Lambda em modo rotation refresh para filmes (semanal, sábados)"
-  schedule_expression = "cron(00 09 ? * SAT *)" # Sábados às 09:00 UTC / 06:00 BRT
+  description         = "Dispara a Lambda em modo rotation refresh para filmes (semanal, domingos, após o changes)"
+  schedule_expression = "cron(00 10 ? * SUN *)" # Domingos às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_rotation_weekly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-rotation-weekly-${var.env}"
-  description         = "Dispara a Lambda em modo rotation refresh para séries (semanal, sábados)"
-  schedule_expression = "cron(05 09 ? * SAT *)" # Sábados às 09:05 UTC / 06:05 BRT
+  description         = "Dispara a Lambda em modo rotation refresh para séries (semanal, domingos, após o changes)"
+  schedule_expression = "cron(05 10 ? * SUN *)" # Domingos às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -279,22 +279,27 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_rotation_weekly" {
 # Além disso, roda o discover do ano anterior (current_year - 1) para manter
 # popularidade e streaming providers atualizados sem custo diário/semanal.
 #
-# Rodam todo dia 1 do mês — cadência suficiente para dados estáveis.
+# Rodam na primeira segunda-feira do mês — cadência suficiente para dados estáveis.
+# Segunda (e não "dia 1") porque um dia fixo do mês cai em sábado/domingo alguns meses
+# por ano e colide com o discover (sábado) ou com o changes/rotation (domingo): no
+# sábado o mensal dispararia no mesmo minuto do discover semanal (estoura o
+# max_concurrent_runs do ETL/Details); no domingo sobrepõe o Details do changes/rotation
+# na mesma tabela. Segunda não tem nenhum outro gatilho do pipeline.
 # "only_monthly_tables: true" = referência + discover do ano passado, sem now_playing.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_monthly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-monthly-${var.env}"
-  description         = "Dispara a Lambda para filmes com payload completo (mensal, dia 1)"
-  schedule_expression = "cron(30 09 1 * ? *)" # Todo dia 1 do mês às 09:30 UTC / 06:30 BRT
+  description         = "Dispara a Lambda para filmes com payload completo (mensal, 1ª segunda-feira)"
+  schedule_expression = "cron(30 09 ? * 2#1 *)" # 1ª segunda-feira do mês às 09:30 UTC / 06:30 BRT (2 = segunda, SUN = 1)
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_monthly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-monthly-${var.env}"
-  description         = "Dispara a Lambda para series com payload completo (mensal, dia 1)"
-  schedule_expression = "cron(35 09 1 * ? *)" # Todo dia 1 do mês às 09:35 UTC / 06:35 BRT
+  description         = "Dispara a Lambda para series com payload completo (mensal, 1ª segunda-feira)"
+  schedule_expression = "cron(35 09 ? * 2#1 *)" # 1ª segunda-feira do mês às 09:35 UTC / 06:35 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
@@ -370,23 +375,24 @@ resource "aws_lambda_permission" "allow_eventbridge_tv_monthly" {
 # Uma vez catalogado, o modo changes (qualquer ano) mantém o título atualizado
 # sem depender dessa regra rodar de novo.
 #
-# Horário deslocado das demais rules de EventBridge do pipeline (todas entre
+# Roda no mesmo dia do mensal (1ª segunda-feira), 30 min depois (10:00/10:05 UTC) —
+# horário deslocado das demais rules de EventBridge do pipeline (todas entre
 # 09:00-09:35 UTC) para não colidir com nenhuma execução existente.
 # "only_future_year_tables: true" = discover do current_year + 1, sem referências, sem now_playing.
 # =============================================================================
 
 resource "aws_cloudwatch_event_rule" "lambda_api_movie_future_monthly" {
   name                = "${local.tmdb_prefix}-lambda-api-movie-future-monthly-${var.env}"
-  description         = "Dispara a Lambda para filmes anunciados para o próximo ano (mensal, dia 1)"
-  schedule_expression = "cron(00 10 1 * ? *)" # Todo dia 1 do mês às 10:00 UTC / 07:00 BRT
+  description         = "Dispara a Lambda para filmes anunciados para o próximo ano (mensal, 1ª segunda-feira)"
+  schedule_expression = "cron(00 10 ? * 2#1 *)" # 1ª segunda-feira do mês às 10:00 UTC / 07:00 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }
 
 resource "aws_cloudwatch_event_rule" "lambda_api_tv_future_monthly" {
   name                = "${local.tmdb_prefix}-lambda-api-tv-future-monthly-${var.env}"
-  description         = "Dispara a Lambda para séries anunciadas para o próximo ano (mensal, dia 1)"
-  schedule_expression = "cron(05 10 1 * ? *)" # Todo dia 1 do mês às 10:05 UTC / 07:05 BRT
+  description         = "Dispara a Lambda para séries anunciadas para o próximo ano (mensal, 1ª segunda-feira)"
+  schedule_expression = "cron(05 10 ? * 2#1 *)" # 1ª segunda-feira do mês às 10:05 UTC / 07:05 BRT
   state               = local.eventbridge_schedule_state
   tags                = local.component_tags.eventbridge
 }

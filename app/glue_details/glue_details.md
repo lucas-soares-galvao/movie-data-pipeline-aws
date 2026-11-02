@@ -20,7 +20,7 @@ A API de discover do TMDB retorna metadados básicos (título, nota, gênero). I
 6d. **Países de produção:** extrai os códigos ISO 3166-1 dos países de produção (`production_countries_iso`) para lookup na tabela de referência `tb_configuration_countries` no Glue AGG6e2. **Idiomas falados:** extrai os códigos ISO 639-1 dos idiomas falados (`spoken_languages_iso`) para lookup na tabela de referência `tb_configuration_languages` no Glue AGG, resolvendo nomes em português
 6e. **Coleções em pt-BR:** para filmes com coleção/franquia, busca o nome em português via `/collection/{id}?language=pt-BR` na API do TMDB. Chamadas deduplicadas por collection_id (1 chamada para toda a coleção, ex: Marvel = 1 chamada para 30+ filmes). Grava na coluna `collection_name_pt`
 7. **Watch providers — sem delta, mesma lista de IDs do discover:** para cada ID do discover, chama `/movie/{id}/watch/providers` ou `/tv/{id}/watch/providers` e grava em `tb_tmdb_watch_providers_{movie|tv}_{env}`
-8. Aciona o Glue Data Quality para cada tabela gravada
+8. Aciona o Glue Data Quality: um único run com as duas tabelas gravadas (`details` e `watch_providers`, em `TABLE_NAME` separado por vírgula)
 9. **Ao final do ciclo de cada `media_type`** (quando `year == end_year`): executa `repair_discover_duplicates`, `repair_watch_providers_duplicates` e `repair_details_duplicates` para eliminar IDs duplicados na partição do ano corrente. Cada repair lê o Parquet diretamente via S3, aplica `drop_duplicates` e grava de volta apenas se houver mudanças. Movie e TV reparando suas próprias tabelas em runs separados
 
 Chamadas à API usam **retry com backoff exponencial e jitter** para lidar com rate limits do TMDB — se a API retornar erro 429 (muitas requisições), o código espera um tempo crescente entre tentativas (ex: 1s, 2s, 4s…) com uma variação aleatória (jitter) para evitar que múltiplos workers tentem ao mesmo tempo.
@@ -62,7 +62,7 @@ Mesmo racional acima, aplicado ao ramo `if changes_s3_path:` (linhas 52-81) em v
 | **Entrada** | Argumentos: `MEDIA_TYPE`, `YEAR`/`END_YEAR` (opcionais — ausentes no modo changes), `DATABASE`, nomes dos buckets e jobs, `TMDB_SECRET_ARN` (secret unificado — também publicado em `os.environ["FILMBOT_SECRET_ARN"]` dentro de `get_parameters_glue()`, para que `shared_utils.llm_client.load_llm_api_key` leia o campo `llm_api_key` como se fosse o ambiente real), `CHANGES_S3_PATH` (opcional — presente apenas no modo changes, ver seção acima) |
 | **Leitura** | Athena (IDs da tabela discover na SOT), Secrets Manager (chave API), API TMDB (inclui `/movie|tv/{id}/changes` por ID no modo changes, ver seção acima); S3 TEMP (payload de changes — IDs + janela, modo changes) |
 | **Escrita** | S3 SOT — tabelas `tb_details_*` e `tb_watch_providers_*` como Parquet + Glue Catalog; S3 TEMP — `tmdb/changes/{content_type}/discarded_{data}.json` (IDs descartados no modo changes) e `tmdb/changes/{content_type}/discover_years_ambiguos_{data}.json` (IDs com mais de um `year` na discover, modo changes) |
-| **Aciona** | Glue Data Quality (por tabela gravada; no modo changes, uma vez por tabela com todos os anos afetados agrupados em `YEAR`) |
+| **Aciona** | Glue Data Quality (ciclo normal: 1 run com `details` e `watch_providers` juntos em `TABLE_NAME`; no modo changes, 1 run por tabela com todos os anos afetados agrupados em `YEAR`) |
 
 O Glue AGG **não** é mais acionado por este job — roda em agendamento próprio (`aws_glue_trigger` nativo do Glue, sábado e domingo às 08:00 BRT, ver `app/glue_agg/glue_agg.md`), independente do ciclo do Glue Details.
 

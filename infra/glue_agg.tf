@@ -69,8 +69,12 @@ resource "aws_glue_job" "agg_job_pythonshell" {
 # forma independente do restante do pipeline, em vez de ser acionado pelo
 # Glue Details ao fim do ciclo semanal (tv + end_year / tv + affected_years).
 # Horário calibrado com o histórico real de execução do Glue Details — no pior
-# caso observado (rotation + discover + monthly coincidindo no mesmo sábado),
-# o ciclo terminou às 06:42 BRT; 08:00 BRT dá ~77 min de folga.
+# caso observado (rotation + discover + monthly coincidindo no mesmo sábado —
+# quando o mensal ainda rodava no dia 1 do mês; hoje roda na 1ª segunda-feira e
+# não coincide mais), o ciclo terminou às 06:42 BRT; 08:00 BRT dava ~77 min de folga.
+# O rotation agora roda no domingo (10:00/10:05 UTC, depois do changes): no pior caso
+# (Details no timeout de 30 min) termina ~10:32 UTC, ~28 min antes deste trigger —
+# margem estimada, não medida; reconferir no histórico do Details após as primeiras execuções.
 # =============================================================================
 
 resource "aws_glue_trigger" "agg_weekly" {

@@ -110,11 +110,12 @@ Ao adicionar permissão nova: sempre uma policy customizada com escopo mínimo �
 
 ### Amazon EventBridge — `eventbridge.tf`
 
-9 `aws_cloudwatch_event_rule` (cron) disparando `aws_lambda_function.simple_lambda`, todas com `state = local.eventbridge_schedule_state` (habilitado só em prod) e payload `input` montado a partir de `local.envs.*`:
-- Rotation refresh semanal (sáb 06:00/06:05 BRT)
+12 `aws_cloudwatch_event_rule` (cron) disparando `aws_lambda_function.simple_lambda`, todas com `state = local.eventbridge_schedule_state` (habilitado só em prod) e payload `input` montado a partir de `local.envs.*`:
 - Discover semanal (sáb 06:30/06:35 BRT) — `only_weekly_tables=true`
 - Changes semanal (dom 06:00/06:05 BRT) — `only_changes_tables=true`
-- Mensal (dia 1, 06:30/06:35 BRT) — `only_monthly_tables=true`
+- Rotation refresh semanal (dom 07:00/07:05 BRT, 1 h depois do changes — o changes toca qualquer ano, então não pode sobrepor)
+- Mensal (1ª segunda-feira, 06:30/06:35 BRT) — `only_monthly_tables=true`
+- Ano futuro (1ª segunda-feira, 07:00/07:05 BRT) — `only_future_year_tables=true`. Mensal e ano futuro usam `cron(... ? * 2#1 *)` (não dia fixo do mês) para nunca cair em sábado (discover) nem domingo (changes/rotation)
 
 Horários escalonados em 5-30min de intervalo deliberadamente, para evitar `ConcurrentModificationException` no Glue Catalog quando múltiplas execuções tocam a mesma tabela. Cada target tem `dead_letter_config` apontando para o SQS DLQ e um `aws_lambda_permission` para o principal `events.amazonaws.com`.
 

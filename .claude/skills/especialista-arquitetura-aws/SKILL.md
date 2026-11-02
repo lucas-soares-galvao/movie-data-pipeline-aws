@@ -80,7 +80,7 @@ mesmo que pareça "menos robusta" que a alternativa, porque a alternativa não s
   Serverless pequeno — não uma reescrita da camada de dados.
 - **Contagem de regras EventBridge desatualizada em outras duas skills**: `especialista-infraestrutura-terraform`
   e `especialista-observabilidade-qualidade-dados` citam "9 regras de schedule EventBridge", mas a contagem real
-  em `eventbridge.tf` hoje é **8** (rotation, discover, changes, mensal × movie/tv) — provável resquício de quando
+  em `eventbridge.tf` hoje é **12** (rotation, discover, changes, mensal, ano futuro × movie/tv) — provável resquício de quando
   existia uma regra "anual" automática, substituída pelo backfill manual (achado já confirmado numa auditoria
   anterior desta sessão sobre `estrutura-projeto`). Fora do escopo desta skill corrigir sozinha — sinalizar ao
   revisar qualquer uma das duas.

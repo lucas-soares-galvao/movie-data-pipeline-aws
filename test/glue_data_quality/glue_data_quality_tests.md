@@ -106,6 +106,22 @@ Os testes de `test_main.py` verificam que `main()` coordena corretamente os cola
 | `test_pula_apenas_o_ano_sem_dados_no_multi_year` | Em `YEAR="2020,2021,2023"` com um `dynamic_frame` vazio no meio, `read_table_from_catalog` ainda é chamado 3x, mas `evaluate_data_quality` só 2x (`2020` e `2023`) |
 | `test_ano_unico_sem_virgula_com_particao_vazia_tambem_pula` | `YEAR` sem vírgula (ciclo normal) também pula quando a partição está vazia |
 
+### `TestMultiplasTabelas`
+
+`TABLE_NAME` separado por vírgula (ciclo normal do `glue_details`, que grava `details` e `watch_providers` do mesmo ano e dispara um único run — ver `glue_data_quality.md`, seção "Múltiplas tabelas por job run") faz `main()` avaliar cada tabela em sequência, dentro do mesmo `SparkContext`, com a mesma lista de anos. `_run_main()` aceita `eval_side_effect` (falha ou resultado distinto por chamada de `evaluate_data_quality`) e `capture_error=True` (devolve a exceção de `main()` em `mocks["error"]` para inspecionar o que rodou antes dela).
+
+| Teste | O que verifica |
+|---|---|
+| `test_avalia_cada_tabela_da_lista_uma_vez` | `get_ruleset`, `evaluate_data_quality`, `write_results_to_s3` e `notify_failed_outcomes` são chamados 1x por tabela, na ordem da lista |
+| `test_usa_um_unico_spark_context_para_todas_as_tabelas` | `SparkContext.getOrCreate` e `GlueContext` são chamados 1x só, não 1x por tabela (o ganho do agrupamento) |
+| `test_aplica_a_lista_de_anos_a_cada_tabela` | `TABLE_NAME` com 2 tabelas e `YEAR="2020,2021"` gera 4 avaliações (tabela × ano), tabela a tabela |
+| `test_ignora_espacos_e_itens_vazios_na_lista_de_tabelas` | `" a , ,b,"` vira `["a", "b"]` |
+| `test_levanta_erro_quando_a_lista_de_tabelas_esta_vazia` | `TABLE_NAME` só com vírgulas/espaços levanta `ValueError` em vez de terminar com sucesso sem avaliar nada |
+| `test_particao_vazia_em_uma_tabela_pula_so_ela` | Partição vazia na 1ª tabela pula só ela; a 2ª é avaliada normalmente |
+| `test_falha_na_primeira_tabela_nao_impede_a_segunda_e_o_job_falha_no_final` | Falha em `evaluate_data_quality` da 1ª tabela é logada (`logger.exception`), a 2ª ainda é avaliada e gravada, e `main()` termina com `RuntimeError` citando só a tabela que falhou |
+| `test_lista_todas_as_tabelas_que_falharam_na_mensagem_do_erro` | Se todas falham, a mensagem do `RuntimeError` lista todas e nada é gravado |
+| `test_tabela_unica_que_falha_tambem_derruba_o_job` | Uma tabela só que falha continua derrubando o job (`RuntimeError` com o nome da tabela) |
+
 ## Casos de teste — `test_utils.py`
 
 ### `TestGetParametersGlue`

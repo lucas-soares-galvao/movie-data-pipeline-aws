@@ -34,7 +34,7 @@ Em vez de fixtures compartilhadas, os testes usam `unittest.mock.patch.object(..
 | `test_collect_called_once_for_tv` | `collect_and_write_details` é chamado com `content_type="tv"` e os IDs corretos |
 | `test_collect_watch_providers_called_with_correct_args_for_movie` | `collect_and_write_watch_providers` recebe tabela e ano corretos (movie) |
 | `test_collect_watch_providers_called_with_correct_args_for_tv` | `collect_and_write_watch_providers` recebe tabela e ano corretos (tv) |
-| `test_triggers_data_quality_twice_for_details_and_watch_providers` | DQ é acionado uma vez para cada tabela gravada |
+| `test_triggers_data_quality_once_with_both_tables_by_default` | DQ é acionado **uma única vez**, com `TABLE_NAME="<details>,<watch_providers>"` (as duas tabelas gravadas no ciclo normal juntas) e o `YEAR` da unidade; sem `time.sleep` entre disparos |
 | `test_skip_collect_details_when_discover_empty` | `collect_and_write_details` **não** é chamado quando o discover não retorna IDs para o ano |
 | `test_skip_collect_watch_providers_when_discover_empty` | `collect_and_write_watch_providers` **não** é chamado quando o discover não retorna IDs para o ano |
 
