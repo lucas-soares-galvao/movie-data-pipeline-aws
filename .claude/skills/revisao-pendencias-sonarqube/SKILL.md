@@ -111,6 +111,9 @@ curl -s "$B/qualitygates/project_status?projectKey=$P" | python -c "import sys,j
   `shared_utils`; o resto roda em 3.12. Regras que sugerem sintaxe só de 3.12 (ex.: `python:S6796`, PEP 695) podem
   quebrar em 3.9 — antes de "corrigir", conferir em qual runtime o arquivo roda (`especialista-doc-oficial-codigo`).
 - **`sonar.exclusions=app/lightsail_ia/design/**`**: mockups de design ficam fora da análise.
+- **`css:S9423` (`!important`) ignorada em `app/lightsail_ia/static/css/**`** (`sonar.issue.ignore.multicriteria`):
+  o tema "Luminous" sobrepõe o CSS do Streamlit e precisa do `!important`. Se o relatório não listar essa regra
+  no CSS, é intencional; as demais regras `css:` (ex.: `css:S9440`, reduced-motion) continuam valendo.
 - **`sonar.coverage.exclusions=app/lightsail_ia/static/js/**`**: JS estático não conta no Coverage (só Python é
   medido), mas continua analisado para bugs/smells/duplicação.
 - **Coverage do Sonar ≠ gate do pytest.** O gate de 100% do CI vem de `pytest --cov=app --cov=scripts`; o `coverage`

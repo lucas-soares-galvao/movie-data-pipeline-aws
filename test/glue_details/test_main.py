@@ -1,7 +1,6 @@
 from unittest.mock import call, patch
 
 import main as m
-from src.utils import DetailsTables
 
 _BASE = {
     "S3_BUCKET_SOT": "my-sot",
@@ -64,11 +63,9 @@ class TestMain:
                 end_year="2025",
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
-                tables=DetailsTables(
-                    discover="tb_tmdb_discover_movie_dev",
-                    details="tb_tmdb_details_movie_dev",
-                    watch_providers="tb_tmdb_watch_providers_movie_dev",
-                ),
+                table_discover="tb_tmdb_discover_movie_dev",
+                table_details="tb_tmdb_details_movie_dev",
+                table_watch_providers="tb_tmdb_watch_providers_movie_dev",
                 dq_job_name="dq-job",
             )
 
@@ -88,24 +85,22 @@ class TestMain:
                 end_year="2025",
                 s3_bucket_sot="my-sot",
                 s3_bucket_temp="my-temp",
-                tables=DetailsTables(
-                    discover="tb_tmdb_discover_tv_dev",
-                    details="tb_tmdb_details_tv_dev",
-                    watch_providers="tb_tmdb_watch_providers_tv_dev",
-                ),
+                table_discover="tb_tmdb_discover_tv_dev",
+                table_details="tb_tmdb_details_tv_dev",
+                table_watch_providers="tb_tmdb_watch_providers_tv_dev",
                 dq_job_name="dq-job",
             )
 
-    def test_does_not_pass_trigger_dq_explicitly(self):
-        """main() não informa trigger_dq — usa o default True da função
-        (caminho de produção via job Glue continua disparando o DQ por unidade)."""
+    def test_passa_o_nome_do_job_de_dq_para_disparar_o_data_quality_por_unidade(self):
+        """main() informa dq_job_name (None é o que desliga o DQ por unidade, só no backfill):
+        o caminho de produção via job Glue continua disparando o DQ por unidade."""
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "run_details_and_watch_providers_for_year") as mock_run,
         ):
             m.main()
-            assert "trigger_dq" not in mock_run.call_args.kwargs
+            assert mock_run.call_args.kwargs["dq_job_name"] == "dq-job"
 
 
 _BASE_CHANGES = {

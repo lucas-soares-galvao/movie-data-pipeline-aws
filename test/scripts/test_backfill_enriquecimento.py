@@ -125,10 +125,10 @@ class TestLoopPrincipal:
         media_types = [c.kwargs["media_type"] for c in mock_run.call_args_list]
         assert media_types == ["movie", "tv", "movie", "tv"]
 
-    def test_passa_trigger_dq_false_para_nao_disparar_dq_por_unidade(self, monkeypatch):
+    def test_passa_dq_job_name_none_para_nao_disparar_dq_por_unidade(self, monkeypatch):
         mock_run, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         for c in mock_run.call_args_list:
-            assert c.kwargs["trigger_dq"] is False
+            assert c.kwargs["dq_job_name"] is None
 
     def test_passa_refresh_existing_ids_true_para_reprocessar_tambem_os_ids_fora_do_discover(self, monkeypatch):
         mock_run, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
