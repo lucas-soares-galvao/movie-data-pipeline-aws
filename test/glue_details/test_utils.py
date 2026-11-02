@@ -1802,7 +1802,7 @@ class TestCollectAndWriteDetails:
 
         assert df_written["overview_pt"].iloc[0] == "Traduzido antes"
 
-    def test_force_retranslate_avisa_dos_registros_preservados_que_nao_foram_rebuscados(self, caplog):
+    def test_force_retranslate_informa_dos_registros_preservados_sem_alarmar_como_falha(self, caplog):
         existing_df = pd.DataFrame([
             {"id": 10, "year": "2022", "overview_en": "Sinopse A", "overview_pt": "Traduzido antes"},
             {"id": 11, "year": "2022", "overview_en": "Outra", "overview_pt": "Outra traduzida"},
@@ -1822,7 +1822,11 @@ class TestCollectAndWriteDetails:
 
         mensagens = [r.message for r in caplog.records]
         assert any("Retradução forçada" in m for m in mensagens)
-        assert any("1 registro(s) existentes não foram rebuscados" in m for m in mensagens)
+        preservados = [r for r in caplog.records if "1 registro(s) existentes fora do delta" in r.message]
+        assert len(preservados) == 1
+        # Não é WARNING: costuma ser linha de outra unidade já reprocessada; o ERROR de quem
+        # realmente ficou sem rebuscar sai no fim do backfill (report_stale_processed_date).
+        assert preservados[0].levelname == "INFO"
 
     def test_force_retranslate_loga_quantidade_de_traducoes_nativas_preservadas(self, caplog):
         """Um título com overview e tagline pt-BR nativos e outro sem: o log conta 1 e 1."""

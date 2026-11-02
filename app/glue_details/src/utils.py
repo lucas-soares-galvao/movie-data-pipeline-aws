@@ -1479,9 +1479,14 @@ def collect_and_write_details(
             f"{_count_native_pt(df, 'tagline_pt_tmdb')} tagline (keywords não têm tradução nativa)."
         )
         if not df_existing_keep.empty:
-            logger.warning(
-                f"{len(df_existing_keep)} registro(s) existentes não foram rebuscados nesta execução "
-                "e mantêm a tradução anterior (falha de API, sem 'year' ou fora do conjunto de IDs)."
+            # INFO, não WARNING: o 'year' de details vem da API e pode divergir do ano do discover,
+            # então estas linhas costumam ser de outra unidade do mesmo run, já reprocessada. Quem
+            # aponta o que realmente ficou sem rebuscar é o backfill, no fim do run
+            # (backfill_shared.report_stale_processed_date, como ERROR).
+            logger.info(
+                f"{len(df_existing_keep)} registro(s) existentes fora do delta desta unidade foram preservados "
+                "sem rebuscar (já reprocessados por outra unidade do run, ou não rebuscados por falha de API, "
+                "sem 'year' ou fora do conjunto de IDs); o backfill confere no fim quais ficaram sem reprocessar."
             )
     else:
         logger.info(

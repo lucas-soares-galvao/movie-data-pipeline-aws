@@ -348,7 +348,9 @@ jobs:
           max_tentativas=6
           tentativa=1
           while true; do
-            echo "Tentativa $tentativa/$max_tentativas..."
+            # Também gravada em $LOG_FILE: scripts/summarize_llm_usage.py usa estas linhas para
+            # separar o total de LLM de cada processo (o contador zera a cada retomada).
+            echo "Tentativa $tentativa/$max_tentativas..." | tee -a "$LOG_FILE"
             # set +e/-e: sob "set -e" (padrão dos steps run: do GitHub Actions), um
             # exit code != 0 de executar_script derruba o script aqui mesmo, antes de
             # "codigo=$?" rodar — o retry abaixo nunca seria alcançado.
@@ -401,6 +403,13 @@ jobs:
           else
             echo "- ✅ Sem erros registrados no log." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+          # --- LLM: soma das tentativas ---
+          # O "LLM [<script> — total]" do log só conta o processo que o imprimiu; numa retomada
+          # por token expirado (exit 75) o contador zera. Com 2+ tentativas, soma os totais de
+          # cada uma (nada é escrito com uma tentativa só). Falha aqui não derruba o backfill.
+          python scripts/summarize_llm_usage.py "$LOG_FILE" >> "$GITHUB_STEP_SUMMARY" \
+            || echo "::warning::Não foi possível somar o uso do LLM das tentativas."
 
           # --- glue_agg: agora executado dentro do próprio script de backfill ---
           # A query Athena e a escrita Parquet já são síncronas (awswrangler bloqueia até
