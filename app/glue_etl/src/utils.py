@@ -12,11 +12,9 @@ import awswrangler as wr
 import boto3
 import pandas as pd
 from shared_utils.glue_helpers import add_processed_date, get_resolved_option
-from shared_utils.idioma import add_detected_language_column
 from shared_utils.idioma_llm import detect_language_llm
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs
 from shared_utils.traducao import (
-    DETECT_MAX_WORKERS_DEFAULT,
     resolve_pt_translation,
     restore_failed_translations,
     reuse_detected_language,
@@ -282,36 +280,6 @@ def read_existing_configuration(s3_bucket_sot: str, table_name: str) -> pd.DataF
         return pd.DataFrame()
 
 
-def read_existing_discover(s3_bucket_sot: str, table_name: str, year: str) -> pd.DataFrame:
-    """
-    Lê (id, overview, overview_detected_language_pt) da partição year do discover já gravada
-    na SOT, usada como cache do idioma detectado em _read_discover — evita redetectar,
-    com uma chamada ao LLM por linha, overviews que não mudaram desde a última execução.
-
-    Args:
-        s3_bucket_sot: Nome do bucket SOT.
-        table_name:    Nome da tabela discover no Glue Catalog.
-        year:          Ano (partição) a ler.
-
-    Returns:
-        DataFrame com os registros existentes da partição, ou vazio se ela ainda não
-        existir (primeira execução do ano), não tiver as colunas (schema antigo) ou a
-        leitura falhar por qualquer outro motivo.
-    """
-    s3_path = f"s3://{s3_bucket_sot}/tmdb/{table_name}/"
-    try:
-        return wr.s3.read_parquet(
-            path=s3_path,
-            dataset=True,
-            columns=["id", "overview", "overview_detected_language_pt"],
-            partition_filter=lambda x: x["year"] == year,
-        )
-    # Partição/colunas podem não existir ainda, degrada graciosamente.
-    except Exception as exc:  # noqa: BLE001
-        logger.info(f"Sem idioma detectado existente para '{table_name}' year={year}: {exc}")
-        return pd.DataFrame()
-
-
 def _read_json_from_s3(bucket: str, key: str) -> list:
     """Lê um arquivo JSON de um único objeto S3 e retorna como lista Python.
 
@@ -324,30 +292,13 @@ def _read_json_from_s3(bucket: str, key: str) -> list:
     return json.loads(response["Body"].read())
 
 
-def _read_discover(
-    s3_bucket_sor: str,
-    s3_key: str,
-    year: str | None,
-    detect_fn,
-    previous_df: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """Lê a pasta inteira do discover (array JSON puro por arquivo), adiciona year, remove
-    duplicatas por id, e adiciona overview_detected_language_pt/overview_translated_pt
-    (diagnóstico, ver docstring de read_from_sor).
-
-    previous_df (ver read_existing_discover) fornece o idioma já detectado de overviews
-    inalterados; só o restante é detectado via LLM, em paralelo."""
+def _read_discover(s3_bucket_sor: str, s3_key: str, year: str | None) -> pd.DataFrame:
+    """Lê a pasta inteira do discover (array JSON puro por arquivo), adiciona year e remove
+    duplicatas por id. Não detecta o idioma do overview: o TMDB pode devolvê-lo em outro idioma
+    mesmo com language=pt-BR, mas o idioma confiável vem dos slots do translations no glue_details."""
     df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
     df["year"] = year
-    df = df.drop_duplicates(subset=["id"])
-    if "overview" in df.columns:
-        df = reuse_detected_language(df, previous_df, "overview", "overview_detected_language_pt")
-        df = add_detected_language_column(
-            df, "overview", "overview_detected_language_pt", detect_fn,
-            only_missing=True, max_workers=DETECT_MAX_WORKERS_DEFAULT,
-        )
-        df["overview_translated_pt"] = df["overview_detected_language_pt"] == "pt"
-    return df
+    return df.drop_duplicates(subset=["id"])
 
 
 def _read_watch_providers_ref(s3_bucket_sor: str, s3_key: str) -> pd.DataFrame:
@@ -408,13 +359,10 @@ def read_from_sor(
     """
     Lê dados do bucket SOR e retorna como DataFrame Pandas.
 
-    discover: lê pasta inteira com wr.s3.read_json, adiciona coluna year, remove
-        duplicatas por id, e adiciona overview_detected_language_pt e
-        overview_translated_pt (diagnóstico — o overview já vem em pt-BR nativo
-        do TMDB via lambda_api, sem etapa de tradução; as colunas só sinalizam se
-        o TMDB de fato devolveu o texto em português; overview_detected_language_pt é
-        usada como gate em glue_agg, overview_translated_pt é só um booleano
-        derivado dela, sem chamada de tradução).
+    discover: lê pasta inteira com wr.s3.read_json, adiciona coluna year e remove
+        duplicatas por id. O overview vem como o TMDB devolveu (language=pt-BR, sem
+        garantia de idioma) e não é traduzido nem detectado aqui: o glue_agg só o usa
+        como último recurso, depois de overview_pt/overview_en do glue_details.
     watch_providers_ref: lê arquivo único, deriva canonical_name.
     genre: lê arquivo único diretamente.
     configuration: lê arquivo único; tv adiciona name_pt (países), movie adiciona name_pt (idiomas).
@@ -428,16 +376,13 @@ def read_from_sor(
                        _add_translation); só relevante para table_type="configuration".
                        Por padrão usa translate_text_llm.
         s3_bucket_sot: Bucket SOT, usado para ler o que já foi gravado e reaproveitar como
-                       cache: a tabela configuration (tradução, ver
-                       read_existing_configuration) e a partição do ano do discover
-                       (idioma detectado do overview, ver read_existing_discover).
-                       Relevante só para esses dois table_type. Se omitido, roda sem
-                       cache (comportamento anterior).
-        table_name:    Nome da tabela (configuration/discover) no Glue Catalog; ver
-                       s3_bucket_sot.
+                       cache a tabela configuration (tradução, ver
+                       read_existing_configuration). Relevante só para esse table_type.
+                       Se omitido, roda sem cache (comportamento anterior).
+        table_name:    Nome da tabela (configuration) no Glue Catalog; ver s3_bucket_sot.
         detect_fn:     Função de detecção de idioma usada em name_detected_language_en/
-                       name_detected_language_pt (configuration) e overview_detected_language_pt
-                       (discover). Por padrão usa detect_language_llm.
+                       name_detected_language_pt (configuration). Por padrão usa
+                       detect_language_llm.
         force_retranslate: Só para table_type="configuration" (backfill "Reprocessar tudo"):
                        ignora o cache do name_pt e retraduz tudo por LLM, restaurando a
                        tradução antiga se o LLM falhar. Default False (Glue ETL de produção).
@@ -452,12 +397,7 @@ def read_from_sor(
     # watch_providers_ref, genre e configuration: usamos _read_json_from_s3 (boto3 + json.loads)
     # porque lida melhor com arquivo único — wrangler pode ter comportamento inesperado nesses casos.
     if table_type == "discover":
-        previous_df = (
-            read_existing_discover(s3_bucket_sot, table_name, str(year))
-            if s3_bucket_sot and table_name
-            else None
-        )
-        df = _read_discover(s3_bucket_sor, s3_key, year, detect_fn, previous_df)
+        df = _read_discover(s3_bucket_sor, s3_key, year)
     elif table_type == "now_playing":
         df = wr.s3.read_json(path=f"s3://{s3_bucket_sor}/{s3_key}", orient="records")
         df = df.drop_duplicates(subset=["id"])

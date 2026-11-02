@@ -303,43 +303,74 @@ class TestExtractSpokenLanguagesIso:
         assert u._extract_spoken_languages_iso(None) is None
 
 
-class TestExtractPtBrTranslation:
-    def test_extrai_overview_e_tagline_pt_br(self):
+class TestExtractTranslationSlots:
+    @staticmethod
+    def _slot(language, country, overview="", tagline=""):
+        return {"iso_639_1": language, "iso_3166_1": country, "data": {"overview": overview, "tagline": tagline}}
+
+    def test_extrai_overview_e_tagline_pt_br_e_en(self):
         translations = {"translations": [
-            {"iso_639_1": "es", "iso_3166_1": "ES", "data": {"overview": "Sinopsis", "tagline": "Lema"}},
-            {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "Sinopse BR", "tagline": "Slogan BR"}},
+            self._slot("es", "ES", "Sinopsis", "Lema"),
+            self._slot("pt", "BR", "Sinopse BR", "Slogan BR"),
+            self._slot("en", "US", "English overview", "English tagline"),
         ]}
-        result = u._extract_pt_br_translation(translations)
-        assert result["overview_pt_tmdb"] == "Sinopse BR"
-        assert result["tagline_pt_tmdb"] == "Slogan BR"
+        result = u._extract_translation_slots(translations)
+        assert result == {
+            "overview_pt_tmdb": "Sinopse BR", "tagline_pt_tmdb": "Slogan BR",
+            "overview_en_tmdb": "English overview", "tagline_en_tmdb": "English tagline",
+        }
 
     def test_retorna_none_quando_sem_pt_br(self):
-        translations = {"translations": [
-            {"iso_639_1": "es", "iso_3166_1": "ES", "data": {"overview": "Sinopsis", "tagline": "Lema"}},
-        ]}
-        result = u._extract_pt_br_translation(translations)
+        translations = {"translations": [self._slot("es", "ES", "Sinopsis", "Lema")]}
+        result = u._extract_translation_slots(translations)
         assert result["overview_pt_tmdb"] is None
         assert result["tagline_pt_tmdb"] is None
 
     def test_retorna_none_quando_translations_vazio(self):
-        result = u._extract_pt_br_translation({})
-        assert result["overview_pt_tmdb"] is None
-        assert result["tagline_pt_tmdb"] is None
+        assert u._extract_translation_slots({}) == {
+            "overview_pt_tmdb": None, "tagline_pt_tmdb": None,
+            "overview_en_tmdb": None, "tagline_en_tmdb": None,
+        }
 
     def test_ignora_pt_de_portugal(self):
-        translations = {"translations": [
-            {"iso_639_1": "pt", "iso_3166_1": "PT", "data": {"overview": "Sinopse PT", "tagline": "Slogan PT"}},
-        ]}
-        result = u._extract_pt_br_translation(translations)
+        translations = {"translations": [self._slot("pt", "PT", "Sinopse PT", "Slogan PT")]}
+        result = u._extract_translation_slots(translations)
         assert result["overview_pt_tmdb"] is None
         assert result["tagline_pt_tmdb"] is None
 
-    def test_ignora_overview_vazio(self):
-        translations = {"translations": [
-            {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "", "tagline": "Slogan BR"}},
-        ]}
-        result = u._extract_pt_br_translation(translations)
+    def test_ignora_overview_vazio_e_mantem_tagline(self):
+        translations = {"translations": [self._slot("pt", "BR", "", "Slogan BR")]}
+        result = u._extract_translation_slots(translations)
         assert result["overview_pt_tmdb"] is None
+        assert result["tagline_pt_tmdb"] == "Slogan BR"
+
+    def test_en_prefere_us_quando_ha_mais_de_um_pais(self):
+        translations = {"translations": [
+            self._slot("en", "GB", "British overview"),
+            self._slot("en", "US", "American overview"),
+        ]}
+        assert u._extract_translation_slots(translations)["overview_en_tmdb"] == "American overview"
+
+    def test_en_aceita_outro_pais_quando_nao_ha_us(self):
+        translations = {"translations": [self._slot("en", "GB", "British overview")]}
+        assert u._extract_translation_slots(translations)["overview_en_tmdb"] == "British overview"
+
+    def test_descarta_pt_br_igual_ao_slot_en(self):
+        """O TMDB às vezes cadastra no slot pt-BR o texto em inglês: não é tradução."""
+        translations = {"translations": [
+            self._slot("pt", "BR", "  same TEXT ", "Same tagline"),
+            self._slot("en", "US", "Same text", "Same tagline"),
+        ]}
+        result = u._extract_translation_slots(translations)
+        assert result["overview_pt_tmdb"] is None
+        assert result["tagline_pt_tmdb"] is None
+        assert result["overview_en_tmdb"] == "Same text"
+
+    def test_descarta_pt_br_igual_ao_texto_en_us_do_detalhe_quando_nao_ha_slot_en(self):
+        translations = {"translations": [self._slot("pt", "BR", "Same text", "Slogan BR")]}
+        result = u._extract_translation_slots(translations, "same text", "Other tagline")
+        assert result["overview_pt_tmdb"] is None
+        assert result["overview_en_tmdb"] is None
         assert result["tagline_pt_tmdb"] == "Slogan BR"
 
 
@@ -542,17 +573,6 @@ class TestAddTranslationsOverviewPt:
             "0 registros traduzidos com sucesso (overview_pt); 1 falha(s) de tradução / 1 elegível(is)."
         ]
 
-    def test_retenta_quando_overview_pt_tmdb_igual_a_overview_en(self):
-        """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
-        reenviada ao LLM (mesma regra de retry usada no backfill)."""
-        df = pd.DataFrame({
-            "overview_en": ["Same text"],
-            "overview_pt_tmdb": ["Same text"],
-        })
-        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_pt(df, detect_fn=lambda t: "en")
-        assert result["overview_pt"].iloc[0] == "[PT] Same text"
-
     def test_idioma_detectado_en_calculado_a_partir_da_fonte(self):
         """overview_detected_language_en usa detect_fn sobre overview_en (a fonte)."""
         df = pd.DataFrame({
@@ -564,17 +584,17 @@ class TestAddTranslationsOverviewPt:
         assert result["overview_detected_language_en"].iloc[0] == "en"
         detect_fn.assert_any_call("A great movie")
 
-    def test_idioma_detectado_pt_calculado_a_partir_do_resultado(self):
-        """overview_detected_language_pt usa detect_fn sobre o valor final de
-        overview_pt (nativo do TMDB neste caso), não sobre overview_en."""
+    def test_idioma_detectado_pt_vem_do_rotulo_do_slot_pt_br_sem_chamar_llm(self):
+        """overview_detected_language_pt é "pt" porque o texto veio do slot pt-BR do translations:
+        o destino nativo não passa por detect_fn."""
         df = pd.DataFrame({
             "overview_en": ["A great movie"],
             "overview_pt_tmdb": ["Um grande filme"],
         })
-        def detect_fn(t):
-            return {"A great movie": "en", "Um grande filme": "pt"}.get(t)
+        detect_fn = MagicMock(return_value="en")
         result = u._add_translations_pt(df, detect_fn=detect_fn)
         assert result["overview_detected_language_pt"].iloc[0] == "pt"
+        assert "Um grande filme" not in [c.args[0] for c in detect_fn.call_args_list]
 
     def test_idioma_detectado_en_none_quando_fonte_vazia(self):
         df = pd.DataFrame({"overview_en": [None], "overview_pt_tmdb": [None]})
@@ -801,17 +821,6 @@ class TestAddTranslationsTaglinePt:
         with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
             result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en")
         assert result["tagline_pt"].iloc[0] == "[PT] Já em português"
-
-    def test_retenta_quando_tagline_pt_tmdb_igual_a_tagline(self):
-        """Caso de borda: tradução nativa do TMDB idêntica ao texto em inglês é
-        reenviada ao LLM (mesma regra de retry usada no backfill)."""
-        df = pd.DataFrame({
-            "tagline": ["Same text"],
-            "tagline_pt_tmdb": ["Same text"],
-        })
-        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
-            result = u._add_translations_tagline_pt(df, detect_fn=lambda t: "en")
-        assert result["tagline_pt"].iloc[0] == "[PT] Same text"
 
     def test_copia_direta_quando_fonte_ja_detectada_como_pt_sem_chamar_traducao(self):
         df = pd.DataFrame({
@@ -3511,7 +3520,7 @@ class TestAddTranslationsForceRetranslate:
         assert result["overview_pt"].iloc[0] == "Nativo pt-BR"
         mock_traduzir.assert_not_called()
 
-    def test_reaproveita_so_o_idioma_detectado_da_fonte(self):
+    def test_nao_detecta_nada_idioma_da_fonte_do_cache_e_do_resultado_deduzido(self):
         chamadas: list[str] = []
 
         def detectar(texto):
@@ -3519,13 +3528,15 @@ class TestAddTranslationsForceRetranslate:
             return self._detect(texto)
 
         with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
-            u._add_translations_pt(
+            result = u._add_translations_pt(
                 self._df("overview_en", {"overview_pt_tmdb": [None]}),
                 previous_df=self._previous("overview", "overview_en"),
                 detect_fn=detectar, force_retranslate=True,
             )
-        assert "English text" not in chamadas  # idioma da fonte veio do cache
-        assert "[PT] English text" in chamadas  # idioma do resultado novo é redetectado
+        # fonte vem do cache; o resultado novo é "pt" por dedução. Texto vazio chega a detect_fn mas não gera
+        # chamada ao LLM (detect_language_llm devolve None antes de chamar).
+        assert [c for c in chamadas if c] == []
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
 
     def test_ignora_o_sinal_do_changes_que_diria_para_reaproveitar(self):
         with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}") as mock_traduzir:
@@ -3539,3 +3550,188 @@ class TestAddTranslationsForceRetranslate:
         assert result["overview_pt"].iloc[0] == "[PT] English text"
         mock_traduzir.assert_called_once()
 
+
+
+class TestLabelLanguagesFromTmdb:
+    _COLUNAS = ("overview_pt_tmdb", "overview_en_tmdb", "overview_detected_language_en", "overview_detected_language_pt")
+
+    def test_rotula_destino_pt_e_fonte_en_onde_ha_texto_no_slot(self):
+        df = pd.DataFrame({
+            "overview_pt_tmdb": ["Sinopse", None, ""],
+            "overview_en_tmdb": ["Overview", "Overview", None],
+        })
+        result = u._label_languages_from_tmdb(df, *self._COLUNAS)
+        assert result["overview_detected_language_pt"].tolist() == ["pt", None, None]
+        assert result["overview_detected_language_en"].tolist() == ["en", "en", None]
+
+    def test_sem_coluna_do_slot_en_so_rotula_o_destino(self):
+        df = pd.DataFrame({"overview_pt_tmdb": ["Sinopse"]})
+        result = u._label_languages_from_tmdb(df, *self._COLUNAS)
+        assert result["overview_detected_language_pt"].tolist() == ["pt"]
+        assert "overview_detected_language_en" not in result.columns
+
+    def test_preserva_idioma_ja_existente_nas_linhas_sem_slot(self):
+        df = pd.DataFrame({
+            "overview_pt_tmdb": [None], "overview_en_tmdb": [None],
+            "overview_detected_language_en": ["fr"], "overview_detected_language_pt": ["es"],
+        })
+        result = u._label_languages_from_tmdb(df, *self._COLUNAS)
+        assert result["overview_detected_language_en"].tolist() == ["fr"]
+        assert result["overview_detected_language_pt"].tolist() == ["es"]
+
+
+class TestAssignPtSource:
+    @staticmethod
+    def _atribuir(df, previous_df=None):
+        return u._assign_pt_source(
+            df, previous_df, source_column="overview_en", target_column="overview_pt",
+            native_column="overview_pt_tmdb", pt_source_column="overview_pt_source",
+        )
+
+    def test_tmdb_quando_veio_do_slot_pt_br(self):
+        df = pd.DataFrame({"overview_en": ["Movie"], "overview_pt": ["Filme"], "overview_pt_tmdb": ["Filme"]})
+        assert self._atribuir(df)["overview_pt_source"].tolist() == ["tmdb"]
+
+    def test_llm_quando_traduzido_sem_slot(self):
+        df = pd.DataFrame({"overview_en": ["Movie"], "overview_pt": ["Filme"], "overview_pt_tmdb": [None]})
+        assert self._atribuir(df)["overview_pt_source"].tolist() == ["llm"]
+
+    def test_nulo_quando_destino_vazio_ou_igual_a_fonte(self):
+        df = pd.DataFrame({
+            "overview_en": ["Movie", "Same", "Source", None],
+            "overview_pt": [None, " same ", "", "Cópia direta"],
+            "overview_pt_tmdb": [None, None, None, None],
+        })
+        assert self._atribuir(df)["overview_pt_source"].tolist() == [None, None, None, None]
+
+    def test_heranca_da_origem_do_registro_anterior_quando_o_texto_nao_mudou(self):
+        df = pd.DataFrame({
+            "id": [1, 2], "overview_en": ["A", "B"], "overview_pt": ["Texto 1", "Texto 2"],
+            "overview_pt_tmdb": [None, None],
+        })
+        previous = pd.DataFrame({
+            "id": [1, 2], "overview_pt": ["Texto 1", "Texto antigo"], "overview_pt_source": ["tmdb", "tmdb"],
+        })
+        result = self._atribuir(df, previous)
+        # id=1 mantém a origem herdada; id=2 teve o texto trocado e, sem o slot, é tratado como LLM.
+        assert result["overview_pt_source"].tolist() == ["tmdb", "llm"]
+
+    def test_registro_anterior_sem_a_coluna_de_origem_cai_na_regra_do_llm(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["A"], "overview_pt": ["Texto 1"], "overview_pt_tmdb": [None]})
+        previous = pd.DataFrame({"id": [1], "overview_pt": ["Texto 1"]})
+        assert self._atribuir(df, previous)["overview_pt_source"].tolist() == ["llm"]
+
+    def test_registro_anterior_vazio_e_ignorado(self):
+        df = pd.DataFrame({"id": [1], "overview_en": ["A"], "overview_pt": ["Texto 1"], "overview_pt_tmdb": [None]})
+        assert self._atribuir(df, pd.DataFrame())["overview_pt_source"].tolist() == ["llm"]
+
+
+class TestAddTranslationsOrigemEIdioma:
+    def test_overview_nativo_tem_origem_tmdb_idioma_rotulado_e_nenhuma_chamada_ao_llm(self):
+        df = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt_tmdb": ["Um grande filme"],
+            "overview_en_tmdb": ["A great movie"],
+        })
+        detect_fn = MagicMock()
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = u._add_translations_pt(df, detect_fn=detect_fn)
+        detect_fn.assert_not_called()
+        mock_traduzir.assert_not_called()
+        assert result["overview_pt_source"].iloc[0] == "tmdb"
+        assert result["overview_detected_language_en"].iloc[0] == "en"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
+        assert result["overview_translation_attempts"].iloc[0] == 0
+        assert bool(result["overview_needs_translation"].iloc[0]) is False
+
+    def test_overview_traduzido_pelo_llm_tem_origem_llm_sem_redeteccao(self):
+        df = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt_tmdb": [None],
+            "overview_en_tmdb": ["A great movie"],
+        })
+        detect_fn = MagicMock(return_value=None)
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_pt(df, detect_fn=detect_fn)
+        # O destino vazio chega a detect_fn como "" (sem chamada real ao LLM); nenhum texto de verdade é detectado.
+        assert [c.args[0] for c in detect_fn.call_args_list if c.args[0]] == []
+        assert result["overview_pt"].iloc[0] == "[PT] A great movie"
+        assert result["overview_pt_source"].iloc[0] == "llm"
+        assert result["overview_detected_language_pt"].iloc[0] == "pt"
+        assert result["overview_translation_attempts"].iloc[0] == 1
+
+    def test_overview_com_traducao_que_falha_fica_sem_origem_e_retentavel(self):
+        df = pd.DataFrame({
+            "id": [1], "overview_en": ["Falhou"], "overview_pt_tmdb": [None], "overview_en_tmdb": ["Falhou"],
+        })
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t):
+            result = u._add_translations_pt(df, detect_fn=MagicMock(return_value=None))
+        assert result["overview_pt_source"].isna().all()
+        assert result["overview_detected_language_pt"].iloc[0] == "en"
+        assert bool(result["overview_needs_translation"].iloc[0]) is True
+
+    def test_tagline_nativa_tem_origem_tmdb_e_idioma_rotulado(self):
+        df = pd.DataFrame({
+            "id": [1], "tagline": ["A tagline"], "tagline_pt_tmdb": ["Um slogan"], "tagline_en_tmdb": ["A tagline"],
+        })
+        detect_fn = MagicMock()
+        result = u._add_translations_tagline_pt(df, detect_fn=detect_fn)
+        detect_fn.assert_not_called()
+        assert result["tagline_pt_source"].iloc[0] == "tmdb"
+        assert result["tagline_detected_language_en"].iloc[0] == "en"
+        assert result["tagline_detected_language_pt"].iloc[0] == "pt"
+
+    def test_tagline_traduzida_pelo_llm_tem_origem_llm(self):
+        df = pd.DataFrame({"id": [1], "tagline": ["A tagline"], "tagline_pt_tmdb": [None], "tagline_en_tmdb": ["A tagline"]})
+        with patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: f"[PT] {t}"):
+            result = u._add_translations_tagline_pt(df, detect_fn=MagicMock(return_value=None))
+        assert result["tagline_pt_source"].iloc[0] == "llm"
+
+    def test_fonte_sem_slot_en_ainda_e_detectada_pelo_llm(self):
+        """Sem slot en, o texto vem do en-US do detalhe, sem rótulo da API: a detecção por LLM cobre o caso."""
+        df = pd.DataFrame({"id": [1], "overview_en": ["Já em português"], "overview_pt_tmdb": [None],
+                           "overview_en_tmdb": [None]})
+        translate_fn = MagicMock()
+        with patch("src.utils.translate_text_llm", translate_fn):
+            result = u._add_translations_pt(df, detect_fn=lambda t: "pt" if t else None)
+        translate_fn.assert_not_called()
+        assert result["overview_pt"].iloc[0] == "Já em português"
+        assert result["overview_pt_source"].isna().all()
+
+    def test_origem_herdada_do_cache_quando_o_texto_traduzido_e_reaproveitado(self):
+        df = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt_tmdb": [None], "overview_en_tmdb": ["A great movie"],
+        })
+        previous = pd.DataFrame({
+            "id": [1], "overview_en": ["A great movie"], "overview_pt": ["Um grande filme"],
+            "overview_detected_language_en": ["en"], "overview_detected_language_pt": ["pt"],
+            "overview_pt_source": ["tmdb"],
+        })
+        with patch("src.utils.translate_text_llm") as mock_traduzir:
+            result = u._add_translations_pt(df, previous_df=previous, detect_fn=MagicMock())
+        mock_traduzir.assert_not_called()
+        assert result["overview_pt_source"].iloc[0] == "tmdb"
+
+
+class TestCommonFieldsSlotEn:
+    def test_overview_e_tagline_en_vem_do_slot_en_quando_existe(self):
+        detail = {
+            "id": 1, "overview": "Texto en-US", "tagline": "Tag en-US",
+            "translations": {"translations": [
+                {"iso_639_1": "en", "iso_3166_1": "US", "data": {"overview": "Slot overview", "tagline": "Slot tagline"}},
+                {"iso_639_1": "pt", "iso_3166_1": "BR", "data": {"overview": "Sinopse", "tagline": "Slogan"}},
+            ]},
+        }
+        fields = u._common_fields(detail, "movie")
+        assert fields["overview_en"] == "Slot overview"
+        assert fields["tagline"] == "Slot tagline"
+        assert fields["overview_en_tmdb"] == "Slot overview"
+        assert fields["tagline_en_tmdb"] == "Slot tagline"
+        assert fields["overview_pt_tmdb"] == "Sinopse"
+        assert fields["tagline_pt_tmdb"] == "Slogan"
+
+    def test_sem_slot_en_usa_o_texto_en_us_do_detalhe_sem_rotulo(self):
+        detail = {"id": 1, "overview": "Texto en-US", "tagline": "Tag en-US", "translations": {}}
+        fields = u._common_fields(detail, "movie")
+        assert fields["overview_en"] == "Texto en-US"
+        assert fields["tagline"] == "Tag en-US"
+        assert fields["overview_en_tmdb"] is None
+        assert fields["tagline_en_tmdb"] is None

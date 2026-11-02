@@ -69,10 +69,8 @@ Notificação:
 
 Logs de andamento:
     Cada unidade loga as 3 etapas (`[<tipo> <ano>] Etapa 1/3` coleta TMDB, `2/3` transformação
-    SOR→SOT com a detecção de idioma do overview via LLM — em paralelo, com progresso a cada 10% e
-    reaproveitando o idioma já gravado na SOT —, `3/3` gravação no SOT) e o tempo total ao concluir.
-    A etapa 2/3 fecha com `LLM [<tipo> <ano> 2/3]` (chamadas, modelos, tokens, custo e falhas por causa,
-    ver shared_utils.llm_metrics) e main() loga o total do backfill (`LLM [Backfill discover — total]`).
+    SOR→SOT, `3/3` gravação no SOT) e o tempo total ao concluir. O discover não chama LLM: o
+    idioma do overview vem dos slots do translations no glue_details (ver backfill_enriquecimento.py).
 
 Reprocessamento total (SOR):
     Antes de coletar cada unidade, apaga as páginas antigas de tmdb/discover/<tipo>/ano=<ano>/ no
@@ -101,7 +99,6 @@ Retomada automática:
 import os
 import sys
 import time
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -122,8 +119,6 @@ from app.glue_etl.src.utils import (  # noqa: E402
     write_parquet_to_sot,
 )
 from app.lambda_api.src.utils import collect_discover_data  # noqa: E402
-from shared_utils.idioma_llm import detect_language_llm  # noqa: E402
-from shared_utils.llm_metrics import llm_usage_scope, log_llm_usage, log_llm_usage_summary  # noqa: E402
 from shared_utils.s3_helpers import expected_bucket_owner_kwargs  # noqa: E402
 from shared_utils.traducao import format_elapsed  # noqa: E402
 
@@ -172,7 +167,6 @@ def _process_discover_unit(
     s3_bucket_sor: str,
     s3_bucket_sot: str,
     table_discover: str,
-    detect_fn: Callable[[str], str | None],
 ) -> str | None:
     """Processa uma unidade (media_type, year): coleta do TMDB, transforma e grava no SOT.
 
@@ -209,16 +203,10 @@ def _process_discover_unit(
             )
             return f"{failed_pages} página(s) do discover falharam"
         logger.info(
-            "[%s %d] Etapa 2/3: transformação SOR→SOT (detecção de idioma do overview via LLM, "
-            "reaproveitando o já detectado)... coleta levou %s.",
+            "[%s %d] Etapa 2/3: transformação SOR→SOT... coleta levou %s.",
             media_type, year, format_elapsed(time.monotonic() - started),
         )
-        with llm_usage_scope() as llm_usage:
-            df = read_from_sor(
-                s3_bucket_sor, media_type, "discover", str(year),
-                s3_bucket_sot=s3_bucket_sot, table_name=table_discover, detect_fn=detect_fn,
-            )
-        log_llm_usage(f"{media_type} {year} 2/3", llm_usage)
+        df = read_from_sor(s3_bucket_sor, media_type, "discover", str(year))
         logger.info("[%s %d] Etapa 3/3: gravando %d registros no SOT...", media_type, year, len(df))
         write_parquet_to_sot(
             df=df,
@@ -306,7 +294,6 @@ def _finalize_discover_success(
     shared.clear_checkpoint(s3_client, s3_bucket_temp, table_group)
 
 
-@log_llm_usage_summary("Backfill discover")
 def main(trigger_agg: bool = True) -> bool:
     """Ponto de entrada do backfill de discover (ver docstring do módulo)."""
     region = shared.require_env("AWS_REGION")
@@ -327,7 +314,6 @@ def main(trigger_agg: bool = True) -> bool:
 
     start_year, end_year = shared.read_year_range()
     wait_seconds = int(os.environ.get("WAIT_SECONDS", 15))
-    detect_fn = detect_language_llm
 
     s3_client = boto3.client("s3", region_name=region)
 
@@ -350,7 +336,7 @@ def main(trigger_agg: bool = True) -> bool:
         table_discover = table_discover_movie if media_type == "movie" else table_discover_tv
         error = _process_discover_unit(
             media_type, year, database, api_key, s3_client, s3_bucket_sor, s3_bucket_sot,
-            table_discover, detect_fn,
+            table_discover,
         )
         if error is None:
             completed.add(f"{media_type}:{year}")
