@@ -432,10 +432,10 @@ resource "aws_s3_bucket_policy" "data_quality_bucket_ssl" {
 # =============================================================================
 # BUCKET CADDY CERTS — Persistência do Certificado TLS do Caddy (FilmBot)
 # =============================================================================
-# A instância Lightsail do FilmBot é destruída e recriada diariamente (ver
-# infra/lightsail_scheduler_trigger.tf), o que apaga o certificado Let's
-# Encrypt do Caddy a cada ciclo. Sem persistência, o Caddy pede um
-# certificado novo do zero todo dia e esbarra no rate limit de "certificados
+# A instância Lightsail do FilmBot é destruída e recriada a cada ciclo de
+# liga/desliga (sábado e domingo, ver infra/lightsail_scheduler_trigger.tf),
+# o que apaga o certificado Let's Encrypt do Caddy. Sem persistência, o
+# Caddy pede um certificado novo do zero a cada recriação e esbarra no rate limit de "certificados
 # duplicados" do Let's Encrypt (5/semana), causando ERR_SSL_PROTOCOL_ERROR
 # para quem acessa o site. Este bucket guarda um tarball do diretório de
 # certificados do Caddy, sincronizado pelo runner do GitHub Actions a cada
@@ -470,10 +470,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "caddy_certs_bucke
 }
 
 # Sem transição para STANDARD_IA: o tarball é reescrito e lido a cada ciclo
-# diário de destroy/recreate — IA cobra taxa de recuperação por objeto e tem
+# de destroy/recreate (sábado e domingo) — IA cobra taxa de recuperação por objeto e tem
 # custo mínimo de 30 dias de armazenamento por versão, o oposto do padrão de
 # acesso deste bucket. A expiration de 90 dias é só uma rede de segurança —
-# cada escrita diária reseta o relógio, então só age se o workflow de deploy
+# cada escrita (todo fim de semana) reseta o relógio, então só age se o workflow de deploy
 # parar de rodar por um período longo (ex.: FilmBot descontinuado).
 resource "aws_s3_bucket_lifecycle_configuration" "caddy_certs_bucket_lifecycle" {
   count  = local.lightsail_prod_enabled ? 1 : 0

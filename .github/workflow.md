@@ -191,13 +191,15 @@ Workflow independente do `_pipeline.yml`, exclusivo de prod (FilmBot não existe
 
 | Trigger | Ação |
 |---|---|
-| `schedule`: `cron(0 3 * * *)` | desligar (00:00 BRT diário) |
-| `schedule`: `cron(0 11 * * *)` | ligar (08:00 BRT diário) |
+| `workflow_dispatch` (`action=stop`, `triggered_by=aws`) | desligar — regra EventBridge `cron(0 3 * * ? *)` (00:00 BRT, todos os dias; de segunda a sexta é no-op) |
+| `workflow_dispatch` (`action=start`, `triggered_by=aws`) | ligar — regra EventBridge `cron(0 11 ? * SAT,SUN *)` (08:00 BRT, só sábado e domingo) |
 | `workflow_dispatch` (`action`: start\|stop) | manual, disparado a partir de `main` |
+
+Sem trigger `schedule:` nativo do GitHub — as duas regras EventBridge (`infra/lightsail_scheduler_trigger.tf`) chamam a API do GitHub. O FilmBot só é usado nos fins de semana: a instância existe de sábado 08:00 a segunda 00:00 BRT.
 
 **Etapas principais:**
 
-1. Checkout + step `resolve` decide `environment`/`action`: sempre resolve `prod` (falha se disparado de outro branch), `action` vem do input em `workflow_dispatch` ou é decidido comparando `github.event.schedule` contra a string exata do cron de desligar
+1. Checkout + step `resolve` decide `environment`/`action`: sempre resolve `prod` (falha se disparado de outro branch), `action` vem sempre do input do `workflow_dispatch` (preenchido pela EventBridge ou manualmente)
 2. Lê `infra/config/project.json` via `jq` — `statefile_key`
 3. Autenticação AWS via OIDC (secrets `_PROD`) + `terraform init`
 4. `terraform destroy -target` (ação `stop`) **ou** `terraform apply -target` (ação `start`), sempre sobre `aws_lightsail_instance.filmbot`, `aws_lightsail_instance_public_ports.filmbot`, `aws_lightsail_static_ip_attachment.filmbot` (+ `aws_lightsail_key_pair.filmbot` no apply) — **nunca** `aws_lightsail_static_ip.filmbot`, que fica de fora do `-target` em ambas as direções
@@ -206,11 +208,11 @@ Workflow independente do `_pipeline.yml`, exclusivo de prod (FilmBot não existe
 
 **Por que destroy/create e não stop/start:** o Lightsail conta o bundle como usado (`BundleUsage` na fatura) tanto parado quanto rodando — a fatura de um mês inteiro com o scheduler antigo (stop/start) mostrou a mesma quantidade de horas cobradas de um mês sem nenhum desligamento. Destruir a instância de fato remove essas horas da fatura.
 
-**Por que o IP estático nunca é destruído:** `aws_lightsail_static_ip.filmbot` (`infra/lightsail_ia.tf`, `local.lightsail_prod_enabled`) é um recurso independente da instância no Lightsail — desanexar não o deleta, só marca como "unattached" (pequena taxa de idle se ficar assim por mais de 1h). Ao nunca incluí-lo no `-target`, o mesmo IP é sempre reanexado à instância nova, e o domínio `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
+**Por que o IP estático nunca é destruído:** `aws_lightsail_static_ip.filmbot` (`infra/lightsail_ia.tf`, `local.lightsail_prod_enabled`) é um recurso independente da instância no Lightsail — desanexar não o deleta, só marca como "unattached" (taxa de US$ 0,005/h se ficar assim por mais de 1h — como a instância fica destruída boa parte do tempo, isso é cobrado nessas horas: US$ 1,24 em out/2026, com a agenda antiga de 8h/dia destruída; com a agenda de fim de semana o IP fica parado ~600h/mês, ver `infra/docs/recursos.md`). Ao nunca incluí-lo no `-target`, o mesmo IP é sempre reanexado à instância nova, e o domínio `filmbot.lsgalvao.com.br` no registro.br é cadastrado uma única vez.
 
 **Concorrência:** `concurrency: group: terraform-prod` — mesmo group usado pelo job `terraform` de `terraform.yml` para prod, serializando com qualquer apply/destroy completo disparado por push em `main`.
 
-**Comportamento a saber:** `lightsail_instance_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada; não é uma falha do cron.
+**Comportamento a saber:** `lightsail_instance_enabled` permanece `true` por padrão (o liga/desliga é feito via `-target`, não por essa variável) — um `terraform apply` completo disparado por um push normal em `main` recria a instância se ela estiver destruída no momento. Ou seja, um deploy de código pode religar o servidor fora da janela agendada (num dia útil, por exemplo); não é uma falha do cron. O desligar diário às 00:00 BRT (no-op quando a instância já está destruída) a derruba na próxima meia-noite, limitando o vazamento a ~24h.
 
 ---
 
