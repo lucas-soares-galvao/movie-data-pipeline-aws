@@ -1351,6 +1351,44 @@ def fetch_all_discover_ids(database: str, table_discover: str, s3_bucket_temp: s
     return ids
 
 
+def _read_existing_details(
+    df: pd.DataFrame, s3_path: str, table_name: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Lê os registros já gravados nas partições year presentes em df (uma leitura por partição) e
+    os divide em duas visões:
+
+    - df_existing_keep:  ids que NÃO fazem parte do delta (df) -> preservados no merge final
+    - df_existing_delta: ids que SERÃO sobrescritos neste run -> cache de tradução (compara fonte
+      antiga vs. nova antes de chamar as APIs de tradução)
+
+    Partição inexistente (ou falha de leitura) degrada graciosamente: é logada e ignorada, e as
+    duas visões seguem vazias para aquele year.
+    """
+    df_existing_keep = pd.DataFrame()
+    df_existing_delta = pd.DataFrame()
+    for yr in df["year"].dropna().unique().tolist():
+        try:
+            year_str = str(yr)
+            df_read = wr.s3.read_parquet(
+                path=s3_path,
+                dataset=True,
+                partition_filter=lambda x, year_str=year_str: x["year"] == year_str,
+            )
+            if not df_read.empty:
+                mask_delta = df_read["id"].isin(df["id"])
+                df_existing_keep = pd.concat([df_existing_keep, df_read[~mask_delta]], ignore_index=True)
+                df_existing_delta = pd.concat([df_existing_delta, df_read[mask_delta]], ignore_index=True)
+                logger.info(
+                    f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
+                    f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
+                )
+        # Partição pode não existir ainda, degrada graciosamente.
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
+    return df_existing_keep, df_existing_delta
+
+
 def collect_and_write_details(
     api_key: str,
     ids: list[int],
@@ -1455,32 +1493,7 @@ def collect_and_write_details(
         f"[Detalhes {content_type} 2/4] Lendo registros existentes (cache de tradução e de idioma) "
         f"— {len(df)} registro(s) coletado(s) em {format_elapsed(time.monotonic() - started)}."
     )
-    # Leitura antecipada dos registros existentes (uma única vez por partição year),
-    # produzindo duas visões a partir do mesmo df_read:
-    # - df_existing_delta: ids que SERÃO sobrescritos neste run -> cache de tradução
-    #   (compara fonte antiga vs. nova antes de chamar as APIs de tradução)
-    # - df_existing_keep:  ids que NÃO fazem parte do delta -> preservados no merge final
-    df_existing_keep = pd.DataFrame()
-    df_existing_delta = pd.DataFrame()
-    for yr in df["year"].dropna().unique().tolist():
-        try:
-            year_str = str(yr)
-            df_read = wr.s3.read_parquet(
-                path=s3_path,
-                dataset=True,
-                partition_filter=lambda x, year_str=year_str: x["year"] == year_str,
-            )
-            if not df_read.empty:
-                mask_delta = df_read["id"].isin(df["id"])
-                df_existing_keep = pd.concat([df_existing_keep, df_read[~mask_delta]], ignore_index=True)
-                df_existing_delta = pd.concat([df_existing_delta, df_read[mask_delta]], ignore_index=True)
-                logger.info(
-                    f"year={yr}: {(~mask_delta).sum()} registros existentes preservados (fora do delta); "
-                    f"{mask_delta.sum()} disponíveis como cache de tradução (dentro do delta)."
-                )
-        # Partição pode não existir ainda, degrada graciosamente.
-        except Exception as exc:  # noqa: BLE001
-            logger.info(f"Sem dados existentes para year={yr} em '{table_name}': {exc}")
+    df_existing_keep, df_existing_delta = _read_existing_details(df, s3_path, table_name)
 
     if force_retranslate:
         logger.info(
@@ -1846,19 +1859,18 @@ def run_details_and_watch_providers_for_year(
     table_discover: str,
     table_details: str,
     table_watch_providers: str,
-    dq_job_name: str,
-    trigger_dq: bool = True,
+    dq_job_name: str | None,
     refresh_existing_ids: bool = False,
     force_retranslate: bool = False,
 ) -> None:
     """
     Roda o ciclo completo de enriquecimento (details + watch providers) para um media_type/year:
     busca todos os IDs do discover na API TMDB, grava no SOT, dispara o Data Quality (se
-    trigger_dq) e repara duplicatas quando year == end_year.
+    dq_job_name for informado) e repara duplicatas quando year == end_year.
 
     Extraída de main.py para ser reutilizável fora do runtime do job Glue — ver
     scripts/backfill_enriquecimento.py, que chama esta função diretamente (sem passar pelo
-    Glue Details) com trigger_dq=False, disparando o Data Quality uma única vez ao final de todo o
+    Glue Details) com dq_job_name=None, disparando o Data Quality uma única vez ao final de todo o
     backfill em vez de por unidade.
 
     Args:
@@ -1872,10 +1884,11 @@ def run_details_and_watch_providers_for_year(
         table_discover:         Tabela de discover (movie ou tv).
         table_details:          Tabela de detalhes (movie ou tv).
         table_watch_providers:  Tabela de watch providers (movie ou tv).
-        dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
-        trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
-                                 Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
-                                 passa False e dispara o DQ uma única vez ao final do backfill inteiro.
+        dq_job_name:            Nome do job Glue Data Quality, disparado ao final desta unidade
+                                 (caminho de produção via job Glue). None não dispara: é o que
+                                 scripts/backfill_enriquecimento.py passa, para disparar o DQ uma
+                                 única vez ao final do backfill inteiro. Sem default de propósito:
+                                 esquecer de informar seria pular o DQ em silêncio.
         refresh_existing_ids:   Se True (reprocessamento total, usado só por
                                  scripts/backfill_enriquecimento.py), re-busca também os IDs já
                                  existentes na partição de details que não estão mais no discover
@@ -1928,7 +1941,7 @@ def run_details_and_watch_providers_for_year(
             year=year,
         )
 
-    if trigger_dq:
+    if dq_job_name:
         # Um único disparo com as duas tabelas (mesmo banco, mesmo ano): o DQ paga o overhead
         # fixo de startup do Spark uma vez só e avalia cada tabela em sequência.
         trigger_glue_job(

@@ -59,6 +59,19 @@ class TestTranslateTextLlm:
         with patch("shared_utils.traducao_llm.litellm.completion", return_value=_mock_response("```\nOlá\n```")):
             assert translate_text_llm("Hello") == "Olá"
 
+    def test_preserva_aspas_do_meio_e_remove_so_as_das_pontas(self):
+        """As aspas internas (diálogos) ficam; só as que envolvem o texto saem."""
+        resposta = _mock_response('"Ele disse \'não\' e saiu"`')
+        with patch("shared_utils.traducao_llm.litellm.completion", return_value=resposta):
+            assert translate_text_llm("He said 'no' and left") == "Ele disse 'não' e saiu"
+
+    def test_resposta_longa_com_muitas_aspas_no_meio_e_limpa_sem_travar(self):
+        """Entrada patológica do regex antigo (backtracking quadrático): milhares de aspas no meio."""
+        meio = "a\"" * 20000
+        resposta = _mock_response(f'"{meio}b"')
+        with patch("shared_utils.traducao_llm.litellm.completion", return_value=resposta):
+            assert translate_text_llm("x") == meio + "b"
+
     def test_passa_modelo_e_chave_configurados(self):
         with patch("shared_utils.traducao_llm.litellm.completion", return_value=_mock_response("Olá")) as mock_completion:
             translate_text_llm("Hello")

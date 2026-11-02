@@ -588,13 +588,7 @@ class TestNotifyFailedOutcomes:
     _SNS_ARN = "arn:aws:sns:sa-east-1:123456789012:glue-data-quality-failure-notifications"
 
     def _make_row(self, rule: str, failure_reason: str, category: str = "Completude"):
-        row = MagicMock()
-        row.__getitem__ = lambda self, key: {
-            "rule": rule,
-            "failure_reason": failure_reason,
-            "category": category,
-        }[key]
-        return row
+        return MagicMock(rule=rule, failure_reason=failure_reason, category=category)
 
     def _make_df(self, failed_rows: list):
         """Cria um Spark DataFrame mock com a lista de linhas em failed_rows."""

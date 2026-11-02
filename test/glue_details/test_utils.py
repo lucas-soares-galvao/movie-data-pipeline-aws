@@ -1387,7 +1387,7 @@ class TestCollectAndWriteDetails:
         with (
             patch("src.utils.fetch_tmdb_details", return_value=response),
             patch("src.utils.translate_text_llm", side_effect=lambda t, **kw: t),
-            patch("src.utils.detect_language_llm", new=lambda t: "en"),
+            patch("src.utils.detect_language_llm", return_value="en"),
             patch("src.utils.wr.s3.read_parquet", return_value=pd.DataFrame()),
             patch("src.utils.wr.s3.to_parquet"),
             caplog.at_level("INFO"),
@@ -1396,7 +1396,8 @@ class TestCollectAndWriteDetails:
 
         assert "LLM [Detalhes tv 3/4]: nenhuma chamada ao LLM" in caplog.text
         balanco = [r.message for r in caplog.records if r.message.startswith("Balanço 'overview_pt'")]
-        assert balanco and "(ex.: id 10)" in balanco[0]
+        assert balanco
+        assert "(ex.: id 10)" in balanco[0]
 
     def test_tv_fallback_llm_sem_tmdb_pt_br(self):
         """Quando o TMDB não tem tradução pt-BR, usa o LLM como fallback."""
@@ -2435,10 +2436,10 @@ class TestFetchCollectionsPtBr:
 
 
 class TestRunDetailsAndWatchProvidersForYear:
-    """Orquestração extraída de main.py — delta, coleta, DQ (se trigger_dq) e
+    """Orquestração extraída de main.py — delta, coleta, DQ (se dq_job_name) e
     repair de duplicatas em year == end_year. Reutilizada por main.py (job Glue
-    real, trigger_dq=True) e por scripts/backfill_enriquecimento.py (fora do
-    Glue, trigger_dq=False)."""
+    real, dq_job_name informado) e por scripts/backfill_enriquecimento.py (fora do
+    Glue, dq_job_name=None)."""
 
     _IDS = [1, 2]
 
@@ -2611,14 +2612,14 @@ class TestRunDetailsAndWatchProvidersForYear:
                 )
             ]
 
-    def test_does_not_trigger_data_quality_when_trigger_dq_false(self):
+    def test_does_not_trigger_data_quality_when_dq_job_name_is_none(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job") as mock_trigger,
         ):
-            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025", trigger_dq=False))
+            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025", dq_job_name=None))
             mock_trigger.assert_not_called()
 
     def test_repair_called_in_order_at_last_year(self):

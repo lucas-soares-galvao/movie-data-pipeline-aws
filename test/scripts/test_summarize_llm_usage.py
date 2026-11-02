@@ -7,6 +7,8 @@ processo, então o "— total" de cada tentativa precisa ser somado, sem contar 
 do estágio interno e o do script externo (backfill_historico.py).
 """
 
+import io
+
 import pytest
 import summarize_llm_usage as sul
 
@@ -127,39 +129,42 @@ class TestRenderSummary:
         assert "%" not in resumo
 
 
-class TestMain:
-    def test_escreve_o_resumo_do_arquivo_de_log(self, tmp_path, capsys):
-        log = tmp_path / "backfill_output.log"
-        log.write_text("\n".join(LOG_DUAS_TENTATIVAS), encoding="utf-8")
+def _stdin_com(monkeypatch, conteudo: bytes) -> None:
+    """Substitui sys.stdin por um stream de texto sobre `conteudo`, como o `< "$LOG_FILE"` do workflow."""
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(conteudo), encoding="utf-8"))
 
-        assert sul.main([str(log)]) == 0
+
+class TestMain:
+    def test_escreve_o_resumo_do_log_lido_da_entrada_padrao(self, monkeypatch, capsys):
+        _stdin_com(monkeypatch, "\n".join(LOG_DUAS_TENTATIVAS).encode("utf-8"))
+
+        assert sul.main([]) == 0
 
         assert "soma de 2 tentativas" in capsys.readouterr().out
 
-    def test_log_com_uma_tentativa_nao_imprime_nada(self, tmp_path, capsys):
-        log = tmp_path / "backfill_output.log"
-        log.write_text("\n".join(["Tentativa 1/6...", total("x", "5", "1", "1", "US$ 0,0001")]), encoding="utf-8")
+    def test_log_com_uma_tentativa_nao_imprime_nada(self, monkeypatch, capsys):
+        linhas = ["Tentativa 1/6...", total("x", "5", "1", "1", "US$ 0,0001")]
+        _stdin_com(monkeypatch, "\n".join(linhas).encode("utf-8"))
 
-        assert sul.main([str(log)]) == 0
+        assert sul.main([]) == 0
 
         assert capsys.readouterr().out == ""
 
-    def test_tolera_bytes_invalidos_no_log(self, tmp_path):
-        log = tmp_path / "backfill_output.log"
-        log.write_bytes(b"\xff\xfe linha invalida\n")
+    def test_tolera_bytes_invalidos_no_log(self, monkeypatch):
+        _stdin_com(monkeypatch, b"\xff\xfe linha invalida\n")
 
-        assert sul.main([str(log)]) == 0
+        assert sul.main([]) == 0
 
-    @pytest.mark.parametrize("argv", [[], ["a", "b"]])
-    def test_numero_de_argumentos_invalido_devolve_2_com_uso_no_stderr(self, argv, capsys):
+    @pytest.mark.parametrize("argv", [["caminho.log"], ["a", "b"]])
+    def test_argumento_na_linha_de_comando_devolve_2_com_uso_no_stderr(self, argv, capsys):
+        """O log vem só por stdin: um caminho na CLI é recusado (não abre arquivo escolhido pelo chamador)."""
         assert sul.main(argv) == 2
 
         assert "Uso:" in capsys.readouterr().err
 
-    def test_sem_argv_le_os_argumentos_do_processo(self, tmp_path, monkeypatch, capsys):
-        log = tmp_path / "backfill_output.log"
-        log.write_text("\n".join(LOG_DUAS_TENTATIVAS), encoding="utf-8")
-        monkeypatch.setattr("sys.argv", ["summarize_llm_usage.py", str(log)])
+    def test_sem_argv_le_os_argumentos_do_processo(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["summarize_llm_usage.py"])
+        _stdin_com(monkeypatch, "\n".join(LOG_DUAS_TENTATIVAS).encode("utf-8"))
 
         assert sul.main() == 0
 

@@ -91,16 +91,16 @@ class TestMain:
                 dq_job_name="dq-job",
             )
 
-    def test_does_not_pass_trigger_dq_explicitly(self):
-        """main() não informa trigger_dq — usa o default True da função
-        (caminho de produção via job Glue continua disparando o DQ por unidade)."""
+    def test_passa_o_nome_do_job_de_dq_para_disparar_o_data_quality_por_unidade(self):
+        """main() informa dq_job_name (None é o que desliga o DQ por unidade, só no backfill):
+        o caminho de produção via job Glue continua disparando o DQ por unidade."""
         with (
             patch.object(m, "get_parameters_glue", return_value=_BASE),
             patch.object(m, "get_api_secret", return_value="key-123"),
             patch.object(m, "run_details_and_watch_providers_for_year") as mock_run,
         ):
             m.main()
-            assert "trigger_dq" not in mock_run.call_args.kwargs
+            assert mock_run.call_args.kwargs["dq_job_name"] == "dq-job"
 
 
 _BASE_CHANGES = {

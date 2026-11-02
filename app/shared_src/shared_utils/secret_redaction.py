@@ -42,7 +42,8 @@ _secrets: set[str] = set()
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Parâmetro de query com a chave (TMDB e afins): para no próximo separador de URL/texto.
     (re.compile(r"(?i)\b(api[_-]?key|access[_-]?token)=([^&\s'\"<>)]+)"), rf"\1={MASK}"),
-    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"), f"Bearer {MASK}"),
+    # Sob (?i) a classe só precisa de a-z: listar A-Z também seria redundante (Sonar S5869).
+    (re.compile(r"(?i)\bBearer\s+[a-z0-9._~+/=-]{8,}"), f"Bearer {MASK}"),
     # Chaves do OpenRouter (llm_api_key).
     (re.compile(r"\bsk-or-[A-Za-z0-9_-]{8,}"), f"sk-or-{MASK}"),
     # Access Key IDs da AWS (permanentes AKIA, temporárias ASIA).

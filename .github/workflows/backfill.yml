@@ -411,7 +411,7 @@ jobs:
           # O "LLM [<script> — total]" do log só conta o processo que o imprimiu; numa retomada
           # por token expirado (exit 75) o contador zera. Com 2+ tentativas, soma os totais de
           # cada uma (nada é escrito com uma tentativa só). Falha aqui não derruba o backfill.
-          python scripts/summarize_llm_usage.py "$LOG_FILE" >> "$GITHUB_STEP_SUMMARY" \
+          python scripts/summarize_llm_usage.py < "$LOG_FILE" >> "$GITHUB_STEP_SUMMARY" \
             || echo "::warning::Não foi possível somar o uso do LLM das tentativas."
 
           # --- glue_agg: agora executado dentro do próprio script de backfill ---

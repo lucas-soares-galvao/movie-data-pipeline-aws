@@ -112,7 +112,8 @@ class TestRecordCall:
         with m.llm_usage_scope() as usage:
             m.record_call("tradução", SimpleNamespace(), "a", m.OK)
         assert usage.models == {"modelo indisponível": 1}
-        assert usage.prompt_tokens == 0 and usage.completion_tokens == 0
+        assert usage.prompt_tokens == 0
+        assert usage.completion_tokens == 0
         assert usage.calls_without_cost == 1
 
     def test_valores_de_tipo_invalido_sao_ignorados(self):
@@ -120,7 +121,8 @@ class TestRecordCall:
         resposta = SimpleNamespace(model="", usage=SimpleNamespace(prompt_tokens="10", completion_tokens=True, cost=True))
         with m.llm_usage_scope() as usage:
             m.record_call("tradução", resposta, "a", m.OK)
-        assert usage.prompt_tokens == 0 and usage.completion_tokens == 0
+        assert usage.prompt_tokens == 0
+        assert usage.completion_tokens == 0
         assert usage.calls_without_cost == 1
         assert usage.models == {"modelo indisponível": 1}
 

@@ -173,6 +173,18 @@ def _mark_source(
     return df
 
 
+def _ensure_target_column(df: pd.DataFrame, target_column: str) -> pd.Series:
+    """Garante que target_column exista em df (nula, se nova) e devolve uma cópia do valor anterior.
+
+    A cópia é o previous_target de _mark_source: distingue o que o LLM preencheu agora do que já
+    estava gravado. Coluna nova nasce com None (não NaN), como antes. Atribuir uma Series, e não o
+    literal None, evita o falso positivo S2259 do Sonar (ele lê `df[col] = None` seguido de
+    `df[col].copy()` como acesso a atributo de None)."""
+    if target_column not in df.columns:
+        df[target_column] = pd.Series([None] * len(df), index=df.index, dtype="object")
+    return df[target_column].copy()
+
+
 def _add_translations_pt(
     df: pd.DataFrame,
     translate_fn: Optional[Callable[[str], str]] = None,
@@ -189,9 +201,7 @@ def _add_translations_pt(
     # funcionando quando o chamador não passa um translate_fn explícito.
     translate_fn = translate_fn or translate_text_llm
     detect_fn = detect_fn or detect_language_llm
-    if "overview_pt" not in df.columns:
-        df["overview_pt"] = None
-    previous_target = df["overview_pt"].copy()
+    previous_target = _ensure_target_column(df, "overview_pt")
 
     df, success = resolve_pt_translation(
         df,
@@ -223,9 +233,7 @@ def _add_translations_tagline_pt(
     detect_fn = detect_fn or detect_language_llm
     if "tagline" not in df.columns:
         return df, 0
-    if "tagline_pt" not in df.columns:
-        df["tagline_pt"] = None
-    previous_target = df["tagline_pt"].copy()
+    previous_target = _ensure_target_column(df, "tagline_pt")
 
     df, success = resolve_pt_translation(
         df,
