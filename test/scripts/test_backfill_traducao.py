@@ -86,6 +86,30 @@ class TestOrigemDaTraducao:
         mock_translate.assert_not_called()
         assert resultado["tagline_pt_source"].tolist() == ["tmdb"]
 
+    def test_copia_direta_antiga_sem_origem_e_corrigida_para_tmdb_sem_chamar_o_llm(self):
+        df = pd.DataFrame({
+            "overview_en": ["Já em português", "Texto nativo"],
+            "overview_pt": ["Já em português", "Texto nativo"],
+            "overview_detected_language_pt": ["pt", "pt"],
+            "overview_pt_source": [None, "llm"],
+        })
+        with patch("backfill_traducao.translate_text_llm") as mock_translate:
+            resultado, traduzidas = bt._add_translations_pt(df, detect_fn=lambda t: "pt")
+        mock_translate.assert_not_called()
+        assert traduzidas == 0
+        # Sem origem vira tmdb; a origem já gravada nunca é sobrescrita.
+        assert resultado["overview_pt_source"].tolist() == ["tmdb", "llm"]
+
+    def test_linha_antiga_com_texto_diferente_da_fonte_e_sem_origem_continua_nula(self):
+        df = pd.DataFrame({
+            "overview_en": ["Movie"], "overview_pt": ["Filme"],
+            "overview_detected_language_pt": ["pt"], "overview_pt_source": [None],
+        })
+        with patch("backfill_traducao.translate_text_llm") as mock_translate:
+            resultado, _ = bt._add_translations_pt(df, detect_fn=lambda t: "pt")
+        mock_translate.assert_not_called()
+        assert resultado["overview_pt_source"].isna().all()
+
     def test_falha_do_tradutor_com_destino_em_ingles_fica_sem_origem(self):
         df = pd.DataFrame({"overview_en": ["Falhou"]})
         with patch("backfill_traducao.translate_text_llm", side_effect=lambda t: t):  # tradutor falha
