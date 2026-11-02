@@ -140,7 +140,7 @@ proj-eng-dados-filmes-aws/
 │   ├── backfill_enriquecimento.py    # Popula tabelas details/watch_providers via Glue Details
 │   ├── backfill_data_quality.py      # Aciona o Glue Data Quality para tabelas de 2000 até o ano atual
 │   ├── backfill_traducao.py          # Adiciona title_pt/overview_pt a dados históricos no S3 SOT
-│   ├── backfill_rename_colunas.py    # Renomeia colunas nas partições (updated_date→processed_date, sufixos de idioma do discover; sem API TMDB)
+│   ├── backfill_rename_colunas.py    # Renomeia colunas nas partições (hoje: updated_date→processed_date em watch_providers; sem API TMDB)
 │   ├── backfill_changes.py           # Dispara sob demanda o mesmo modo changes do cron semanal de domingo
 │   └── backfill_historico.py         # Encadeia backfill_discover.py + backfill_enriquecimento.py num único run
 └── test/
@@ -350,7 +350,7 @@ Job `deploy-app` encadeia `deploy_lightsail.yml` (via `uses:`) só quando a aç�
 
 **Trigger:** `workflow_dispatch` apenas (independente do `_pipeline.yml`). O ambiente (dev/prod) é resolvido **automaticamente pelo branch** selecionado em "Use workflow from": `main` → prod, `develop` → dev, qualquer outro branch falha o workflow antes de configurar credenciais AWS (step "Resolve environment from branch").
 
-**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `reprocessar_tudo` (boolean, default `false`; só vale para `historico`/`detalhes_e_providers`/`referencias` — exporta `BACKFILL_REPROCESS_ALL`; um passo de validação rejeita os demais grupos)
+**Inputs:** `table_group` (choice: discover | referencias | detalhes_e_providers | data_quality | traducao | rename_colunas | changes | historico), `start_year` (default 2000, ignorado para `referencias`/`changes`), `end_year` (opcional, ignorado para `referencias`/`changes`), `reprocessar_tudo` (boolean, default `false`; só vale para `historico`/`detalhes_e_providers`/`referencias` — exporta `BACKFILL_REPROCESS_ALL`; um passo de validação rejeita os demais grupos), `zerar_tentativas` (boolean, default `false`; só vale para `traducao`, exclusivo com `reprocessar_tudo` — exporta `BACKFILL_RESET_ATTEMPTS`)
 
 **Mapeamento `table_group` → script:** `discover` → `backfill_discover.py`, `referencias` → `backfill_referencias.py`, `detalhes_e_providers` → `backfill_enriquecimento.py`, `data_quality` → `backfill_data_quality.py`, `traducao` → `backfill_traducao.py`, `rename_colunas` → `backfill_rename_colunas.py` (sem API TMDB — renomeia `updated_date`→`processed_date` em watch_providers e as colunas de idioma do discover para o sufixo `_pt`), `changes` → `backfill_changes.py` (dispara sob demanda o mesmo modo `only_changes_tables` do cron semanal), `historico` → `backfill_historico.py` (encadeia `backfill_discover.py` e `backfill_enriquecimento.py` no mesmo processo, nessa ordem, sem introduzir variável de ambiente nova)
 

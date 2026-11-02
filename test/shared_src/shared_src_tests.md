@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging`/`current_processed_date`/`add_processed_date` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `load_llm_api_key` (`llm_client.py`), `translate_text_llm` (`traducao_llm.py`), `translate_in_parallel`/`resolve_pt_translation`/`reuse_existing_translation` (`traducao.py`, a fachada que orquestra elegibilidade/cache/paralelismo em torno do serviço de tradução), `detect_language_llm` (`idioma_llm.py`) e `add_detected_language_column` (`idioma.py`, fachada de detecção de idioma equivalente a `traducao.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `litellm.completion`, `getResolvedOptions`) são substituídas por **mocks** — nenhum teste chama a rede de verdade (bloqueado por `test/conftest.py`).
+Testa as funções compartilhadas do pacote `shared_utils` (`app/shared_src/shared_utils/`), consumidas por `lambda_api`, `lambda_cognito_email_sender`, `lightsail_ia`, `glue_etl`, `glue_details`, `glue_agg` e `glue_data_quality`: `api_get`/`get_api_secret` (`api_client.py`), `trigger_glue_job` (`triggers.py`), `get_resolved_option`/`configure_glue_logging`/`current_processed_date`/`add_processed_date` (`glue_helpers.py`), `load_gmail_credentials`/`send_gmail_email` (`gmail_helpers.py`), `load_llm_api_key` (`llm_client.py`), `translate_text_llm` (`traducao_llm.py`), `translate_in_parallel`/`resolve_pt_translation`/`reuse_existing_translation` (`traducao.py`, a fachada que orquestra elegibilidade/cache/paralelismo em torno do serviço de tradução), `detect_language_llm` (`idioma_llm.py`). Como o pacote não é instalado como dependência (é empacotado como wheel/zip apenas em deploy), `conftest.py` insere `app/shared_src` no `sys.path` para tornar `shared_utils` importável localmente. Todas as dependências externas (`requests`, `boto3`, `smtplib`, `litellm.completion`, `getResolvedOptions`) são substituídas por **mocks** — nenhum teste chama a rede de verdade (bloqueado por `test/conftest.py`).
 
 ## Estrutura
 
@@ -21,7 +21,6 @@ test/shared_src/
 ├── test_traducao_llm.py    # Testes de translate_text_llm (LLM via OpenRouter), do logging do LiteLLM e do lock da chave de API
 ├── test_traducao.py        # Testes de translate_in_parallel, detect_in_parallel, format_elapsed, resolve_pt_translation, reuse_existing_translation e reuse_detected_language
 ├── test_idioma_llm.py      # Testes de detect_language_llm (LLM via OpenRouter)
-├── test_idioma.py          # Testes de add_detected_language_column
 └── test_triggers.py        # Testes de trigger_glue_job
 ```
 
@@ -436,24 +435,7 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_sem_previous_df_devolve_o_df_inalterado` / `test_previous_df_com_schema_antigo_devolve_o_df_inalterado` | Sem histórico (ou sem as colunas) nada é alterado |
 | `test_chave_customizada` | `key_column` customizada (ex.: `iso_3166_1`, usada por configuration) |
 
-## Casos de teste — `test_idioma.py`
-
-### `TestAddDetectedLanguageColumn`
-
-| Teste | O que verifica |
-|---|---|
-| `test_aplica_detect_fn_a_cada_linha` | Aplica `detect_fn` a cada valor da coluna fonte, gravando na coluna de destino |
-| `test_nan_tratado_como_string_vazia` | `NaN`/`None` na coluna fonte é tratado como string vazia antes de chamar `detect_fn` |
-| `test_default_detect_fn_usado_quando_nao_informado` | Sem `detect_fn` explícito, usa `detect_language_llm` (mockado via `new=` — ver nota abaixo) |
-| `test_modifica_df_in_place_e_retorna_mesma_referencia` | Modifica o DataFrame in-place e retorna a mesma referência |
-| `test_only_missing_false_recalcula_todas_as_linhas` | `only_missing=False` (default) recalcula todas as linhas, mesmo já preenchidas — comportamento idêntico ao anterior |
-| `test_only_missing_true_preserva_linhas_ja_preenchidas` | `only_missing=True` só detecta onde a coluna de destino ainda está vazia/nula |
-| `test_only_missing_true_cria_coluna_ausente_e_detecta_tudo` | `only_missing=True` com a coluna de destino ainda ausente detecta todas as linhas normalmente |
-| `test_roda_em_paralelo` | 2 workers esperam um ao outro numa `threading.Barrier` — se a detecção rodasse em série, travaria até o timeout |
-| `test_repassa_max_workers_e_label_ao_detect_in_parallel` | `max_workers` informado e o rótulo `Detecção de idioma '<coluna>'` chegam a `detect_in_parallel` |
-| `test_loga_resumo_de_detectados_e_falhas` | Loga o resumo `1 detectado(s), 1 falha(s) em 2 texto(s)` |
-
-**Nota histórica sobre mock de `detect_fn`/`translate_fn` passados a `.apply()` (não se aplica mais à detecção):** desde que `add_detected_language_column`/`_detect_missing` passaram a usar `detect_in_parallel` (`ThreadPoolExecutor.map`), um `Mock` como `detect_fn` funciona normalmente; o `new=<função simples>` em `test_default_detect_fn_usado_quando_nao_informado` ficou como estava, sem prejuízo. A restrição abaixo vale para qualquer código que ainda use `Series.apply`: `pandas.Series.apply`
+**Nota histórica sobre mock de `detect_fn`/`translate_fn` passados a `.apply()` (não se aplica mais à detecção):** desde que `_detect_missing` passou a usar `detect_in_parallel` (`ThreadPoolExecutor.map`), um `Mock` como `detect_fn` funciona normalmente; o `new=<função simples>` em `test_default_detect_fn_usado_quando_nao_informado` ficou como estava, sem prejuízo. A restrição abaixo vale para qualquer código que ainda use `Series.apply`: `pandas.Series.apply`
 trata um `unittest.mock.Mock`/`MagicMock` como *list-like* (por configurar `__iter__` por
 padrão) e tenta uma agregação em vez de chamar a função por elemento — gera
 `ValueError: No objects to concatenate`. Qualquer teste que mocke uma função destinada a

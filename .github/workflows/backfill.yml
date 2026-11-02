@@ -27,10 +27,12 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #                             uma única vez ao final, cobrindo todo o range de anos processado
 #   - data_quality          — re-executa DQ via Glue
 #   - traducao              — adiciona overview_pt nos details (sem API TMDB); só traduz o
-#                             que está pendente (ver scripts/backfill_traducao.py)
-#   - rename_colunas        — renomeia updated_date→processed_date (watch_providers) e
-#                             as colunas de idioma do discover (sufixo _pt) nos parquets já gravados
-#                             (sem API TMDB — ver scripts/backfill_rename_colunas.py)
+#                             que está pendente (ver scripts/backfill_traducao.py). Com
+#                             'zerar_tentativas', as linhas pendentes que esgotaram o teto de
+#                             tentativas voltam a ser retentadas uma vez
+#   - rename_colunas        — renomeia updated_date→processed_date (watch_providers) nos
+#                             parquets já gravados (sem API TMDB — ver
+#                             scripts/backfill_rename_colunas.py)
 #   - changes               — dispara sob demanda o mesmo modo changes que o cron semanal de
 #                             domingo já aciona automaticamente (janela fixa de 7 dias, sem
 #                             start_year/end_year), rodando a coleta de IDs mudados e o
@@ -94,6 +96,11 @@ on:
         required: false
         default: false
         type: boolean
+      zerar_tentativas:
+        description: "Zerar tentativas (só 'traducao'): zera *_translation_attempts das linhas ainda pendentes (*_needs_translation) de overview, tagline e keywords e as retenta uma vez nesta execução. Serve para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais; não retraduz o que já está traduzido. Usa um checkpoint próprio: ignora o de um run normal e retoma o de um run 'Zerar tentativas' anterior com o mesmo range"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -127,7 +134,7 @@ jobs:
           case "${{ inputs.table_group }}" in
             historico|detalhes_e_providers|referencias) ;;
             traducao)
-              echo "❌ 'Reprocessar tudo' não vale para 'traducao': esse grupo lê o parquet já gravado e não distingue a tradução nativa pt-BR do TMDB da gerada por LLM — retraduzir sobrescreveria os nativos. Use 'detalhes_e_providers' ou 'historico', que rebuscam do TMDB."
+              echo "❌ 'Reprocessar tudo' não vale para 'traducao': esse grupo lê só o parquet já gravado e não tem como saber, nas linhas anteriores à coluna *_pt_source, se o texto veio do slot pt-BR do TMDB ou do LLM — retraduzir poderia sobrescrever os nativos. Use 'detalhes_e_providers' ou 'historico', que rebuscam do TMDB e sabem a origem, ou 'Zerar tentativas' para só retentar as linhas pendentes."
               exit 1
               ;;
             *)
@@ -135,6 +142,18 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Validate "Zerar tentativas" option
+        if: ${{ inputs.zerar_tentativas }}
+        run: |
+          if [ "${{ inputs.table_group }}" != "traducao" ]; then
+            echo "❌ 'Zerar tentativas' só vale para 'traducao' (table_group='${{ inputs.table_group }}')."
+            exit 1
+          fi
+          if [ "${{ inputs.reprocessar_tudo }}" = "true" ]; then
+            echo "❌ 'Zerar tentativas' e 'Reprocessar tudo' são exclusivos."
+            exit 1
+          fi
 
       - name: Read project configuration
         id: project
@@ -267,6 +286,10 @@ jobs:
           # historico), backfill_referencias.py e pelo checkpoint compartilhado (modo do run).
           # Os demais scripts a ignoram.
           BACKFILL_REPROCESS_ALL: ${{ inputs.reprocessar_tudo }}
+          # Input "Zerar tentativas" ("true"/"false"), só para traducao. Lida via
+          # backfill_shared.reset_attempts_enabled por backfill_traducao.py e pelo checkpoint
+          # compartilhado (modo do run). Os demais scripts a ignoram.
+          BACKFILL_RESET_ATTEMPTS: ${{ inputs.zerar_tentativas }}
           # Duração da sessão AWS (mesmo valor de --duration-seconds em renovar_credenciais e do
           # default de 1h da action de credenciais). Liga a guarda de backfill_shared.
           # session_budget_low: antes de cada unidade longa, se não sobra tempo de sessão, o script

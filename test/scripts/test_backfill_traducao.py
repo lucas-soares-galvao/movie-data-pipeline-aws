@@ -49,6 +49,153 @@ def _s3_client_sem_checkpoint() -> MagicMock:
     return client
 
 
+class TestOrigemDaTraducao:
+    """overview_pt_source/tagline_pt_source = "llm" só nas linhas que o script realmente traduz."""
+
+    def test_overview_traduzido_recebe_origem_llm_e_cria_a_coluna(self):
+        df = pd.DataFrame({"overview_en": ["Overview"]})
+        with patch("backfill_traducao.translate_text_llm", side_effect=lambda t: f"{t}_PT"):
+            resultado, _ = bt._add_translations_pt(df, detect_fn=lambda t: "pt" if t.endswith("_PT") else "en")
+        assert resultado["overview_pt_source"].tolist() == ["llm"]
+
+    def test_overview_nao_traduzido_mantem_a_origem_existente(self):
+        df = pd.DataFrame({
+            "overview_en": ["Já traduzido", "Falhou"],
+            "overview_pt": ["Texto nativo", None],
+            "overview_detected_language_pt": ["pt", None],
+            "overview_pt_source": ["tmdb", None],
+        })
+        with patch("backfill_traducao.translate_text_llm", side_effect=lambda t: t):  # tradutor falha
+            resultado, _ = bt._add_translations_pt(df, detect_fn=lambda t: "en")
+        assert resultado["overview_pt_source"].iloc[0] == "tmdb"
+        assert pd.isna(resultado["overview_pt_source"].iloc[1])
+
+    def test_copia_direta_de_fonte_ja_em_portugues_nao_vira_llm(self):
+        df = pd.DataFrame({"overview_en": ["Já em português"]})
+        with patch("backfill_traducao.translate_text_llm") as mock_translate:
+            resultado, _ = bt._add_translations_pt(df, detect_fn=lambda t: "pt")
+        mock_translate.assert_not_called()
+        assert resultado["overview_pt"].iloc[0] == "Já em português"
+        assert resultado["overview_pt_source"].isna().all()
+
+    def test_tagline_traduzida_recebe_origem_llm(self):
+        df = pd.DataFrame({"tagline": ["A tagline"]})
+        with patch("backfill_traducao.translate_text_llm", side_effect=lambda t: f"{t}_PT"):
+            resultado, _ = bt._add_translations_tagline_pt(
+                df, detect_fn=lambda t: "pt" if t.endswith("_PT") else "en",
+            )
+        assert resultado["tagline_pt_source"].tolist() == ["llm"]
+
+
+class TestZerarTentativas:
+    """Modo "Zerar tentativas": só as linhas pendentes (*_needs_translation) voltam a ter 0 tentativas."""
+
+    @staticmethod
+    def _df():
+        return pd.DataFrame({
+            "id": [1, 2, 3],
+            "overview_needs_translation": [True, False, None],
+            "overview_translation_attempts": [3, 3, 3],
+            "tagline_needs_translation": [True, True, False],
+            "tagline_translation_attempts": [2, 3, 1],
+            "keywords_needs_translation": [False, False, True],
+            "keywords_translation_attempts": [3, 3, 3],
+        })
+
+    def test_zera_so_as_linhas_pendentes_de_cada_campo(self):
+        resultado = bt._reset_attempts_for_pending(self._df())
+
+        assert resultado["overview_translation_attempts"].tolist() == [0, 3, 3]
+        assert resultado["tagline_translation_attempts"].tolist() == [0, 0, 1]
+        assert resultado["keywords_translation_attempts"].tolist() == [3, 3, 0]
+
+    def test_nao_altera_o_texto_nem_o_sinal_de_pendencia(self):
+        df = self._df()
+        df["overview_pt"] = ["a", "b", "c"]
+
+        resultado = bt._reset_attempts_for_pending(df)
+
+        assert resultado["overview_pt"].tolist() == ["a", "b", "c"]
+        assert resultado["overview_needs_translation"].tolist() == [True, False, None]
+
+    def test_campo_sem_as_colunas_e_ignorado(self):
+        df = pd.DataFrame({"id": [1], "overview_needs_translation": [True]})  # sem overview_translation_attempts
+
+        resultado = bt._reset_attempts_for_pending(df)
+
+        assert list(resultado.columns) == ["id", "overview_needs_translation"]
+
+    def test_sem_pendentes_nao_loga(self, caplog):
+        df = pd.DataFrame({"overview_needs_translation": [False], "overview_translation_attempts": [3]})
+
+        with caplog.at_level("INFO"):
+            resultado = bt._reset_attempts_for_pending(df)
+
+        assert resultado["overview_translation_attempts"].tolist() == [3]
+        assert not any("tentativas zeradas" in r.message for r in caplog.records)
+
+    def test_loga_quantas_linhas_por_campo(self, caplog):
+        with caplog.at_level("INFO"):
+            bt._reset_attempts_for_pending(self._df())
+
+        mensagens = [r.message for r in caplog.records if "tentativas zeradas" in r.message]
+        assert mensagens == [
+            "  1 linha(s) pendente(s) de 'overview' com tentativas zeradas.",
+            "  2 linha(s) pendente(s) de 'tagline' com tentativas zeradas.",
+            "  1 linha(s) pendente(s) de 'keywords' com tentativas zeradas.",
+        ]
+
+    def test_backfill_year_so_zera_com_a_flag_ligada(self, monkeypatch):
+        """Linha esgotada (3 tentativas, pendente): com a flag é retentada e traduz; sem ela fica como está."""
+        def _details():
+            return pd.DataFrame({
+                "id": [1], "overview_en": ["Falhou antes"], "overview_pt": ["Falhou antes"],
+                "overview_detected_language_pt": ["en"], "overview_translation_attempts": [3],
+                "overview_needs_translation": [True],
+            })
+
+        monkeypatch.delenv("BACKFILL_RESET_ATTEMPTS", raising=False)
+        with (
+            patch("backfill_traducao.wr") as mock_wr,
+            patch("backfill_traducao.translate_text_llm", side_effect=lambda t: f"{t}_PT") as mock_translate,
+        ):
+            mock_wr.s3.read_parquet.return_value = _details()
+            _, traduzidos_sem_flag = bt._backfill_year(
+                "db_movie", "details_movie", "2020", "bucket-sot-test", detect_fn=lambda t: "en",
+            )
+        assert traduzidos_sem_flag == 0
+        mock_translate.assert_not_called()
+
+        monkeypatch.setenv("BACKFILL_RESET_ATTEMPTS", "true")
+        with (
+            patch("backfill_traducao.wr") as mock_wr,
+            patch("backfill_traducao.translate_text_llm", side_effect=lambda t: f"{t}_PT"),
+        ):
+            mock_wr.s3.read_parquet.return_value = _details()
+            _, traduzidos_com_flag = bt._backfill_year(
+                "db_movie", "details_movie", "2020", "bucket-sot-test",
+                detect_fn=lambda t: "pt" if t.endswith("_PT") else "en",
+            )
+        assert traduzidos_com_flag == 1
+        df_escrito = mock_wr.s3.to_parquet.call_args.kwargs["df"]
+        assert df_escrito.loc[0, "overview_pt"] == "Falhou antes_PT"
+        assert df_escrito.loc[0, "overview_translation_attempts"] == 1
+
+    def test_main_loga_o_modo_quando_a_flag_esta_ligada(self, monkeypatch, caplog):
+        with caplog.at_level("INFO"):
+            _run_main(
+                monkeypatch,
+                {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020", "BACKFILL_RESET_ATTEMPTS": "true"},
+            )
+        assert any("Modo 'Zerar tentativas' ligado" in r.message for r in caplog.records)
+
+    def test_main_nao_loga_o_modo_com_a_flag_desligada(self, monkeypatch, caplog):
+        monkeypatch.delenv("BACKFILL_RESET_ATTEMPTS", raising=False)
+        with caplog.at_level("INFO"):
+            _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert not any("Zerar tentativas" in r.message for r in caplog.records)
+
+
 class TestAdicionarTraducoesPt:
     def test_todos_overview_en_vazios_nao_chama_traducao(self):
         df = pd.DataFrame({"overview_en": ["", None]})

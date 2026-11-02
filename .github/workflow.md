@@ -228,6 +228,7 @@ Workflow independente do `_pipeline.yml`, disparado apenas manualmente (`workflo
 | `start_year` | sim | `2000` | Ano inicial (ignorado para `referencias`) |
 | `end_year` | não | vazio (= ano atual) | Ano final (ignorado para `referencias`) |
 | `reprocessar_tudo` | não | `false` | "Reprocessar tudo": com `historico` recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM o que não é pt-BR nativo (details e `name_pt` de configuration), mantendo a tradução antiga se o LLM falhar. Com `historico`, poda de details/watch providers os ids que não estão no discover de nenhum ano (estágio `poda`). Títulos com 404 no TMDB são removidos e os registros não rebuscados são listados ao final (`ERROR` no step summary). Só vale para `historico`, `detalhes_e_providers` e `referencias` (um passo de validação rejeita os demais). Ignora o checkpoint de um run normal e retoma o de um run "Reprocessar tudo" com o mesmo range (modo gravado no checkpoint). Exporta `BACKFILL_REPROCESS_ALL` |
+| `zerar_tentativas` | não | `false` | "Zerar tentativas" (só `traducao`, exclusivo com `reprocessar_tudo`): zera `*_translation_attempts` das linhas ainda pendentes (`*_needs_translation`) de overview, tagline e keywords e as retenta uma vez nesta execução — para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais. Não retraduz o que já está traduzido. Exporta `BACKFILL_RESET_ATTEMPTS`; usa checkpoint próprio (`mode=reset_attempts`) |
 
 **Grupos de tabelas (`table_group`) e script executado:**
 

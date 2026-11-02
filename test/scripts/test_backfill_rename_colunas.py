@@ -22,8 +22,6 @@ ENV_BASE = {
     "S3_BUCKET_TEMP": "bucket-temp-test",
     "GLUE_DATABASE_MOVIE": "db_movie",
     "GLUE_DATABASE_TV": "db_tv",
-    "TABLE_DISCOVER_MOVIE": "discover_movie",
-    "TABLE_DISCOVER_TV": "discover_tv",
     "TABLE_WATCH_PROVIDERS_MOVIE": "watch_providers_movie",
     "TABLE_WATCH_PROVIDERS_TV": "watch_providers_tv",
     "GLUE_DATA_QUALITY_JOB_NAME": "dq-job",
@@ -175,52 +173,52 @@ class TestRenamePartitionColumn:
         assert list(df_escrito["processed_date"]) == ["2026-07-19", "2020-05-02", "2020-05-03"]
 
     def test_renomeia_varias_colunas_numa_unica_regravacao(self):
-        """Discover renomeia duas colunas por partição: uma leitura e uma escrita só."""
+        """Várias colunas renomeadas na mesma partição: uma leitura e uma escrita só."""
         df = pd.DataFrame({
             "id": [1, 2],
-            "overview_detected_language": ["pt", "en"],
-            "overview_translated_pt_br": [True, False],
+            "coluna_antiga_a": ["pt", "en"],
+            "coluna_antiga_b": [True, False],
         })
         renames = {
-            "overview_detected_language": "overview_detected_language_pt",
-            "overview_translated_pt_br": "overview_translated_pt",
+            "coluna_antiga_a": "coluna_nova_a",
+            "coluna_antiga_b": "coluna_nova_b",
         }
         with patch("backfill_rename_colunas.wr") as mock_wr:
             mock_wr.s3.read_parquet.return_value = df
             resultado = brc._rename_partition_columns(
-                "db_movie", "discover_movie", "2020", "bucket-sot-test", renames,
+                "db_movie", "watch_providers_movie", "2020", "bucket-sot-test", renames,
             )
 
         assert resultado is True
         mock_wr.s3.read_parquet.assert_called_once()
         mock_wr.s3.to_parquet.assert_called_once()
         df_escrito = mock_wr.s3.to_parquet.call_args.kwargs["df"]
-        assert "overview_detected_language" not in df_escrito.columns
-        assert "overview_translated_pt_br" not in df_escrito.columns
-        assert list(df_escrito["overview_detected_language_pt"]) == ["pt", "en"]
-        assert list(df_escrito["overview_translated_pt"]) == [True, False]
+        assert "coluna_antiga_a" not in df_escrito.columns
+        assert "coluna_antiga_b" not in df_escrito.columns
+        assert list(df_escrito["coluna_nova_a"]) == ["pt", "en"]
+        assert list(df_escrito["coluna_nova_b"]) == [True, False]
 
     def test_migra_so_as_colunas_antigas_presentes_no_schema_fisico(self):
         """Partição que já tem uma das colunas migrada (e a outra não) migra só a pendente."""
         df = pd.DataFrame({
             "id": [1],
-            "overview_detected_language_pt": ["pt"],
-            "overview_translated_pt_br": [True],
+            "coluna_nova_a": ["pt"],
+            "coluna_antiga_b": [True],
         })
         renames = {
-            "overview_detected_language": "overview_detected_language_pt",
-            "overview_translated_pt_br": "overview_translated_pt",
+            "coluna_antiga_a": "coluna_nova_a",
+            "coluna_antiga_b": "coluna_nova_b",
         }
         with patch("backfill_rename_colunas.wr") as mock_wr:
             mock_wr.s3.read_parquet.return_value = df
             resultado = brc._rename_partition_columns(
-                "db_movie", "discover_movie", "2020", "bucket-sot-test", renames,
+                "db_movie", "watch_providers_movie", "2020", "bucket-sot-test", renames,
             )
 
         assert resultado is True
         df_escrito = mock_wr.s3.to_parquet.call_args.kwargs["df"]
-        assert list(df_escrito["overview_detected_language_pt"]) == ["pt"]
-        assert list(df_escrito["overview_translated_pt"]) == [True]
+        assert list(df_escrito["coluna_nova_a"]) == ["pt"]
+        assert list(df_escrito["coluna_nova_b"]) == [True]
 
     def test_escreve_com_particao_e_modo_overwrite_partitions(self):
         df = pd.DataFrame({"id": [1], "dt_atualizacao": ["2025-06-01"]})
@@ -267,27 +265,28 @@ def _run_main(
 class TestMain:
     def test_chama_rename_para_cada_tabela_e_ano(self, monkeypatch):
         mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2021"})
-        assert mock_rename.call_count == 8  # 2 anos x 4 tabelas
+        assert mock_rename.call_count == 4  # 2 anos x 2 tabelas
 
-    def test_percorre_as_quatro_tabelas_com_as_colunas_corretas_dentro_de_cada_ano(self, monkeypatch):
+    def test_percorre_as_duas_tabelas_de_watch_providers_dentro_de_cada_ano(self, monkeypatch):
+        """O discover não passa mais por aqui (as colunas de idioma dele deixaram de ser gravadas e lidas)."""
         mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
         chamadas = [(c.kwargs["table_name"], c.kwargs["renames"]) for c in mock_rename.call_args_list]
-        discover = {
-            "overview_detected_language": "overview_detected_language_pt",
-            "overview_translated_pt_br": "overview_translated_pt",
-        }
         watch_providers = {"updated_date": "processed_date"}
         assert chamadas == [
-            ("discover_movie", discover),
-            ("discover_tv", discover),
             ("watch_providers_movie", watch_providers),
             ("watch_providers_tv", watch_providers),
         ]
 
+    def test_nao_exige_as_envs_das_tabelas_discover(self, monkeypatch):
+        monkeypatch.delenv("TABLE_DISCOVER_MOVIE", raising=False)
+        monkeypatch.delenv("TABLE_DISCOVER_TV", raising=False)
+        mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
+        assert mock_rename.call_count == 2
+
     def test_usa_ano_atual_como_default_de_end_year(self, monkeypatch):
         from datetime import datetime
         mock_rename, _, _ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": str(datetime.now().year)})  # noqa: DTZ005 — espelha o datetime.now() naive de scripts/backfill_shared.py
-        assert mock_rename.call_count == 4  # 1 ano x 4 tabelas
+        assert mock_rename.call_count == 2  # 1 ano x 2 tabelas
 
     def test_loga_total_de_particoes_regravadas(self, monkeypatch, caplog):
         with (
@@ -296,7 +295,7 @@ class TestMain:
             patch("backfill_rename_colunas.shared.trigger_agg_locally"),
         ):
             _set_env(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-            mock_rename.side_effect = [True, True, False, True]  # 1 tabela já migrada (watch_providers_movie)
+            mock_rename.side_effect = [True, False]  # 1 tabela já migrada (watch_providers_tv)
             mock_boto3.client.return_value = _s3_client_sem_checkpoint()
 
             with caplog.at_level("INFO"):
@@ -304,7 +303,7 @@ class TestMain:
 
         resumo = [r.message for r in caplog.records if "Backfill de rename de colunas concluído" in r.message]
         assert len(resumo) == 1
-        assert "3 de 4 partições regravadas" in resumo[0]
+        assert "1 de 2 partições regravadas" in resumo[0]
 
 
 class TestErros:
@@ -330,7 +329,7 @@ class TestCheckpoint:
         mock_s3.get_object.return_value = {
             "Body": MagicMock(read=MagicMock(return_value=json.dumps({
                 "start_year": 2020, "end_year": 2020,
-                "completed": ["discover_movie:2020", "discover_tv:2020"],
+                "completed": ["watch_providers_movie:2020"],
             }).encode()))
         }
 
@@ -339,12 +338,12 @@ class TestCheckpoint:
         )
 
         tabelas = [c.kwargs["table_name"] for c in mock_rename.call_args_list]
-        assert tabelas == ["watch_providers_movie", "watch_providers_tv"]
+        assert tabelas == ["watch_providers_tv"]
 
     def test_salva_checkpoint_apos_cada_particao(self, monkeypatch):
         mock_s3 = _s3_client_sem_checkpoint()
         _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"}, mock_s3=mock_s3)
-        assert mock_s3.put_object.call_count == 4  # 4 tabelas
+        assert mock_s3.put_object.call_count == 2  # 2 tabelas
 
     def test_marca_completo_mesmo_quando_rename_retorna_false(self, monkeypatch):
         """Partição já migrada (_rename_partition_column retorna False) ainda conta
@@ -360,7 +359,7 @@ class TestCheckpoint:
             brc.main()
 
         body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
-        assert len(body["completed"]) == 4
+        assert len(body["completed"]) == 2
 
     def test_limpa_checkpoint_ao_concluir_tudo_com_sucesso(self, monkeypatch):
         mock_s3 = _s3_client_sem_checkpoint()
@@ -386,7 +385,7 @@ class TestCheckpoint:
 
         assert mock_s3.put_object.call_count == 1
         body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
-        assert body["completed"] == ["discover_movie:2020"]
+        assert body["completed"] == ["watch_providers_movie:2020"]
 
 
 class TestGlueAgg:
@@ -430,5 +429,5 @@ class TestNotificacaoSucesso:
         mock_notify = notify_capture[0]
         mock_notify.assert_called_once_with(
             "rename_colunas",
-            "Backfill de rename de colunas concluído: 2020 até 2020 | 4 de 4 partições regravadas.",
+            "Backfill de rename de colunas concluído: 2020 até 2020 | 2 de 2 partições regravadas.",
         )

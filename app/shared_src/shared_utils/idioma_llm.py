@@ -47,8 +47,7 @@ def detect_language_llm(text: str) -> str | None:
     Detecta o idioma (código ISO 639-1) de um texto via LLM (OpenRouter), com
     fallback nativo de modelo (extra_body.models) se o primário falhar.
 
-    Reaproveita o modelo/chave/fallback já configurados em traducao_llm.py — mesmo
-    padrão de import cruzado já existente entre idioma.py/traducao.py (evita
+    Reaproveita o modelo/chave/fallback já configurados em traducao_llm.py (evita
     duplicar a leitura do secret e a lista de fallback de modelo).
 
     Nunca lança exceção — devolve None em qualquer erro ou resposta fora do padrão

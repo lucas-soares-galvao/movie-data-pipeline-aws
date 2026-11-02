@@ -4,18 +4,17 @@ acompanhar o rename aplicado no Glue Catalog pelo Terraform (infra/glue_catalog.
 
   - watch_providers movie/tv: updated_date → processed_date (padroniza o nome da coluna de
     processamento com as demais tabelas — mesmo tipo `date`, mesma posição).
-  - discover movie/tv: overview_detected_language → overview_detected_language_pt e
-    overview_translated_pt_br → overview_translated_pt (padroniza o sufixo de idioma com o
-    par _en/_pt de details e configuration).
+
+O rename das colunas de idioma do discover (overview_detected_language →
+overview_detected_language_pt e overview_translated_pt_br → overview_translated_pt) saiu deste
+script: o glue_etl não grava mais essas colunas e o glue_agg não as lê (o idioma do overview vem
+dos slots do translations no glue_details — ver app/glue_etl/glue_etl.md).
 
 Não chama a API do TMDB — apenas reescreve o Parquet já existente. Motivo: depois
 que o Terraform aplica o rename no Glue Catalog, o pipeline normal só repopula a
 coluna nova para IDs que ainda são reprocessados (watch_providers acumula histórico
-desde 2000 — só o "Reprocessar tudo" poda órfãos — e o discover só reconstrói o ano
-corrente). As demais partições ficariam com
-a coluna nova permanentemente nula — e, no discover, overview_detected_language_pt nulo
-faz o gate do AGG (= 'pt') descartar o overview e esvazia o cache de idioma do glue_etl
-(o LLM redetectaria tudo). Este script cobre 100% dos casos, lendo o schema físico real
+desde 2000 — só o "Reprocessar tudo" poda órfãos). As demais partições ficariam com
+a coluna nova permanentemente nula. Este script cobre 100% dos casos, lendo o schema físico real
 de cada partição (bypassa o Glue Catalog) e usando o valor já gravado sob o nome antigo
 quando o novo ainda não existe.
 
@@ -43,12 +42,10 @@ Uso:
 Variáveis de ambiente obrigatórias:
     AWS_REGION
     TABLE_GROUP                    (identifica o checkpoint; valor "rename_colunas" neste script)
-    S3_BUCKET_SOT                  (parquets reais de discover/watch_providers)
+    S3_BUCKET_SOT                  (parquets reais de watch_providers)
     S3_BUCKET_TEMP                 (onde o checkpoint de retomada é armazenado)
     GLUE_DATABASE_MOVIE
     GLUE_DATABASE_TV
-    TABLE_DISCOVER_MOVIE
-    TABLE_DISCOVER_TV
     TABLE_WATCH_PROVIDERS_MOVIE
     TABLE_WATCH_PROVIDERS_TV
     GLUE_DATA_QUALITY_JOB_NAME (usada pela chamada local ao Glue AGG ao final, ver "Glue AGG" abaixo)
@@ -62,9 +59,8 @@ Variáveis opcionais:
 Glue AGG:
     Ao final, antes de limpar o checkpoint, roda o Glue AGG (query Athena de unificação +
     escrita da tabela SPEC + disparo do Data Quality sobre a tabela unificada) diretamente no
-    processo — ver backfill_shared.trigger_agg_locally. Faz sentido rodar aqui em particular: a
-    query de unificação do AGG usa overview_detected_language_pt (app/glue_agg/src/queries.py)
-    como gate do overview do discover — coluna que só existe nas partições antigas depois
+    processo — ver backfill_shared.trigger_agg_locally. Faz sentido rodar aqui em particular: o
+    AGG lê watch_providers, cujo processed_date só existe nas partições antigas depois
     deste rename. Uma falha nessa etapa é logada como ERROR mas
     não derruba o backfill (que já terminou com sucesso) — o trigger agendado (sábado/domingo
     08:00 BRT) e o alarme SNS de falha continuam cobrindo o caso.
@@ -104,7 +100,7 @@ def _rename_partition_columns(
 
     Args:
         database:      Nome do banco de dados no Glue Catalog.
-        table_name:    Nome da tabela (discover ou watch_providers, movie ou tv).
+        table_name:    Nome da tabela (watch_providers, movie ou tv).
         year:          Partição a migrar.
         s3_bucket_sot: Nome do bucket SOT onde os dados estão gravados.
         renames:       Mapa nome antigo → nome novo das colunas a renomear.
@@ -184,24 +180,16 @@ def main() -> None:
     db_movie       = shared.require_env("GLUE_DATABASE_MOVIE")
     db_tv          = shared.require_env("GLUE_DATABASE_TV")
 
-    table_discover_movie        = shared.require_env("TABLE_DISCOVER_MOVIE")
-    table_discover_tv           = shared.require_env("TABLE_DISCOVER_TV")
     table_watch_providers_movie = shared.require_env("TABLE_WATCH_PROVIDERS_MOVIE")
     table_watch_providers_tv    = shared.require_env("TABLE_WATCH_PROVIDERS_TV")
     dq_job_name                 = shared.require_env("GLUE_DATA_QUALITY_JOB_NAME")
 
     start_year, end_year = shared.read_year_range(end_env="BACKFILL_END_YEAR")
 
-    discover_renames = {
-        "overview_detected_language": "overview_detected_language_pt",
-        "overview_translated_pt_br":  "overview_translated_pt",
-    }
     watch_providers_renames = {"updated_date": "processed_date"}
 
     # (database, tabela, {coluna antiga: coluna nova})
     tabelas = [
-        (db_movie, table_discover_movie,         discover_renames),
-        (db_tv,    table_discover_tv,            discover_renames),
         (db_movie, table_watch_providers_movie,  watch_providers_renames),
         (db_tv,    table_watch_providers_tv,     watch_providers_renames),
     ]
