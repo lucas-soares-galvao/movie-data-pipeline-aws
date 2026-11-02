@@ -29,7 +29,7 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
 | Qual serviço AWS usar para uma necessidade nova (custo x volume x complexidade) | `especialista-arquitetura-aws` |
 | Custo x benefício dos recursos já escolhidos (lifecycle S3, DPU Glue) | `especialista-finops-aws` |
 | Arquitetura funcional/fluxo ponta a ponta, camadas S3, tabelas do Glue Catalog | `projeto-filmes-aws` |
-| Racional do único caso de schema evolution do projeto (rename de coluna via runbook) | `scripts/backfill_rename_colunas.py`, `especialista-scripts-backfill` |
+| Racional do único caso de schema evolution do projeto (rename de coluna via runbook) | `especialista-scripts-backfill` (o runbook `backfill_rename_colunas.py` foi removido depois de aplicado; ver histórico do git) |
 
 ## Práticas já aplicadas — preservar
 
@@ -154,7 +154,7 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
 
 - **Schema evolution não tem mecanismo genérico em `app/`** — o único caso real (rename
   `dt_processamento`/`dt_atualizacao` → `processed_date`/`updated_date`) foi resolvido inteiramente em
-  `scripts/backfill_rename_colunas.py`, um runbook manual fora de `app/`: lê o schema físico real da partição,
+  `scripts/backfill_rename_colunas.py` (removido depois de aplicado; consultar o histórico do git), um runbook manual fora de `app/`: lê o schema físico real da partição,
   aplica coalesce da coluna nova sobre a antiga, dropa a antiga. Não existe em `app/` nenhuma função de
   `reindex` para colunas ausentes, validação de schema contra o Glue Catalog antes de escrever, ou biblioteca de
   contrato de schema (`pandera`/`great_expectations`). O único mecanismo parecido é `CAST(NULL AS <tipo>)` em
@@ -193,7 +193,7 @@ Esta skill cobre a decisão de design; não repete onde o código mora nem como 
 - **`mode="overwrite"` total só se justifica quando a tabela é sempre recalculada por inteiro E a consistência do
   Glue Catalog em caso de falha parcial importa mais que preservar partições não tocadas** (caso `glue_agg` —
   `app/glue_agg/src/utils.py:121-125`) — não usar `overwrite` total só porque é mais simples de escrever.
-- **Coluna nova numa tabela existente**: seguir o precedente de `scripts/backfill_rename_colunas.py` — ler o schema
+- **Coluna nova numa tabela existente**: seguir o precedente do antigo `scripts/backfill_rename_colunas.py` (removido depois de aplicado; ver histórico do git) — ler o schema
   físico real da partição antes de migrar, nunca assumir que `wr.s3.to_parquet` detecta e evolui schema sozinho. Se
   a mudança afeta tabela histórica com anos já gravados, é backfill manual, não só alterar o código do job daqui
   para frente.

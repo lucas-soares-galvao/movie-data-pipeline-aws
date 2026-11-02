@@ -227,26 +227,26 @@ Workflow independente do `_pipeline.yml`, disparado apenas manualmente (`workflo
 | `table_group` | sim | — | Grupo de tabelas a atualizar (choice) |
 | `start_year` | sim | `2000` | Ano inicial (ignorado para `referencias`) |
 | `end_year` | não | vazio (= ano atual) | Ano final (ignorado para `referencias`) |
-| `reprocessar_tudo` | não | `false` | "Reprocessar tudo": com `historico` recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM o que não é pt-BR nativo (details e `name_pt` de configuration), mantendo a tradução antiga se o LLM falhar. Com `historico`, poda de details/watch providers os ids que não estão no discover de nenhum ano (estágio `poda`). Títulos com 404 no TMDB são removidos e os registros não rebuscados são listados ao final (`ERROR` no step summary). Só vale para `historico`, `detalhes_e_providers` e `referencias` (um passo de validação rejeita os demais). Ignora o checkpoint de um run normal e retoma o de um run "Reprocessar tudo" com o mesmo range (modo gravado no checkpoint). Exporta `BACKFILL_REPROCESS_ALL` |
-| `zerar_tentativas` | não | `false` | "Zerar tentativas" (só `traducao`, exclusivo com `reprocessar_tudo`): zera `*_translation_attempts` das linhas ainda pendentes (`*_needs_translation`) de overview, tagline e keywords e as retenta uma vez nesta execução — para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais. Não retraduz o que já está traduzido. Exporta `BACKFILL_RESET_ATTEMPTS`; usa checkpoint próprio (`mode=reset_attempts`) |
+| `modo` | sim | `normal` | Modo de execução (choice). O formulário do `workflow_dispatch` é estático (não esconde opções conforme o `table_group`), então o passo `Validate mode` rejeita, antes de qualquer acesso à AWS, o modo que não vale para o grupo escolhido. `normal`: fluxo padrão do grupo. `reprocessar_tudo` (só `historico` e `referencias`): com `historico` recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM o que não é pt-BR nativo (details e `name_pt` de configuration), mantendo a tradução antiga se o LLM falhar; poda de details/watch providers os ids que não estão no discover de nenhum ano (estágio `poda`); títulos com 404 no TMDB são removidos e os registros não rebuscados são listados ao final (`ERROR` no step summary); ignora o checkpoint de um run normal e retoma o de um run `reprocessar_tudo` com o mesmo range (modo gravado no checkpoint); exporta `BACKFILL_REPROCESS_ALL`. `zerar_tentativas` (só `traducao`): zera `*_translation_attempts` das linhas ainda pendentes (`*_needs_translation`) de overview, tagline e keywords e as retenta uma vez nesta execução — para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais; não retraduz o que já está traduzido; exporta `BACKFILL_RESET_ATTEMPTS` e usa checkpoint próprio (`mode=reset_attempts`). Os dois modos são exclusivos por construção (um único input) |
 
 **Grupos de tabelas (`table_group`) e script executado:**
 
 | `table_group` | Script | Serviço AWS |
 |---|---|---|
-| `discover` | `scripts/backfill_discover.py` | Lambda |
-| `referencias` | `scripts/backfill_referencias.py` | Lambda |
-| `detalhes_e_providers` | `scripts/backfill_enriquecimento.py` | Glue Details |
-| `data_quality` | `scripts/backfill_data_quality.py` | Glue Data Quality |
+| `historico` | `scripts/backfill_historico.py` (encadeia `backfill_discover.py` e `backfill_enriquecimento.py` no mesmo processo) | S3 / Glue Catalog (direto) |
+| `referencias` | `scripts/backfill_referencias.py` | S3 / Glue Catalog (direto) |
+| `changes` | `scripts/backfill_changes.py` | S3 / Glue Catalog (direto) |
 | `traducao` | `scripts/backfill_traducao.py` | S3 (direto) |
-| `rename_colunas` | `scripts/backfill_rename_colunas.py` | S3 (direto) |
+| `data_quality` | `scripts/backfill_data_quality.py` | Glue Data Quality |
+
+`discover` e `detalhes_e_providers` deixaram de ser opções do workflow: rodam só como estágios do `historico`. Os scripts continuam existindo e testados.
 
 **Etapas principais:**
 
 1. Checkout + resolve o ambiente a partir do branch (`main`→prod, `develop`→dev, outro branch → falha)
 2. Lê `infra/config/project.json` via `jq` — `project_prefix`
 3. Autenticação AWS via OIDC — assume `AWS_ASSUME_ROLE_ARN_BACKFILL_DEV` ou `AWS_ASSUME_ROLE_ARN_BACKFILL_PROD` conforme o ambiente resolvido (role dedicada e de privilégio mínimo, separada da role de CI/CD usada pelo `_pipeline.yml` — ver `infra/docs/iam.md`)
-4. Setup Python 3.12, instala `boto3` (e `scripts/requirements_backfill.txt` apenas se `table_group == traducao`)
+4. Setup Python 3.12, instala `boto3` e `tzdata` (e `scripts/requirements_backfill.txt` em todo `table_group` exceto `data_quality`)
 5. **Mascara os segredos do Secrets Manager** (step `Mask secrets from Secrets Manager`, antes do backfill): lê o secret unificado (`FILMBOT_SECRET_ARN`, mesma permissão `GetSecretValue` que os scripts já usam) e emite `::add-mask::` para cada valor string com 8+ caracteres. O repositório é público e o log do Actions também; a chave do TMDB viaja como parâmetro de query e a mensagem de qualquer exceção do `requests` a carrega (vazou num run de dev). É a última camada — o código já mascara na origem (`shared_utils.secret_redaction`) — e fica num step separado porque o `::add-mask::` não pode sair no stdout do script: o `tee` o gravaria em `$LOG_FILE`, de onde sai o step summary
 6. Executa o script correspondente ao `table_group` escolhido, com todas as variáveis de ambiente dos recursos AWS montadas dinamicamente como `<project_prefix>-...-<ambiente>` / `<project_prefix>_..._<ambiente>` (ex.: `tmdb-glue-details-dev`, `db_tmdb_movie_prod`) — prefixo lido de `infra/config/project.json`, ambiente resolvido pelo branch
 
@@ -254,9 +254,9 @@ Workflow independente do `_pipeline.yml`, disparado apenas manualmente (`workflo
 
 **Retomada automática após expiração de credencial:**
 
-A sessão AWS assumida via OIDC dura 1h (padrão da action `configure-aws-credentials`), mas backfills como `detalhes_e_providers` podem levar várias horas. Em vez de esticar a duração da sessão, o step "Run backfill" trata isso com dois mecanismos complementares:
+A sessão AWS assumida via OIDC dura 1h (padrão da action `configure-aws-credentials`), mas backfills como `historico` podem levar várias horas. Em vez de esticar a duração da sessão, o step "Run backfill" trata isso com dois mecanismos complementares:
 
-- **Retry em bash**: os scripts que iteram por ano (`backfill_discover.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`) detectam `ExpiredTokenException` e saem com `exit code 75` (`scripts/backfill_shared.py`). Um laço `while` no step captura esse código, renova a credencial inline via OIDC (`assume-role-with-web-identity`, nova sessão de 1h) e roda o script de novo — até `max_tentativas=6`, alinhado ao `timeout-minutes: 360` (~6 sessões de 1h). Qualquer outro código de saída propaga a falha imediatamente, sem retry. (`backfill_referencias.py` não itera por ano e nunca sai com 75 — para ele o laço roda uma única vez.)
+- **Retry em bash**: os scripts que iteram por ano (`backfill_historico.py` — via `backfill_discover.py` e `backfill_enriquecimento.py` —, `backfill_data_quality.py`, `backfill_traducao.py`) detectam `ExpiredTokenException` e saem com `exit code 75` (`scripts/backfill_shared.py`). Um laço `while` no step captura esse código, renova a credencial inline via OIDC (`assume-role-with-web-identity`, nova sessão de 1h) e roda o script de novo — até `max_tentativas=6`, alinhado ao `timeout-minutes: 360` (~6 sessões de 1h). Qualquer outro código de saída propaga a falha imediatamente, sem retry. (`backfill_referencias.py` não itera por ano e nunca sai com 75 — para ele o laço roda uma única vez.)
 - **Checkpoint em S3**: cada reinício acima é um processo Python novo, sem memória do progresso anterior. Para não refazer trabalho já concluído, esses mesmos scripts persistem as unidades (`tipo:ano`) já processadas com sucesso em `s3://{S3_BUCKET_TEMP}/tmdb/backfill_checkpoints/{table_group}.json` a cada unidade concluída, e leem esse checkpoint no início para pular direto para as pendentes. O checkpoint é apagado ao final de um backfill sem falhas pendentes. `backfill_traducao.py` usa adicionalmente `S3_BUCKET_SOT` para ler/escrever os parquets reais — separado do checkpoint.
 
 Se o `table_group` escolhido falhar por outro motivo (não expiração de credencial) ou esgotar as 6 tentativas, é preciso disparar o workflow manualmente de novo — ele também vai retomar do checkpoint salvo, agora numa nova execução.

@@ -11,45 +11,35 @@ run-name: "Backfill [${{ github.ref_name == 'main' && 'PROD' || 'DEV' }}]: ${{ i
 #   - qualquer outro branch → falha (ver step "Resolve environment from branch")
 #
 # Grupos de tabelas disponíveis:
-#   - discover              — popula as tabelas discover rodando a coleta TMDB e a transformação
-#                             equivalente ao Glue ETL localmente neste workflow (sem acionar Lambda
-#                             nem o job Glue ETL — ver scripts/backfill_discover.py), disparando o
-#                             Glue Data Quality uma única vez ao final, cobrindo todo o range de
-#                             anos processado
 #   - referencias           — atualiza genre, configuration, watch_providers_ref rodando a coleta
 #                             TMDB e a transformação equivalente ao Glue ETL localmente neste
 #                             workflow (sem acionar Lambda nem o job Glue ETL — ver
 #                             scripts/backfill_referencias.py), disparando o Glue Data Quality uma
 #                             vez por tabela gravada
-#   - detalhes_e_providers  — re-enriquece details + watch_providers rodando a lógica do Glue
-#                             Details localmente neste workflow (sem acionar o job Glue — ver
-#                             scripts/backfill_enriquecimento.py), disparando o Glue Data Quality
-#                             uma única vez ao final, cobrindo todo o range de anos processado
 #   - data_quality          — re-executa DQ via Glue
 #   - traducao              — adiciona overview_pt nos details (sem API TMDB); só traduz o
-#                             que está pendente (ver scripts/backfill_traducao.py). Com
+#                             que está pendente (ver scripts/backfill_traducao.py). Com o modo
 #                             'zerar_tentativas', as linhas pendentes que esgotaram o teto de
 #                             tentativas voltam a ser retentadas uma vez
-#   - rename_colunas        — renomeia updated_date→processed_date (watch_providers) nos
-#                             parquets já gravados (sem API TMDB — ver
-#                             scripts/backfill_rename_colunas.py)
-#   - changes               — dispara sob demanda o mesmo modo changes que o cron semanal de
+#   - changes              — dispara sob demanda o mesmo modo changes que o cron semanal de
 #                             domingo já aciona automaticamente (janela fixa de 7 dias, sem
 #                             start_year/end_year), rodando a coleta de IDs mudados e o
 #                             enriquecimento localmente neste workflow (sem acionar Lambda nem
 #                             o job Glue Details — ver scripts/backfill_changes.py), disparando
 #                             o Glue Data Quality uma única vez ao final por tabela
-#   - historico             — encadeia discover e detalhes_e_providers num único run (ver
-#                             scripts/backfill_historico.py), chamando os dois scripts acima em
-#                             sequência no mesmo processo; mantém um checkpoint próprio por
-#                             estágio (além do checkpoint por ano/tipo de cada um) para não
-#                             redigitar um estágio já concluído numa retomada; herda os 2
-#                             disparos de Glue Data Quality dos dois scripts (não dispara um
-#                             terceiro consolidado)
+#   - historico             — encadeia a coleta do discover e o enriquecimento de details +
+#                             watch_providers num único run (ver scripts/backfill_historico.py),
+#                             chamando scripts/backfill_discover.py e
+#                             scripts/backfill_enriquecimento.py em sequência no mesmo processo
+#                             (sem acionar Lambda nem os jobs Glue ETL/Details); mantém um
+#                             checkpoint próprio por estágio (além do checkpoint por ano/tipo
+#                             de cada um) para não redigitar um estágio já concluído numa
+#                             retomada; herda os 2 disparos de Glue Data Quality dos dois
+#                             scripts (não dispara um terceiro consolidado)
 #
 # Ao final de qualquer execução bem-sucedida (exit 0), o workflow escreve no step
 # summary um resumo real do que o script de backfill fez (não só "sucesso" pelo exit
-# code — para detalhes_e_providers/data_quality, exit 0 não garante que toda unidade
+# code — para historico/data_quality, exit 0 não garante que toda unidade
 # teve sucesso, ver scripts/scripts.md). Cada table_group EXCETO data_quality (que só
 # valida, não escreve dado novo) roda a lógica do Glue AGG (query Athena de unificação
 # + escrita da tabela SPEC + disparo do Data Quality sobre a tabela unificada) dentro
@@ -73,14 +63,11 @@ on:
         required: true
         type: choice
         options:
-          - discover
-          - referencias
-          - detalhes_e_providers
-          - data_quality
-          - traducao
-          - rename_colunas
-          - changes
           - historico
+          - referencias
+          - changes
+          - traducao
+          - data_quality
       start_year:
         description: "Ano inicial (ignorado para referencias e changes)"
         required: true
@@ -91,16 +78,15 @@ on:
         required: false
         default: ""
         type: string
-      reprocessar_tudo:
-        description: "Reprocessar tudo: com 'historico' recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM tudo o que não é pt-BR nativo (ignora a tradução já gravada; mantém a antiga se o LLM falhar); com 'historico', details/watch providers são podados aos ids presentes no discover (órfãos saem); títulos que o TMDB responde com 404 são removidos; registros não rebuscados são listados ao final. Só vale para historico, detalhes_e_providers e referencias (referencias só retraduz name_pt de configuration). Ignora o checkpoint de um run normal; retoma o de um run 'Reprocessar tudo' anterior com o mesmo range"
-        required: false
-        default: false
-        type: boolean
-      zerar_tentativas:
-        description: "Zerar tentativas (só 'traducao'): zera *_translation_attempts das linhas ainda pendentes (*_needs_translation) de overview, tagline e keywords e as retenta uma vez nesta execução. Serve para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais; não retraduz o que já está traduzido. Usa um checkpoint próprio: ignora o de um run normal e retoma o de um run 'Zerar tentativas' anterior com o mesmo range"
-        required: false
-        default: false
-        type: boolean
+      modo:
+        description: "Modo de execução. 'normal': fluxo padrão do grupo. 'reprocessar_tudo' (só historico e referencias): com 'historico' recoleta o discover, rebusca details/watch providers no TMDB e retraduz via LLM tudo o que não é pt-BR nativo (ignora a tradução já gravada; mantém a antiga se o LLM falhar), poda details/watch providers aos ids presentes no discover (órfãos saem), remove títulos que o TMDB responde com 404 e lista ao final os registros não rebuscados; 'referencias' só retraduz name_pt de configuration; ignora o checkpoint de um run normal e retoma o de um run 'reprocessar_tudo' anterior com o mesmo range. 'zerar_tentativas' (só 'traducao'): zera *_translation_attempts das linhas ainda pendentes (*_needs_translation) de overview, tagline e keywords e as retenta uma vez nesta execução — serve para linhas que esgotaram o teto de tentativas (p.ex. numa queda do LLM) e que o backfill normal não retenta mais; não retraduz o que já está traduzido; usa um checkpoint próprio: ignora o de um run normal e retoma o de um run 'zerar_tentativas' anterior com o mesmo range"
+        required: true
+        default: normal
+        type: choice
+        options:
+          - normal
+          - reprocessar_tudo
+          - zerar_tentativas
 
 permissions:
   id-token: write
@@ -128,32 +114,32 @@ jobs:
           fi
           echo "🌎 Ambiente resolvido a partir do branch '${{ github.ref_name }}'"
 
-      - name: Validate "Reprocessar tudo" option
-        if: ${{ inputs.reprocessar_tudo }}
+      - name: Validate mode
+        # O formulário do workflow_dispatch é estático (não esconde opções conforme o table_group),
+        # então a compatibilidade modo x grupo é checada aqui, antes de qualquer acesso à AWS.
+        if: ${{ inputs.modo != 'normal' }}
         run: |
-          case "${{ inputs.table_group }}" in
-            historico|detalhes_e_providers|referencias) ;;
-            traducao)
-              echo "❌ 'Reprocessar tudo' não vale para 'traducao': esse grupo lê só o parquet já gravado e não tem como saber, nas linhas anteriores à coluna *_pt_source, se o texto veio do slot pt-BR do TMDB ou do LLM — retraduzir poderia sobrescrever os nativos. Use 'detalhes_e_providers' ou 'historico', que rebuscam do TMDB e sabem a origem, ou 'Zerar tentativas' para só retentar as linhas pendentes."
-              exit 1
+          case "${{ inputs.modo }}" in
+            reprocessar_tudo)
+              case "${{ inputs.table_group }}" in
+                historico|referencias) ;;
+                traducao)
+                  echo "❌ O modo 'reprocessar_tudo' não vale para 'traducao': esse grupo lê só o parquet já gravado e não tem como saber, nas linhas anteriores à coluna *_pt_source, se o texto veio do slot pt-BR do TMDB ou do LLM — retraduzir poderia sobrescrever os nativos. Use 'historico', que rebusca do TMDB e sabe a origem, ou o modo 'zerar_tentativas' para só retentar as linhas pendentes."
+                  exit 1
+                  ;;
+                *)
+                  echo "❌ O modo 'reprocessar_tudo' só vale para historico e referencias (table_group='${{ inputs.table_group }}')."
+                  exit 1
+                  ;;
+              esac
               ;;
-            *)
-              echo "❌ 'Reprocessar tudo' só vale para historico, detalhes_e_providers e referencias (table_group='${{ inputs.table_group }}')."
-              exit 1
+            zerar_tentativas)
+              if [ "${{ inputs.table_group }}" != "traducao" ]; then
+                echo "❌ O modo 'zerar_tentativas' só vale para 'traducao' (table_group='${{ inputs.table_group }}')."
+                exit 1
+              fi
               ;;
           esac
-
-      - name: Validate "Zerar tentativas" option
-        if: ${{ inputs.zerar_tentativas }}
-        run: |
-          if [ "${{ inputs.table_group }}" != "traducao" ]; then
-            echo "❌ 'Zerar tentativas' só vale para 'traducao' (table_group='${{ inputs.table_group }}')."
-            exit 1
-          fi
-          if [ "${{ inputs.reprocessar_tudo }}" = "true" ]; then
-            echo "❌ 'Zerar tentativas' e 'Reprocessar tudo' são exclusivos."
-            exit 1
-          fi
 
       - name: Read project configuration
         id: project
@@ -180,11 +166,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # tzdata é do backfill_shared.py (compartilhado pelos 8 scripts, ver
+          # tzdata é do backfill_shared.py (compartilhado pelos scripts de backfill, ver
           # Formatter.converter de horário de São Paulo) — instalado sempre, não só
-          # nos 2 table_group abaixo, para não depender da base IANA do runner.
+          # nos table_group que usam o requirements_backfill.txt, para não depender da
+          # base IANA do runner.
           pip install boto3 tzdata
-          if [ "${{ inputs.table_group }}" = "discover" ] || [ "${{ inputs.table_group }}" = "traducao" ] || [ "${{ inputs.table_group }}" = "rename_colunas" ] || [ "${{ inputs.table_group }}" = "detalhes_e_providers" ] || [ "${{ inputs.table_group }}" = "changes" ] || [ "${{ inputs.table_group }}" = "referencias" ] || [ "${{ inputs.table_group }}" = "historico" ]; then
+          # data_quality é o único grupo que não usa pandas/awswrangler (só dispara o Glue DQ).
+          if [ "${{ inputs.table_group }}" != "data_quality" ]; then
             pip install -r scripts/requirements_backfill.txt
           fi
 
@@ -281,15 +269,15 @@ jobs:
           TABLE_WATCH_PROVIDERS_REF_MOVIE: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_movie_${{ steps.env.outputs.name }}
           TABLE_WATCH_PROVIDERS_REF_TV: tb_${{ steps.project.outputs.project_prefix }}_watch_providers_ref_tv_${{ steps.env.outputs.name }}
           BACKFILL_START_YEAR: ${{ inputs.start_year }}
-          # Input "Reprocessar tudo" ("true"/"false"). Lida via
-          # backfill_shared.reprocess_all_enabled por backfill_enriquecimento.py (também via
+          # Modo "reprocessar_tudo" do input `modo` ("true"/"false"). Lida via
+          # backfill_shared.reprocess_all_enabled por backfill_enriquecimento.py (chamado pelo
           # historico), backfill_referencias.py e pelo checkpoint compartilhado (modo do run).
           # Os demais scripts a ignoram.
-          BACKFILL_REPROCESS_ALL: ${{ inputs.reprocessar_tudo }}
-          # Input "Zerar tentativas" ("true"/"false"), só para traducao. Lida via
+          BACKFILL_REPROCESS_ALL: ${{ inputs.modo == 'reprocessar_tudo' }}
+          # Modo "zerar_tentativas" do input `modo` ("true"/"false"), só para traducao. Lida via
           # backfill_shared.reset_attempts_enabled por backfill_traducao.py e pelo checkpoint
           # compartilhado (modo do run). Os demais scripts a ignoram.
-          BACKFILL_RESET_ATTEMPTS: ${{ inputs.zerar_tentativas }}
+          BACKFILL_RESET_ATTEMPTS: ${{ inputs.modo == 'zerar_tentativas' }}
           # Duração da sessão AWS (mesmo valor de --duration-seconds em renovar_credenciais e do
           # default de 1h da action de credenciais). Liga a guarda de backfill_shared.
           # session_budget_low: antes de cada unidade longa, se não sobra tempo de sessão, o script
@@ -302,14 +290,11 @@ jobs:
 
           executar_script() {
             case "${{ inputs.table_group }}" in
-              discover)             python scripts/backfill_discover.py ;;
-              referencias)          python scripts/backfill_referencias.py ;;
-              detalhes_e_providers) python scripts/backfill_enriquecimento.py ;;
-              data_quality)         python scripts/backfill_data_quality.py ;;
-              traducao)             python scripts/backfill_traducao.py ;;
-              rename_colunas)       python scripts/backfill_rename_colunas.py ;;
-              changes)              python scripts/backfill_changes.py ;;
-              historico)            python scripts/backfill_historico.py ;;
+              historico)    python scripts/backfill_historico.py ;;
+              referencias)  python scripts/backfill_referencias.py ;;
+              changes)      python scripts/backfill_changes.py ;;
+              traducao)     python scripts/backfill_traducao.py ;;
+              data_quality) python scripts/backfill_data_quality.py ;;
             esac
           }
 
@@ -341,8 +326,7 @@ jobs:
           # de terminar e cada tentativa refazia tudo do zero. backfill_changes.py também não itera
           # por ano (só 2 content_types, movie/tv), mas tem checkpoint próprio por content_type
           # (mesma ideia, com a data de ontem) — uma expiração de credencial retoma só o
-          # content_type pendente, sem refazer o que já concluiu. backfill_rename_colunas.py itera
-          # por tabela x ano (não por media_type) e usa o mesmo checkpoint/retry dos demais.
+          # content_type pendente, sem refazer o que já concluiu.
           # max_tentativas alinhado ao timeout-minutes do job (360min / ~1h por sessão AWS) —
           # se o timeout mudar, ajustar aqui também.
           # ARN do tópico SNS de sucesso do backfill (scripts/backfill_shared.py:
@@ -390,8 +374,8 @@ jobs:
           # --- Backfill: resumo real extraído do log, antes da seção do glue_agg ---
           # Todos os scripts usam o mesmo formato de log (backfill_shared.py:
           # "%(asctime)s %(levelname)s %(message)s"), então isso funciona igual para os
-          # 8 scripts sem lógica por table_group. Importante para detalhes_e_providers
-          # (soft-fail-continue) e data_quality (fire-and-forget): "exit 0" não garante
+          # scripts sem lógica por table_group. Importante para historico (o estágio de
+          # enriquecimento é soft-fail-continue) e data_quality (fire-and-forget): "exit 0" não garante
           # que toda unidade teve sucesso — ver scripts/scripts.md.
           echo "## Backfill (\`${{ inputs.table_group }}\`)" >> "$GITHUB_STEP_SUMMARY"
 

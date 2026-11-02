@@ -2,7 +2,7 @@
 
 ## O que é testado
 
-Testa os 8 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_rename_colunas.py`, `backfill_changes.py`, `backfill_historico.py`) + o módulo compartilhado `backfill_shared.py`, acionados pelo workflow `6. Backfill` (`.github/workflows/backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `litellm.completion`) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS nem ao LLM (OpenRouter).
+Testa os 7 scripts de backfill manual em `scripts/` (`backfill_discover.py`, `backfill_referencias.py`, `backfill_enriquecimento.py`, `backfill_data_quality.py`, `backfill_traducao.py`, `backfill_changes.py`, `backfill_historico.py`) + o módulo compartilhado `backfill_shared.py`, acionados pelo workflow `6. Backfill` (`.github/workflows/backfill.yml`). Testes unitários com **pytest**, dependências externas (`boto3`, `awswrangler`, `litellm.completion`) substituídas por mocks via `unittest.mock` — nenhuma chamada real à AWS nem ao LLM (OpenRouter).
 
 O foco principal é o **contrato dos argumentos** enviados a cada serviço (Glue) ou às funções internas replicadas no processo (coleta TMDB, transformação equivalente ao Glue ETL/Details), não cobertura exaustiva de cada branch — esses scripts são runbooks de operação manual, não código do pipeline deployado. Ainda assim, a cobertura deles **entra no gate de 100%**: o CI roda `pytest --cov=app --cov=scripts` (ver "Cobertura" abaixo).
 
@@ -24,7 +24,6 @@ test/scripts/
 ├── test_backfill_enriquecimento.py
 ├── test_backfill_data_quality.py
 ├── test_backfill_traducao.py
-├── test_backfill_rename_colunas.py
 ├── test_backfill_changes.py
 ├── test_backfill_historico.py
 └── test_backfill_shared.py
@@ -406,61 +405,6 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 | Teste | O que verifica |
 |---|---|
 | `test_chamado_antes_de_clear_checkpoint` | `trigger_agg_locally` chamado (com `GLUE_DATA_QUALITY_JOB_NAME`, novo para este script) antes de `clear_checkpoint`, com os argumentos corretos |
-
-## Casos de teste — `test_backfill_rename_colunas.py`
-
-Renomeia colunas nos parquets já gravados no S3 — hoje só watch_providers
-(`updated_date` → `processed_date`; o rename das colunas de idioma do discover saiu do script), com suporte genérico a várias colunas por partição numa única regravação, sem chamar a API do TMDB — ver docstring de
-`scripts/backfill_rename_colunas.py` para o motivo de o pipeline normal
-(`backfill_enriquecimento.py`) não bastar sozinho para migrar 100% do
-histórico (IDs que saíram do discover atual nunca mais entram no delta
-reprocessado).
-
-### `TestRenamePartitionColumn`
-
-| Teste | O que verifica |
-|---|---|
-| `test_sem_arquivos_retorna_false_e_nao_escreve` / `test_df_vazio_retorna_false_e_nao_escreve` | `_rename_partition_column` pula partições ausentes/vazias sem escrever |
-| `test_particao_ja_migrada_sem_coluna_antiga_retorna_false_e_nao_escreve` | Guard central: partição sem a coluna antiga no schema físico (já migrada) não é regravada de novo |
-| `test_outras_excecoes_sao_repropagadas` | Exceções que não são `NoFilesFound` são relançadas |
-| `test_expired_token_na_leitura_loga_e_repropaga` / `test_expired_token_na_escrita_loga_e_repropaga` (parametrizados: `ExpiredTokenException`/`ExpiredToken`) | Erro de token expirado na leitura ou na escrita loga aviso de credenciais e repropaga |
-| `test_registros_sem_valor_nas_duas_colunas_geram_aviso_mas_ainda_migram` | Registros nulos nas colunas nova e antiga geram `logger.warning` ("continuam sem ..."), mas a partição ainda é gravada |
-| `test_particao_totalmente_nao_migrada_preenche_coluna_nova_e_descarta_antiga` | Partição nunca tocada pelo pipeline desde o rename (só tem a coluna antiga) — todo registro ganha a coluna nova, coluna antiga é descartada |
-| `test_particao_mista_preserva_coluna_nova_e_usa_antiga_so_para_os_nulos` | Caso dos IDs que saíram do discover atual: registros já reprocessados (coluna nova preenchida) não são sobrescritos pelo coalesce; só os ainda nulos usam o valor da coluna antiga |
-| `test_escreve_com_particao_e_modo_overwrite_partitions` | `wr.s3.to_parquet` chamado com `partition_cols=["year"]` e `mode="overwrite_partitions"` |
-
-### `TestMain`
-
-| Teste | O que verifica |
-|---|---|
-| `test_chama_rename_para_cada_tabela_e_ano` | Total de chamadas = anos × 2 tabelas (watch_providers movie/tv) |
-| `test_percorre_as_duas_tabelas_de_watch_providers_dentro_de_cada_ano` | Cada tabela é chamada com o mapa `renames` correto (`updated_date` → `processed_date`); o discover não passa mais por aqui |
-| `test_nao_exige_as_envs_das_tabelas_discover` | `main()` roda sem `TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV` |
-| `test_usa_ano_atual_como_default_de_end_year` | `BACKFILL_END_YEAR` ausente usa o ano atual |
-| `test_loga_total_de_particoes_regravadas` | O log final soma quantas partições foram efetivamente regravadas (`_rename_partition_column` retorna `True`), não o total de partições verificadas |
-
-### `TestErros`
-
-| Teste | O que verifica |
-|---|---|
-| `test_variavel_de_ambiente_obrigatoria_ausente_leva_a_erro` | `EnvironmentError` quando falta variável obrigatória |
-| `test_expired_token_gera_codigo_75` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_nao_gera_codigo_de_retomada` | `expired_token_exit_code` distingue token expirado de outros erros |
-
-### `TestCheckpoint`
-
-| Teste | O que verifica |
-|---|---|
-| `test_pula_particoes_ja_concluidas` | Partições (`tabela:ano`) já no checkpoint não chamam `_rename_partition_column` de novo |
-| `test_salva_checkpoint_apos_cada_particao` | `put_object` chamado a cada uma das 2 tabelas processadas |
-| `test_marca_completo_mesmo_quando_rename_retorna_false` | Partição já migrada (`_rename_partition_column` retorna `False`) ainda conta como concluída — não é falha |
-| `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
-| `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado) | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
-
-### `TestGlueAgg`
-
-| Teste | O que verifica |
-|---|---|
-| `test_chamado_antes_de_clear_checkpoint` | `trigger_agg_locally` chamado (com `GLUE_DATA_QUALITY_JOB_NAME`, novo para este script) antes de `clear_checkpoint` — é o gatilho mais importante na prática, já que a query do AGG usa `processed_date`, coluna que só existe depois deste rename |
 
 ## Casos de teste — `test_backfill_changes.py`
 
