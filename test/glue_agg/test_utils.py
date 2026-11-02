@@ -181,18 +181,21 @@ class TestRunAthenaQuery:
 
         assert "COALESCE(d.tagline_pt, d.tagline)" in sql
 
-    def test_query_usa_case_overview_idioma_detectado(self):
-        """overview só usa o valor do discover (u.overview) quando confirmado pt-BR
-        via overview_detected_language_pt (glue_etl) — caso contrário cai para
-        overview_pt/overview_en do glue_details (mesma cadeia de fallback de sempre)."""
+    def test_query_overview_prioriza_details_e_usa_discover_so_como_ultimo_recurso(self):
+        """overview vem de overview_pt/overview_en do glue_details (idioma rotulado pelos slots do
+        translations do TMDB) e só cai no overview do discover — sem confirmação de idioma — quando
+        não há linha em details."""
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:
             run_athena_query(db_movie="db_tmdb_movie_dev", db_tv="db_tmdb_tv_dev", db_unified="db_tmdb_unified_dev", s3_bucket_temp="my-temp", env="dev")
             _, kwargs = mock_read.call_args
             sql = kwargs["sql"]
 
-        assert "CASE WHEN u.overview_detected_language_pt = 'pt' THEN NULLIF(TRIM(u.overview), '') END" in sql
-        assert "d.overview_pt" in sql
-        assert "d.overview_en" in sql
+        compact = " ".join(sql.split())
+        assert (
+            "COALESCE( NULLIF(TRIM(d.overview_pt), ''), NULLIF(TRIM(d.overview_en), ''), "
+            "NULLIF(TRIM(u.overview), '') ) AS overview"
+        ) in compact
+        assert "overview_detected_language_pt" not in sql
 
     def test_query_usa_coalesce_production_countries_pt(self):
         with patch("awswrangler.athena.read_sql_query", return_value=pd.DataFrame()) as mock_read:

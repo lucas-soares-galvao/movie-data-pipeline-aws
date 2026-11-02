@@ -25,7 +25,6 @@ movies_ranked AS (
         title,
         original_title,
         overview,
-        overview_detected_language_pt,
         release_date                 AS air_date,
         original_language,
         CAST(adult AS BOOLEAN)       AS adult,
@@ -57,7 +56,6 @@ tv_shows_ranked AS (
         name                   AS title,
         original_name          AS original_title,
         overview,
-        overview_detected_language_pt,
         first_air_date         AS air_date,
         original_language,
         CAST(NULL AS BOOLEAN)  AS adult,
@@ -562,16 +560,15 @@ spec_raw AS (
         -- original_title como fallback para o caso raro de title estar vazio.
         COALESCE(NULLIF(TRIM(u.title), ''), u.original_title)                                             AS title,
         u.original_title,
-        -- overview_detected_language_pt (glue_etl) confirma se o overview em pt-BR do discover
-        -- é genuinamente português antes de confiar nele — o TMDB às vezes devolve o
-        -- overview em outro idioma silenciosamente mesmo com language=pt-BR pedido.
-        -- Só quando confirmado "pt" o overview do discover é usado; caso contrário
-        -- (idioma diferente ou detecção nula), cai para overview_pt/overview_en do
-        -- glue_details (mesma cadeia de fallback de sempre).
+        -- overview_pt/overview_en do glue_details vêm dos slots do translations do TMDB (idioma
+        -- rotulado pela própria API) ou da tradução por LLM, então têm prioridade. O overview do
+        -- discover é só o último recurso, para títulos sem linha em details (404, falha transitória
+        -- ou ano divergente): o TMDB às vezes o devolve em outro idioma mesmo com language=pt-BR
+        -- pedido, e não há como confirmar o idioma dele aqui.
         COALESCE(
-            CASE WHEN u.overview_detected_language_pt = 'pt' THEN NULLIF(TRIM(u.overview), '') END,
-            d.overview_pt,
-            d.overview_en
+            NULLIF(TRIM(d.overview_pt), ''),
+            NULLIF(TRIM(d.overview_en), ''),
+            NULLIF(TRIM(u.overview), '')
         )                                                                           AS overview,
         u.air_date,
         u.original_language,

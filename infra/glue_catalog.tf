@@ -656,6 +656,10 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
       type = "boolean"
     }
     columns {
+      name = "overview_pt_source"
+      type = "string"
+    }
+    columns {
       name = "tagline_detected_language_en"
       type = "string"
     }
@@ -670,6 +674,10 @@ resource "aws_glue_catalog_table" "tb_details_movie_tmdb" {
     columns {
       name = "tagline_needs_translation"
       type = "boolean"
+    }
+    columns {
+      name = "tagline_pt_source"
+      type = "string"
     }
     columns {
       name = "keywords_detected_language_en"
@@ -920,6 +928,10 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
       type = "boolean"
     }
     columns {
+      name = "overview_pt_source"
+      type = "string"
+    }
+    columns {
       name = "tagline_detected_language_en"
       type = "string"
     }
@@ -934,6 +946,10 @@ resource "aws_glue_catalog_table" "tb_details_tv_tmdb" {
     columns {
       name = "tagline_needs_translation"
       type = "boolean"
+    }
+    columns {
+      name = "tagline_pt_source"
+      type = "string"
     }
     columns {
       name = "keywords_detected_language_en"

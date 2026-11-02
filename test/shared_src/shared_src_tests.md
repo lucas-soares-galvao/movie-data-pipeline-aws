@@ -412,6 +412,15 @@ texto idêntico ao da última execução. Não sobrescreve valor já preenchido 
 | `test_coluna_chave_customizada` | Funciona com `key_column="iso_3166_1"` (caso de uso do `glue_etl`) |
 | `test_coluna_chave_customizada_nao_reaproveita_quando_ausente_no_anterior` | Chave customizada ausente em `previous_df` não reaproveita |
 
+### `TestResolvePtTranslationSemRedeteccao`
+
+`redetect_translated=False`: o idioma das linhas traduzidas é deduzido do resultado, sem LLM.
+
+| Teste | O que verifica |
+|---|---|
+| `test_sucesso_vira_pt_e_falha_herda_o_idioma_da_fonte_sem_chamar_o_detector_no_resultado` | Tradução com sucesso recebe `"pt"`; a que voltou igual à fonte herda o idioma da fonte (`"en"`); o resultado traduzido não passa por `detect_fn` |
+| `test_falha_permanece_retentavel_na_proxima_execucao` | A falha nunca fica com idioma nulo: continua pendente (`needs_translation=True`) e elegível, e a 2ª execução chama o tradutor de novo (tentativas = 2) |
+
 ### `TestRestoreFailedTranslations`
 
 | Teste | O que verifica |

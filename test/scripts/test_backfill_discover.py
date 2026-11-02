@@ -213,12 +213,13 @@ class TestPipelineDiscover:
         for c in mock_read.call_args_list:
             assert c.args[2] == "discover"
 
-    def test_read_from_sor_recebe_sot_e_tabela_para_reaproveitar_idioma_detectado(self, monkeypatch):
+    def test_read_from_sor_nao_recebe_detect_fn_nem_cache_do_sot(self, monkeypatch):
+        """O discover não detecta idioma (vem dos slots do translations no glue_details): a leitura
+        recebe só bucket, tipo, tabela e ano."""
         _, mock_read, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        movie_call, tv_call = mock_read.call_args_list
-        assert movie_call.kwargs["s3_bucket_sot"] == "bucket-sot-test"
-        assert movie_call.kwargs["table_name"] == "tb_discover_movie"
-        assert tv_call.kwargs["table_name"] == "tb_discover_tv"
+        for c in mock_read.call_args_list:
+            assert len(c.args) == 4
+            assert c.kwargs == {}
 
     def test_loga_as_tres_etapas_da_unidade_e_o_tempo_total(self, monkeypatch, caplog):
         with caplog.at_level("INFO"):
@@ -233,13 +234,10 @@ class TestPipelineDiscover:
             assert any(m.startswith(esperado) for m in mensagens), esperado
         assert any(m.startswith("Discover concluído com sucesso para movie year=2020 em ") for m in mensagens)
 
-    def test_loga_uso_do_llm_da_etapa_2_e_o_total_do_backfill(self, monkeypatch, caplog):
+    def test_nao_loga_uso_de_llm_porque_o_discover_nao_chama_llm(self, monkeypatch, caplog):
         with caplog.at_level("INFO"):
             _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})
-        mensagens = [r.message for r in caplog.records]
-        assert any(m.startswith("LLM [movie 2020 2/3]: nenhuma chamada ao LLM") for m in mensagens)
-        assert any(m.startswith("LLM [tv 2020 2/3]: nenhuma chamada ao LLM") for m in mensagens)
-        assert any(m.startswith("LLM [Backfill discover — total]: nenhuma chamada ao LLM") for m in mensagens)
+        assert not any(r.message.startswith("LLM [") for r in caplog.records)
 
     def test_write_parquet_particiona_por_ano_com_overwrite_partitions(self, monkeypatch):
         _, _, mock_write, *_ = _run_main(monkeypatch, {"BACKFILL_START_YEAR": "2020", "BACKFILL_END_YEAR": "2020"})

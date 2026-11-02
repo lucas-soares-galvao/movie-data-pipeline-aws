@@ -776,6 +776,54 @@ class TestResolvePtTranslation:
         assert df["overview_needs_translation"].tolist() == [True]
 
 
+class TestResolvePtTranslationSemRedeteccao:
+    """redetect_translated=False: o idioma das linhas traduzidas é deduzido do resultado, sem LLM."""
+
+    @staticmethod
+    def _resolver(df, traduzir_fn, detect_fn):
+        return resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", detect_fn, traduzir_fn, redetect_translated=False,
+        )
+
+    def test_sucesso_vira_pt_e_falha_herda_o_idioma_da_fonte_sem_chamar_o_detector_no_resultado(self):
+        df = pd.DataFrame({
+            "overview_en": ["Hello", "Same"], "overview_pt": [None, None],
+            "overview_idioma_en": ["en", "en"],
+        })
+        traduzir_fn = MagicMock(side_effect=lambda t: "Olá" if t == "Hello" else t)
+        detect_fn = MagicMock(return_value=None)
+
+        df, sucesso = self._resolver(df, traduzir_fn, detect_fn)
+
+        assert sucesso == 1
+        assert df["overview_idioma_pt"].tolist() == ["pt", "en"]
+        assert df["overview_tentativas"].tolist() == [1, 1]
+        # Só o destino vazio ("") passou pelo detector na etapa 2; o resultado traduzido não foi redetectado.
+        assert [c.args[0] for c in detect_fn.call_args_list if c.args[0]] == []
+
+    def test_falha_permanece_retentavel_na_proxima_execucao(self):
+        """Idioma da falha = idioma da fonte (nunca nulo), então a linha continua elegível e pendente."""
+        df = pd.DataFrame({"overview_en": ["Same"], "overview_pt": [None], "overview_idioma_en": ["en"]})
+        traduzir_fn = MagicMock(side_effect=lambda t: t)
+
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: None, traduzir_fn, needs_translation_column="overview_pendente",
+            redetect_translated=False,
+        )
+        assert df["overview_idioma_pt"].iloc[0] == "en"
+        assert bool(df["overview_pendente"].iloc[0]) is True
+
+        traduzir_fn.reset_mock()
+        df, _ = resolve_pt_translation(
+            df, "overview_en", "overview_pt", "overview_idioma_en", "overview_idioma_pt",
+            "overview_tentativas", lambda t: None, traduzir_fn, redetect_translated=False,
+        )
+        traduzir_fn.assert_called_once()
+        assert df["overview_tentativas"].iloc[0] == 2
+
+
 class TestRestoreFailedTranslations:
     """Retradução forçada: devolve a tradução antiga quando o LLM falhou (texto novo == fonte)."""
 

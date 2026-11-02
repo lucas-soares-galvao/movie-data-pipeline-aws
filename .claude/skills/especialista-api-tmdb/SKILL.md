@@ -48,6 +48,15 @@ Esta skill cobre o *gate* de consulta à API oficial; não repete o que já est�
   (`credits,keywords,release_dates,videos,external_ids,recommendations,similar,alternative_titles,translations`,
   ou `content_ratings` no lugar de `release_dates` para tv) — `app/glue_details/src/utils.py:256`,
   `fetch_tmdb_details`.
+- **`translations` é a fonte do rótulo de idioma de overview/tagline** (não a detecção por LLM): a doc oficial
+  (`/movie|tv/{id}/translations`) lista um slot por idioma/país (`iso_639_1`/`iso_3166_1`, `data.overview`/
+  `data.tagline`) e um idioma sem tradução simplesmente não aparece na lista; a doc não define campo de "tradução
+  vazia" (vem `""`) nem o fallback do parâmetro `language`. O Glue Details usa o slot `pt`/`BR` como
+  `overview_pt`/`tagline_pt` (idioma `pt`, origem `tmdb`) e o slot `en` como fonte (idioma `en`) —
+  `_extract_translation_slots`/`_label_languages_from_tmdb`. O slot pt-BR **igual ao inglês** é descartado (o TMDB
+  às vezes cadastra o inglês nele). O `overview` do discover (`language=pt-BR`) não tem idioma garantido e só entra
+  na SPEC como último recurso. A Lambda não chama `/translations` por ID (≈2.000 IDs/ano, sequencial, timeout de
+  900 s): o rótulo vem do Details, que já faz uma chamada por ID.
 - **Paginação com cap interno menor que o máximo real da API**: `MAX_PAGES = 100`
   (`app/lambda_api/src/utils.py:20`) — o TMDB permite até 500 páginas; o cap existe só para não estourar o
   timeout da Lambda, não porque 100 seja um limite da API.
