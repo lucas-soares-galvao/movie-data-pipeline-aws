@@ -72,7 +72,7 @@ Athena é acessado via `boto3` cru (não awswrangler) — mockar a sequência de
 
 ### Pacote compartilhado — `shared_src`
 
-`test/shared_src/conftest.py` só stuba `awsglue`/`awsglue.utils` minimamente (o pacote não toca Spark). Cada `test_<arquivo>.py` espelha um arquivo de `app/shared_src/shared_utils/` (`test_api_client.py`, `test_traducao.py`, `test_idioma.py`, `test_triggers.py`, `test_glue_helpers.py` etc.) e mocka os colaboradores externos (chamadas HTTP, Secrets Manager, serviços de tradução) do mesmo jeito que os testes de Lambda.
+`test/shared_src/conftest.py` só stuba `awsglue`/`awsglue.utils` minimamente (o pacote não toca Spark). Cada `test_<arquivo>.py` espelha um arquivo de `app/shared_src/shared_utils/` (`test_api_client.py`, `test_traducao.py`, `test_idioma_llm.py`, `test_triggers.py`, `test_glue_helpers.py` etc.) e mocka os colaboradores externos (chamadas HTTP, Secrets Manager, serviços de tradução) do mesmo jeito que os testes de Lambda.
 
 ## Regras ao escrever/alterar testes
 

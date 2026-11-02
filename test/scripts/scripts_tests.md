@@ -294,6 +294,30 @@ testes abaixo fixa `detect_fn` explicitamente (às vezes como um mapa de texto�
 para isolar do default real `detect_language_llm`, que chamaria a rede (bloqueada em
 teste).
 
+
+### `TestZerarTentativas`
+
+Modo "Zerar tentativas" (`BACKFILL_RESET_ATTEMPTS`): só as linhas pendentes (`*_needs_translation`) voltam a ter 0 tentativas.
+
+| Teste | O que verifica |
+|---|---|
+| `test_zera_so_as_linhas_pendentes_de_cada_campo` | Overview, tagline e keywords: `*_translation_attempts` vai a 0 só onde `*_needs_translation` é verdadeiro |
+| `test_nao_altera_o_texto_nem_o_sinal_de_pendencia` | Texto traduzido e `*_needs_translation` ficam intactos |
+| `test_campo_sem_as_colunas_e_ignorado` | Schema antigo (sem a coluna de tentativas) não quebra |
+| `test_sem_pendentes_nao_loga` / `test_loga_quantas_linhas_por_campo` | Log `N linha(s) pendente(s) de '<campo>' com tentativas zeradas` só quando há pendentes |
+| `test_backfill_year_so_zera_com_a_flag_ligada` | Linha esgotada (3 tentativas, pendente): sem a flag não é retentada; com a flag é retraduzida e termina com 1 tentativa |
+| `test_main_loga_o_modo_quando_a_flag_esta_ligada` / `test_main_nao_loga_o_modo_com_a_flag_desligada` | `main()` avisa o modo no log de abertura |
+
+### `TestOrigemDaTraducao`
+
+`overview_pt_source`/`tagline_pt_source` = `"llm"` só nas linhas que o script realmente traduz (`_mark_llm_source`).
+
+| Teste | O que verifica |
+|---|---|
+| `test_overview_traduzido_recebe_origem_llm_e_cria_a_coluna` | Linha traduzida recebe `"llm"`; a coluna é criada se ainda não existe (schema legado) |
+| `test_overview_nao_traduzido_mantem_a_origem_existente` | Linha já `tmdb` e linha cuja tradução falhou (tradutor devolve a fonte) não mudam de origem |
+| `test_copia_direta_de_fonte_ja_em_portugues_nao_vira_llm` | Fonte já em português copiada sem tradutor fica sem origem |
+| `test_tagline_traduzida_recebe_origem_llm` | Mesmo comportamento para `tagline_pt_source` |
 ### `TestAdicionarTraducoesPt`
 
 `original_language` não é critério de elegibilidade em nenhuma das três colunas
@@ -385,10 +409,8 @@ original do título, não o idioma do texto retornado pela API do TMDB.
 
 ## Casos de teste — `test_backfill_rename_colunas.py`
 
-Renomeia colunas nos parquets já gravados no S3 — watch_providers
-(`updated_date` → `processed_date`) e discover (`overview_detected_language` →
-`overview_detected_language_pt`, `overview_translated_pt_br` →
-`overview_translated_pt`), várias colunas por partição numa única regravação, sem chamar a API do TMDB — ver docstring de
+Renomeia colunas nos parquets já gravados no S3 — hoje só watch_providers
+(`updated_date` → `processed_date`; o rename das colunas de idioma do discover saiu do script), com suporte genérico a várias colunas por partição numa única regravação, sem chamar a API do TMDB — ver docstring de
 `scripts/backfill_rename_colunas.py` para o motivo de o pipeline normal
 (`backfill_enriquecimento.py`) não bastar sozinho para migrar 100% do
 histórico (IDs que saíram do discover atual nunca mais entram no delta
@@ -411,8 +433,9 @@ reprocessado).
 
 | Teste | O que verifica |
 |---|---|
-| `test_chama_rename_para_cada_tabela_e_ano` | Total de chamadas = anos × 4 tabelas (details movie/tv, watch_providers movie/tv) |
-| `test_percorre_as_quatro_tabelas_com_as_colunas_corretas_dentro_de_cada_ano` | Cada tabela é chamada com o mapa `renames` correto — as duas colunas de idioma para discover, `updated_date` → `processed_date` para watch_providers |
+| `test_chama_rename_para_cada_tabela_e_ano` | Total de chamadas = anos × 2 tabelas (watch_providers movie/tv) |
+| `test_percorre_as_duas_tabelas_de_watch_providers_dentro_de_cada_ano` | Cada tabela é chamada com o mapa `renames` correto (`updated_date` → `processed_date`); o discover não passa mais por aqui |
+| `test_nao_exige_as_envs_das_tabelas_discover` | `main()` roda sem `TABLE_DISCOVER_MOVIE`/`TABLE_DISCOVER_TV` |
 | `test_usa_ano_atual_como_default_de_end_year` | `BACKFILL_END_YEAR` ausente usa o ano atual |
 | `test_loga_total_de_particoes_regravadas` | O log final soma quantas partições foram efetivamente regravadas (`_rename_partition_column` retorna `True`), não o total de partições verificadas |
 
@@ -428,7 +451,7 @@ reprocessado).
 | Teste | O que verifica |
 |---|---|
 | `test_pula_particoes_ja_concluidas` | Partições (`tabela:ano`) já no checkpoint não chamam `_rename_partition_column` de novo |
-| `test_salva_checkpoint_apos_cada_particao` | `put_object` chamado a cada uma das 4 tabelas processadas |
+| `test_salva_checkpoint_apos_cada_particao` | `put_object` chamado a cada uma das 2 tabelas processadas |
 | `test_marca_completo_mesmo_quando_rename_retorna_false` | Partição já migrada (`_rename_partition_column` retorna `False`) ainda conta como concluída — não é falha |
 | `test_limpa_checkpoint_ao_concluir_tudo_com_sucesso` | `delete_object` chamado ao final |
 | `test_checkpoint_reflete_progresso_parcial_quando_interrompido` (parametrizado) | Uma exceção no meio do loop deixa o checkpoint só com as partições já concluídas |
@@ -589,6 +612,8 @@ estágio encadeado).
 | `test_envia_expected_bucket_owner_quando_conta_definida` (load/save/clear) | Com `AWS_ACCOUNT_ID` definida, `get_object`/`put_object`/`delete_object` recebem `ExpectedBucketOwner` (anti bucket squatting, ver `_expected_bucket_owner_kwargs`) |
 | `TestReprocessAllEnabled.test_le_backfill_reprocess_all` (parametrizado) | `reprocess_all_enabled` lê `BACKFILL_REPROCESS_ALL` sem diferenciar maiúsculas; ausente/vazio/`false` → `False` |
 | `TestModoDoCheckpoint` | Modo do checkpoint: run normal não grava `mode`; "Reprocessar tudo" grava `mode=reprocess_all`; "Reprocessar tudo" ignora (com aviso) checkpoint de run normal; retoma checkpoint do mesmo modo; run normal ignora checkpoint de "Reprocessar tudo" |
+| `TestResetAttemptsEnabled.test_le_backfill_reset_attempts` (parametrizado) | `reset_attempts_enabled` lê `BACKFILL_RESET_ATTEMPTS` sem diferenciar maiúsculas; ausente/vazio/`false` → `False` |
+| `TestModoDoCheckpointZerarTentativas` | "Zerar tentativas" grava `mode=reset_attempts`; ignora checkpoint de run normal; retoma o do mesmo modo; um run normal ignora o de "Zerar tentativas"; se as duas opções chegarem ligadas, `reprocess_all` vence |
 | `TestReportStaleProcessedDate` | `report_stale_processed_date`: todos rebuscados → sem ERROR; `processed_date` anterior ao início do run → ERROR por tabela/ano com ids de exemplo e total; limita os ids de exemplo; soma tabelas × anos e filtra a partição `year` certa (`columns=[id, processed_date]`); partição inexistente ou `ClientError` que não é token expirado é ignorada; token expirado propaga |
 | `test_codigos_de_token_expirado_retornam_true` / `test_outros_codigos_retornam_false` (parametrizados) | `is_expired_token_error` reconhece `ExpiredTokenException` (STS) e `ExpiredToken` (S3); rejeita outros códigos |
 | `test_expired_token_retorna_codigo_retomavel` (parametrizado: `ExpiredTokenException`/`ExpiredToken`) / `test_outro_erro_retorna_none` | `expired_token_exit_code` só retorna `RETRYABLE_EXIT_CODE` (75) para token expirado |

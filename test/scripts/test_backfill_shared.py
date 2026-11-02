@@ -200,6 +200,70 @@ class TestReprocessAllEnabled:
         assert bs.reprocess_all_enabled() is esperado
 
 
+class TestResetAttemptsEnabled:
+    @pytest.mark.parametrize("valor, esperado", [(None, False), ("", False), ("false", False), ("true", True), ("TRUE", True)])
+    def test_le_backfill_reset_attempts(self, monkeypatch, valor, esperado):
+        if valor is None:
+            monkeypatch.delenv("BACKFILL_RESET_ATTEMPTS", raising=False)
+        else:
+            monkeypatch.setenv("BACKFILL_RESET_ATTEMPTS", valor)
+
+        assert bs.reset_attempts_enabled() is esperado
+
+
+class TestModoDoCheckpointZerarTentativas:
+    """"Zerar tentativas" tem modo próprio no checkpoint, pelo mesmo motivo do "Reprocessar tudo": sem
+    isso herdaria as unidades de um run normal já concluído e as pularia sem retentar nada."""
+
+    def test_grava_mode_reset_attempts(self, monkeypatch):
+        monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        monkeypatch.setenv("BACKFILL_RESET_ATTEMPTS", "true")
+        client = MagicMock()
+
+        bs.save_checkpoint(client, "bucket", "traducao", 2000, 2025, {"movie:2000"})
+
+        assert json.loads(client.put_object.call_args.kwargs["Body"])["mode"] == "reset_attempts"
+
+    def test_ignora_checkpoint_de_run_normal(self, monkeypatch):
+        monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        monkeypatch.setenv("BACKFILL_RESET_ATTEMPTS", "true")
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": ["movie:2000"]}
+        )
+
+        assert bs.load_checkpoint(client, "bucket", "traducao", 2000, 2025) == set()
+
+    def test_retoma_checkpoint_do_mesmo_modo(self, monkeypatch):
+        monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        monkeypatch.setenv("BACKFILL_RESET_ATTEMPTS", "true")
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": ["movie:2000"], "mode": "reset_attempts"}
+        )
+
+        assert bs.load_checkpoint(client, "bucket", "traducao", 2000, 2025) == {"movie:2000"}
+
+    def test_run_normal_ignora_checkpoint_de_zerar_tentativas(self, monkeypatch):
+        monkeypatch.delenv("BACKFILL_REPROCESS_ALL", raising=False)
+        monkeypatch.delenv("BACKFILL_RESET_ATTEMPTS", raising=False)
+        client = MagicMock()
+        client.get_object.return_value = _get_object_response(
+            {"start_year": 2000, "end_year": 2025, "completed": ["movie:2000"], "mode": "reset_attempts"}
+        )
+
+        assert bs.load_checkpoint(client, "bucket", "traducao", 2000, 2025) == set()
+
+    def test_reprocessar_tudo_tem_precedencia_se_as_duas_chegarem_ligadas(self, monkeypatch):
+        monkeypatch.setenv("BACKFILL_REPROCESS_ALL", "true")
+        monkeypatch.setenv("BACKFILL_RESET_ATTEMPTS", "true")
+        client = MagicMock()
+
+        bs.save_checkpoint(client, "bucket", "traducao", 2000, 2025, {"movie:2000"})
+
+        assert json.loads(client.put_object.call_args.kwargs["Body"])["mode"] == "reprocess_all"
+
+
 class TestModoDoCheckpoint:
     """Um checkpoint só é reaproveitado por um run do mesmo modo (normal x Reprocessar tudo):
     senão o "Reprocessar tudo" herdaria unidades de um run normal anterior e as pularia."""

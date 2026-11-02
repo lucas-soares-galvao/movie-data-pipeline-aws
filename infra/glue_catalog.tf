@@ -75,16 +75,6 @@ resource "aws_glue_catalog_table" "tb_movie_tmdb" {
     }
 
     columns {
-      name = "overview_detected_language_pt"
-      type = "string"
-    }
-
-    columns {
-      name = "overview_translated_pt"
-      type = "boolean"
-    }
-
-    columns {
       name = "backdrop_path"
       type = "string"
     }
@@ -196,14 +186,6 @@ resource "aws_glue_catalog_table" "tb_tv_tmdb" {
     columns {
       name = "overview"
       type = "string"
-    }
-    columns {
-      name = "overview_detected_language_pt"
-      type = "string"
-    }
-    columns {
-      name = "overview_translated_pt"
-      type = "boolean"
     }
     columns {
       name = "popularity"

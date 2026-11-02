@@ -116,16 +116,64 @@ logger = shared.setup_logging()
 _TRANSLATE_MAX_WORKERS = 5
 
 
+_TRANSLATED_FIELDS = ("overview", "tagline", "keywords")
+
+
+def _reset_attempts_for_pending(df: pd.DataFrame) -> pd.DataFrame:
+    """Zera *_translation_attempts das linhas ainda pendentes (*_needs_translation verdadeiro).
+
+    Modo "Zerar tentativas" (BACKFILL_RESET_ATTEMPTS, ver backfill_shared.reset_attempts_enabled):
+    o contador vem do parquet e acumula entre execuções (teto em resolve_pt_translation), então uma
+    linha que esgotou as tentativas — p.ex. numa queda do provedor de LLM — nunca mais seria
+    retentada por este script. Só as pendentes são tocadas: nenhuma tradução boa é sobrescrita e o
+    fluxo normal retenta cada linha uma vez nesta execução (o teto volta a valer nas seguintes).
+    Campo sem as colunas no parquet (schema antigo) é ignorado."""
+    for field in _TRANSLATED_FIELDS:
+        needs_column = f"{field}_needs_translation"
+        attempts_column = f"{field}_translation_attempts"
+        if needs_column not in df.columns or attempts_column not in df.columns:
+            continue
+        pending = df[needs_column].fillna(False).astype(bool)
+        if pending.any():
+            df.loc[pending, attempts_column] = 0
+            logger.info("  %d linha(s) pendente(s) de '%s' com tentativas zeradas.", int(pending.sum()), field)
+    return df
+
+
+def _mark_llm_source(
+    df: pd.DataFrame,
+    previous_target: pd.Series,
+    source_column: str,
+    target_column: str,
+    pt_source_column: str,
+) -> pd.DataFrame:
+    """Grava "llm" em pt_source_column nas linhas cujo target_column foi traduzido nesta execução.
+
+    "Traduzido" = texto novo preenchido, diferente do que havia antes (previous_target) e diferente
+    da fonte — a cópia direta de uma fonte já em português e a falha do tradutor (que devolve a
+    fonte) não contam. O script lê só o S3 e não sabe se um texto veio do slot pt-BR do TMDB; as
+    linhas que ele traduz são as pendentes, ou seja, nunca as nativas já rotuladas "pt" pelo
+    glue_details. Linhas que ele não traduz mantêm a origem que já tinham."""
+    if pt_source_column not in df.columns:
+        df[pt_source_column] = None
+    before = previous_target.fillna("")
+    after = df[target_column].fillna("")
+    source = df[source_column].fillna("")
+    df.loc[(after != "") & (after != before) & (after != source), pt_source_column] = "llm"
+    return df
+
+
 def _add_translations_pt(
     df: pd.DataFrame,
     translate_fn: Optional[Callable[[str], str]] = None,
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> tuple[pd.DataFrame, int]:
     """Adiciona overview_detected_language_en, overview_detected_language_pt,
-    overview_pt, overview_translation_attempts e overview_needs_translation aos
-    registros com overview_en preenchido — ver resolve_pt_translation em
+    overview_pt, overview_pt_source, overview_translation_attempts e overview_needs_translation
+    aos registros com overview_en preenchido — ver resolve_pt_translation em
     shared_utils/traducao.py para a regra de elegibilidade e o teto de
-    tentativas."""
+    tentativas. overview_pt_source recebe "llm" nas linhas traduzidas aqui
+    (ver _mark_llm_source)."""
     # translate_fn resolvido em runtime (não como default de parâmetro) para que
     # patch("backfill_traducao.translate_text_llm", ...) nos testes continue
     # funcionando quando o chamador não passa um translate_fn explícito.
@@ -133,8 +181,9 @@ def _add_translations_pt(
     detect_fn = detect_fn or detect_language_llm
     if "overview_pt" not in df.columns:
         df["overview_pt"] = None
+    previous_target = df["overview_pt"].copy()
 
-    return resolve_pt_translation(
+    df, success = resolve_pt_translation(
         df,
         source_column="overview_en",
         target_column="overview_pt",
@@ -147,6 +196,7 @@ def _add_translations_pt(
         needs_translation_column="overview_needs_translation",
         sample_id_column="id",
     )
+    return _mark_llm_source(df, previous_target, "overview_en", "overview_pt", "overview_pt_source"), success
 
 
 def _add_translations_tagline_pt(
@@ -155,7 +205,7 @@ def _add_translations_tagline_pt(
     detect_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> tuple[pd.DataFrame, int]:
     """Adiciona tagline_detected_language_en, tagline_detected_language_pt,
-    tagline_pt, tagline_translation_attempts e tagline_needs_translation aos
+    tagline_pt, tagline_pt_source, tagline_translation_attempts e tagline_needs_translation aos
     registros com tagline preenchida (espelha glue_details)."""
     translate_fn = translate_fn or translate_text_llm
     detect_fn = detect_fn or detect_language_llm
@@ -163,8 +213,9 @@ def _add_translations_tagline_pt(
         return df, 0
     if "tagline_pt" not in df.columns:
         df["tagline_pt"] = None
+    previous_target = df["tagline_pt"].copy()
 
-    return resolve_pt_translation(
+    df, success = resolve_pt_translation(
         df,
         source_column="tagline",
         target_column="tagline_pt",
@@ -177,6 +228,7 @@ def _add_translations_tagline_pt(
         needs_translation_column="tagline_needs_translation",
         sample_id_column="id",
     )
+    return _mark_llm_source(df, previous_target, "tagline", "tagline_pt", "tagline_pt_source"), success
 
 
 def _add_translations_keywords_pt(
@@ -246,6 +298,9 @@ def _backfill_year(
 
     logger.info("  %d registros lidos.", len(df))
 
+    if shared.reset_attempts_enabled():
+        df = _reset_attempts_for_pending(df)
+
     df, success_overview = _add_translations_pt(df, translate_fn, detect_fn)
     df, success_tagline = _add_translations_tagline_pt(df, translate_fn, detect_fn)
     df, success_keywords = _add_translations_keywords_pt(df, translate_fn, detect_fn)
@@ -294,6 +349,8 @@ def main() -> None:
         "| serviço de tradução=LLM (OpenRouter)",
         start_year, end_year, total, wait_seconds,
     )
+    if shared.reset_attempts_enabled():
+        logger.info("Modo 'Zerar tentativas' ligado: linhas pendentes voltam a ser elegíveis nesta execução.")
     s3_client = boto3.client("s3", region_name=region)
 
     completed = shared.load_checkpoint(s3_client, s3_bucket_temp, table_group, start_year, end_year)

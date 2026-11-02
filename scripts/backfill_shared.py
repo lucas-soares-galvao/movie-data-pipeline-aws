@@ -80,8 +80,9 @@ SESSION_SECONDS_ENV = "BACKFILL_SESSION_SECONDS"
 _SESSION_SAFETY_MARGIN_SECONDS = 300
 _PROCESS_START = time.monotonic()
 
-# Valor da chave "mode" do checkpoint num "Reprocessar tudo" (ver _checkpoint_mode).
+# Valores da chave "mode" do checkpoint num "Reprocessar tudo" / "Zerar tentativas" (ver _checkpoint_mode).
 _REPROCESS_ALL_MODE = "reprocess_all"
+_RESET_ATTEMPTS_MODE = "reset_attempts"
 
 
 def setup_logging() -> logging.Logger:
@@ -224,15 +225,28 @@ def reprocess_all_enabled() -> bool:
     return os.environ.get("BACKFILL_REPROCESS_ALL", "").lower() == "true"
 
 
+def reset_attempts_enabled() -> bool:
+    """Indica se o run é um "Zerar tentativas" (input `zerar_tentativas` do workflow, só `traducao`).
+
+    O workflow exporta o input como BACKFILL_RESET_ATTEMPTS ("true"/"false"). Lida em um lugar só
+    para o script e o checkpoint concordarem sobre o modo do run.
+    """
+    return os.environ.get("BACKFILL_RESET_ATTEMPTS", "").lower() == "true"
+
+
 def _checkpoint_mode() -> str | None:
-    """Modo gravado no checkpoint: "reprocess_all" num "Reprocessar tudo", None no run normal.
+    """Modo gravado no checkpoint: "reprocess_all" num "Reprocessar tudo", "reset_attempts" num
+    "Zerar tentativas", None no run normal.
 
     Um checkpoint só é reaproveitado por um run do MESMO modo (ver load_checkpoint): sem isso, um
-    "Reprocessar tudo" herdaria as unidades que um run normal anterior já concluíra e as pularia
-    — terminando "com sucesso" sem reprocessar nada. Dentro do mesmo modo a retomada continua
-    valendo (retry por token expirado e novo disparo após timeout de 6h).
+    "Reprocessar tudo" (ou "Zerar tentativas") herdaria as unidades que um run normal anterior já
+    concluíra e as pularia — terminando "com sucesso" sem reprocessar nada. Dentro do mesmo modo a
+    retomada continua valendo (retry por token expirado e novo disparo após timeout de 6h).
+    As duas opções são exclusivas no workflow; se ambas chegarem ligadas, "Reprocessar tudo" vence.
     """
-    return _REPROCESS_ALL_MODE if reprocess_all_enabled() else None
+    if reprocess_all_enabled():
+        return _REPROCESS_ALL_MODE
+    return _RESET_ATTEMPTS_MODE if reset_attempts_enabled() else None
 
 
 def is_expired_token_error(exc: ClientError) -> bool:

@@ -171,10 +171,6 @@ def _detect_missing(
     """Detecta o idioma de text_column em language_column, só para linhas onde
     language_column ainda está vazia/nula — evita redetectar o que já foi calculado
     numa execução anterior.
-
-    Equivalente a shared_utils.idioma.add_detected_language_column(only_missing=True),
-    duplicado aqui (em vez de importado) para não criar import circular: idioma.py
-    importa deste módulo (detect_in_parallel).
     """
     if language_column not in df.columns:
         df[language_column] = None
@@ -513,7 +509,7 @@ def reuse_detected_language(
 
     Só reaproveita valor não nulo/vazio: uma detecção que falhou (None) na execução
     anterior não é "congelada", fica pendente e é tentada de novo por
-    _detect_missing/add_detected_language_column(only_missing=True). Texto alterado
+    _detect_missing. Texto alterado
     também força nova detecção, e valores já preenchidos em df nunca são sobrescritos.
 
     Args:
