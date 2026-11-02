@@ -118,7 +118,6 @@ sys.path.insert(0, str(_REPO_ROOT))
 # completo evita colidir com esse mecanismo — não precisamos que "src.utils" (nome curto)
 # resolva para nada aqui, só as três funções de app/glue_details/src/utils.py.
 from app.glue_details.src.utils import (  # noqa: E402
-    DetailsTables,
     run_details_and_watch_providers_for_year,
     trigger_glue_job,
 )
@@ -138,11 +137,15 @@ def _process_enriquecimento_unit(
     api_key: str,
     s3_bucket_sot: str,
     s3_bucket_temp: str,
-    tables: DetailsTables,
-    dq_job_name: str,
+    table_discover: str,
+    table_details: str,
+    table_watch_providers: str,
     force_retranslate: bool = False,
 ) -> str | None:
     """Processa uma unidade (media_type, year): detalhes + watch providers.
+
+    Não dispara o Data Quality por unidade (dq_job_name=None): ele roda uma única vez ao final
+    do backfill, ver _finalize_enriquecimento_success.
 
     force_retranslate=True repassa a opção "Reprocessar tudo" a
     run_details_and_watch_providers_for_year (ver BACKFILL_REPROCESS_ALL no módulo).
@@ -162,9 +165,10 @@ def _process_enriquecimento_unit(
             end_year=str(end_year),
             s3_bucket_sot=s3_bucket_sot,
             s3_bucket_temp=s3_bucket_temp,
-            tables=tables,
-            dq_job_name=dq_job_name,
-            trigger_dq=False,
+            table_discover=table_discover,
+            table_details=table_details,
+            table_watch_providers=table_watch_providers,
+            dq_job_name=None,
             refresh_existing_ids=True,
             force_retranslate=force_retranslate,
         )
@@ -308,15 +312,11 @@ def main(trigger_agg: bool = True) -> bool:
         table_group=table_group,
     )
 
+    # (discover, details, watch_providers) de cada media_type, montado uma vez para o laço não
+    # precisar de um ternário por tabela (Sonar S3776).
     tables_by_media_type = {
-        "movie": DetailsTables(
-            discover=table_discover_movie, details=table_details_movie,
-            watch_providers=table_watch_providers_movie,
-        ),
-        "tv": DetailsTables(
-            discover=table_discover_tv, details=table_details_tv,
-            watch_providers=table_watch_providers_tv,
-        ),
+        "movie": (table_discover_movie, table_details_movie, table_watch_providers_movie),
+        "tv": (table_discover_tv, table_details_tv, table_watch_providers_tv),
     }
 
     failures: list[tuple[str, int, str]] = []
@@ -327,10 +327,12 @@ def main(trigger_agg: bool = True) -> bool:
         shared.exit_if_session_budget_low(longest_unit_seconds)
         logger.info("[%d/%d] Enriquecendo | %s | year=%d", i, len(pendentes), media_type, year)
 
+        table_discover, table_details, table_watch_providers = tables_by_media_type[media_type]
+
         unit_started = time.monotonic()
         error = _process_enriquecimento_unit(
             media_type, year, end_year, database, api_key, s3_bucket_sot, s3_bucket_temp,
-            tables_by_media_type[media_type], dq_job_name, force_retranslate,
+            table_discover, table_details, table_watch_providers, force_retranslate,
         )
         longest_unit_seconds = max(longest_unit_seconds, time.monotonic() - unit_started)
         if error is None:

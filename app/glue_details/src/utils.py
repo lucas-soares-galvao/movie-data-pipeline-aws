@@ -10,7 +10,6 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -1848,17 +1847,6 @@ def collect_and_write_watch_providers(
     logger.info(f"Tabela '{table_name}' gravada com sucesso no SOT.")
 
 
-@dataclass(frozen=True)
-class DetailsTables:
-    """Nomes das três tabelas do Glue Catalog de um media_type (movie ou tv) que o ciclo de
-    enriquecimento lê e grava. Agrupadas em um só parâmetro de run_details_and_watch_providers_for_year
-    para a função não passar do limite de parâmetros do Sonar (S107)."""
-
-    discover: str
-    details: str
-    watch_providers: str
-
-
 def run_details_and_watch_providers_for_year(
     *,
     api_key: str,
@@ -1868,20 +1856,21 @@ def run_details_and_watch_providers_for_year(
     end_year: str,
     s3_bucket_sot: str,
     s3_bucket_temp: str,
-    tables: DetailsTables,
-    dq_job_name: str,
-    trigger_dq: bool = True,
+    table_discover: str,
+    table_details: str,
+    table_watch_providers: str,
+    dq_job_name: str | None,
     refresh_existing_ids: bool = False,
     force_retranslate: bool = False,
 ) -> None:
     """
     Roda o ciclo completo de enriquecimento (details + watch providers) para um media_type/year:
     busca todos os IDs do discover na API TMDB, grava no SOT, dispara o Data Quality (se
-    trigger_dq) e repara duplicatas quando year == end_year.
+    dq_job_name for informado) e repara duplicatas quando year == end_year.
 
     Extraída de main.py para ser reutilizável fora do runtime do job Glue — ver
     scripts/backfill_enriquecimento.py, que chama esta função diretamente (sem passar pelo
-    Glue Details) com trigger_dq=False, disparando o Data Quality uma única vez ao final de todo o
+    Glue Details) com dq_job_name=None, disparando o Data Quality uma única vez ao final de todo o
     backfill em vez de por unidade.
 
     Args:
@@ -1892,12 +1881,14 @@ def run_details_and_watch_providers_for_year(
         end_year:               Último ano do ciclo — repair de duplicatas roda quando year == end_year.
         s3_bucket_sot:          Bucket SOT de destino.
         s3_bucket_temp:         Bucket TEMP para resultados temporários do Athena.
-        tables:                 Tabelas de discover, details e watch providers do media_type
-                                 (ver DetailsTables).
-        dq_job_name:            Nome do job Glue Data Quality (usado só se trigger_dq=True).
-        trigger_dq:             Se True (default — caminho de produção via job Glue), dispara o
-                                 Data Quality ao final desta unidade. scripts/backfill_enriquecimento.py
-                                 passa False e dispara o DQ uma única vez ao final do backfill inteiro.
+        table_discover:         Tabela de discover (movie ou tv).
+        table_details:          Tabela de detalhes (movie ou tv).
+        table_watch_providers:  Tabela de watch providers (movie ou tv).
+        dq_job_name:            Nome do job Glue Data Quality, disparado ao final desta unidade
+                                 (caminho de produção via job Glue). None não dispara: é o que
+                                 scripts/backfill_enriquecimento.py passa, para disparar o DQ uma
+                                 única vez ao final do backfill inteiro. Sem default de propósito:
+                                 esquecer de informar seria pular o DQ em silêncio.
         refresh_existing_ids:   Se True (reprocessamento total, usado só por
                                  scripts/backfill_enriquecimento.py), re-busca também os IDs já
                                  existentes na partição de details que não estão mais no discover
@@ -1909,10 +1900,6 @@ def run_details_and_watch_providers_for_year(
                                  collect_and_write_details). Default False mantém o comportamento
                                  do job Glue.
     """
-    table_discover = tables.discover
-    table_details = tables.details
-    table_watch_providers = tables.watch_providers
-
     all_ids = fetch_ids_from_sot(
         database=database,
         table_discover=table_discover,
@@ -1954,7 +1941,7 @@ def run_details_and_watch_providers_for_year(
             year=year,
         )
 
-    if trigger_dq:
+    if dq_job_name:
         # Um único disparo com as duas tabelas (mesmo banco, mesmo ano): o DQ paga o overhead
         # fixo de startup do Spark uma vez só e avalia cada tabela em sequência.
         trigger_glue_job(

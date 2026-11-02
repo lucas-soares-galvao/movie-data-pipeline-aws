@@ -2436,10 +2436,10 @@ class TestFetchCollectionsPtBr:
 
 
 class TestRunDetailsAndWatchProvidersForYear:
-    """Orquestração extraída de main.py — delta, coleta, DQ (se trigger_dq) e
+    """Orquestração extraída de main.py — delta, coleta, DQ (se dq_job_name) e
     repair de duplicatas em year == end_year. Reutilizada por main.py (job Glue
-    real, trigger_dq=True) e por scripts/backfill_enriquecimento.py (fora do
-    Glue, trigger_dq=False)."""
+    real, dq_job_name informado) e por scripts/backfill_enriquecimento.py (fora do
+    Glue, dq_job_name=None)."""
 
     _IDS = [1, 2]
 
@@ -2452,11 +2452,9 @@ class TestRunDetailsAndWatchProvidersForYear:
             end_year="2025",
             s3_bucket_sot="my-sot",
             s3_bucket_temp="my-temp",
-            tables=u.DetailsTables(
-                discover="tb_tmdb_discover_movie_dev",
-                details="tb_tmdb_details_movie_dev",
-                watch_providers="tb_tmdb_watch_providers_movie_dev",
-            ),
+            table_discover="tb_tmdb_discover_movie_dev",
+            table_details="tb_tmdb_details_movie_dev",
+            table_watch_providers="tb_tmdb_watch_providers_movie_dev",
             dq_job_name="dq-job",
         )
         base.update(overrides)
@@ -2500,7 +2498,7 @@ class TestRunDetailsAndWatchProvidersForYear:
         ):
             kwargs = self._kwargs()
             u.run_details_and_watch_providers_for_year(**kwargs)
-        assert mock_collect.call_args.kwargs["also_remove_from_tables"] == (kwargs["tables"].watch_providers,)
+        assert mock_collect.call_args.kwargs["also_remove_from_tables"] == (kwargs["table_watch_providers"],)
 
     @pytest.mark.parametrize("valor", [True, False])
     def test_repassa_force_retranslate_para_collect_details(self, valor):
@@ -2614,14 +2612,14 @@ class TestRunDetailsAndWatchProvidersForYear:
                 )
             ]
 
-    def test_does_not_trigger_data_quality_when_trigger_dq_false(self):
+    def test_does_not_trigger_data_quality_when_dq_job_name_is_none(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job") as mock_trigger,
         ):
-            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025", trigger_dq=False))
+            u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025", dq_job_name=None))
             mock_trigger.assert_not_called()
 
     def test_repair_called_in_order_at_last_year(self):
