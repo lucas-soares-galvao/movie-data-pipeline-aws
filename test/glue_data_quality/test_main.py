@@ -2,9 +2,10 @@
 # substitui por MagicMock para que .getOrCreate() e GlueContext(sc) não falhem
 # com "NoneType has no attribute...".
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import main as m
+import pytest
 
 # Argumentos base devolvidos pelo mock de get_parameters_glue
 _BASE_ARGS = {
@@ -20,7 +21,7 @@ _BASE_ARGS = {
 
 def _run_main(
     args=None, ruleset="Rules = []", dynamic_frame=None, df_results=None,
-    read_table_side_effect=None,
+    read_table_side_effect=None, eval_side_effect=None, capture_error=False,
 ):
     """
     Executa main() com todos os colaboradores simulados.
@@ -29,6 +30,9 @@ def _run_main(
     exercitar o skip de has_data() em testes que não são sobre esse comportamento.
     read_table_side_effect permite simular um dynamic_frame diferente por chamada
     (necessário para testar runs multi-year com um year sem dados no meio dos outros).
+    eval_side_effect permite simular uma falha (ou resultados distintos) por chamada de
+    evaluate_data_quality. capture_error=True devolve a exceção levantada por main() em
+    mocks["error"] em vez de propagá-la, para o teste inspecionar o que rodou antes dela.
 
     Retorna um dicionário com os mocks para que cada teste possa inspecionar
     as chamadas realizadas.
@@ -54,16 +58,26 @@ def _run_main(
         patch.object(m, "get_parameters_glue", return_value=args),
         patch.object(m, "get_ruleset", return_value=ruleset) as mock_ruleset,
         patch.object(m, "read_table_from_catalog", **read_table_kwargs) as mock_read,
-        patch.object(m, "evaluate_data_quality", return_value=df_results) as mock_eval,
+        patch.object(
+            m, "evaluate_data_quality", return_value=df_results, side_effect=eval_side_effect
+        ) as mock_eval,
         patch.object(m, "write_results_to_s3") as mock_write,
         patch.object(m, "notify_failed_outcomes") as mock_notify,
     ):
         mock_sc_cls.getOrCreate.return_value = sc_mock
         mock_gc_cls.return_value = glue_context_mock
 
-        m.main()
+        error = None
+        if capture_error:
+            try:
+                m.main()
+            except (RuntimeError, ValueError) as exc:
+                error = exc
+        else:
+            m.main()
 
     return {
+        "error": error,
         "mock_sc_cls": mock_sc_cls,
         "mock_gc_cls": mock_gc_cls,
         "glue_context_mock": glue_context_mock,
@@ -336,3 +350,118 @@ class TestSkipsMissingPartition:
         mocks = _run_main(args=args, dynamic_frame=self._empty_frame())
 
         mocks["mock_eval"].assert_not_called()
+
+
+class TestMultiplasTabelas:
+    """TABLE_NAME aceita uma lista separada por vírgula (details + watch_providers do mesmo
+    ciclo do glue_details): cada tabela é avaliada em sequência no mesmo run, com a mesma
+    lista de anos, e uma falha numa tabela não impede a avaliação das demais."""
+
+    _DUAS_TABELAS = "tb_tmdb_details_movie_dev,tb_tmdb_watch_providers_movie_dev"
+
+    def test_avalia_cada_tabela_da_lista_uma_vez(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": self._DUAS_TABELAS}
+        mocks = _run_main(args=args)
+
+        assert mocks["mock_ruleset"].call_args_list == [
+            call("tb_tmdb_details_movie_dev", "dev"),
+            call("tb_tmdb_watch_providers_movie_dev", "dev"),
+        ]
+        assert [c.args[3] for c in mocks["mock_eval"].call_args_list] == [
+            "tb_tmdb_details_movie_dev",
+            "tb_tmdb_watch_providers_movie_dev",
+        ]
+        assert [c.args[2] for c in mocks["mock_write"].call_args_list] == [
+            "tb_tmdb_details_movie_dev",
+            "tb_tmdb_watch_providers_movie_dev",
+        ]
+        assert [c.args[1] for c in mocks["mock_notify"].call_args_list] == [
+            "tb_tmdb_details_movie_dev",
+            "tb_tmdb_watch_providers_movie_dev",
+        ]
+
+    def test_usa_um_unico_spark_context_para_todas_as_tabelas(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": self._DUAS_TABELAS}
+        mocks = _run_main(args=args)
+
+        assert mocks["mock_sc_cls"].getOrCreate.call_count == 1
+        assert mocks["mock_gc_cls"].call_count == 1
+
+    def test_aplica_a_lista_de_anos_a_cada_tabela(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": self._DUAS_TABELAS, "YEAR": "2020,2021"}
+        mocks = _run_main(args=args)
+
+        combinacoes = [(c.args[3], c.args[5]) for c in mocks["mock_eval"].call_args_list]
+        assert combinacoes == [
+            ("tb_tmdb_details_movie_dev", "2020"),
+            ("tb_tmdb_details_movie_dev", "2021"),
+            ("tb_tmdb_watch_providers_movie_dev", "2020"),
+            ("tb_tmdb_watch_providers_movie_dev", "2021"),
+        ]
+
+    def test_ignora_espacos_e_itens_vazios_na_lista_de_tabelas(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": " tb_tmdb_a_dev , ,tb_tmdb_b_dev,"}
+        mocks = _run_main(args=args)
+
+        assert [c.args[3] for c in mocks["mock_eval"].call_args_list] == [
+            "tb_tmdb_a_dev",
+            "tb_tmdb_b_dev",
+        ]
+
+    def test_levanta_erro_quando_a_lista_de_tabelas_esta_vazia(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": " , "}
+
+        with pytest.raises(ValueError, match="TABLE_NAME"):
+            _run_main(args=args)
+
+    def test_particao_vazia_em_uma_tabela_pula_so_ela(self):
+        frame_vazio = MagicMock()
+        frame_vazio.count.return_value = 0
+        frame_ok = MagicMock()
+        frame_ok.count.return_value = 5
+        args = {**_BASE_ARGS, "TABLE_NAME": self._DUAS_TABELAS, "YEAR": "2020"}
+
+        mocks = _run_main(args=args, read_table_side_effect=[frame_vazio, frame_ok])
+
+        assert [c.args[3] for c in mocks["mock_eval"].call_args_list] == [
+            "tb_tmdb_watch_providers_movie_dev"
+        ]
+
+    def test_falha_na_primeira_tabela_nao_impede_a_segunda_e_o_job_falha_no_final(self, caplog):
+        args = {**_BASE_ARGS, "TABLE_NAME": self._DUAS_TABELAS}
+
+        with caplog.at_level("ERROR"):
+            mocks = _run_main(
+                args=args,
+                eval_side_effect=[RuntimeError("motor de DQ falhou"), MagicMock()],
+                capture_error=True,
+            )
+
+        assert isinstance(mocks["error"], RuntimeError)
+        assert "tb_tmdb_details_movie_dev" in str(mocks["error"])
+        assert "tb_tmdb_watch_providers_movie_dev" not in str(mocks["error"])
+        assert mocks["mock_eval"].call_count == 2
+        assert [c.args[2] for c in mocks["mock_write"].call_args_list] == [
+            "tb_tmdb_watch_providers_movie_dev"
+        ]
+        assert any("tb_tmdb_details_movie_dev" in record.message for record in caplog.records)
+
+    def test_lista_todas_as_tabelas_que_falharam_na_mensagem_do_erro(self):
+        args = {**_BASE_ARGS, "TABLE_NAME": self._DUAS_TABELAS}
+
+        mocks = _run_main(
+            args=args,
+            eval_side_effect=[RuntimeError("falha 1"), RuntimeError("falha 2")],
+            capture_error=True,
+        )
+
+        assert isinstance(mocks["error"], RuntimeError)
+        assert "tb_tmdb_details_movie_dev" in str(mocks["error"])
+        assert "tb_tmdb_watch_providers_movie_dev" in str(mocks["error"])
+        mocks["mock_write"].assert_not_called()
+
+    def test_tabela_unica_que_falha_tambem_derruba_o_job(self):
+        mocks = _run_main(eval_side_effect=RuntimeError("falha"), capture_error=True)
+
+        assert isinstance(mocks["error"], RuntimeError)
+        assert "tb_tmdb_genre_movie_dev" in str(mocks["error"])

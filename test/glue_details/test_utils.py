@@ -2587,21 +2587,25 @@ class TestRunDetailsAndWatchProvidersForYear:
             u.run_details_and_watch_providers_for_year(**self._kwargs())
             mock_wp.assert_not_called()
 
-    def test_triggers_data_quality_twice_by_default(self):
+    def test_triggers_data_quality_once_with_both_tables_by_default(self):
         with (
             patch("src.utils.fetch_ids_from_sot", return_value=self._IDS),
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job") as mock_trigger,
-            patch("src.utils.time.sleep"),
         ):
             # year != end_year evita o repair de duplicatas de fim de ciclo — irrelevante
             # para o comportamento de DQ testado aqui.
             u.run_details_and_watch_providers_for_year(**self._kwargs(year="2024", end_year="2025"))
             dq_calls = [c for c in mock_trigger.call_args_list if c.args[0] == "dq-job"]
-            assert len(dq_calls) == 2
-            assert call("dq-job", TABLE_NAME="tb_tmdb_details_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2024") in dq_calls
-            assert call("dq-job", TABLE_NAME="tb_tmdb_watch_providers_movie_dev", DATABASE="db_tmdb_movie_dev", YEAR="2024") in dq_calls
+            assert dq_calls == [
+                call(
+                    "dq-job",
+                    TABLE_NAME="tb_tmdb_details_movie_dev,tb_tmdb_watch_providers_movie_dev",
+                    DATABASE="db_tmdb_movie_dev",
+                    YEAR="2024",
+                )
+            ]
 
     def test_does_not_trigger_data_quality_when_trigger_dq_false(self):
         with (
@@ -2620,7 +2624,6 @@ class TestRunDetailsAndWatchProvidersForYear:
             patch("src.utils.collect_and_write_details"),
             patch("src.utils.collect_and_write_watch_providers"),
             patch("src.utils.trigger_glue_job"),
-            patch("src.utils.time.sleep"),
             patch("src.utils.repair_discover_duplicates", side_effect=lambda **_: call_order.append("repair_discover")),
             patch("src.utils.repair_watch_providers_duplicates", side_effect=lambda **_: call_order.append("repair_wp")),
             patch("src.utils.repair_details_duplicates", side_effect=lambda **_: call_order.append("repair_details")) as mock_repair,

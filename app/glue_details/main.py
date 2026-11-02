@@ -72,7 +72,10 @@ def main() -> None:
         # o DQ paga o overhead fixo de startup do Spark uma vez só, iterando os anos
         # internamente, em vez de N vezes (um changes-run pode afetar dezenas de anos
         # distintos, já que edição de metadado no TMDB não correlaciona com o ano de
-        # lançamento do título).
+        # lançamento do título). Diferente do fluxo normal (1 ano por unidade, onde details e
+        # watch_providers vão juntos num único run de DQ), aqui cada tabela continua com o seu
+        # próprio run: juntar as duas dobraria a duração de um run que já itera dezenas de anos,
+        # contra o timeout de 30 min do job de DQ. Só vale agregar depois de medir essa duração.
         if affected_years:
             years_arg = ",".join(affected_years)
             trigger_glue_job(dq_job_name, TABLE_NAME=table_details, DATABASE=database, YEAR=years_arg)
