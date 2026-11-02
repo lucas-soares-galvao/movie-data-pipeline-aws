@@ -141,7 +141,8 @@ proj-eng-dados-filmes-aws/
 │   ├── backfill_data_quality.py      # Aciona o Glue Data Quality para tabelas de 2000 até o ano atual
 │   ├── backfill_traducao.py          # Adiciona title_pt/overview_pt a dados históricos no S3 SOT
 │   ├── backfill_changes.py           # Dispara sob demanda o mesmo modo changes do cron semanal de domingo
-│   └── backfill_historico.py         # Encadeia backfill_discover.py + backfill_enriquecimento.py num único run
+│   ├── backfill_historico.py         # Encadeia backfill_discover.py + backfill_enriquecimento.py num único run
+│   └── summarize_llm_usage.py        # Auxiliar do workflow (não é backfill): soma o uso do LLM de todas as tentativas do run
 └── test/
     ├── conftest.py                 # Fixtures globais + bloqueio de rede (nenhum teste chama serviço real)
     ├── test_bloqueio_de_rede.py    # Garante que o bloqueio de rede do conftest raiz funciona
@@ -210,7 +211,8 @@ proj-eng-dados-filmes-aws/
         ├── test_backfill_data_quality.py
         ├── test_backfill_traducao.py
         ├── test_backfill_changes.py
-        └── test_backfill_historico.py
+        ├── test_backfill_historico.py
+        └── test_summarize_llm_usage.py
 ```
 
 ---

@@ -26,7 +26,8 @@ test/scripts/
 ├── test_backfill_traducao.py
 ├── test_backfill_changes.py
 ├── test_backfill_historico.py
-└── test_backfill_shared.py
+├── test_backfill_shared.py
+└── test_summarize_llm_usage.py
 ```
 
 Import direto por nome de módulo (`import backfill_discover`), sem pacote — `scripts` foi adicionado a `pythonpath` em `pytest.ini`.
@@ -599,6 +600,41 @@ função faz em runtime) porque `test/scripts/` não passa pelo mecanismo de ali
 | `TestRunWithRetryExit` | Sucesso não sai do processo; token expirado sai com `SystemExit(75)`; outro `ClientError` repropaga |
 | `TestSessionBudgetLow` | Guarda de sessão AWS: desligada sem `BACKFILL_SESSION_SECONDS`; sem estimativa (primeira unidade) nunca sinaliza; sinaliza quando o tempo restante (já descontada a folga de 5 min) é menor que a maior unidade; `exit_if_session_budget_low` sai com `SystemExit(75)` e loga, ou não faz nada quando há tempo |
 | `TestLogResumeProgress` | Loga a mensagem de progresso quando há unidades já concluídas; não loga nada quando não há progresso salvo |
+
+## Casos de teste — `test_summarize_llm_usage.py`
+
+`scripts/summarize_llm_usage.py` não é um backfill: é o auxiliar que o `backfill.yml` chama para somar o uso do LLM de todas as tentativas do run (o contador de `shared_utils.llm_metrics` zera a cada processo, então o "— total" do log subestima o gasto numa retomada por exit 75). Os testes usam logs sintéticos no formato real; o cenário principal reproduz o run de dev de 2026-11-02 (duas tentativas, o AGG rodando entre o total do estágio interno e o do `historico`).
+
+### `TestCollectAttempts`
+
+| Teste | O que verifica |
+|---|---|
+| `test_uma_entrada_por_tentativa_e_vale_o_ultimo_total_do_trecho` | Uma `Attempt` por trecho `Tentativa N/M...`, com o último total do trecho (o do script externo, que já inclui o do estágio interno) — nunca soma interno + externo |
+| `test_le_tokens_custo_e_falhas_do_total_externo` | Tokens, custo e falhas vêm do total externo de cada tentativa |
+| `test_tentativa_sem_falhas_fica_com_zero_falhas` | Sem linha `falhas:`, `failed == 0` |
+| `test_total_sem_chamadas_conta_como_tentativa_zerada` | "nenhuma chamada ao LLM" vira uma tentativa com 0 chamadas |
+| `test_tentativa_sem_total_no_log_e_ignorada` | Tentativa que não logou total (ex.: caiu antes) não entra |
+| `test_linha_de_falhas_sem_total_anterior_e_ignorada` | Linha `falhas:` solta não cria tentativa |
+| `test_custo_indisponivel_marca_custo_incompleto` / `test_chamadas_sem_custo_marcam_custo_incompleto_mas_somam_o_custo_conhecido` | "custo indisponível" e "(+N chamada(s) sem custo)" marcam `cost_complete=False` |
+| `test_total_sem_tokens_mantem_tokens_zerados` | Linha sem o trecho `tokens ...` não quebra |
+
+### `TestRenderSummary`
+
+| Teste | O que verifica |
+|---|---|
+| `test_soma_as_tentativas_do_run_real` | Soma chamadas, tokens, custo e falhas (16.558 chamadas, US$ 0,5852, 88 falhas) |
+| `test_uma_tentativa_so_nao_escreve_nada` / `test_sem_tentativas_nao_escreve_nada` | Com menos de 2 tentativas o resumo é vazio (o total do próprio log já está certo) |
+| `test_custo_incompleto_e_sinalizado_como_parcial` | Custo com chamadas sem custo ganha "(parcial: ...)" |
+| `test_sem_chamadas_nas_tentativas_nao_divide_por_zero` | Total de chamadas 0 não gera percentual |
+
+### `TestMain`
+
+| Teste | O que verifica |
+|---|---|
+| `test_escreve_o_resumo_do_arquivo_de_log` / `test_log_com_uma_tentativa_nao_imprime_nada` | Lê o arquivo e imprime (ou não) o resumo; devolve 0 |
+| `test_tolera_bytes_invalidos_no_log` | Bytes inválidos no log não derrubam o script (`errors="replace"`) |
+| `test_numero_de_argumentos_invalido_devolve_2_com_uso_no_stderr` | Sem argumento ou com mais de um: devolve 2 e escreve o uso no stderr |
+| `test_sem_argv_le_os_argumentos_do_processo` | Sem `argv`, usa `sys.argv[1:]` |
 
 ## Como executar
 
