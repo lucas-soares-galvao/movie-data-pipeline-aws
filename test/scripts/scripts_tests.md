@@ -310,7 +310,7 @@ Modo "Zerar tentativas" (`BACKFILL_RESET_ATTEMPTS`): só as linhas pendentes (`*
 
 ### `TestOrigemDaTraducao`
 
-`overview_pt_source`/`tagline_pt_source` = `"llm"` nas linhas que o script traduz e `"tmdb"` nas que ele copia de uma fonte já em português; falha do tradutor fica sem origem (`_mark_source`).
+`overview_pt_source`/`tagline_pt_source` = `"llm"` nas linhas que o script traduz e `"tmdb"` nas cópias diretas de uma fonte já em português (inclusive linhas antigas sem origem, corrigidas sem LLM); falha do tradutor fica sem origem (`_mark_source`).
 
 | Teste | O que verifica |
 |---|---|
@@ -318,6 +318,8 @@ Modo "Zerar tentativas" (`BACKFILL_RESET_ATTEMPTS`): só as linhas pendentes (`*
 | `test_overview_nao_traduzido_mantem_a_origem_existente` | Linha já `tmdb` e linha cuja tradução falhou (tradutor devolve a fonte) não mudam de origem |
 | `test_copia_direta_de_fonte_ja_em_portugues_tem_origem_tmdb_e_nao_llm` | Fonte já em português copiada sem tradutor recebe `"tmdb"` |
 | `test_tagline_copiada_de_fonte_ja_em_portugues_tem_origem_tmdb` | Mesma cópia direta para `tagline_pt_source` |
+| `test_copia_direta_antiga_sem_origem_e_corrigida_para_tmdb_sem_chamar_o_llm` | Linha antiga sem origem, texto igual à fonte e idioma `pt` vira `"tmdb"` sem tradutor; origem já gravada (`llm`) não é sobrescrita |
+| `test_linha_antiga_com_texto_diferente_da_fonte_e_sem_origem_continua_nula` | Texto diferente da fonte e sem origem não é classificado (nativo e LLM não se distinguem) |
 | `test_falha_do_tradutor_com_destino_em_ingles_fica_sem_origem` | Tradutor devolve a fonte e o idioma do destino é `en`: origem nula e `needs_translation=True` |
 | `test_tagline_traduzida_recebe_origem_llm` | Mesmo comportamento para `tagline_pt_source` |
 ### `TestAdicionarTraducoesPt`
